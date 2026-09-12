@@ -2,7 +2,10 @@ package io.flottila.components;
 
 import io.flottila.core.Body;
 import io.flottila.core.Envelope;
+import io.flottila.runtime.BatchingWriter;
 import io.flottila.runtime.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.subscription.BackPressureStrategy;
@@ -26,6 +29,7 @@ import java.util.stream.Collectors;
 
 /** Native Vert.x HTTP on both ends. One Router per port, shared with the admin API. */
 public class HttpComponent implements Component {
+    private static final Logger log = LoggerFactory.getLogger(HttpComponent.class);
     private final Vertx vertx;
     private final WebClient client;
     private final int inMemoryLimit;
@@ -95,6 +99,7 @@ public class HttpComponent implements Component {
         @Override public void reply(Envelope result) {
             RoutingContext ctx = pending.remove(result.id());
             if (ctx == null) return;                                   // replayed message: nobody waiting
+            if (log.isDebugEnabled()) log.debug("ack id={} t={}us", result.id(), System.nanoTime() / 1000);
             ctx.response().setStatusCode(200).putHeader("x-flottila-id", result.id())
                     .putHeader("content-type", result.headers().getOrDefault(Envelope.H_CONTENT_TYPE, "application/xml"))
                     .endAndForget(Buffer.newInstance(io.vertx.core.buffer.Buffer.buffer(result.body().bytes())));
@@ -103,6 +108,11 @@ public class HttpComponent implements Component {
         @Override public void fail(Envelope original, Throwable t) {
             RoutingContext ctx = pending.remove(original.id());
             if (ctx == null) return;
+            if (t instanceof BatchingWriter.OverloadedException) {      // not accepted — ask the client to retry
+                ctx.response().setStatusCode(503).putHeader("Retry-After", "1")
+                        .putHeader("x-flottila-id", original.id()).endAndForget(t.getMessage());
+                return;
+            }
             ctx.response().setStatusCode(t instanceof IllegalArgumentException ? 400 : 502)
                     .putHeader("x-flottila-id", original.id()).endAndForget(t.getMessage());
         }

@@ -84,7 +84,10 @@ public class Main {
         });
         admin.get("/dlq").handler(ctx -> ctx.response().putHeader("content-type", "application/json")
                 .endAndForget(new JsonArray(rt.monitoring().all().values().stream()
-                        .flatMap(tl -> tl.stream().filter(s -> s.error() != null)).map(Snapshot::toJson).toList()).encodePrettily()));
+                        .flatMap(tl -> tl.stream().filter(s -> s.error() != null))
+                        // overload rejections were answered 503-retry, never parked
+                        .filter(s -> !s.error().contains("OverloadedException"))
+                        .map(Snapshot::toJson).toList()).encodePrettily()));
 
         vertx.deployVerticle(new MonitorVerticle(rt.monitoring())).await().indefinitely();
         vertx.deployVerticle(new FlowVerticle(flow)).await().indefinitely();
