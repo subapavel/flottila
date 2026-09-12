@@ -1,3 +1,69 @@
+# Bench results — writer v2 + delivery modes (STEP 1.5)
+
+Date: 2026-09-13. Same machine/client as the STEP 2 section below. Shape under test:
+delivery-mode split (request/reply `/in` never awaits the store; `/in-async` = durable ACK),
+content-addressed payloads, writer v2 (adaptive flush, commitConcurrency 4, fixed-shape unnest
+inserts + prepared-statement cache). 20 000 messages @ c=64, 1 000 warmup, tables truncated
+between runs.
+
+**Measurement correction**: earlier single-request numbers used one `curl.exe` process per
+request — on Windows that costs ~10–15 ms of process spawn + fresh connection per request.
+Keep-alive measurements (`bench.py --c 1`) below are the real numbers; the old single-request
+table is kept for history but is tool-bound, not server-bound.
+
+## Throughput, Docker Desktop Postgres (same DB as STEP 2 section)
+
+| run | config | req/s | p50 | p95 | p99 | vs old writer |
+|---|---|---|---|---|---|---|
+| (a) | persistence none | 2164 | 21.9 ms | 69.1 ms | 157 ms | ≈ (2649; ±15 % run variance) |
+| (b) | batch 1 (per-message, ×4 concurrent) | 329 | 185.7 ms | 321 ms | 416 ms | 136 → **2.4×** |
+| (c) | batch 100 / 10 ms | **1737** | 27.6 ms | 92 ms | 151 ms | 396 → **4.4×** |
+| (e) | (c) + `synchronous_commit=off` | 3139 | 16.9 ms | 39.5 ms | 56.1 ms | 482 → 6.5× |
+
+wal_sync for the measured window: (b) 8 198 (PG group-commit already collapses 120 000
+single-row commits), (c) 1 020, (e) 72. Writer v2 removed the serialized-commit ceiling:
+(e) now *beats* persistence-none run (a) — at this load, persistence costs only the fsync,
+and (c) sits at 80 % of the no-persistence throughput.
+
+## Throughput, native Postgres 16 in WSL2 (ext4, data dir on /, not /mnt/c)
+
+| run | config | req/s | p50 | p95 | p99 |
+|---|---|---|---|---|---|
+| (b) | batch 1 (×4 concurrent) | 488 | 120.5 ms | 208.9 ms | 274.3 ms |
+| (c) | batch 100 / 10 ms | 1278 | 45.6 ms | 100.2 ms | 150.7 ms |
+| (e) | (c) + `synchronous_commit=off` | 1452 | 41.9 ms | 91.6 ms | 115.2 ms |
+
+(run (a) touches no store — it is the same as the Docker table.) Native beats Docker on
+per-message inserts (488 vs 329: real, faster fsync) but trails on batched throughput
+(1278 vs 1737): the runtime runs on Windows, so every commit crosses the Windows→WSL2
+localhost boundary, and Docker Desktop's port proxy happens to be cheaper per round trip.
+Also note (e)−(c) is only 14 % native — ext4 fsync is genuinely cheap here — while the same
+delta on Docker is 81 %, another hint that Docker Desktop's I/O virtualization, not the disk,
+dominates its numbers.
+
+## Single-request latency, keep-alive client (c=1, 300 requests, batch 100/10)
+
+| path | Docker PG | native PG | target |
+|---|---|---|---|
+| `/in` (request/reply, persistence on, fire-and-forget) | p50 1.6 ms, p99 4.7 ms | **p50 0.9 ms**, p99 2.9 ms | p50 < 2 ms ✓ **met** |
+| `/in-async` (durable ACK) | p50 12.3 ms, p99 23.2 ms | p50 7.4 ms, p99 22.4 ms | p99 < 5 ms ✗ not met here |
+| `/in-async`, sync_commit=off | p50 11.0 ms, p99 18.3 ms | p50 5.9 ms, p99 18.1 ms | — |
+
+- **Request/reply target met** on both setups: decoupling the reply from the store (delivery
+  redesign) plus adaptive flush removed the whole persistence cost from the reply path.
+- **Durable-ACK target not met on this topology — and the topology is the reason.** A raw
+  single-row insert+commit measured *inside* WSL (pgbench, c=1) is **2.0 ms**; sync_commit=off
+  only moves `/in-async` from 7.4 to 5.9 ms p50. So of the ~7.4 ms, ~2 ms is the actual commit
+  and ~5 ms is the Windows-runtime→WSL2-Postgres boundary plus runtime scheduling hops.
+  With runtime and Postgres co-located on Linux (the deployment model), p99 < 5 ms is
+  plausible but remains **unverified** until measured there.
+- The old 66→93 ms single-request numbers were curl-process-spawn artifacts on top of the old
+  writer's batch window; both causes are gone.
+
+Caveat as before: Windows 11 + Docker Desktop/WSL2; treat absolutes as machine-relative.
+
+---
+
 # Bench results — store-and-forward persistence (STEP 2)
 
 Date: 2026-09-13

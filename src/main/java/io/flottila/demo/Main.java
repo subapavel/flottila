@@ -101,7 +101,8 @@ public class Main {
     /** FLOTTILA_STORE = memory (default) | postgres (docker-compose.yml, db/user/pass flottila). */
     private static MessageStore messageStore(Vertx vertx) {
         if (!"postgres".equals(System.getenv().getOrDefault("FLOTTILA_STORE", "memory"))) return new MessageStore.InMemory();
-        PgConnectOptions co = new PgConnectOptions().setHost("localhost").setPort(5432)
+        PgConnectOptions co = new PgConnectOptions().setHost("localhost")
+                .setPort(Integer.parseInt(System.getenv().getOrDefault("FLOTTILA_PG_PORT", "5432")))
                 .setDatabase("flottila").setUser("flottila").setPassword("flottila");
         return new MessageStore.Postgres(PgPool.pool(vertx, co.setCachePreparedStatements(true),
                 new PoolOptions().setMaxSize(8)));
