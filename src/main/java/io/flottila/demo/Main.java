@@ -7,6 +7,9 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.core.Vertx;
 import io.vertx.mutiny.ext.web.Router;
+import io.vertx.mutiny.pgclient.PgPool;
+import io.vertx.pgclient.PgConnectOptions;
+import io.vertx.sqlclient.PoolOptions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +30,8 @@ public class Main {
         ExecutorService cpu = Executors.newFixedThreadPool(java.lang.Runtime.getRuntime().availableProcessors());
         ExecutorService blocking = Executors.newVirtualThreadPerTaskExecutor();
         HttpComponent http = new HttpComponent(vertx, 16 * 1024 * 1024);
-        Runtime rt = new Runtime(vertx, Map.of("http", http), new MessageStore.InMemory(),
+        MessageStore messages = messageStore(vertx);
+        Runtime rt = new Runtime(vertx, Map.of("http", http), messages,
                 new MonitoringStore.InMemory(), cpu, blocking, new Xml(cpu));
 
         // fake backend the flow posts to
@@ -39,6 +43,13 @@ public class Main {
         vertx.createHttpServer().requestHandler(echo).listen(8081).await().indefinitely();
 
         JsonObject cfg = new JsonObject(new String(Main.class.getResourceAsStream("/flows/invoice.json").readAllBytes(), StandardCharsets.UTF_8));
+        // bench override: FLOTTILA_PERSISTENCE = none | <batchSize>/<batchMs>
+        String persistence = System.getenv("FLOTTILA_PERSISTENCE");
+        if ("none".equals(persistence)) cfg.put("persistence", "none");
+        else if (persistence != null) {
+            String[] parts = persistence.split("/");
+            cfg.put("persistence", new JsonObject().put("batchSize", Integer.parseInt(parts[0])).put("batchMs", Integer.parseInt(parts[1])));
+        }
         Flow flow = new FlowBuilder(rt).build(cfg);
 
         // admin / monitoring API on the ingress port — registered before the server starts
@@ -78,5 +89,13 @@ public class Main {
         vertx.deployVerticle(new MonitorVerticle(rt.monitoring())).await().indefinitely();
         vertx.deployVerticle(new FlowVerticle(flow)).await().indefinitely();
         log.info("Flottila prototype up. POST XML to http://localhost:8080/in, inspect http://localhost:8080/monitor");
+    }
+
+    /** FLOTTILA_STORE = memory (default) | postgres (docker-compose.yml, db/user/pass flottila). */
+    private static MessageStore messageStore(Vertx vertx) {
+        if (!"postgres".equals(System.getenv().getOrDefault("FLOTTILA_STORE", "memory"))) return new MessageStore.InMemory();
+        PgConnectOptions co = new PgConnectOptions().setHost("localhost").setPort(5432)
+                .setDatabase("flottila").setUser("flottila").setPassword("flottila");
+        return new MessageStore.Postgres(PgPool.pool(vertx, co, new PoolOptions().setMaxSize(8)));
     }
 }

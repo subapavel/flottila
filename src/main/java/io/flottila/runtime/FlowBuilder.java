@@ -4,6 +4,8 @@ import io.flottila.core.*;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.time.Duration;
@@ -15,6 +17,7 @@ import java.util.concurrent.Executor;
 
 /** JSON flow config → plug() chain. Dependencies are captured at build time; Runtime is not kept. */
 public class FlowBuilder {
+    private static final Logger log = LoggerFactory.getLogger(FlowBuilder.class);
     private final Runtime rt;
 
     public FlowBuilder(Runtime rt) { this.rt = rt; }
@@ -24,10 +27,19 @@ public class FlowBuilder {
         URI from = URI.create(cfg.getString("from"));
         Component.Consumer consumer = rt.component(from.getScheme()).consumer(from, flow);
 
+        // "persistence": "none" (at-most-once) or {"batchSize":100,"batchMs":10}
+        Object persistence = cfg.getValue("persistence");
+        JsonObject p = persistence instanceof JsonObject jo ? jo : new JsonObject();
+        BatchingWriter writer = "none".equals(persistence) ? null
+                : new BatchingWriter(rt.messages(), p.getInteger("batchSize", 100), p.getInteger("batchMs", 10));
+
+        var bus = rt.vertx().eventBus();
         StageContext.Monitor monitor = (stage, in, out, latency, error) -> {
             Snapshot s = Snapshot.of(stage, in, out, latency, error);
-            if (out != null) rt.messages().save(out).subscribe().with(x -> {});   // payload snapshot per step
-            rt.vertx().eventBus().publish(MonitorVerticle.ADDRESS, s.toJson());  // async, never awaited
+            // ingress persists inside its own step (ACK only after durable); later steps fire-and-forget
+            if (writer != null && out != null && !"ingress".equals(stage))
+                writer.save(out).subscribe().with(x -> {}, t -> log.error("snapshot save failed for {}", out.id(), t));
+            bus.publish(MonitorVerticle.ADDRESS, s.toJson());                    // async, never awaited
         };
         Dlq dlq = new Dlq(consumer);
         JsonObject r = cfg.getJsonObject("retry", new JsonObject());
@@ -37,8 +49,11 @@ public class FlowBuilder {
         var noRetry = new StageContext(flow, monitor, dlq, StageContext.RetryPolicy.none(), ctx.concurrency());
 
         List<Flow.Named> stages = new ArrayList<>();
-        // stage 0: ingress — identity, but produces the step-1 snapshot (= what actually arrived)
-        stages.add(new Flow.Named("ingress", Stages.step("ingress", e -> Uni.createFrom().item(e), noRetry)));
+        // stage 0: ingress — store-and-forward: the step-1 snapshot (= what arrived) is durable before
+        // the message continues; the Uni completes when the batch holding it has committed
+        Step ingressStep = writer == null ? e -> Uni.createFrom().item(e)
+                : e -> writer.save(e.withStep(1)).replaceWith(e);
+        stages.add(new Flow.Named("ingress", Stages.step("ingress", ingressStep, noRetry)));
 
         JsonArray steps = cfg.getJsonArray("steps", new JsonArray());
         for (int i = 0; i < steps.size(); i++) {
@@ -82,7 +97,8 @@ public class FlowBuilder {
 
     /**
      * Content-based router: first matching XPath predicate wins; each branch sets the configured
-     * prop, so monitoring shows why the branch was taken. Branches are full stages (snapshot, step++).
+     * prop and is a full stage named "route:<branch>" (snapshot, step++), so the timeline shows
+     * the taken branch without reading props.
      */
     private Stage route(String name, JsonObject s, StageContext ctx) {
         Xml xml = rt.xml();
@@ -94,10 +110,10 @@ public class FlowBuilder {
             String when = r.getString("when");
             String value = r.getString("set");
             routes.add(new Stages.Route(e -> "true".equals(xml.evalString(when, e)),
-                    Stages.step(name, e -> Uni.createFrom().item(e.with(prop, value)), ctx)));
+                    Stages.step(name + ":" + value, e -> Uni.createFrom().item(e.with(prop, value)), ctx)));
         }
         String otherwise = s.getString("otherwise");
-        return Stages.route(routes, Stages.step(name, e -> Uni.createFrom().item(e.with(prop, otherwise)), ctx));
+        return Stages.route(routes, Stages.step(name + ":" + otherwise, e -> Uni.createFrom().item(e.with(prop, otherwise)), ctx));
     }
 
     /** Egress. Either a single "uri" string, or a map of prop value → uri selected by "byProp". */

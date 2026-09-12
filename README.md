@@ -3,6 +3,12 @@
 `HTTP → validate → extractKey → route → XSLT → HTTP` with a snapshot after every stage, retry + DLQ, replay from any stage.
 In-memory stores only; `MessageStore` / `MonitoringStore` are the seams where Postgres/ClickHouse go.
 
+Stores: `FLOTTILA_STORE=memory` (default, no Docker needed) or `FLOTTILA_STORE=postgres`
+(`docker compose up -d` first; schema in `db/init.sql`). Persistence per flow via
+`"persistence": {"batchSize":100,"batchMs":10}` or `"persistence": "none"` in the flow config;
+override with `FLOTTILA_PERSISTENCE=none|<batchSize>/<batchMs>`. With persistence on, the HTTP
+ACK is given only after the ingress snapshot is durably committed.
+
 ```
 mvn -q compile exec:java
 curl -s -X POST --data-binary @sample-invoice.xml http://localhost:8080/in -i        # → <ack>, header x-flottila-id
