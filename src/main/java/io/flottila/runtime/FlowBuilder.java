@@ -27,21 +27,29 @@ public class FlowBuilder {
         URI from = URI.create(cfg.getString("from"));
         Component.Consumer consumer = rt.component(from.getScheme()).consumer(from, flow);
 
-        // "persistence": "none" (at-most-once) or {"batchSize":100,"batchMs":10}
+        // "delivery": at-least-once (default) | at-most-once; "persistence": "none" or {batchSize,batchMs}
+        boolean atMostOnce = "at-most-once".equals(cfg.getString("delivery", "at-least-once"));
         Object persistence = cfg.getValue("persistence");
         JsonObject p = persistence instanceof JsonObject jo ? jo : new JsonObject();
         BatchingWriter writer = "none".equals(persistence) ? null
                 : new BatchingWriter(rt.messages(), p.getInteger("batchSize", 100), p.getInteger("batchMs", 10));
 
+        // consumers with an irreversible ACK await this before acknowledging; request/reply ignores it
+        Duration ackTimeout = Duration.ofMillis(cfg.getLong("ackTimeoutMs", 5000L));
+        Component.DurableIngress durable = (writer == null || atMostOnce)
+                ? e -> io.smallrye.mutiny.Uni.createFrom().voidItem()
+                : e -> writer.save(e.withStep(1)).ifNoItem().after(ackTimeout)
+                        .failWith(() -> new BatchingWriter.OverloadedException("ingress save not durable within " + ackTimeout.toMillis() + " ms"));
+        consumer.durableIngress(durable);
+
         var bus = rt.vertx().eventBus();
         StageContext.Monitor monitor = (stage, in, out, latency, error) -> {
             Snapshot s = Snapshot.of(stage, in, out, latency, error);
-            // ingress persists inside its own step (ACK only after durable); later steps fire-and-forget
-            if (writer != null && out != null && !"ingress".equals(stage))
+            if (writer != null && out != null)                                   // fire-and-forget, every stage
                 writer.save(out).subscribe().with(x -> {}, t -> log.error("snapshot save failed for {}", out.id(), t));
             bus.publish(MonitorVerticle.ADDRESS, s.toJson());                    // async, never awaited
         };
-        Dlq dlq = new Dlq(consumer);
+        Dlq dlq = new Dlq(consumer, atMostOnce);
         JsonObject r = cfg.getJsonObject("retry", new JsonObject());
         var retry = new StageContext.RetryPolicy(r.getInteger("attempts", 0),
                 Duration.ofMillis(r.getLong("initialMs", 100L)), Duration.ofMillis(r.getLong("maxMs", 2000L)));
@@ -49,11 +57,9 @@ public class FlowBuilder {
         var noRetry = new StageContext(flow, monitor, dlq, StageContext.RetryPolicy.none(), ctx.concurrency());
 
         List<Flow.Named> stages = new ArrayList<>();
-        // stage 0: ingress — store-and-forward: the step-1 snapshot (= what arrived) is durable before
-        // the message continues; the Uni completes when the batch holding it has committed
-        Step ingressStep = writer == null ? e -> Uni.createFrom().item(e)
-                : e -> writer.save(e.withStep(1)).replaceWith(e);
-        stages.add(new Flow.Named("ingress", Stages.step("ingress", ingressStep, noRetry)));
+        // stage 0: ingress — pure identity; its snapshot (= what arrived) is fire-and-forget like
+        // every other stage. Durability-before-ACK lives in the consumer (DurableIngress above).
+        stages.add(new Flow.Named("ingress", Stages.step("ingress", e -> Uni.createFrom().item(e), noRetry)));
 
         JsonArray steps = cfg.getJsonArray("steps", new JsonArray());
         for (int i = 0; i < steps.size(); i++) {

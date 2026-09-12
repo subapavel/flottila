@@ -4,10 +4,12 @@
 In-memory stores only; `MessageStore` / `MonitoringStore` are the seams where Postgres/ClickHouse go.
 
 Stores: `FLOTTILA_STORE=memory` (default, no Docker needed) or `FLOTTILA_STORE=postgres`
-(`docker compose up -d` first; schema in `db/init.sql`). Persistence per flow via
-`"persistence": {"batchSize":100,"batchMs":10}` or `"persistence": "none"` in the flow config;
-override with `FLOTTILA_PERSISTENCE=none|<batchSize>/<batchMs>`. With persistence on, the HTTP
-ACK is given only after the ingress snapshot is durably committed.
+(`docker compose up -d` first; schema in `db/init.sql`). Per flow config: `"delivery":
+"at-least-once" | "at-most-once"` and `"persistence": {"batchSize":100,"batchMs":10}` or
+`"persistence": "none"`; `FLOTTILA_PERSISTENCE=none|<batchSize>/<batchMs>` overrides
+persistence for benchmarks. Request/reply `POST /in` never awaits the store — the client owns
+the retry until it gets the reply. `POST /in-async` is the irreversible-ACK variant: 202 only
+after the ingress snapshot is durably committed (`ackTimeoutMs`, default 5 s → 503).
 
 ```
 mvn -q compile exec:java

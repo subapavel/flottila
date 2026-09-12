@@ -72,6 +72,7 @@ public class HttpComponent implements Component {
         private final URI endpoint; private final String flow;
         private final AtomicReference<MultiEmitter<? super Envelope>> emitter = new AtomicReference<>();
         private final Map<String, RoutingContext> pending = new ConcurrentHashMap<>();
+        private volatile DurableIngress durable = e -> Uni.createFrom().voidItem();
 
         HttpConsumer(URI endpoint, String flow) { this.endpoint = endpoint; this.flow = flow; }
 
@@ -79,21 +80,41 @@ public class HttpComponent implements Component {
             return Multi.createFrom().<Envelope>emitter(emitter::set, BackPressureStrategy.BUFFER);
         }
 
+        @Override public void durableIngress(DurableIngress d) { this.durable = d; }
+
         @Override public Uni<Void> start() {
             Router router = router(endpoint.getPort());
             router.post(endpoint.getPath()).handler(this::onRequest);
+            // irreversible-ACK variant: 202 only after the ingress snapshot is durable
+            router.post(endpoint.getPath() + "-async").handler(this::onAsyncRequest);
             return vertx.createHttpServer().requestHandler(router).listen(endpoint.getPort()).replaceWithVoid();
         }
 
-        private void onRequest(RoutingContext ctx) {
-            var em = emitter.get();
-            if (em == null) { ctx.response().setStatusCode(503).endAndForget("flow not deployed"); return; }
+        private Envelope envelope(RoutingContext ctx) {
             Map<String, String> h = new HashMap<>();
             ctx.request().headers().entries().forEach(e -> h.put(e.getKey().toLowerCase(), e.getValue()));
             Buffer buf = ctx.body().buffer();
-            Envelope e = Envelope.ingress(flow, h, Body.of(buf == null ? io.vertx.core.buffer.Buffer.buffer() : buf.getDelegate(), inMemoryLimit));
+            return Envelope.ingress(flow, h, Body.of(buf == null ? io.vertx.core.buffer.Buffer.buffer() : buf.getDelegate(), inMemoryLimit));
+        }
+
+        /** Request/reply: emit immediately, never await the save — the client owns the retry. */
+        private void onRequest(RoutingContext ctx) {
+            var em = emitter.get();
+            if (em == null) { ctx.response().setStatusCode(503).endAndForget("flow not deployed"); return; }
+            Envelope e = envelope(ctx);
             pending.put(e.id(), ctx);
             em.emit(e);
+        }
+
+        /** Irreversible ACK: durable save (with timeout) → 202; failure/timeout → 503 retry. */
+        private void onAsyncRequest(RoutingContext ctx) {
+            var em = emitter.get();
+            if (em == null) { ctx.response().setStatusCode(503).endAndForget("flow not deployed"); return; }
+            Envelope e = envelope(ctx);
+            durable.persist(e).subscribe().with(
+                    v -> { em.emit(e); ctx.response().setStatusCode(202).putHeader("x-flottila-id", e.id()).endAndForget(); },
+                    t -> ctx.response().setStatusCode(503).putHeader("Retry-After", "1")
+                            .putHeader("x-flottila-id", e.id()).endAndForget(t.getMessage()));
         }
 
         @Override public void reply(Envelope result) {

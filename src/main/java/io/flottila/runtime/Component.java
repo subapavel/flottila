@@ -14,6 +14,12 @@ public interface Component {
     /** opts come straight from the flow config step (e.g. forwardHeaders allow-list). */
     Producer producer(URI endpoint, JsonObject opts);
 
+    /** How ingress persists an envelope before an irreversible ACK. Injected at build time. */
+    @FunctionalInterface
+    interface DurableIngress {
+        Uni<Void> persist(Envelope e);
+    }
+
     interface Consumer {
         /** Ingress stream; backpressure via request(n). Subscribed once per flow deployment. */
         Multi<Envelope> stream();
@@ -21,6 +27,12 @@ public interface Component {
         default void reply(Envelope result) {}
         default void fail(Envelope original, Throwable t) {}
         default Uni<Void> start() { return Uni.createFrom().voidItem(); }
+        /**
+         * Injected at build time. A consumer whose ACK is irreversible awaits this before
+         * acknowledging (timeout → NACK); request/reply consumers ignore it — the client owns
+         * the retry until it gets the reply.
+         */
+        default void durableIngress(DurableIngress d) {}
     }
 
     interface Producer {

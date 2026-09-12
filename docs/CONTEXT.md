@@ -162,6 +162,15 @@ Control plane (Quarkus admin API, React UI) is a separate process; runtime must 
 ## Persistence & delivery
 
 - Store-and-forward from day one: write, then ACK. Outbox for egress, idempotent keys, persistent retry scheduler.
+- **Delivery mode per flow**: `"delivery": "at-least-once" | "at-most-once"` (default at-least-once).
+  Where the durable write happens depends on the *consumer's ACK semantics*, not on a pipeline stage:
+  - A consumer whose ACK is irreversible (SFTP move/delete, JMS ack, HTTP 202) awaits
+    `MessageStore.save` before acknowledging, with a configurable timeout (`ackTimeoutMs`,
+    default 5 s) → NACK/503 on miss. Clients never wait indefinitely on a stalled store.
+  - A request/reply consumer (HTTP in→reply) emits immediately and never awaits the save —
+    the client owns the retry until it gets the reply, so durability-before-ACK buys nothing.
+  - Stage 0 "ingress" is a pure identity; its snapshot is fire-and-forget like every other stage.
+  - at-most-once: failures are logged and the message dropped — no DLQ row; snapshots still emitted.
 - Work queue = Postgres table with `SKIP LOCKED`; `WorkQueue` and `MessageStore` are interfaces so NATS can replace Postgres without touching stages.
 - Per-partner ordering = `partition_key` column; a worker locks keys and processes them serially; different keys in parallel.
 
