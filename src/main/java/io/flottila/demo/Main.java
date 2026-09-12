@@ -103,6 +103,7 @@ public class Main {
         if (!"postgres".equals(System.getenv().getOrDefault("FLOTTILA_STORE", "memory"))) return new MessageStore.InMemory();
         PgConnectOptions co = new PgConnectOptions().setHost("localhost").setPort(5432)
                 .setDatabase("flottila").setUser("flottila").setPassword("flottila");
-        return new MessageStore.Postgres(PgPool.pool(vertx, co, new PoolOptions().setMaxSize(8)));
+        return new MessageStore.Postgres(PgPool.pool(vertx, co.setCachePreparedStatements(true),
+                new PoolOptions().setMaxSize(8)));
     }
 }

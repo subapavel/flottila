@@ -153,9 +153,19 @@ Control plane (Quarkus admin API, React UI) is a separate process; runtime must 
 
 - I/O concurrency via event loops; CPU via `setInstances(N)`; message-level parallelism via `withConcurrency(N)`. Limit *concurrency*, not threads.
 - Mutiny overhead is microseconds — irrelevant vs network/XML. Reactive wins on I/O-bound throughput and flat latency under load; CPU-bound (XSLT, signing) is library choice + cores.
-- **The real bottleneck is store-and-forward fsync.** Per-message insert ≈ 1–2 ms → batch with `.group().intoLists().of(100, 10ms)` → tens of thousands/s. Persistence configurable per flow (at-most-once flows skip it).
-  - *Caveat (found in practice):* the `group().intoLists().of()` one-liner emits on timer regardless of downstream demand — including empty lists — and kills the stream with a `BackPressureFailure` while a batch commit is in flight. The writer needs the empty ticks filtered out and a bounded buffer whose overflow is mapped to ingress rejection (503 + Retry-After), never to stream death; Mutiny's own `onOverflow().buffer(n)` fails the stream when full, so the bound is enforced at admission into the writer.
-  - *Planned:* adaptive flush — write immediately when the writer is idle, batch only under load — to recover single-request latency lost to the batch window. Not implemented yet.
+- **The real bottleneck is store-and-forward fsync.** Per-message insert ≈ 1–2 ms; the writer
+  batches saves into multi-row inserts. Persistence configurable per flow (at-most-once flows skip it).
+  - The writer is hand-rolled, not a Mutiny operator chain: `.group().intoLists().of()` emits on
+    timer regardless of downstream demand — including empty lists — and kills the stream with a
+    `BackPressureFailure` while a commit is in flight, and Mutiny's `onOverflow().buffer(n)`
+    fails the stream when full. Found in practice; the operator one-liner is not deployable here.
+  - **Adaptive flush**: no batch in flight → flush immediately (single-request latency pays no
+    batch window); under load accumulate to `batchSize`/`batchMs`. Up to `commitConcurrency`
+    (default 4) batch commits in flight — a save's Uni resolves only after *its own* batch's
+    commit. Statements are fixed-shape (`unnest($n::type[])`) with the prepared-statement cache
+    on, so batches never re-parse.
+  - Admission is bounded (64 batches); a full backlog fails `save()` immediately and surfaces
+    as ingress rejection (503 + Retry-After / NACK), never as a dead stream.
 - Expected on one 8-core box: HTTP passthrough tens of thousands req/s; with persistence 5–20k msg/s; with 100 KB XSLT hundreds to low thousands/s.
 - Blocked-thread checker on; anything slow moves to worker/virtual thread.
 

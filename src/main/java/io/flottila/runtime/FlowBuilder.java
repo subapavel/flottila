@@ -32,7 +32,8 @@ public class FlowBuilder {
         Object persistence = cfg.getValue("persistence");
         JsonObject p = persistence instanceof JsonObject jo ? jo : new JsonObject();
         BatchingWriter writer = "none".equals(persistence) ? null
-                : new BatchingWriter(rt.messages(), p.getInteger("batchSize", 100), p.getInteger("batchMs", 10));
+                : new BatchingWriter(rt.messages(), p.getInteger("batchSize", 100), p.getInteger("batchMs", 10),
+                        p.getInteger("commitConcurrency", 4));
 
         // consumers with an irreversible ACK await this before acknowledging; request/reply ignores it
         Duration ackTimeout = Duration.ofMillis(cfg.getLong("ackTimeoutMs", 5000L));

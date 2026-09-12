@@ -4,7 +4,7 @@
   "concurrency": 16,
   "delivery": "at-least-once",
   "retry": { "attempts": 3, "initialMs": 100, "maxMs": 2000 },
-  "persistence": { "batchSize": 100, "batchMs": 10 },
+  "persistence": { "batchSize": 100, "batchMs": 10, "commitConcurrency": 4 },
   "steps": [
     { "type": "validate",   "name": "validate",   "required": "/Invoice/Id" },
     { "type": "extractKey", "name": "extractKey", "key": "invoiceId", "xpath": "/Invoice/Id" },
