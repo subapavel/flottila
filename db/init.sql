@@ -1,4 +1,12 @@
--- Store-and-forward + per-step payload snapshots. One row per (message, step).
+-- Content-addressed payload store: one row per distinct content, written ON CONFLICT DO NOTHING.
+create table payloads (
+    hash       bytea       primary key,          -- xxh3-64, 8 bytes
+    size       bigint      not null,
+    body       bytea       not null,
+    created_at timestamptz not null default now()
+);
+
+-- Store-and-forward + per-step snapshots. One row per (message, step); payload by reference.
 create table messages (
     id          text        not null,
     step        int         not null,
@@ -8,7 +16,7 @@ create table messages (
     keys        jsonb       not null default '{}',
     -- attachment references only (name -> {contentType, size, storageRef}); content is a later step
     attachments jsonb       not null default '{}',
-    body        bytea       not null default ''::bytea,
+    body_hash   bytea       not null references payloads (hash),
     created_at  timestamptz not null default now(),
     primary key (id, step)
 );

@@ -35,11 +35,15 @@ public class Main {
                 new MonitoringStore.InMemory(), cpu, blocking, new Xml(cpu));
 
         // fake backend the flow posts to
+        // ack body is deliberately static (id only in the header) so identical runs produce
+        // identical ack payloads — content-addressing dedups them
         Router echo = http.router(8081);
         echo.post("/echo").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
-                .endAndForget("<ack partner=\"domestic\" id=\"" + ctx.request().getHeader("x-flottila-id") + "\">ok</ack>"));
+                .putHeader("x-flottila-id", ctx.request().getHeader("x-flottila-id"))
+                .endAndForget("<ack partner=\"domestic\">ok</ack>"));
         echo.post("/echo-foreign").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
-                .endAndForget("<ack partner=\"foreign\" id=\"" + ctx.request().getHeader("x-flottila-id") + "\">ok</ack>"));
+                .putHeader("x-flottila-id", ctx.request().getHeader("x-flottila-id"))
+                .endAndForget("<ack partner=\"foreign\">ok</ack>"));
         vertx.createHttpServer().requestHandler(echo).listen(8081).await().indefinitely();
 
         JsonObject cfg = new JsonObject(new String(Main.class.getResourceAsStream("/flows/invoice.json").readAllBytes(), StandardCharsets.UTF_8));

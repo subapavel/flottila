@@ -179,6 +179,12 @@ Control plane (Quarkus admin API, React UI) is a separate process; runtime must 
 - Snapshot after **every** step, not just in/out. Emitted async on event bus to a writer verticle; processing never waits for monitoring, but monitoring is not best-effort: a persistent buffer (Postgres table) sits between runtime and writer.
 - Business correlation keys extracted at ingress (XPath/JSONPath from flow config) into indexed metadata. "Invoice 4711 — where is it, what happened, what came back" must answer < 1 s over a year of data.
 - Two stores: **Postgres** for processing state + last N hours (operator sees now); **ClickHouse** for history/analytics. `MonitoringStore` interface with both implementations; small installs run Postgres only.
+- **Payloads are content-addressed**: `Body` carries a lazily memoized content hash (xxh3-64;
+  envelopes sharing a Body share the hash without rehashing). Store: `payloads(hash PK, size,
+  body)` written `ON CONFLICT DO NOTHING`; message rows reference `body_hash`. A message whose
+  body passes through validate/extractKey/route unchanged stores one payload for all those
+  steps, and identical documents sent twice store their payload once. Replay and payload/N
+  resolve through the reference.
 - Payloads: compressed (zstd), per-tenant encryption key. ≤ ~256 KB as ClickHouse column (ages to S3 via storage policy); larger directly in S3 under `tenant/flow/date/messageId/step`, reference in CH.
 - Ingest path: runtime writes batches (Parquet/JSONEachRow) to S3 → ClickHouse `S3Queue` consumes. Runtime never depends on CH availability; S3 doubles as raw archive for rebuilds. Batch files, never one object per message.
 - Retention per flow (invoices 10 years, heartbeats 1 day); ClickHouse TTL on partitions, S3 lifecycle. Never row-level DELETE in CH.
