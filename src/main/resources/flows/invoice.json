@@ -1,0 +1,12 @@
+{
+  "name": "invoice",
+  "from": "http://0.0.0.0:8080/in",
+  "concurrency": 16,
+  "retry": { "attempts": 3, "initialMs": 100, "maxMs": 2000 },
+  "steps": [
+    { "type": "validate",   "name": "validate",   "required": "/Invoice/Id" },
+    { "type": "extractKey", "name": "extractKey", "key": "invoiceId", "xpath": "/Invoice/Id" },
+    { "type": "xslt",       "name": "toPartner",  "stylesheet": "/flows/invoice-to-partner.xsl" },
+    { "type": "to",         "name": "partner",    "uri": "http://localhost:8081/echo" }
+  ]
+}

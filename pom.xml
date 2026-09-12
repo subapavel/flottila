@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.flottila</groupId>
+  <artifactId>flottila-proto</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <vertx.version>4.5.10</vertx.version>
+    <mutiny-vertx.version>3.14.0</mutiny-vertx.version>
+    <mutiny.version>2.6.2</mutiny.version>
+    <saxon.version>12.4</saxon.version>
+  </properties>
+
+  <dependencies>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>mutiny</artifactId><version>${mutiny.version}</version></dependency>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-core</artifactId><version>${mutiny-vertx.version}</version></dependency>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-web</artifactId><version>${mutiny-vertx.version}</version></dependency>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-web-client</artifactId><version>${mutiny-vertx.version}</version></dependency>
+    <dependency><groupId>io.vertx</groupId><artifactId>vertx-core</artifactId><version>${vertx.version}</version></dependency>
+    <dependency><groupId>net.sf.saxon</groupId><artifactId>Saxon-HE</artifactId><version>${saxon.version}</version></dependency>
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-simple</artifactId><version>2.0.13</version></dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration><mainClass>io.flottila.demo.Main</mainClass></configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
