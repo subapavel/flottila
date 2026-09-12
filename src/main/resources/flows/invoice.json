@@ -6,7 +6,11 @@
   "steps": [
     { "type": "validate",   "name": "validate",   "required": "/Invoice/Id" },
     { "type": "extractKey", "name": "extractKey", "key": "invoiceId", "xpath": "/Invoice/Id" },
+    { "type": "route",      "name": "route",      "prop": "PARTNER",
+      "routes": [ { "when": "/Invoice/Currency = 'CZK'", "set": "domestic" } ],
+      "otherwise": "foreign" },
     { "type": "xslt",       "name": "toPartner",  "stylesheet": "/flows/invoice-to-partner.xsl" },
-    { "type": "to",         "name": "partner",    "uri": "http://localhost:8081/echo" }
+    { "type": "to",         "name": "partner",    "byProp": "PARTNER",
+      "uri": { "domestic": "http://localhost:8081/echo", "foreign": "http://localhost:8081/echo-foreign" } }
   ]
 }

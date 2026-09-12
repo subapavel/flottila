@@ -8,7 +8,10 @@ import io.vertx.core.json.JsonObject;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executor;
 
 /** JSON flow config → plug() chain. Dependencies are captured at build time; Runtime is not kept. */
 public class FlowBuilder {
@@ -42,11 +45,15 @@ public class FlowBuilder {
             JsonObject s = steps.getJsonObject(i);
             String type = s.getString("type");
             String name = s.getString("name", type + "-" + (i + 1));
+            if (type.equals("route")) {
+                stages.add(new Flow.Named(name, route(name, s, noRetry)));
+                continue;
+            }
             Step step = switch (type) {
                 case "validate"   -> validate(s.getString("required"));
                 case "extractKey" -> extractKey(s.getString("key"), s.getString("xpath"));
                 case "xslt"       -> rt.xml().xslt(s.getString("stylesheet"));
-                case "to"         -> to(URI.create(s.getString("uri")));
+                case "to"         -> to(s);
                 default -> throw new IllegalArgumentException("unknown step type " + type);
             };
             // I/O steps retry; local validation/transform failing again is pointless
@@ -56,23 +63,63 @@ public class FlowBuilder {
     }
 
     private Step validate(String requiredXPath) {
+        Xml xml = rt.xml(); Executor cpu = rt.cpuPool();
         return e -> Uni.createFrom().item(() -> {
-            String v = rt.xml().evalString(requiredXPath, e);
+            String v = xml.evalString(requiredXPath, e);
             if (v == null || v.isBlank()) throw new IllegalArgumentException("validation failed: " + requiredXPath + " missing");
             return e;
-        }).runSubscriptionOn(rt.cpuPool());
+        }).runSubscriptionOn(cpu);
     }
 
-    /** Business correlation key → header → indexed monitoring metadata. */
+    /** Business correlation key → keys → indexed monitoring metadata. */
     private Step extractKey(String key, String xpath) {
+        Xml xml = rt.xml(); Executor cpu = rt.cpuPool();
         return e -> Uni.createFrom().item(() -> {
-            String v = rt.xml().evalString(xpath, e);
-            return v == null ? e : e.withHeader("key." + key, v);
-        }).runSubscriptionOn(rt.cpuPool());
+            String v = xml.evalString(xpath, e);
+            return v == null ? e : e.withKey(key, v);
+        }).runSubscriptionOn(cpu);
     }
 
-    private Step to(URI uri) {
-        Component.Producer p = rt.component(uri.getScheme()).producer(uri);
-        return p::send;
+    /**
+     * Content-based router: first matching XPath predicate wins; each branch sets the configured
+     * prop, so monitoring shows why the branch was taken. Branches are full stages (snapshot, step++).
+     */
+    private Stage route(String name, JsonObject s, StageContext ctx) {
+        Xml xml = rt.xml();
+        Key<String> prop = new Key<>(s.getString("prop"));
+        List<Stages.Route> routes = new ArrayList<>();
+        JsonArray rs = s.getJsonArray("routes", new JsonArray());
+        for (int i = 0; i < rs.size(); i++) {
+            JsonObject r = rs.getJsonObject(i);
+            String when = r.getString("when");
+            String value = r.getString("set");
+            routes.add(new Stages.Route(e -> "true".equals(xml.evalString(when, e)),
+                    Stages.step(name, e -> Uni.createFrom().item(e.with(prop, value)), ctx)));
+        }
+        String otherwise = s.getString("otherwise");
+        return Stages.route(routes, Stages.step(name, e -> Uni.createFrom().item(e.with(prop, otherwise)), ctx));
+    }
+
+    /** Egress. Either a single "uri" string, or a map of prop value → uri selected by "byProp". */
+    private Step to(JsonObject s) {
+        JsonObject opts = new JsonObject().put("forwardHeaders", s.getJsonArray("forwardHeaders", new JsonArray()));
+        if (s.getValue("uri") instanceof String u) {
+            URI uri = URI.create(u);
+            Component.Producer p = rt.component(uri.getScheme()).producer(uri, opts);
+            return p::send;
+        }
+        Key<String> prop = new Key<>(s.getString("byProp"));
+        Map<String, Component.Producer> producers = new HashMap<>();
+        s.getJsonObject("uri").forEach(en -> {
+            URI uri = URI.create((String) en.getValue());
+            producers.put(en.getKey(), rt.component(uri.getScheme()).producer(uri, opts));
+        });
+        return e -> {
+            String v = e.get(prop).orElse(null);
+            Component.Producer p = v == null ? null : producers.get(v);
+            if (p == null) return Uni.createFrom().failure(
+                    new IllegalStateException("no target for " + prop.name() + "=" + v));
+            return p.send(e);
+        };
     }
 }

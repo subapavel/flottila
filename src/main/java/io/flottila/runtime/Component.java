@@ -3,6 +3,7 @@ package io.flottila.runtime;
 import io.flottila.core.Envelope;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.json.JsonObject;
 
 import java.net.URI;
 
@@ -10,7 +11,8 @@ import java.net.URI;
 public interface Component {
     String scheme();
     Consumer consumer(URI endpoint, String flow);
-    Producer producer(URI endpoint);
+    /** opts come straight from the flow config step (e.g. forwardHeaders allow-list). */
+    Producer producer(URI endpoint, JsonObject opts);
 
     interface Consumer {
         /** Ingress stream; backpressure via request(n). Subscribed once per flow deployment. */

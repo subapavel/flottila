@@ -7,6 +7,8 @@ import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.subscription.BackPressureStrategy;
 import io.smallrye.mutiny.subscription.MultiEmitter;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import io.vertx.mutiny.core.Vertx;
 import io.vertx.mutiny.core.buffer.Buffer;
 import io.vertx.mutiny.ext.web.Router;
@@ -17,8 +19,10 @@ import io.vertx.mutiny.ext.web.handler.BodyHandler;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 /** Native Vert.x HTTP on both ends. One Router per port, shared with the admin API. */
 public class HttpComponent implements Component {
@@ -41,16 +45,22 @@ public class HttpComponent implements Component {
         return new HttpConsumer(endpoint, flow);
     }
 
-    @Override public Producer producer(URI endpoint) {
-        return e -> client.postAbs(endpoint.toString())
-                .putHeader("content-type", e.headers().getOrDefault(Envelope.H_CONTENT_TYPE, "application/xml"))
-                .putHeader("x-flottila-id", e.id())
-                .sendBuffer(Buffer.newInstance(io.vertx.core.buffer.Buffer.buffer(e.body().bytes())))
-                .onItem().transform(resp -> {
-                    if (resp.statusCode() >= 300) throw new IllegalStateException("HTTP " + resp.statusCode() + " from " + endpoint);
-                    return e.next(Body.of(resp.bodyAsBuffer() == null ? io.vertx.core.buffer.Buffer.buffer() : resp.bodyAsBuffer().getDelegate(), inMemoryLimit),
-                            Map.of("http.status", String.valueOf(resp.statusCode())));
-                });
+    @Override public Producer producer(URI endpoint, JsonObject opts) {
+        Set<String> forward = opts.getJsonArray("forwardHeaders", new JsonArray()).stream()
+                .map(o -> o.toString().toLowerCase()).collect(Collectors.toSet());
+        return e -> {
+            var req = client.postAbs(endpoint.toString())
+                    .putHeader("content-type", "application/xml")
+                    .putHeader("x-flottila-id", e.id());
+            // nothing propagates implicitly; only the flow-config allow-list
+            e.headers().asMap().forEach((k, v) -> { if (forward.contains(k)) req.putHeader(k, v); });
+            return req.sendBuffer(Buffer.newInstance(io.vertx.core.buffer.Buffer.buffer(e.body().bytes())))
+                    .onItem().transform(resp -> {
+                        if (resp.statusCode() >= 300) throw new IllegalStateException("HTTP " + resp.statusCode() + " from " + endpoint);
+                        return e.next(Body.of(resp.bodyAsBuffer() == null ? io.vertx.core.buffer.Buffer.buffer() : resp.bodyAsBuffer().getDelegate(), inMemoryLimit),
+                                Map.of("http.status", String.valueOf(resp.statusCode())));
+                    });
+        };
     }
 
     /** Request/reply ingress: envelope id ↔ pending HTTP request. */

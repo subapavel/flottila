@@ -20,7 +20,7 @@ public record Flow(String name, Component.Consumer consumer, List<Named> stages)
 
     public Multi<Envelope> replay(Envelope stored, int fromStage) {
         Envelope e = stored.withId(java.util.UUID.randomUUID().toString())
-                .withHeader(Envelope.H_REPLAY_OF, stored.id()).withStep(fromStage);
+                .with(Envelope.REPLAY_OF, stored.id()).withStep(fromStage);
         return from(fromStage).apply(Multi.createFrom().item(e));
     }
 }

@@ -44,13 +44,37 @@ Minimal compose for v1: runtime + Postgres + ClickHouse + S3-compatible store. F
 ## Core model
 
 ### Envelope — immutable, every step returns a new one
+
 ```java
 record Envelope(String id, String flow, int step,
-                Map<String,String> headers, Body body) {
-  Envelope next(Body newBody, Map<String,String> h) { ... }
-}
+                Headers headers,                 // transport metadata, String→String
+                Props props,                     // flow state, typed keys, never leaves the runtime
+                Keys keys,                       // business correlation keys, String→String, indexed
+                Body body,                       // main payload
+                Map<String, Part> attachments,   // Part(name, contentType, Body) — stored by reference
+                Views views) {}
 ```
-No setters. Immutability gives free snapshots for monitoring, safe sharing of parsed views, and safe retries.
+
+No setters. Every `with*` returns a new Envelope; body and parsed views are shared by reference.
+
+Four kinds of data, deliberately kept apart (Camel's Exchange puts them in one bag and pays for it):
+
+| Field | What goes there | Persisted | Indexed | Reaches producers |
+|---|---|---|---|---|
+| `headers` | HTTP/JMS/mail headers from ingress, `http.status` from egress | jsonb | no | only what the flow config allow-lists (`forwardHeaders`) — nothing propagates implicitly |
+| `props` | split index, router decision, partner, validation result, `replayOf` — anything a later stage decides on | jsonb (values must be JSON-serialisable: string, number, boolean, small object) | no | never |
+| `keys` | what operators search by: invoiceId, orderNo, meteringPoint. Filled by `extractKey`, declared per flow | own table `message_keys(name, value, message_id)` / CH `Map(String,String)` with skip index | yes | never |
+| `attachments` | multipart parts (mail, SOAP/MTOM, AS2/AS4) | reference only (`Body.Remote`/`Spilled`); content retained per flow retention policy | no | yes, as parts |
+
+`Props` uses typed keys: `Key<Integer> SPLIT_INDEX`, `e.with(PARTNER, "eon")`, `e.get(PARTNER) → Optional<String>`. No magic strings.
+
+Router and filter predicates see the whole Envelope: props, keys, headers, and lazy views on the body.
+
+Why keys are separate from props: "invoice 4711 — where is it" must answer < 1 s over a year of data; that needs an index on `(name, value)`, and indexing a general-purpose jsonb bag means indexing noise (50k `SPLIT_INDEX` entries nobody searches). Same reason SAP PO has user-defined search attributes as a declared, separate structure.
+
+Snapshots after each stage capture props and keys too, so monitoring can show *why* a router took a branch, and replay from stage N restores the state the stage needs.
+
+Not carried over from Camel: `getIn()/getOut()` (a step returns one new Envelope), `ExchangePattern` as a property (request/reply is a Consumer trait), exception as a property (failure is a stream signal and a DLQ row).
 
 ### Body — bytes, never a consumable stream
 ```java

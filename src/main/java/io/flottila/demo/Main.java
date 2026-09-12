@@ -33,7 +33,9 @@ public class Main {
         // fake backend the flow posts to
         Router echo = http.router(8081);
         echo.post("/echo").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
-                .endAndForget("<ack id=\"" + ctx.request().getHeader("x-flottila-id") + "\">ok</ack>"));
+                .endAndForget("<ack partner=\"domestic\" id=\"" + ctx.request().getHeader("x-flottila-id") + "\">ok</ack>"));
+        echo.post("/echo-foreign").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
+                .endAndForget("<ack partner=\"foreign\" id=\"" + ctx.request().getHeader("x-flottila-id") + "\">ok</ack>"));
         vertx.createHttpServer().requestHandler(echo).listen(8081).await().indefinitely();
 
         JsonObject cfg = new JsonObject(new String(Main.class.getResourceAsStream("/flows/invoice.json").readAllBytes(), StandardCharsets.UTF_8));
@@ -42,10 +44,15 @@ public class Main {
         // admin / monitoring API on the ingress port — registered before the server starts
         Router admin = http.router(8080);
         admin.get("/monitor").handler(ctx -> {
+            String key = ctx.request().getParam("key"), value = ctx.request().getParam("value");
             JsonArray a = new JsonArray();
-            rt.monitoring().all().forEach((id, tl) -> a.add(new JsonObject().put("id", id).put("flow", tl.get(0).flow())
-                    .put("steps", tl.size()).put("key", tl.get(tl.size() - 1).headers().getString("key.invoiceId"))
-                    .put("error", tl.stream().filter(s -> s.error() != null).map(Snapshot::error).findFirst().orElse(null))));
+            rt.monitoring().all().forEach((id, tl) -> {
+                Snapshot last = tl.get(tl.size() - 1);
+                if (key != null && !java.util.Objects.equals(last.keys().getString(key), value)) return;
+                a.add(new JsonObject().put("id", id).put("flow", last.flow())
+                        .put("steps", tl.size()).put("keys", last.keys()).put("props", last.props())
+                        .put("error", tl.stream().filter(s -> s.error() != null).map(Snapshot::error).findFirst().orElse(null)));
+            });
             ctx.response().putHeader("content-type", "application/json").endAndForget(a.encodePrettily());
         });
         admin.get("/monitor/:id").handler(ctx -> {

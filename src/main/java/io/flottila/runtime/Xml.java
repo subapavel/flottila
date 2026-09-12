@@ -51,7 +51,7 @@ public final class Xml {
     /** Wrap an XmlStep into a Step: parse (cached) → apply → serialize, on the CPU pool. */
     public Step step(XmlStep f) {
         return e -> Uni.createFrom().item(() -> {
-            try { return e.next(serialize(f.apply(tree(e), e.headers()))); }
+            try { return e.next(serialize(f.apply(tree(e), e.headers().asMap()))); }
             catch (RuntimeException ex) { throw ex; }
             catch (Exception ex) { throw new IllegalStateException(ex); }
         }).runSubscriptionOn(cpuPool);
