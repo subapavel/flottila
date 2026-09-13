@@ -35,22 +35,58 @@ public class FlowBuilder {
                 : new BatchingWriter(rt.messages(), p.getInteger("batchSize", 100), p.getInteger("batchMs", 10),
                         p.getInteger("commitConcurrency", 4));
 
-        // consumers with an irreversible ACK await this before acknowledging; request/reply ignores it
-        Duration ackTimeout = Duration.ofMillis(cfg.getLong("ackTimeoutMs", 5000L));
-        Component.DurableIngress durable = (writer == null || atMostOnce)
-                ? e -> io.smallrye.mutiny.Uni.createFrom().voidItem()
-                : e -> writer.save(e.withStep(1)).ifNoItem().after(ackTimeout)
-                        .failWith(() -> new BatchingWriter.OverloadedException("ingress save not durable within " + ackTimeout.toMillis() + " ms"));
-        consumer.durableIngress(durable);
-
         var bus = rt.vertx().eventBus();
+
+        // partitionBy names an extractKey key; its xpath is evaluated at enqueue time (the
+        // extractKey stage has not run yet at ingress). Absent -> null -> no ordering guarantee.
+        java.util.function.Function<Envelope, String> partition = e -> null;
+        String partitionBy = cfg.getString("partitionBy");
+        if (partitionBy != null) {
+            JsonArray stepCfgs = cfg.getJsonArray("steps", new JsonArray());
+            for (int i = 0; i < stepCfgs.size(); i++) {
+                JsonObject s = stepCfgs.getJsonObject(i);
+                if ("extractKey".equals(s.getString("type")) && partitionBy.equals(s.getString("key"))) {
+                    String xp = s.getString("xpath"); Xml xml = rt.xml();
+                    partition = e -> { try { return xml.evalString(xp, e); } catch (RuntimeException ex) { return null; } };
+                }
+            }
+        }
+
+        // consumers with an irreversible ACK await this before acknowledging; request/reply ignores it.
+        // At-least-once with a work queue: durable save + enqueue -> ACK; a worker runs the pipeline.
+        Duration ackTimeout = Duration.ofMillis(cfg.getLong("ackTimeoutMs", 5000L));
+        WorkQueue workQueue = rt.workQueue();
+        boolean queued = workQueue != null && writer != null && !atMostOnce;
+        Component.DurableIngress durable;
+        if (queued) {
+            var part = partition;
+            durable = e -> {
+                Envelope e1 = e.withStep(1);
+                return writer.save(e1)
+                        .chain(() -> workQueue.enqueue(e1.id(), flow, 1, part.apply(e1)))
+                        // the worker starts at stage 1, so publish the ingress snapshot here
+                        // (directly — the monitor lambda would save the step-1 row a second time)
+                        .invoke(() -> bus.publish(MonitorVerticle.ADDRESS, Snapshot.of("ingress", e, e1, 0, null).toJson()))
+                        .ifNoItem().after(ackTimeout).failWith(() -> new BatchingWriter.OverloadedException(
+                                "ingress not durable within " + ackTimeout.toMillis() + " ms"));
+            };
+        } else if (writer != null && !atMostOnce) {
+            // TODO: this path writes the step-1 row twice (here and via the ingress stage's
+            // monitor save when the consumer emits directly) — absorbed by ON CONFLICT DO NOTHING.
+            durable = e -> writer.save(e.withStep(1)).ifNoItem().after(ackTimeout)
+                    .failWith(() -> new BatchingWriter.OverloadedException(
+                            "ingress save not durable within " + ackTimeout.toMillis() + " ms"));
+        } else {
+            durable = e -> Uni.createFrom().voidItem();
+        }
+        consumer.durableIngress(durable, queued);
         StageContext.Monitor monitor = (stage, in, out, latency, error) -> {
             Snapshot s = Snapshot.of(stage, in, out, latency, error);
             if (writer != null && out != null)                                   // fire-and-forget, every stage
                 writer.save(out).subscribe().with(x -> {}, t -> log.error("snapshot save failed for {}", out.id(), t));
             bus.publish(MonitorVerticle.ADDRESS, s.toJson());                    // async, never awaited
         };
-        Dlq dlq = new Dlq(consumer, atMostOnce);
+        Dlq dlq = new Dlq(consumer, atMostOnce, rt.dlqStore());
         JsonObject r = cfg.getJsonObject("retry", new JsonObject());
         var retry = new StageContext.RetryPolicy(r.getInteger("attempts", 0),
                 Duration.ofMillis(r.getLong("initialMs", 100L)), Duration.ofMillis(r.getLong("maxMs", 2000L)));

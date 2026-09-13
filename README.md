@@ -20,8 +20,13 @@ curl -s http://localhost:8080/monitor/<id>                                      
 curl -s http://localhost:8080/monitor/<id>/payload/4                                 # payload as it was after route (before XSLT)
 curl -s -X POST http://localhost:8080/monitor/<id>/replay/4                          # re-run from XSLT onwards
 curl -s -X POST -d '<Invoice><Currency>CZK</Currency></Invoice>' http://localhost:8080/in   # 400, parked in DLQ
-curl -s http://localhost:8080/dlq
+curl -s http://localhost:8080/dlq                                                    # durable in postgres mode
+curl -s -X POST http://localhost:8080/dlq/<id>/replay/<stage>                        # re-run a parked message
 ```
+
+Postgres mode: at-least-once `/in-async` messages go durable save → work queue → worker
+(`SELECT ... FOR UPDATE SKIP LOCKED`); `"partitionBy": "invoiceId"` serializes per business key,
+different keys run in parallel; a crash re-delivers via lease expiry — no loss, no duplicate rows.
 
 Step numbering: stage *k* consumes an envelope at step *k* and produces step *k+1*.
 Stage 0 = ingress (identity), so `payload/1` is exactly what arrived.

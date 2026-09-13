@@ -30,21 +30,28 @@ public class Main {
         ExecutorService cpu = Executors.newFixedThreadPool(java.lang.Runtime.getRuntime().availableProcessors());
         ExecutorService blocking = Executors.newVirtualThreadPerTaskExecutor();
         HttpComponent http = new HttpComponent(vertx, 16 * 1024 * 1024);
-        MessageStore messages = messageStore(vertx);
-        Runtime rt = new Runtime(vertx, Map.of("http", http), messages,
-                new MonitoringStore.InMemory(), cpu, blocking, new Xml(cpu));
 
-        // fake backend the flow posts to
+        boolean postgres = "postgres".equals(System.getenv().getOrDefault("FLOTTILA_STORE", "memory"));
+        PgPool pool = postgres ? pgPool(vertx) : null;
+        MessageStore messages = postgres ? new MessageStore.Postgres(pool) : new MessageStore.InMemory();
+        WorkQueue workQueue = postgres ? new WorkQueue.Postgres(pool) : null;
+        DlqStore dlqStore = postgres ? new DlqStore.Postgres(pool) : new DlqStore.InMemory();
+        Runtime rt = new Runtime(vertx, Map.of("http", http), messages,
+                new MonitoringStore.InMemory(), cpu, blocking, new Xml(cpu), workQueue, dlqStore);
+
+        // fake backend the flow posts to; FLOTTILA_ECHO=off simulates the partner being down
         // ack body is deliberately static (id only in the header) so identical runs produce
         // identical ack payloads — content-addressing dedups them
-        Router echo = http.router(8081);
-        echo.post("/echo").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
-                .putHeader("x-flottila-id", ctx.request().getHeader("x-flottila-id"))
-                .endAndForget("<ack partner=\"domestic\">ok</ack>"));
-        echo.post("/echo-foreign").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
-                .putHeader("x-flottila-id", ctx.request().getHeader("x-flottila-id"))
-                .endAndForget("<ack partner=\"foreign\">ok</ack>"));
-        vertx.createHttpServer().requestHandler(echo).listen(8081).await().indefinitely();
+        if (!"off".equals(System.getenv().getOrDefault("FLOTTILA_ECHO", "on"))) {
+            Router echo = http.router(8081);
+            echo.post("/echo").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
+                    .putHeader("x-flottila-id", ctx.request().getHeader("x-flottila-id"))
+                    .endAndForget("<ack partner=\"domestic\">ok</ack>"));
+            echo.post("/echo-foreign").handler(ctx -> ctx.response().putHeader("content-type", "application/xml")
+                    .putHeader("x-flottila-id", ctx.request().getHeader("x-flottila-id"))
+                    .endAndForget("<ack partner=\"foreign\">ok</ack>"));
+            vertx.createHttpServer().requestHandler(echo).listen(8081).await().indefinitely();
+        } else log.warn("echo backend OFF (FLOTTILA_ECHO=off) — partner calls will fail");
 
         JsonObject cfg = new JsonObject(new String(Main.class.getResourceAsStream("/flows/invoice.json").readAllBytes(), StandardCharsets.UTF_8));
         // bench override: FLOTTILA_PERSISTENCE = none | <batchSize>/<batchMs>
@@ -86,25 +93,30 @@ public class Main {
                 ctx.response().endAndForget("replaying " + e.id() + " from stage " + from + " (" + flow.stages().get(from).name() + ")");
             }, () -> ctx.response().setStatusCode(404).endAndForget("no snapshot at step " + from)));
         });
-        admin.get("/dlq").handler(ctx -> ctx.response().putHeader("content-type", "application/json")
-                .endAndForget(new JsonArray(rt.monitoring().all().values().stream()
-                        .flatMap(tl -> tl.stream().filter(s -> s.error() != null))
-                        // overload rejections were answered 503-retry, never parked
-                        .filter(s -> !s.error().contains("OverloadedException"))
-                        .map(Snapshot::toJson).toList()).encodePrettily()));
+        admin.get("/dlq").handler(ctx -> rt.dlqStore().list().subscribe().with(rows ->
+                ctx.response().putHeader("content-type", "application/json")
+                        .endAndForget(new JsonArray(rows).encodePrettily()),
+                t -> ctx.response().setStatusCode(500).endAndForget(t.getMessage())));
+        admin.post("/dlq/:id/replay/:stage").handler(ctx -> {
+            int from = Integer.parseInt(ctx.pathParam("stage"));
+            rt.messages().load(ctx.pathParam("id"), from).subscribe().with(opt -> opt.ifPresentOrElse(e -> {
+                flow.replay(e, from).subscribe().with(out -> {}, t -> log.error("dlq replay failed", t));
+                ctx.response().endAndForget("replaying " + e.id() + " from stage " + from + " (" + flow.stages().get(from).name() + ")");
+            }, () -> ctx.response().setStatusCode(404).endAndForget("no snapshot at step " + from)));
+        });
 
         vertx.deployVerticle(new MonitorVerticle(rt.monitoring())).await().indefinitely();
         vertx.deployVerticle(new FlowVerticle(flow)).await().indefinitely();
+        if (rt.workQueue() != null)
+            vertx.deployVerticle(new WorkerVerticle(flow, rt.workQueue(), rt.messages())).await().indefinitely();
         log.info("Flottila prototype up. POST XML to http://localhost:8080/in, inspect http://localhost:8080/monitor");
     }
 
     /** FLOTTILA_STORE = memory (default) | postgres (docker-compose.yml, db/user/pass flottila). */
-    private static MessageStore messageStore(Vertx vertx) {
-        if (!"postgres".equals(System.getenv().getOrDefault("FLOTTILA_STORE", "memory"))) return new MessageStore.InMemory();
+    private static PgPool pgPool(Vertx vertx) {
         PgConnectOptions co = new PgConnectOptions().setHost("localhost")
                 .setPort(Integer.parseInt(System.getenv().getOrDefault("FLOTTILA_PG_PORT", "5432")))
                 .setDatabase("flottila").setUser("flottila").setPassword("flottila");
-        return new MessageStore.Postgres(PgPool.pool(vertx, co.setCachePreparedStatements(true),
-                new PoolOptions().setMaxSize(8)));
+        return PgPool.pool(vertx, co.setCachePreparedStatements(true), new PoolOptions().setMaxSize(8));
     }
 }

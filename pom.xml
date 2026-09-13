@@ -29,6 +29,9 @@
     <!-- xxh3-64 content hashing (Apache 2); Body falls back to SHA-256 (slower, ~10x CPU) if absent at runtime -->
     <dependency><groupId>net.openhft</groupId><artifactId>zero-allocation-hashing</artifactId><version>0.16</version></dependency>
     <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-simple</artifactId><version>2.0.13</version></dependency>
+    <!-- tests run against the docker-compose Postgres (Testcontainers avoided: fights Docker Desktop);
+         DB-dependent tests skip themselves when Postgres is unreachable -->
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.10.2</version><scope>test</scope></dependency>
   </dependencies>
 
   <build>
@@ -38,6 +41,11 @@
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.3.0</version>
         <configuration><mainClass>io.flottila.demo.Main</mainClass></configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
       </plugin>
     </plugins>
   </build>

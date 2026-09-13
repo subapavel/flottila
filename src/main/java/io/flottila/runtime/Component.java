@@ -30,9 +30,10 @@ public interface Component {
         /**
          * Injected at build time. A consumer whose ACK is irreversible awaits this before
          * acknowledging (timeout → NACK); request/reply consumers ignore it — the client owns
-         * the retry until it gets the reply.
+         * the retry until it gets the reply. When queued is true, persist() also enqueued the
+         * message for a worker — the consumer must NOT emit it into its own stream.
          */
-        default void durableIngress(DurableIngress d) {}
+        default void durableIngress(DurableIngress d, boolean queued) {}
     }
 
     interface Producer {

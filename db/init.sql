@@ -29,3 +29,31 @@ create table message_keys (
     step       int  not null
 );
 create index message_keys_name_value on message_keys (name, value);
+
+-- Durable dead letter queue. body_hash points into payloads (no FK: park must never fail on
+-- write ordering). Replay loads the step-k envelope from messages.
+create table dlq (
+    id        text        primary key,
+    flow      text        not null,
+    stage     text        not null,
+    step      int         not null,
+    error     text        not null,
+    headers   jsonb       not null default '{}',
+    body_hash bytea,
+    parked_at timestamptz not null default now()
+);
+
+-- Work queue: SELECT ... FOR UPDATE SKIP LOCKED. A row is claimable when its lease is free and
+-- it is the oldest row of its partition_key whose key has no active lease -> per-key serial,
+-- cross-key parallel. Completion deletes the row; an expired lease re-delivers (at-least-once).
+create table work (
+    seq           bigserial   primary key,
+    id            text        not null,
+    flow          text        not null,
+    step          int         not null,
+    partition_key text,
+    available_at  timestamptz not null default now(),
+    locked_by     text,
+    locked_until  timestamptz
+);
+create index work_flow_seq on work (flow, seq);

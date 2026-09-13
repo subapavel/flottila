@@ -3,6 +3,7 @@
   "from": "http://0.0.0.0:8080/in",
   "concurrency": 16,
   "delivery": "at-least-once",
+  "partitionBy": "invoiceId",
   "retry": { "attempts": 3, "initialMs": 100, "maxMs": 2000 },
   "persistence": { "batchSize": 100, "batchMs": 10, "commitConcurrency": 4 },
   "steps": [

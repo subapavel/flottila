@@ -73,6 +73,7 @@ public class HttpComponent implements Component {
         private final AtomicReference<MultiEmitter<? super Envelope>> emitter = new AtomicReference<>();
         private final Map<String, RoutingContext> pending = new ConcurrentHashMap<>();
         private volatile DurableIngress durable = e -> Uni.createFrom().voidItem();
+        private volatile boolean queued = false;
 
         HttpConsumer(URI endpoint, String flow) { this.endpoint = endpoint; this.flow = flow; }
 
@@ -80,7 +81,7 @@ public class HttpComponent implements Component {
             return Multi.createFrom().<Envelope>emitter(emitter::set, BackPressureStrategy.BUFFER);
         }
 
-        @Override public void durableIngress(DurableIngress d) { this.durable = d; }
+        @Override public void durableIngress(DurableIngress d, boolean queued) { this.durable = d; this.queued = queued; }
 
         @Override public Uni<Void> start() {
             Router router = router(endpoint.getPort());
@@ -106,13 +107,16 @@ public class HttpComponent implements Component {
             em.emit(e);
         }
 
-        /** Irreversible ACK: durable save (with timeout) → 202; failure/timeout → 503 retry. */
+        /** Irreversible ACK: durable save (+ enqueue when queued) with timeout → 202; else 503 retry. */
         private void onAsyncRequest(RoutingContext ctx) {
             var em = emitter.get();
             if (em == null) { ctx.response().setStatusCode(503).endAndForget("flow not deployed"); return; }
             Envelope e = envelope(ctx);
             durable.persist(e).subscribe().with(
-                    v -> { em.emit(e); ctx.response().setStatusCode(202).putHeader("x-flottila-id", e.id()).endAndForget(); },
+                    v -> {
+                        if (!queued) em.emit(e);            // queued: a worker picks it up instead
+                        ctx.response().setStatusCode(202).putHeader("x-flottila-id", e.id()).endAndForget();
+                    },
                     t -> ctx.response().setStatusCode(503).putHeader("Retry-After", "1")
                             .putHeader("x-flottila-id", e.id()).endAndForget(t.getMessage()));
         }
