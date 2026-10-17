@@ -82,4 +82,20 @@ build; this file holds the rules that keep the code and the way of working align
 - Never: weaken or skip a test to go green; skip a gate measurement; force-push or rewrite
   history; claim a build, test, benchmark or push you did not observe; put a secret in the repo.
 - Never ask the owner during autonomous execution. If blocked, write the issue and move on. The
+
+## Context hygiene
+
+- The conversation is not memory. Before each task re-read `agent/HANDOFF.md` and the task's
+  BACKLOG row. After a context compaction, treat everything older than the last PROGRESS entry as
+  unknown and re-read the files; say "context compacted" in one line of the next PROGRESS entry
+  and re-verify with `git status` and `git log -3` before changing anything.
+- Keep the context small: `mvn -B -ntp -q` by default; send build and test output to a file under
+  `target/` and read only its tail or the failing section; never cat a file longer than ~200
+  lines — use offsets, grep, or the scout; never paste a diff you do not need to reason about.
+- Large reads (surveying modules, finding call sites, reading logs) go to the scout agent; its
+  summary comes back, not the files.
+- From a delegated task only the handback enters the coordinator's context; review the change
+  with `git diff --stat` and targeted reads, not the whole patch.
+- One task per context episode: finish, commit, push, rewrite HANDOFF, then start the next. Never
+  carry an in-flight task across a compaction without a WIP line in `agent/HANDOFF.md`.
   session ends only on `GATE_MET` or `IDLE_NO_READY_TASK` (see `docs/WORKFLOW.md`).

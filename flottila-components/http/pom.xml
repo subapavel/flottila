@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila</groupId>
+    <artifactId>flottila-components</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>..</relativePath>
+  </parent>
+
+  <artifactId>flottila-component-http</artifactId>
+  <packaging>jar</packaging>
+  <name>Flottila :: component :: http</name>
+  <description>HTTP server and client component (sync request/reply and /async 202).</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

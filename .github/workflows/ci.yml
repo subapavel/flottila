@@ -1,5 +1,5 @@
 # CI gates — docs/WORKFLOW.md §4. Every push to main runs dco, build and integration.
-# bench and mutation run nightly and on demand. P0-01 bumps JAVA_VERSION to 25; P0-02 wires
+# bench and mutation run nightly and on demand. P0-02 wires
 # JaCoCo floors, the bench regression check and PIT into these jobs.
 name: ci
 
@@ -12,7 +12,7 @@ on:
     - cron: '23 2 * * *'
 
 env:
-  JAVA_VERSION: '21'
+  JAVA_VERSION: '25'
   MAVEN_OPTS: -Xmx3g
 
 jobs:

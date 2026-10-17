@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila</groupId>
+    <artifactId>flottila</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>..</relativePath>
+  </parent>
+
+  <artifactId>flottila-m1</artifactId>
+  <packaging>jar</packaging>
+  <name>Flottila :: m1 (milestone-1 tree, being dismantled)</name>
+  <description>The milestone-1 prototype (tag proto-m1): Vert.x 4.5 + Mutiny, one module. Kept building while
+    P0-05 .. P0-08 move its surviving files into the new modules with git mv; removed by P0-09.
+    Nothing new depends on it; nothing new is written here.</description>
+
+  <properties>
+    <vertx4.version>4.5.10</vertx4.version>
+    <mutiny-vertx.version>3.14.0</mutiny-vertx.version>
+    <mutiny.version>2.6.2</mutiny.version>
+    <saxon.version>12.4</saxon.version>
+    <!-- legacy code, no floors: coverage is measured on the new modules only -->
+    <jacoco.skip>true</jacoco.skip>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- pins every transitive Vert.x artifact to 4.5.x; overrides the 5.1 BOM inherited from the root -->
+      <dependency>
+        <groupId>io.vertx</groupId>
+        <artifactId>vertx-stack-depchain</artifactId>
+        <version>${vertx4.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>mutiny</artifactId><version>${mutiny.version}</version></dependency>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-core</artifactId><version>${mutiny-vertx.version}</version></dependency>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-web</artifactId><version>${mutiny-vertx.version}</version></dependency>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-web-client</artifactId><version>${mutiny-vertx.version}</version></dependency>
+    <dependency><groupId>io.vertx</groupId><artifactId>vertx-core</artifactId><version>${vertx4.version}</version></dependency>
+    <dependency><groupId>io.vertx</groupId><artifactId>vertx-pg-client</artifactId><version>${vertx4.version}</version></dependency>
+    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-pg-client</artifactId><version>${mutiny-vertx.version}</version></dependency>
+    <dependency><groupId>net.sf.saxon</groupId><artifactId>Saxon-HE</artifactId><version>${saxon.version}</version></dependency>
+    <!-- xxh3-64 content hashing (Apache 2); Body falls back to SHA-256 (slower, ~10x CPU) if absent at runtime -->
+    <dependency><groupId>net.openhft</groupId><artifactId>zero-allocation-hashing</artifactId><version>0.16</version></dependency>
+    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-simple</artifactId><version>2.0.13</version></dependency>
+    <!-- tests run against Postgres on localhost:5432 (FLOTTILA_PG_PORT) and skip themselves when it is unreachable -->
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.3.0</version>
+        <configuration><mainClass>io.flottila.demo.Main</mainClass></configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -3,50 +3,340 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <groupId>io.flottila</groupId>
-  <artifactId>flottila-proto</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
-  <packaging>jar</packaging>
+  <artifactId>flottila</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <name>Flottila</name>
+  <description>Open-source enterprise integration platform where monitoring is the product.</description>
+  <url>https://github.com/subapavel/flottila</url>
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <!-- Dependency direction (docs/ARCHITECTURE.md §12, enforced by flottila-archtest): api <- core <- runtime;
+       components and steps depend on api only; testkit on core; cli on api + testkit.
+       flottila-m1 is the milestone-1 tree (Vert.x 4.5 + Mutiny) kept building until P0-09 removes it. -->
+  <modules>
+    <module>flottila-api</module>
+    <module>flottila-core</module>
+    <module>flottila-runtime</module>
+    <module>flottila-components</module>
+    <module>flottila-steps</module>
+    <module>flottila-testkit</module>
+    <module>flottila-schemas</module>
+    <module>flottila-cli</module>
+    <module>flottila-archtest</module>
+    <module>flottila-m1</module>
+  </modules>
 
   <properties>
-    <maven.compiler.release>21</maven.compiler.release>
+    <maven.compiler.release>25</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <vertx.version>4.5.10</vertx.version>
-    <mutiny-vertx.version>3.14.0</mutiny-vertx.version>
-    <mutiny.version>2.6.2</mutiny.version>
-    <saxon.version>12.4</saxon.version>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- libraries (all Apache-2.0 / EPL-2.0 / MIT / BSD; CLAUDE.md licence rule) -->
+    <vertx.version>5.1.10</vertx.version>
+    <junit.version>5.14.4</junit.version>
+    <jqwik.version>1.10.2</jqwik.version>
+    <archunit.version>1.5.1</archunit.version>
+    <testcontainers.version>2.0.5</testcontainers.version>
+    <slf4j.version>2.0.17</slf4j.version>
+
+    <!-- plugins -->
+    <maven-compiler.version>3.14.1</maven-compiler.version>
+    <maven-surefire.version>3.6.0</maven-surefire.version>
+    <maven-jar.version>3.4.2</maven-jar.version>
+    <maven-resources.version>3.3.1</maven-resources.version>
+    <maven-enforcer.version>3.6.3</maven-enforcer.version>
+    <jacoco.version>0.8.15</jacoco.version>
+    <pitest.version>1.30.1</pitest.version>
+    <pitest-junit5.version>1.2.3</pitest-junit5.version>
+
+    <!-- coverage floors (CLAUDE.md): api/core 90 %, everything else 75 %, line and branch.
+         Modules override flottila.coverage.* ; flottila-m1 skips JaCoCo entirely. -->
+    <flottila.coverage.line>0.75</flottila.coverage.line>
+    <flottila.coverage.branch>0.75</flottila.coverage.branch>
+    <!-- PIT mutation floor for api and core (phase-gate condition) -->
+    <flottila.mutation.threshold>80</flottila.mutation.threshold>
+
+    <!-- surefire: JaCoCo's prepare-agent prepends its -javaagent to this property -->
+    <argLine></argLine>
   </properties>
 
+  <dependencyManagement>
+    <dependencies>
+      <!-- reactor modules -->
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-api</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-runtime</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-component-http</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-component-mock</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-step-xslt</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-step-validate</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-testkit</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-cli</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-schemas</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.vertx</groupId>
+        <artifactId>vertx-stack-depchain</artifactId>
+        <version>${vertx.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>net.jqwik</groupId>
+        <artifactId>jqwik</artifactId>
+        <version>${jqwik.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit-junit5</artifactId>
+        <version>${archunit.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-simple</artifactId>
+        <version>${slf4j.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
-    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>mutiny</artifactId><version>${mutiny.version}</version></dependency>
-    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-core</artifactId><version>${mutiny-vertx.version}</version></dependency>
-    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-web</artifactId><version>${mutiny-vertx.version}</version></dependency>
-    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-web-client</artifactId><version>${mutiny-vertx.version}</version></dependency>
-    <dependency><groupId>io.vertx</groupId><artifactId>vertx-core</artifactId><version>${vertx.version}</version></dependency>
-    <dependency><groupId>io.vertx</groupId><artifactId>vertx-pg-client</artifactId><version>${vertx.version}</version></dependency>
-    <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-pg-client</artifactId><version>${mutiny-vertx.version}</version></dependency>
-    <dependency><groupId>net.sf.saxon</groupId><artifactId>Saxon-HE</artifactId><version>${saxon.version}</version></dependency>
-    <!-- xxh3-64 content hashing (Apache 2); Body falls back to SHA-256 (slower, ~10x CPU) if absent at runtime -->
-    <dependency><groupId>net.openhft</groupId><artifactId>zero-allocation-hashing</artifactId><version>0.16</version></dependency>
-    <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-simple</artifactId><version>2.0.13</version></dependency>
-    <!-- tests run against the docker-compose Postgres (Testcontainers avoided: fights Docker Desktop);
-         DB-dependent tests skip themselves when Postgres is unreachable -->
-    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.10.2</version><scope>test</scope></dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${maven-compiler.version}</version>
+          <configuration>
+            <release>${maven.compiler.release}</release>
+            <parameters>true</parameters>
+            <compilerArgs>
+              <arg>-Xlint:all,-processing,-serial</arg>
+            </compilerArgs>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire.version}</version>
+          <configuration>
+            <argLine>@{argLine}</argLine>
+            <trimStackTrace>false</trimStackTrace>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-failsafe-plugin</artifactId>
+          <version>${maven-surefire.version}</version>
+          <configuration>
+            <argLine>@{argLine}</argLine>
+            <trimStackTrace>false</trimStackTrace>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar.version}</version>
+          <configuration>
+            <!-- archtest and (until P0-12) schemas have nothing to package -->
+            <skipIfEmpty>true</skipIfEmpty>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>${maven-resources.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-enforcer-plugin</artifactId>
+          <version>${maven-enforcer.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.jacoco</groupId>
+          <artifactId>jacoco-maven-plugin</artifactId>
+          <version>${jacoco.version}</version>
+          <executions>
+            <execution>
+              <id>prepare-agent</id>
+              <goals><goal>prepare-agent</goal></goals>
+            </execution>
+            <execution>
+              <id>report</id>
+              <phase>verify</phase>
+              <goals><goal>report</goal></goals>
+            </execution>
+            <execution>
+              <id>check-floors</id>
+              <phase>verify</phase>
+              <goals><goal>check</goal></goals>
+              <configuration>
+                <rules>
+                  <rule>
+                    <element>BUNDLE</element>
+                    <limits>
+                      <limit>
+                        <counter>LINE</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>${flottila.coverage.line}</minimum>
+                      </limit>
+                      <limit>
+                        <counter>BRANCH</counter>
+                        <value>COVEREDRATIO</value>
+                        <minimum>${flottila.coverage.branch}</minimum>
+                      </limit>
+                    </limits>
+                  </rule>
+                </rules>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <!-- not bound to a phase: `mvn -pl flottila-api,flottila-core org.pitest:pitest-maven:mutationCoverage`
+               (nightly `mutation` CI job, scoped runs per task for the reviewer) -->
+          <groupId>org.pitest</groupId>
+          <artifactId>pitest-maven</artifactId>
+          <version>${pitest.version}</version>
+          <dependencies>
+            <dependency>
+              <groupId>org.pitest</groupId>
+              <artifactId>pitest-junit5-plugin</artifactId>
+              <version>${pitest-junit5.version}</version>
+            </dependency>
+          </dependencies>
+          <configuration>
+            <targetClasses><param>io.flottila.*</param></targetClasses>
+            <targetTests><param>io.flottila.*</param></targetTests>
+            <mutationThreshold>${flottila.mutation.threshold}</mutationThreshold>
+            <outputFormats><param>XML</param><param>HTML</param></outputFormats>
+            <timestampedReports>false</timestampedReports>
+            <threads>4</threads>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
     <plugins>
       <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>3.3.0</version>
-        <configuration><mainClass>io.flottila.demo.Main</mainClass></configuration>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-toolchain</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion><version>[25,26)</version></requireJavaVersion>
+                <requireMavenVersion><version>[3.9,)</version></requireMavenVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <!-- Testcontainers tests: *IT classes, run by the `integration` CI job -->
+      <id>it</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
