@@ -1,0 +1,142 @@
+# CI gates — docs/WORKFLOW.md §4. Every push to main runs dco, build and integration.
+# bench and mutation run nightly and on demand. P0-01 bumps JAVA_VERSION to 25; P0-02 wires
+# JaCoCo floors, the bench regression check and PIT into these jobs.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 2 * * *'
+
+env:
+  JAVA_VERSION: '21'
+  MAVEN_OPTS: -Xmx3g
+
+jobs:
+  dco:
+    name: DCO sign-off on every commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check Signed-off-by
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            range="${{ github.event.before }}..${{ github.sha }}"
+          else
+            range="HEAD~1..HEAD"
+          fi
+          missing=0
+          for c in $(git rev-list "$range"); do
+            if ! git log -n 1 --format=%B "$c" | grep -q '^Signed-off-by: '; then
+              echo "::error::commit $c has no Signed-off-by trailer"; missing=1
+            fi
+          done
+          [ "$missing" = 0 ]
+
+  build:
+    name: build · unit · ArchUnit · coverage
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: flottila
+          POSTGRES_USER: flottila
+          POSTGRES_PASSWORD: flottila
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U flottila -d flottila"
+          --health-interval 2s --health-timeout 2s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Apply schema (until P0-08 moves this into Flyway)
+        if: hashFiles('db/init.sql') != ''
+        run: PGPASSWORD=flottila psql -h localhost -U flottila -d flottila -v ON_ERROR_STOP=1 -f db/init.sql
+      - name: Verify
+        run: mvn -B -ntp verify
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: '**/target/surefire-reports/*.xml'
+          if-no-files-found: ignore
+
+  integration:
+    name: integration (Testcontainers)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Verify with the integration profile
+        run: mvn -B -ntp verify -Pit
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failsafe-reports
+          path: '**/target/failsafe-reports/*.xml'
+          if-no-files-found: ignore
+
+  bench:
+    name: bench (native Postgres on the runner)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Start native Postgres
+        run: |
+          sudo systemctl start postgresql
+          sudo -u postgres psql -c "CREATE ROLE flottila LOGIN PASSWORD 'flottila';"
+          sudo -u postgres psql -c "CREATE DATABASE flottila OWNER flottila;"
+      - name: Run the harness (bench/run.sh, added in P0-10)
+        run: |
+          if [ -x bench/run.sh ]; then bench/run.sh; else echo "no bench/run.sh yet"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/out/
+          if-no-files-found: ignore
+
+  mutation:
+    name: mutation (PIT, api + core)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: PIT (configured in P0-01)
+        run: |
+          if grep -q pitest pom.xml; then mvn -B -ntp -DskipTests test-compile org.pitest:pitest-maven:mutationCoverage; else echo "PIT not configured yet"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pit-reports
+          path: '**/target/pit-reports/**'
+          if-no-files-found: ignore
