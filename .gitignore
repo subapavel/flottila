@@ -7,3 +7,4 @@ flottila-*.body
 bench/out/
 .claude/settings.local.json
 .DS_Store
+__pycache__/

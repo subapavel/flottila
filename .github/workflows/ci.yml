@@ -1,6 +1,8 @@
-# CI gates — docs/WORKFLOW.md §4. Every push to main runs dco, build and integration.
-# bench and mutation run nightly and on demand. P0-02 wires
-# JaCoCo floors, the bench regression check and PIT into these jobs.
+# CI gates — docs/WORKFLOW.md §4. Every push to main runs dco, build and integration;
+# bench and mutation run nightly and on demand (workflow_dispatch).
+# build: JaCoCo floors halt `mvn verify` (root pom), ci/coverage_check.py refuses a decrease
+# against the baseline committed at the previous main commit. bench: bench/run.sh (P0-10) exits
+# non-zero on a > 20 % regression against bench/RESULTS.md. mutation: PIT on api + core.
 name: ci
 
 on:
@@ -28,6 +30,9 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
             range="${{ github.event.before }}..${{ github.sha }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            # the checkout is the synthetic merge commit, which carries no sign-off
+            range="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
           else
             range="HEAD~1..HEAD"
           fi
@@ -40,7 +45,7 @@ jobs:
           [ "$missing" = 0 ]
 
   build:
-    name: build · unit · ArchUnit · coverage
+    name: build · unit · ArchUnit · coverage floors · no-decrease
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -63,14 +68,37 @@ jobs:
       - name: Apply schema (until P0-08 moves this into Flyway)
         if: hashFiles('db/init.sql') != ''
         run: PGPASSWORD=flottila psql -h localhost -U flottila -d flottila -v ON_ERROR_STOP=1 -f db/init.sql
-      - name: Verify
+      - name: Verify (unit, ArchUnit, JaCoCo floors)
         run: mvn -B -ntp verify
-      - name: Test reports
+      - name: Coverage gate self-test
+        run: python3 -m unittest ci.test_coverage_check
+      - name: Coverage no-decrease against the previous main commit
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          ref="HEAD"
+          if [ "${{ github.event_name }}" = "push" ] && [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            git fetch -q origin "$BEFORE" || { echo "::error::cannot fetch the previous commit $BEFORE"; exit 1; }
+            ref="$BEFORE"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch -q origin "${{ github.base_ref }}" || { echo "::error::cannot fetch ${{ github.base_ref }}"; exit 1; }
+            ref="FETCH_HEAD"
+          fi
+          echo "baseline from $ref"
+          python3 ci/coverage_check.py --baseline-ref "$ref"
+      - name: "Committed baseline matches this commit's measurement (D-018, every task commit runs --write)"
+        run: |
+          python3 ci/coverage_check.py --write
+          git diff --exit-code -- ci/coverage-baseline.json || { echo "::error::ci/coverage-baseline.json is stale; run python3 ci/coverage_check.py --write and commit it"; exit 1; }
+      - name: Test and coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-reports
-          path: '**/target/surefire-reports/*.xml'
+          name: build-reports
+          path: |
+            **/target/surefire-reports/*.xml
+            **/target/site/jacoco/jacoco.xml
           if-no-files-found: ignore
 
   integration:
@@ -111,9 +139,9 @@ jobs:
           sudo systemctl start postgresql
           sudo -u postgres psql -c "CREATE ROLE flottila LOGIN PASSWORD 'flottila';"
           sudo -u postgres psql -c "CREATE DATABASE flottila OWNER flottila;"
-      - name: Run the harness (bench/run.sh, added in P0-10)
+      - name: Run the harness (bench/run.sh from P0-10; fails on a > 20 % regression once a baseline exists)
         run: |
-          if [ -x bench/run.sh ]; then bench/run.sh; else echo "no bench/run.sh yet"; fi
+          if [ -x bench/run.sh ]; then bench/run.sh; else echo "no bench/run.sh yet (P0-10)"; fi
       - uses: actions/upload-artifact@v4
         with:
           name: bench-results
@@ -132,9 +160,11 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: PIT (configured in P0-01)
-        run: |
-          if grep -q pitest pom.xml; then mvn -B -ntp -DskipTests test-compile org.pitest:pitest-maven:mutationCoverage; else echo "PIT not configured yet"; fi
+      # Scoped to api + core: an empty module fails PIT with "No mutations found", and -DskipTests
+      # would make pitest-maven skip silently. failWhenNoMutations=false only until P0-05 lands code;
+      # the ≥ 80 % threshold (root pom) fails the job below the floor.
+      - name: PIT on api and core
+        run: mvn -B -ntp -pl flottila-api,flottila-core -am -DfailWhenNoMutations=false test-compile org.pitest:pitest-maven:mutationCoverage
       - uses: actions/upload-artifact@v4
         with:
           name: pit-reports
