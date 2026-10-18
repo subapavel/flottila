@@ -105,3 +105,14 @@ Decisions: D-033
 Deviation: none
 Note: jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its own report header (inside the published jar; see HANDOFF notes). Treated as data; the properties and their 300-try results are real.
 Next: P0-08 (Flyway migrations from db/init.sql; the ITs then apply them instead of their own DDL)
+
+## FIX-3 · 2026-10-18 · commit with trailer `Task: FIX-3` (D-017)
+P0-07 close-out: CI on 9ab57a8 (run 39088282577) went RED at "coverage no-decrease against the previous main commit": core branch 100 → 92.9 %, runtime branch 100 → 94.4 % (both still above the floors, but beyond the 2 pp band). Cause: P0-07's InMemoryWorkQueue carried two defensive branches the eligibility invariant makes unreachable (the fast path's live/ineligible check, `eligible`'s newer-live-row check — the same three PIT survivors the P0-07 review confirmed as unreachable) and PgWorkQueue's null-key fast path had no IT case. Per WORKFLOW §3 this fix was the only ready task; P0-08 (already red-first in the working tree) was stashed meanwhile.
+Test first: PgWorkQueueIT.fastPathOnANullKeyRowJustCompletes (new, covers `key == null` in completeAndTakeNext); InMemoryWorkQueueTest.aSameKeyRowInAnotherFlowNeitherBlocksTheClaimNorFeedsTheFastPath (new after review round 1: the per-flow scoping of keys, which the SQL has in `w2.flow = $2` / `w3.flow = $2`, was unprotected in the double) and `leaseHolder` asserted empty after expiry; the in-memory deletion of the two dead checks is covered by the existing suite staying green and the jqwik property.
+Changed: core InMemoryWorkQueue — `eligible(Row)` checks only "oldest row of its key" (a key with a live lease has its oldest row live, which `claim` skips first; comment explains why the SQL keeps both conditions), the fast path takes the first row of the key without the dead check; runtime PgWorkQueueIT + 1 case; D-029 addendum.
+Checks: mvn -B -ntp verify -Pit VERIFIED_PASS (target/fix3-full.log: api 48, testkit 51, core 22, archtest 24, runtime 3 + 12 IT, m1 9, 0 skipped; core re-verified after the round-1 additions with 23 tests, target/fix3-core.log) · JaCoCo core 98.3 % line / 100 % branch (was 92.9 at 9ab57a8; no missed branch left), runtime 100 / 100 VERIFIED_PASS · PIT core 74/75 = 99 % (target/pit-fix3.log; the one left is the equivalent `<`/`<=` boundary on unique seqs) VERIFIED_PASS · no-decrease vs HEAD VERIFIED_PASS; baseline rewritten upwards (core branch 92.9 → 100, runtime 94.4 → 100) · CI on this commit: observed after the push (next entry)
+Measured: nothing
+Review: round 1 FAIL — core branch coverage stopped at 96.2 % (three reachable new-code branches untested, among them the per-flow scoping of keys) and the baseline would have stayed lowered; fixed with the two cases above, core back at 100 % branch. Round 2: PASS
+Decisions: D-029 addendum
+Deviation: none
+Next: P0-08 (resumed from the stash)

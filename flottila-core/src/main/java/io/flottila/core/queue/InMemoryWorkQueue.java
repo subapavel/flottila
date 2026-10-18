@@ -48,7 +48,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         List<Item> taken = new ArrayList<>();
         for (Row r : rows.values()) {
             if (taken.size() >= max) break;
-            if (!r.item.flow().equals(flow) || live(r, now) || !eligible(r, now)) continue;
+            if (!r.item.flow().equals(flow) || live(r, now) || !eligible(r)) continue;
             take(r, workerId, now, lease);
             taken.add(r.item);
         }
@@ -64,9 +64,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Row done = rows.remove(seq);
         if (done == null || done.item.partitionKey() == null) return Future.succeededFuture(Optional.empty());
         Instant now = clock.instant();
-        for (Row r : rows.values()) {
+        for (Row r : rows.values()) {   // seq order: the first row of the key is its oldest, and only the oldest is ever leased
             if (!r.item.flow().equals(done.item.flow()) || !done.item.partitionKey().equals(r.item.partitionKey())) continue;
-            if (live(r, now) || !eligible(r, now)) return Future.succeededFuture(Optional.empty());
             take(r, workerId, now, lease);
             return Future.succeededFuture(Optional.of(r.item));
         }
@@ -91,14 +90,19 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return r.lockedUntil != null && r.lockedUntil.isAfter(now);
     }
 
-    /** Oldest row of its key and no live lease on that key (null key: always). */
-    private boolean eligible(Row candidate, Instant now) {
+    /**
+     * Oldest row of its key (null key: always). Only the oldest row of a key is ever leased, so a key
+     * with a live lease has its oldest row live and {@link #claim} already skips it: the SQL's second
+     * condition ("no live lease on the key") is implied here. The one divergence from the SQL is on
+     * misuse: a fast path on a seq that was never handed out would lease the key's oldest row even
+     * while it is live; the contract (complete only what you were handed; Q-1) excludes that.
+     */
+    private boolean eligible(Row candidate) {
         String key = candidate.item.partitionKey();
         if (key == null) return true;
         for (Row other : rows.values()) {
             if (other == candidate || !other.item.flow().equals(candidate.item.flow()) || !key.equals(other.item.partitionKey())) continue;
             if (other.item.seq() < candidate.item.seq()) return false;
-            if (live(other, now)) return false;
         }
         return true;
     }

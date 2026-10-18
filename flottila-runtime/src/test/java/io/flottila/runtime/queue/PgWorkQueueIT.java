@@ -125,6 +125,14 @@ class PgWorkQueueIT {
     }
 
     @Test
+    void fastPathOnANullKeyRowJustCompletes() {
+        enqueue("n1", null); enqueue("n2", null);
+        WorkQueue.Item n1 = claim("w1", 1, LEASE).get(0);
+        assertTrue(queue.completeAndTakeNext(n1.seq(), "w1", LEASE).await().isEmpty(), "no key, no ordering, no fast path");
+        assertEquals(1, pool.query("select count(*) from work").execute().await().iterator().next().getLong(0));
+    }
+
+    @Test
     void twoConcurrentWorkersKeepPerKeyOrderAndNeverOverlap() throws Exception {
         List<String> keys = List.of("K1", "K2", "K3", "K4", "K5");
         int perKey = 40;

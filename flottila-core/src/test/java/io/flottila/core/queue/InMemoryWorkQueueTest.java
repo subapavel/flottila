@@ -42,9 +42,11 @@ class InMemoryWorkQueueTest {
         List<WorkQueue.Item> first = claim("w1", 1, Duration.ofSeconds(1));
         assertEquals(1, first.size());
         assertTrue(claim("w2", 1, Duration.ofSeconds(1)).isEmpty(), "lease still active");
+        assertEquals("w1", queue.leaseHolder(first.get(0).seq()).orElseThrow());
         clock.advance(Duration.ofMillis(999));
         assertTrue(claim("w2", 1, Duration.ofSeconds(1)).isEmpty(), "still active at 999 ms");
         clock.advance(Duration.ofMillis(2));
+        assertTrue(queue.leaseHolder(first.get(0).seq()).isEmpty(), "an expired lease has no holder");
         List<WorkQueue.Item> second = claim("w2", 1, LEASE);
         assertEquals("x1", second.get(0).messageId(), "an expired lease re-delivers the same row");
         assertEquals(first.get(0).seq(), second.get(0).seq());
@@ -102,6 +104,17 @@ class InMemoryWorkQueueTest {
         assertTrue(claim("w2", 1, LEASE).isEmpty(), "a2's lease started at the fast path, not at a1's claim");
         clock.advance(Duration.ofMillis(200));
         assertEquals(a2.seq(), claim("w2", 1, LEASE).get(0).seq(), "and expires one lease after the fast path");
+    }
+
+    @Test
+    void aSameKeyRowInAnotherFlowNeitherBlocksTheClaimNorFeedsTheFastPath() {
+        queue.enqueue("u-a0", "u", 1, "A").await();          // older key-A row, but in flow u
+        enqueue("a1", "A"); enqueue("a2", "A");
+        List<WorkQueue.Item> t = claim("w1", 10, LEASE);
+        assertEquals(List.of("a1"), t.stream().map(WorkQueue.Item::messageId).toList(), "keys are scoped per flow: u's row does not make a1 'not the oldest'");
+        Optional<WorkQueue.Item> next = queue.completeAndTakeNext(t.get(0).seq(), "w1", LEASE).await();
+        assertEquals("a2", next.orElseThrow().messageId(), "the fast path stays inside flow t");
+        assertEquals("u-a0", queue.claim("w2", "u", 10, LEASE).await().get(0).messageId(), "flow u is untouched");
     }
 
     @Test
