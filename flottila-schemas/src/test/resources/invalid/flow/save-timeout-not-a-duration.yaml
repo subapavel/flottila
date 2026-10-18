@@ -1,0 +1,9 @@
+# expect: /delivery/saveTimeout
+schemaVersion: 1
+kind: flow
+id: f
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: at-least-once, saveTimeout: 5 }
+limits: { maxBodyBytes: 10 }
+steps: [ { type: to, name: out, endpoint: e } ]

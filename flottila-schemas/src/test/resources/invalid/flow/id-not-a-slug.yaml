@@ -1,0 +1,9 @@
+# expect: /id
+schemaVersion: 1
+kind: flow
+id: Invoice Sync
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 10 }
+steps: [ { type: to, name: out, endpoint: e } ]

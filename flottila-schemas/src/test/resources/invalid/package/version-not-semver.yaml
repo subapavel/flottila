@@ -1,0 +1,5 @@
+# expect: /version
+schemaVersion: 1
+kind: package
+name: demo
+version: latest

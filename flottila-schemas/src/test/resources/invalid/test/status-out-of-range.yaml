@@ -1,0 +1,5 @@
+# expect: /cases/0/expect/status
+schemaVersion: 1
+kind: test
+flow: f
+cases: [ { name: c, send: a.xml, expect: { status: 42 } } ]

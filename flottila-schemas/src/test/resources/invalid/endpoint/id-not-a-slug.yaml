@@ -1,0 +1,7 @@
+# expect: /id
+schemaVersion: 1
+kind: endpoint
+id: Http In
+scheme: http
+direction: in
+config: {}

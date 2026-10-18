@@ -9,6 +9,7 @@
 | --- | --- | --- | --- |
 | 2026-10-17 | 3.3 | Exported from the design document; amendments 1–8 added from the Part A brainstorm | — |
 | 2026-10-18 | 3.3 | §12: `flottila-testkit` depends on `api` only (core's tests use it; a testkit → core dependency is a reactor cycle); the golden-test runner moves to `flottila-cli` or a later module | F-1 (minor) |
+| 2026-10-18 | 3.3 | §14: "Flow config JSON Schema" ticked as drafted — `flottila-schemas` v1 schemas for flow, package, endpoint, `*.test.yaml` (amendment 4 delegated the design to P0-12; D-040); body text unchanged | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -439,7 +440,7 @@ Eleven items remain open; the first four block Phase 0 and are the ones to close
 - [ ] Confirm the §4 review replacements formally: virtual-thread-per-message with per-flow semaphore; objects keyed by message id + step; worker → batch queue → Kafka → ClickHouse monitoring path; consumer contract `Function<Envelope, Future<Ack>>`; durable `/xi` door in Kafka.
 - [ ] Three questions left from the §4 session: ABAP proxy behaviour on HTTP 503 and timeout; whether the body is stored inline before ACK (this document says yes, by reference into the BlobStore before the consumer's ACK); stream-step outputs materialised node-locally (this document says yes).
 - [ ] §5 and §10 adversarial reviews not yet run; v3.3 is held until they are.
-- [ ] Flow config JSON Schema: shape of steps, routes, delivery/recording/QoS blocks, `partitionBy`, `forwardHeaders`, mocks per environment.
+- [x] Flow config JSON Schema: shape of steps, routes, delivery/recording/QoS blocks, `partitionBy`, `forwardHeaders`, mocks per environment — drafted in P0-12 (`flottila-schemas`, D-040), `draft — review at hand-over`; QoS beyond the delivery mode (EO/EOIO) stays for Phase 2.
 - [ ] Size thresholds to be fixed by measurement: memory body tier (1 MB proposed), tree limit for `whole` steps (\~50 MB), ClickHouse inline payload limit (\~256 KB), per-flow byte budget defaults.
 - [ ] Hot-partition fast path semantics: how long a worker keeps a key before yielding it to other nodes.
 - [ ] `vertx-auth-abac` for the three authorization planes, or own policy model.

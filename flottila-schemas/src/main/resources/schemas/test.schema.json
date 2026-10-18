@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flottila:schema:test:1",
+  "title": "Flottila *.test.yaml, schemaVersion 1 (draft — review at hand-over, P0-12)",
+  "description": "Mock bindings and test cases for one flow (ARCHITECTURE §11). Behaviours use one vocabulary for every component: reply, recorded, script, files, messages, fail, delay; capture is always on.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "flow", "cases"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "test" },
+    "flow": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "mocks": { "$ref": "#/$defs/mocks" },
+    "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/case" } }
+  },
+  "$defs": {
+    "duration": { "type": "string", "pattern": "^\\d+(ms|s|m|h)$" },
+    "mocks": {
+      "type": "object",
+      "description": "Endpoint id → behaviour.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/behaviour" }
+    },
+    "behaviour": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "reply": { "type": "string", "description": "Fixture file the mock replies with." },
+        "recorded": { "type": "string", "description": "Response captured in monitoring, by reference." },
+        "script": { "type": "string", "description": "Groovy/JS request → response." },
+        "files": { "type": "string", "description": "Consumer side: fixture files to feed (glob)." },
+        "messages": { "type": "string", "description": "Consumer side: fixture messages to feed (glob)." },
+        "fail": { "oneOf": [ { "type": "integer", "minimum": 400, "maximum": 599 }, { "enum": ["timeout", "reset", "malformed"] } ] },
+        "after": { "type": "integer", "minimum": 1, "description": "fail after N calls." },
+        "every": { "type": "integer", "minimum": 2, "description": "fail every Nth call." },
+        "delay": { "$ref": "#/$defs/duration" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "required": ["name", "send", "expect"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "send": { "type": "string", "minLength": 1, "description": "Fixture to send, relative to this file." },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "mocks": { "$ref": "#/$defs/mocks" },
+        "expect": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "sent": { "type": "object", "description": "Endpoint id → assertion on what the mock received (xpath/equals/contains …).", "additionalProperties": { "type": "object" } },
+            "keys": { "type": "object", "additionalProperties": { "type": "string" } },
+            "steps": { "type": "integer", "minimum": 0 },
+            "dlq": { "type": "integer", "minimum": 0 },
+            "retries": { "type": "integer", "minimum": 0 },
+            "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+            "error": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

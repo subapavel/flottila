@@ -1,0 +1,6 @@
+# expect: /mocks/partner
+schemaVersion: 1
+kind: test
+flow: f
+mocks: { partner: { explode: true } }
+cases: [ { name: c, send: a.xml, expect: { steps: 1 } } ]

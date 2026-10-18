@@ -1,0 +1,8 @@
+# expect: /environments/prod
+schemaVersion: 1
+kind: endpoint
+id: e
+scheme: http
+direction: in
+config: {}
+environments: { prod: { url: x } }

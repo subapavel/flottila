@@ -1,0 +1,7 @@
+# Flottila package: the namespace and authorization unit (ARCHITECTURE §7). Validated by package.schema.json.
+schemaVersion: 1
+kind: package
+name: demo
+version: 0.1.0
+description: The prototype's invoice flow, converted to the v1 file model (P0-12).
+dependencies: []

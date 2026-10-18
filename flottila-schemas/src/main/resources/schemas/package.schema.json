@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flottila:schema:package:1",
+  "title": "Flottila package.yaml, schemaVersion 1 (draft — review at hand-over, P0-12)",
+  "description": "The package is the namespace and authorization unit (ARCHITECTURE §7): name, version and the packages it depends on. Flows, endpoints and tests are the files next to it (flows/, endpoints/).",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "name", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "package" },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+    "description": { "type": "string" },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "version": { "type": "string", "minLength": 1, "description": "A version or range; package.lock pins the exact one." }
+        }
+      }
+    }
+  }
+}

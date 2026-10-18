@@ -1,0 +1,5 @@
+# expect: /cases
+schemaVersion: 1
+kind: test
+flow: f
+cases: []

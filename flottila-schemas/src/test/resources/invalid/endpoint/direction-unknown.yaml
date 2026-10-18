@@ -1,0 +1,7 @@
+# expect: /direction
+schemaVersion: 1
+kind: endpoint
+id: e
+scheme: http
+direction: both
+config: {}

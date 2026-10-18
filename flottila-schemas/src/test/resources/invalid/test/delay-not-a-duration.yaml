@@ -1,0 +1,6 @@
+# expect: /mocks/partner/delay
+schemaVersion: 1
+kind: test
+flow: f
+mocks: { partner: { delay: 20 } }
+cases: [ { name: c, send: a.xml, expect: { steps: 1 } } ]

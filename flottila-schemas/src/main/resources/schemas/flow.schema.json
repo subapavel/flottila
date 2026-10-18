@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flottila:schema:flow:1",
+  "title": "Flottila flow file, schemaVersion 1 (draft — review at hand-over, P0-12)",
+  "description": "One flow: where messages come from, how they are delivered and recorded, the finite limits every flow has, and the ordered steps. Component- and step-specific keys are passed through to the component's or step's own configSchema at deploy time.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "id", "version", "from", "delivery", "limits", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "flow" },
+    "id": { "$ref": "#/$defs/slug", "description": "Flow id, unique in its package; the identity is tenant / package / flow:id @ version." },
+    "version": { "$ref": "#/$defs/semver" },
+    "description": { "type": "string" },
+    "from": {
+      "type": "object",
+      "description": "The consumer endpoint this flow listens on, plus the component's own options.",
+      "required": ["endpoint"],
+      "properties": { "endpoint": { "$ref": "#/$defs/slug" } },
+      "additionalProperties": true
+    },
+    "delivery": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["sync", "at-least-once", "at-most-once"], "description": "ARCHITECTURE §4 message lifecycle per delivery mode." },
+        "saveTimeout": { "$ref": "#/$defs/duration", "description": "at-least-once: the durable save deadline before NACK/503 (default 5s)." },
+        "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once: the work queue behind the durable save." }
+      }
+    },
+    "recording": { "$ref": "#/$defs/recording" },
+    "limits": {
+      "type": "object",
+      "description": "Every flow has a finite max body size; never a default of unlimited (CLAUDE.md).",
+      "required": ["maxBodyBytes"],
+      "additionalProperties": false,
+      "properties": {
+        "maxBodyBytes": { "type": "integer", "minimum": 1 },
+        "maxInFlight": { "type": "integer", "minimum": 1, "description": "Admission budget: requests in flight for this flow. Omitted = the runtime's finite default (cores × 2 for CPU-heavy flows, ARCHITECTURE §4), never unlimited." },
+        "maxInFlightBytes": { "type": "integer", "minimum": 1, "description": "Admission budget: bytes in flight for this flow. Omitted = the runtime's finite default (per-flow byte budget, ARCHITECTURE §14), never unlimited." }
+      }
+    },
+    "partitionBy": { "$ref": "#/$defs/keyName", "description": "Business key that orders messages (same key, same order)." },
+    "forwardHeaders": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9!#$%&'*+.^_`|~-]+$" },
+      "description": "Allow-list of ingress headers that reach producers; nothing propagates implicitly."
+    },
+    "retry": {
+      "type": "object",
+      "description": "Per-step retry policy for steps marked retryable: exponential backoff between initial and max.",
+      "required": ["attempts", "initial", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "attempts": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "initial": { "$ref": "#/$defs/duration" },
+        "max": { "$ref": "#/$defs/duration" },
+        "multiplier": { "type": "number", "minimum": 1 }
+      }
+    },
+    "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } }
+  },
+  "$defs": {
+    "slug": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+    "semver": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+    "duration": { "type": "string", "pattern": "^\\d+(ms|s|m|h)$" },
+    "keyName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+    "recording": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "enum": ["all", "ends", "errors", "off"] },
+        "payload": { "enum": ["keep", "metadata-only"] }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$", "description": "Step type. The schema knows the typed requirements of xslt, route, to, extractKey and validate; any other type passes here and is checked against its step's own configSchema at deploy time (an unknown type, e.g. a typo, fails there, not here)." },
+        "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64, "description": "Step name, unique in the flow; the label on snapshots and per-step timings (camelCase allowed)." },
+        "retryable": { "type": "boolean" },
+        "recording": { "$ref": "#/$defs/recording" }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "xslt" } } }, "then": { "required": ["stylesheet"], "properties": { "stylesheet": { "type": "string", "minLength": 1, "description": "Path of the XSLT file relative to this flow file." } } } },
+        { "if": { "properties": { "type": { "const": "route" } } },
+          "then": { "required": ["prop", "routes"],
+                    "properties": { "prop": { "$ref": "#/$defs/keyName" }, "otherwise": { "type": "string" },
+                                    "routes": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["when", "set"], "properties": { "when": { "type": "string" }, "set": { "type": "string" } } } } } } },
+        { "if": { "properties": { "type": { "const": "to" } } },
+          "then": { "anyOf": [ { "required": ["endpoint"], "properties": { "endpoint": { "$ref": "#/$defs/slug" } } },
+                               { "required": ["byProp", "endpoints"], "properties": { "byProp": { "$ref": "#/$defs/keyName" }, "endpoints": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/slug" } } } } ] } },
+        { "if": { "properties": { "type": { "const": "extractKey" } } }, "then": { "required": ["key", "xpath"], "properties": { "key": { "$ref": "#/$defs/keyName" }, "xpath": { "type": "string" } } } },
+        { "if": { "properties": { "type": { "const": "validate" } } }, "then": { "required": ["required"], "properties": { "required": { "type": "string" } } } }
+      ]
+    }
+  }
+}

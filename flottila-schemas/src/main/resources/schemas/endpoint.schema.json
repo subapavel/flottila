@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flottila:schema:endpoint:1",
+  "title": "Flottila endpoint file, schemaVersion 1 (draft — review at hand-over, P0-12)",
+  "description": "One binding of a component (scheme) as a consumer (in) or producer (out). `config` belongs to the component and is validated by its configSchema at deploy time; per-environment overrides replace keys of config. Mock bindings never live here — they go to *.test.yaml, so the file is byte-identical in every environment.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "id", "scheme", "direction", "config"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "endpoint" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+    "scheme": { "type": "string", "pattern": "^[a-z][a-z0-9+.-]*$", "description": "Component scheme: http, sftp, jms, kafka, mail, as2, xi …" },
+    "direction": { "enum": ["in", "out"] },
+    "description": { "type": "string" },
+    "config": { "type": "object" },
+    "environments": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["config"],
+        "additionalProperties": false,
+        "properties": { "config": { "type": "object" } }
+      }
+    }
+  }
+}

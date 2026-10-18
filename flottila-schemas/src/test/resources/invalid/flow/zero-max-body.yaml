@@ -1,0 +1,9 @@
+# expect: /limits/maxBodyBytes
+schemaVersion: 1
+kind: flow
+id: f
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: sync }
+limits: { maxBodyBytes: 0 }
+steps: [ { type: to, name: out, endpoint: e } ]

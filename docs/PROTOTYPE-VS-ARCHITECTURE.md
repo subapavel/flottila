@@ -41,7 +41,7 @@ in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the na
 | `runtime/Dlq*` semantics | `flottila-runtime` | Park by reference; a park never fails on write ordering; overload rejections and at-most-once drops never park. |
 | `Component.Consumer.durableIngress` semantics | `flottila-api` consumer contract | The durable save before an irreversible ACK belongs to the consumer, with a save timeout → NACK. Reimplemented on `Function<Envelope, Future<Ack>>`. |
 | `bench/bench.py`, `bench/RESULTS.md` | `bench/` | Baseline; rerun natively (cloud VM) in P0-10 and recorded as the Phase 0 baseline. |
-| `flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` | `packages/demo/` | First golden flow; converted to the Phase 0 JSON Schema in P0-12. |
+| `flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` | `packages/demo/` | First golden flow. P0-12 converted `invoice.json` into `packages/demo/flows/invoice-sync.yaml` (+ `endpoints/*.yaml`, `invoice-sync.test.yaml`, `package.yaml`) and deleted the JSON; the XSL and the fixture stay. |
 | `docker-compose.yml` | `deploy/compose/` (P2-05) | Grows from Postgres-only to the full stack. |
 
 ## 3. Replaced (deleted when the replacement lands)
@@ -59,7 +59,7 @@ in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the na
 | Queues | Postgres only | Postgres default per flow, Kafka per flow for volume / fan-out / replay; XI EOIO always Postgres | Agreed Oct 17, 2026 (§7). |
 | Runtime record | `Runtime(vertx, components, messages, monitoring, cpuPool, blockingPool, xml)` | adds BlobStore, Clock, id generator, caches, wallet, services registry; still build-time only | §6, §11. |
 | Modules | one jar, packages `core / runtime / components / demo` | `flottila-api`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-sap`, `-testkit`, `-cli`, `-control`, `-schemas`; ArchUnit enforces direction | §12. |
-| Flow config | ad-hoc JSON (`invoice.json`) | JSON Schema (Phase 0); packages with `package.yaml` / `package.lock`; `*.test.yaml` beside each flow | §9, §11. |
+| Flow config | ad-hoc JSON (`invoice.json`) | JSON Schema (Phase 0, done in P0-12: `flottila-schemas`, D-040); packages with `package.yaml` / `package.lock`; `*.test.yaml` beside each flow | §9, §11. |
 | Components | `HttpComponent` only, no mock | every component with its mock, both passing the contract suite | §11. |
 | Tests | 9 tests against the compose Postgres | testkit with fake Runtime, contract suites, flow tests from YAML, Testcontainers, golden tests | §11. |
 | Admin API | hand-written routes in `demo/Main.java` | runtime admin API (Phase 1); control plane last | docs/GATE.md. |

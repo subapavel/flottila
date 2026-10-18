@@ -1,0 +1,8 @@
+# expect: /mock
+schemaVersion: 1
+kind: endpoint
+id: e
+scheme: http
+direction: in
+config: {}
+mock: { reply: x }

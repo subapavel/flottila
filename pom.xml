@@ -136,6 +136,14 @@
         <scope>import</scope>
       </dependency>
       <dependency>
+        <!-- YAML flow/package/endpoint/test files (P0-12): Jackson's YAML module, Apache-2.0 (SnakeYAML inside, Apache-2.0) -->
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>2.22.3</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
         <version>${junit.version}</version>

@@ -1,0 +1,10 @@
+# expect: /recording/level
+schemaVersion: 1
+kind: flow
+id: f
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: sync }
+recording: { level: verbose }
+limits: { maxBodyBytes: 10 }
+steps: [ { type: to, name: out, endpoint: e } ]
