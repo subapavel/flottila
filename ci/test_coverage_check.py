@@ -93,7 +93,7 @@ class CoverageCheckTest(unittest.TestCase):
         module(self.root, "flottila-api", report=(20, 80, 5, 15))
         baseline = {"flottila-api": {"line": 90.0, "branch": 75.0}}
         problems = cc.compare(cc.measure(self.root), baseline, self.root)
-        self.assertEqual(["flottila-api: line 80.0 % < baseline 90.0 %"], problems)
+        self.assertEqual(["flottila-api: line 80.0 % < baseline 90.0 % - 2.0"], problems)
 
     def test_equal_or_higher_passes(self):
         module(self.root, "flottila-api", report=(5, 95, 5, 15))
@@ -108,15 +108,68 @@ class CoverageCheckTest(unittest.TestCase):
         module(self.root, "flottila-api", report=(1, 2, 2, 1))
         self.assertEqual({"flottila-api": {"line": 66.7, "branch": 33.3}}, cc.measure(self.root))
 
-    def test_rounding_to_one_decimal_absorbs_noise_only(self):
-        module(self.root, "flottila-api", report=(1, 999, 1, 999))   # 99.9 %
-        baseline = {"flottila-api": {"line": 99.9, "branch": 99.9}}
+    def test_a_drop_inside_the_noise_band_is_not_a_decrease(self):
+        # timing-dependent branches (testkit detector) move by one branch ≈ 1.2 pp between runs; D-029 band = 2.0 pp
+        module(self.root, "flottila-api", report=(2, 98, 11, 89))      # line 98.0, branch 89.0
+        baseline = {"flottila-api": {"line": 99.9, "branch": 90.5}}
         self.assertEqual([], cc.compare(cc.measure(self.root), baseline, self.root))
-        module(self.root, "flottila-core", report=(2, 998, 2, 998))  # 99.8 %
-        baseline["flottila-core"] = {"line": 99.9, "branch": 99.9}
+
+    def test_a_drop_beyond_the_noise_band_is_a_decrease(self):
+        module(self.root, "flottila-core", report=(21, 979, 3, 97))    # line 97.9, branch 97.0
+        baseline = {"flottila-core": {"line": 100.0, "branch": 99.1}}
         problems = cc.compare(cc.measure(self.root), baseline, self.root)
-        self.assertEqual(["flottila-core: line 99.8 % < baseline 99.9 %",
-                          "flottila-core: branch 99.8 % < baseline 99.9 %"], problems)
+        self.assertEqual(["flottila-core: line 97.9 % < baseline 100.0 % - 2.0",
+                          "flottila-core: branch 97.0 % < baseline 99.1 % - 2.0"], problems)
+
+    def test_check_baseline_catches_a_forgotten_write_and_a_missing_module(self):
+        module(self.root, "flottila-api", report=(0, 100, 0, 10))      # 100 / 100
+        module(self.root, "flottila-core", report=(50, 50, 5, 5))      # 50 / 50
+        baseline = {"flottila-api": {"line": 97.0, "branch": 100.0}}   # api rose by 3 pp, core absent
+        problems = cc.check_baseline(cc.measure(self.root), baseline)
+        self.assertEqual(["flottila-api: line 100.0 % is above the committed baseline 97.0 % by more than 2.0 — run --write",
+                          "flottila-core: not in the committed baseline — run --write"], problems)
+
+    def test_check_baseline_accepts_noise_in_both_directions_and_flags_removed_modules(self):
+        module(self.root, "flottila-api", report=(2, 98, 11, 89))      # 98.0 / 89.0
+        baseline = {"flottila-api": {"line": 99.9, "branch": 90.5}, "flottila-old": {"line": 50.0, "branch": 50.0}}
+        self.assertEqual(["flottila-old: in the committed baseline but not measured — run --write"],
+                         cc.check_baseline(cc.measure(self.root), baseline))
+        baseline.pop("flottila-old")
+        self.assertEqual([], cc.check_baseline(cc.measure(self.root), baseline))
+
+    def test_a_drop_of_exactly_the_band_is_still_noise(self):
+        module(self.root, "flottila-api", report=(2, 98, 0, 10))       # line 98.0
+        self.assertEqual([], cc.compare(cc.measure(self.root), {"flottila-api": {"line": 100.0, "branch": 100.0}}, self.root))
+
+    def test_check_baseline_flags_a_committed_value_far_above_the_measurement(self):
+        module(self.root, "flottila-api", report=(10, 90, 0, 10))      # line 90.0
+        problems = cc.check_baseline(cc.measure(self.root), {"flottila-api": {"line": 95.0, "branch": 100.0}})
+        self.assertEqual(["flottila-api: line 90.0 % is below the committed baseline 95.0 % by more than 2.0 — coverage dropped; run --write and say why"], problems)
+
+    def test_write_keeps_the_high_water_mark_inside_the_band(self):
+        module(self.root, "flottila-api", report=(2, 98, 11, 89))      # 98.0 / 89.0 measured
+        path = self.root / "ci" / "coverage-baseline.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({"flottila-api": {"line": 99.5, "branch": 90.5}, "flottila-gone": {"line": 1.0, "branch": 1.0}}))
+        cc.write_baseline(cc.measure(self.root), path)
+        self.assertEqual({"flottila-api": {"line": 99.5, "branch": 90.5}}, json.loads(path.read_text()),
+                         "noise never lowers the baseline; a removed module leaves it")
+        path.write_text(json.dumps({"flottila-api": {"line": 99.5, "branch": 92.0}}))
+        cc.write_baseline(cc.measure(self.root), path)
+        self.assertEqual({"flottila-api": {"line": 99.5, "branch": 89.0}}, json.loads(path.read_text()),
+                         "a drop beyond the band is written as measured — visible in the diff")
+        path.write_text(json.dumps({"flottila-api": {"line": 97.0, "branch": 80.0}}))
+        cc.write_baseline(cc.measure(self.root), path)
+        self.assertEqual({"flottila-api": {"line": 98.0, "branch": 89.0}}, json.loads(path.read_text()), "a rise is written")
+
+    def test_main_check_baseline_exit_code(self):
+        module(self.root, "flottila-api", report=(0, 100, 0, 10))
+        path = self.root / "ci" / "coverage-baseline.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({"flottila-api": {"line": 90.0, "branch": 100.0}}))
+        self.assertEqual(1, cc.main(["--root", str(self.root), "--baseline-file", str(path), "--check-baseline"]))
+        path.write_text(json.dumps({"flottila-api": {"line": 99.0, "branch": 100.0}}))
+        self.assertEqual(0, cc.main(["--root", str(self.root), "--baseline-file", str(path), "--check-baseline"]))
 
     def test_write_baseline_round_trips(self):
         module(self.root, "flottila-api", report=(10, 90, 5, 15))

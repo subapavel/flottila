@@ -3,7 +3,8 @@
 
 Reads every module's target/site/jacoco/jacoco.xml, computes line and branch coverage in percent
 rounded to one decimal, and compares with ci/coverage-baseline.json taken from a git ref (the
-previous main commit in CI, HEAD locally). A module whose coverage dropped fails the check; a
+previous main commit in CI, HEAD locally). A module whose coverage dropped by more than TOLERANCE
+percentage points (D-029 noise band; the JaCoCo floors in the poms stay exact) fails the check; a
 module that has compiled classes (other than package-info) but no report fails too, because
 jacoco:check silently skips a module in which no test ran. New modules without a baseline pass.
 
@@ -11,6 +12,7 @@ Usage:
   python3 ci/coverage_check.py                       # compare against HEAD's baseline file
   python3 ci/coverage_check.py --baseline-ref <sha>  # compare against that commit's baseline file
   python3 ci/coverage_check.py --write               # rewrite ci/coverage-baseline.json (task commits)
+  python3 ci/coverage_check.py --check-baseline      # CI: the committed file describes this tree (±TOLERANCE)
 """
 from __future__ import annotations
 
@@ -28,6 +30,10 @@ CLASSES = Path("target") / "classes"
 COUNTERS = {"line": "LINE", "branch": "BRANCH"}
 # legacy module with jacoco.skip=true (removed by P0-09); nothing else may be listed here
 IGNORED = frozenset({"flottila-m1"})
+# D-029: timing-dependent branches (e.g. the testkit's thread-state sampler) move by about one branch
+# between runs; a change inside this band, in percentage points, is noise, not a decrease. The JaCoCo
+# floors in the poms stay hard.
+TOLERANCE = 2.0
 
 
 def _percent(missed: int, covered: int) -> float:
@@ -75,13 +81,45 @@ def compare(current: dict[str, dict[str, float]], baseline: dict[str, dict[str, 
         if base is None:
             continue
         for key in COUNTERS:
-            if values[key] < base.get(key, 0.0):
-                problems.append(f"{name}: {key} {values[key]} % < baseline {base[key]} %")
+            if values[key] < base.get(key, 0.0) - TOLERANCE:
+                problems.append(f"{name}: {key} {values[key]} % < baseline {base[key]} % - {TOLERANCE}")
+    return problems
+
+
+def check_baseline(current: dict[str, dict[str, float]], committed: dict[str, dict[str, float]]) -> list[str]:
+    """The committed baseline must describe this very tree: every measured module present, none extra,
+    and no value more than TOLERANCE below the measurement (a forgotten `--write` after coverage rose)."""
+    problems: list[str] = []
+    for name, values in sorted(current.items()):
+        base = committed.get(name)
+        if base is None:
+            problems.append(f"{name}: not in the committed baseline — run --write")
+            continue
+        for key in COUNTERS:
+            if values[key] > base.get(key, 0.0) + TOLERANCE:
+                problems.append(f"{name}: {key} {values[key]} % is above the committed baseline {base[key]} % by more than {TOLERANCE} — run --write")
+            elif values[key] < base.get(key, 0.0) - TOLERANCE:
+                problems.append(f"{name}: {key} {values[key]} % is below the committed baseline {base[key]} % by more than {TOLERANCE} — coverage dropped; run --write and say why")
+    for name in sorted(committed):
+        if name not in current:
+            problems.append(f"{name}: in the committed baseline but not measured — run --write")
     return problems
 
 
 def write_baseline(current: dict[str, dict[str, float]], path: Path) -> None:
-    path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
+    """Writes the measurement, except that a value within TOLERANCE below the committed one keeps the
+    committed value (high-water mark): run-to-run noise never lowers the baseline, a real drop beyond the
+    band is written as measured and shows in the diff. Modules no longer measured are dropped."""
+    committed = json.loads(path.read_text()) if path.exists() else {}
+    merged: dict[str, dict[str, float]] = {}
+    for name, values in current.items():
+        base = committed.get(name, {})
+        merged[name] = {}
+        for key, measured in values.items():
+            old = base.get(key)
+            keep_old = old is not None and measured < old <= measured + TOLERANCE
+            merged[name][key] = old if keep_old else measured
+    path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n")
 
 
 class BaselineError(RuntimeError):
@@ -108,6 +146,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--baseline-file", default=None, help=f"baseline JSON (default: <root>/{BASELINE.as_posix()})")
     ap.add_argument("--baseline-ref", default=None, help="git ref whose committed baseline file to compare against")
     ap.add_argument("--write", action="store_true", help="rewrite the baseline file from the current reports")
+    ap.add_argument("--check-baseline", action="store_true",
+                    help="verify the committed baseline file describes this tree (no forgotten --write)")
     ap.add_argument("--ignore", default=",".join(sorted(IGNORED)),
                     help="comma-separated modules allowed to have classes without a report (default: %(default)s)")
     args = ap.parse_args(argv)
@@ -120,6 +160,13 @@ def main(argv: list[str] | None = None) -> int:
         write_baseline(current, path)
         print(f"baseline written to {path}")
         return 0
+    if args.check_baseline:
+        committed = json.loads(path.read_text()) if path.exists() else {}
+        problems = check_baseline(current, committed)
+        for p in problems:
+            print(f"STALE BASELINE: {p}", file=sys.stderr)
+        print("baseline: current" if not problems else f"baseline: {len(problems)} problem(s)")
+        return 1 if problems else 0
     ignore = frozenset(x for x in args.ignore.split(",") if x)
     try:
         baseline = _load_baseline(args.baseline_ref, path, root)

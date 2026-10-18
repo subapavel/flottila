@@ -1,7 +1,7 @@
 # CI gates — docs/WORKFLOW.md §4. Every push to main runs dco, build and integration;
 # bench and mutation run nightly and on demand (workflow_dispatch).
-# build: JaCoCo floors halt `mvn verify` (root pom), ci/coverage_check.py refuses a decrease
-# against the baseline committed at the previous main commit. bench: bench/run.sh (P0-10) exits
+# build: JaCoCo floors halt `mvn verify` (root pom), ci/coverage_check.py refuses a decrease beyond
+# the 2 pp noise band (D-029) against the baseline committed at the previous main commit. bench: bench/run.sh (P0-10) exits
 # non-zero on a > 20 % regression against bench/RESULTS.md. mutation: PIT on api + core.
 name: ci
 
@@ -87,10 +87,8 @@ jobs:
           fi
           echo "baseline from $ref"
           python3 ci/coverage_check.py --baseline-ref "$ref"
-      - name: "Committed baseline matches this commit's measurement (D-018, every task commit runs --write)"
-        run: |
-          python3 ci/coverage_check.py --write
-          git diff --exit-code -- ci/coverage-baseline.json || { echo "::error::ci/coverage-baseline.json is stale; run python3 ci/coverage_check.py --write and commit it"; exit 1; }
+      - name: "Committed baseline describes this commit (D-018/D-029: every task commit runs --write; ±2 pp noise band)"
+        run: python3 ci/coverage_check.py --check-baseline
       - name: Test and coverage reports
         if: always()
         uses: actions/upload-artifact@v4

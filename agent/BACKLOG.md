@@ -54,6 +54,13 @@ until the gate row is `done`. Hand-over gate definition: `docs/GATE.md`.
 | P2-S1 | Stretch: snapshots published to the Kafka `monitoring` topic | GATE | pending | visible with a console consumer | |
 | P2-S2 | Stretch: ClickHouse Kafka-engine table consuming the topic | P2-S1 | pending | rows visible in ClickHouse | |
 
+## Fixes (rows added when `main` is red — WORKFLOW §3: "fix main" is then the only ready task)
+
+| Id | Title | Depends on | Status | Done when | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| FIX-1 | Red `main` after P0-04 (CI run 39084657233): the committed-baseline step required an exact match and the testkit's timing-dependent branch coverage differs between machines; add a 2 pp noise band (D-029) and a `--check-baseline` mode | P0-04 | done | CI green on `main` again | commit `Task: FIX-1`; PROGRESS FIX-1; CI observed in the P0-06 entry |
+| FIX-2 | Make the blocked-thread detector's sampler coverage deterministic (drive the sampling loop from the fake clock, not wall time) so the D-029 band can shrink towards 0 | P0-04 | pending | identical JaCoCo numbers for flottila-testkit on two consecutive runs | |
+
 ## Later (not broken down; after the owner's review at the gate)
 
 Rest of Phase 2 (Kafka hand-over, durable `/xi` door, XI QoS, dispatcher, partner directory,

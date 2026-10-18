@@ -76,7 +76,7 @@ Next: P1-05
 
 | Job | What | Blocking |
 | --- | --- | --- |
-| `build` | compile, unit tests, ArchUnit, JaCoCo floors and no-decrease check, DCO check | yes |
+| `build` | compile, unit tests, ArchUnit, JaCoCo floors and no-decrease check (±2 pp noise band, D-029), DCO check | yes |
 | `integration` | Testcontainers tests (`-Pit`): Postgres, Kafka, ClickHouse, Valkey, S3 | yes |
 | `bench` | harness against native Postgres on the runner; artifact uploaded; fails only on a regression > 20 % against the last baseline in `bench/RESULTS.md` | yes, once a baseline exists |
 | `mutation` | PIT on `api` and `core`, nightly | reported; ≥ 80 % is a phase-gate condition |

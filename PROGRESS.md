@@ -71,3 +71,14 @@ Review: round 1 FAIL — the idle-pool test observed only a few ms against a 10 
 Decisions: D-027, D-028
 Deviation: none
 Next: P0-06 (batcher port to core + Postgres implementation in runtime); P0-11 and P0-12 are ready too
+
+## FIX-1 · 2026-10-18 · commit with trailer `Task: FIX-1` (D-017)
+P0-04 close-out: CI on 8fb61f9 (run 39084657233) went RED in `build` at the step "committed baseline matches this commit's measurement": the runner measured flottila-testkit branch coverage 89.3 % against the committed 90.5 % (one branch of the blocked-thread sampler, which is timing-dependent); dco, verify, no-decrease and the gate self-test were green. Per WORKFLOW §3 this fix was the only ready task; P0-06 (already red-first in the working tree) was stashed meanwhile.
+Test first: ci/test_coverage_check.py — test_a_drop_inside_the_noise_band_is_not_a_decrease, test_a_drop_beyond_the_noise_band_is_a_decrease, test_check_baseline_catches_a_forgotten_write_and_a_missing_module, test_check_baseline_accepts_noise_in_both_directions_and_flags_removed_modules, test_main_check_baseline_exit_code (+ the decrease message updated). Red observed: 3 failures + 3 errors before the implementation.
+Changed: ci/coverage_check.py — TOLERANCE 2.0 pp (D-029) in `compare`, new `check_baseline` + `--check-baseline` (symmetric: a committed value more than 2 pp above the measurement is flagged too), `--write` keeps a high-water mark inside the band so noise never lowers the baseline; .github/workflows/ci.yml — the baseline step runs `--check-baseline` instead of `--write` + `git diff --exit-code`; docs/WORKFLOW.md §4 build row annotated with the band; BACKLOG FIX-2 added (deterministic sampler coverage).
+Checks: unittest ci.test_coverage_check VERIFIED_PASS (25/25) · mvn -B -ntp verify on the fix tree VERIFIED_PASS (target/fix1-full.log) · `--baseline-ref HEAD` and `--check-baseline` locally VERIFIED_PASS · CI on this commit: CI_FIX1_PLACEHOLDER
+Measured: nothing
+Review: PASS (observations applied before the commit: high-water mark, symmetric stale check, boundary case, docs; FIX-2 row for the root cause)
+Decisions: D-029
+Deviation: none
+Next: P0-06 (resumed from the stash)
