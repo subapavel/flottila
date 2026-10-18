@@ -1,4 +1,4 @@
-# expect: 
+# expect: /
 schemaVersion: 1
 kind: endpoint
 id: e

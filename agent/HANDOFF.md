@@ -1,9 +1,9 @@
 # Handoff
 
 state: RUNNING
-last commit: the one with trailer `Task: P0-12` on main (D-017)
+last commit: the one with trailer `Task: P0-GATE` on main (D-017); Phase 0 gate MET on 7f3e4e3 (bench/RESULTS.md §Phase 0 gate)
 branch: main
-next exact action: P0-GATE — the Phase 0 gate row: (1) confirm every Phase 0 row is `done` with `review: PASS` in PROGRESS.md; (2) take the gate numbers on the gate commit: coverage per module from the CI build job of the latest main commit and PIT from a dispatched `mutation` job (api ≥ 80 %, core ≥ 80 %), bench baselines present (VM + runner); (3) write bench/RESULTS.md "§Phase 0 gate" with the commit hash, the coverage table, the PIT scores, the two spike answers and the schema status; (4) PROGRESS entry P0-GATE, BACKLOG row done, then Phase 1 rows become `ready` (P1-01 first). No code change expected; if a floor is missed, "raise coverage of module X" is the only ready task (WORKFLOW §5).
+next exact action: P1-01 — `BlobStore` tiers in flottila-runtime over the api `BlobStore` (D-025/D-026): memory tier (default 1 MB, ARCHITECTURE §14 proposal), encrypted local spool, S3 tier (Testcontainers MinIO or LocalStack — check the licence of the image/client: AWS SDK v2 Apache-2.0), node-wide byte budget as the second spill trigger, per-flow max body; `Body` over it; streaming ingress that hashes while writing (`Hasher.Session`). Red first: the store contract suite in testkit (`BlobStoreContract`, run by `InMemoryBlobStore` already and by every tier) + a 50 MB pass-through test that asserts no heap growth (measure `MemoryMXBean` before/after with a bound, not a sleep) + a spill test driven by a budget of a few KB. Keys are message id + step, never content hash; sizes `long`; never unlimited. Numbers (50 MB pass-through throughput, spill cost) natively into bench/RESULTS.md §P1-01. Read ARCHITECTURE §4 body kinds (whole / stream / split-assemble), §5 BlobStore tiers, §14 size thresholds, and the api `BlobStore`/`Body`/`BlobKey` Javadoc before choosing shapes; the api is coordinator-kept.
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
 decisions pending review at hand-over: D-025, D-026/D-032, D-027, D-029 (+ addendum), D-030, D-031/F-1, D-033 (Q-1 pending), D-034, D-035, D-036, D-037, D-038, D-039, D-040, D-022
 notes:

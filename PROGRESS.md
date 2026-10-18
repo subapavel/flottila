@@ -195,3 +195,14 @@ Review: PASS in round 2 (round 1 FAIL: Jackson YAML read `off`/`yes`/`no` as boo
 Decisions: D-040 (draft — review at hand-over: the four schemas are public contracts)
 Deviation: none (ARCHITECTURE amendment 4 delegated the design to this task; §14 item ticked with a changelog row)
 Next: P0-GATE (phase gate numbers on the gate commit), then Phase 1 — P1-01
+
+## P0-GATE · 2026-10-18 · commit with trailer `Task: P0-GATE` (D-017)
+P0-12 close-out: CI on 7f3e4e3 observed green — push run 39095623949 (dco, build incl. ITs and both coverage gates) and dispatched run 39095635572 (build, dco, mutation, bench: `bench: no regression`).
+Test first: none new — the gate is a measurement, not a change. Taken along from the P0-12 round-2 observations (test data and bookkeeping only): `InvalidDocumentsTest` floor raised from 12 to the 37 fixtures that exist, the root marker spelled `# expect: /`, BACKLOG P0-12 counts corrected to 54 / 37; flottila-schemas re-verified green (target/p0gate-schemas.log, 54 tests).
+Changed: bench/RESULTS.md "§Phase 0 gate — commit 7f3e4e3" (coverage table from CI job 117581371310, PIT from job 117581612828: api 85/85, core 171/172, testkit 124/142 informational; runner bench run 4 added to the runner table), agent/BACKLOG.md (P0-GATE done, P1-01 and P1-02 ready), agent/HANDOFF.md (next: P1-01), flottila-schemas test floor/marker.
+Checks: every Phase 0 row `done` with `review: PASS` VERIFIED (BACKLOG rows P0-01…P0-12, FIX-1, FIX-3, FIX-4, B-1; PROGRESS Review lines — only BOOTSTRAP is `n/a`, Part A with the owner) · coverage floors on the gate commit by CI VERIFIED_PASS (api 98.5/100.0, core 99.2/100.0 ≥ 90; runtime 100/100, testkit 97.4/90.2, schemas 98.3/94.4, bench 95.6/91.7 ≥ 75) · PIT ≥ 80 % on api and core by CI VERIFIED_PASS (100 %, 99 %) · bench baseline recorded VERIFIED (VM + runner markers; gate run compared, no regression) · schemas merged VERIFIED (7f3e4e3) · mvn NOT_RUN beyond flottila-schemas (no other change) · CI on this commit: observed in the next entry
+Measured: see bench/RESULTS.md §Phase 0 gate (CI numbers of 7f3e4e3; the runner's bench summary lines for run 4 were read from job 117581612769's log)
+Review: PASS (notes taken: gate section names the open follow-ups FIX-2 and Q-1; the testkit note says "the VM's last measurement")
+Decisions: none
+Deviation: none
+Next: P1-01 (`BlobStore` tiers, `Body` over it, streaming ingress while hashing; 50 MB body without heap growth; contract suite for the store) — P1-02 is ready too

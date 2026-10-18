@@ -1,5 +1,41 @@
-# Bench results — Phase 0 spikes, cloud VM (P0-10, P0-11)
+# Bench results — Phase 0 (gate, spikes, baselines)
 
+## Phase 0 gate — commit 7f3e4e3 (2026-10-18)
+
+Gate commit: `7f3e4e3` (P0-12, the last Phase 0 code commit); numbers measured by CI on it, dispatched run
+39095635572 (jobs: build 117581371310, mutation 117581612828, bench 117581612769, all success) and the
+push run 39095623949 (build, dco). Conditions (WORKFLOW §5, BACKLOG P0-GATE): every Phase 0 row `done`
+with `review: PASS` (P0-01 … P0-12, FIX-1/3/4, B-1 — PROGRESS.md), coverage floors met, PIT ≥ 80 % on
+api and core, bench baseline recorded, schemas merged.
+
+| module | line % | branch % | floor | PIT killed / generated | PIT floor |
+|---|---|---|---|---|---|
+| flottila-api | 98.5 | 100.0 | 90 | 85 / 85 (100 %) | 80 |
+| flottila-core | 99.2 | 100.0 | 90 | 171 / 172 (99 %) | 80 |
+| flottila-runtime | 100.0 | 100.0 | 75 (ITs counted) | — | — |
+| flottila-testkit | 97.4 | 90.2 | 75 | 124 / 142 (87 %, informational) | — |
+| flottila-schemas | 98.3 | 94.4 | 75 | — | — |
+| flottila-bench | 95.6 | 91.7 | 75 | — | — |
+
+(The VM's last measurement of testkit was 91.3 % branch — the sampler nondeterminism FIX-2 is about,
+inside the 2 pp band; every other number is identical on both machines. ci/coverage-baseline.json keeps
+high-water marks, so its bench line reads 96.5 where the table says 95.6.)
+
+Bench on the gate commit, github-hosted runner (same job): sync 17 295 msg/s, p50 3.03 ms, p99 9.53 ms;
+async 18 348 msg/s, p50 2.94 ms, p99 9.02 ms; `bench: no regression` against the runner markers (B-1,
+D-039). The VM baselines (P0-10) and spike-2 numbers (P0-11) are the sections below.
+
+Spike answers carried into Phase 1: (1) durable ACK on native Postgres is p50 ≈ 4–6 ms, p99 8–18 ms at
+c=64 — not < 5 ms p99; sub-5 ms needs the non-durable reply mode (P0-10). (2) `RequestScope` costs
+≈ 55 µs per message with 4 children and `Admission` never exceeds its budget under 10 000 virtual
+threads (P0-11). Schemas: four v1 drafts published in `flottila-schemas`, demo package validated (P0-12).
+
+Open follow-ups carried into Phase 1 (BACKLOG Fixes section, not gate conditions): FIX-2 (deterministic
+detector coverage) and Q-1 (WorkQueue `locked_by` guard for stale completes).
+
+**Gate: MET.** Phase 1 rows become `ready` (P1-01, P1-02 first).
+
+---
 ## P0-11 — RequestScope + admission under 10k virtual threads (spike 2) — cloud VM, 4 vCPU
 
 Date: 2026-10-18. Commit: the P0-11 commit (hash in PROGRESS.md; `--commit 9c18826` in the JSON names
@@ -130,6 +166,8 @@ but its blob storage is not reachable from the coordinator's VM).
 | 2 | async | 22842 | 2.56 ms | 5.00 ms | 6.03 ms | 12.2 ms |
 | 3 | sync | 15491 | 3.01 ms | 7.70 ms | 22.28 ms | 102.3 ms |
 | 3 | async | 20762 | 2.48 ms | 6.29 ms | 8.92 ms | 12.0 ms |
+| 4 | sync | 17295 | 3.03 ms | 7.15 ms | 9.53 ms | 14.9 ms |
+| 4 | async | 18348 | 2.94 ms | 7.05 ms | 9.02 ms | 10.8 ms |
 
 Run 2 (CI run 39092705480, the first with the run-1 markers armed) was 11 % faster and went red
 on p99: one 98 ms batch (a shared-runner stall) put the sync p99 94 % above run 1. Latency on a
@@ -138,7 +176,7 @@ fails on throughput > 20 % below run 1 and nothing else; p99 stays gated where t
 it, i.e. the coordinator's VM runs above. The throughput baseline keeps run 1, the lower and so the
 more lenient of the two (floor 14 570 msg/s). Run 3 (CI run 39093734224, first with the throughput-only
 markers) had another ~100 ms stall and 15 % less sync throughput than run 1 — passed, as intended;
-the runner's spread (15.5–20.2k msg/s sync) is the reason the band is as wide as it is. D-037's other remedy, a 3-run median, was not chosen:
+the runner's spread (15.5–20.2k msg/s sync over four runs; run 4 is the gate run 39095635572) is the reason the band is as wide as it is. D-037's other remedy, a 3-run median, was not chosen:
 a median baseline does not absorb a per-run stall, it only moves the number the stall is compared with.
 
 <!-- baseline:batched-persistence-sync {"machine": "github-hosted runner", "throughputPerSecond": 18212} -->
