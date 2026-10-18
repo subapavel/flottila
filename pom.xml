@@ -20,8 +20,7 @@
   </licenses>
 
   <!-- Dependency direction (docs/ARCHITECTURE.md §12, enforced by flottila-archtest): api <- core <- runtime;
-       components and steps depend on api only; testkit on api (F-1); core's tests use the testkit; cli on api + testkit.
-       flottila-m1 is the milestone-1 tree (Vert.x 4.5 + Mutiny) kept building until P0-09 removes it. -->
+       components and steps depend on api only; testkit on api (F-1); core's tests use the testkit; cli on api + testkit. -->
   <modules>
     <module>flottila-api</module>
     <module>flottila-testkit</module>
@@ -32,7 +31,6 @@
     <module>flottila-schemas</module>
     <module>flottila-cli</module>
     <module>flottila-archtest</module>
-    <module>flottila-m1</module>
   </modules>
 
   <properties>
@@ -61,7 +59,7 @@
     <pitest-junit5.version>1.2.3</pitest-junit5.version>
 
     <!-- coverage floors (CLAUDE.md): api/core 90 %, everything else 75 %, line and branch.
-         Modules override flottila.coverage.* ; flottila-m1 skips JaCoCo entirely. -->
+         Modules override flottila.coverage.* -->
     <flottila.coverage.line>0.75</flottila.coverage.line>
     <flottila.coverage.branch>0.75</flottila.coverage.branch>
     <!-- PIT mutation floor for api and core (phase-gate condition) -->

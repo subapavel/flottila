@@ -20,11 +20,11 @@ Where to look:
 - `docs/DECISIONS.md`, `docs/findings/`, `issues/` — what was decided, what deviated, what is open
 - `deploy/claude-cloud/` — the cloud environment the autonomous session runs in
 
-Build at the current state: JDK 25 and Maven 3.9, `mvn -B -ntp verify`. The reactor holds the new
-modules (`flottila-api`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-testkit`, `-schemas`,
-`-cli`, `-archtest`) next to `flottila-m1`, the milestone-1 tree being dismantled; its
-Postgres-backed tests run when a Postgres listens on `localhost:5432` (`docker compose up -d`) and
-skip themselves otherwise.
+Build at the current state: JDK 25 and Maven 3.9, `mvn -B -ntp verify` for the unit tests and
+`mvn -B -ntp verify -Pit` to include the Testcontainers tests (Docker required). Modules:
+`flottila-api`, `-testkit`, `-core`, `-runtime`, `-components/*`, `-steps/*`, `-schemas`, `-cli`,
+`-archtest`. The milestone-1 prototype survives as tag `proto-m1` and in the history of the files
+that moved; the demo flow it ran lives in `packages/demo/` until P0-12 converts it.
 
 "Flottila" is a working name. Contributions are accepted under the Developer Certificate of
 Origin: sign your commits (`git commit -s`).

@@ -83,11 +83,12 @@ class CoverageCheckTest(unittest.TestCase):
         problems = cc.compare(cc.measure(self.root), {}, self.root)
         self.assertEqual(["flottila-core: has classes but no JaCoCo report (no test ran)"], problems)
 
-    def test_ignored_legacy_module_may_lack_a_report(self):
-        module(self.root, "flottila-m1")
-        self.assertEqual([], cc.compare(cc.measure(self.root), {}, self.root))
-        self.assertEqual(["flottila-m1: has classes but no JaCoCo report (no test ran)"],
-                         cc.compare(cc.measure(self.root), {}, self.root, ignore=frozenset()))
+    def test_an_explicitly_ignored_module_may_lack_a_report_and_the_default_ignores_nothing(self):
+        module(self.root, "flottila-legacy")
+        self.assertEqual([], cc.compare(cc.measure(self.root), {}, self.root, ignore=frozenset({"flottila-legacy"})))
+        self.assertEqual(["flottila-legacy: has classes but no JaCoCo report (no test ran)"],
+                         cc.compare(cc.measure(self.root), {}, self.root))
+        self.assertEqual(frozenset(), cc.IGNORED, "nothing is exempt from the coverage report since P0-09")
 
     def test_decrease_against_baseline_fails(self):
         module(self.root, "flottila-api", report=(20, 80, 5, 15))

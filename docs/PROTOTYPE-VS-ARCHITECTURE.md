@@ -6,8 +6,18 @@ Date: 2026-10-17. Companion to `docs/ARCHITECTURE.md`. Supersedes the earlier
 Decision (D-002): **same repository, restructured in place.** Tag `proto-m1` marks the last commit
 of the milestone-1 state. Files that stay are moved with `git mv` into their new module so their
 history survives; files that are replaced are deleted in the commit that lands their replacement.
-During Phase 0 the old single-module tree lives on as module `flottila-m1` so the build stays green
-until the last kept file has moved; task P0-09 removes the module.
+During Phase 0 the old single-module tree lived on as module `flottila-m1` so the build stayed green
+until the last kept file had moved; task P0-09 removed the module on 2026-10-18. Where things went:
+Headers/Props/Key/Keys/Views → `flottila-api` (git mv, P0-05); Envelope/Body/Part rewritten in
+api (D-024); the batcher → `flottila-core` + `flottila-runtime` (P0-06); the WorkQueue claim SQL →
+`flottila-runtime` (P0-07); `db/init.sql` → `deploy/postgres/V1__m1_schema.sql` (P0-08);
+`flows/invoice.json`, `invoice-to-partner.xsl`, `sample-invoice.xml` → `packages/demo/` (P0-09,
+converted in P0-12); `bench/bench.py` stays for P0-10 (it drives an HTTP ingress that does not exist yet; P0-10
+decides whether it is rewritten or history-only); the root `docker-compose.yml` stays until
+P2-05 replaces it. Rows of §2 whose new home does not exist yet (Flow replay numbering → P1-03,
+Dlq semantics → P1-05, durableIngress semantics → P1-06, xxh3 Hashing → P1-01) are recovered from
+the last tree that held the module, commit `74c01da` (the milestone-1 state itself is 3f81834,
+tag `proto-m1` = fc6eb56).
 
 ## 1. What the milestone-1 state is
 
@@ -18,7 +28,7 @@ payloads, three delivery modes, durable DLQ, Postgres WorkQueue (SKIP LOCKED, pa
 batched persistence writer, replay from any step, kill -9 ledger verified 2000/2000. Bench results
 in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the native rerun counts).
 
-## 2. Stays (git mv, adapt imports; design is final)
+## 2. Stays (git mv where done; rows without a new home yet are recovered from commit `74c01da`)
 
 | File(s) at `proto-m1` | New home (ARCHITECTURE §12) | Notes |
 | --- | --- | --- |

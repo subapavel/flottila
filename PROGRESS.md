@@ -127,3 +127,14 @@ Review: PASS (V1 verified as a pure rename plus header: no content line changed;
 Decisions: D-034
 Deviation: none
 Next: P0-09 (remove flottila-m1) and P0-10 (bench harness, native baseline) become ready; P0-11, P0-12 are ready
+
+## P0-09 · 2026-10-18 · commit with trailer `Task: P0-09` (D-017)
+P0-08 close-out: CI on dc85964 observed green (run 39089952198: dco, build incl. ITs and both coverage gates).
+Test first: archtest BuildHygieneTest (3: the root pom lists no `flottila-m1` and the directory is gone; no pom in the reactor references `io.smallrye`, `mutiny` or `vertx4.version`; the archtest classpath carries no Mutiny or Vert.x 4 jar). Red observed: target/red-p009.log — 2 of 3 failing while the module existed (the classpath case was green already: nothing new ever depended on m1).
+Changed: `git rm -r flottila-m1` (Mutiny skeleton, m1 Envelope/Body/Part/Hashing/Step/Stage/Component/Runtime/Snapshot, BatchingWriter, WorkQueue, MessageStore, Dlq*, HttpComponent, FlowBuilder/Flow, verticles, demo Main, its 9 tests); `git mv` of `flows/invoice.json`, `invoice-to-partner.xsl` → `packages/demo/flows/`, `sample-invoice.xml` → `packages/demo/fixtures/` (D-035); root pom without the module and the m1 comments; `.github/workflows/ci.yml` build job without the Postgres service and the schema step; `ci/coverage_check.py` IGNORED empty (test asserts it stays empty); README build paragraph; docs/PROTOTYPE-VS-ARCHITECTURE.md §1 records where everything went; DECISIONS D-035. The root `docker-compose.yml` stays until P2-05.
+Checks: mvn -B -ntp verify -Pit VERIFIED_PASS (target/p009-full.log: api 48, testkit 51, core 23, archtest 27, runtime 3 + 15 IT, 0 skipped; 13 reactor modules, none named m1) · ArchUnit VERIFIED_PASS · unittest ci.test_coverage_check VERIFIED_PASS (25/25) · coverage gates VERIFIED_PASS (no-decrease vs HEAD, baseline current — m1 was never in it) · PIT NOT_RUN (no api/core change) · CI on this commit: observed after the push (next entry)
+Measured: nothing
+Review: PASS (recovery point for the rows without a new home yet recorded as commit `74c01da` in PROTOTYPE-VS-ARCHITECTURE §1/§2 and D-035)
+Decisions: D-035
+Deviation: none
+Next: P0-10 (bench harness, native Postgres baseline); P0-11, P0-12 ready

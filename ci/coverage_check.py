@@ -28,8 +28,8 @@ BASELINE = Path("ci") / "coverage-baseline.json"
 REPORT = Path("target") / "site" / "jacoco" / "jacoco.xml"
 CLASSES = Path("target") / "classes"
 COUNTERS = {"line": "LINE", "branch": "BRANCH"}
-# legacy module with jacoco.skip=true (removed by P0-09); nothing else may be listed here
-IGNORED = frozenset({"flottila-m1"})
+# modules allowed to have classes without a JaCoCo report; empty since P0-09 removed flottila-m1 — keep it empty
+IGNORED: frozenset[str] = frozenset()
 # D-029: timing-dependent branches (e.g. the testkit's thread-state sampler) move by about one branch
 # between runs; a change inside this band, in percentage points, is noise, not a decrease. The JaCoCo
 # floors in the poms stay hard.
