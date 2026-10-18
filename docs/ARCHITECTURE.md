@@ -10,6 +10,7 @@
 | 2026-10-17 | 3.3 | Exported from the design document; amendments 1–8 added from the Part A brainstorm | — |
 | 2026-10-18 | 3.3 | §12: `flottila-testkit` depends on `api` only (core's tests use it; a testkit → core dependency is a reactor cycle); the golden-test runner moves to `flottila-cli` or a later module | F-1 (minor) |
 | 2026-10-18 | 3.3 | §14: "Flow config JSON Schema" ticked as drafted — `flottila-schemas` v1 schemas for flow, package, endpoint, `*.test.yaml` (amendment 4 delegated the design to P0-12; D-040); body text unchanged | — |
+| 2026-10-18 | 3.3 | §6: the step SPI (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`) lives in `flottila-api`, as §7 and §12 require for pluggable steps; the built-in `route` sets a prop (`route.prop` / `routes[].when` / `set` / `otherwise`, schema v1) and `to … byProp` acts on it — the form where a branch is itself a pipeline named `route:<branch>` is deferred until a flow needs it; `split` has a stage but no flow-file shape yet (D-043) | — |
 
 ## Amendments (Part A, 2026-10-17)
 

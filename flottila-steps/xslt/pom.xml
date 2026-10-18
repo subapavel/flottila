@@ -20,5 +20,14 @@
       <groupId>io.flottila</groupId>
       <artifactId>flottila-api</artifactId>
     </dependency>
+    <dependency>
+      <groupId>net.sf.saxon</groupId>
+      <artifactId>Saxon-HE</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

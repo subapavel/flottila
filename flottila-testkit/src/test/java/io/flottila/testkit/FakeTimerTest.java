@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The fake timer fires when the fake clock reaches a task's due time — never by wall time. */
@@ -18,6 +19,22 @@ class FakeTimerTest {
     final FakeClock clock = FakeClock.at(Instant.EPOCH);
     final FakeTimer timer = new FakeTimer(clock);
     final List<String> fired = new ArrayList<>();
+
+    @Test
+    void nextDelayIsTheDistanceToTheEarliestPendingTaskAndFailsWhenNothingIsPending() {
+        assertThrows(IllegalStateException.class, timer::nextDelay);
+        timer.schedule(Duration.ofMillis(30), () -> fired.add("later"));
+        timer.schedule(Duration.ofMillis(10), () -> fired.add("sooner"));
+        assertEquals(Duration.ofMillis(10), timer.nextDelay());
+        clock.advance(Duration.ofMillis(4));
+        assertEquals(Duration.ofMillis(6), timer.nextDelay(), "measured from the clock's current instant");
+        clock.advance(timer.nextDelay());
+        assertEquals(List.of("sooner"), fired);
+        assertEquals(Duration.ofMillis(20), timer.nextDelay());
+        clock.advance(timer.nextDelay());
+        assertEquals(List.of("sooner", "later"), fired);
+        assertThrows(IllegalStateException.class, timer::nextDelay, "nothing left");
+    }
 
     @Test
     void firesExactlyWhenTheClockReachesTheDueTimeNotBefore() {

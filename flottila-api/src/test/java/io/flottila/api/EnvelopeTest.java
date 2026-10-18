@@ -108,4 +108,18 @@ class EnvelopeTest {
         assertThrows(NullPointerException.class, () -> Envelope.ingress("m", "f", Headers.empty(), null));
         assertThrows(NullPointerException.class, () -> ingress.next(null));
     }
+
+    @Test
+    void advanceMovesToTheNextStepWithTheSameBodyAndEverythingElse() {
+        Envelope e = Envelope.ingress("m-1", "invoice", Headers.empty().with("a", "b"), body0).withKey("k", "v");
+        Envelope next = e.advance();
+        assertEquals(1, next.step());
+        assertEquals(0, e.step(), "the original is untouched");
+        assertSame(e.body(), next.body(), "the body is shared by reference");
+        assertSame(e.views(), next.views(), "and so are the parsed views");
+        assertEquals(e.headers(), next.headers());
+        assertEquals(e.keys(), next.keys());
+        assertEquals(e.id(), next.id());
+        assertEquals(2, next.advance().step());
+    }
 }

@@ -47,7 +47,8 @@
     <testcontainers.version>2.0.5</testcontainers.version>
     <slf4j.version>2.0.17</slf4j.version>
     <postgresql-jdbc.version>42.7.14</postgresql-jdbc.version> <!-- BSD-2-Clause; runtime scope, for Flyway only -->
-    <flyway.version>13.10.3</flyway.version> <!-- Apache-2.0 (community); flyway-database-postgresql carries the Postgres support since Flyway 10 -->
+    <flyway.version>13.10.3</flyway.version>
+    <saxon.version>12.4</saxon.version> <!-- MPL-2.0 (allowed, CLAUDE.md); its one required dependency xmlresolver is Apache-2.0 --> <!-- Apache-2.0 (community); flyway-database-postgresql carries the Postgres support since Flyway 10 -->
 
     <!-- plugins -->
     <maven-compiler.version>3.14.1</maven-compiler.version>
@@ -164,6 +165,12 @@
         <version>${testcontainers.version}</version>
         <type>pom</type>
         <scope>import</scope>
+      </dependency>
+      <dependency>
+        <!-- XSLT 3.0 / XPath 3.1 for the xslt step (ARCHITECTURE §13: Saxon-HE; EE as a plugin) -->
+        <groupId>net.sf.saxon</groupId>
+        <artifactId>Saxon-HE</artifactId>
+        <version>${saxon.version}</version>
       </dependency>
       <dependency>
         <groupId>net.jqwik</groupId>

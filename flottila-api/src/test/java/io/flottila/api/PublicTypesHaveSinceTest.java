@@ -102,6 +102,6 @@ class PublicTypesHaveSinceTest {
             }
         }
         assertEquals(List.of(), missing, "public types without @since");
-        assertEquals(31, publicTypes, "25 top-level + 6 nested public types after P0-06 (Timer, Timer.Cancellable); update this number with every api change");
+        assertEquals(35, publicTypes, "29 top-level + 6 nested public types after P1-03 (StepFactory, StepConfig, StepResources, Expressions); update this number with every api change");
     }
 }

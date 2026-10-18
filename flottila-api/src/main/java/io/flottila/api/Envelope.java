@@ -55,6 +55,15 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
         return new Envelope(id, flow, step + 1, headers, props, keys, newBody, attachments, new Views());
     }
 
+    /**
+     * The same message one step further: step + 1 with the body and its views shared by reference.
+     * This is how a step that only changed headers, props or keys is numbered (ARCHITECTURE §5:
+     * step index = position in the flow's steps, ingress is 0).
+     */
+    public Envelope advance() {
+        return new Envelope(id, flow, step + 1, headers, props, keys, body, attachments, views);
+    }
+
     public Envelope withHeader(String name, String value) {
         return new Envelope(id, flow, step, headers.with(name, value), props, keys, body, attachments, views);
     }

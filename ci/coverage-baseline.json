@@ -1,7 +1,7 @@
 {
   "flottila-api": {
     "branch": 100.0,
-    "line": 98.5
+    "line": 98.7
   },
   "flottila-bench": {
     "branch": 92.6,
@@ -9,7 +9,7 @@
   },
   "flottila-core": {
     "branch": 100.0,
-    "line": 99.3
+    "line": 99.6
   },
   "flottila-runtime": {
     "branch": 100.0,
@@ -19,8 +19,12 @@
     "branch": 94.4,
     "line": 98.3
   },
+  "flottila-steps/xslt": {
+    "branch": 92.3,
+    "line": 100.0
+  },
   "flottila-testkit": {
     "branch": 93.2,
-    "line": 98.4
+    "line": 98.5
   }
 }

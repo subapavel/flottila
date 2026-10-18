@@ -41,6 +41,18 @@ public final class FakeTimer implements Timer {
         return pending.size();
     }
 
+    /**
+     * How far the clock has to advance for the earliest pending task to fire: what a test passes to
+     * {@code clock.advance} to drive a backoff, a lease or a deadline without guessing the delay.
+     * Zero when it is already due; {@link IllegalStateException} when nothing is pending.
+     */
+    public synchronized Duration nextDelay() {
+        Instant now = clock.instant();
+        Instant earliest = pending.stream().map(Scheduled::due).min(Instant::compareTo)
+                .orElseThrow(() -> new IllegalStateException("no task is pending"));
+        return earliest.isBefore(now) ? Duration.ZERO : Duration.between(now, earliest);
+    }
+
     private void fireDue() {
         while (true) {
             Scheduled next;

@@ -70,6 +70,18 @@
       <artifactId>flottila-testkit</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- the milestone-1 flow end to end (P1-03): the demo package's files through the schema loader, the xslt step and the
+         builder, in the fake Runtime -->
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-schemas</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-step-xslt</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
          driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->
     <dependency>
