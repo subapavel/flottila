@@ -161,3 +161,14 @@ Review: PASS (observations taken: sync/async speed-up stated separately; version
 Decisions: none (D-037 applied)
 Deviation: none
 Next: P0-11 (in progress: red tests written)
+
+## FIX-4 · 2026-10-18 · commit with trailer `Task: FIX-4` (D-017)
+B-1 close-out: CI on 9c18826 — push run 39092696312 green; dispatched run 39092705480: build, dco, mutation green, **bench red**: `BENCH REGRESSION: batched-persistence-sync [github-hosted runner]: p99Ms 19.197089 is 94.3 % above the baseline 9.88 (limit 50 %)` while throughput rose to 20 243 msg/s (max 98.3 ms: one stalled batch). The single-run caveat written in B-1 materialised on the very next run.
+Test first: `bench/test_check_regression.py::test_a_marker_without_p99_gates_throughput_only` (a marker without `p99Ms` never raises a p99 problem, still fails at −20.1 % throughput); red observed before the fixture change? No — `compare()` already skipped absent metrics (`if "p99Ms" in b`), so the test was green at once: the behaviour existed, the fix is the data (runner markers without p99) and the rule (D-039). Recorded honestly: this is a data + decision fix with a test that pins the rule.
+Changed: bench/RESULTS.md runner subsection (run 2 recorded, markers carry throughput only, rationale), bench/check_regression.py docstring, bench/test_check_regression.py (fixture + 2 tests → 10), docs/DECISIONS.md D-039, docs/WORKFLOW.md §4 bench row, agent/BACKLOG.md FIX-4.
+Checks: unittest bench VERIFIED_PASS (10/10, incl. the exact-band boundary case) · `python3 bench/check_regression.py` with the VM run VERIFIED_PASS · replay of the runner's run-2 numbers against the new markers VERIFIED_PASS (target/fix4-replay.log "no regression", inputs kept in target/fix4-replay/) · mvn NOT_RUN (no Java change) · CI: the next dispatched bench job is the confirmation, observed in the next entry — the row's acceptance is the replay, not that job
+Measured: nothing new on the VM; the runner's run 2 as printed by the job: `batched-persistence-sync: 20243 msg/s, p50 2.20 ms, p95 5.94 ms, p99 19.20 ms, max 98.3 ms` · `batched-persistence-async: 22842 msg/s, p50 2.56 ms, p95 5.00 ms, p99 6.03 ms, max 12.2 ms`
+Review: PASS after one FAIL (round 1: the row's acceptance named an unobserved CI job — restated to the observed replay + unit test; boundary test, docstring order, "lenient" wording, D-037-remedy sentence and replay inputs under target/ taken as well)
+Decisions: D-039
+Deviation: none
+Next: P0-11 (in progress: implementation green, PIT and numbers pending)

@@ -5,8 +5,11 @@ baseline for <name> recorded in bench/RESULTS.md as an HTML comment
 
 A run is compared only with the baseline of its own machine (the run's machine.label, set through
 BENCH_MACHINE): numbers from the cloud VM say nothing about a GitHub-hosted runner (D-037).
-Throughput more than 20 % below the baseline fails; p99 more than 50 % above fails — the wider p99
-band is the run-to-run spread observed in the three Phase 0 baseline runs (12.0–18.1 ms, D-037).
+Each metric is checked only when the marker carries it (FIX-4, D-039): throughput more than 20 %
+below the baseline fails; p99, where the marker carries it, more than 50 % above fails — the wider
+p99 band is the run-to-run spread observed in the three Phase 0 baseline runs (12.0–18.1 ms, D-037).
+A shared runner's markers carry throughput only, because its latency tail is not under anyone's
+control; the VM's carry both.
 Runs without a baseline for their machine are listed, not compared; a RESULTS.md without any
 marker means the gate is not armed yet (exit 0).
 

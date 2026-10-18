@@ -15,7 +15,7 @@ RESULTS = """# Bench results
 
 <!-- baseline:batched-persistence-sync {"machine": "cloud VM, 4 vCPU", "throughputPerSecond": 2000.0, "p99Ms": 4.0} -->
 <!-- baseline:batched-persistence-async {"machine": "cloud VM, 4 vCPU", "throughputPerSecond": 3000.0, "p99Ms": 3.0} -->
-<!-- baseline:batched-persistence-sync {"machine": "github-hosted runner", "throughputPerSecond": 1000.0, "p99Ms": 8.0} -->
+<!-- baseline:batched-persistence-sync {"machine": "github-hosted runner", "throughputPerSecond": 1000.0} -->
 
 | run | req/s | p99 |
 """
@@ -40,7 +40,7 @@ class CheckRegressionTest(unittest.TestCase):
         b = cr.baselines(self.root / "RESULTS.md")
         self.assertEqual({("cloud VM, 4 vCPU", "batched-persistence-sync"): {"throughputPerSecond": 2000.0, "p99Ms": 4.0},
                           ("cloud VM, 4 vCPU", "batched-persistence-async"): {"throughputPerSecond": 3000.0, "p99Ms": 3.0},
-                          ("github-hosted runner", "batched-persistence-sync"): {"throughputPerSecond": 1000.0, "p99Ms": 8.0}}, b)
+                          ("github-hosted runner", "batched-persistence-sync"): {"throughputPerSecond": 1000.0}}, b)
 
     def test_throughput_within_twenty_percent_passes_and_beyond_fails(self):
         self.run_with("batched-persistence-sync", 1700.0, 4.7)      # -15 % throughput, +17.5 % p99
@@ -69,6 +69,19 @@ class CheckRegressionTest(unittest.TestCase):
         self.assertEqual([], cr.compare(self.root / "out", cr.baselines(self.root / "RESULTS.md")))
         self.assertEqual(["batched-persistence-async [github-hosted runner]", "new-run [cloud VM, 4 vCPU]"],
                          cr.unbaselined(self.root / "out", cr.baselines(self.root / "RESULTS.md")))
+
+    def test_a_marker_without_p99_gates_throughput_only(self):
+        self.run_with("batched-persistence-sync", 1000.0, 800.0, machine="github-hosted runner")   # p99 a hundredfold: not this marker's business
+        self.assertEqual([], cr.compare(self.root / "out", cr.baselines(self.root / "RESULTS.md")))
+        self.run_with("batched-persistence-sync", 799.0, 1.0, machine="github-hosted runner")      # -20.1 %
+        self.assertEqual(["batched-persistence-sync [github-hosted runner]: throughputPerSecond 799.0 is 20.1 % below the baseline 1000.0 (limit 20 %)"],
+                         cr.compare(self.root / "out", cr.baselines(self.root / "RESULTS.md")))
+
+    def test_exactly_on_the_band_passes_and_the_next_tenth_fails(self):
+        self.run_with("batched-persistence-sync", 1600.0, 6.0)      # exactly -20.0 % and exactly +50.0 %: "more than" means strictly more
+        self.assertEqual([], cr.compare(self.root / "out", cr.baselines(self.root / "RESULTS.md")))
+        self.run_with("batched-persistence-sync", 1598.0, 6.004)    # -20.1 %, +50.1 %
+        self.assertEqual(2, len(cr.compare(self.root / "out", cr.baselines(self.root / "RESULTS.md"))))
 
     def test_a_marker_without_a_machine_is_rejected_loudly(self):
         (self.root / "RESULTS.md").write_text('<!-- baseline:x {"throughputPerSecond": 1.0, "p99Ms": 1.0} -->\n')

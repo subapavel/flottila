@@ -78,7 +78,7 @@ Next: P1-05
 | --- | --- | --- |
 | `build` | compile, unit tests, ArchUnit, JaCoCo floors and no-decrease check (±2 pp noise band, D-029), DCO check | yes |
 | `integration` | Testcontainers tests (`-Pit`): Postgres, Kafka, ClickHouse, Valkey, S3 — run inside the `build` job since D-030 so one JaCoCo measurement covers unit and integration tests | yes |
-| `bench` | harness against native Postgres on the runner; artifact uploaded; fails only on a regression > 20 % in throughput (> 50 % in p99, D-037) against the last baseline **for the same machine label** in `bench/RESULTS.md` | yes, once a baseline for the runner exists (D-037, row B-1) |
+| `bench` | harness against native Postgres on the runner; artifact uploaded; fails only on a regression > 20 % in throughput against the last baseline **for the same machine label** in `bench/RESULTS.md` (p99, 50 % band, is gated only where the marker carries it: the VM, not the shared runner — D-037, D-039) | yes, since B-1 |
 | `mutation` | PIT on `api` and `core`, nightly | reported; ≥ 80 % is a phase-gate condition |
 
 Gate numbers themselves (latency, throughput, ledger) are measured by the coordinator on the cloud
