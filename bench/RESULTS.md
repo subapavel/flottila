@@ -1,3 +1,87 @@
+# Bench results — Phase 0 baseline, cloud VM (P0-10)
+
+## Phase 0 baseline — cloud VM, 4 vCPU
+
+Date: 2026-10-18. Commit: the tree of 663d45d plus the P0-10 change (the P0-10 commit hash is in
+PROGRESS.md; `bench/out/*.json` carries `commit`). Machine: Linux 6.18.44-fc-v139, amd64, 4 vCPU, 15 GB,
+Java 25.0.4.1, PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) running **natively** on the VM (`pg_ctlcluster 16 main`, default
+configuration, data dir on the VM's disk), database `flottila_bench` migrated to V1 by Flyway.
+Harness: `bench/run.sh` → `flottila-bench` (`BenchMain`): `BatchingWriter.save` →
+`PgBatchSink` (one batch = one transaction: `payloads` by hash with ON CONFLICT DO NOTHING, then
+`messages` by (id, step), both fixed-shape `unnest` inserts, prepared-statement cache on), batch
+100 / 10 ms / commitConcurrency 4 / maxBacklog 6400, 20 000 messages of 158 bytes after a 1 000
+message warm-up, tables truncated before the measured run, pool size 6. Latency = `save()` call to
+its future completing (the durable ACK: the batch's commit returned). "sync" is
+`synchronous_commit=on` (the default), "async" is `off` per connection; both observed on the
+server with `show synchronous_commit` and written into the JSON.
+
+This is the prototype's "batched persistence" spike rerun on native Linux (ARCHITECTURE §13
+Phase 0, spike 1); the runtime around it (HTTP, pipeline, XSLT) does not exist yet, so the
+numbers measure the store path alone and are not comparable with the end-to-end request numbers
+of the STEP 1.5 / STEP 2 sections below.
+
+### Baseline (concurrency 64, three runs in a row; the markers below carry the median run)
+
+| run | config | msg/s | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|---|
+| 1 | sync | 9969 | 5.86 ms | 10.80 ms | 18.10 ms | 37.5 ms |
+| 1 | async | 14322 | 3.90 ms | 8.42 ms | 12.33 ms | 17.2 ms |
+
+(Run 1's raw JSON was not retained — overwritten in `bench/out/` by run 2; the row is the harness's printed summary. Runs 2 and 3 and every supplementary run are backed by their JSON.)
+| 2 | sync | 11865 | 4.63 ms | 9.96 ms | 16.61 ms | 28.9 ms |
+| 2 | async | 14824 | 3.70 ms | 8.50 ms | 12.49 ms | 18.7 ms |
+| 3 | sync | 12326 | 4.70 ms | 9.26 ms | 12.05 ms | 20.2 ms |
+| 3 | async | 14996 | 3.62 ms | 7.91 ms | 12.81 ms | 18.3 ms |
+
+Run 2 is the median on all four baseline metrics and is the recorded baseline:
+
+<!-- baseline:batched-persistence-sync {"machine": "cloud VM, 4 vCPU", "throughputPerSecond": 11865, "p99Ms": 16.61} -->
+<!-- baseline:batched-persistence-async {"machine": "cloud VM, 4 vCPU", "throughputPerSecond": 14824, "p99Ms": 12.49} -->
+
+Run-to-run spread over the three runs: throughput ±10 %, p99 12.0–18.1 ms sync (±25 %) and
+12.3–12.8 ms async. The regression gate (`bench/check_regression.py`) therefore fails at > 20 %
+less throughput but only at > 50 % higher p99 (D-037). A run is compared only with the baseline
+of its own machine label; the GitHub-hosted runner gets its own baseline from its first artifact
+(BENCH_MACHINE in ci.yml; follow-up row B-1).
+
+### Supplementary (same build, same day; not baselines)
+
+| run | config | msg/s | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|---|
+| c=8, 5 000 msgs | sync | 2293 | 3.17 ms | 5.95 ms | 7.96 ms | 11.5 ms |
+| c=8, 5 000 msgs | async | 3901 | 1.79 ms | 4.26 ms | 6.37 ms | 14.5 ms |
+| c=64, window 2 ms | sync | 12007 | 4.91 ms | 9.28 ms | 12.85 ms | 35.1 ms |
+| c=64, window 2 ms | async | 15221 | 3.59 ms | 8.11 ms | 11.17 ms | 15.1 ms |
+| c=256 | sync | 22251 | 10.01 ms | 19.74 ms | 38.57 ms | 43.8 ms |
+| c=256 | async | 24208 | 9.50 ms | 18.70 ms | 29.55 ms | 33.8 ms |
+
+### Reading the numbers — the "< 5 ms p99 durable ACK" question (spike 1)
+
+- **Answer: no, not at c=64 on this VM.** The durable-ACK p99 with `synchronous_commit=on` is
+  12–18 ms at c=64 (p50 4.6–5.9 ms) and 8.0 ms at c=8 (p50 3.2 ms). `synchronous_commit=off`
+  brings p99 to 12.5 ms at c=64 and 6.4 ms at c=8 — a ~35 % win in throughput at c=64 but no
+  order of magnitude, as the prototype's native WSL2 run already hinted ((e)−(c) = 14 % there).
+- **The 10 ms window is not what costs the latency.** A 2 ms window gives the same distribution
+  (p50 4.91 vs 4.63 ms, p99 12.85 vs 16.61 ms, inside the run-to-run spread): at c=64 a batch
+  closes as soon as the previous commit of its slot returns, and each commit of ~60 rows takes
+  ~4–5 ms on 4 vCPU (two unnest inserts, one of them ON CONFLICT on the hash index, fsync of the
+  WAL). Commit time, not the window, bounds the ACK latency.
+- **Throughput scales with offered load, latency pays for it.** c=256 fills batches by size
+  (100 rows): 22 251 msg/s sync / 24 208 async, with p50 ≈ 10 ms and p99 30–39 ms — queueing in
+  the backlog (maxBacklog 6400 was never hit; 0 `OverloadedException`). 20 000 msg/s is well above
+  anything Phase 1 needs (ARCHITECTURE §14 targets), so the batcher settings 100 / 10 ms / 4 stay
+  the defaults; the admission semaphore (P0-11) is what keeps p99 bounded under load, not a smaller
+  batch.
+- Consequence for ARCHITECTURE §13: the "< 5 ms p99" figure is not met by durable commit on this
+  class of machine; a durable ACK is p50 ≈ 4–6 ms, p99 8–18 ms here. Flows that need a sub-5 ms ACK use the
+  non-durable reply mode (ACK before commit; ARCHITECTURE §4 delivery modes), which the HTTP
+  component implements in Phase 1. Recorded as a measured fact, not as a deviation: the document
+  asked the question, it did not promise the number.
+
+Row-count check: every run ended with exactly `messages` = saved rows (`rowsInMessages` in the
+JSON; the harness exits 2 otherwise) and 0 failed saves (exit 3 otherwise, first cause printed).
+
+---
 # Bench results — writer v2 + delivery modes (STEP 1.5)
 
 Date: 2026-09-13. Same machine/client as the STEP 2 section below. Shape under test:

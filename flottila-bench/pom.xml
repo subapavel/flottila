@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila</groupId>
+    <artifactId>flottila</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>..</relativePath>
+  </parent>
+
+  <artifactId>flottila-bench</artifactId>
+  <packaging>jar</packaging>
+  <name>Flottila :: bench</name>
+  <description>Benchmark harness (bench/run.sh): drives the persistence batcher against native Postgres and writes
+    bench/out/*.json. A tool next to the product, never shipped; not on the archtest classpath (D-036).</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-runtime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive><manifest><mainClass>io.flottila.bench.BenchMain</mainClass></manifest></archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <!-- bench/run.sh needs the dependencies next to the jar: target/lib -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.8.1</version>
+        <executions>
+          <execution>
+            <id>copy-runtime-classpath</id>
+            <phase>package</phase>
+            <goals><goal>copy-dependencies</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/lib</outputDirectory>
+              <includeScope>runtime</includeScope>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

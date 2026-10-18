@@ -16,7 +16,7 @@ converted in P0-12); `bench/bench.py` stays for P0-10 (it drives an HTTP ingress
 decides whether it is rewritten or history-only); the root `docker-compose.yml` stays until
 P2-05 replaces it. Rows of §2 whose new home does not exist yet (Flow replay numbering → P1-03,
 Dlq semantics → P1-05, durableIngress semantics → P1-06, xxh3 Hashing → P1-01) are recovered from
-the last tree that held the module, commit `74c01da` (the milestone-1 state itself is 3f81834,
+the last tree that held the module, commit `dc85964` (the milestone-1 state itself is 3f81834,
 tag `proto-m1` = fc6eb56).
 
 ## 1. What the milestone-1 state is
@@ -28,7 +28,7 @@ payloads, three delivery modes, durable DLQ, Postgres WorkQueue (SKIP LOCKED, pa
 batched persistence writer, replay from any step, kill -9 ledger verified 2000/2000. Bench results
 in `bench/RESULTS.md` (Docker Desktop and WSL2 — round-trip-bound; only the native rerun counts).
 
-## 2. Stays (git mv where done; rows without a new home yet are recovered from commit `74c01da`)
+## 2. Stays (git mv where done; rows without a new home yet are recovered from commit `dc85964`)
 
 | File(s) at `proto-m1` | New home (ARCHITECTURE §12) | Notes |
 | --- | --- | --- |

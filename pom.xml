@@ -31,6 +31,7 @@
     <module>flottila-schemas</module>
     <module>flottila-cli</module>
     <module>flottila-archtest</module>
+    <module>flottila-bench</module>
   </modules>
 
   <properties>
@@ -120,6 +121,11 @@
       <dependency>
         <groupId>io.flottila</groupId>
         <artifactId>flottila-schemas</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-bench</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

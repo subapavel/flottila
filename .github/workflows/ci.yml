@@ -102,11 +102,14 @@ jobs:
       - name: Start native Postgres
         run: |
           sudo systemctl start postgresql
-          sudo -u postgres psql -c "CREATE ROLE flottila LOGIN PASSWORD 'flottila';"
+          # CREATEDB: bench/run.sh creates the flottila_bench database itself
+          sudo -u postgres psql -c "CREATE ROLE flottila LOGIN CREATEDB PASSWORD 'flottila';"
           sudo -u postgres psql -c "CREATE DATABASE flottila OWNER flottila;"
       - name: Run the harness (bench/run.sh from P0-10; fails on a > 20 % regression once a baseline exists)
         run: |
-          if [ -x bench/run.sh ]; then bench/run.sh; else echo "no bench/run.sh yet (P0-10)"; fi
+          bench/run.sh
+        env:
+          BENCH_MACHINE: github-hosted runner   # compared only with a baseline of this label (D-037); VM numbers never apply here
       - uses: actions/upload-artifact@v4
         with:
           name: bench-results

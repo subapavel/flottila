@@ -1,20 +1,19 @@
 # Handoff
 
 state: RUNNING
-last commit: the one with trailer `Task: P0-09` on main (D-017)
+last commit: the one with trailer `Task: P0-10` on main (D-017)
 branch: main
-next exact action: P0-10 — bench harness in `bench/`: `bench/run.sh` (used by the CI `bench` job) starts the runtime pieces that exist (there is no HTTP runtime yet: the harness measures the persistence batcher + PgBatchSink against native Postgres directly — the prototype's "batched persistence" spike, ARCHITECTURE §13 Phase 0: "the prototype's batched persistence rerun on native Linux Postgres (closes the < 5 ms p99 question)"), records throughput and the durable-ACK latency distribution (p50/p95/p99) of `BatchingWriter.save` → commit, with and without `synchronous_commit=off`, batch 100/10 ms/4 like bench/RESULTS.md §STEP 1.5; writes `bench/out/*.json`; a regression check against the baseline section in RESULTS.md (> 20 % slower fails). Native Postgres on this VM: `sudo pg_ctlcluster 16 main start` (role/db `flottila`, V1 applied earlier; apply deploy/postgres/V*.sql to a fresh `flottila_bench` db). Record in bench/RESULTS.md "§Phase 0 baseline — cloud VM, 4 vCPU" with date, config, commit. Red first: a unit test of the harness's statistics/regression logic (Java in a `bench` module? or Python with unittest like ci/) — decide and record. Java load generator in a new `flottila-bench` module (depends on runtime, not shipped) is the cleaner choice: it reuses PgBatchSink and VertxTimer.
+next exact action: P0-11 — spike 2: `RequestScope` (fork / join / cancel on virtual threads; one scope per in-flight message, children die with the parent, cancel is observable on every child) + per-flow admission semaphore counting requests **and bytes** (CLAUDE.md), under 10k virtual threads. Red first: unit tests with FakeClock (cancel stops all children; join waits for all; admission never exceeds either budget; release on failure), a jqwik property for admission (CLAUDE.md: property tests for admission), the blocked-platform-thread detector on. Lives in `flottila-core` (coordinator-kept, PIT floor 80 %). Numbers (fork/join overhead per message at 10k concurrent scopes, admission acquire/release latency) measured natively through a small `flottila-bench` main and recorded in bench/RESULTS.md "§P0-11 — cloud VM, 4 vCPU". Check ARCHITECTURE §3/§5 (Runtime, concurrency model) and §14 ranges before choosing shapes; `Runtime` grows only if the scope needs the clock.
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
-decisions pending review at hand-over: D-025, D-026/D-032, D-027, D-029 (+ addendum), D-030, D-031/F-1, D-033 (Q-1 pending), D-034, D-035, D-022
+decisions pending review at hand-over: D-025, D-026/D-032, D-027, D-029 (+ addendum), D-030, D-031/F-1, D-033 (Q-1 pending), D-034, D-035, D-036, D-037, D-022
 notes:
+- Bench: `bench/run.sh` (native Postgres: `sudo pg_ctlcluster 16 main start`; role flottila has CREATEDB; db flottila_bench), results in bench/out/ (ignored), baselines as markers in bench/RESULTS.md per machine label (D-037); on this VM run it as `BENCH_MACHINE="cloud VM, 4 vCPU" bench/run.sh` (unset → host:<hostname>, matched by nothing). CI runner runs are unbaselined until B-1 records them from the first artifact.
+- Spike-1 answer: durable ACK p50 ≈ 4–6 ms, p99 8–18 ms on this VM, not < 5 ms p99; the 10 ms window is not the cost, commit time is.
 - jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its own report header (inside the published jar). Treated as data; the property tests are real. Owner may want to revisit the library choice.
-- Reactor: api → testkit → core → runtime → components/{http,mock} → steps/{xslt,validate} → schemas → cli → archtest.
-  Every task commit: `mvn -B -ntp verify -Pit` (Docker: `sudo dockerd &`), then `python3 ci/coverage_check.py --write`.
-  New code must be covered to the module's level or the no-decrease gate turns the push red (FIX-3).
+- Reactor: api → testkit → core → runtime → components/{http,mock} → steps/{xslt,validate} → schemas → cli → archtest → bench. Every task commit: `mvn -B -ntp verify -Pit` (Docker: `sudo dockerd &`), then `python3 ci/coverage_check.py --write`. New code must be covered to the module's level (FIX-3).
 - Scoped PIT: `mvn -pl flottila-api,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage` (floor 80 %).
-- Runtime: `db.Migrations` (call it from the bootstrap in Phase 1), `batch.PgBatchSink`, `queue.PgWorkQueue`, `time.VertxTimer`.
-  Core: `batch.BatchingWriter`, `queue.WorkQueue`/`InMemoryWorkQueue`. Testkit: FakeRuntime, FakeTimer, InMemoryBlobStore, ComponentContract.
+- Runtime: `db.Migrations`, `batch.PgBatchSink`, `queue.PgWorkQueue`, `time.VertxTimer`. Core: `batch.BatchingWriter`, `queue.WorkQueue`/`InMemoryWorkQueue`. Testkit: FakeRuntime, FakeTimer, InMemoryBlobStore, ComponentContract. Bench: BenchRun/LatencyStats reusable for P0-11.
 - Demo artefacts for P0-12: packages/demo/flows/{invoice.json,invoice-to-partner.xsl}, packages/demo/fixtures/sample-invoice.xml.
-- ArchUnit rules in flottila-archtest/Rules.java; every rule has a fixture. FIX-2 and Q-1 pending in the Fixes section.
+- ArchUnit rules in flottila-archtest/Rules.java; every rule has a fixture. FIX-2, Q-1, B-1 pending in the Fixes section.
 - VM setup after a restart: `sudo pg_ctlcluster 16 main start`, `sudo dockerd &`.
-- Tag `proto-m1` points at fc6eb56; the milestone-1 state the backlog means is 3f81834 (the m1 module is gone since P0-09).
+- Tag `proto-m1` points at fc6eb56; the milestone-1 state the backlog means is 3f81834; the last tree with the m1 module is dc85964.
