@@ -16,8 +16,8 @@ import java.util.concurrent.Callable;
  * To be swapped for {@code StructuredTaskScope} when that leaves preview.
  *
  * <ul>
- *   <li>{@link #fork(Callable)} starts the task on a new virtual thread; after {@link #cancel()} or
- *       {@link #close()} it is refused.</li>
+ *   <li>{@link #fork(Callable)} starts the task on a new virtual thread, with the forking thread's
+ *       {@link MessageContext} bound in it; after {@link #cancel()} or {@link #close()} it is refused.</li>
  *   <li>{@link #join()} waits for every child forked so far. An interrupt of the owner cancels the scope
  *       and is rethrown, which is how a parent's cancel unwinds a nested scope.</li>
  *   <li>{@link #cancel()} interrupts the running children; an exception a child throws after that is
@@ -77,7 +77,7 @@ public final class RequestScope implements AutoCloseable {
         Objects.requireNonNull(task, "task");
         if (cancelled) throw new IllegalStateException("scope is cancelled");
         if (closed) throw new IllegalStateException("scope is closed");
-        Child<T> child = new Child<>(task);
+        Child<T> child = new Child<>(task, MessageContext.boundOrNull());   // the forking thread's context follows the child
         children.add(child);
         running++;
         // started under the same monitor that cancel() takes: a cancel can never slip between start and interrupt
@@ -87,7 +87,7 @@ public final class RequestScope implements AutoCloseable {
 
     private <T> void run(Child<T> child) {
         try {
-            T result = child.task.call();
+            T result = child.context == null ? child.task.call() : child.context.call(child.task);
             child.finish(Subtask.State.SUCCESS, result, null);
         } catch (Throwable t) {
             child.finish(isCancelled() ? Subtask.State.CANCELLED : Subtask.State.FAILED, null, t);
@@ -158,12 +158,13 @@ public final class RequestScope implements AutoCloseable {
 
     private static final class Child<T> implements Subtask<T> {
         private final Callable<T> task;
+        private final MessageContext context;
         private Thread thread;
         private volatile T result;
         private volatile Throwable exception;
         private volatile State state = State.RUNNING;
 
-        private Child(Callable<T> task) { this.task = task; }
+        private Child(Callable<T> task, MessageContext context) { this.task = task; this.context = context; }
 
         private void finish(State end, T result, Throwable exception) {
             this.result = result;

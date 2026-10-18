@@ -12,6 +12,13 @@
 
   <artifactId>flottila-testkit</artifactId>
   <packaging>jar</packaging>
+
+  <properties>
+    <!-- PIT ≥ 80 % is a floor for api and core (CLAUDE.md); the testkit is fakes and contract suites — test code shipped as
+         main. Its threshold is a ratchet at the measured value (73 % at P1-02, when BlobStoreContract joined): it may rise,
+         never fall silently (D-042). -->
+    <flottila.mutation.threshold>70</flottila.mutation.threshold>
+  </properties>
   <name>Flottila :: testkit</name>
   <description>Fake Runtime, fake clock and timer, in-memory BlobStore, contract suites, blocked-platform-thread detector. Depends on api only.</description>
 

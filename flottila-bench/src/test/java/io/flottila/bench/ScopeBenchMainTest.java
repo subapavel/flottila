@@ -27,6 +27,8 @@ class ScopeBenchMainTest {
         assertEquals(300, json.getJsonObject("admission").getInteger("threads"));
         assertEquals(0, json.getJsonObject("admission").getInteger("failed"));
         assertTrue(json.getJsonObject("admission").getLong("maxInFlightRequests") <= 16);
+        assertEquals(300, json.getJsonObject("admitted").getInteger("messages"));
+        assertTrue(json.getJsonObject("admitted").getLong("maxInFlightRequests") <= 16);
         assertTrue(json.getJsonObject("machine").getInteger("cpus") > 0);
     }
 }

@@ -36,6 +36,23 @@ class ScopeBenchTest {
     }
 
     @Test
+    void admittedRunGoesThroughTheRealMessagePathAndNeverExceedsTheBudget() throws Exception {
+        FakeClock clock = FakeClock.at(Instant.EPOCH);
+        FakeTimer timer = new FakeTimer(clock);
+        Admission admission = new Admission(16, 16 * 1024);
+        ScopeBench.AdmittedReport r = ScopeBench.admitted(400, 2, admission, 1024, clock, timer);
+        assertEquals(400, r.messages());
+        assertEquals(400, r.completed() + r.refused(), "every message either ran or was refused at once");
+        assertTrue(r.completed() > 0);
+        assertTrue(r.maxInFlightRequests() <= 16 && r.maxInFlightBytes() <= 16 * 1024, r.toJson().encode());
+        assertEquals(0, admission.inFlightRequests());
+        assertEquals(0, timer.pending(), "every scope dropped its deadline timer");
+        JsonObject json = r.toJson();
+        assertEquals("admitted-message-path", json.getString("name"));
+        assertTrue(json.containsKey("messagesPerSecond") && json.containsKey("p99Ms") && json.containsKey("refused"));
+    }
+
+    @Test
     void scopeRunWithFewerWorkersThanScopesStillRunsEveryScopeExactlyOnce() throws Exception {
         FakeClock clock = FakeClock.at(Instant.EPOCH);
         FakeTimer timer = new FakeTimer(clock);

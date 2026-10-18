@@ -24,6 +24,74 @@ public final class ScopeBench {
     private ScopeBench() {}
 
     /** @since 0.1 */
+    public record AdmittedReport(int messages, int children, long maxRequests, long maxBytes, long bytesPerMessage, int completed, int refused,
+                                 long maxInFlightRequests, long maxInFlightBytes, long elapsedNanos,
+                                 double p50Millis, double p95Millis, double p99Millis, double maxMillis, double meanMillis) {
+        public double messagesPerSecond() { return completed / (elapsedNanos / 1_000_000_000.0); }
+
+        public JsonObject toJson() {
+            return new JsonObject().put("name", "admitted-message-path").put("messages", messages).put("children", children)
+                    .put("maxRequests", maxRequests).put("maxBytes", maxBytes).put("bytesPerMessage", bytesPerMessage)
+                    .put("completed", completed).put("refused", refused).put("maxInFlightRequests", maxInFlightRequests).put("maxInFlightBytes", maxInFlightBytes)
+                    .put("elapsedMs", elapsedNanos / 1_000_000.0).put("messagesPerSecond", messagesPerSecond())
+                    .put("p50Ms", p50Millis).put("p95Ms", p95Millis).put("p99Ms", p99Millis).put("maxMs", maxMillis).put("meanMs", meanMillis);
+        }
+    }
+
+    /**
+     * The real message path (P1-02): {@code messages} virtual threads at once, each {@code Admitted.run} — admit, bind the
+     * context, open the scope, fork {@code children} trivial tasks, join, release. Latency = the whole run; a refusal (the
+     * non-blocking admission said no) is counted, not retried.
+     */
+    public static AdmittedReport admitted(int messages, int children, io.flottila.core.admission.Admission admission, long bytesPerMessage,
+                                          Clock clock, Timer timer) throws InterruptedException {
+        LatencyStats stats = new LatencyStats(messages);
+        AtomicInteger refused = new AtomicInteger();
+        AtomicLong maxRequests = new AtomicLong();
+        AtomicLong maxBytes = new AtomicLong();
+        CountDownLatch go = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(messages);
+        for (int m = 0; m < messages; m++) {
+            String id = "m-" + m;
+            Thread.ofVirtual().start(() -> {
+                try {
+                    go.await();
+                    long t0 = System.nanoTime();
+                    var ctx = new io.flottila.core.scope.MessageContext(id, "bench", "bench", "trace-" + id, clock.instant().plusSeconds(30));
+                    try {
+                        io.flottila.core.admission.Admitted.run(admission, ctx, bytesPerMessage, clock, timer, scope -> {
+                            maxRequests.accumulateAndGet(admission.inFlightRequests(), Math::max);
+                            maxBytes.accumulateAndGet(admission.inFlightBytes(), Math::max);
+                            @SuppressWarnings("unchecked")
+                            RequestScope.Subtask<Integer>[] forks = new RequestScope.Subtask[children];
+                            for (int c = 0; c < children; c++) { int n = c + 1; forks[c] = scope.fork(() -> n); }
+                            scope.join();
+                            for (RequestScope.Subtask<Integer> f : forks) f.get();
+                            return null;
+                        });
+                        stats.record(System.nanoTime() - t0);
+                    } catch (io.flottila.core.admission.AdmissionRefusedException e) {
+                        refused.incrementAndGet();
+                    }
+                } catch (InterruptedException e) {
+                    throw new IllegalStateException("interrupted", e);
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        long started = System.nanoTime();
+        go.countDown();
+        done.await();
+        long elapsed = System.nanoTime() - started;
+        return new AdmittedReport(messages, children, admission.maxRequests(), admission.maxBytes(), bytesPerMessage, stats.count(), refused.get(),
+                maxRequests.get(), maxBytes.get(), elapsed, stats.percentileMillis(50), stats.percentileMillis(95), stats.percentileMillis(99),
+                stats.maxMillis(), stats.meanMillis());
+    }
+
+    /** @since 0.1 */
     public record ScopeReport(int scopes, int children, int concurrency, int failed, long elapsedNanos, double p50Millis, double p95Millis,
                               double p99Millis, double maxMillis, double meanMillis) {
         public double scopesPerSecond() { return scopes / (elapsedNanos / 1_000_000_000.0); }

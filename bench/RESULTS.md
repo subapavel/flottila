@@ -1,5 +1,35 @@
-# Bench results — Phase 1 (P1-01) and Phase 0 (gate, spikes, baselines)
+# Bench results — Phase 1 (P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## P1-02 — the message path: admit → context → scope, 10 000 messages at once — cloud VM, 4 vCPU
+
+Date: 2026-10-18. Commit: the P1-02 commit (hash in PROGRESS.md; `--commit eabaf5b` in the JSON names the base).
+Machine as in the Phase 0 baseline. Harness: `flottila-bench` `ScopeBenchMain` (the spike-2 main, now also
+running `ScopeBench.admitted`): 10 000 virtual threads start at once, each `Admitted.run(admission, context,
+4 KiB, …)` against one flow budget of 256 requests / 64 MiB, body = fork 4 trivial children, join, read the
+results; latency is the whole run from before `tryAcquire` to the permit's release; a refusal is the
+non-blocking admission saying no (the 503 path) and is counted, never retried. 1 000-message warm-up,
+`VertxTimer` deadlines of 30 s (never fired). Two runs back to back; raw JSON in the scratchpad.
+
+| run | msg/s (completed) | completed / refused | p50 | p95 | p99 | max | max in flight observed |
+|---|---|---|---|---|---|---|---|
+| 1 | 45423 | 8247 / 1753 | 0.91 ms | 6.02 ms | 8.30 ms | 10.1 ms | 256 / 1024 KiB |
+| 2 | 47462 | 9607 / 393 | 1.13 ms | 5.61 ms | 7.15 ms | 15.1 ms | 256 / 1024 KiB |
+
+- **Spike-2 numbers hold on the real path (an order-of-magnitude comparison, not a controlled one).** The
+  admitted path with 4 children per message runs at 45–47k messages/s, in the range of the ~49k scopes/s the
+  bare `RequestScope` gave in P0-11 at 64 workers — 256 permits here vs 64 workers there, and the elapsed
+  time includes the refused threads; the inference is that admission, the `ScopedValue` binding and the
+  context rebinding in every child add nothing visible at this scale.
+- **The budget held under a 10 000-message burst**: 256 / 1 MiB observed as the maxima, exactly the limits.
+- **A burst against a non-blocking admission means refusals**: 4–18 % of the 10 000 were told "no" at
+  once — correct for HTTP (503 + Retry-After, P1-05), and the reason pollers (SFTP, Kafka) will use the
+  blocking `acquire` instead (ARCHITECTURE §4: "SFTP poller pauses, Kafka consumer stops polling"). The
+  refused share varies between runs with the scheduler (how many of the 10 000 are runnable while 256 hold
+  permits); it is a property of the burst, not of the path.
+- Per-message latency (p50 ≈ 1 ms, p99 7–8 ms) is CPU queueing of 10 000 runnable virtual threads on 4
+  carriers, as in P0-11's 64-worker row (p50 0.93 ms, p99 6–7 ms); the path adds no tail of its own.
+
+---
 ## P1-01 — BlobStore tiers: 50 MB pass-through — cloud VM, 4 vCPU
 
 Date: 2026-10-18. Commit: the P1-01 commit (hash in PROGRESS.md; `--commit 0c96758` in the JSON names the base).
