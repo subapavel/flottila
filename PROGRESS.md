@@ -38,3 +38,14 @@ Review: round 1 FAIL — untested `_load_baseline` git path (every git error fel
 Decisions: D-018, D-019
 Deviation: none
 Next: P0-03 (ArchUnit boundary rules in flottila-archtest), then P0-04 (testkit)
+
+## P0-03 · 2026-10-17 · commit with trailer `Task: P0-03` (D-017)
+P0-02 close-out: CI on f01ff3e observed green — push run 39080327375 (dco, build with the no-decrease gate, integration) and workflow_dispatch run 39080341652 (all five jobs incl. mutation and bench) — BACKLOG row P0-02 set `done` here.
+Test first: ModuleBoundaryViolationTest (14 cases, every rule against a deliberate test-scoped violation under io.flottila.{api,core,components,steps,testkit,cli}.violation and io.flottila.cycle{a,b}: apiDependingOnCoreIsCaught, apiUsingVertxBeyondTheAllowlistIsCaught, apiUsingEveryAllowlistedVertxTypeIsAllowed (positive control touching all 11 allowlist entries), coreDependingOnRuntimeIsCaught, coreUsingAPostgresClientIsCaught, coreUsingJdbcIsCaught, componentDependingOnCoreIsCaught, stepDependingOnCoreIsCaught, stepTouchingAKafkaClientIsCaught, coreTouchingAPostgresClientIsCaughtByTheClientRuleToo, runtimeTouchingAPostgresClientIsAllowed, testkitDependingOnRuntimeIsCaught, cliDependingOnRuntimeIsCaught, packageCycleIsCaught) and ModuleBoundaryTest (10 rules on the production tree; replaces ModuleBoundarySmokeTest of P0-01, whose two rules it contains). Red observed: target/red-p003.log — 20 × "symbol: variable Rules" before Rules.java existed.
+Changed: flottila-archtest — Rules.java (allowlist D-020, JDK predicate without java.sql, store-client packages incl. JDBC/Hikari/Confluent, direction rules, slices), the two tests, 15 fixture classes, pom gains test-scoped vertx-pg-client and vertx-kafka-client for the fixtures; docs/DECISIONS.md D-020, D-021.
+Checks: mvn -B -ntp verify VERIFIED_PASS (target/green-p003-full.log: api 3, archtest 24, m1 9, 0 skipped) · ArchUnit VERIFIED_PASS (10 rules on the tree) · rules fail on violations VERIFIED_PASS (14 cases) · coverage no-decrease VERIFIED_PASS (no measurable module yet; baseline unchanged) · PIT NOT_RUN (no production code; archtest is test-only)
+Measured: nothing
+Review: round 1 FAIL — STEPS_DEPEND_ON_API_ONLY had no violation case; fixed with StepDependsOnCore + stepDependingOnCoreIsCaught, plus the observations: CoreUsesJdbc + java.sql excluded from the JDK predicate, positive control over all 11 allowlist entries, JDBC/Hikari/Confluent prefixes, assertFalse, D-020/D-021 wording. Round 2: PASS (after it: the JDK predicate became "`jrt:` source minus java.sql/javax.sql" instead of a prefix list, so it means exactly CLAUDE.md's "the JDK"; re-verified with `mvn -B -ntp clean verify`, exit 0; surefire XML after the clean run: api 3, archtest 24, m1 9, 0 failures/errors/skipped — the log file did not survive `clean`, the XML reports are the evidence)
+Decisions: D-020, D-021; D-022 (owner interjection, control-plane UI stack)
+Deviation: none
+Next: P0-04 (testkit skeleton)
