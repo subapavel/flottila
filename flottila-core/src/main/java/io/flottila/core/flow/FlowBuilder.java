@@ -15,6 +15,10 @@ import io.flottila.api.StepResources;
 import io.flottila.core.pattern.Filter;
 import io.flottila.core.pattern.Retry;
 import io.flottila.core.pattern.Route;
+import io.flottila.core.record.Meter;
+import io.flottila.core.record.MessageStore;
+import io.flottila.core.record.Recorder;
+import io.flottila.core.record.RecordingPolicy;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -33,7 +37,9 @@ import java.util.function.Predicate;
  * registered {@link StepFactory} of its type; every stage is wrapped so the envelope it hands on carries the
  * step's number (ingress is 0, the n-th step is n — a stage that only changed headers, props or keys is
  * {@linkplain Envelope#advance() advanced}, one that wrote a body is already there); a {@code retryable} step
- * is wrapped in the flow's {@link RetryPolicy} by {@link Retry}.
+ * is wrapped in the flow's {@link RetryPolicy} by {@link Retry}. With a {@link MessageStore} given through
+ * {@link #recording(MessageStore, Meter)}, every step is also wrapped by a {@link Recorder} under the flow's
+ * {@link RecordingPolicy} (a step's own {@code recording} overrides it) and the pipeline starts with the ingress snapshot.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -52,6 +58,8 @@ public final class FlowBuilder {
     private final Map<String, StepFactory> factories = new LinkedHashMap<>();
     private final Map<String, Expressions> languages = new LinkedHashMap<>();
     private final Map<String, EndpointConfig> endpoints;
+    private MessageStore store;
+    private Meter meter;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -64,11 +72,21 @@ public final class FlowBuilder {
         this.endpoints = Map.copyOf(endpoints);
     }
 
+    /** Records a snapshot per step into {@code store} (ARCHITECTURE §6); without this call nothing is recorded. */
+    public FlowBuilder recording(MessageStore store, Meter meter) {
+        this.store = Objects.requireNonNull(store, "store");
+        this.meter = Objects.requireNonNull(meter, "meter");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the flow file's directory). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
         StepResources resources = new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir);
-        List<Stage> stages = new ArrayList<>(flow.steps().size());
+        Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, Map.of("flow", flow.id() + "@" + flow.version()));
+        List<Stage> stages = new ArrayList<>(flow.steps().size() + 1);
+        if (recorder != null) stages.add(recorder.ingress(flow.recording()));
+        int lastIndex = flow.steps().size();
         for (StepConfig step : flow.steps()) {
             Stage stage = switch (step.type()) {
                 case "to" -> to(step);
@@ -79,7 +97,9 @@ public final class FlowBuilder {
                 default -> factoryFor(step).create(step, resources);
             };
             if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
-            stages.add(numbered(stage, step));
+            stage = numbered(stage, step);
+            if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
+            stages.add(stage);
         }
         return Pipeline.of(stages);
     }

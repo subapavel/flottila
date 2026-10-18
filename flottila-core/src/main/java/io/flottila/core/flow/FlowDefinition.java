@@ -1,6 +1,7 @@
 package io.flottila.core.flow;
 
 import io.flottila.api.StepConfig;
+import io.flottila.core.record.RecordingPolicy;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -15,13 +16,14 @@ import java.util.Set;
  * A flow file (schema v1, D-040) as core sees it: a plain map in (the YAML as {@code flottila-schemas}
  * parsed and validated it), a typed definition out. Core does not depend on the schema module, so the
  * parts it needs are checked again here with the same paths in the messages ({@code steps[2]}); a file
- * that passed the schema never fails here.
+ * that passed the schema never fails here. {@code recording} is the flow's policy (default: all, keep); a step's own
+ * {@code recording} stays in its config and overrides it in the builder.
  *
  * @since 0.1
  */
 public record FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, long maxBodyBytes,
                              Optional<Long> maxInFlight, Optional<Long> maxInFlightBytes, Optional<String> partitionBy,
-                             List<String> forwardHeaders, RetryPolicy retry, List<StepConfig> steps) {
+                             List<String> forwardHeaders, RetryPolicy retry, RecordingPolicy recording, List<StepConfig> steps) {
 
     /** Keys of a step entry that are the step's shape, not its configuration. */
     private static final Set<String> STRUCTURAL = Set.of("type", "name", "retryable");
@@ -32,6 +34,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         Objects.requireNonNull(fromEndpoint, "from.endpoint");
         Objects.requireNonNull(deliveryMode, "delivery.mode");
         Objects.requireNonNull(retry, "retry");
+        Objects.requireNonNull(recording, "recording");
         if (maxBodyBytes <= 0) throw new IllegalArgumentException("limits.maxBodyBytes must be positive, was " + maxBodyBytes);
         forwardHeaders = List.copyOf(forwardHeaders);
         steps = List.copyOf(steps);
@@ -49,7 +52,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
                 number(limits, "limits.maxBodyBytes", "maxBodyBytes").orElseThrow(() -> new IllegalArgumentException("limits.maxBodyBytes is required")),
                 number(limits, "limits.maxInFlight", "maxInFlight"), number(limits, "limits.maxInFlightBytes", "maxInFlightBytes"),
                 Optional.ofNullable(doc.get("partitionBy")).map(Object::toString),
-                strings(doc.get("forwardHeaders")), retry(doc.get("retry")), steps(doc.get("steps")));
+                strings(doc.get("forwardHeaders")), retry(doc.get("retry")), RecordingPolicy.from(doc.get("recording"), RecordingPolicy.DEFAULT), steps(doc.get("steps")));
     }
 
     /** Endpoints the steps send to, in order, each once: {@code to.endpoint} and the values of {@code to.endpoints}. The {@code from} endpoint is a consumer and not listed. */

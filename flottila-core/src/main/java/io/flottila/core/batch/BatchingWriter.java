@@ -54,6 +54,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
     private final Timer timer;
     private final Options options;
     private final ArrayDeque<Pending<T>> queue = new ArrayDeque<>();
+    private final List<List<Pending<T>>> flying = new ArrayList<>();   // batches handed to the sink and not yet completed
     private final Object lock = new Object();
     private int inFlight;
     private Timer.Cancellable armed;
@@ -90,6 +91,23 @@ public final class BatchingWriter<T> implements AutoCloseable {
         synchronized (lock) { return inFlight; }
     }
 
+    /**
+     * Commits what is queued now without waiting for the window (a free commit slot permitting; the rest follows as slots
+     * free) and completes when every item queued or in flight at this moment is committed or failed.
+     */
+    public Future<Void> flush() {
+        List<List<Pending<T>>> toCommit;
+        List<Future<Void>> waiting = new ArrayList<>();
+        synchronized (lock) {
+            for (List<Pending<T>> batch : flying) for (Pending<T> p : batch) waiting.add(p.done().future());
+            for (Pending<T> p : queue) waiting.add(p.done().future());
+            if (armed != null) { armed.cancel(); armed = null; }
+            toCommit = drainLocked(true);
+        }
+        toCommit.forEach(this::commit);
+        return Future.join(waiting).mapEmpty();
+    }
+
     /** Refuses further saves; what is queued or in flight still commits (window and completions keep draining). */
     @Override public void close() {
         synchronized (lock) { closed = true; }
@@ -104,6 +122,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
             List<Pending<T>> batch = new ArrayList<>(n);
             for (int i = 0; i < n; i++) batch.add(queue.poll());
             inFlight++;
+            flying.add(batch);
             batches.add(batch);
         }
         if (!queue.isEmpty() && armed == null && !options.window().isZero()) {
@@ -137,6 +156,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
         List<List<Pending<T>>> toCommit;
         synchronized (lock) {           // release the slot first: a throwing completion listener must not leak it
             inFlight--;
+            flying.remove(batch);
             toCommit = drainLocked(false);
         }
         toCommit.forEach(this::commit);

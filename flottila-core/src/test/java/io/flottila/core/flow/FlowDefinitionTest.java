@@ -100,7 +100,7 @@ class FlowDefinitionTest {
         assertEquals(List.of("partner-domestic", "partner-foreign"), f.referencedEndpoints());
         assertEquals(Map.of("endpoint", "partner-domestic"), f.steps().get(3).config(), "a null value is dropped from the step's config");
         assertThrows(IllegalArgumentException.class, () -> new FlowDefinition("id", "1", "in", "sync", 1, Optional.empty(), Optional.empty(),
-                Optional.empty(), List.of(), RetryPolicy.NONE, List.of()), "the record itself refuses an empty step list");
+                Optional.empty(), List.of(), RetryPolicy.NONE, io.flottila.core.record.RecordingPolicy.DEFAULT, List.of()), "the record itself refuses an empty step list");
     }
 
     @Test
