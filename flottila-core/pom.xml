@@ -39,5 +39,10 @@
       <artifactId>jqwik</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

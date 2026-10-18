@@ -3,8 +3,16 @@
     "branch": 100.0,
     "line": 98.5
   },
-  "flottila-testkit": {
-    "branch": 90.5,
+  "flottila-core": {
+    "branch": 100.0,
     "line": 97.1
+  },
+  "flottila-runtime": {
+    "branch": 100.0,
+    "line": 100.0
+  },
+  "flottila-testkit": {
+    "branch": 91.3,
+    "line": 97.4
   }
 }

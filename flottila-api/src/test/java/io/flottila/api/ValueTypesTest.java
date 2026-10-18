@@ -180,15 +180,19 @@ class ValueTypesTest {
             @Override public io.vertx.core.Future<Health> health() { return io.vertx.core.Future.succeededFuture(Health.up()); }
         };
         IdGenerator ids = () -> "id-1";
-        Runtime rt = new Runtime(Clock.systemUTC(), ids, store, Hasher.sha256(), Map.of("mock", mock));
+        Timer timer = (delay, task) -> () -> false;
+        Clock clock = Clock.systemUTC();
+        Runtime rt = new Runtime(clock, timer, ids, store, Hasher.sha256(), Map.of("mock", mock));
         assertSame(mock, rt.component("mock"));
+        assertSame(timer, rt.timer());
         assertEquals("id-1", rt.ids().next());
         assertThrows(IllegalArgumentException.class, () -> rt.component("sftp"));
         assertThrows(UnsupportedOperationException.class, () -> rt.components().clear());
-        assertThrows(NullPointerException.class, () -> new Runtime(null, ids, store, Hasher.sha256(), Map.of()));
-        assertThrows(NullPointerException.class, () -> new Runtime(Clock.systemUTC(), null, store, Hasher.sha256(), Map.of()));
-        assertThrows(NullPointerException.class, () -> new Runtime(Clock.systemUTC(), ids, null, Hasher.sha256(), Map.of()));
-        assertThrows(NullPointerException.class, () -> new Runtime(Clock.systemUTC(), ids, store, null, Map.of()));
+        assertThrows(NullPointerException.class, () -> new Runtime(null, timer, ids, store, Hasher.sha256(), Map.of()));
+        assertThrows(NullPointerException.class, () -> new Runtime(clock, null, ids, store, Hasher.sha256(), Map.of()));
+        assertThrows(NullPointerException.class, () -> new Runtime(clock, timer, null, store, Hasher.sha256(), Map.of()));
+        assertThrows(NullPointerException.class, () -> new Runtime(clock, timer, ids, null, Hasher.sha256(), Map.of()));
+        assertThrows(NullPointerException.class, () -> new Runtime(clock, timer, ids, store, null, Map.of()));
     }
 
     @Test

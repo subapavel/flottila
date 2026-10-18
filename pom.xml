@@ -20,15 +20,15 @@
   </licenses>
 
   <!-- Dependency direction (docs/ARCHITECTURE.md §12, enforced by flottila-archtest): api <- core <- runtime;
-       components and steps depend on api only; testkit on core; cli on api + testkit.
+       components and steps depend on api only; testkit on api (F-1); core's tests use the testkit; cli on api + testkit.
        flottila-m1 is the milestone-1 tree (Vert.x 4.5 + Mutiny) kept building until P0-09 removes it. -->
   <modules>
     <module>flottila-api</module>
+    <module>flottila-testkit</module>
     <module>flottila-core</module>
     <module>flottila-runtime</module>
     <module>flottila-components</module>
     <module>flottila-steps</module>
-    <module>flottila-testkit</module>
     <module>flottila-schemas</module>
     <module>flottila-cli</module>
     <module>flottila-archtest</module>
@@ -47,6 +47,7 @@
     <archunit.version>1.5.1</archunit.version>
     <testcontainers.version>2.0.5</testcontainers.version>
     <slf4j.version>2.0.17</slf4j.version>
+    <postgresql-jdbc.version>42.7.14</postgresql-jdbc.version> <!-- BSD-2-Clause; test scope only (Testcontainers readiness) -->
 
     <!-- plugins -->
     <maven-compiler.version>3.14.1</maven-compiler.version>
@@ -164,6 +165,11 @@
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-simple</artifactId>
         <version>${slf4j.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>${postgresql-jdbc.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -319,7 +325,7 @@
 
   <profiles>
     <profile>
-      <!-- Testcontainers tests: *IT classes, run by the `integration` CI job -->
+      <!-- Testcontainers tests: *IT classes; the `build` CI job runs `verify -Pit` so they count towards the floors (D-030) -->
       <id>it</id>
       <build>
         <plugins>

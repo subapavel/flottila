@@ -8,6 +8,7 @@
 | Date | Version | Change | Finding |
 | --- | --- | --- | --- |
 | 2026-10-17 | 3.3 | Exported from the design document; amendments 1–8 added from the Part A brainstorm | — |
+| 2026-10-18 | 3.3 | §12: `flottila-testkit` depends on `api` only (core's tests use it; a testkit → core dependency is a reactor cycle); the golden-test runner moves to `flottila-cli` or a later module | F-1 (minor) |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -401,7 +402,7 @@ One Maven monorepo (`~/flottila/`, Apache 2.0), dependency direction strictly do
 | `flottila-components/*` | one module per scheme: http, xi (JCo `provided`), sftp, jms, kafka, mail, as2, as4, edi, db, mock | api (+ runtime only where a shared client is needed) |
 | `flottila-steps/*` | xslt, validate, groovy, js, map, ai, split/aggregate formats | api |
 | `flottila-sap` | PO/CPI mapping facades, XI/IDoc simulator, migration converters | api, steps |
-| `flottila-testkit` | fake Runtime, contract suites, golden-test runner, protocol doubles, fake clock | core |
+| `flottila-testkit` | fake Runtime, contract suites, protocol doubles, fake clock and timer, in-memory BlobStore (golden-test runner: `flottila-cli` or a later module — F-1) | api (F-1, 2026-10-18; was core) |
 | `flottila-cli` | validate, test, deploy, package, migrate | api, testkit |
 | `flottila-control` | Quarkus admin API, React UI, MCP server, developer portal | talks to runtime over HTTP only; no Java dependency on runtime |
 | `flottila-schemas` | JSON Schemas for flow, package, partner, endpoint configs; published | — |

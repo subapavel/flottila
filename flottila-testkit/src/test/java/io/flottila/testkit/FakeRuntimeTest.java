@@ -33,6 +33,7 @@ class FakeRuntimeTest {
         Runtime rt = fake.runtime();
         assertSame(fake.clock(), rt.clock());
         assertSame(fake.ids(), rt.ids());
+        assertSame(fake.timer(), rt.timer());
         assertSame(fake.blobs(), rt.blobs());
         assertSame(mock, rt.component(mock.scheme()));
         assertThrows(IllegalArgumentException.class, () -> rt.component("sftp"));

@@ -32,8 +32,10 @@ public final class FakeRuntime {
 
     private final Hasher hasher = Hasher.sha256();
     private final FakeIds ids = new FakeIds("m");
+    private FakeTimer timer;
     private final Map<String, Component> components = new LinkedHashMap<>();
     private FakeClock clock = FakeClock.at(T0);
+    { timer = new FakeTimer(clock); }
     private InMemoryBlobStore blobs = new InMemoryBlobStore(hasher, DEFAULT_TREE_LIMIT);
 
     private FakeRuntime() { }
@@ -43,6 +45,9 @@ public final class FakeRuntime {
     public FakeClock clock() { return clock; }
 
     public FakeIds ids() { return ids; }
+
+    /** The fake timer, driven by {@link #clock()}. */
+    public FakeTimer timer() { return timer; }
 
     public InMemoryBlobStore blobs() { return blobs; }
 
@@ -64,11 +69,12 @@ public final class FakeRuntime {
     /** Replaces the clock by one standing at {@code start}. */
     public FakeRuntime withClockAt(Instant start) {
         clock = FakeClock.at(start);
+        timer = new FakeTimer(clock);
         return this;
     }
 
     /** The api {@link Runtime} over exactly these instances. */
-    public Runtime runtime() { return new Runtime(clock, ids, blobs, hasher, components); }
+    public Runtime runtime() { return new Runtime(clock, timer, ids, blobs, hasher, components); }
 
     /** A stage-0 envelope for {@code flow} whose body holds {@code bytes}, stored under a fresh id. */
     public Envelope ingress(String flow, Headers headers, Buffer bytes) {

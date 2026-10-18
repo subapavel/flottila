@@ -13,12 +13,13 @@
   <artifactId>flottila-testkit</artifactId>
   <packaging>jar</packaging>
   <name>Flottila :: testkit</name>
-  <description>Fake Runtime, fake clock, in-memory stores, contract suites, blocked-platform-thread detector.</description>
+  <description>Fake Runtime, fake clock and timer, in-memory BlobStore, contract suites, blocked-platform-thread detector. Depends on api only.</description>
 
   <dependencies>
+    <!-- api only (D-031): core's own tests use the testkit, so the testkit cannot depend on core -->
     <dependency>
       <groupId>io.flottila</groupId>
-      <artifactId>flottila-core</artifactId>
+      <artifactId>flottila-api</artifactId>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
