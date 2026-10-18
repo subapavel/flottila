@@ -1,4 +1,4 @@
-package io.flottila.core;
+package io.flottila.api;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -7,6 +7,8 @@ import java.util.Optional;
 /**
  * Flow state: router decisions, split index, replayOf — anything a later stage decides on.
  * Values must be JSON-serialisable (string, number, boolean, small object). Never reaches producers.
+ *
+ * @since 0.1
  */
 public record Props(Map<String, Object> asMap) {
     public Props { asMap = Map.copyOf(asMap); }

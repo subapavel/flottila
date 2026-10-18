@@ -1,4 +1,4 @@
-package io.flottila.core;
+package io.flottila.api;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -6,6 +6,8 @@ import java.util.Map;
 /**
  * Transport metadata (HTTP/JMS/mail headers from ingress, http.status from egress).
  * Nothing propagates to producers implicitly — the flow config allow-lists via forwardHeaders.
+ *
+ * @since 0.1
  */
 public record Headers(Map<String, String> asMap) {
     public Headers { asMap = Map.copyOf(asMap); }

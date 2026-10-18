@@ -1,5 +1,11 @@
 package io.flottila.core;
 
+import io.flottila.api.Headers;
+import io.flottila.api.Key;
+import io.flottila.api.Keys;
+import io.flottila.api.Props;
+import io.flottila.api.Views;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;

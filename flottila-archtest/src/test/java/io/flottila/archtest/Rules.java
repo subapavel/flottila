@@ -56,8 +56,10 @@ final class Rules {
      * java.sql / javax.sql are a JDK-only route to Postgres, which only runtime may take.
      */
     private static final DescribedPredicate<JavaClass> JDK = describe("the JDK (jrt:, without java.sql/javax.sql)", c -> {
-        String p = c.getPackageName();
-        boolean fromRuntimeImage = c.getSource().map(s -> "jrt".equals(s.getUri().getScheme())).orElse(false);
+        JavaClass base = c.isArray() ? c.getBaseComponentType() : c;   // byte[] etc. carry no source of their own
+        if (base.isPrimitive()) return true;
+        String p = base.getPackageName();
+        boolean fromRuntimeImage = base.getSource().map(s -> "jrt".equals(s.getUri().getScheme())).orElse(false);
         return fromRuntimeImage && !p.startsWith("java.sql") && !p.startsWith("javax.sql");
     });
 

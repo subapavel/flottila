@@ -1,21 +1,19 @@
 # Handoff
 
 state: RUNNING
-last commit: the one with trailer `Task: P0-03` on main (D-017)
+last commit: the one with trailer `Task: P0-05` on main (D-017)
 branch: main
-next exact action: P0-04 — `flottila-testkit` skeleton: fake `Runtime` (clock, timers, id generator injected; no static singletons), fake clock driving backoff/leases/deadlines, in-memory stores, contract-suite base classes, blocked-platform-thread detector. Red first: a sample flow test that must run in < 100 ms and a detector test that fails on a deliberately blocked platform thread. Note: `Runtime`/`Step`/`Envelope` types arrive in P0-05 (depends on P0-04), so P0-04 builds the testkit pieces that do not need them (clock, detector, in-memory store skeletons against core interfaces it introduces) and leaves the fake `Runtime` wiring to P0-05 if the api record is not there yet — say so in the PROGRESS entry.
-open issues: none
-decisions pending review at hand-over: none yet
+next exact action: P0-04 — `flottila-testkit`: fake `Runtime` (fixed/fake `Clock`, deterministic `IdGenerator`, in-memory `BlobStore` with tree limit and max-size enforcement, `Hasher.sha256()`), `FakeClock` driving deadlines, contract-suite base class for `Component` (consumer handler → Ack, producer send, health; backpressure/re-open/ACK-after-durable/spill/cancel grow in P1-06), in-memory `BlobStore` moved out of the api test tree, blocked-platform-thread detector (JUnit extension that fails a test which blocks a platform thread beyond a threshold; fake clock, no sleeps). Red first: a sample pipeline test (Pipeline of Stage.of(steps) over the fake Runtime) asserting < 100 ms wall time, and a detector test with a deliberately blocked platform thread. Implementer may do it (testkit is not coordinator-only) with the api as given; the coordinator writes the packet with the failing tests.
+open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
+decisions pending review at hand-over: D-025 (Hash/Hasher SPI), D-026 (api draft types), D-022 (owner's UI stack, informational)
 notes:
-- Reactor: flottila-api, -core, -runtime, -components/{http,mock}, -steps/{xslt,validate}, -testkit,
-  -schemas, -cli, -archtest, -m1. New modules carry only package-info until P0-05.
-- ArchUnit rules live in flottila-archtest/Rules.java (D-020 allowlist, D-021); every rule has a
-  violation fixture — adding a rule means adding its fixture. The tree rules check only
-  package-info today; expect them to bite in P0-05 (e.g. `Hashing` with net.openhft in api).
-- Every task commit runs `python3 ci/coverage_check.py --write` after `mvn -B -ntp verify` and
-  commits `ci/coverage-baseline.json` (D-018). Open before P0-06/P0-08 (BACKLOG P0-08 row): where
-  `-Pit` coverage is measured for the floors.
-- `mutation` CI job carries `-DfailWhenNoMutations=false` — remove it in P0-05 (D-019).
+- Reactor: flottila-api (25 classes, 46 tests), -core, -runtime, -components/{http,mock}, -steps/{xslt,validate},
+  -testkit, -schemas, -cli, -archtest, -m1 (depends on api for Headers/Props/Key/Keys/Views, D-024).
+- ArchUnit rules in flottila-archtest/Rules.java (D-020 allowlist incl. primitive arrays, D-021); every
+  rule has a violation fixture. api/core: JDK (jrt:) minus java.sql, api + the Vert.x allowlist only.
+- Every task commit runs `python3 ci/coverage_check.py --write` after `mvn -B -ntp verify` (D-018).
+  Scoped PIT for the reviewer: `mvn -pl flottila-api test-compile org.pitest:pitest-maven:mutationCoverage`.
+- `mutation` CI job keeps `-DfailWhenNoMutations=false` until core has code (P0-06), then remove (D-019).
+- Open before P0-06/P0-08 (BACKLOG P0-08 row): where `-Pit` coverage is measured for the floors.
 - VM setup after a restart: `sudo pg_ctlcluster 16 main start`, `sudo dockerd &` if needed.
-- Tag `proto-m1` points at fc6eb56 (first milestone-1 commit); the milestone-1 state the backlog
-  means is 3f81834. Porting reads the m1 module in the tree.
+- Tag `proto-m1` points at fc6eb56; the milestone-1 state the backlog means is 3f81834 (m1 module).

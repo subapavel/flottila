@@ -16,8 +16,8 @@ class ApiModuleTest {
 
     @Test
     void buildRunsOnJdk25() {
-        assertTrue(Runtime.version().feature() >= 25,
-                "api must build and run on JDK 25, found " + Runtime.version());
+        assertTrue(java.lang.Runtime.version().feature() >= 25,
+                "api must build and run on JDK 25, found " + java.lang.Runtime.version());
     }
 
     @Test

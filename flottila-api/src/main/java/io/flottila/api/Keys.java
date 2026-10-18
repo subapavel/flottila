@@ -1,4 +1,4 @@
-package io.flottila.core;
+package io.flottila.api;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -6,6 +6,8 @@ import java.util.Map;
 /**
  * Business correlation keys operators search by (invoiceId, orderNo, …). Filled by extractKey,
  * declared per flow, indexed in the monitoring store. Never reaches producers.
+ *
+ * @since 0.1
  */
 public record Keys(Map<String, String> asMap) {
     public Keys { asMap = Map.copyOf(asMap); }

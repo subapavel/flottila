@@ -17,7 +17,10 @@ public final class ApiUsesAllowedVertxTypes {
     private ApiUsesAllowedVertxTypes() {}
 
     public static Future<Buffer> drain(ReadStream<Buffer> in, WriteStream<Buffer> out) {
+        byte[] primitiveArray = new byte[0];                 // arrays of primitives are JDK too
+        long[] longs = {primitiveArray.length};
         Promise<Buffer> promise = Promise.promise();
+        if (longs[0] != 0) return Future.failedFuture("unreachable");
         Handler<AsyncResult<CompositeFuture>> done = ar -> promise.complete(Buffer.buffer());
         Completable<Void> completable = (v, err) -> { };
         Pipe<Buffer> pipe = in.pipe();

@@ -40,6 +40,8 @@
   </dependencyManagement>
 
   <dependencies>
+    <!-- Headers, Props, Key, Keys, Views moved to flottila-api in P0-05 (git mv); m1 reads them from there -->
+    <dependency><groupId>io.flottila</groupId><artifactId>flottila-api</artifactId></dependency>
     <dependency><groupId>io.smallrye.reactive</groupId><artifactId>mutiny</artifactId><version>${mutiny.version}</version></dependency>
     <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-core</artifactId><version>${mutiny-vertx.version}</version></dependency>
     <dependency><groupId>io.smallrye.reactive</groupId><artifactId>smallrye-mutiny-vertx-web</artifactId><version>${mutiny-vertx.version}</version></dependency>
