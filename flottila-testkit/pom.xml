@@ -24,5 +24,12 @@
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-api</artifactId>
     </dependency>
+    <!-- the contract suite and the blocked-thread extension are JUnit 5 extensions; the testkit's own tests
+         run them through the platform test kit to prove they fail on a broken component / a blocked thread -->
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 </project>

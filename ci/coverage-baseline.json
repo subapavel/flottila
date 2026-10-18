@@ -2,5 +2,9 @@
   "flottila-api": {
     "branch": 100.0,
     "line": 98.5
+  },
+  "flottila-testkit": {
+    "branch": 90.5,
+    "line": 97.1
   }
 }
