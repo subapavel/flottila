@@ -116,3 +116,14 @@ Review: round 1 FAIL — core branch coverage stopped at 96.2 % (three reachable
 Decisions: D-029 addendum
 Deviation: none
 Next: P0-08 (resumed from the stash)
+
+## P0-08 · 2026-10-18 · commit with trailer `Task: P0-08` (D-017)
+FIX-3 close-out: CI on 3a6f7d5 observed green (run 39089421012: dco, build incl. ITs and both coverage gates) — `main` green again; FIX-3 row `done`.
+Test first: runtime MigrationsIT (3: a fresh Postgres migrated to V1 has exactly the m1 tables and indexes plus flyway_schema_history, a second run executes nothing and reports version 1; a location without migrations is an IllegalStateException naming the location; the V1 file is on the runtime classpath under db/migration) — red observed in target/red-p008.log (`class Migrations` unresolved); PgWorkQueueIT now applies the migrations instead of its own DDL. Found on the way: Flyway's MigrateResult.targetSchemaVersion is null when nothing ran, so the version comes from `flyway.info().current()`; the misconfiguration test leaves an empty flyway_schema_history behind, so the fresh-database assertion checks for the application tables, not for an empty schema.
+Changed: `git mv db/init.sql deploy/postgres/V1__m1_schema.sql` (+ header; history kept); runtime pom — flyway-core (compile), flyway-database-postgresql and the postgresql JDBC driver (runtime scope), `../deploy/postgres/V*.sql` packaged as `db/migration`; root pom manages Flyway; runtime `db.Migrations` (+Result; D-034); `.github/workflows/ci.yml` applies `deploy/postgres/V*.sql` to the service Postgres for the m1 tests until P0-09; `docker-compose.yml` mounts the V1 file as the init script; DECISIONS D-034.
+Checks: mvn -B -ntp verify -Pit VERIFIED_PASS (target/p008-full.log: api 48, testkit 51, core 23, archtest 24, runtime 3 + 15 IT [PgBatchSinkIT 6, PgWorkQueueIT 6, MigrationsIT 3], m1 9, 0 skipped) · ArchUnit VERIFIED_PASS (only runtime touches Flyway/JDBC) · JaCoCo runtime 100 % line / 100 % branch (ITs counted) VERIFIED_PASS · coverage gates VERIFIED_PASS (no-decrease vs HEAD, baseline rewritten) · PIT NOT_RUN (no api/core change) · CI on this commit: observed after the push (next entry)
+Measured: nothing
+Review: PASS (V1 verified as a pure rename plus header: no content line changed; the bootstrap wiring of `Migrations.migrate` is recorded in HANDOFF/D-034 as Phase 1 work)
+Decisions: D-034
+Deviation: none
+Next: P0-09 (remove flottila-m1) and P0-10 (bench harness, native baseline) become ready; P0-11, P0-12 are ready

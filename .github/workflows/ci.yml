@@ -66,9 +66,9 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
-      - name: Apply schema (until P0-08 moves this into Flyway)
-        if: hashFiles('db/init.sql') != ''
-        run: PGPASSWORD=flottila psql -h localhost -U flottila -d flottila -v ON_ERROR_STOP=1 -f db/init.sql
+      - name: Apply the migrations to the service Postgres for the flottila-m1 tests (goes with P0-09)
+        if: hashFiles('flottila-m1/pom.xml') != ''
+        run: for f in deploy/postgres/V*.sql; do PGPASSWORD=flottila psql -h localhost -U flottila -d flottila -v ON_ERROR_STOP=1 -f "$f"; done
       - name: Verify (unit + Testcontainers ITs, ArchUnit, JaCoCo floors incl. the ITs)
         run: mvn -B -ntp verify -Pit
       - name: Coverage gate self-test

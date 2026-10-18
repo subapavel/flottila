@@ -1,3 +1,6 @@
+-- V1: the milestone-1 schema (proto-m1 db/init.sql), applied by Flyway from the runtime at start
+-- (io.flottila.runtime.db.Migrations) and by the Testcontainers ITs. Later versions change it
+-- (body references instead of inline payloads, versions, processed_ids, …); V1 is never edited.
 -- Content-addressed payload store: one row per distinct content, written ON CONFLICT DO NOTHING.
 create table payloads (
     hash       bytea       primary key,          -- xxh3-64, 8 bytes

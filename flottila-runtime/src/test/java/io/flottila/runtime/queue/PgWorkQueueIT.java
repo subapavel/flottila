@@ -44,19 +44,7 @@ class PgWorkQueueIT {
         pool = PgBuilder.pool().connectingTo(new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432))
                 .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true))
                 .with(new PoolOptions().setMaxSize(8)).using(vertx).build();
-        // the proto-m1 `work` table (db/init.sql); P0-08 turns it into the V1 migration
-        pool.query("""
-                create table work (
-                    seq           bigserial   primary key,
-                    id            text        not null,
-                    flow          text        not null,
-                    step          int         not null,
-                    partition_key text,
-                    available_at  timestamptz not null default now(),
-                    locked_by     text,
-                    locked_until  timestamptz
-                )""").execute().await();
-        pool.query("create index work_flow_seq on work (flow, seq)").execute().await();
+        io.flottila.runtime.db.Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());   // V1 brings the work table
         queue = new PgWorkQueue(pool);
     }
 

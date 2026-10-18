@@ -47,7 +47,8 @@
     <archunit.version>1.5.1</archunit.version>
     <testcontainers.version>2.0.5</testcontainers.version>
     <slf4j.version>2.0.17</slf4j.version>
-    <postgresql-jdbc.version>42.7.14</postgresql-jdbc.version> <!-- BSD-2-Clause; test scope only (Testcontainers readiness) -->
+    <postgresql-jdbc.version>42.7.14</postgresql-jdbc.version> <!-- BSD-2-Clause; runtime scope, for Flyway only -->
+    <flyway.version>13.10.3</flyway.version> <!-- Apache-2.0 (community); flyway-database-postgresql carries the Postgres support since Flyway 10 -->
 
     <!-- plugins -->
     <maven-compiler.version>3.14.1</maven-compiler.version>
@@ -170,6 +171,16 @@
         <groupId>org.postgresql</groupId>
         <artifactId>postgresql</artifactId>
         <version>${postgresql-jdbc.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-core</artifactId>
+        <version>${flyway.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-database-postgresql</artifactId>
+        <version>${flyway.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>

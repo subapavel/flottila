@@ -15,6 +15,20 @@
   <name>Flottila :: runtime</name>
   <description>Vert.x bootstrap, endpoint verticles, Postgres/Kafka/Valkey/S3/ClickHouse implementations, admin API.</description>
 
+  <build>
+    <resources>
+      <resource>
+        <directory>${project.basedir}/src/main/resources</directory>
+      </resource>
+      <!-- deploy/postgres is the single source of the migrations: ops apply them by file, the runtime from the classpath -->
+      <resource>
+        <directory>${project.basedir}/../deploy/postgres</directory>
+        <targetPath>db/migration</targetPath>
+        <includes><include>V*.sql</include></includes>
+      </resource>
+    </resources>
+  </build>
+
   <dependencies>
     <dependency>
       <groupId>io.flottila</groupId>
@@ -34,15 +48,26 @@
       <artifactId>flottila-testkit</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- *IT classes run under -Pit against Testcontainers Postgres; the JDBC driver is only for the container's readiness check -->
+    <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
+         driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->
     <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>testcontainers-postgresql</artifactId>
-      <scope>test</scope>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <!-- *IT classes run under -Pit against Testcontainers Postgres -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
