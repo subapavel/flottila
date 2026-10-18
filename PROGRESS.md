@@ -150,3 +150,14 @@ Context: compacted once during this task; re-verified with git status / git log 
 Decisions: D-036, D-037
 Deviation: none (ARCHITECTURE §13 asked the < 5 ms question; the answer is recorded, not a contradiction)
 Next: P0-11 (RequestScope + admission spike); P0-12 ready; B-1 ready once the first CI bench artifact exists
+
+## B-1 · 2026-10-18 · commit with trailer `Task: B-1` (D-017)
+P0-10 close-out: CI on b4523bb observed green — push run 39092124017 (dco, build incl. ITs, coverage gates) and dispatched run 39092152535 (additionally mutation and bench, both success; the bench job printed both summaries and "no baseline for this machine (not compared)" as designed).
+Test first: none new — docs-only task; the behaviour it arms is covered by `bench/test_check_regression.py` (`test_a_run_is_compared_only_with_the_baseline_of_its_own_machine`), run green: `python3 -m unittest bench.test_check_regression` 8/8.
+Changed: bench/RESULTS.md new subsection "Phase 0 baseline — github-hosted runner (B-1)" with the two markers (label `github-hosted runner`), provenance (job log of run 39092152535; the artifact's blob storage is unreachable from the VM) and the single-run caveat; agent/BACKLOG.md B-1 done.
+Checks: `python3 bench/check_regression.py` against the committed RESULTS.md with the VM's armed run in bench/out VERIFIED_PASS ("no regression": the VM run is still judged by the VM markers only) · unittest bench VERIFIED_PASS (8/8) · mvn NOT_RUN (no code change) · CI: the next dispatched bench job is the acceptance (observed in the next entry)
+Measured: nothing new on the VM; runner numbers recorded as read from the job log
+Review: PASS (observations taken: sync/async speed-up stated separately; version provenance named; four baseline keys confirmed parsed; HANDOFF updated)
+Decisions: none (D-037 applied)
+Deviation: none
+Next: P0-11 (in progress: red tests written)

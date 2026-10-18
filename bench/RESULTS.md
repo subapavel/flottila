@@ -44,6 +44,30 @@ less throughput but only at > 50 % higher p99 (D-037). A run is compared only wi
 of its own machine label; the GitHub-hosted runner gets its own baseline from its first artifact
 (BENCH_MACHINE in ci.yml; follow-up row B-1).
 
+### Phase 0 baseline — github-hosted runner (B-1)
+
+Date: 2026-10-18. Commit b4523bb, CI run 39092152535 (workflow_dispatch), job "bench (native
+Postgres on the runner)". Machine: GitHub-hosted `ubuntu-latest` (4 vCPU, shared), PostgreSQL 16.15
+from the runner image started natively (`systemctl start postgresql`, default configuration),
+Temurin 25.0.4 — both versions as printed in the job log (Flyway's "PostgreSQL 16.15", JAVA_HOME `jdk/25.0.4-1`). Same harness and configuration as the VM baseline above (`bench/run.sh`, batch
+100 / 10 ms / 4, c=64, 20 000 messages, 1 000 warm-up). One run — the first artifact, as row B-1
+asked; the numbers are read from the job log (`bench-results` artifact 12122908999 holds the JSON,
+but its blob storage is not reachable from the coordinator's VM).
+
+| run | config | msg/s | p50 | p95 | p99 | max |
+|---|---|---|---|---|---|---|
+| 1 | sync | 18212 | 3.03 ms | 6.66 ms | 9.88 ms | 12.8 ms |
+| 1 | async | 19032 | 3.00 ms | 6.33 ms | 7.91 ms | 9.7 ms |
+
+<!-- baseline:batched-persistence-sync {"machine": "github-hosted runner", "throughputPerSecond": 18212, "p99Ms": 9.88} -->
+<!-- baseline:batched-persistence-async {"machine": "github-hosted runner", "throughputPerSecond": 19032, "p99Ms": 7.91} -->
+
+The runner is faster than the cloud VM on this path (sync +53 %, async +28 %; p50 3.0 vs 4.6 ms —
+presumably disk / fsync, not measured),
+which is exactly why a run is only ever compared with the baseline of its own machine (D-037). A
+single-run baseline on a shared runner is thin: the 50 % p99 band absorbs the expected noise; if
+the nightly job flaps, record a 3-run median from three dispatched runs and tighten from there.
+
 ### Supplementary (same build, same day; not baselines)
 
 | run | config | msg/s | p50 | p95 | p99 | max |
