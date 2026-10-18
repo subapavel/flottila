@@ -1,5 +1,73 @@
-# Bench results — Phase 0 baseline, cloud VM (P0-10)
+# Bench results — Phase 0 spikes, cloud VM (P0-10, P0-11)
 
+## P0-11 — RequestScope + admission under 10k virtual threads (spike 2) — cloud VM, 4 vCPU
+
+Date: 2026-10-18. Commit: the P0-11 commit (hash in PROGRESS.md; `--commit 9c18826` in the JSON names
+the base). Machine as in the Phase 0 baseline (4 vCPU, Java 25.0.4.1, Linux 6.18). Harness:
+`flottila-bench` `ScopeBenchMain` (`java -cp flottila-bench/target/flottila-bench-*.jar:flottila-bench/target/lib/* io.flottila.bench.ScopeBenchMain …`),
+1 000 warm-up scopes / acquires per configuration, `VertxTimer` for the deadlines (30 s, never fired).
+Raw JSON per run in the coordinator's scratchpad (not retained in the repo; the table is complete).
+Command sequence (all with `BENCH_MACHINE="cloud VM, 4 vCPU"`, `--commit 9c18826`, back to back on a quiet VM):
+`--scopes 10000 --children 4 --threads 10000 --requests 256 --bytes 67108864 --request-bytes 4096 --hold-ms 1` (twice: "all at once");
+`… --scope-concurrency 1 … --requests 10000 --hold-ms 0` ("one after another" + "uncontended");
+`… --scope-concurrency 64 … --requests 64 --hold-ms 1` (twice: "64 workers" + "64 slots").
+
+### RequestScope: open → fork 4 trivial children → join → read 4 results → close, per scope
+
+| run | workers | scopes/s | p50 | p95 | p99 | max | mean |
+|---|---|---|---|---|---|---|---|
+| 10 000 scopes, one after another | 1 | 15038 | 54 µs | 124 µs | 250 µs | 4.0 ms | 66 µs |
+| 10 000 scopes, 64 workers | 64 | 48292 | 924 µs | 3.4 ms | 7.1 ms | 16.6 ms | 1.3 ms |
+| 10 000 scopes, 64 workers (repeat) | 64 | 49940 | 946 µs | 3.2 ms | 5.6 ms | 11.6 ms | 1.3 ms |
+| 10 000 scopes all at once | 10000 | 49413 | 74.5 ms | 131.7 ms | 154.0 ms | 185.3 ms | 75.5 ms |
+| 10 000 scopes all at once (repeat) | 10000 | 49428 | 41.3 ms | 68.3 ms | 86.3 ms | 108.7 ms | 39.8 ms |
+
+- **Cost of the scope itself: ~55 µs p50 per message** for open + 4 forks (4 virtual threads
+  started) + join + close on one thread (15 000 scopes/s on a single worker = 60 000 child threads/s).
+  That is the fork/join overhead the backlog row asks for; a message's own work dwarfs it.
+- With 64 workers the 4 vCPU saturate at ~49 000 scopes/s (≈ 200 000 child threads/s); per-scope
+  wall time becomes CPU queueing (p50 0.9 ms, p99 6–7 ms), not scope cost.
+- 10 000 scopes started at once is the pathological case the row names: the same ~49 000 scopes/s
+  throughput, but a per-scope wall time of 40–75 ms p50 and up to 185 ms — that is 50 000 runnable
+  virtual threads queueing on 4 carriers. It is exactly what admission exists to prevent (below),
+  not a property of the scope.
+- 0 failures in every run; every scope dropped its deadline timer (the tests assert `pending() == 0`).
+
+### Admission: 10 000 virtual threads acquire 4 KiB each from one flow's budget, hold, release
+
+| run | slots | hold | acquires/s | acquire p50 | p95 | p99 | max | wall | max in flight observed |
+|---|---|---|---|---|---|---|---|---|---|
+| uncontended (10 000 slots) | 10000 | 0 ms | 176978 | 0.6 µs | 6.3 ms | 8.6 ms | 9.0 ms | 57 ms | 777 / 3108 KiB |
+| 256 slots | 256 | 1 ms | 69447 | 79.270 ms | 112.5 ms | 115.0 ms | 115.5 ms | 144 ms | 256 / 1024 KiB |
+| 256 slots (repeat) | 256 | 1 ms | 89571 | 48.807 ms | 73.7 ms | 80.2 ms | 81.5 ms | 112 ms | 256 / 1024 KiB |
+| 64 slots | 64 | 1 ms | 42104 | 118.468 ms | 194.6 ms | 200.9 ms | 202.0 ms | 238 ms | 64 / 256 KiB |
+| 64 slots (repeat) | 64 | 1 ms | 46907 | 94.925 ms | 163.1 ms | 168.5 ms | 169.6 ms | 213 ms | 64 / 256 KiB |
+
+- **The budget was never exceeded**: 256 / 1 MiB and 64 / 256 KiB observed as the maxima, exactly
+  the limits (the unit test does the same with 10k threads and a 64 / 64 KiB budget).
+- Uncontended acquire + release costs ~1 µs p50 (the p95/p99 there are 10 000 threads starting at
+  once, not the lock: max in flight 777 shows they really ran concurrently).
+- Contended, the acquire latency is queue wait by construction (FIFO: the median caller waits for half
+  the run). The mechanism's own cost shows in the wall time — derived, not measured: 10 000 holds of
+  1 ms through 256 slots need ≥ 39 rounds of hold; the hold is `Thread.sleep(1)`, assumed ≈ 1.1 ms,
+  so ≈ 43 ms of pure hold; measured 112–144 ms, i.e. 1.8–2.6 ms of wall time per round beyond the
+  hold with 10 000 runnable virtual threads on 4 carriers (release → signal → unpark → acquire returns
+  for 256 waiters, plus the scheduler). With 64 slots: 157 rounds in 213–238 ms = 1.4–1.5 ms per round,
+  same picture. A per-hand-over CPU figure would need a profiler; none is claimed.
+- Consequence for the design (ARCHITECTURE §4): per-flow admission costs nothing measurable when the
+  flow is below its budget and keeps memory bounded when it is not; the latency a rejected or queued
+  request sees is the budget's choice, not the implementation's. The non-blocking `tryAcquire` path
+  (HTTP 503 + Retry-After) is a lock acquire + two comparisons.
+
+### Spike-2 answer
+
+`RequestScope` (fork / join / cancel on plain virtual threads, deadline through the injected Timer)
+costs ~55 µs per message with 4 children and holds up at 10 000 concurrent scopes; `Admission`
+(requests **and** bytes, FIFO, interrupt-safe) never exceeds its budget under 10 000 contending
+virtual threads and costs ~1 µs uncontended. Both stay as designed (D-038); `StructuredTaskScope`
+replaces the scope when it leaves preview, with the same tests.
+
+---
 ## Phase 0 baseline — cloud VM, 4 vCPU
 
 Date: 2026-10-18. Commit: the tree of 663d45d plus the P0-10 change (the P0-10 commit hash is in
@@ -60,13 +128,17 @@ but its blob storage is not reachable from the coordinator's VM).
 | 1 | async | 19032 | 3.00 ms | 6.33 ms | 7.91 ms | 9.7 ms |
 | 2 | sync | 20243 | 2.20 ms | 5.94 ms | 19.20 ms | 98.3 ms |
 | 2 | async | 22842 | 2.56 ms | 5.00 ms | 6.03 ms | 12.2 ms |
+| 3 | sync | 15491 | 3.01 ms | 7.70 ms | 22.28 ms | 102.3 ms |
+| 3 | async | 20762 | 2.48 ms | 6.29 ms | 8.92 ms | 12.0 ms |
 
 Run 2 (CI run 39092705480, the first with the run-1 markers armed) was 11 % faster and went red
 on p99: one 98 ms batch (a shared-runner stall) put the sync p99 94 % above run 1. Latency on a
 shared runner is not a gate (FIX-4, D-039): the runner's markers carry throughput only, so the job
 fails on throughput > 20 % below run 1 and nothing else; p99 stays gated where the marker carries
 it, i.e. the coordinator's VM runs above. The throughput baseline keeps run 1, the lower and so the
-more lenient of the two (floor 14 570 msg/s). D-037's other remedy, a 3-run median, was not chosen:
+more lenient of the two (floor 14 570 msg/s). Run 3 (CI run 39093734224, first with the throughput-only
+markers) had another ~100 ms stall and 15 % less sync throughput than run 1 — passed, as intended;
+the runner's spread (15.5–20.2k msg/s sync) is the reason the band is as wide as it is. D-037's other remedy, a 3-run median, was not chosen:
 a median baseline does not absorb a per-run stall, it only moves the number the stall is compared with.
 
 <!-- baseline:batched-persistence-sync {"machine": "github-hosted runner", "throughputPerSecond": 18212} -->
