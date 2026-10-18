@@ -27,6 +27,28 @@
         <includes><include>V*.sql</include></includes>
       </resource>
     </resources>
+    <plugins>
+      <plugin>
+        <!-- *HeapTest / *HeapIT run in their own JVM with a heap far below the body they stream: a store that holds the
+             body at once fails with OutOfMemoryError, deterministically, instead of a GC heuristic deciding (P1-01 review). -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludes><exclude>**/*HeapTest.java</exclude></excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>heap-bounded</id>
+            <goals><goal>test</goal></goals>
+            <configuration>
+              <excludes><exclude>none</exclude></excludes>
+              <includes><include>**/*HeapTest.java</include></includes>
+              <argLine>@{argLine} -Xmx48m</argLine>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
   </build>
 
   <dependencies>
@@ -66,8 +88,27 @@
     </dependency>
     <!-- *IT classes run under -Pit against Testcontainers Postgres -->
     <dependency>
+      <!-- S3 tier: the synchronous S3 client over the JDK's HttpURLConnection; blocking calls run on the message's virtual thread -->
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <exclusions>
+        <exclusion><groupId>software.amazon.awssdk</groupId><artifactId>netty-nio-client</artifactId></exclusion>
+        <exclusion><groupId>software.amazon.awssdk</groupId><artifactId>apache-client</artifactId></exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- S3 API for the tier's IT: LocalStack (Apache-2.0 image) through the official module (MIT) -->
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-localstack</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -76,4 +117,33 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <profiles>
+    <profile>
+      <!-- the heap-bounded IT needs Docker like every IT: only under -Pit, as the parent binds failsafe -->
+      <id>it</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <excludes><exclude>**/*HeapIT.java</exclude></excludes>
+            </configuration>
+            <executions>
+              <execution>
+                <id>heap-bounded-it</id>
+                <goals><goal>integration-test</goal><goal>verify</goal></goals>
+                <configuration>
+                  <excludes><exclude>none</exclude></excludes>
+                  <includes><include>**/*HeapIT.java</include></includes>
+                  <argLine>@{argLine} -Xmx96m</argLine>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

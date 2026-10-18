@@ -1,5 +1,51 @@
-# Bench results — Phase 0 (gate, spikes, baselines)
+# Bench results — Phase 1 (P1-01) and Phase 0 (gate, spikes, baselines)
 
+## P1-01 — BlobStore tiers: 50 MB pass-through — cloud VM, 4 vCPU
+
+Date: 2026-10-18. Commit: the P1-01 commit (hash in PROGRESS.md; `--commit 0c96758` in the JSON names the base).
+Machine as in the Phase 0 baseline (4 vCPU, 15 GB, Java 25.0.4.1, Linux 6.18; spool on the VM's disk).
+Harness: `flottila-bench` `BlobBenchMain --mb 50 --rounds 5 --chunk 65536` — a 50 MiB `GeneratedReadStream`
+written through `TieredBlobStore` (memory tier: everything in memory under the budget; spool tier: memory
+tier 0, segmented AES-256-GCM file, 1 MiB segments) and read back through `open()` with the hash checked
+every round; MB/s is the median of 5 rounds (the first spool round carries JIT and cipher warm-up and is
+visible in the per-round list). Two runs back to back; raw JSON in the coordinator's scratchpad. Measured
+with the segmented cipher before the per-file key derivation was added (two HMAC-SHA256 calls and one
+extra read per file since — not re-measured).
+
+| tier | write MB/s (run 1 / run 2) | read MB/s (run 1 / run 2) | write ms per round (run 1) | read ms per round (run 1) |
+|---|---|---|---|---|
+| memory | 206 / 229 | 764 / 848 | [281.2, 242.8, 248.1, 187.5, 226.6] | [86.0, 70.1, 65.5, 56.6, 62.7] |
+| spool (segmented AES-GCM) | 367 / 462 | 305 / 320 | [1040.4, 142.1, 122.0, 136.2, 109.5] | [1019.8, 158.4, 191.2, 164.2, 151.1] |
+
+- **A 50 MiB body passes through either tier without the body in memory at once — proven by heap size,
+  not by a GC heuristic**: `SpoolHeapTest` runs the spool round trip in a JVM with `-Xmx48m`, `S3HeapIT`
+  the multipart round trip with `-Xmx96m` (runtime pom, executions `heap-bounded` / `heap-bounded-it`);
+  a store that holds the body dies with OutOfMemoryError there. Both pass.
+- **Spool reads are a stream only because the file is segmented.** The JDK's `CipherInputStream` over
+  AES-GCM releases no plaintext before the final tag (measured: the first 64 KiB read of a 64 MiB file
+  arrived after 330 MiB of heap growth). Segments of 1 MiB with one tag each give one segment of memory,
+  authentication before delivery, and detection of truncation and reordering (`SpoolCipherTest`). The
+  per-segment cost shows in the read number (305–320 MB/s vs 387–392 MB/s with the unsegmented cipher
+  measured earlier the same day).
+- **JIT shape matters more than the cipher (the explanation is inferred from throughput, not from
+  `-XX:+PrintCompilation`).** Feeding a segment to the cipher as one `doFinal(1 MiB)` ran at 55 MB/s in
+  every round (both thread kinds); the same bytes through 64 KiB `update()` calls run at 1.5–2.3 GB/s once
+  warm — consistent with the one-shot path never reaching the compiled, intrinsified GCM code. The spool slices every segment into 64 KiB updates (`SpoolCipher.SLICE`).
+- **The hash, not the tier, looks like the write bottleneck (inferred, not isolated).** The memory tier
+  writes at ~210–230 MB/s although it only appends to a buffer: the source thread hashes every chunk
+  (`Hasher.sha256()`, SHA-256 truncated to 64 bits, JDK) and appends in the same thread; the spool is faster
+  to write because hashing runs on the source thread while the cipher and the file write run on the
+  sink's virtual thread — two cores. ARCHITECTURE §4 names xxh3; the Hasher SPI exists for that swap (a
+  JDK xxh3 is not available; a dependency would be needed — not decided here, D-041). The inference is from
+  the thread split alone; the generator's byte loop and the Buffer copies share the source thread, no
+  hash-only run was made.
+- Reads: memory 760–850 MB/s (64 KiB slices of the buffer), spool 305–320 MB/s (segment decrypt + file
+  read on a virtual-thread pump, 64 KiB chunks).
+- S3 (LocalStack in Docker on the VM) is exercised by `S3TierIT` / `S3HeapIT` for correctness (contract,
+  12 MiB and 50 MiB multipart, abort); no S3 throughput is recorded — a container is not a native store,
+  and the number would be LocalStack's, not S3's.
+
+---
 ## Phase 0 gate — commit 7f3e4e3 (2026-10-18)
 
 Gate commit: `7f3e4e3` (P0-12, the last Phase 0 code commit); numbers measured by CI on it, dispatched run

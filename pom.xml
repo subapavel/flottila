@@ -136,6 +136,14 @@
         <scope>import</scope>
       </dependency>
       <dependency>
+        <!-- S3 tier of the BlobStore (P1-01): AWS SDK v2, Apache-2.0; only runtime may depend on it (ArchUnit) -->
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>2.56.0</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
         <!-- YAML flow/package/endpoint/test files (P0-12): Jackson's YAML module, Apache-2.0 (SnakeYAML inside, Apache-2.0) -->
         <groupId>com.fasterxml.jackson</groupId>
         <artifactId>jackson-bom</artifactId>

@@ -4,7 +4,7 @@
     "line": 98.5
   },
   "flottila-bench": {
-    "branch": 91.7,
+    "branch": 92.6,
     "line": 96.5
   },
   "flottila-core": {
@@ -20,7 +20,7 @@
     "line": 98.3
   },
   "flottila-testkit": {
-    "branch": 91.3,
-    "line": 97.4
+    "branch": 93.2,
+    "line": 98.4
   }
 }

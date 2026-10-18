@@ -32,8 +32,8 @@
     </dependency>
     <dependency>
       <groupId>io.flottila</groupId>
+      <!-- compile scope since P1-01: the tier benchmark streams a GeneratedReadStream body (the bench is a tool, never shipped) -->
       <artifactId>flottila-testkit</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>

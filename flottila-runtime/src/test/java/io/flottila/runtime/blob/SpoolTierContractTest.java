@@ -1,0 +1,18 @@
+package io.flottila.runtime.blob;
+
+import io.flottila.api.BlobStore;
+import io.flottila.testkit.BlobStoreContract;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+
+/** The tiered store with no memory tier at all: every body goes to the encrypted spool. */
+class SpoolTierContractTest extends BlobStoreContract {
+    @TempDir Path spool;
+
+    @Override protected BlobStore store() {
+        return new TieredBlobStore(new TieredBlobStore.Config(TREE_LIMIT, 0, 1L << 20, spool, TieredBlobStoreTest.key(), null, false), hasher());
+    }
+
+    @Override protected long bigSize() { return 12L * 1024 * 1024; }
+}
