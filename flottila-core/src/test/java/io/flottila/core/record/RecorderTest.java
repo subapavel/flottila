@@ -149,6 +149,31 @@ class RecorderTest {
     }
 
     @Test
+    void aStageThatHandsOnTwiceIsRecordedOnceWithTheFirstAndAFilterUnderErrorsLeavesNoRow() {
+        StepFactory twice = factory("twice", s -> (e, rest) -> { rest.apply(e.withHeader("child", "1")); rest.apply(e.withHeader("child", "2")); return e; });
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(twice);
+        Envelope in = in();
+        new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, meter)
+                .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("twice", "split")))), java.nio.file.Path.of("")).apply(in);
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of("ingress", "split"), t.stream().map(Snapshot::stepName).toList(), "one row for the step, not one per hand-on");
+        assertEquals("1", t.get(1).headers().get("child"), "the first envelope handed on");
+        Envelope filtered = in();
+        build(Map.of("level", "errors"), step("drop", "f")).apply(filtered);
+        assertEquals(List.of(), store.timeline(filtered.id()).await(), "errors: a filtered message leaves no row");
+        AtomicLong readings = new AtomicLong();
+        Meter firstKnownThenUnknown = () -> readings.incrementAndGet() == 1 ? 5_000 : Snapshot.CPU_UNKNOWN;
+        Envelope lost = in();
+        new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, firstKnownThenUnknown)
+                .build(FlowDefinition.from(flow(Map.of("level", "errors"), List.of(step("mark", "a"), step("boom", "x")))), java.nio.file.Path.of(""));
+        Pipeline p = new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, firstKnownThenUnknown)
+                .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a")))), java.nio.file.Path.of(""));
+        p.apply(lost);
+        assertEquals(Snapshot.CPU_UNKNOWN, store.timeline(lost.id()).await().get(1).cpuNanos(), "a reading that turns unknown mid-step records unknown");
+    }
+
+    @Test
     void metadataOnlyKeepsHashAndSizeButNoReachableBody() {
         Envelope in = in();
         build(Map.of("payload", "metadata-only"), step("mark", "a"), Map.of("type", "rebody", "name", "b", "recording", Map.of("payload", "keep"))).apply(in);

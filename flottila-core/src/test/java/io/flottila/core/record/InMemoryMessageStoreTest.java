@@ -63,6 +63,8 @@ class InMemoryMessageStoreTest {
         assertThrows(IllegalArgumentException.class, () -> new Snapshot(ok.messageId(), ok.flow(), 0, ok.stepName(), Snapshot.Outcome.FAILED, Optional.empty(), ok.startedAt(), 0, 0,
                 ok.headers(), ok.props(), ok.keys(), ok.bodyHash(), ok.bodySize(), ok.bodyKey(), ok.versions()), "a failure names its error");
         assertEquals(Snapshot.CPU_UNKNOWN, -1L);
+        assertThrows(IllegalArgumentException.class, () -> new Snapshot(ok.messageId(), ok.flow(), 0, ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(), 0, 0,
+                ok.headers(), ok.props(), ok.keys(), ok.bodyHash(), -1, ok.bodyKey(), ok.versions()), "a negative size is no size");
         assertEquals(0L, new Snapshot(ok.messageId(), ok.flow(), 0, ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(), 0, Snapshot.CPU_UNKNOWN,
                 ok.headers(), ok.props(), ok.keys(), ok.bodyHash(), 0, ok.bodyKey(), ok.versions()).bodySize(), "an empty body is legal");
     }

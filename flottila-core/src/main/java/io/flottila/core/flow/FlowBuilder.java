@@ -12,6 +12,8 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.core.dlq.Dlq;
+import io.flottila.core.dlq.Parking;
 import io.flottila.core.pattern.Filter;
 import io.flottila.core.pattern.Retry;
 import io.flottila.core.pattern.Route;
@@ -40,6 +42,9 @@ import java.util.function.Predicate;
  * is wrapped in the flow's {@link RetryPolicy} by {@link Retry}. With a {@link MessageStore} given through
  * {@link #recording(MessageStore, Meter)}, every step is also wrapped by a {@link Recorder} under the flow's
  * {@link RecordingPolicy} (a step's own {@code recording} overrides it) and the pipeline starts with the ingress snapshot.
+ * An at-least-once flow parks a failed message in the {@link Dlq} given through {@link #dlq(Dlq)} (ARCHITECTURE §4
+ * lifecycle table: sync answers the caller, at-most-once drops) — without one it does not build. {@link #replay} gives
+ * the flow's replay: steps {@code n..end} as a new message.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -60,6 +65,7 @@ public final class FlowBuilder {
     private final Map<String, EndpointConfig> endpoints;
     private MessageStore store;
     private Meter meter;
+    private Dlq dlq;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -79,13 +85,52 @@ public final class FlowBuilder {
         return this;
     }
 
+    /** Parks the failed messages of at-least-once flows in {@code dlq} (ARCHITECTURE §6); such a flow does not build without it. */
+    public FlowBuilder dlq(Dlq dlq) {
+        this.dlq = Objects.requireNonNull(dlq, "dlq");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the flow file's directory). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
+        Built built = built(flow, baseDir);
+        List<Stage> stages = new ArrayList<>(built.steps().size() + 1);
+        if (built.recorder() != null) stages.add(built.recorder().start(flow.recording(), Recorder.INGRESS));
+        stages.addAll(built.steps());
+        return Pipeline.of(stages);
+    }
+
+    /**
+     * The flow's replay; needs the recorded snapshots ({@link #recording}) and, for DLQ retries, the {@link #dlq}. Built once,
+     * here: a replay slices the stages built now and holds nothing of this builder or the {@link Runtime}.
+     */
+    public Replay replay(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
+        if (store == null) throw new IllegalStateException("replay needs the recorded snapshots: call recording(store, meter) first");
+        Built built = built(flow, baseDir);
+        List<Stage> steps = built.steps();
+        Recorder recorder = built.recorder();
+        RecordingPolicy policy = flow.recording();
+        return new Replay(flow, from -> {
+            List<Stage> tail = new ArrayList<>(steps.size() - from + 2);
+            tail.add(recorder.start(policy, Replay.REPLAY_INPUT));
+            tail.addAll(steps.subList(from - 1, steps.size()));
+            return Pipeline.of(tail);
+        }, store, dlq, runtime.blobs(), runtime.ids());
+    }
+
+    /** The flow's steps as stages, wrapped (retry, numbering, recording, parking), without the start stage. */
+    private record Built(List<Stage> steps, Recorder recorder) {}
+
+    private Built built(FlowDefinition flow, Path baseDir) {
+        Objects.requireNonNull(flow, "flow");
+        Map<String, String> versions = Map.of("flow", flow.id() + "@" + flow.version());
+        boolean parks = "at-least-once".equals(flow.deliveryMode());
+        if (parks && dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' is at-least-once and needs a DLQ to park failed messages in: call dlq(...) first");
+        Parking parking = parks ? new Parking(dlq, runtime.clock(), versions) : null;
         StepResources resources = new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir);
-        Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, Map.of("flow", flow.id() + "@" + flow.version()));
-        List<Stage> stages = new ArrayList<>(flow.steps().size() + 1);
-        if (recorder != null) stages.add(recorder.ingress(flow.recording()));
+        Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
+        List<Stage> stages = new ArrayList<>(flow.steps().size());
         int lastIndex = flow.steps().size();
         for (StepConfig step : flow.steps()) {
             Stage stage = switch (step.type()) {
@@ -99,9 +144,10 @@ public final class FlowBuilder {
             if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
             stage = numbered(stage, step);
             if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
+            if (parking != null) stage = parking.wrap(stage, step);
             stages.add(stage);
         }
-        return Pipeline.of(stages);
+        return new Built(List.copyOf(stages), recorder);
     }
 
     private StepFactory factoryFor(StepConfig step) {

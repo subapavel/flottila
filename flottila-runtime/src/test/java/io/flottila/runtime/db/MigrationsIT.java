@@ -48,17 +48,17 @@ class MigrationsIT {
         Set<String> app = Set.of("dlq", "message_keys", "messages", "payloads", "work");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
-        assertEquals(2, first.migrationsExecuted(), "V1 (m1 schema) and V2 (snapshot columns, P1-04)");
-        assertEquals("2", first.schemaVersion());
+        assertEquals(3, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05)");
+        assertEquals("3", first.schemaVersion());
         assertEquals(Set.of("dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "work"), tables());
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
-        assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "messages_pkey", "payloads_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
+        assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "dlq_parked_at", "messages_pkey", "payloads_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
         Migrations.Result second = Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V2");
-        assertEquals("2", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V3");
+        assertEquals("3", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(2, applied);
+        assertEquals(3, applied);
     }
 
     @Test

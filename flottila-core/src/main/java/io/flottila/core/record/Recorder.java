@@ -23,7 +23,7 @@ import java.util.Optional;
  */
 public final class Recorder {
 
-    /** The name of step 0. */
+    /** The name of step 0: {@code start(policy, INGRESS)} records what arrived. */
     public static final String INGRESS = "ingress";
 
     private final MessageStore store;
@@ -38,10 +38,11 @@ public final class Recorder {
         this.versions = Map.copyOf(versions);
     }
 
-    /** The stage that records what arrived as step 0 and hands it on unchanged. */
-    public Stage ingress(RecordingPolicy policy) {
+    /** The stage that records the envelope a pipeline starts with (at its own step, under {@code name}) and hands it on unchanged; a start is an end of the timeline like ingress. */
+    public Stage start(RecordingPolicy policy, String name) {
+        Objects.requireNonNull(name, "name");
         return (e, rest) -> {
-            if (policy.records(0, false, Snapshot.Outcome.OK)) store.record(snapshot(e, 0, INGRESS, Snapshot.Outcome.OK, null, clock.instant(), 0, 0, policy));
+            if (policy.records(0, false, Snapshot.Outcome.OK)) store.record(snapshot(e, e.step(), name, Snapshot.Outcome.OK, null, clock.instant(), 0, 0, policy));
             return rest.apply(e);
         };
     }
