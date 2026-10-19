@@ -49,3 +49,9 @@
 - Testkit twin streams (ChunkedReadStream / GeneratedReadStream): when one twin's guard gets a pinning case, grep the other twin for the same case (FIX-13).
 - A "seen-with-X" flag the test sets just before the call proves only "after this line": a second witness at most, never proof of internal state.
 - BACKLOG and spec test-class names can be wrong (ChunkedReadStreamTest vs ChunkedReadStreamEdgeCasesTest); grep the method name, not the class. Quiet `-q` logs have no Surefire counts, so ask for the XML count.
+- A contract case asserting a negative ("receives nothing") becomes vacuous when its target cannot be reached at all; pin it with a broken-variant self-test, not only a green fixture (FIX-8, ComponentContract:110).
+- A red observed once proves the fixture discriminates today; only a permanent self-test (the red kept as an expected failing set, EngineTestKit) pins it (FIX-8, EphemeralAddressComponent:59).
+- A null guard ahead of the mutated call makes the mutant equivalent for the null input: mutate the decision, not the call it guards (FIX-8 M10).
+- testkit `ComponentContract` hooks: check `ComponentContractSelfTest` has a variant per hook. Nested suites that fail by design rely on Surefire's `**/*$*` exclude, so ask for "no `TEST-*$*.xml`" after verify.
+- Take mutant line numbers from the live file, never from `target/<task>.diff`: the diff's hunk numbering drifts from the file (FIX-8 M9: 47 vs 36).
+- Before naming the case that kills a mutant, check whether that fixture reads the value at all: `ComponentContractSelfTest.Variant` ignores its config, so a null endpoint passes it (FIX-8 M8).

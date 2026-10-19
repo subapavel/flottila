@@ -2,7 +2,9 @@
 
 - Testkit helpers: FakeRuntime, FakeClock, FakeTimer (`nextDelay()` drives backoffs — never a
   sleep), FakeIds, InMemoryBlobStore, InMemoryMessageStore (unbounded, tests only),
-  BlobStoreContract, ComponentContract (9 cases + exact-set self-test), RecordingComponent,
+  BlobStoreContract, ComponentContract (9 cases + exact-set self-test; `producerEndpoint(started)` hook for
+  addresses assigned at start — testkit test `EphemeralAddressComponent(stopKeepsTheAddressRegistered)`, http contract on
+  port 0; the self-test runs `failing(Class)` on two ephemeral configurations too), RecordingComponent,
   GeneratedReadStream, BlockedPlatformThreadDetector / `NoBlockedPlatformThreads`.
 - End-to-end reference: flottila-runtime `flow/InvoiceSyncFlowTest` (demo package → FlowDefinition
   → FlowBuilder → FakeRuntime). Reference package: `packages/demo` (flows, fixtures, `*.test.yaml`).
@@ -66,4 +68,6 @@
 - Scratch `out` dirs keep stale classes (a stale testkit GeneratedReadStream gave NoSuchMethodError): always a fresh output dir.
   `pgrep -f <pattern>` inside a Bash call matches the calling shell itself — not proof another Maven runs.
 - A "next hold" latch must be consumed before the hold signals `reached`: a test that observes `reached` of hold X and arms the latch afterwards expects the hold after X; signalling first leaves a window where X opens it (FIX-10 r9, R12 1/30 under load, `OwnThreadStream.block()`).
+- A guard in front of a mutated call (`x == null ? null : check(x)`) lets the mutant survive a test that only exercises
+  the null branch (FIX-8 r2): test against the whole expression, or drop a redundant guard so the check stands alone.
 - A join or latch timeout in a fixture names where the waited thread sits (its stack) — a bare "(not within 10 s)" cost a diagnosis round (FIX-10 r9, `Attach.joined`).

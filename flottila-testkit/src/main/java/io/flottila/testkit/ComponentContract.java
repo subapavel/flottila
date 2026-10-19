@@ -45,8 +45,18 @@ public abstract class ComponentContract {
     /** A fresh component under test; called once per test case. */
     protected abstract Component component();
 
-    /** An endpoint whose URI scheme selects {@link #component()}; its options bind consumer and producer to each other. */
+    /**
+     * An endpoint whose URI scheme selects {@link #component()}; its options bind the consumer. The producer's target is
+     * {@link #producerEndpoint(Consumer)}.
+     */
     protected abstract EndpointConfig endpoint();
+
+    /**
+     * The endpoint a producer sends to in order to reach {@code started}, a consumer of {@link #endpoint()} that has started;
+     * by default {@link #endpoint()} itself. A transport that assigns the consumer's address only at start (an ephemeral
+     * port) overrides it and reads the address from the started consumer.
+     */
+    protected EndpointConfig producerEndpoint(Consumer started) { return endpoint(); }
 
     /** How long a case waits for an asynchronous delivery before it fails (a real transport needs a moment). */
     protected Duration patience() { return Duration.ofSeconds(10); }
@@ -95,8 +105,9 @@ public abstract class ComponentContract {
         AtomicInteger delivered = new AtomicInteger();
         Consumer consumer = component.consumer(endpoint(), e -> { delivered.incrementAndGet(); return Future.succeededFuture(new Ack.Accepted(e.id())); });
         consumer.start().await();
+        EndpointConfig where = producerEndpoint(consumer);   // where the consumer was: the producer targets a stopped address
         consumer.stop().await();
-        Producer producer = component.producer(endpoint());
+        Producer producer = component.producer(where);
         try {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("late"));
             Future<Envelope> outcome = producer.send(sent);
@@ -116,7 +127,7 @@ public abstract class ComponentContract {
             return Future.succeededFuture(new Ack.Reply(e.withHeader("x-seen", "1")));
         });
         consumer.start().await();
-        Producer producer = component.producer(endpoint());
+        Producer producer = component.producer(producerEndpoint(consumer));
         try {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty().with("content-type", "text/plain"), Buffer.buffer("ping"));
             Envelope reply = producer.send(sent).await();
@@ -142,7 +153,7 @@ public abstract class ComponentContract {
             return p.future();
         });
         consumer.start().await();
-        Producer producer = component.producer(endpoint());
+        Producer producer = component.producer(producerEndpoint(consumer));
         try {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("slow"));
             Future<Envelope> outcome = producer.send(sent);
@@ -161,7 +172,7 @@ public abstract class ComponentContract {
         Component component = component();
         Consumer consumer = component.consumer(endpoint(), e -> Future.succeededFuture(new Ack.Nack("busy-right-now", true)));
         consumer.start().await();
-        Producer producer = component.producer(endpoint());
+        Producer producer = component.producer(producerEndpoint(consumer));
         try {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("x"));
             Future<Envelope> outcome = producer.send(sent);
@@ -180,7 +191,7 @@ public abstract class ComponentContract {
         List<Envelope> seen = new CopyOnWriteArrayList<>();
         Consumer consumer = component.consumer(endpoint(), e -> { seen.add(e); return Future.succeededFuture(new Ack.Accepted(e.id())); });
         consumer.start().await();
-        Producer producer = component.producer(endpoint());
+        Producer producer = component.producer(producerEndpoint(consumer));
         try {
             FakeRuntime small = FakeRuntime.create().withTreeLimit(4096);
             long size = 300_000;
@@ -202,7 +213,7 @@ public abstract class ComponentContract {
         List<Envelope> seen = new CopyOnWriteArrayList<>();
         Consumer consumer = component.consumer(endpoint(), e -> { seen.add(e); return Future.succeededFuture(new Ack.Accepted(e.id())); });
         consumer.start().await();
-        Producer producer = component.producer(endpoint());
+        Producer producer = component.producer(producerEndpoint(consumer));
         try {
             Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("retry-me"));
             producer.send(sent).await();

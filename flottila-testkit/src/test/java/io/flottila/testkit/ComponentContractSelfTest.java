@@ -15,6 +15,7 @@ import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -87,9 +88,31 @@ class ComponentContractSelfTest {
         @Override protected EndpointConfig endpoint() { return LOOP; }
     }
 
+    static final EndpointConfig EPHEMERAL = new EndpointConfig("in", URI.create("ephemeral://in"), Map.of());   // no address before start
+
+    /** An address assigned at start, but the suite never asks the started consumer for it: every producer targets {@link #endpoint()}. */
+    static class EphemeralWithoutOverrideContractTest extends ComponentContract {
+        @Override protected Component component() { return new EphemeralAddressComponent(); }
+        @Override protected EndpointConfig endpoint() { return EPHEMERAL; }
+        @Override protected Duration patience() { return Duration.ofMillis(200); }   // a handler never invoked is waited out
+    }
+
+    /** The producer reaches the started consumer's address, but {@link Consumer#stop()} leaves the handler registered there. */
+    static class EphemeralStopKeepsTheAddressContractTest extends ComponentContract {
+        @Override protected Component component() { return new EphemeralAddressComponent(true); }
+        @Override protected EndpointConfig endpoint() { return EPHEMERAL; }
+        @Override protected EndpointConfig producerEndpoint(Consumer started) {
+            return new EndpointConfig("in", URI.create("ephemeral://in"), Map.of("address", ((EphemeralAddressComponent.EphemeralConsumer) started).address()));
+        }
+    }
+
     static Set<String> failing(Component variant) {
         current = variant;
-        Events events = EngineTestKit.engine("junit-jupiter").selectors(selectClass(VariantContractTest.class)).execute().testEvents();
+        return failing(VariantContractTest.class);
+    }
+
+    static Set<String> failing(Class<? extends ComponentContract> suite) {
+        Events events = EngineTestKit.engine("junit-jupiter").selectors(selectClass(suite)).execute().testEvents();
         assertEquals(0, events.skipped().count(), "nothing skipped");
         Set<String> failed = new TreeSet<>();
         events.failed().stream().forEach(e -> failed.add(e.getTestDescriptor().getDisplayName().replace("()", "")));
@@ -122,5 +145,20 @@ class ComponentContractSelfTest {
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain"),
                 failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e.next(truncated), e -> e)), "the body does not arrive intact");
         current = Variant.correct();
+    }
+
+    @Test
+    void anAddressAssignedAtStartIsReachedOnlyThroughTheStartedConsumersProducerEndpoint() {
+        assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged",
+                        "aNackFromTheHandlerFailsTheSendWithItsReason", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain"),
+                failing(EphemeralWithoutOverrideContractTest.class),
+                "without producerEndpoint the producer has no address: every case that needs a delivery fails, the component delivers only to the address named");
+    }
+
+    @Test
+    void aStoppedConsumerWhoseAddressStaysRegisteredFailsTheStoppedAndHealthCases() {
+        assertEquals(Set.of("aStoppedConsumerReceivesNothing", "healthIsUpWhileAConsumerRunsAndDownAfterItStopped"),
+                failing(EphemeralStopKeepsTheAddressContractTest.class),
+                "stop() leaves the address registered: the producer built from where the consumer was still delivers, health stays up");
     }
 }
