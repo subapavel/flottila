@@ -25,7 +25,7 @@ Maven, Docker, native PostgreSQL pre-installed). Nothing else is rented or deplo
 | Setting | Value |
 | --- | --- |
 | Name | `flottila` |
-| Network access | **Custom**, with "also include the default list of common package managers" checked, plus one domain: `mcp.context7.com` |
+| Network access | **Custom**, with "also include the default list of common package managers" checked, plus two domains: `mcp.context7.com` and `*.blob.core.windows.net` (GitHub Actions artifacts redirect to Azure blob storage, which the GitHub proxy does not cover; needed to read the runner's JaCoCo reports, FIX-7) |
 | Setup script | the contents of `deploy/claude-cloud/setup.sh` |
 | Permission mode | Auto |
 

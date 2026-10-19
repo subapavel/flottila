@@ -3,7 +3,7 @@
 state: RED MAIN — "fix main" is the only ready task (WORKFLOW §3); FIX-7 in BACKLOG, diagnosis in agent/NOTES.md "Fix main — FIX-7"
 last commit: f798a76 on main, trailer `Task: AGENTS` (D-048); before it b2cdbf4 `Task: P1-07` (D-017, D-047); Phase 0 gate MET on 7f3e4e3
 branch: main
-next exact action: FIX-7 — runtime branch 97.8 % on the runner vs 100.0 % VM baseline: name the 2–3 branches from the runner's jacoco.xml, fix their tests.
+next exact action: FIX-7 — the committed runtime baseline 100.0 is a stale high-water mark (VM measures 98.2): write measured values, cover the 7 branches.
 after FIX-7: P1-08 — delivery modes. Spec and red tests per agent/NOTES.md "Next task — P1-08"; acceptance spec to the test-author first.
 P1-08 red tests: runtime `flow/DeliveryModesTest` (one case per mode, fake clock for the save timeout) and an IT for "no 202 without a committed ingress row".
 P1-08 decisions: error-to-status table (D-049, ARCHITECTURE §4); cancel semantics for a consumer stopped mid-delivery (D-046 left it open).
