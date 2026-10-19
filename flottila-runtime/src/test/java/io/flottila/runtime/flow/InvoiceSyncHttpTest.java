@@ -12,6 +12,7 @@ import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Snapshot;
 import io.flottila.schemas.Documents;
+import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
@@ -34,6 +35,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -92,7 +94,7 @@ class InvoiceSyncHttpTest {
                 "partner-foreign", new EndpointConfig("partner-foreign", URI.create(base + "/echo-foreign"), Map.of("url", base + "/echo-foreign", "maxBodyBytes", 1_048_576)));
         FlowDefinition def = FlowDefinition.from(flowDoc.getMap());
         SaxonXml xml = new SaxonXml();
-        Pipeline pipeline = new FlowBuilder(rt.runtime(), xml.steps(), xml.languages(), endpoints).recording(store, Meter.system()).build(def, DEMO.resolve("flows"));
+        Pipeline pipeline = new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).build(def, DEMO.resolve("flows"));
         // the consumer's handler: the sync flow's reply is the ACK (ARCHITECTURE §4); the delivery-mode wrapper proper is P1-08
         EndpointConfig httpIn = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
         HttpComponent.HttpConsumer consumer = (HttpComponent.HttpConsumer) http.consumer(httpIn, e -> {

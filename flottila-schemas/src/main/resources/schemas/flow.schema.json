@@ -79,7 +79,7 @@
       "type": "object",
       "required": ["type", "name"],
       "properties": {
-        "type": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$", "description": "Step type. The schema knows the typed requirements of xslt, route, to, extractKey and validate; any other type passes here and is checked against its step's own configSchema at deploy time (an unknown type, e.g. a typo, fails there, not here)." },
+        "type": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9-]*$", "description": "Step type. The schema knows the typed requirements of xslt, xsd, route, to, extractKey, validate and split; any other type passes here and is checked against its step's own configSchema at deploy time (an unknown type, e.g. a typo, fails there, not here)." },
         "name": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_-]*$", "maxLength": 64, "description": "Step name, unique in the flow; the label on snapshots and per-step timings (camelCase allowed)." },
         "retryable": { "type": "boolean" },
         "recording": { "$ref": "#/$defs/recording" }
@@ -95,7 +95,9 @@
           "then": { "anyOf": [ { "required": ["endpoint"], "properties": { "endpoint": { "$ref": "#/$defs/slug" } } },
                                { "required": ["byProp", "endpoints"], "properties": { "byProp": { "$ref": "#/$defs/keyName" }, "endpoints": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/slug" } } } } ] } },
         { "if": { "properties": { "type": { "const": "extractKey" } } }, "then": { "required": ["key", "xpath"], "properties": { "key": { "$ref": "#/$defs/keyName" }, "xpath": { "type": "string" } } } },
-        { "if": { "properties": { "type": { "const": "validate" } } }, "then": { "required": ["required"], "properties": { "required": { "type": "string" } } } }
+        { "if": { "properties": { "type": { "const": "validate" } } }, "then": { "required": ["required"], "properties": { "required": { "type": "string" } } } },
+        { "if": { "properties": { "type": { "const": "xsd" } } }, "then": { "required": ["schema"], "properties": { "schema": { "type": "string", "minLength": 1, "description": "Path of the XSD file relative to this flow file." } } } },
+        { "if": { "properties": { "type": { "const": "split" } } }, "then": { "required": ["xpath"], "properties": { "xpath": { "type": "string", "description": "Selects the parts; every selected node becomes a child message." } } } }
       ]
     }
   }

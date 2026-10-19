@@ -102,6 +102,6 @@ class PublicTypesHaveSinceTest {
             }
         }
         assertEquals(List.of(), missing, "public types without @since");
-        assertEquals(36, publicTypes, "30 top-level + 6 nested public types after P1-06 (NackException); update this number with every api change");
+        assertEquals(37, publicTypes, "31 top-level + 6 nested public types after P1-07 (BodyKind); update this number with every api change");
     }
 }

@@ -56,7 +56,7 @@ class DemoPackageTest {
                 from: { endpoint: nowhere }
                 delivery: { mode: sync }
                 limits: { maxBodyBytes: 10 }
-                steps: [ { type: xslt, name: map, stylesheet: lost.xsl }, { type: to, name: out, endpoint: also-nowhere } ]
+                steps: [ { type: xsd, name: v, schema: lost.xsd }, { type: xslt, name: map, stylesheet: lost.xsl }, { type: to, name: out, endpoint: also-nowhere } ]
                 """);
         Files.writeString(dir.resolve("flows/f.test.yaml"), """
                 schemaVersion: 1
@@ -75,6 +75,7 @@ class DemoPackageTest {
         assertTrue(problems.stream().anyMatch(p -> p.contains("mock for endpoint 'ghost'")), problems.toString());
         assertTrue(problems.stream().anyMatch(p -> p.contains("no-ack.xml")), problems.toString());
         assertTrue(problems.stream().anyMatch(p -> p.contains("lost.xsl")), problems.toString());
-        assertEquals(7, problems.size(), problems.toString());
+        assertTrue(problems.stream().anyMatch(p -> p.contains("step 'v' schema") && p.contains("lost.xsd")), problems.toString());
+        assertEquals(8, problems.size(), problems.toString());
     }
 }

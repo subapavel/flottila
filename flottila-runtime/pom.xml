@@ -83,6 +83,11 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-step-validate</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <!-- GATE check 3 end to end: the demo flow behind the real http component (P1-06) -->
       <groupId>io.flottila</groupId>
       <artifactId>flottila-component-http</artifactId>

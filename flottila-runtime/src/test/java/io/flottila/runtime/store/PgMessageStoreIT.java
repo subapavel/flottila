@@ -104,10 +104,11 @@ class PgMessageStoreIT {
             saves.add(store.record(snap("m-" + i, 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty().with("invoiceId", "4711").with("orderNo", "o-" + i), Optional.of(BlobKey.body("m-" + i, 0)))));
             saves.add(store.record(snap("m-" + i, 1, "to", Snapshot.Outcome.FILTERED, Optional.empty(), Keys.empty(), Optional.empty())));
         }
+        store.flush().await();   // batches commit concurrently (D-044): only a committed row is deterministically "first"
         saves.add(store.record(snap("m-7", 1, "to-again", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty())));
         store.flush().await();
         assertTrue(saves.stream().allMatch(io.vertx.core.Future::succeeded));
-        assertEquals("to", store.timeline("m-7").await().get(1).stepName(), "the first row for (id, step) wins: ON CONFLICT DO NOTHING");
+        assertEquals("to", store.timeline("m-7").await().get(1).stepName(), "a duplicate (id, step) after the committed row is ignored: ON CONFLICT DO NOTHING");
         assertEquals(50, store.findByKey("invoiceId", "4711").await().size());
         assertEquals(List.of("m-9"), store.findByKey("orderNo", "o-9").await());
         long rows = pool.query("select count(*) from messages").execute().await().iterator().next().getLong(0);
