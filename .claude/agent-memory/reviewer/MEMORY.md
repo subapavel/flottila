@@ -64,3 +64,5 @@
 - JaCoCo marks a line missed when the call on it always throws in tests (no probe after the call), so look at the callee's coverage before asking for a test (FIX-14, SpoolCipher:65).
 - When a time conversion like `sec * 1e9 + nano` is new code, ask for a case whose interval crosses the unit boundary; otherwise the multiplier goes unpinned (FIX-2, BlockedPlatformThreadDetector:93).
 - A "may block" negative on a thread kind that is never registered is vacuous: pin the thread kind itself (FIX-2, `watchedVirtualThread` → `assertTrue(vt.isVirtual())`).
+- When a fix gives each case its own database, mutate the URL and the pool separately — each is pinned by a different case (FIX-5: the pool only by the fresh-database case).
+- Read the testcase order in each random-order XML: one of FIX-5's three random runs repeated the committed order and was no new evidence.

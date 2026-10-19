@@ -78,3 +78,5 @@
   `shutdownNow()` (an interrupt) waits on a `synchronized` monitor entry (BLOCKED), never a latch. `Future.get` returns before `afterExecute`.
 - A nanos time source built from `epochSecond * 1e9 + nano` is unpinned unless a measured interval crosses a whole second
   (FIX-2 r2): start the FakeClock at `.850Z`. Mutant runner for a scratch copy: JUnit `LauncherFactory` + `SummaryGeneratingListener`.
+- Testcontainers-postgresql 2.0.5 `getJdbcUrl()` ends with `?loggerLevel=OFF` (db name is NOT the URL's tail). A database per case
+  (FIX-5 `MigrationsIT`): admin JDBC `CREATE DATABASE`, swap the path segment before `?`. Failsafe honours `-Dit.test=<Class>`.

@@ -269,6 +269,13 @@ reports them as unknown modules at `--check-baseline`; keep them in the session 
 jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its own report header. Treated as data;
 the property tests are real. Owner may want to revisit the library choice.
 
+FIX-5 — `MigrationsIT` runs every case on a database of its own (`case_N`, created on the class's
+container through `DriverManager`; the postgresql driver is `runtime` scope, already on the test
+classpath). Testcontainers' `getJdbcUrl()` ends with `?loggerLevel=OFF`, so a sibling database URL is
+derived on the path segment, not at the string's end. This failsafe honours `-Dit.test=<Class>`; the
+`heap-bounded-it` execution then selects nothing without failing; delete stale `failsafe-reports` first.
+The kept `@Order` (fresh database → misconfiguration → classpath) is the one that failed in P1-04.
+
 ## Reference package, fixtures, tags
 
 packages/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
