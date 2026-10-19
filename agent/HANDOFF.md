@@ -1,12 +1,12 @@
 # Handoff
 
-state: RUNNING — FIX-5 committed (`Task: FIX-5`), CI pending; next FIX-6 (fix6-spec.md, fix6-packet.md, D-052 from fix6-d052.md), then FIX-15, P1-08b/c, P1-09
-last commit: `Task: FIX-5` (this one; test-only, review PASS); 04c73ce FIX-2 close-out; b536615 `Task: FIX-2`; gate MET on 7f3e4e3
+state: RUNNING — FIX-5 closed (run 39329153094 green on 2be5c0e); WIP FIX-6 (test-author on fix6-spec.md); then FIX-15, P1-08b/c, P1-09
+last commit: this close-out; 2be5c0e `Task: FIX-5` (test-only, review PASS); 04c73ce FIX-2 close-out; gate MET on 7f3e4e3
 branch: main
-next exact action: FIX-6 — test-author on fix6-spec.md (red = `resolve` missing, outside includes compiling), then implementer (fix6-packet.md)
+next exact action: WIP FIX-6 — test-author on fix6-spec.md (red = `resolve` missing, outside includes compiling; test edits uncommitted), then implementer
 P1-08 leftovers as rows: P1-08b (worker driver, lease, attempts bound, ghost WARNING test; nothing polls in production yet), P1-08c (cancel), Q-2 (bytes)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2
-CI: FIX-5 run pending (the close-out commit records it); 04c73ce run 39327954728 green; b536615 run 39327535168 green; 8b722af run 39325196427 green
+CI: 2be5c0e run 39329153094 green; 04c73ce run 39327954728 green; b536615 run 39327535168 green; 8b722af run 39325196427 green
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-5: unchanged, test-only)
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
 open fixes: FIX-6, then FIX-15 (FIX-14 review: unchecked failures, cleanup in finally); then P1-08b, P1-08c, P1-09; stop before P1-10
