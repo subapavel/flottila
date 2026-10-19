@@ -34,5 +34,11 @@
 - ScriptedStream records "resume" before its hooks run, so the call order is not the effective state: a pause issued in
   `beforeResume` is undone by that resume. Assert the end state through the private `paused` field (enclosing class sees it).
   A script chunk delivered inside handler() starts the sink before the attach: whether the handover resume is issued races.
+- Testkit streams' drain window (FIX-12): `DrainHandoverTest.Window` stages a call from a second thread at the package-private
+  `beforeDrainExit(Runnable)` hook of Generated/ChunkedReadStream; `Kind` enum parameterises both streams (one-byte chunks "1".."n").
+  `handOff(timeoutMsg, Runnable)` there runs a call on a second platform thread from inside a handler (detects handler-under-lock).
+  Window records "<name> returned" on the other thread in `events`: a whole-list assertion must include it.
+- Checking a test against a reference fix / mutant without touching src: javac the scratch copies + the test with the classpath
+  from `dependency:build-classpath` (api's set suffices for testkit) plus junit-platform-launcher, run via LauncherFactory.
 - Wrapper sources in TieredBlobStore tests: tell the sink's resume from start()'s handover resume by the thread that called
   handler() (capture it there), never by wrapper state set in pause() — the sink can resume before pause() is entered (FIX-11).

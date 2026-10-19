@@ -11,9 +11,13 @@ import io.vertx.core.streams.ReadStream;
  * {@code (byte) (i * 31 + 7)}, delivered in chunks, honouring pause / resume / fetch like
  * {@link ChunkedReadStream}. {@link #expectedHash(Hasher, long)} computes the hash a store must report
  * for such a body without allocating it either — the two together make a 50 MB pass-through test cost
- * nothing but time. Single-threaded like {@link ChunkedReadStream}, with one allowance a store needs: once the
- * stream is paused, {@code resume()} may be called from another thread (the pause has returned, the
- * caller's drain loop has exited), and delivery then continues on the resuming thread.
+ * nothing but time. Synchronous like {@link ChunkedReadStream}: chunks are delivered on the thread that set the
+ * handler or created demand. Demand may also come from another thread, as a store needs when it hands a paused
+ * stream to its sink: a {@code resume()}, {@code fetch()} or {@code endHandler()} on an idle stream delivers on the
+ * calling thread; one that lands while another thread is draining is honoured after the current delivery, on the
+ * draining thread, except when a handler throws: the drain then stops at once with the stream drainable again, and a
+ * call that landed meanwhile is not re-driven — the next {@code handler()}, {@code resume()}, {@code fetch()} or
+ * {@code endHandler()} drains. The data and end handlers are never invoked under the stream's lock and never re-entered.
  *
  * @since 0.1
  */
@@ -21,13 +25,17 @@ public final class GeneratedReadStream implements ReadStream<Buffer> {
 
     private final long size;
     private final int chunkSize;
+    private final Object lock = new Object();
+    // all guarded by lock
     private long offset;
     private Handler<Buffer> dataHandler;
     private Handler<Void> endHandler;
     private boolean paused;
     private long credit;
     private boolean draining;
+    private boolean rerun;
     private boolean ended;
+    private Runnable beforeDrainExit;
 
     public GeneratedReadStream(long size, int chunkSize) {
         if (size < 0) throw new IllegalArgumentException("size < 0");
@@ -57,50 +65,111 @@ public final class GeneratedReadStream implements ReadStream<Buffer> {
     }
 
     /** Bytes delivered so far. */
-    public long delivered() { return offset; }
+    public long delivered() {
+        synchronized (lock) { return offset; }
+    }
+
+    /**
+     * Test-only: {@code hook} runs on the draining thread, outside the lock, after the delivery loop stopped and the
+     * end check ran, before the drain decides between going round again and leaving — the window a call from another
+     * thread must be honoured in. {@code null} (the default) = none.
+     */
+    void beforeDrainExit(Runnable hook) {
+        synchronized (lock) { this.beforeDrainExit = hook; }
+    }
 
     @Override public GeneratedReadStream exceptionHandler(Handler<Throwable> handler) { return this; }
 
     @Override public GeneratedReadStream handler(Handler<Buffer> handler) {
-        this.dataHandler = handler;
+        synchronized (lock) { this.dataHandler = handler; }
         drain();
         return this;
     }
 
-    @Override public GeneratedReadStream pause() { paused = true; credit = 0; return this; }
+    @Override public GeneratedReadStream pause() {
+        synchronized (lock) {
+            paused = true;
+            credit = 0;
+        }
+        return this;
+    }
 
-    @Override public GeneratedReadStream resume() { paused = false; drain(); return this; }
+    @Override public GeneratedReadStream resume() {
+        synchronized (lock) { paused = false; }
+        drain();
+        return this;
+    }
 
     @Override public GeneratedReadStream fetch(long amount) {
         if (amount < 0) throw new IllegalArgumentException("amount < 0");
-        if (paused) credit = credit > Long.MAX_VALUE - amount ? Long.MAX_VALUE : credit + amount;
+        synchronized (lock) {
+            if (paused) credit = credit > Long.MAX_VALUE - amount ? Long.MAX_VALUE : credit + amount;
+        }
         drain();
         return this;
     }
 
     @Override public GeneratedReadStream endHandler(Handler<Void> handler) {
-        this.endHandler = handler;
+        synchronized (lock) { this.endHandler = handler; }
         drain();
         return this;
     }
 
+    /**
+     * Delivers while there is demand, then ends once when due. One thread drains at a time; a call that finds the
+     * stream draining (another thread, or the handler itself) only asks the drainer to go round once more.
+     */
     private void drain() {
-        if (draining || dataHandler == null) return;
-        draining = true;
+        synchronized (lock) {
+            if (draining) {
+                rerun = true;
+                return;
+            }
+            if (dataHandler == null) return;
+            draining = true;
+        }
         try {
-            while (!ended && offset < size && (!paused || credit > 0)) {
-                if (paused) credit--;
-                int n = (int) Math.min(chunkSize, size - offset);
-                Buffer c = chunk(offset, n);
-                offset += n;
-                dataHandler.handle(c);
+            while (true) {
+                while (true) {
+                    Handler<Buffer> h;
+                    long at;
+                    int n;
+                    synchronized (lock) {
+                        if (ended || dataHandler == null || offset >= size || (paused && credit <= 0)) break;
+                        if (paused) credit--;
+                        h = dataHandler;
+                        at = offset;
+                        n = (int) Math.min(chunkSize, size - offset);
+                        offset += n;
+                    }
+                    h.handle(chunk(at, n));
+                }
+                Handler<Void> end = null;
+                Runnable hook;
+                synchronized (lock) {
+                    if (!ended && offset >= size && (!paused || credit > 0) && endHandler != null) {
+                        ended = true;
+                        end = endHandler;
+                    }
+                    hook = beforeDrainExit;
+                }
+                if (end != null) end.handle(null);
+                if (hook != null) hook.run();
+                synchronized (lock) {
+                    if (rerun) {
+                        rerun = false;
+                    } else {
+                        draining = false;
+                        return;
+                    }
+                }
             }
-            if (!ended && offset >= size && (!paused || credit > 0) && endHandler != null) {
-                ended = true;
-                endHandler.handle(null);
+        } catch (Throwable handlerFailure) {   // only unchecked: a handler threw; the stream stays drainable
+            synchronized (lock) {
+                draining = false;
+                rerun = false;
             }
-        } finally {
-            draining = false;
+            throw handlerFailure;
         }
     }
 }

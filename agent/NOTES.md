@@ -42,10 +42,24 @@ Two neighbours found by the FIX-11 review, not fixed there: the sink's own resum
 issued after the lock — a late one can undo the source's next pause, `sourcePaused` stays true and `enqueue`
 does not pause again until the sink has drained below half the mark: with a source faster than the sink the
 queue grows up to the body limit (FIX-10, no longer "harmless");
-and the testkit's `GeneratedReadStream.drain` can lose a resume that lands between its loop-condition read of
-`paused` and `draining = false` (FIX-12 — the write then waits out the 60 s await; the runtime blob tests are
-flaky on a loaded runner until it is fixed). Rule for fixtures that stage a race: the signal must be accepted
-on either side of the window, and the "other" ordering needs its own deterministic case.
+and the testkit's `GeneratedReadStream.drain` could lose a resume that lands between its loop-condition read of
+`paused` and `draining = false` (FIX-12, fixed the same day — see below). Rule for fixtures that stage a race:
+the signal must be accepted on either side of the window, and the "other" ordering needs its own
+deterministic case.
+
+### FIX-12 — the testkit streams' drain hand-over (2026-10-19)
+`GeneratedReadStream` and `ChunkedReadStream` drain with one pattern: one lock guards the flags only
+(`paused`, `credit`, `draining`, `rerun`, the handlers); a `drain()` that finds a drain running sets `rerun`
+and returns; the drainer delivers with the lock released, runs the end / failure check, the package-private
+test hook `beforeDrainExit(Runnable)`, then decides under the lock in one step — `rerun` → round again, else
+`draining = false`. Invariant `!draining ⇒ !rerun`. A handler that throws clears both flags in the catch
+(a `finally` would clear a `draining` another thread had set since) and is rethrown on the draining thread.
+`DrainHandoverTest` stages the window with the hook: the draining thread waits (10 s latch, no sleep) until
+the other thread's `resume()` / `fetch()` / `endHandler()` / `handler(null)` has returned — the template for
+any fixture that must prove a cross-thread hand-over; cases G/H prove handlers never run under the lock by
+handing `pause()` + `delivered()` to another thread from inside them. The reviews named the mutants
+(old gating, rerun ignored, hook before the end check or the end call, handler / end / hook under the lock,
+catch's `draining = false`, `credit--`); the PROGRESS entry FIX-12 records which case each one failed.
 
 ## Delivery modes (P1-08, D-049)
 

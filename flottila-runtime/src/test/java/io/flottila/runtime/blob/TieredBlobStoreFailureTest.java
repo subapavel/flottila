@@ -141,7 +141,7 @@ class TieredBlobStoreFailureTest {
         Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), source, 10_000));
         assertEquals(5000, body.size());
         assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 5000), body.hash());
-        assertTrue(source.lateLandings.get() >= 1, "the race was produced at least once: " + source.lateLandings);
+        assertEquals(1, source.lateLandings.get(), "the race was produced, exactly once — only the first pause after the attach is held: " + source.lateLandings);
     }
 
     @Test
