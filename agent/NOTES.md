@@ -3,6 +3,34 @@
 Read by section, on demand (CLAUDE.md, Context hygiene). One section per area; the newest task
 first. Facts only; the next exact action and the state live in `agent/HANDOFF.md`.
 
+## Fix main — FIX-7, a stale high-water-mark baseline, not a machine difference (2026-10-19)
+
+Observed by the architect from the GitHub job logs and the runner's JaCoCo reports (artifacts
+12172890156, red run 39, and 12172073543, green run 38; `gh run download <run> -n build-reports`):
+runtime has 325 branches; run 38 missed 5 (98.5 %, green against the committed 100.0), run 39 and
+run 40 on f798a76 missed 7 (97.8 %, red). The VM is no better: PROGRESS records runtime branch 98.8
+(P1-01, P1-03), 99.0 (P1-04), 98.3 (P1-05), 98.2 (P1-06, P1-07), yet ci/coverage-baseline.json has
+said 100.0 for runtime since 33aef10, because `write_baseline` keeps the committed value for any
+drop inside the band ("high-water mark"). The no-decrease check then applies the band a second time,
+so an accumulated 1.8 pp drop plus one flipping branch (0.3 pp) trips the gate at random. An earlier
+draft of this section blamed a VM-vs-runner difference; the numbers above replace it.
+Branches the runner misses (line numbers at b2cdbf4): always — `blob/SpoolCipher.java:87` (one leg of
+the master-key check), `:210` (the GeneralSecurityException catch PROGRESS P1-01 already called
+unreachable), `blob/TieredBlobStore.java:119` (one leg of `checkKey`), `:259` (the resume condition in
+the attach), `:268` (`failed()`); only in the red run — `:357` (the sink's wait loop) and `:368`
+(`resumeSource = attached`): the two timing-dependent ones, FIX-2's rule applies.
+Forbidden ways out (CLAUDE.md, D-029 addendum): widening the band, editing the baseline by hand,
+skipping or weakening a test. Run 39's mutation and bench jobs were skipped (they need `build`).
+Packet: (1) `write_baseline` writes the measured value — the committed file then describes its tree,
+which `check_baseline`'s docstring already requires; D-029's band stays the only tolerance and the
+floors the hard limit (decision row D-050 at the FIX-7 commit; D-018 otherwise unchanged); unit test
+in ci/test_coverage_check.py: a measurement inside the band is written as measured, not kept.
+(2) Each of the seven branches: a test that drives it, a fake clock or explicit ordering where the
+runner's timing decides, or deletion when an invariant makes it unreachable (FIX-3's precedent).
+(3) `--write` on the VM after `mvn verify -Pit`; acceptance: CI green on the fix commit and the same
+runtime number in two dispatched reruns. The FIX-7 PROGRESS entry records runs 38 green, 39 and 40
+red at this gate, and the environment's new allow-list entry `*.blob.core.windows.net` (artifacts).
+
 ## Next task — P1-08, delivery modes (from the P1-07 hand-over)
 
 BACKLOG P1-08 row, D-046 hand-over. The runtime's consumer handler over the http component maps
