@@ -52,16 +52,22 @@ final class SpoolCipher {
 
     SpoolCipher(SecretKey key) { this.key = key; }
 
+    /** Derives the file key and builds the cipher before the file exists: a refused key creates no file. */
     OutputStream encrypting(Path file) throws IOException {
         byte[] salt = new byte[SALT_BYTES];
         random.nextBytes(salt);
+        SecretKey fileKey;
+        try {
+            fileKey = fileKey(key, salt);
+            cipher(fileKey, Cipher.ENCRYPT_MODE, salt, 0);   // fails here, at open, only when the provider cannot run AES/GCM — before any file exists
+        } catch (GeneralSecurityException e) {
+            throw new IOException("cannot open the spool cipher", e);
+        }
         OutputStream raw = Files.newOutputStream(file);
         try {
-            SecretKey fileKey = fileKey(key, salt);
-            cipher(fileKey, Cipher.ENCRYPT_MODE, salt, 0);   // fails here, at open, for a key the cipher cannot use
             raw.write(salt);
             return new Encrypting(raw, salt, fileKey);
-        } catch (GeneralSecurityException | IOException e) {
+        } catch (IOException e) {
             raw.close();
             throw new IOException("cannot open the spool cipher", e);
         }

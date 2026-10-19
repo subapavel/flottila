@@ -158,6 +158,7 @@ class SpoolCipherTest {
         assertTrue(e.getMessage().contains("spool cipher"), e.getMessage());
         SpoolCipher wrong = new SpoolCipher(new SecretKeySpec(new byte[8], "DES"));
         assertThrows(IOException.class, () -> wrong.encrypting(dir.resolve("never")));
+        assertFalse(Files.exists(dir.resolve("never")), "an unusable key creates no file");
         write(cipher, dir.resolve("ok"), new byte[] {1});
         assertThrows(IOException.class, () -> wrong.decrypting(dir.resolve("ok")));
     }
@@ -180,7 +181,7 @@ class SpoolCipherTest {
         Path never = dir.resolve("never");
         IOException onWrite = assertThrows(IOException.class, () -> hsm.encrypting(never));
         assertTrue(namesTheMasterKey(onWrite), "the refusal names the master key: " + onWrite + " / " + onWrite.getCause());
-        assertTrue(!Files.exists(never) || Files.size(never) == 0, "refused before any byte was written");
+        assertFalse(Files.exists(never), "a refused master key creates no file");
         Path empty = Files.createFile(dir.resolve("empty"));   // no salt to read: only a check before the first read names the key
         IOException onRead = assertThrows(IOException.class, () -> hsm.decrypting(empty));
         assertTrue(namesTheMasterKey(onRead), "the refusal names the master key before any byte is read: " + onRead + " / " + onRead.getCause());

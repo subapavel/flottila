@@ -134,8 +134,7 @@ class TieredBlobStoreHandoverTest {
         assertEquals(1, source.resumes.get(), "nothing resumes a failed source: " + source.calls);
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-1", 0)), "nothing stored");
         assertEquals(0, s.memoryInUse());
-        assertTrue(TieredBlobStoreTest.spoolFiles(dir).stream().noneMatch(p -> p.getFileName().toString().endsWith(".blob")),
-                "no committed spool file: " + TieredBlobStoreTest.spoolFiles(dir));
+        assertEquals(List.of(), TieredBlobStoreTest.spoolFiles(dir), "no .blob and no .part left behind");
     }
 
     private static boolean chainNames(Throwable t, String text) {

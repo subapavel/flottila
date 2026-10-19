@@ -172,8 +172,7 @@ class TieredBlobStoreBackpressureTest {
         assertInstanceOf(IOException.class, suppressed[0], "the sink's open failure: " + suppressed[0]);
         assertTrue(chainNames(suppressed[0], "master key"), "the suppressed exception is the sink's key refusal: " + suppressed[0]);
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-1", 0)), "nothing stored");
-        assertTrue(TieredBlobStoreTest.spoolFiles(dir).stream().noneMatch(p -> p.getFileName().toString().endsWith(".blob")),
-                "no committed spool file: " + TieredBlobStoreTest.spoolFiles(dir));
+        assertEquals(List.of(), TieredBlobStoreTest.spoolFiles(dir), "no .blob and no .part left behind");
     }
 
     @Test

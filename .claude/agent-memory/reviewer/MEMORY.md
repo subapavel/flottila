@@ -55,3 +55,6 @@
 - testkit `ComponentContract` hooks: check `ComponentContractSelfTest` has a variant per hook. Nested suites that fail by design rely on Surefire's `**/*$*` exclude, so ask for "no `TEST-*$*.xml`" after verify.
 - Take mutant line numbers from the live file, never from `target/<task>.diff`: the diff's hunk numbering drifts from the file (FIX-8 M9: 47 vs 36).
 - Before naming the case that kills a mutant, check whether that fixture reads the value at all: `ComponentContractSelfTest.Variant` ignores its config, so a null endpoint passes it (FIX-8 M8).
+- A check on a derived value (an HKDF output is always a 32-byte AES key) is an equivalent-mutant site; before asking for a pinning test, check what the input gate (`masterMaterial`) already refuses (FIX-9, SpoolCipher:62).
+- When code creates a file and then can fail: check every throw after the create, not only the one the task names (SpoolCipher:68 `write(salt)` still leaves a `.part`; the SpoolSink constructor fails, so drain's `sink` stays null and `abort()` never runs — FIX-14).
+- `SpoolCipher` open: only the cause chain ("master key") is asserted, never the message. Treat message mutants there as unpinned until FIX-14.
