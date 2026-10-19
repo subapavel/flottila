@@ -46,3 +46,6 @@
 - A fixture that signals "reached" before taking a pending one-shot latch hands that latch to the hold already observed. Take it first, then signal (FIX-10 r9, OwnThreadStream.block).
 - A load loop at 29/30 is a finding: match the lost seconds to a 10 s fixture hold, then decide fixture or store.
 - An endless re-check loop that records events dies of heap exhaustion, not by timeout. That is a kill (PIT: MEMORY_ERROR) if the restore is proven by `cmp`.
+- Testkit twin streams (ChunkedReadStream / GeneratedReadStream): when one twin's guard gets a pinning case, grep the other twin for the same case (FIX-13).
+- A "seen-with-X" flag the test sets just before the call proves only "after this line": a second witness at most, never proof of internal state.
+- BACKLOG and spec test-class names can be wrong (ChunkedReadStreamTest vs ChunkedReadStreamEdgeCasesTest); grep the method name, not the class. Quiet `-q` logs have no Surefire counts, so ask for the XML count.

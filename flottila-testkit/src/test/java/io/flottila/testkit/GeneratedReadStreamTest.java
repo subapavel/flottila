@@ -101,6 +101,27 @@ class GeneratedReadStreamTest {
     }
 
     @Test
+    void anEmptyStreamWithTheEndHandlerSetFirstEndsOnceWhenTheDataHandlerArrives() {
+        GeneratedReadStream s = new GeneratedReadStream(0, 4);
+        boolean[] dataHandlerAttached = {false};
+        List<Boolean> endsSeenWithDataHandlerAttached = new ArrayList<>();
+        List<Buffer> chunks = new ArrayList<>();
+        s.endHandler(v -> endsSeenWithDataHandlerAttached.add(dataHandlerAttached[0]));
+        assertEquals(List.of(), endsSeenWithDataHandlerAttached,
+                "no data handler yet: the end must wait for the consumer");
+        dataHandlerAttached[0] = true;
+        s.handler(chunks::add);
+        assertEquals(List.of(true), endsSeenWithDataHandlerAttached,
+                "the end fires exactly once, inside handler(), with the data handler attached");
+        assertEquals(List.of(), chunks, "an empty body delivers no chunk");
+        assertEquals(0, s.delivered());
+        s.resume();
+        s.fetch(1);
+        assertEquals(1, endsSeenWithDataHandlerAttached.size(), "a later resume / fetch does not end again");
+        assertEquals(List.of(), chunks);
+    }
+
+    @Test
     void argumentsAreValidated() {
         assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(-1, 4));
         assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(4, 0));
