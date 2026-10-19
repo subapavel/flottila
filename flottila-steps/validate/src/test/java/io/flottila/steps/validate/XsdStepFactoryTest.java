@@ -4,6 +4,7 @@ import io.flottila.api.BlobKey;
 import io.flottila.api.BodyKind;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Envelope;
+import io.flottila.api.Fault;
 import io.flottila.api.Headers;
 import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
@@ -19,6 +20,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -61,6 +63,29 @@ class XsdStepFactoryTest {
         assertTrue(e.getMessage().startsWith("validation failed at step 'validate': ") && e.getMessage().contains("Id"), e.getMessage());
         Envelope badQty = invoice(INVOICE.replace("<Qty>2</Qty>", "<Qty>two</Qty>"));
         assertTrue(assertThrows(XsdValidationException.class, () -> stage.apply(badQty, x -> x)).getMessage().contains("two"));
+    }
+
+    @Test
+    void anInvalidInvoiceIsAnInvalidFaultNamingTheStep() {
+        Stage stage = factory.create(step("invoice.xsd"), resources(DEMO_FLOWS, 65536));
+        Envelope noId = invoice(INVOICE.replace("<Id>4711</Id>", ""));
+        XsdValidationException e = assertThrows(XsdValidationException.class, () -> stage.apply(noId, x -> x));
+        Fault fault = assertInstanceOf(Fault.class, e, "the http component answers by kind without knowing this type");
+        assertEquals(Fault.Kind.INVALID, fault.kind(), "the sender's input broke the schema: 422, not 500");
+        assertEquals("validate", e.step());
+        assertTrue(e.getMessage().contains("'validate'"), e.getMessage());
+    }
+
+    @Test
+    void aBodyThatIsNotXmlIsAMalformedFault() {
+        Stage stage = factory.create(step("invoice.xsd"), resources(DEMO_FLOWS, 65536));
+        XsdValidationException e = assertThrows(XsdValidationException.class, () -> stage.apply(invoice("not xml"), x -> x));
+        assertEquals(Fault.Kind.MALFORMED, assertInstanceOf(Fault.class, e).kind(),
+                "a body that cannot be parsed is malformed input, 400, whichever step meets it first (D-049 a)");
+        assertEquals("validate", e.step());
+        Envelope noId = invoice(INVOICE.replace("<Id>4711</Id>", ""));
+        assertEquals(Fault.Kind.INVALID, assertThrows(XsdValidationException.class, () -> stage.apply(noId, x -> x)).kind(),
+                "well-formed but against the schema stays INVALID");
     }
 
     @Test

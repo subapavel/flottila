@@ -141,9 +141,9 @@ class InvoiceSyncHttpTest {
     }
 
     @Test
-    void anInvoiceWithoutAnIdIsA500NamingTheValidateStepAndNothingReachesThePartner() {
+    void anInvoiceWithoutAnIdIsA422NamingTheValidateStepAndNothingReachesThePartner() {
         Answer a = post(Buffer.buffer(invoice.toString().replace("<Id>4711</Id>", "")));
-        assertEquals(500, a.status());
+        assertEquals(422, a.status(), "an invalid input is the sender's fault, by kind (D-049)");
         assertTrue(a.body().contains("validation failed at step 'validate'"), a.body());
         assertEquals(List.of(), partnerSaw);
     }

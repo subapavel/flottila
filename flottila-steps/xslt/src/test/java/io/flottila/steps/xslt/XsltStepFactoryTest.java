@@ -3,6 +3,7 @@ package io.flottila.steps.xslt;
 import io.flottila.api.BlobKey;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Envelope;
+import io.flottila.api.Fault;
 import io.flottila.api.Headers;
 import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
@@ -18,6 +19,7 @@ import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -124,5 +126,17 @@ class XsltStepFactoryTest {
         Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer(INVOICE));
         XmlException e = assertThrows(XmlException.class, () -> stage.apply(in, x -> x));
         assertTrue(e.getMessage().contains("boom") && e.getMessage().contains("toPartner"), e.getMessage());
+    }
+
+    @Test
+    void aBodyThatIsNotXmlIsMalformedAndADynamicErrorIsInternal(@TempDir Path dir) throws IOException {
+        Stage stage = factory.create(step("invoice-to-partner.xsl"), resources(DEMO_FLOWS, 65536));
+        XmlException unreadable = assertThrows(XmlException.class, () -> stage.apply(rt.ingress("f", Headers.empty(), Buffer.buffer("not xml")), x -> x));
+        assertEquals(Fault.Kind.MALFORMED, assertInstanceOf(Fault.class, unreadable).kind(), "the input could not be parsed: the sender's fault, 400");
+        Files.writeString(dir.resolve("err.xsl"), "<xsl:stylesheet xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" version=\"3.0\">"
+                + "<xsl:template match=\"/\"><xsl:sequence select=\"error(xs:QName('err:FLOT'), 'boom')\" xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:err=\"urn:x\"/></xsl:template></xsl:stylesheet>");
+        Stage failing = factory.create(step("err.xsl"), resources(dir, 1024));
+        XmlException dynamic = assertThrows(XmlException.class, () -> failing.apply(rt.ingress("f", Headers.empty(), Buffer.buffer(INVOICE)), x -> x));
+        assertEquals(Fault.Kind.INTERNAL, dynamic.kind(), "a well-formed input the stylesheet fails on is the flow's failure, 500");
     }
 }

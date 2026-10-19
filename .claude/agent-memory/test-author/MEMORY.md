@@ -19,6 +19,18 @@
 - TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose
   getEncoded() waits on a latch) holds the sink thread at its open; a WatchService on the spool message dir
   observes the sink storing bytes. Every handed-over stream not paused by the store gets one handover resume().
+- RecordingComponent.holdNext(n) → CountDownLatch (send recorded at once, answered after countDown, no caller thread
+  waits); awaitSent(n) waits on a latch (10 s bound), awaitSent(n, Duration) with its own bound. Count every hold down
+  in @AfterEach. Vert.x 5 `Future.await(long, TimeUnit)` works on any thread (latch), rethrows the cause.
+- Surefire: `-Dtest=A+B` selects NO class (`+` joins methods: `A#m1+m2`); with failIfNoSpecifiedTests=false the run
+  is a silent green with stale reports. Use `-Dtest=A,B` and check the surefire-reports mtime.
+- core flow tests without XML: `BuiltInStepsTest.HEADERS` (header expression language, package-visible). Core's
+  `flow/HoldingMessageStore` (test tree) holds / releases / fails `record` futures, `throwNext`, `failReads`/`readsOk`,
+  `recorded(stepName)`; `flow/FailingDlq` refuses parks (`failParks`/`parksOk`).
+- `System.Logger` in core tests resolves to JUL: a `java.util.logging.Handler` on `Logger.getLogger(X.class.getName())`
+  sees the records. Acting inside `publish` (it runs on the logging thread, synchronously) pins "X happened before
+  the log line" without a race.
+- A red upstream test tree blocks `-am` before the module under test compiles: `-fn` (fail never) lets the reactor reach it.
 - ScriptedStream records "resume" before its hooks run, so the call order is not the effective state: a pause issued in
   `beforeResume` is undone by that resume. Assert the end state through the private `paused` field (enclosing class sees it).
   A script chunk delivered inside handler() starts the sink before the attach: whether the handover resume is issued races.

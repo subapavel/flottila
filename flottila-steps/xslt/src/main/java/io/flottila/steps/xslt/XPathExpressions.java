@@ -47,7 +47,7 @@ public final class XPathExpressions implements Expressions {
             try {
                 return selector(compiled, e).effectiveBooleanValue();
             } catch (SaxonApiException x) {
-                throw new XmlException(e.id(), "xpath '" + expression + "' failed", x);
+                throw new XmlException(e.id(), io.flottila.api.Fault.Kind.INTERNAL, "xpath '" + expression + "' failed", x);
             }
         };
     }
@@ -60,7 +60,7 @@ public final class XPathExpressions implements Expressions {
                 XdmValue v = selector(compiled, e).evaluate();
                 return v.size() == 0 ? Optional.empty() : Optional.of(v.itemAt(0).getStringValue());
             } catch (SaxonApiException x) {
-                throw new XmlException(e.id(), "xpath '" + expression + "' failed", x);
+                throw new XmlException(e.id(), io.flottila.api.Fault.Kind.INTERNAL, "xpath '" + expression + "' failed", x);
             }
         };
     }
@@ -75,7 +75,7 @@ public final class XPathExpressions implements Expressions {
                 int i = 0;
                 for (XdmItem item : selector(compiled, e).evaluate()) {
                     if (!(item instanceof XdmNode node)) {
-                        throw new XmlException(e.id(), "xpath '" + expression + "' selected an item that is not a node", new SaxonApiException(String.valueOf(item)));
+                        throw new XmlException(e.id(), io.flottila.api.Fault.Kind.INTERNAL, "xpath '" + expression + "' selected an item that is not a node", new SaxonApiException(String.valueOf(item)));
                     }
                     ByteArrayOutputStream out = new ByteArrayOutputStream();
                     Serializer serializer = xml.processor().newSerializer(out);
@@ -85,7 +85,7 @@ public final class XPathExpressions implements Expressions {
                     parts.add(resources.blobs().write(key, Buffer.buffer(out.toByteArray()), maxBodyBytes).await());
                 }
             } catch (SaxonApiException x) {
-                throw new XmlException(e.id(), "xpath '" + expression + "' failed", x);
+                throw new XmlException(e.id(), io.flottila.api.Fault.Kind.INTERNAL, "xpath '" + expression + "' failed", x);
             }
             return List.copyOf(parts);
         };

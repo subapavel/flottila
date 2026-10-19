@@ -6,15 +6,24 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.api.Health;
 import io.flottila.api.Producer;
+import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -83,5 +92,84 @@ class RecordingComponentTest extends ComponentContract {
         assertTrue(refused.cause() instanceof io.flottila.api.NackException n && n.retryable() && n.reason().equals("no room"), String.valueOf(refused.cause()));
         nacking.stop().await();
         assertEquals(Health.Status.DOWN, http.health().await().status());
+    }
+
+    // --- holdNext / awaitSent (P1-08): a message held "at the partner" without any thread of the caller waiting
+
+    final List<CountDownLatch> holds = new CopyOnWriteArrayList<>();
+
+    CountDownLatch hold(int times) {
+        CountDownLatch release = http.holdNext(times);
+        holds.add(release);
+        return release;
+    }
+
+    @AfterEach
+    void releaseHolds() {
+        holds.forEach(CountDownLatch::countDown);   // no held send outlives its test
+    }
+
+    @Test
+    void aHeldSendIsRecordedAtOnceAndAnsweredAfterTheRelease() throws TimeoutException {
+        http.replyWith(e -> e.withHeader("ack", "ok"));
+        CountDownLatch release = hold(1);
+        Producer p = http.producer(partner);
+        Envelope a = rt.ingress("f", Headers.empty(), Buffer.buffer("a"));
+        Future<Envelope> held = p.send(a);
+        assertFalse(held.isComplete(), "held at the partner: no answer before the release");
+        assertEquals(List.of(a), http.sent(), "recorded at once, before the release");
+        http.awaitSent(1);
+        assertFalse(held.isComplete(), "awaitSent sees the send, the answer still waits");
+        release.countDown();
+        assertEquals("ok", held.await(10, TimeUnit.SECONDS).header("ack").orElseThrow(), "the configured reply, after the release");
+        Envelope b = rt.ingress("f", Headers.empty(), Buffer.buffer("b"));
+        Future<Envelope> next = p.send(b);
+        assertTrue(next.isComplete(), "holdNext(1) holds one send only");
+        assertEquals("ok", next.result().header("ack").orElseThrow());
+    }
+
+    @Test
+    void aQueuedFailureAppliesAfterTheRelease() throws TimeoutException {
+        http.failNext(1, () -> new IllegalStateException("partner down"));
+        CountDownLatch release = hold(1);
+        Future<Envelope> held = http.producer(partner).send(rt.ingress("f", Headers.empty(), Buffer.buffer("a")));
+        assertFalse(held.isComplete(), "the failure waits for the release like a reply would");
+        assertEquals(1, http.failuresLeft(), "not used before the release");
+        release.countDown();
+        held.otherwiseEmpty().await(10, TimeUnit.SECONDS);
+        assertTrue(held.failed(), "the queued failure, after the release");
+        assertTrue(held.cause() instanceof IllegalStateException ise && ise.getMessage().equals("partner down"), String.valueOf(held.cause()));
+        assertEquals(0, http.failuresLeft());
+    }
+
+    @Test
+    void awaitSentNamesHowManyArrivedWhenTheBoundPasses() {
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> http.awaitSent(1, Duration.ofMillis(50)));
+        assertTrue(e.getMessage().contains("0 of 1"), e.getMessage());
+        assertTrue(e.getMessage().contains(Duration.ofMillis(50).toString()), "names the bound it waited: " + e.getMessage());
+        assertEquals(Duration.ofSeconds(10), RecordingComponent.AWAIT_BOUND);
+    }
+
+    @Test
+    void awaitSentRestoresTheInterruptFlag() {
+        Thread.currentThread().interrupt();
+        IllegalStateException e;
+        try {
+            e = assertThrows(IllegalStateException.class, () -> http.awaitSent(1, Duration.ofSeconds(5)));
+        } finally {
+            assertTrue(Thread.interrupted(), "the interrupt is the caller's: restored, not swallowed (and cleared here for the next test)");
+        }
+        assertTrue(e.getMessage().contains("interrupted"), e.getMessage());
+        assertInstanceOf(InterruptedException.class, e.getCause());
+    }
+
+    @Test
+    void holdNextRefusesANegativeCount() {
+        assertThrows(IllegalArgumentException.class, () -> http.holdNext(-1));
+        hold(0);
+        Envelope a = rt.ingress("f", Headers.empty(), Buffer.buffer("a"));
+        Future<Envelope> sent = http.producer(partner).send(a);
+        assertTrue(sent.isComplete(), "holdNext(0) holds nothing");
+        assertSame(a, sent.result());
     }
 }

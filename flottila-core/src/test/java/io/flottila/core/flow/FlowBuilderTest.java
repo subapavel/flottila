@@ -79,10 +79,12 @@ class FlowBuilderTest {
         rt.withComponent(echo);
         FlowBuilder builder = new FlowBuilder(rt.runtime(), List.of(factory("mark", s -> Stage.of(e -> e.withHeader("seen-" + s.name(), "step " + e.step())))), List.of(),
                 Map.of("partner", new EndpointConfig("partner", URI.create("echo://partner"), Map.of())));
-        FlowDefinition def = FlowDefinition.from(flow(List.of(
+        Map<String, Object> doc = new java.util.HashMap<>(flow(List.of(
                 Map.of("type", "mark", "name", "a"),
                 Map.of("type", "mark", "name", "b"),
                 Map.of("type", "to", "name", "send", "endpoint", "partner"))));
+        doc.put("forwardHeaders", List.of("seen-a", "seen-b"));   // D-049 (e): a producer gets only the listed headers, whatever set them
+        FlowDefinition def = FlowDefinition.from(doc);
         Pipeline p = builder.build(def, NO_FILES);
         Envelope out = p.apply(rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>")));
         assertEquals("step 0", out.header("seen-a").orElseThrow(), "step a saw the ingress envelope");

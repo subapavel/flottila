@@ -11,6 +11,7 @@
 | 2026-10-18 | 3.3 | §12: `flottila-testkit` depends on `api` only (core's tests use it; a testkit → core dependency is a reactor cycle); the golden-test runner moves to `flottila-cli` or a later module | F-1 (minor) |
 | 2026-10-18 | 3.3 | §14: "Flow config JSON Schema" ticked as drafted — `flottila-schemas` v1 schemas for flow, package, endpoint, `*.test.yaml` (amendment 4 delegated the design to P0-12; D-040); body text unchanged | — |
 | 2026-10-18 | 3.3 | §6: the step SPI (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`) lives in `flottila-api`, as §7 and §12 require for pluggable steps; the built-in `route` sets a prop (`route.prop` / `routes[].when` / `set` / `otherwise`, schema v1) and `to … byProp` acts on it — the form where a branch is itself a pipeline named `route:<branch>` is deferred until a flow needs it; `split` has a stage but no flow-file shape yet (D-043) | — |
+| 2026-10-19 | 3.3 | §4: the at-least-once durable save is the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK whatever the flow's recording level says; the worker runs the pipeline without stage 0 for a message saved that way (D-049) | F-2 (minor) |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -123,7 +124,7 @@ One message = one plain JDK virtual thread, bounded per flow; verticles exist on
 | Async at-least-once (SFTP, JMS, HTTP 202, XI EO/EOIO, mail) | after the durable save, by the **consumer** before its irreversible ACK (file delete, JMS commit, 202) | yes, with a save timeout (default 5 s → NACK/503) | Postgres work table (SKIP LOCKED) or Kafka topic per flow config | yes | yes |
 | At-most-once (telemetry, heartbeats, state updates) | immediately | no | none | no, failure logged and dropped | metadata only |
 
-The durable save is the consumer's responsibility, never a pipeline stage: only the consumer knows what its ACK is and whether it is irreversible. Stage 0 "ingress" is a pure identity whose snapshot shows what arrived.
+The durable save is the consumer's responsibility, never a pipeline stage: only the consumer knows what its ACK is and whether it is irreversible. Stage 0 "ingress" is a pure identity whose snapshot shows what arrived. For at-least-once the save *is* the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK, whatever the flow's recording level says: the recording level governs the steps' snapshots, never the durable save (F-2). The worker then runs the pipeline without stage 0, which was recorded at the save.
 
 **XI quality of service** is a layer on at-least-once: exactly-once = at-least-once + `processed_ids` dedupe table; in-order = XI queue name as partition key, serial per key, parallel across keys; a failed message in an ordered queue blocks the queue by default (XI behaviour) or parks-and-continues per flow config. Three ack states are recorded per message: transport, system, application.
 

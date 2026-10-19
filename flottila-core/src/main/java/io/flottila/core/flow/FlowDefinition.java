@@ -3,6 +3,7 @@ package io.flottila.core.flow;
 import io.flottila.api.StepConfig;
 import io.flottila.core.record.RecordingPolicy;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -17,25 +18,36 @@ import java.util.Set;
  * parsed and validated it), a typed definition out. Core does not depend on the schema module, so the
  * parts it needs are checked again here with the same paths in the messages ({@code steps[2]}); a file
  * that passed the schema never fails here. {@code recording} is the flow's policy (default: all, keep); a step's own
- * {@code recording} stays in its config and overrides it in the builder.
+ * {@code recording} stays in its config and overrides it in the builder. {@code saveTimeout} bounds an at-least-once
+ * flow's durable save ({@code delivery.saveTimeout}, default {@link #DEFAULT_SAVE_TIMEOUT}); a body limit above the
+ * in-flight byte limit is refused, since such a body could never be admitted (D-049 f).
  *
  * @since 0.1
  */
-public record FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, long maxBodyBytes,
+public record FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, Duration saveTimeout, long maxBodyBytes,
                              Optional<Long> maxInFlight, Optional<Long> maxInFlightBytes, Optional<String> partitionBy,
                              List<String> forwardHeaders, RetryPolicy retry, RecordingPolicy recording, List<StepConfig> steps) {
 
     /** Keys of a step entry that are the step's shape, not its configuration. */
     private static final Set<String> STRUCTURAL = Set.of("type", "name", "retryable");
 
+    /** How long an at-least-once save may take before the sender is told to retry, when the flow names nothing (ARCHITECTURE §4). */
+    public static final Duration DEFAULT_SAVE_TIMEOUT = Duration.ofSeconds(5);
+
     public FlowDefinition {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(version, "version");
         Objects.requireNonNull(fromEndpoint, "from.endpoint");
         Objects.requireNonNull(deliveryMode, "delivery.mode");
+        Objects.requireNonNull(saveTimeout, "delivery.saveTimeout");
+        if (saveTimeout.compareTo(Duration.ZERO) <= 0) throw new IllegalArgumentException("delivery.saveTimeout must be positive, was " + saveTimeout);
         Objects.requireNonNull(retry, "retry");
         Objects.requireNonNull(recording, "recording");
         if (maxBodyBytes <= 0) throw new IllegalArgumentException("limits.maxBodyBytes must be positive, was " + maxBodyBytes);
+        if (maxInFlightBytes.isPresent() && maxBodyBytes > maxInFlightBytes.get()) {
+            throw new IllegalArgumentException("limits.maxBodyBytes " + maxBodyBytes + " exceeds limits.maxInFlightBytes " + maxInFlightBytes.get()
+                    + ": such a body could never be admitted");
+        }
         forwardHeaders = List.copyOf(forwardHeaders);
         steps = List.copyOf(steps);
         if (steps.isEmpty()) throw new IllegalArgumentException("steps must name at least one step");
@@ -49,6 +61,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         Map<String, Object> limits = section(doc, "limits");
         return new FlowDefinition(
                 string(doc, "id"), string(doc, "version"), string(from, "from.endpoint", "endpoint"), string(delivery, "delivery.mode", "mode"),
+                delivery.get("saveTimeout") == null ? DEFAULT_SAVE_TIMEOUT : duration(delivery, "delivery.saveTimeout", "saveTimeout"),
                 number(limits, "limits.maxBodyBytes", "maxBodyBytes").orElseThrow(() -> new IllegalArgumentException("limits.maxBodyBytes is required")),
                 number(limits, "limits.maxInFlight", "maxInFlight"), number(limits, "limits.maxInFlightBytes", "maxInFlightBytes"),
                 Optional.ofNullable(doc.get("partitionBy")).map(Object::toString),
@@ -112,6 +125,16 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         Object v = m.get(key);
         if (!(v instanceof String s) || s.isEmpty()) throw new IllegalArgumentException(path + " is required and must be a non-empty string");
         return s;
+    }
+
+    /** A duration string ({@link RetryPolicy#parseDuration}); one that does not parse is refused naming its key. */
+    private static Duration duration(Map<?, ?> m, String path, String key) {
+        String text = string(m, path, key);
+        try {
+            return RetryPolicy.parseDuration(text);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(path + ": " + e.getMessage(), e);
+        }
     }
 
     private static Optional<Long> number(Map<?, ?> m, String path, String key) {

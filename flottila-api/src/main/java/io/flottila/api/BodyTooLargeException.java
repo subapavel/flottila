@@ -2,11 +2,11 @@ package io.flottila.api;
 
 /**
  * A body exceeded a finite limit: the flow's maximum body size on write, or the store's tree limit
- * on {@link Body#whole()}. Sizes are {@code long}; no limit is ever unlimited.
+ * on {@link Body#whole()}. Sizes are {@code long}; no limit is ever unlimited. A {@link Fault.Kind#INVALID} fault.
  *
  * @since 0.1
  */
-public final class BodyTooLargeException extends RuntimeException {
+public final class BodyTooLargeException extends RuntimeException implements Fault {
 
     private final BlobKey key;
     private final long size;
@@ -24,4 +24,8 @@ public final class BodyTooLargeException extends RuntimeException {
     public long size() { return size; }
 
     public long limit() { return limit; }
+
+    /** {@link Fault.Kind#INVALID}: the body broke a size limit. */
+    @Override
+    public Kind kind() { return Kind.INVALID; }
 }

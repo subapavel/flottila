@@ -99,8 +99,37 @@ class FlowDefinitionTest {
         FlowDefinition f = FlowDefinition.from(doc);
         assertEquals(List.of("partner-domestic", "partner-foreign"), f.referencedEndpoints());
         assertEquals(Map.of("endpoint", "partner-domestic"), f.steps().get(3).config(), "a null value is dropped from the step's config");
-        assertThrows(IllegalArgumentException.class, () -> new FlowDefinition("id", "1", "in", "sync", 1, Optional.empty(), Optional.empty(),
+        assertThrows(IllegalArgumentException.class, () -> new FlowDefinition("id", "1", "in", "sync", Duration.ofSeconds(5), 1, Optional.empty(), Optional.empty(),
                 Optional.empty(), List.of(), RetryPolicy.NONE, io.flottila.core.record.RecordingPolicy.DEFAULT, List.of()), "the record itself refuses an empty step list");
+    }
+
+    @Test
+    void aBodyLimitAboveTheInFlightByteLimitIsRefused() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("limits", Map.of("maxBodyBytes", 2000, "maxInFlightBytes", 1000));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(doc), "one body could never be admitted");
+        assertTrue(e.getMessage().contains("maxBodyBytes") && e.getMessage().contains("maxInFlightBytes"), e.getMessage());
+        doc.put("limits", Map.of("maxBodyBytes", 1000, "maxInFlightBytes", 1000));
+        assertEquals(Optional.of(1000L), FlowDefinition.from(doc).maxInFlightBytes(), "equal limits admit one body at a time: accepted");
+    }
+
+    @Test
+    void saveTimeoutIsReadFromDeliveryWithFiveSecondsAsTheDefault() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("delivery", Map.of("mode", "at-least-once", "saveTimeout", "2s"));
+        assertEquals(Duration.ofSeconds(2), FlowDefinition.from(doc).saveTimeout());
+        assertEquals(Duration.ofSeconds(5), FlowDefinition.from(demo()).saveTimeout(), "absent: PT5S");
+    }
+
+    @Test
+    void aNonPositiveSaveTimeoutIsRefused() {
+        for (String timeout : List.of("0s", "-1s")) {
+            Map<String, Object> doc = new java.util.HashMap<>(demo());
+            doc.put("delivery", Map.of("mode", "at-least-once", "saveTimeout", timeout));
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(doc),
+                    "a save that may never take time would NACK every message: " + timeout);
+            assertTrue(e.getMessage().contains("saveTimeout"), timeout + " -> " + e.getMessage());
+        }
     }
 
     @Test

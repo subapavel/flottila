@@ -9,6 +9,7 @@ import io.flottila.api.Component;
 import io.flottila.api.Consumer;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
+import io.flottila.api.Fault;
 import io.flottila.api.Headers;
 import io.flottila.api.Health;
 import io.flottila.api.IdGenerator;
@@ -48,8 +49,11 @@ import java.util.function.Function;
  * at the path is streamed into the {@link BlobStore} under {@code maxBodyBytes} (413 above it), becomes the ingress envelope
  * (new id, the request headers, {@link #METHOD} / {@link #PATH} props) and is handed to the handler on its own virtual thread;
  * the answer follows the {@link Ack}: {@code Reply} → 200 with the reply's headers and its body streamed, {@code Accepted} →
- * 202 with {@code x-message-id}, a retryable {@code Nack} → 503 + {@code Retry-After}, a final one → 400, a failed handler →
- * 500 with the message (a sync flow's error reaches the caller). Other paths are 404, other methods 405.
+ * 202 with {@code x-message-id}, a retryable {@code Nack} → 503 + {@code Retry-After}, a final one → 400. A failed handler (a
+ * sync flow's error reaches the caller) is answered by the failure's {@link Fault.Kind} (D-049): {@code MALFORMED} 400,
+ * {@code INVALID} 422, {@code DOWNSTREAM} 503 + {@code Retry-After} when retryable ({@link NackException},
+ * {@link HttpStatusException}) else 502, {@code INTERNAL} and any failure that is no {@link Fault} 500 — the body is the
+ * failure's message as {@code text/plain}. Other paths are 404, other methods 405.
  *
  * <p><b>Producer</b> (options {@code url}, {@code maxBodyBytes} for the reply, optional {@code timeoutMs}, {@code poolSize}):
  * one client per endpoint with its connection pool; POSTs the envelope's body — streamed from {@link Body#open()}, so a retry
@@ -212,7 +216,16 @@ public final class HttpComponent implements Component {
 
         private void answer(HttpServerResponse res, Ack ack, Throwable failure) {
             if (failure != null) {
-                res.setStatusCode(500).putHeader("content-type", "text/plain").end(failure.toString());
+                // a downstream failure says itself whether the sender may try again
+                boolean retryable = failure instanceof NackException nack ? nack.retryable() : failure instanceof HttpStatusException partner && partner.retryable();
+                int status = !(failure instanceof Fault fault) ? 500 : switch (fault.kind()) {
+                    case MALFORMED -> 400;
+                    case INVALID -> 422;
+                    case DOWNSTREAM -> retryable ? 503 : 502;
+                    case INTERNAL -> 500;
+                };
+                if (status == 503) res.putHeader("retry-after", "1");
+                res.setStatusCode(status).putHeader("content-type", "text/plain").end(String.valueOf(failure.getMessage()));
                 return;
             }
             switch (ack) {

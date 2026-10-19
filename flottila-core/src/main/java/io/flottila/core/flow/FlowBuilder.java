@@ -5,6 +5,7 @@ import io.flottila.api.Component;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Expressions;
+import io.flottila.api.Headers;
 import io.flottila.api.Key;
 import io.flottila.api.Pipeline;
 import io.flottila.api.Producer;
@@ -13,12 +14,14 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.core.admission.Admission;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parking;
 import io.flottila.core.pattern.Filter;
 import io.flottila.core.pattern.Retry;
 import io.flottila.core.pattern.Route;
 import io.flottila.core.pattern.Split;
+import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Recorder;
@@ -27,13 +30,18 @@ import io.flottila.core.record.RecordingPolicy;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 
 /**
  * Builds a {@link Pipeline} from a {@link FlowDefinition} (ARCHITECTURE §6): one {@link Stage} per configured
@@ -47,6 +55,13 @@ import java.util.function.Predicate;
  * An at-least-once flow parks a failed message in the {@link Dlq} given through {@link #dlq(Dlq)} (ARCHITECTURE §4
  * lifecycle table: sync answers the caller, at-most-once drops) — without one it does not build. {@link #replay} gives
  * the flow's replay: steps {@code n..end} as a new message.
+ *
+ * <p>{@link #delivery} gives the flow's consumer handler per delivery mode, under the flow's {@link Admission} — at-least-once
+ * saves durably into the store and the {@link WorkQueue} given through {@link #queue(WorkQueue)} — and {@link #worker} the
+ * {@link FlowWorker} that runs what an at-least-once delivery accepted (ARCHITECTURE §4 lifecycle table, D-049). The steps
+ * see every header; a producer receives only the headers the flow's {@code forwardHeaders} name (case-insensitive) plus
+ * {@code content-type}, the body's media type, whatever set them — the {@code to} step filters at the producer boundary
+ * (ARCHITECTURE Envelope table "nothing propagates implicitly", D-049 e).
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -70,6 +85,7 @@ public final class FlowBuilder {
     private MessageStore store;
     private Meter meter;
     private Dlq dlq;
+    private WorkQueue queue;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -95,13 +111,102 @@ public final class FlowBuilder {
         return this;
     }
 
+    /** Queues the accepted messages of at-least-once flows in {@code queue} (ARCHITECTURE §4, §7); their delivery and worker need it. */
+    public FlowBuilder queue(WorkQueue queue) {
+        this.queue = Objects.requireNonNull(queue, "queue");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the flow file's directory). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
+        return Pipeline.of(stages(flow, baseDir, true));
+    }
+
+    /**
+     * The flow's consumer handler for its delivery mode (see {@link Delivery}), with one {@link Admission} of its own built from
+     * {@code limits.maxInFlight} / {@code limits.maxInFlightBytes} (defaults: twice the available processors, and that many
+     * bodies of {@code maxBodyBytes} — a product that overflows a {@code long} is an {@link IllegalArgumentException}; never
+     * unlimited). An at-least-once flow needs the store ({@link #recording}), the {@link #queue} and the {@link #dlq}: without
+     * one of them this is an {@link IllegalStateException} naming it. Its handler only saves, so only its recorder is built
+     * here — no step, no producer; the {@link #worker} builds the pipeline.
+     */
+    public Delivery delivery(FlowDefinition flow, Path baseDir) {
+        Objects.requireNonNull(flow, "flow");
+        long requests = inFlightRequests(flow);
+        Admission admission = new Admission(requests, flow.maxInFlightBytes().orElseGet(() -> defaultInFlightBytes(flow, requests)));
+        return switch (flow.deliveryMode()) {
+            case "sync" -> Delivery.sync(admission, Pipeline.of(stages(flow, baseDir, true)));
+            case "at-most-once" -> Delivery.atMostOnce(admission, Pipeline.of(stages(flow, baseDir, true)));
+            case "at-least-once" -> {
+                requireStoreAndQueue(flow, "delivery");
+                requireDlq(flow);
+                Recorder recorder = new Recorder(store, runtime.clock(), meter, versions(flow));
+                yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
+                        store, queue, runtime.timer(), flow.saveTimeout());
+            }
+            default -> throw new IllegalArgumentException("flow '" + flow.id() + "': unknown delivery.mode '" + flow.deliveryMode() + "'");
+        };
+    }
+
+    /**
+     * The worker {@code workerId} of an at-least-once flow (see {@link FlowWorker}): claims up to the flow's in-flight request
+     * limit per poll and runs the pipeline without stage 0. Needs the store, the {@link #queue} and the {@link #dlq}.
+     */
+    public FlowWorker worker(FlowDefinition flow, Path baseDir, String workerId) {
+        Objects.requireNonNull(flow, "flow");
+        requireStoreAndQueue(flow, "worker");
+        int max = (int) Math.min(inFlightRequests(flow), Integer.MAX_VALUE);
+        return new FlowWorker(flow.id(), workerId, max, queue, store, runtime.blobs(), Pipeline.of(stages(flow, baseDir, false)));
+    }
+
+    private void requireStoreAndQueue(FlowDefinition flow, String what) {
+        if (store == null) throw new IllegalStateException("flow '" + flow.id() + "': the at-least-once " + what + " needs the message store for its durable save: call recording(store, meter) first");
+        if (queue == null) throw new IllegalStateException("flow '" + flow.id() + "': the at-least-once " + what + " needs a work queue: call queue(...) first");
+    }
+
+    private void requireDlq(FlowDefinition flow) {
+        if (dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' is at-least-once and needs a DLQ to park failed messages in: call dlq(...) first");
+    }
+
+    /** The configuration versions a message runs with, on its snapshots and DLQ rows. */
+    private static Map<String, String> versions(FlowDefinition flow) {
+        return Map.of("flow", flow.id() + "@" + flow.version());
+    }
+
+    /** The default byte budget: {@code requests} bodies of {@code maxBodyBytes}; one that does not fit a {@code long} is a configuration error. */
+    private static long defaultInFlightBytes(FlowDefinition flow, long requests) {
+        try {
+            return Math.multiplyExact(requests, flow.maxBodyBytes());
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("flow '" + flow.id() + "': limits.maxInFlight " + requests + " × limits.maxBodyBytes " + flow.maxBodyBytes()
+                    + " does not fit a long; set limits.maxInFlightBytes or lower one of them", overflow);
+        }
+    }
+
+    /** {@code limits.maxInFlight}, or twice the available processors (ARCHITECTURE §4 threading); never unlimited. */
+    private static long inFlightRequests(FlowDefinition flow) {
+        return flow.maxInFlight().orElseGet(() -> 2L * java.lang.Runtime.getRuntime().availableProcessors());
+    }
+
+    /** The flow's pipeline as stages: the ingress snapshot ({@code withIngress}, when recording), then the steps. */
+    private List<Stage> stages(FlowDefinition flow, Path baseDir, boolean withIngress) {
         Built built = built(flow, baseDir);
         List<Stage> stages = new ArrayList<>(built.steps().size() + 1);
-        if (built.recorder() != null) stages.add(built.recorder().start(flow.recording(), Recorder.INGRESS));
+        if (withIngress && built.recorder() != null) stages.add(built.recorder().start(flow.recording(), Recorder.INGRESS));
         stages.addAll(built.steps());
-        return Pipeline.of(stages);
+        return stages;
+    }
+
+    /** The envelope as a producer gets it: only the {@code allowed} headers (case-insensitive) and {@code content-type}, whatever set them. */
+    static UnaryOperator<Envelope> forwardHeaders(List<String> allowed) {
+        Set<String> names = new HashSet<>();
+        for (String name : allowed) names.add(name.toLowerCase(Locale.ROOT));
+        names.add(Envelope.H_CONTENT_TYPE);
+        return e -> {
+            Map<String, String> kept = new HashMap<>();
+            e.headers().asMap().forEach((name, value) -> { if (names.contains(name.toLowerCase(Locale.ROOT))) kept.put(name, value); });
+            return new Envelope(e.id(), e.flow(), e.step(), new Headers(kept), e.props(), e.keys(), e.body(), e.attachments(), e.views());
+        };
     }
 
     /**
@@ -128,12 +233,13 @@ public final class FlowBuilder {
 
     private Built built(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
-        Map<String, String> versions = Map.of("flow", flow.id() + "@" + flow.version());
+        Map<String, String> versions = versions(flow);
         boolean parks = "at-least-once".equals(flow.deliveryMode());
-        if (parks && dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' is at-least-once and needs a DLQ to park failed messages in: call dlq(...) first");
+        if (parks) requireDlq(flow);
         Parking parking = parks ? new Parking(dlq, runtime.clock(), versions) : null;
         StepResources resources = new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir);
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
+        UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
         List<Stage> stages = new ArrayList<>(flow.steps().size());
         int lastIndex = flow.steps().size();
         long treeLimit = runtime.blobs().treeLimit();
@@ -151,7 +257,7 @@ public final class FlowBuilder {
             }
             if (kind == BodyKind.SPLIT_ASSEMBLE) splitBefore = true;
             Stage stage = switch (step.type()) {
-                case "to" -> to(step);
+                case "to" -> to(step, forward);
                 case "route" -> route(step, resources);
                 case "filter" -> new Filter(predicate(step, step.requireString("when"), resources));
                 case "extractKey" -> extractKey(step, resources);
@@ -227,11 +333,14 @@ public final class FlowBuilder {
         return l;
     }
 
-    /** The built-in {@code to}: {@code endpoint}, or {@code byProp} + {@code endpoints} (the route's decision picks the producer). */
-    private Stage to(StepConfig step) {
+    /**
+     * The built-in {@code to}: {@code endpoint}, or {@code byProp} + {@code endpoints} (the route's decision picks the producer).
+     * The producer gets the envelope through {@code forward} (the flow's {@code forwardHeaders}); what goes on is its reply.
+     */
+    private Stage to(StepConfig step, UnaryOperator<Envelope> forward) {
         if (step.config().get("endpoint") != null) {
             Producer producer = producer(step, step.requireString("endpoint"));
-            return Stage.of(e -> producer.send(e).await());
+            return Stage.of(e -> producer.send(forward.apply(e)).await());
         }
         Key<String> prop = new Key<>(step.requireString("byProp"));
         if (!(step.config().get("endpoints") instanceof Map<?, ?> choices) || choices.isEmpty()) {
@@ -243,7 +352,7 @@ public final class FlowBuilder {
             String choice = e.get(prop).orElseThrow(() -> new IllegalStateException(step + ": prop " + prop.name() + " is not set; a route step before it decides"));
             Producer producer = producers.get(choice);
             if (producer == null) throw new IllegalStateException(step + ": no endpoint for " + prop.name() + " = '" + choice + "' (" + producers.keySet() + ")");
-            return producer.send(e).await();
+            return producer.send(forward.apply(e)).await();
         });
     }
 

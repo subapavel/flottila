@@ -2,6 +2,7 @@ package io.flottila.steps.xslt;
 
 import io.flottila.api.Envelope;
 import io.flottila.api.Expressions;
+import io.flottila.api.Fault;
 import io.flottila.api.Headers;
 import io.flottila.api.StepResources;
 import io.flottila.testkit.FakeRuntime;
@@ -13,6 +14,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,5 +53,17 @@ class XPathExpressionsTest {
         assertTrue(dynamic.getMessage().contains("dyn"), dynamic.getMessage());
         XmlException dynamicTest = assertThrows(XmlException.class, () -> xpath.predicate("error(xs:QName('err:X'), 'dyn2')", res).test(czk));
         assertTrue(dynamicTest.getMessage().contains("dyn2"), dynamicTest.getMessage());
+    }
+
+    @Test
+    void aDynamicXPathErrorIsAnInternalFault() {
+        XmlException test = assertThrows(XmlException.class, () -> xpath.predicate("error(xs:QName('err:X'), 'dyn')", res).test(czk));
+        assertEquals(Fault.Kind.INTERNAL, assertInstanceOf(Fault.class, test).kind(), "a well-formed body the expression fails on is the flow's failure, 500");
+        XmlException value = assertThrows(XmlException.class, () -> xpath.value("1 div 0", res).apply(czk));   // FOAR0001
+        assertEquals(Fault.Kind.INTERNAL, value.kind());
+        XmlException parts = assertThrows(XmlException.class, () -> xpath.parts("error(xs:QName('err:X'), 'dyn')", res).apply(czk));
+        assertEquals(Fault.Kind.INTERNAL, parts.kind());
+        XmlException notANode = assertThrows(XmlException.class, () -> xpath.parts("'text'", res).apply(czk));
+        assertEquals(Fault.Kind.INTERNAL, notANode.kind(), "an expression that selects no nodes to split is the flow's failure too");
     }
 }

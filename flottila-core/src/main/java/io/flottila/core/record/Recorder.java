@@ -42,9 +42,19 @@ public final class Recorder {
     public Stage start(RecordingPolicy policy, String name) {
         Objects.requireNonNull(name, "name");
         return (e, rest) -> {
-            if (policy.records(0, false, Snapshot.Outcome.OK)) store.record(snapshot(e, e.step(), name, Snapshot.Outcome.OK, null, clock.instant(), 0, 0, policy));
+            if (policy.records(0, false, Snapshot.Outcome.OK)) store.record(startSnapshot(e, name, policy));
             return rest.apply(e);
         };
+    }
+
+    /**
+     * The snapshot {@link #start} records for {@code e}: at the envelope's own step, under {@code name}, now, the body's key kept
+     * as {@code policy} says. Also what an at-least-once delivery saves and awaits before its ACK (F-2, D-049): the same row,
+     * written by the consumer's handler with the payload kept whatever the flow's recording level.
+     */
+    public Snapshot startSnapshot(Envelope e, String name, RecordingPolicy policy) {
+        Objects.requireNonNull(name, "name");
+        return snapshot(e, e.step(), name, Snapshot.Outcome.OK, null, clock.instant(), 0, 0, policy);
     }
 
     /** {@code stage} (already numbered) recorded under {@code policy}; {@code last} marks the flow's final step. */

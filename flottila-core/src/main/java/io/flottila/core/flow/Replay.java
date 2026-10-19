@@ -5,6 +5,7 @@ import io.flottila.api.Body;
 import io.flottila.api.Envelope;
 import io.flottila.api.IdGenerator;
 import io.flottila.api.Pipeline;
+import io.flottila.api.Props;
 import io.flottila.api.Views;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
@@ -55,8 +56,7 @@ public final class Replay {
         Snapshot input = timeline.stream().filter(s -> s.step() == step - 1 && s.outcome() == Snapshot.Outcome.OK).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("step " + (step - 1) + " of message " + messageId + " was not recorded (recording level); replay from step " + step + " needs it"));
         if (input.bodyKey().isEmpty()) throw new IllegalArgumentException("step " + (step - 1) + " of message " + messageId + " was recorded metadata-only: no reachable body to replay");
-        Envelope start = new Envelope(ids.next(), flow.id(), step - 1, input.headers(), input.props().with(Envelope.REPLAY_OF, messageId), input.keys(),
-                Body.of(blobs, input.bodyKey().get(), input.bodyHash(), input.bodySize()), Map.of(), new Views());
+        Envelope start = rebuild(input, ids.next(), flow.id(), input.props().with(Envelope.REPLAY_OF, messageId), blobs);
         return tail.apply(step).apply(start);
     }
 
@@ -70,6 +70,16 @@ public final class Replay {
         Envelope out = tail.apply(parked.step()).apply(start);
         dlq.remove(messageId).await();
         return out;
+    }
+
+    /**
+     * The envelope {@code input} shows, as message {@code id} of {@code flow} with {@code props}: at the snapshot's step, its
+     * headers and keys, the body by its recorded key, no attachments, fresh views. What a replay starts from and what the
+     * {@link FlowWorker} resumes an at-least-once message from (its {@code ingress} snapshot, same id).
+     */
+    static Envelope rebuild(Snapshot input, String id, String flow, Props props, BlobStore blobs) {
+        return new Envelope(id, flow, input.step(), input.headers(), props, input.keys(),
+                Body.of(blobs, input.bodyKey().orElseThrow(), input.bodyHash(), input.bodySize()), Map.of(), new Views());
     }
 
     private void checkStep(int step) {

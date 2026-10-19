@@ -31,24 +31,31 @@ runner's timing decides, or deletion when an invariant makes it unreachable (FIX
 runtime number in two dispatched reruns. The FIX-7 PROGRESS entry records runs 38 green, 39 and 40
 red at this gate, and the environment's new allow-list entry `*.blob.core.windows.net` (artifacts).
 
-## Next task — P1-08, delivery modes (from the P1-07 hand-over)
+## Delivery modes (P1-08, D-049)
 
-BACKLOG P1-08 row, D-046 hand-over. The runtime's consumer handler over the http component maps
-the pipeline's outcome to the `Ack`:
-- sync: the reply envelope as 200 (what `InvoiceSyncHttpTest` already does through the builder);
-  a failure as 4xx/5xx by kind (`XsdValidationException` / `ValidationFailedException` /
-  `XmlException` 400?) — decide in D-049 with the error-to-status table from ARCHITECTURE §4;
-- at-least-once: the durable save (`PgMessageStore` record of the ingress snapshot awaited — the
-  only awaited write) before the 202 on `/async`; a save that times out → NACK/503 + Retry-After;
-  `ParkedException` → 202 too (the DLQ holds it);
-- at-most-once: ACK before the pipeline runs;
-- admission (`core.admission.Admission` per flow: requests and bytes) → 503 + Retry-After;
-  `forwardHeaders` from the flow file onto the reply; cancel semantics for a consumer stopped
-  mid-delivery (D-046 left it open).
-Red first: a runtime `flow/DeliveryModesTest` per mode over `RecordingComponent` / `HttpComponent`
-with the fake clock for the save timeout; an IT for the durable save (the kill -9 ledger
-2000/2000 is P1-10's measurement, but the invariant — no 202 without a committed ingress row —
-gets its IT now). Check `mvn -B -ntp verify -Pit` and ArchUnit before touching runtime.
+`core.flow.Delivery` is the consumer handler a flow gets from `FlowBuilder.delivery(flow, baseDir)`
+(`recording`, `queue`, `dlq` set first for at-least-once; an ISE names the missing one). It holds
+what the builder hands it, never the `Runtime`. Per mode: sync runs the pipeline on the caller's
+thread (the http consumer's virtual thread) and replies `Ack.Reply`, a failure fails the future
+with the step's exception; at-least-once records the ingress snapshot with its payload whatever
+the recording level says (F-2), then enqueues (partition key null in Phase 1), then `Accepted` —
+`delivery.saveTimeout` (default 5 s, non-positive refused) on the `Runtime` timer gives a
+retryable `Nack`, a late save enqueues nothing, a timeout between the two writes leaves an item
+the worker runs (D-049 b: the sender's retry is the duplicate); at-most-once is `Accepted` before
+the pipeline runs on its own virtual thread, a failure is logged and dropped. Admission per
+`Delivery` from `limits` (defaults cores × 2 and the request limit × `maxBodyBytes`); a refusal
+is a retryable `Nack`; the permit covers the save (at-least-once) or the run. `FlowWorker.poll()`
+(`FlowBuilder.worker(flow, baseDir, workerId)`) claims the flow's due items (`LEASE` 30 s, a
+named constant — draft), rebuilds the envelope from the ingress snapshot and the blobs (`Replay`'s
+rebuild), runs the pipeline without stage 0, completes the item on every outcome (a ghost item is
+completed and logged, never a poison loop) and returns the count. Nothing polls in production yet:
+wiring consumers + workers (poll on the timer and after each ACK) into deployed flows is P1-09's
+deploy endpoint. Faults: api `Fault.kind()` → http `answer` 400 / 422 / 502 / 503 + Retry-After /
+500, body `text/plain` = `getMessage()`. `forwardHeaders` is applied in the `to` stage: the
+producer gets exactly the listed headers plus `content-type`, whatever set them; steps see every
+ingress header. Open for the owner: a reply-direction allow-list; refusing `payload: metadata-only`
+for at-least-once at load time. Tests: core `DeliveryTest` (Ack level, with `HoldingMessageStore`),
+runtime `DeliveryModesTest` (http level), `DeliveryModesIT` (Postgres), http `HttpConsumerStatusTest`.
 
 ## Steps (P1-07, D-047)
 
@@ -86,8 +93,8 @@ flushing before the duplicate (expectation change with the reason in the commit)
 `components.http.HttpComponent(vertx, blobs, ids)` — consumer options host/port/path/flow/
 maxBodyBytes (required), producer options url/maxBodyBytes (required)/timeoutMs/poolSize; GATE
 check 3 end to end in runtime `flow/InvoiceSyncHttpTest`. The consumer's handler → `Ack` mapping
-of the delivery modes, `/async` 202 after the durable save, `forwardHeaders`, admission → 503 are
-P1-08.
+of the delivery modes, the 202 after the durable save, `forwardHeaders`, admission → 503 are
+`core.flow.Delivery` (P1-08, D-049; the mode is the flow's `delivery.mode`, not a path).
 
 Open from the P1-06 review: an http reply above the limit leaves the client response paused until
 `timeoutMs` (reset the request); `Long.parseLong` on a malformed content-length on the event loop;
@@ -165,7 +172,11 @@ snapshots). Mutant runs (a reviewer's "would this test fail if…"): after `sed 
 restore it with `cp` or `touch` it — `mv backup file` keeps the backup's older mtime, Maven's
 incremental compile then keeps the mutated class in `target/classes` and the next "clean" run
 tests the mutant (FIX-7 round 2, target/fix7-r2-verify-runtime.log). When in doubt,
-`mvn -q clean -pl <module>` first.
+`mvn -q clean -pl <module>` first — never `mvn clean` at the reactor root: the root `target/` holds
+the task's packets, specs, logs and diffs, and a root clean deleted them all in P1-08 round 2 (the
+reds were re-cited from the handbacks). Task packets and specs now live in the session scratchpad;
+only logs and diffs go under `target/`. Surefire: `-Dtest=A+B` selects nothing (`+` joins methods)
+and with `failIfNoSpecifiedTests=false` the run is a silent green — use `-Dtest=A,B`.
 
 jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its own report header. Treated as data;
 the property tests are real. Owner may want to revisit the library choice.

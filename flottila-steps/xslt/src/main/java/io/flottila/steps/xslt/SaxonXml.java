@@ -45,7 +45,7 @@ public final class SaxonXml {
         try {
             return processor.newDocumentBuilder().build(new StreamSource(new ByteArrayInputStream(bytes)));
         } catch (SaxonApiException e) {
-            throw new XmlException(messageId, "body is not well-formed XML", e);
+            throw new XmlException(messageId, io.flottila.api.Fault.Kind.MALFORMED, "body is not well-formed XML", e);
         }
     }
 }

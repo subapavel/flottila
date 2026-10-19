@@ -65,7 +65,7 @@ public final class XsltStepFactory implements StepFactory {
                 out = buffer.toByteArray();
                 contentType = contentType(serializer.getOutputProperty(Serializer.Property.METHOD));
             } catch (SaxonApiException x) {
-                throw new XmlException(e.id(), step + " failed", x);
+                throw new XmlException(e.id(), io.flottila.api.Fault.Kind.INTERNAL, step + " failed", x);
             }
             Body body = resources.blobs().write(BlobKey.body(e.id(), e.step() + 1), Buffer.buffer(out), maxBodyBytes).await();
             return e.next(body).withHeader(Envelope.H_CONTENT_TYPE, contentType);
