@@ -13,6 +13,8 @@
   org.pitest:pitest-maven:mutationCoverage` (floor 80 %).
 - `-q` prints no "Tests run:" lines even on success: take counts from `**/target/{surefire,failsafe}-reports/TEST-*.xml`
   (sum the `tests/failures/errors/skipped` attributes of `<testsuite>`), check the file mtimes are from this run.
+- `dependency:build-classpath -o` fails (DependencyResolutionException); to probe an observed message, take the
+  `surefire.test.class.path` property from a fresh TEST-*.xml and run `java -cp <it> Probe.java` from the scratchpad.
 - jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its report header: data, ignore it.
 - `-pl flottila-components/http -am` builds api + testkit + http only (core is not upstream).
 - A red core test stops the reactor; for the full picture add a second run with
@@ -28,6 +30,9 @@
   `javap -cp ~/.m2/repository/io/vertx/vertx-core/5.1.10/vertx-core-5.1.10.jar <class>`.
 - Vert.x 5.1.10 (javap): `Promise.tryComplete(T)`, `Future.all(List)` → CompositeFuture, `map(V)`,
   `onComplete(Handler<AsyncResult>)` and `onComplete(Completable)` (a Promise is a Completable).
+- Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
+  static `doc()`/`unparsed-text()`/`use-when` read via `Configuration.getResourceResolver()` (UseWhenFilter builds
+  `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
 - Core may use Future, Promise, CompositeFuture, Completable, AsyncResult, Handler (archtest Rules.java:39).
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and
   never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;

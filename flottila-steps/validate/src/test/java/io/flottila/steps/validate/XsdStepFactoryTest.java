@@ -14,10 +14,15 @@ import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import com.sun.net.httpserver.HttpServer;
+
 import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -127,16 +132,12 @@ class XsdStepFactoryTest {
     }
 
     @Test
-    void aMissingBrokenOrOutwardReachingSchemaIsABuildErrorNamingTheStepAndTheFile(@TempDir Path dir) throws IOException {
+    void aMissingOrBrokenSchemaIsABuildErrorNamingTheStepAndTheFile(@TempDir Path dir) throws IOException {
         IllegalArgumentException missing = assertThrows(IllegalArgumentException.class, () -> factory.create(step("nowhere.xsd"), resources(dir, 1024)));
         assertTrue(missing.getMessage().contains("validate") && missing.getMessage().contains("nowhere.xsd"), missing.getMessage());
         Files.writeString(dir.resolve("broken.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:element name=\"A\" type=\"xs:nothing\"/></xs:schema>");
         IllegalArgumentException broken = assertThrows(IllegalArgumentException.class, () -> factory.create(step("broken.xsd"), resources(dir, 1024)));
         assertTrue(broken.getMessage().contains("does not compile") && broken.getMessage().contains("broken.xsd"), broken.getMessage());
-        Files.writeString(dir.resolve("remote.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">"
-                + "<xs:import namespace=\"urn:x\" schemaLocation=\"http://example.invalid/x.xsd\"/><xs:element name=\"A\"/></xs:schema>");
-        IllegalArgumentException remote = assertThrows(IllegalArgumentException.class, () -> factory.create(step("remote.xsd"), resources(dir, 1024)));
-        assertTrue(remote.getMessage().contains("does not compile") && remote.getMessage().contains("accessExternalSchema"), "a schema over the network is refused, not fetched: " + remote.getMessage());
         Files.copy(DEMO_FLOWS.resolve("invoice.xsd"), dir.resolve("invoice.xsd"));
         Files.writeString(dir.resolve("wrapper.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"><xs:include schemaLocation=\"invoice.xsd\"/></xs:schema>");
         Stage wrapper = factory.create(step("wrapper.xsd"), resources(dir, 65536));
@@ -146,5 +147,162 @@ class XsdStepFactoryTest {
         assertTrue(assertThrows(IllegalArgumentException.class, () -> factory.create(step("adir.xsd"), resources(dir, 1024))).getMessage().contains("cannot be read"));
         assertTrue(assertThrows(IllegalArgumentException.class, () -> factory.create(new StepConfig(1, "xsd", "x", false, Map.of()), resources(dir, 1024)))
                 .getMessage().contains("'schema'"));
+    }
+
+    // FIX-6 (D-052): every file the schema reaches at build time resolves inside the flow's directory. The flow's
+    // directory is <tmp>/flow; <tmp>/outside.xsd and <tmp>/outside-ns.xsd are readable, valid schemas that would compile
+    // if they were read.
+
+    static final String XS = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">";
+
+    /** {@code <dir>/flow} with the readable outside schemas one level up. */
+    static Path flowWithOutside(Path dir) throws IOException {
+        Files.writeString(dir.resolve("outside.xsd"), XS + "<xs:element name=\"Outside\" type=\"xs:string\"/></xs:schema>");
+        Files.writeString(dir.resolve("outside-ns.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"urn:outside\">"
+                + "<xs:element name=\"Outside\" type=\"xs:string\"/>"
+                + "<xs:simpleType name=\"Code\"><xs:restriction base=\"xs:string\"><xs:length value=\"3\"/></xs:restriction></xs:simpleType></xs:schema>");
+        return Files.createDirectories(dir.resolve("flow"));
+    }
+
+    void refused(StepConfig step, Path flow, String reference) {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> factory.create(step, resources(flow, 65536)),
+                "a schema reaching outside the flow's directory must not compile");
+        String m = e.getMessage();
+        assertTrue(m.contains(step.toString()) && m.contains(reference) && m.contains("leaves the flow's directory"),
+                "the build error names the step and the offending reference: " + m);
+        assertEquals(0, factory.compiledSchemas(), "a refused schema is not cached");
+    }
+
+    @Test
+    void anIncludeThatLeavesTheFlowsDirectoryIsABuildErrorNamingTheStepAndTheReference(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.writeString(flow.resolve("up.xsd"), XS + "<xs:include schemaLocation=\"../outside.xsd\"/><xs:element name=\"Doc\" type=\"xs:string\"/></xs:schema>");
+        refused(step("up.xsd"), flow, "outside.xsd");
+        Files.createDirectory(flow.resolve("sub"));
+        Files.writeString(flow.resolve("sub/deep.xsd"), XS + "<xs:include schemaLocation=\"../../outside.xsd\"/></xs:schema>");
+        Files.writeString(flow.resolve("nested.xsd"), XS + "<xs:include schemaLocation=\"sub/deep.xsd\"/><xs:element name=\"Doc\" type=\"xs:string\"/></xs:schema>");
+        refused(step("nested.xsd"), flow, "outside.xsd");   // an included file's own include resolves against it, and is confined the same way
+    }
+
+    @Test
+    void anAbsoluteFileUriIncludeAndAnImportOutsideTheFlowsDirectoryAreRefusedTheSameWay(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.writeString(flow.resolve("absolute.xsd"), XS + "<xs:include schemaLocation=\"" + dir.resolve("outside.xsd").toUri()
+                + "\"/><xs:element name=\"Doc\" type=\"xs:string\"/></xs:schema>");
+        refused(step("absolute.xsd"), flow, "outside.xsd");
+        Files.writeString(flow.resolve("import.xsd"), XS + "<xs:import namespace=\"urn:outside\" schemaLocation=\"../outside-ns.xsd\"/>"
+                + "<xs:element name=\"Doc\" type=\"xs:string\"/></xs:schema>");
+        refused(step("import.xsd"), flow, "outside-ns.xsd");
+    }
+
+    @Test
+    void aSiblingAndASubdirectoryIncludeInsideTheFlowsDirectoryStillCompileAndValidate(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.createDirectory(flow.resolve("sub"));
+        Files.writeString(flow.resolve("common.xsd"), XS + "<xs:simpleType name=\"Qty\"><xs:restriction base=\"xs:int\"/></xs:simpleType></xs:schema>");
+        Files.writeString(flow.resolve("sub/line.xsd"), XS + "<xs:include schemaLocation=\"../common.xsd\"/>"
+                + "<xs:complexType name=\"Line\"><xs:sequence><xs:element name=\"Qty\" type=\"Qty\"/></xs:sequence></xs:complexType></xs:schema>");
+        Files.writeString(flow.resolve("order.xsd"), XS + "<xs:include schemaLocation=\"common.xsd\"/><xs:include schemaLocation=\"sub/line.xsd\"/>"
+                + "<xs:element name=\"Order\"><xs:complexType><xs:sequence><xs:element name=\"Count\" type=\"Qty\"/><xs:element name=\"Line\" type=\"Line\"/>"
+                + "</xs:sequence></xs:complexType></xs:element></xs:schema>");
+        Stage stage = factory.create(step("order.xsd"), resources(flow, 65536));
+        Envelope valid = invoice("<Order><Count>2</Count><Line><Qty>3</Qty></Line></Order>");
+        assertSame(valid, stage.apply(valid, e -> e), "a sibling include and an include in a subdirectory (which includes back up, still inside) compile");
+        XsdValidationException e = assertThrows(XsdValidationException.class,
+                () -> stage.apply(invoice("<Order><Count>2</Count><Line><Qty>three</Qty></Line></Order>"), x -> x));
+        assertTrue(e.getMessage().contains("three"), "the type from the subdirectory's include applies: " + e.getMessage());
+        assertThrows(XsdValidationException.class, () -> stage.apply(invoice("<Order><Count>two</Count><Line><Qty>3</Qty></Line></Order>"), x -> x),
+                "the type from the sibling include applies");
+    }
+
+    @Test
+    void aMissingIncludeInsideTheFlowsDirectoryIsABuildErrorNamingTheIncludeAndTheReason(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.writeString(flow.resolve("main.xsd"), XS + "<xs:include schemaLocation=\"missing.xsd\"/><xs:element name=\"Doc\" type=\"xs:string\"/></xs:schema>");
+        StepConfig step = step("main.xsd");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> factory.create(step, resources(flow, 65536)));
+        String m = e.getMessage();
+        assertTrue(m.contains(step.toString()) && m.contains("does not compile") && m.contains("missing.xsd"), "the error names the step and the include: " + m);
+        assertTrue(m.contains("NoSuchFile") || m.contains("No such file"), "the reason is that the file does not exist: " + m);
+        assertTrue(!m.contains("access is not allowed"), "a file inside the directory is allowed; blaming the access restriction misleads: " + m);
+        assertEquals(0, factory.compiledSchemas(), "a schema that does not compile is not cached");
+    }
+
+    @Test
+    void aRemoteImportIsRefusedAndNeverRequestedNamingTheStepAndTheUrl(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {   // a valid schema: a fetch would compile
+            requests.incrementAndGet();
+            byte[] schema = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"urn:x\"><xs:element name=\"X\"/></xs:schema>"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, schema.length);
+            exchange.getResponseBody().write(schema);
+            exchange.close();
+        });
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/x.xsd";
+            Files.writeString(flow.resolve("remote.xsd"), XS + "<xs:import namespace=\"urn:x\" schemaLocation=\"" + url + "\"/><xs:element name=\"A\"/></xs:schema>");
+            StepConfig step = step("remote.xsd");
+            IllegalArgumentException remote = assertThrows(IllegalArgumentException.class, () -> factory.create(step, resources(flow, 1024)));
+            String m = remote.getMessage();
+            assertTrue(m.contains(step.toString()) && m.contains("does not compile") && m.contains(url),
+                    "a schema over the network is refused and the error names the step and the whole URL: " + m);
+            assertEquals(0, factory.compiledSchemas(), "a refused schema is not cached");
+            assertEquals(0, requests.get(), "the schema over the network was never requested, not merely refused after the fetch");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void aNamespaceOnlyImportReadsNothingAndTheSchemaCompilesAndValidates(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.writeString(flow.resolve("nsonly.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:x=\"urn:x\">"
+                + "<xs:import namespace=\"urn:x\"/><xs:element name=\"Doc\" type=\"xs:int\"/></xs:schema>");
+        Stage stage = factory.create(step("nsonly.xsd"), resources(flow, 65536));
+        assertEquals(1, factory.compiledSchemas(), "an import without a schemaLocation names no file: nothing to confine, the schema compiles");
+        Envelope valid = invoice("<Doc>5</Doc>");
+        assertSame(valid, stage.apply(valid, e -> e));
+        XsdValidationException e = assertThrows(XsdValidationException.class, () -> stage.apply(invoice("<Doc>five</Doc>"), x -> x));
+        assertTrue(e.getMessage().contains("five"), "the schema applies: " + e.getMessage());
+    }
+
+    @Test
+    void anImportAloneThatLeavesTheFlowsDirectoryIsABuildErrorNamingTheStepAndTheReference(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.writeString(flow.resolve("main.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:o=\"urn:outside\">"
+                + "<xs:import namespace=\"urn:outside\" schemaLocation=\"../outside-ns.xsd\"/><xs:element name=\"Doc\" type=\"o:Code\"/></xs:schema>");
+        refused(step("main.xsd"), flow, "../outside-ns.xsd");
+    }
+
+    @Test
+    void ofTwoReferencesThatLeaveTheFlowsDirectoryTheFirstIsReported(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.writeString(flow.resolve("two.xsd"), XS + "<xs:import namespace=\"urn:outside\" schemaLocation=\"../outside-ns.xsd\"/>"
+                + "<xs:import namespace=\"urn:other\" schemaLocation=\"/etc/x.xsd\"/><xs:element name=\"Doc\" type=\"xs:string\"/></xs:schema>");
+        StepConfig step = step("two.xsd");
+        refused(step, flow, "../outside-ns.xsd");
+        String m = assertThrows(IllegalArgumentException.class, () -> factory.create(step, resources(flow, 65536))).getMessage();
+        assertTrue(!m.contains("/etc/x.xsd"), "the build error names the first offending reference, not the second: " + m);
+    }
+
+    @Test
+    void anExternalEntityOutsideTheFlowsDirectoryIsABuildErrorNamingTheStepAndTheFile(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.writeString(dir.resolve("outside.txt"), "SECRET-OUTSIDE");
+        Files.writeString(flow.resolve("entity.xsd"), "<!DOCTYPE xs:schema [<!ENTITY e SYSTEM \"../outside.txt\">]>" + XS
+                + "<xs:annotation><xs:documentation>&e;</xs:documentation></xs:annotation><xs:element name=\"Doc\" type=\"xs:string\"/></xs:schema>");
+        refused(step("entity.xsd"), flow, "outside.txt");
+    }
+
+    @Test
+    void aSchemaTheFlowNamesOutsideItsDirectoryIsRefusedNamingTheStep(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        refused(step("../outside.xsd"), flow, "outside.xsd");
+        refused(step(dir.resolve("outside.xsd").toAbsolutePath().toString()), flow, "outside.xsd");
+        refused(step("sub/../../outside.xsd"), flow, "outside.xsd");
     }
 }

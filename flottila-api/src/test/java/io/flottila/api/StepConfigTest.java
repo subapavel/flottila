@@ -53,9 +53,9 @@ class StepConfigTest {
         IdGenerator ids = () -> "id";
         BlobStore store = new InMemoryBlobStore(1024);
         StepResources r = new StepResources(clock, timer, ids, store, Hasher.sha256(), 1024, Path.of("packages/demo/flows"));
-        assertEquals(Path.of("packages/demo/flows/invoice-to-partner.xsl"), r.file("invoice-to-partner.xsl"));
-        assertEquals(Path.of("packages/demo/common.xsl"), r.file("../common.xsl"), "normalized");
-        assertEquals(Path.of("/abs/x.xsl"), r.file("/abs/x.xsl"), "an absolute path stays");
+        assertEquals(Path.of("packages/demo/flows").toAbsolutePath().normalize().resolve("invoice-to-partner.xsl"), r.file("invoice-to-partner.xsl"));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> r.file("../common.xsl")).getMessage().contains("leaves the flow's directory"), "a file above the flow's directory is refused (D-052)");
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> r.file("/abs/x.xsl")).getMessage().contains("leaves the flow's directory"), "an absolute path outside the flow's directory is refused (D-052)");
         assertEquals(1024L, r.maxBodyBytes());
         assertThrows(IllegalArgumentException.class, () -> new StepResources(clock, timer, ids, store, Hasher.sha256(), 0, Path.of("")));
         assertThrows(NullPointerException.class, () -> new StepResources(clock, timer, ids, store, Hasher.sha256(), 1, null));

@@ -80,3 +80,16 @@
   (FIX-2 r2): start the FakeClock at `.850Z`. Mutant runner for a scratch copy: JUnit `LauncherFactory` + `SummaryGeneratingListener`.
 - Testcontainers-postgresql 2.0.5 `getJdbcUrl()` ends with `?loggerLevel=OFF` (db name is NOT the URL's tail). A database per case
   (FIX-5 `MigrationsIT`): admin JDBC `CREATE DATABASE`, swap the path segment before `?`. Failsafe honours `-Dit.test=<Class>`.
+- XML resolution (FIX-6, JDK 25 / Saxon-HE 12.4): the JDK schema parser's refusal message names only the file part of a remote
+  URL ('x.xsd', not the URL); `ACCESS_EXTERNAL_SCHEMA=""` still loads inputs an LSResourceResolver supplies. A Saxon
+  ResourceResolver's XPathException message is the SaxonApiException's message at compile(). `Path.toUri()` of a NON-existing
+  dir has no trailing slash, so `dirUri.resolve("a")` lands in the parent. Probes: java single-file source + ~/.m2 jars.
+  With ACCESS_EXTERNAL_SCHEMA="" a refused import/include/DTD entity is a parser ERROR (stops at the first; a later reference
+  never reaches the resolver), not a warning. Saxon-HE 12.4 XsltCompiler.setResourceResolver does NOT cover a stylesheet's
+  DTD external entity, static unparsed-text()/doc() or use-when: all read files at compile time (FIX-6 r3). Counting
+  loopback `com.sun.net.httpserver.HttpServer` on 127.0.0.1:0 pins "never fetched" (JAVA_TOOL_OPTIONS nonProxyHosts has 127.*).
+  Scratch mutant runs of a module test class: relative `../../packages/demo` paths fail outside the module dir (6 cases).
+- Saxon-HE 12.4 (FIX-6 r4, probed): the default Configuration resolver (CatalogResourceResolver) answers NULL for a plain file:
+  URI (also via `ResourceRequest.resolve`). A static/use-when `collection()` in XSLT throws ClassCastException (PackageData →
+  StylesheetPackage, CollectionFn.call) before any CollectionFinder; `uri-collection('..')` lists the directory. A failing static
+  `unparsed-text()` stops further static vars; `unparsed-text-available()` swallows and compilation continues.

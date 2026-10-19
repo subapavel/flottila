@@ -12,6 +12,7 @@ import io.vertx.core.buffer.Buffer;
 import net.sf.saxon.s9api.SaxonApiException;
 import net.sf.saxon.s9api.Serializer;
 import net.sf.saxon.s9api.Xslt30Transformer;
+import net.sf.saxon.s9api.XsltCompiler;
 import net.sf.saxon.s9api.XsltExecutable;
 
 import javax.xml.transform.stream.StreamSource;
@@ -28,7 +29,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * The {@code xslt} step: {@code stylesheet} (a path relative to the flow file) compiled at build time — by content
  * hash, so a stylesheet shared by several flows compiles once — and applied to the body's document view; the
  * result is the next step's body, written to the blob store under the flow's body limit, with
- * {@code content-type} from the stylesheet's output method.
+ * {@code content-type} from the stylesheet's output method. The stylesheet and every file it reads while it compiles —
+ * a module it includes or imports (relative to the including module), an external entity, a static {@code doc()},
+ * {@code unparsed-text()} or {@code collection()} — lie inside the flow's directory (D-052, {@link CompileConfinement}):
+ * one that leaves it, or a URL, is a build error naming the step and the reference. What the stylesheet reads at run
+ * time is not confined here.
  *
  * @since 0.1
  */
@@ -40,7 +45,12 @@ public final class XsltStepFactory implements StepFactory {
     private final SaxonXml xml;
     private final Map<Hash, XsltExecutable> compiled = new ConcurrentHashMap<>();
 
-    XsltStepFactory(SaxonXml xml) { this.xml = xml; }
+    private final CompileConfinement confinement;
+
+    XsltStepFactory(SaxonXml xml) {
+        this.xml = xml;
+        this.confinement = CompileConfinement.on(xml.processor().getUnderlyingConfiguration());
+    }
 
     @Override public String type() { return "xslt"; }
 
@@ -51,7 +61,13 @@ public final class XsltStepFactory implements StepFactory {
 
     @Override
     public Stage create(StepConfig step, StepResources resources) {
-        Path file = resources.file(step.requireString("stylesheet"));
+        String stylesheet = step.requireString("stylesheet");
+        Path file;
+        try {
+            file = resources.file(stylesheet);
+        } catch (IllegalArgumentException x) {
+            throw new IllegalArgumentException(step + ": " + x.getMessage(), x);
+        }
         XsltExecutable executable = compile(step, file, resources);
         long maxBodyBytes = resources.maxBodyBytes();
         return Stage.of(e -> {
@@ -84,15 +100,31 @@ public final class XsltStepFactory implements StepFactory {
         Hash hash = resources.hasher().hashOf(Buffer.buffer(source));
         XsltExecutable cached = compiled.get(hash);
         if (cached != null) return cached;
+        CompileConfinement.Scope scope = confinement.open(resources);
+        XsltExecutable fresh;
         try {
             StreamSource in = new StreamSource(new ByteArrayInputStream(source));
             in.setSystemId(file.toUri().toString());   // xsl:import / xsl:include resolve next to the file
-            XsltExecutable fresh = xml.processor().newXsltCompiler().compile(in);
-            XsltExecutable raced = compiled.putIfAbsent(hash, fresh);
-            return raced == null ? fresh : raced;
+            XsltCompiler compiler = xml.processor().newXsltCompiler();
+            compiler.setResourceResolver(confinement);
+            fresh = compiler.compile(in);
         } catch (SaxonApiException x) {
-            throw new IllegalArgumentException(step + ": stylesheet " + file + " does not compile: " + x.getMessage(), x);
+            throw doesNotCompile(step, file, scope, x.getMessage(), x);
+        } catch (RuntimeException x) {   // Saxon failing inside (12.4: a static collection() casts PackageData): still the flow's build error
+            throw doesNotCompile(step, file, scope, x.toString(), x);
+        } finally {
+            scope.close();
         }
+        // unparsed-text-available() answers false on a refusal and the stylesheet compiles: still a refusal
+        if (scope.refused != null) throw new IllegalArgumentException(step + ": stylesheet " + file + " does not compile: " + scope.refused);
+        XsltExecutable raced = compiled.putIfAbsent(hash, fresh);
+        return raced == null ? fresh : raced;
+    }
+
+    /** The build error; a refusal Saxon wrapped in its own words is reported as the confinement words it. */
+    private static IllegalArgumentException doesNotCompile(StepConfig step, Path file, CompileConfinement.Scope scope, String saxons, Exception x) {
+        String why = scope.refused != null ? scope.refused : saxons;
+        return new IllegalArgumentException(step + ": stylesheet " + file + " does not compile: " + why, x);
     }
 
     /** The reply's content type from the stylesheet's output method; {@code application/xml} when it declares none. */

@@ -66,3 +66,15 @@
 - A "may block" negative on a thread kind that is never registered is vacuous: pin the thread kind itself (FIX-2, `watchedVirtualThread` → `assertTrue(vt.isVirtual())`).
 - When a fix gives each case its own database, mutate the URL and the pool separately — each is pinned by a different case (FIX-5: the pool only by the fresh-database case).
 - Read the testcase order in each random-order XML: one of FIX-5's three random runs repeated the committed order and was no new evidence.
+- With a resolver plus a deny-all setting, a post-compile "failure recorded" check makes the setting unpinnable by message tests; pin "not fetched / not read" with a counting local server (FIX-6, XsdStepFactory ACCESS_EXTERNAL_SCHEMA).
+- XML steps: check compile-time reads besides include/import (DTD entities, XSLT `static` / `use-when` calls to `doc()` / `unparsed-text()`) against the decision's "every file" wording (FIX-6).
+- A compile cache keyed by the main file's hash skips any per-flow check on a cache hit; ask what a cache hit bypasses (FIX-6 → FIX-17).
+- A thread-scoped hook on a shared object needs two cases: the scope's effect, and its absence after close on the same thread; mutate `close()` and the no-scope branch (FIX-6, CompileConfinement / XsltStepFactory).
+- XSLT compile-time reads: the resource resolver covers `doc` / `unparsed-text` / entities; check `collection()` / `uri-collection()` separately — they go through the collection finder (FIX-6).
+- A hook installed into a shared Configuration in a constructor: ask what happens if someone later replaces the resolver (FIX-6 → FIX-16).
+- A hook that implements two SPIs needs the "no scope, delegate" case for each one; FIX-6 round 4 pinned the resolver and missed the finder (CompileConfinement).
+- A delegation test where the delegate answers null cannot tell "delegates" from "returns null"; pick an input the delegate answers non-null (CompileConfinement).
+- Saxon 12.4: static `collection()` throws a ClassCastException before any finder; re-probe compile-time collection reads (catalog files) on every Saxon upgrade.
+- An unreachable checked-exception catch in a small module costs pp: in validate (~80 lines) two lines are 2.5 pp, beyond D-050's band. Ask early for the module's line count against new catch blocks, and prefer code with no checked exception (FIX-6, ConfinedSchemaResolver:33).
+- When a JDK SPI value is built by hand (an `LSInput` with throwing setters), the getters' null/false values are behaviour (Xerces reads character data before bytes). Each one needs an assertion, and the hand-built class needs its own test (FIX-6, SchemaInput).
+- Xerces reads an `LSInput` the resolver hands over through its system id even when the byte stream is null and `ACCESS_EXTERNAL_SCHEMA=""`. The resolver's own system id is the confinement, not the belt (FIX-6 M28).

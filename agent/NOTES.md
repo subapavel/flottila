@@ -143,8 +143,47 @@ the DLQ for a child that parks (D-045 note); `split` over a STREAM language (non
 result and the xsd read both buffer the whole body (tree limit bounds it); the schema cache is
 keyed by the main file's content only — two flows with identical main XSDs but different included
 files share the first compiled schema, and an `xs:include` change alone is not recompiled (same as
-`xsl:include`); includes may reach any local `file:` path (FIX-6: confine to the flow's directory
-with a resolver).
+`xsl:include`) — since FIX-6 also a confinement gap (BACKLOG FIX-17: key by directory + hash).
+
+FIX-6 (D-052): every file a step reads at build time stays inside the flow's directory.
+`StepResources.file` confines (absolute, normalised, `startsWith(root)`; `../x`, `/abs/x` refused
+naming the reference and the directory) and `StepResources.resolve(baseUri, reference)` does the
+same for a reference relative to an including file (non-`file:` → "is not a file in the flow's
+directory"; a base without a trailing slash — `Path.toUri()` of a missing directory — gets one).
+xsd: `ConfinedSchemaResolver` (`LSResourceResolver`) feeds the parser through `resolve` as a
+`SchemaInput` (our own read-only `LSInput`: stream + system id, the rest null — Xerces reads a
+character stream or string data first; no DOM-LS lookup: its unreachable catch cost validate 2.5 pp
+of line coverage, beyond D-050's band; a stream handed over before a later refusal aborts the parse
+is closed by the parser or by GC — build time only, reviewer's note; an input with no stream is still read through its
+system id under the `""` belt — the resolver's system id is the confinement, M28) and records
+the first reference it could not hand over; `ACCESS_EXTERNAL_SCHEMA=""` is the belt (the parser
+loads nothing itself, the resolver's inputs still load, and a refused or unreadable reference is a
+parser error — for an `xs:import` too, so no post-compile check); the compile catch prefers the
+recorded failure (the parser names only the last path segment of a remote URL). "Not fetched" is
+pinned by a counting loopback `HttpServer` in both factory tests (0 requests; the belt's mutant
+`"all"` is caught by the counter only). xslt: `XsltCompiler.setResourceResolver` (Saxon
+`ResourceResolver`, `relativeUri` else `uri` against `baseUri`), throws `XPathException` — never
+null, Saxon would load the file itself; the message reaches `SaxonApiException` intact. It covers
+include/import only: a DTD external entity, a static `unparsed-text()` / `doc()` and `use-when`
+read at compile time through `Configuration.getResourceResolver()` (Saxon 12.4 has no
+compile-scoped hook: `CompilerInfo`'s resolvers serve include/import, the static context is built
+from the Configuration), so `CompileConfinement` replaces the shared Configuration's resolver once:
+a compile scope open on the compiling thread (ThreadLocal; the factory opens it around `compile()`,
+closes in `finally`) confines every read and records the first refusal, no scope delegates to
+Saxon's own resolver (run time untouched); the same object wraps the Configuration's
+`CollectionFinder` for static `uri-collection()` / `collection()` (Saxon hands the absolute URI).
+A recorded refusal after compiling is a build error (`unparsed-text-available` swallows the
+failure); `unparsed-text` and collection refusals name the absolute URI (no `relativeUri` there).
+Saxon 12.4 throws a ClassCastException ("PackageData cannot be cast to StylesheetPackage") on a
+static `collection()` before any finder runs — a `RuntimeException` out of the compile is wrapped
+as "does not compile" naming the step. `CompileConfinementTest` (same package) pins that nothing
+is confined on the building thread after a build and that a second factory over the same
+Processor reuses the installed confinement. Re-probe on every Saxon upgrade: a `file:` collection
+URI naming an XML catalog (`<collection><doc href="../x"/></collection>`) inside the directory —
+today static `collection()` dies in Saxon before any finder and `uri-collection` returns the
+catalog's own text, so nothing outside is read. Symlinks are compared as paths. Run-time
+`doc()` / `document()` / `unparsed-text()` are not confined (FIX-16, a decision row); the compile
+cache keyed by the main file's hash bypasses the check for an identical second flow (FIX-17).
 
 Open from the P1-07 review: `core.pattern.Retry` retries every RuntimeException of a `retryable`
 step and never reads `NackException.retryable` (D-046's "one flag") — an `xsd` step marked
