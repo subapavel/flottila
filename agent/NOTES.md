@@ -3,6 +3,29 @@
 Read by section, on demand (CLAUDE.md, Context hygiene). One section per area; the newest task
 first. Facts only; the next exact action and the state live in `agent/HANDOFF.md`.
 
+## Fix main — FIX-7, runtime branch coverage differs between the runner and the VM (2026-10-19)
+
+Observed by the architect from the GitHub job logs: on the b2cdbf4 tree the runner measured
+`flottila-runtime: line 99.7 %, branch 98.5 %` in push run 39222646443 (green, baseline from b52900a),
+`branch 97.8 %` in dispatch run 39222662258 (red, baseline from HEAD) and again `97.8 %` in push run
+39223460268 on f798a76 (red, baseline from b2cdbf4; that commit changed no code). The committed
+baseline says runtime branch 100.0 — the VM's high-water mark (`--write`, D-018), reached on every VM
+run. Every other module sits well inside the band. Arithmetic: 1.5 vs 2.2 pp missed means the module
+has about 136 branches and the runner misses 2 or 3 of them, the VM none — timing-dependent branches,
+the same class of fault as FIX-2 (testkit sampler). `--check-baseline` passed in run 38 (|100.0 − 98.5|
+≤ 2), so the only gate that trips is the no-decrease comparison, and only when the runner lands low.
+Forbidden ways out (CLAUDE.md, D-029 addendum): widening the band, lowering the baseline by hand,
+skipping or weakening a test. Run 39's mutation and bench jobs were skipped (they need `build`), so
+no mutation or bench number exists for b2cdbf4 either.
+Packet sketch: (1) fetch run 39's `build-reports` artifact (id 12172890156; its Azure blob host is
+blocked by the cloud session's proxy — the VM or the owner can fetch it) and list the runtime `<line>`
+entries with `mb > 0` in `flottila-runtime/target/site/jacoco/jacoco.xml`, against the VM's own report;
+(2) for each branch name the test that should drive it and why the runner skips it (a race against a
+real timer, a batch that flushed first, a stream already drained); (3) make that test deterministic —
+fake clock, explicit ordering — or delete a branch an invariant makes unreachable (FIX-3's precedent);
+(4) acceptance: CI on the fix commit plus two dispatched runs report the VM's runtime branch number.
+The FIX-7 PROGRESS entry records: run 38 green, run 39 red (this gate), run 40 red (this gate).
+
 ## Next task — P1-08, delivery modes (from the P1-07 hand-over)
 
 BACKLOG P1-08 row, D-046 hand-over. The runtime's consumer handler over the http component maps
