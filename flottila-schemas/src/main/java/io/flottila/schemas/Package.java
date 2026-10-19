@@ -69,7 +69,7 @@ public final class Package {
 
     public List<String> flowIds() { return List.copyOf(flows.keySet()); }
 
-    /** Problems the schemas cannot see: dangling endpoint, test of an unknown flow, missing fixture. Empty = consistent. */
+    /** Problems the schemas cannot see: dangling endpoint, missing stylesheet or XSD, test of an unknown flow, missing fixture. Empty = consistent. */
     public List<String> crossCheck() {
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, JsonObject> f : flows.entrySet()) {
@@ -82,6 +82,7 @@ public final class Package {
                 String where = "flow '" + flow + "' step '" + step.getString("name") + "'";
                 if (step.containsKey("endpoint")) requireEndpoint(problems, where, step.getString("endpoint"));
                 if (step.containsKey("stylesheet")) requireFile(problems, flowFiles.get(flow), where + " stylesheet", step.getString("stylesheet"));
+                if (step.containsKey("schema")) requireFile(problems, flowFiles.get(flow), where + " schema", step.getString("schema"));
                 JsonObject byProp = step.getJsonObject("endpoints", new JsonObject());
                 for (String k : byProp.fieldNames()) requireEndpoint(problems, where + " endpoints." + k, byProp.getString(k));
             }

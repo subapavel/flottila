@@ -1,5 +1,6 @@
 package io.flottila.core.flow;
 
+import io.flottila.api.BodyKind;
 import io.flottila.api.Component;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
@@ -17,6 +18,7 @@ import io.flottila.core.dlq.Parking;
 import io.flottila.core.pattern.Filter;
 import io.flottila.core.pattern.Retry;
 import io.flottila.core.pattern.Route;
+import io.flottila.core.pattern.Split;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Recorder;
@@ -35,7 +37,7 @@ import java.util.function.Predicate;
 
 /**
  * Builds a {@link Pipeline} from a {@link FlowDefinition} (ARCHITECTURE §6): one {@link Stage} per configured
- * step — a built-in ({@code to}, {@code route}, {@code filter}, {@code extractKey}, {@code validate}) or the
+ * step — a built-in ({@code to}, {@code route}, {@code filter}, {@code extractKey}, {@code validate}, {@code split}) or the
  * registered {@link StepFactory} of its type; every stage is wrapped so the envelope it hands on carries the
  * step's number (ingress is 0, the n-th step is n — a stage that only changed headers, props or keys is
  * {@linkplain Envelope#advance() advanced}, one that wrote a body is already there); a {@code retryable} step
@@ -50,7 +52,9 @@ import java.util.function.Predicate;
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
  * used here and nowhere else (CLAUDE.md): factories get a {@link StepResources}, the {@code to} step gets its
  * {@link Producer}s, resolved once at build time from the endpoint's URI scheme. An unknown step type, endpoint,
- * scheme, language or expression is a build error naming the step; nothing is deferred to the first message.
+ * scheme, language or expression is a build error naming the step; nothing is deferred to the first message. So is a
+ * step that needs the whole body ({@link BodyKind#WHOLE}) on a flow whose max body exceeds the store's tree limit
+ * without a {@code split} before it (ARCHITECTURE §5).
  *
  * @since 0.1
  */
@@ -132,13 +136,27 @@ public final class FlowBuilder {
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
         List<Stage> stages = new ArrayList<>(flow.steps().size());
         int lastIndex = flow.steps().size();
+        long treeLimit = runtime.blobs().treeLimit();
+        boolean splitBefore = false;
         for (StepConfig step : flow.steps()) {
+            BodyKind kind = switch (step.type()) {
+                case "to" -> BodyKind.STREAM;
+                case "split" -> language(step).bodyKind() == BodyKind.WHOLE ? BodyKind.WHOLE : BodyKind.SPLIT_ASSEMBLE;   // a splitter over the tree is itself a whole-body step
+                case "route", "filter", "extractKey", "validate" -> language(step).bodyKind();
+                default -> factoryFor(step).bodyKind();
+            };
+            if (kind == BodyKind.WHOLE && flow.maxBodyBytes() > treeLimit && !splitBefore) {
+                throw new IllegalStateException(step + " needs the whole body (" + kind + ") but the flow's maxBodyBytes " + flow.maxBodyBytes()
+                        + " exceeds the store's tree limit " + treeLimit + " and no split precedes it (ARCHITECTURE §5)");
+            }
+            if (kind == BodyKind.SPLIT_ASSEMBLE) splitBefore = true;
             Stage stage = switch (step.type()) {
                 case "to" -> to(step);
                 case "route" -> route(step, resources);
                 case "filter" -> new Filter(predicate(step, step.requireString("when"), resources));
                 case "extractKey" -> extractKey(step, resources);
                 case "validate" -> validate(step, resources);
+                case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources), runtime.ids());
                 default -> factoryFor(step).create(step, resources);
             };
             if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());

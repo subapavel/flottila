@@ -16,6 +16,9 @@ public interface StepFactory {
     /** JSON Schema (as text) the step's own keys are validated against at deploy time. */
     String configSchema();
 
+    /** What the step needs of the body; a factory that declares nothing is taken to need the whole body — the safe reading. */
+    default BodyKind bodyKind() { return BodyKind.WHOLE; }
+
     /**
      * Builds the stage; an {@link IllegalArgumentException} naming the step and the key for a bad
      * configuration. The stage holds what it is given here and nothing else (CLAUDE.md).

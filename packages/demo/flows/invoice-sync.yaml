@@ -23,9 +23,9 @@ retry:
   initial: 100ms
   max: 2s
 steps:
-  - type: validate
+  - type: xsd
     name: validate
-    required: /Invoice/Id
+    schema: invoice.xsd
   - type: extractKey
     name: extractKey
     key: invoiceId

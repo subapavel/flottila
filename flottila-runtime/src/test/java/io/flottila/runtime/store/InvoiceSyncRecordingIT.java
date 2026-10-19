@@ -12,6 +12,7 @@ import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.schemas.Documents;
 import io.flottila.schemas.Schemas;
+import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.RecordingComponent;
@@ -98,7 +99,7 @@ class InvoiceSyncRecordingIT {
 
     io.flottila.api.Pipeline pipeline(JsonObject doc) {
         SaxonXml xml = new SaxonXml();
-        return new FlowBuilder(rt.runtime(), xml.steps(), xml.languages(), endpoints).recording(store, Meter.system())
+        return new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system())
                 .build(FlowDefinition.from(doc.getMap()), DEMO.resolve("flows"));
     }
 

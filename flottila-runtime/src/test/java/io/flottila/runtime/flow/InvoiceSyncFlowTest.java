@@ -5,11 +5,13 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.api.Key;
 import io.flottila.api.Pipeline;
+import io.flottila.api.StepFactory;
 import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
-import io.flottila.core.flow.ValidationFailedException;
 import io.flottila.schemas.Documents;
 import io.flottila.schemas.Schemas;
+import io.flottila.steps.validate.XsdValidate;
+import io.flottila.steps.validate.XsdValidationException;
 import io.flottila.steps.xslt.SaxonXml;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.NoBlockedPlatformThreads;
@@ -53,6 +55,9 @@ class InvoiceSyncFlowTest {
     final FakeRuntime rt = FakeRuntime.create();
     final RecordingComponent http = new RecordingComponent("http");
     final SaxonXml xml = new SaxonXml();
+
+    /** The demo flow's steps: xsd from the validate module, xslt from the Saxon one. */
+    List<StepFactory> steps() { return Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(); }
     Buffer invoice;
     Buffer ack;
     Pipeline pipeline;
@@ -78,7 +83,7 @@ class InvoiceSyncFlowTest {
         invoice = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")));
         ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         http.replyWith(e -> e.next(rt.store(e, ack)));   // the partner answers with the ack fixture (invoice-sync.test.yaml mocks)
-        pipeline = new FlowBuilder(rt.runtime(), xml.steps(), xml.languages(), endpoints).build(def, DEMO.resolve("flows"));
+        pipeline = new FlowBuilder(rt.runtime(), steps(), xml.languages(), endpoints).build(def, DEMO.resolve("flows"));
         assertEquals(2, http.producersBuilt(), "both partner endpoints resolved at build time");
     }
 
@@ -129,10 +134,10 @@ class InvoiceSyncFlowTest {
 
     @Test
     void anInvoiceWithoutAnIdFailsAtTheValidateStepAndNothingIsSent() {
-        ValidationFailedException e = assertThrows(ValidationFailedException.class,
+        XsdValidationException e = assertThrows(XsdValidationException.class,
                 () -> pipeline.apply(ingress(Buffer.buffer(invoice.toString().replace("<Id>4711</Id>", "")))));
         assertEquals("validate", e.step());
-        assertEquals("/Invoice/Id", e.expression());
+        assertTrue(e.getMessage().contains("validation failed at step 'validate'") && e.getMessage().contains("Id"), e.getMessage());
         assertEquals(List.of(), http.sent());
     }
 

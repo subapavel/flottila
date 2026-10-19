@@ -13,12 +13,17 @@
   <artifactId>flottila-step-validate</artifactId>
   <packaging>jar</packaging>
   <name>Flottila :: step :: validate</name>
-  <description>XSD validation step.</description>
+  <description>XSD validation step on the JDK's javax.xml.validation, schemas compiled by content hash.</description>
 
   <dependencies>
     <dependency>
       <groupId>io.flottila</groupId>
       <artifactId>flottila-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-testkit</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>
