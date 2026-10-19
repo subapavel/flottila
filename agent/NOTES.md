@@ -31,6 +31,15 @@ runner's timing decides, or deletion when an invariant makes it unreachable (FIX
 runtime number in two dispatched reruns. The FIX-7 PROGRESS entry records runs 38 green, 39 and 40
 red at this gate, and the environment's new allow-list entry `*.blob.core.windows.net` (artifacts).
 
+### FIX-11 — D7's fixture depends on the interleaving (2026-10-19)
+`TieredBlobStoreFailureTest.LatePauseStream` (FIX-7 D7) opens its latch only on a resume that arrives after
+`pause()` has set `delayed`. The sink can resume between `enqueue` releasing the monitor (`TieredBlobStore`
+line 310) and the wrapper entering `pause()`: then `GeneratedReadStream.resume` is a no-op (`draining` is
+true on the attach thread), the latch never opens and the case fails after its 10 s bound — once on the
+2-vCPU runner (run 39253266191), never on the VM. The product is right: its re-check (lines 313–318)
+resumes the source after the pause has landed. Rule for fixtures that stage a race: the signal must be
+accepted on either side of the window, and the "other" ordering needs its own deterministic case.
+
 ## Delivery modes (P1-08, D-049)
 
 `core.flow.Delivery` is the consumer handler a flow gets from `FlowBuilder.delivery(flow, baseDir)`
