@@ -63,7 +63,7 @@ server in `.mcp.json`.
    /model claude-fable-5-1
    /effort high
    ```
-   `high` is the agreed default (D-007, D-NEW). Raise to `max` only if PROGRESS.md shows design
+   `high` is the agreed default (D-007, D-048). Raise to `max` only if PROGRESS.md shows design
    rework. The session is the architect only: tests, code, checks and reviews run on Opus 5.5 and
    Sonnet 5.5 subagents (AGENTS.md); Fable 5.1 writes no code in this setup.
 3. Paste the contents of `prompts/PART-B.md` as the first message. The agent reads the repo,

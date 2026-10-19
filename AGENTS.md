@@ -30,7 +30,7 @@ default. Fable 5.1 runs only as the architect and as the gate reviewer.
 Concurrency: at most two subagents at once beside the architect, and exactly one writer — while
 the test-author or the implementer owns a task, nobody else edits source, the ledger files or git;
 the scout, verifier and reviewer never write. No nested delegation, no agent teams, no scheduled
-loops (D-007, D-NEW).
+loops (D-007, D-048).
 
 A finished agent stays addressable by name in the session: a second review round, a partial
 hand-back at the turn cap, or a one-line fix resumes the same agent with its context instead of
