@@ -36,7 +36,11 @@ final class LoopbackComponent implements Component {
         return new Producer() {
             @Override public Future<Envelope> send(Envelope e) {
                 if (handler == null) return Future.failedFuture(new IllegalStateException("no consumer running"));
-                return handler.apply(e).map(ack -> ack instanceof Ack.Reply r ? r.reply() : e);
+                return handler.apply(e).compose(ack -> switch (ack) {
+                    case Ack.Reply r -> Future.succeededFuture(r.reply());
+                    case Ack.Accepted a -> Future.succeededFuture(e);
+                    case Ack.Nack n -> Future.failedFuture(new io.flottila.api.NackException(n.reason(), n.retryable()));
+                });
             }
             @Override public Future<Void> close() { return Future.succeededFuture(); }
         };

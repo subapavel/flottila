@@ -73,8 +73,15 @@ class RecordingComponentTest extends ComponentContract {
         consumer.start().await();
         Envelope e = rt.ingress("f", Headers.empty(), Buffer.buffer("a"));
         assertSame(e, http.producer(partner).send(e).await(), "Accepted is not a reply: the envelope itself comes back");
+        assertEquals("ok", http.replyWith(x -> x.withHeader("ack", "ok")).producer(other).send(e).await().header("ack").orElseThrow(), "another endpoint keeps the configured reply: the consumer answers its own endpoint only");
         assertEquals(Health.Status.UP, http.health().await().status());
         consumer.stop().await();
+        var nacking = http.consumer(partner, x -> io.vertx.core.Future.succeededFuture(new io.flottila.api.Ack.Nack("no room", true)));
+        nacking.start().await();
+        io.vertx.core.Future<Envelope> refused = http.producer(partner).send(e);
+        refused.otherwiseEmpty().await();
+        assertTrue(refused.cause() instanceof io.flottila.api.NackException n && n.retryable() && n.reason().equals("no room"), String.valueOf(refused.cause()));
+        nacking.stop().await();
         assertEquals(Health.Status.DOWN, http.health().await().status());
     }
 }

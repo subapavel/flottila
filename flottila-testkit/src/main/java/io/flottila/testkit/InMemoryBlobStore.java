@@ -64,6 +64,7 @@ public final class InMemoryBlobStore implements BlobStore {
             hash.update(chunk);
             collected.appendBuffer(chunk);
         });
+        if (!result.future().isComplete()) in.resume();   // a stream handed over paused (a socket) flows once the handlers are attached; not after an early failure
         return result.future();
     }
 

@@ -60,7 +60,8 @@ class PgDlqIT {
 
     static Parked parked(String id, int step, Instant at) {
         return new Parked(id, "invoice-sync", step, "partner", "java.lang.IllegalStateException: 503 from partner", at,
-                Headers.empty().with("content-type", "application/xml"), Props.empty().with(new Key<String>("PARTNER"), "domestic").with(new Key<Duration>("odd"), Duration.ofSeconds(2)),
+                Headers.empty().with("content-type", "application/xml"),
+                Props.empty().with(new Key<String>("PARTNER"), "domestic").with(new Key<Duration>("odd"), Duration.ofSeconds(2)).with(new Key<Boolean>("flag"), true).with(new Key<Integer>("n"), 7),
                 Keys.empty().with("invoiceId", "4711"), new Hash("sha256-64", -7L), 187, BlobKey.body(id, step - 1), Map.of("flow", "invoice-sync@0.1.0"));
     }
 
@@ -75,7 +76,7 @@ class PgDlqIT {
         assertEquals(List.of("m-1", "m-2"), rows.stream().map(Parked::messageId).toList(), "oldest first; the second park of m-1 was ignored");
         Parked back = rows.get(0);
         assertEquals("PT2S", back.props().asMap().get("odd"), "a prop that is not JSON-native comes back as its string form");
-        Props expectedProps = Props.empty().with(new Key<String>("PARTNER"), "domestic").with(new Key<String>("odd"), "PT2S");
+        Props expectedProps = Props.empty().with(new Key<String>("PARTNER"), "domestic").with(new Key<String>("odd"), "PT2S").with(new Key<Boolean>("flag"), true).with(new Key<Integer>("n"), 7);
         assertEquals(new Parked(a.messageId(), a.flow(), a.step(), a.stepName(), a.error(), a.parkedAt(), a.headers(), expectedProps, a.keys(), a.bodyHash(), a.bodySize(), a.bodyKey(), a.versions()), back);
         assertEquals(Optional.of(back), dlq.get("m-1").await());
         assertEquals(Optional.empty(), dlq.get("m-9").await());

@@ -21,7 +21,11 @@ public interface BlobStore {
     /** Stores a body that is already in memory. Fails with {@link BodyTooLargeException} above {@code maxSize}. */
     Future<Body> write(BlobKey key, Buffer whole, long maxSize);
 
-    /** Streams a body in while hashing. Fails with {@link BodyTooLargeException} once more than {@code maxSize} bytes arrived. */
+    /**
+     * Streams a body in while hashing. Fails with {@link BodyTooLargeException} once more than {@code maxSize} bytes arrived.
+     * The stream may be handed over paused (a socket whose bytes must not flow before anyone listens): the store resumes it
+     * once its handlers are attached — and never resumes a stream it has itself paused (back-pressure) or failed (the limit).
+     */
     Future<Body> write(BlobKey key, ReadStream<Buffer> in, long maxSize);
 
     /** A fresh cold stream of the stored bytes; may be called any number of times. */

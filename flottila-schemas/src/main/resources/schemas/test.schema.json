@@ -32,8 +32,8 @@
         "files": { "type": "string", "description": "Consumer side: fixture files to feed (glob)." },
         "messages": { "type": "string", "description": "Consumer side: fixture messages to feed (glob)." },
         "fail": { "oneOf": [ { "type": "integer", "minimum": 400, "maximum": 599 }, { "enum": ["timeout", "reset", "malformed"] } ] },
-        "after": { "type": "integer", "minimum": 1, "description": "fail after N calls." },
-        "every": { "type": "integer", "minimum": 2, "description": "fail every Nth call." },
+        "after": { "type": "integer", "minimum": 1, "description": "the failure applies from the N-th send on (1 = from the first)." },
+        "every": { "type": "integer", "minimum": 2, "description": "of the sends the failure applies to, every N-th fails." },
         "delay": { "$ref": "#/$defs/duration" }
       }
     },

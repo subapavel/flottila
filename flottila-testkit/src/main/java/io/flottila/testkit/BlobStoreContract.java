@@ -66,6 +66,17 @@ public abstract class BlobStoreContract {
     }
 
     @Test
+    public void aStreamHandedOverPausedIsResumedByTheStore() {
+        BlobStore s = store();
+        ChunkedReadStream in = new ChunkedReadStream(List.of("<a>", "bbb", "</a>"));
+        in.pause();   // a socket whose bytes must not flow before anyone listens
+        Body body = await(s.write(key("m-paused", 0), in, TREE_LIMIT));
+        assertEquals(10, body.size(), "every chunk arrived although the stream was paused when handed over");
+        assertEquals(hasher().hashOf(Buffer.buffer("<a>bbb</a>")), body.hash());
+        assertEquals("<a>bbb</a>", await(s.read(body.key())).toString());
+    }
+
+    @Test
     public void openIsAFreshColdStreamEveryTime() {
         BlobStore s = store();
         Body body = await(s.write(key("m-3", 0), Buffer.buffer("twice"), TREE_LIMIT));
@@ -98,10 +109,12 @@ public abstract class BlobStoreContract {
     @Test
     public void aStreamAboveTheFlowsMaxSizeIsRefusedAndNothingIsStored() {
         BlobStore s = store();
-        Future<Body> f = s.write(key("m-6", 0), new GeneratedReadStream(5000, 512), 4000);
+        GeneratedReadStream in = new GeneratedReadStream(5000, 512);
+        Future<Body> f = s.write(key("m-6", 0), in, 4000);
         assertTrue(awaitOutcome(f).failed());
         assertInstanceOf(BodyTooLargeException.class, f.cause());
         assertTrue(awaitOutcome(s.read(key("m-6", 0))).failed(), "nothing stored under the refused key");
+        assertEquals(4096, in.delivered(), "the store stopped consuming at the refusing chunk — it never resumes a stream it has itself paused or failed");
     }
 
     @Test
@@ -112,6 +125,12 @@ public abstract class BlobStoreContract {
         assertTrue(awaitOutcome(f).failed());
         assertEquals("socket reset", f.cause().getMessage());
         assertTrue(awaitOutcome(s.read(key("m-7", 0))).failed());
+        ChunkedReadStream pausedBoom = new ChunkedReadStream(List.of("part", "ial"), boom);
+        pausedBoom.pause();   // handed over paused: the failure lands inside the store's own resume, and the store must not read past it
+        Future<Body> g = s.write(key("m-7b", 0), pausedBoom, TREE_LIMIT);
+        assertTrue(awaitOutcome(g).failed());
+        assertEquals("socket reset", g.cause().getMessage());
+        assertTrue(awaitOutcome(s.read(key("m-7b", 0))).failed(), "nothing stored under the key of a stream that failed after the resume");
     }
 
     @Test

@@ -6,6 +6,7 @@ import io.flottila.api.Consumer;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Health;
+import io.flottila.api.NackException;
 import io.flottila.api.Producer;
 import io.vertx.core.Future;
 
@@ -22,7 +23,7 @@ import java.util.function.Supplier;
 /**
  * The mock binding of a scheme for flow tests (ARCHITECTURE §11: a flow file is byte-identical everywhere, the
  * mocks live next to it). A producer records every envelope it is sent, per endpoint, and answers: with the
- * running consumer's reply when one is started on this component (the loopback of the contract suite), else
+ * reply of the consumer running on that same endpoint (the loopback of the contract suite), else
  * with {@link #replyWith(Function)} (identity by default), or with the next failure queued by
  * {@link #failNext(int, Supplier)} — the way a test plays "partner down" for a retry. Health is up while a
  * consumer runs. Passes {@link ComponentContract}.
@@ -37,7 +38,7 @@ public final class RecordingComponent implements Component {
     private final ConcurrentLinkedDeque<Supplier<? extends Throwable>> failures = new ConcurrentLinkedDeque<>();
     private final AtomicInteger producersBuilt = new AtomicInteger();
     private volatile Function<Envelope, Envelope> reply = e -> e;
-    private volatile Function<Envelope, Future<Ack>> handler;
+    private final Map<String, Function<Envelope, Future<Ack>>> handlers = new ConcurrentHashMap<>();   // by endpoint name
 
     public RecordingComponent(String scheme) {
         this.scheme = Objects.requireNonNull(scheme, "scheme");
@@ -76,9 +77,10 @@ public final class RecordingComponent implements Component {
     @Override
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> h) {
         Objects.requireNonNull(h, "handler");
+        Objects.requireNonNull(cfg, "cfg");
         return new Consumer() {
-            @Override public Future<Void> start() { handler = h; return Future.succeededFuture(); }
-            @Override public Future<Void> stop() { handler = null; return Future.succeededFuture(); }
+            @Override public Future<Void> start() { handlers.put(cfg.name(), h); return Future.succeededFuture(); }
+            @Override public Future<Void> stop() { handlers.remove(cfg.name(), h); return Future.succeededFuture(); }
         };
     }
 
@@ -93,8 +95,14 @@ public final class RecordingComponent implements Component {
                 mine.add(e);
                 Supplier<? extends Throwable> failure = failures.pollFirst();
                 if (failure != null) return Future.failedFuture(failure.get());
-                Function<Envelope, Future<Ack>> running = handler;
-                if (running != null) return running.apply(e).map(ack -> ack instanceof Ack.Reply r ? r.reply() : e);
+                Function<Envelope, Future<Ack>> running = handlers.get(cfg.name());
+                if (running != null) {
+                    return running.apply(e).compose(ack -> switch (ack) {
+                        case Ack.Reply r -> Future.succeededFuture(r.reply());
+                        case Ack.Accepted a -> Future.succeededFuture(e);
+                        case Ack.Nack n -> Future.failedFuture(new NackException(n.reason(), n.retryable()));
+                    });
+                }
                 return Future.succeededFuture(reply.apply(e));
             }
             @Override public Future<Void> close() { return Future.succeededFuture(); }
@@ -103,6 +111,6 @@ public final class RecordingComponent implements Component {
 
     @Override
     public Future<Health> health() {
-        return Future.succeededFuture(handler != null ? Health.up() : Health.down("no consumer running"));
+        return Future.succeededFuture(handlers.isEmpty() ? Health.down("no consumer running") : Health.up());
     }
 }

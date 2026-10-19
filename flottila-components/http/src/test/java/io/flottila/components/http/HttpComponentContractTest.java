@@ -1,0 +1,40 @@
+package io.flottila.components.http;
+
+import io.flottila.api.Component;
+import io.flottila.api.EndpointConfig;
+import io.flottila.testkit.ComponentContract;
+import io.flottila.testkit.FakeRuntime;
+import io.vertx.core.Vertx;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.URI;
+import java.util.Map;
+
+/** The real component over real sockets on the loopback interface passes the same suite as the mock. */
+class HttpComponentContractTest extends ComponentContract {
+
+    static Vertx vertx;
+    static int port;
+
+    @BeforeAll
+    static void start() throws IOException {
+        vertx = Vertx.vertx();
+        try (ServerSocket s = new ServerSocket(0)) { port = s.getLocalPort(); }   // one endpoint binds consumer and producer: a known free port
+    }
+
+    @AfterAll
+    static void stop() { vertx.close().await(); }
+
+    @Override protected Component component() {
+        FakeRuntime rt = FakeRuntime.create().withTreeLimit(4096);   // bodies above 4 KiB must stream through the server and the client
+        return new HttpComponent(vertx, rt.blobs(), rt.ids());
+    }
+
+    @Override protected EndpointConfig endpoint() {
+        return new EndpointConfig("in", URI.create("http://127.0.0.1:" + port + "/in"),
+                Map.of("host", "127.0.0.1", "port", port, "path", "/in", "url", "http://127.0.0.1:" + port + "/in", "maxBodyBytes", 1_000_000, "flow", "contract"));
+    }
+}

@@ -110,15 +110,34 @@ class TieredBlobStoreFailureTest {
         assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 5000), body.hash());
         assertTrue(source.pauses.get() >= 1, "60-byte chunks against a 100-byte high-water mark: the source was paused");
         assertEquals(source.pauses.get(), source.resumes.get(), "every pause was followed by a resume: " + source.pauses + " / " + source.resumes);
+        assertTrue(s.peakQueuedBytes() <= 100 + 60, "the queue never held more than the high-water mark plus one chunk — a resume that undid the store's own pause would let the whole body in: " + s.peakQueuedBytes());
         assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 1));
     }
 
     @Test
+    void aSynchronousSourcePausedWhileAttachingIsResumedExactlyOnceAndTheWriteCompletes(@TempDir Path dir) {
+        // a synchronous source delivers inside handler(): it hits the high-water mark before start() has returned. Until the attach
+        // completed only the attach thread may resume it (the sink thread clears the flag and leaves the resume to whoever comes
+        // second), so no resume ever undoes a pause and no pause is left without its resume — whichever way the two threads interleave.
+        for (int round = 0; round < 20; round++) {
+            TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 100);
+            CountingStream source = new CountingStream(new GeneratedReadStream(5000, 60));
+            Body body = BlobStoreContract.await(s.write(BlobKey.body("m-" + round, 0), source, 10_000));
+            assertEquals(5000, body.size());
+            assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 5000), body.hash());
+            assertEquals(source.pauses.get(), source.resumes.get(), "round " + round + ": every pause matched by one resume: " + source.pauses + " / " + source.resumes);
+            assertTrue(s.peakQueuedBytes() <= 100 + 60, "round " + round + ": the queue stayed under the high-water mark plus one chunk: " + s.peakQueuedBytes());
+        }
+    }
+
+    @Test
     void aPauseThatLandsAfterTheSinkAlreadyResumedIsNotLostForever(@TempDir Path dir) {
-        // the source decides to pause, is descheduled, the sink drains and "resumes" a stream that is not paused yet,
-        // then the pause lands: without a re-check nobody would ever resume it and the write would hang
+        // a socket-like source: handed over paused, it starts delivering on the attach thread's resume — after the attach, so the
+        // sink thread may resume it. The source decides to pause, is descheduled, the sink drains and "resumes" a stream that is
+        // not paused yet, then the pause lands: without the re-check nobody would ever resume it and the write would hang.
         TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 100);
         LatePauseStream source = new LatePauseStream(new GeneratedReadStream(5000, 60));
+        source.pause();
         Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), source, 10_000));
         assertEquals(5000, body.size());
         assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 5000), body.hash());
@@ -164,17 +183,18 @@ class TieredBlobStoreFailureTest {
         assertEquals("p/m-2/0/body", s.objectKey(BlobKey.body("m-2", 0)));
     }
 
-    /** A source whose first pause() lands only after the sink has already called resume() once. */
+    /** A source whose first pause() after the handler was attached lands only after the sink has called resume() for it. */
     static final class LatePauseStream implements ReadStream<Buffer> {
         final ReadStream<Buffer> inner;
         final java.util.concurrent.CountDownLatch resumedOnce = new java.util.concurrent.CountDownLatch(1);
         final AtomicInteger lateLandings = new AtomicInteger();
-        boolean delayed;
+        volatile boolean attached;
+        volatile boolean delayed;
         LatePauseStream(ReadStream<Buffer> inner) { this.inner = inner; }
         @Override public ReadStream<Buffer> exceptionHandler(Handler<Throwable> h) { inner.exceptionHandler(h); return this; }
-        @Override public ReadStream<Buffer> handler(Handler<Buffer> h) { inner.handler(h); return this; }
+        @Override public ReadStream<Buffer> handler(Handler<Buffer> h) { inner.handler(h); attached = true; return this; }
         @Override public ReadStream<Buffer> pause() {
-            if (!delayed) {
+            if (attached && !delayed) {
                 delayed = true;
                 try { if (!resumedOnce.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("the sink never resumed"); }
                 catch (InterruptedException e) { throw new AssertionError(e); }
@@ -183,7 +203,7 @@ class TieredBlobStoreFailureTest {
             inner.pause();
             return this;
         }
-        @Override public ReadStream<Buffer> resume() { resumedOnce.countDown(); inner.resume(); return this; }
+        @Override public ReadStream<Buffer> resume() { if (delayed) resumedOnce.countDown(); inner.resume(); return this; }   // only the sink's resume, issued while the delayed pause is still landing, opens the latch
         @Override public ReadStream<Buffer> fetch(long amount) { inner.fetch(amount); return this; }
         @Override public ReadStream<Buffer> endHandler(Handler<Void> h) { inner.endHandler(h); return this; }
     }

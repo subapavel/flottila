@@ -102,6 +102,6 @@ class PublicTypesHaveSinceTest {
             }
         }
         assertEquals(List.of(), missing, "public types without @since");
-        assertEquals(35, publicTypes, "29 top-level + 6 nested public types after P1-03 (StepFactory, StepConfig, StepResources, Expressions); update this number with every api change");
+        assertEquals(36, publicTypes, "30 top-level + 6 nested public types after P1-06 (NackException); update this number with every api change");
     }
 }

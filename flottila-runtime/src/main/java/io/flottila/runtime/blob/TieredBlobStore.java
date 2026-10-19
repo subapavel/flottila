@@ -79,6 +79,7 @@ public final class TieredBlobStore implements BlobStore {
     private final SpoolCipher cipher;
     private final long queueHighWater;
     private final Map<BlobKey, Stored> objects = new ConcurrentHashMap<>();
+    private volatile long peakQueued;   // the most bytes any streaming write held ahead of its sink (a test seam for the back-pressure bound)
 
     private record Stored(Location location, Buffer bytes, Path file, String s3Key, long size) {}
 
@@ -95,6 +96,9 @@ public final class TieredBlobStore implements BlobStore {
         this.cipher = new SpoolCipher(config.spoolKey());
         this.queueHighWater = queueHighWater;
     }
+
+    /** The most bytes any streaming write has queued ahead of its sink since this store was created: back-pressure keeps it near the high-water mark plus one chunk. */
+    long peakQueuedBytes() { return peakQueued; }
 
     @Override public long treeLimit() { return config.treeLimit(); }
 
@@ -231,6 +235,8 @@ public final class TieredBlobStore implements BlobStore {
         private long queued;
         private boolean ended;
         private boolean sourcePaused;
+        private boolean attached;      // start() has attached its handlers: from then on the sink thread may resume the source itself
+        private boolean resumeOwed = true;   // a resume is owed: for the handover (the stream may arrive paused) and after every pause of ours; cleared by whoever resumes
         private Throwable failure;
 
         StreamingWrite(BlobKey key, ReadStream<Buffer> in, long maxSize) {
@@ -243,9 +249,23 @@ public final class TieredBlobStore implements BlobStore {
             in.exceptionHandler(this::fail);
             in.endHandler(v -> end());
             in.handler(this::chunk);
+            // attaching may already have delivered, paused or failed: a synchronous source (BufferReadStream for a memory-tier body, the
+            // testkit's streams) runs inside handler(). Until this moment the sink thread never resumes the source, so exactly one party
+            // decides here, under the monitor; afterwards the sink does (BlobStore contract: a stream handed over paused flows once the
+            // handlers are attached, and a pause or failure of our own is never undone).
+            boolean resume;
+            synchronized (this) {
+                attached = true;
+                resume = resumeOwed && !sourcePaused && failure == null && !result.future().isComplete();
+                if (resume) resumeOwed = false;
+            }
+            if (resume) in.resume();
+            if (resume && failed()) in.pause();   // a failure that landed in the window: never consume past it (a second pause cannot hang, nothing resumes after a failure)
         }
 
         private synchronized boolean over() { return failure != null || result.future().isComplete(); }
+
+        private synchronized boolean failed() { return failure != null || result.future().failed(); }
 
         private void chunk(Buffer c) {
             if (over()) return;
@@ -283,13 +303,17 @@ public final class TieredBlobStore implements BlobStore {
                 queue.addLast(c);
                 queued += c.length();
                 pauseSource = queued >= queueHighWater && !sourcePaused;
-                if (pauseSource) sourcePaused = true;
+                if (pauseSource) { sourcePaused = true; resumeOwed = true; }
+                if (queued > peakQueued) peakQueued = queued;
                 notifyAll();
             }
             if (pauseSource) {
                 in.pause();   // outside the monitor: the source may lock around its own dispatch
                 boolean resumedMeanwhile;
-                synchronized (this) { resumedMeanwhile = !sourcePaused; }   // the sink drained and "resumed" before this pause landed
+                synchronized (this) {
+                    resumedMeanwhile = !sourcePaused;   // the sink drained and "resumed" before this pause landed (or, before the attach, left the resume to us)
+                    if (resumedMeanwhile) resumeOwed = false;
+                }
                 if (resumedMeanwhile) in.resume();
             }
         }
@@ -340,7 +364,8 @@ public final class TieredBlobStore implements BlobStore {
                             queued -= next.length();
                             if (sourcePaused && queued < queueHighWater / 2) {
                                 sourcePaused = false;
-                                resumeSource = true;
+                                resumeSource = attached;   // before attach, the source thread (its re-check) or start() issues the one resume
+                                if (resumeSource) resumeOwed = false;
                             }
                         }
                     }

@@ -13,7 +13,7 @@
   <artifactId>flottila-component-http</artifactId>
   <packaging>jar</packaging>
   <name>Flottila :: component :: http</name>
-  <description>HTTP server and client component (sync request/reply and /async 202).</description>
+  <description>HTTP server and client component: sync request/reply, 202 on Accepted, 503 + Retry-After on a retryable NACK; the delivery modes behind /async are the runtime wrapper's (D-046).</description>
 
   <dependencies>
     <dependency>
@@ -21,8 +21,8 @@
       <artifactId>flottila-api</artifactId>
     </dependency>
     <dependency>
-      <groupId>io.vertx</groupId>
-      <artifactId>vertx-junit5</artifactId>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-testkit</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
