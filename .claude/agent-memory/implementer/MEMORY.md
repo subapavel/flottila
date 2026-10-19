@@ -17,6 +17,8 @@
 - `-pl flottila-components/http -am` builds api + testkit + http only (core is not upstream).
 - A red core test stops the reactor; for the full picture add a second run with
   `-Dmaven.test.failure.ignore=true` (separate log) — report both, never as a substitute.
+- `-Dtest='Foo*'` also selects nested classes (`FooTest$BlockingTestCase`, an EngineTestKit fixture built to
+  fail) — default `**/*$*` excludes are dropped; use `-Dtest=FooTest,FooConfigTest` and delete the stale XML.
 - dockerd/pg often already up: `setsid dockerd` exits 1, `pg_ctlcluster` says "already running"; check `docker info`.
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
   fixture with no test in its own module trips the 2 pp band even when other modules exercise it.

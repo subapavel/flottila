@@ -62,3 +62,5 @@
 - A cleanup catch limited to IOException misses unchecked failures between the file create and the hand-back, such as an allocation in a constructor (FIX-14, SpoolCipher:71/:148 — FIX-15).
 - To make a delete fail deterministically without root tricks, put a non-empty directory at the path: `deleteIfExists` throws `DirectoryNotEmptyException`.
 - JaCoCo marks a line missed when the call on it always throws in tests (no probe after the call), so look at the callee's coverage before asking for a test (FIX-14, SpoolCipher:65).
+- When a time conversion like `sec * 1e9 + nano` is new code, ask for a case whose interval crosses the unit boundary; otherwise the multiplier goes unpinned (FIX-2, BlockedPlatformThreadDetector:93).
+- A "may block" negative on a thread kind that is never registered is vacuous: pin the thread kind itself (FIX-2, `watchedVirtualThread` → `assertTrue(vt.isVirtual())`).

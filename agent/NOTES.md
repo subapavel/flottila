@@ -219,6 +219,17 @@ Spike answers: durable ACK p50 ≈ 4–6 ms, p99 8–18 ms on this VM (commit ti
 RequestScope ≈ 55 µs per message; Admission never over budget at 10k threads (RESULTS.md §P0-11,
 §P1-02).
 
+FIX-2 — `BlockedPlatformThreadDetector` has two drivers: `start(threshold)` keeps the sampler thread
+(the JUnit extension `NoBlockedPlatformThreads` uses it); `driven(threshold, FakeClock)` starts no
+thread and samples on every `clock.advance` / `set` on the calling thread, "now" being the clock's
+instant as nanos (`epochSecond * 1e9 + nano`; the clock must not stand before the epoch — the `since`
+sentinel is `-1`); `sample()` is a no-op once closed because FakeClock keeps the listener. A test
+stages the thread state before each advance (spin on `getState()`, parked with a blocker) and asserts
+the exact `blockedFor` = the clock time since the first blocked sample; the closed case blocks on a
+monitor, not a latch (`close()` → `shutdownNow()` interrupts a latch wait). Surefire filter trap: the
+wildcard `-Dtest='BlockedPlatformThreadDetector*'` selects the nested `BlockingTestCase` (built to
+fail, run only through EngineTestKit) — name the two classes.
+
 ## Bench
 
 `bench/run.sh` (native Postgres: `sudo pg_ctlcluster 16 main start`; role flottila has CREATEDB;

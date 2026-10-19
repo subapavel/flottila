@@ -73,3 +73,8 @@
 - A delete that must fail (root-safe, any OS): make the path a non-empty directory → `Files.deleteIfExists` throws
   `DirectoryNotEmptyException` (FIX-14 r2). `SpoolCipher.encrypting(Path, OutputStream)` is the test seam for the open path.
 - A join or latch timeout in a fixture names where the waited thread sits (its stack) — a bare "(not within 10 s)" cost a diagnosis round (FIX-10 r9, `Attach.joined`).
+- Staging thread states without sleeps (FIX-2): capture the pool thread from the task body, spin `onSpinWait` on `getState()`; for
+  WAITING/TIMED_WAITING also `LockSupport.getBlocker(t) != null` (parked, not transient). A thread that must stay blocked across
+  `shutdownNow()` (an interrupt) waits on a `synchronized` monitor entry (BLOCKED), never a latch. `Future.get` returns before `afterExecute`.
+- A nanos time source built from `epochSecond * 1e9 + nano` is unpinned unless a measured interval crosses a whole second
+  (FIX-2 r2): start the FakeClock at `.850Z`. Mutant runner for a scratch copy: JUnit `LauncherFactory` + `SummaryGeneratingListener`.
