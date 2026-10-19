@@ -1,0 +1,22 @@
+{
+  "autoCompactWindow": 400000,
+  "subagentPromptCacheTtl": "1h",
+  "env": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "2",
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1",
+    "CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL": "1h"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'context compacted — re-verify before changing anything (CLAUDE.md, Context hygiene):'; git status --short | head -20; git log -3 --oneline; echo '--- agent/HANDOFF.md'; head -c 8000 agent/HANDOFF.md"
+          }
+        ]
+      }
+    ]
+  }
+}

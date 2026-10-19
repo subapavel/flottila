@@ -37,16 +37,21 @@ Environment variables:
 | `BASH_DEFAULT_TIMEOUT_MS` | `600000` | Maven and Testcontainers runs |
 | `BASH_MAX_TIMEOUT_MS` | `1800000` | same |
 | `MAVEN_OPTS` | `-Xmx3g` | |
-| `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` | `1` | one worker beside the coordinator |
+| `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` | `2` | one writer beside the architect, plus a reader (scout, verifier or reviewer) — AGENTS.md keeps the one-writer rule |
 | `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` | `1` | no nested delegation |
+| `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` | `1h` | a subagent's cache otherwise expires after 5 minutes, which a Maven run exceeds |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `400000` | compact at 400k tokens instead of near the 1M limit: every turn re-sends the whole window, and decisions degrade long before the limit |
 | `GIT_AUTHOR_NAME` | owner's name | commit identity and DCO sign-off are the owner's (D-004) |
 | `GIT_AUTHOR_EMAIL` | owner's e-mail | |
 | `GIT_COMMITTER_NAME` | owner's name | |
 | `GIT_COMMITTER_EMAIL` | owner's e-mail | |
 
 Not set: `CLAUDE_CODE_EFFORT_LEVEL` (it would override the subagents' efforts),
-`CLAUDE_CODE_SUBAGENT_MODEL_FORCE`. No secrets: the environment holds no credentials, no cloud
-SDK logins, no publishing keys. Optional: a Context7 API key as a *network secret* for
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` (AGENTS.md: no teams).
+The same values live in `.claude/settings.json` (committed) together with the `SessionStart`
+hook that re-injects `git status`, `git log -3` and `agent/HANDOFF.md` after every compaction;
+the environment variables matter for a session whose settings file predates them. No secrets: the
+environment holds no credentials, no cloud SDK logins, no publishing keys. Optional: a Context7 API key as a *network secret* for
 `mcp.context7.com`; then add `"headers": {"CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"}` to the
 server in `.mcp.json`.
 
@@ -58,7 +63,9 @@ server in `.mcp.json`.
    /model claude-fable-5-1
    /effort high
    ```
-   `high` is the agreed default (D-007). Raise to `max` only if PROGRESS.md shows design rework.
+   `high` is the agreed default (D-007, D-048). Raise to `max` only if PROGRESS.md shows design
+   rework. The session is the architect only: tests, code, checks and reviews run on Opus 5.5 and
+   Sonnet 5.5 subagents (AGENTS.md); Fable 5.1 writes no code in this setup.
 3. Paste the contents of `prompts/PART-B.md` as the first message. The agent reads the repo,
    confirms its understanding in one short message, and starts P0-01.
 4. After that first reply, paste `/goal ` followed by the contents of `prompts/GOAL.txt`. The goal
