@@ -58,3 +58,7 @@
 - A check on a derived value (an HKDF output is always a 32-byte AES key) is an equivalent-mutant site; before asking for a pinning test, check what the input gate (`masterMaterial`) already refuses (FIX-9, SpoolCipher:62).
 - When code creates a file and then can fail: check every throw after the create, not only the one the task names (SpoolCipher:68 `write(salt)` still leaves a `.part`; the SpoolSink constructor fails, so drain's `sink` stays null and `abort()` never runs — FIX-14).
 - `SpoolCipher` open: only the cause chain ("master key") is asserted, never the message. Treat message mutants there as unpinned until FIX-14.
+- Map each clause of a spec rule to a test case. The "added as suppressed" catches are the clause that goes unpinned (FIX-14, SpoolCipher:76/:81).
+- A cleanup catch limited to IOException misses unchecked failures between the file create and the hand-back, such as an allocation in a constructor (FIX-14, SpoolCipher:71/:148 — FIX-15).
+- To make a delete fail deterministically without root tricks, put a non-empty directory at the path: `deleteIfExists` throws `DirectoryNotEmptyException`.
+- JaCoCo marks a line missed when the call on it always throws in tests (no probe after the call), so look at the callee's coverage before asking for a test (FIX-14, SpoolCipher:65).

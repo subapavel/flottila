@@ -70,4 +70,6 @@
 - A "next hold" latch must be consumed before the hold signals `reached`: a test that observes `reached` of hold X and arms the latch afterwards expects the hold after X; signalling first leaves a window where X opens it (FIX-10 r9, R12 1/30 under load, `OwnThreadStream.block()`).
 - A guard in front of a mutated call (`x == null ? null : check(x)`) lets the mutant survive a test that only exercises
   the null branch (FIX-8 r2): test against the whole expression, or drop a redundant guard so the check stands alone.
+- A delete that must fail (root-safe, any OS): make the path a non-empty directory → `Files.deleteIfExists` throws
+  `DirectoryNotEmptyException` (FIX-14 r2). `SpoolCipher.encrypting(Path, OutputStream)` is the test seam for the open path.
 - A join or latch timeout in a fixture names where the waited thread sits (its stack) — a bare "(not within 10 s)" cost a diagnosis round (FIX-10 r9, `Attach.joined`).

@@ -181,11 +181,69 @@ class SpoolCipherTest {
         Path never = dir.resolve("never");
         IOException onWrite = assertThrows(IOException.class, () -> hsm.encrypting(never));
         assertTrue(namesTheMasterKey(onWrite), "the refusal names the master key: " + onWrite + " / " + onWrite.getCause());
+        assertEquals("cannot open the spool cipher", onWrite.getMessage());
         assertFalse(Files.exists(never), "a refused master key creates no file");
         Path empty = Files.createFile(dir.resolve("empty"));   // no salt to read: only a check before the first read names the key
         IOException onRead = assertThrows(IOException.class, () -> hsm.decrypting(empty));
         assertTrue(namesTheMasterKey(onRead), "the refusal names the master key before any byte is read: " + onRead + " / " + onRead.getCause());
         assertFalse(chainContains(onRead, "too short"), "the key is refused before the salt is read: " + onRead + " / " + onRead.getCause());
+    }
+
+    /** A spool device that refuses every byte (a full disk) and records that it was closed; optionally its close fails too. */
+    private static final class FailingOutputStream extends OutputStream {
+        private final boolean closeFails;
+        boolean closed;
+        FailingOutputStream() { this(false); }
+        FailingOutputStream(boolean closeFails) { this.closeFails = closeFails; }
+        @Override public void write(int b) throws IOException { throw new IOException("disk full"); }
+        @Override public void write(byte[] b, int off, int len) throws IOException { throw new IOException("disk full"); }
+        @Override public void close() throws IOException {
+            closed = true;
+            if (closeFails) throw new IOException("close failed");
+        }
+    }
+
+    @Test
+    void aSaltWriteFailureLeavesNoFileAndClosesTheStream(@TempDir Path dir) throws IOException {
+        SpoolCipher cipher = new SpoolCipher(TieredBlobStoreTest.key());
+        Path part = Files.createFile(dir.resolve("part"));   // the file exists, as after Files.newOutputStream
+        FailingOutputStream failing = new FailingOutputStream();
+        IOException e = assertThrows(IOException.class, () -> cipher.encrypting(part, failing));
+        assertEquals("cannot open the spool cipher", e.getMessage());
+        assertEquals("disk full", e.getCause() == null ? null : e.getCause().getMessage(), "the write failure is the cause: " + e.getCause());
+        assertFalse(Files.exists(part), "a failed salt write leaves no spool file behind");
+        assertTrue(failing.closed, "the stream over the spool file is closed on the failure");
+    }
+
+    @Test
+    void aCloseFailureAfterTheSaltWriteFailedIsSuppressedAndTheFileIsStillDeleted(@TempDir Path dir) throws IOException {
+        SpoolCipher cipher = new SpoolCipher(TieredBlobStoreTest.key());
+        Path part = Files.createFile(dir.resolve("part"));
+        FailingOutputStream failing = new FailingOutputStream(true);
+        IOException e = assertThrows(IOException.class, () -> cipher.encrypting(part, failing));
+        assertEquals("cannot open the spool cipher", e.getMessage());
+        assertEquals("disk full", e.getCause() == null ? null : e.getCause().getMessage(), "the write failure stays the cause: " + e.getCause());
+        Throwable[] suppressed = e.getSuppressed();
+        assertEquals(1, suppressed.length, "exactly the close failure rides as suppressed: " + Arrays.toString(suppressed));
+        assertEquals("close failed", suppressed[0].getMessage());
+        assertTrue(failing.closed, "the close was attempted");
+        assertFalse(Files.exists(part), "a failing close does not skip the delete");
+    }
+
+    @Test
+    void aDeleteFailureAfterTheSaltWriteFailedIsSuppressedAndTheStreamIsStillClosed(@TempDir Path dir) throws IOException {
+        SpoolCipher cipher = new SpoolCipher(TieredBlobStoreTest.key());
+        Path part = dir.resolve("part");
+        Files.createDirectories(part.resolve("x"));   // a non-empty directory: deleteIfExists throws DirectoryNotEmptyException
+        FailingOutputStream failing = new FailingOutputStream();
+        IOException e = assertThrows(IOException.class, () -> cipher.encrypting(part, failing));
+        assertEquals("cannot open the spool cipher", e.getMessage(), "the delete failure does not replace the failure: " + e);
+        assertEquals("disk full", e.getCause() == null ? null : e.getCause().getMessage(), "the write failure stays the cause: " + e.getCause());
+        Throwable[] suppressed = e.getSuppressed();
+        assertEquals(1, suppressed.length, "exactly the delete failure rides as suppressed: " + Arrays.toString(suppressed));
+        assertTrue(suppressed[0] instanceof java.nio.file.DirectoryNotEmptyException, "the suppressed failure is the delete's: " + suppressed[0]);
+        assertTrue(failing.closed, "the stream was closed before the delete was attempted");
+        assertTrue(Files.isDirectory(part), "the delete could not remove the non-empty directory");
     }
 
     private static boolean chainContains(Throwable t, String text) {

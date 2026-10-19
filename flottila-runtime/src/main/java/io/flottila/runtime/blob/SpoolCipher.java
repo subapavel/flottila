@@ -52,23 +52,51 @@ final class SpoolCipher {
 
     SpoolCipher(SecretKey key) { this.key = key; }
 
-    /** Derives the file key and builds the cipher before the file exists: a refused key creates no file. */
+    /** Validates the key and builds the cipher, then creates the file, then writes the salt: a refused key creates no file, a
+     *  failure after the file exists closes the stream and deletes the file. */
     OutputStream encrypting(Path file) throws IOException {
+        FileMaterial m = fileMaterial();   // FIX-9: refused before the file exists
+        return open(file, Files.newOutputStream(file), m);
+    }
+
+    /** Test seam: the file exists and the stream over it is given. The material is derived first — a refused key throws before
+     *  the stream is touched (the caller owns both). */
+    OutputStream encrypting(Path file, OutputStream raw) throws IOException {
+        return open(file, raw, fileMaterial());
+    }
+
+    private OutputStream open(Path file, OutputStream raw, FileMaterial m) throws IOException {
+        try {
+            raw.write(m.salt());
+            return new Encrypting(raw, m.salt(), m.fileKey());
+        } catch (IOException e) {   // Encrypting's constructor throws nothing checked
+            IOException failure = new IOException("cannot open the spool cipher", e);
+            try {
+                raw.close();
+            } catch (IOException x) {
+                failure.addSuppressed(x);
+            }
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException x) {
+                failure.addSuppressed(x);
+            }
+            throw failure;
+        }
+    }
+
+    private record FileMaterial(byte[] salt, SecretKey fileKey) {}
+
+    /** Salt, file key and cipher, validated before any file exists; a refused key (or a provider that cannot run AES/GCM) is
+     *  IOException("cannot open the spool cipher", e). */
+    private FileMaterial fileMaterial() throws IOException {
         byte[] salt = new byte[SALT_BYTES];
         random.nextBytes(salt);
-        SecretKey fileKey;
         try {
-            fileKey = fileKey(key, salt);
-            cipher(fileKey, Cipher.ENCRYPT_MODE, salt, 0);   // fails here, at open, only when the provider cannot run AES/GCM — before any file exists
+            SecretKey fileKey = fileKey(key, salt);
+            cipher(fileKey, Cipher.ENCRYPT_MODE, salt, 0);
+            return new FileMaterial(salt, fileKey);
         } catch (GeneralSecurityException e) {
-            throw new IOException("cannot open the spool cipher", e);
-        }
-        OutputStream raw = Files.newOutputStream(file);
-        try {
-            raw.write(salt);
-            return new Encrypting(raw, salt, fileKey);
-        } catch (IOException e) {
-            raw.close();
             throw new IOException("cannot open the spool cipher", e);
         }
     }
