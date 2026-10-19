@@ -1,12 +1,12 @@
 # Handoff
 
-state: RUNNING — FIX-2 committed (`Task: FIX-2`), CI pending; next FIX-5 (fix5-spec.md, test-only), then FIX-6 (D-052), FIX-15, P1-08b/c, P1-09
-last commit: `Task: FIX-2` (this one; review FAIL → PASS, M1–M17 killed); 8b722af FIX-14 close-out; 8d8ed65 `Task: FIX-14`; gate MET on 7f3e4e3
+state: RUNNING — FIX-2 closed (run 39327535168 green on b536615); WIP FIX-5 (test-author on fix5-spec.md); then FIX-6 (D-052), FIX-15, P1-08b/c, P1-09
+last commit: this close-out; b536615 `Task: FIX-2` (review FAIL → PASS, M1–M17 killed); 8b722af FIX-14 close-out; gate MET on 7f3e4e3
 branch: main
-next exact action: FIX-5 — test-author on fix5-spec.md (red = adverse `@Order` first, then the per-case database fixture; `-Dit.test=MigrationsIT`)
+next exact action: WIP FIX-5 — test-author on fix5-spec.md (adverse `@Order` red, per-case database fixture; its MigrationsIT edit may be uncommitted)
 P1-08 leftovers as rows: P1-08b (worker driver, lease, attempts bound, ghost WARNING test; nothing polls in production yet), P1-08c (cancel), Q-2 (bytes)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2
-CI: FIX-2 run pending (the close-out commit records it); 8b722af run 39325196427 green; 8d8ed65 run 39324658680 green; f51c753 run 39322839160 green
+CI: b536615 run 39327535168 green; 8b722af run 39325196427 green; 8d8ed65 run 39324658680 green; f51c753 run 39322839160 green
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-2: testkit branch 93.7 → 94.9, deterministic now)
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
 open fixes: FIX-5, FIX-6, then FIX-15 (FIX-14 review: unchecked failures, cleanup in finally); then P1-08b, P1-08c, P1-09; stop before P1-10
