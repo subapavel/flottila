@@ -34,3 +34,5 @@
 - ScriptedStream records "resume" before its hooks run, so the call order is not the effective state: a pause issued in
   `beforeResume` is undone by that resume. Assert the end state through the private `paused` field (enclosing class sees it).
   A script chunk delivered inside handler() starts the sink before the attach: whether the handover resume is issued races.
+- Wrapper sources in TieredBlobStore tests: tell the sink's resume from start()'s handover resume by the thread that called
+  handler() (capture it there), never by wrapper state set in pause() — the sink can resume before pause() is entered (FIX-11).

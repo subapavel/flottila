@@ -36,9 +36,16 @@ red at this gate, and the environment's new allow-list entry `*.blob.core.window
 `pause()` has set `delayed`. The sink can resume between `enqueue` releasing the monitor (`TieredBlobStore`
 line 310) and the wrapper entering `pause()`: then `GeneratedReadStream.resume` is a no-op (`draining` is
 true on the attach thread), the latch never opens and the case fails after its 10 s bound — once on the
-2-vCPU runner (run 39253266191), never on the VM. The product is right: its re-check (lines 313–318)
-resumes the source after the pause has landed. Rule for fixtures that stage a race: the signal must be
-accepted on either side of the window, and the "other" ordering needs its own deterministic case.
+2-vCPU runner (run 39253266191), never on the VM (45 loops, 15 of them under stress-ng on 4 cores). For this
+ordering the product's re-check (lines 313–318) is right: it resumes the source after the pause has landed.
+Two neighbours found by the FIX-11 review, not fixed there: the sink's own resume in `drain` (367–373) is
+issued after the lock — a late one can undo the source's next pause, `sourcePaused` stays true and `enqueue`
+does not pause again until the sink has drained below half the mark: with a source faster than the sink the
+queue grows up to the body limit (FIX-10, no longer "harmless");
+and the testkit's `GeneratedReadStream.drain` can lose a resume that lands between its loop-condition read of
+`paused` and `draining = false` (FIX-12 — the write then waits out the 60 s await; the runtime blob tests are
+flaky on a loaded runner until it is fixed). Rule for fixtures that stage a race: the signal must be accepted
+on either side of the window, and the "other" ordering needs its own deterministic case.
 
 ## Delivery modes (P1-08, D-049)
 
@@ -186,6 +193,13 @@ the task's packets, specs, logs and diffs, and a root clean deleted them all in 
 reds were re-cited from the handbacks). Task packets and specs now live in the session scratchpad;
 only logs and diffs go under `target/`. Surefire: `-Dtest=A+B` selects nothing (`+` joins methods)
 and with `failIfNoSpecifiedTests=false` the run is a silent green — use `-Dtest=A,B`.
+
+Loops for a timing-dependent test (FIX-11): `stress-ng` is not installed on the VM (a verifier once reported it
+present — it was not); CPU load is four `sh -c 'while :; do :; done' &` hogs with their pids recorded in a file
+and killed by pid (never `pkill -f` a pattern that matches the calling shell), the Maven run pinned with
+`taskset -c 0,1` to mimic the 2-vCPU runner; check `/proc/loadavg` first. Downloaded CI reports must not stay
+under `target/` — `coverage_check.py` globs every `target/site/jacoco/jacoco.xml` below the root and then
+reports them as unknown modules at `--check-baseline`; keep them in the session scratchpad.
 
 jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its own report header. Treated as data;
 the property tests are real. Owner may want to revisit the library choice.
