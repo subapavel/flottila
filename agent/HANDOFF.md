@@ -1,12 +1,12 @@
 # Handoff
 
-state: RUNNING — FIX-12 committed (this one `Task: FIX-12`), CI on it not yet observed; main green on 6ad3f19 before it; next ready FIX-10 (owner: tomorrow)
-last commit: this one `Task: FIX-12`; before it b452b69 (FIX-11 close-out), 6ad3f19 `Task: FIX-11`, 9b1b519 `Task: P1-08` (D-049, F-2); gate MET on 7f3e4e3
+state: RUNNING — main green on dd5fc7d (FIX-12 done, run 39271119771); next ready task FIX-10 (owner: the rest tomorrow), then FIX-8 / P1-09
+last commit: FIX-12 close-out (this one, docs); before it dd5fc7d `Task: FIX-12`, 6ad3f19 `Task: FIX-11`, 9b1b519 `Task: P1-08` (D-049); gate MET on 7f3e4e3
 branch: main
-next exact action: watch CI on this commit (`gh run watch <id> --exit-status`), docs close-out if green; then FIX-10 (BACKLOG row has the done-when)
+next exact action: FIX-10 (`TieredBlobStore.drain` resumes after the lock — the BACKLOG row has the fix shape and the done-when; test-author first)
 P1-08 leftovers as rows: P1-08b (worker driver, lease, attempts bound, ghost WARNING test; nothing polls in production yet), P1-08c (cancel), Q-2 (bytes)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2
-CI: 6ad3f19 run 39262518817 green; 9b1b519 push run 39253266191 red (D7 only), dispatch re-run 39253535647 green incl. mutation and bench
+CI: dd5fc7d run 39271119771 green (mutation, bench skipped by path); 6ad3f19 run 39262518817 green; 9b1b519 re-run 39253535647 green incl. mutation and bench
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), rewritten by `--write` at P1-08 (PROGRESS "Measured"); a lowered number must match PROGRESS
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
 open fixes: ready FIX-10 (lost backpressure, not harmless); pending FIX-13 (testkit coverage gap, FIX-12 review), FIX-8, FIX-9, FIX-2, FIX-5, FIX-6
