@@ -80,6 +80,7 @@ public final class TieredBlobStore implements BlobStore {
     private final long queueHighWater;
     private final Map<BlobKey, Stored> objects = new ConcurrentHashMap<>();
     private volatile long peakQueued;   // the most bytes any streaming write held ahead of its sink (a test seam for the back-pressure bound)
+    private volatile Runnable afterSinkDecision;   // test seam: see afterSinkDecision(Runnable)
 
     private record Stored(Location location, Buffer bytes, Path file, String s3Key, long size) {}
 
@@ -99,6 +100,13 @@ public final class TieredBlobStore implements BlobStore {
 
     /** The most bytes any streaming write has queued ahead of its sink since this store was created: back-pressure keeps it near the high-water mark plus one chunk. */
     long peakQueuedBytes() { return peakQueued; }
+
+    /**
+     * Test-only: runs on the sink thread once per {@code drain} loop iteration that polled (a chunk or the end), after the
+     * monitor block that decides on the resume and before the resume it may issue, the final iteration included — not on the
+     * iteration that leaves the loop on a recorded failure; {@code null} (the default) = none.
+     */
+    void afterSinkDecision(Runnable hook) { this.afterSinkDecision = hook; }
 
     @Override public long treeLimit() { return config.treeLimit(); }
 
@@ -236,7 +244,11 @@ public final class TieredBlobStore implements BlobStore {
         private boolean ended;
         private boolean sourcePaused;
         private boolean attached;      // start() has attached its handlers: from then on the sink thread may resume the source itself
-        private boolean resumeOwed = true;   // a resume is owed: for the handover (the stream may arrive paused) and after every pause of ours; cleared by whoever resumes
+        private boolean resumeOwed = true;   // a resume is owed to the source until start() or a re-check issues it: for the handover (the stream may arrive paused) and after every pause of ours; read by start() only, so meaningful until the attach
+        private boolean pausing;   // true while a pause of ours is being entered — from enqueue marking the source paused, or start()'s reconcile, until that pause's re-check has run; the sink leaves a pause it decides for while it is being entered to that re-check
+        private Thread handingOver;   // the thread whose hand-over resume (start()'s, issued after the monitor) is in flight; null = none. A pause issued meanwhile on another thread may be undone by it; one on this thread is inside the resume (a synchronous source) and so after it
+        private boolean pausedDuringHandover;   // a pause of ours issued on another thread while the hand-over resume was in flight — the resume may have undone it: the hand-over thread issues it once more after its resume (start()), or the pending re-check does (again)
+        private boolean resumeDeferred;   // the sink decided a resume while the hand-over resume was in flight and left it to the hand-over thread: after its resume, issued plainly when no pause of ours was marked; otherwise the marked pause's re-check decides it — of start()'s re-issued pause (repause), or the pending one (again)
         private Throwable failure;
 
         StreamingWrite(BlobKey key, ReadStream<Buffer> in, long maxSize) {
@@ -251,21 +263,38 @@ public final class TieredBlobStore implements BlobStore {
             in.handler(this::chunk);
             // attaching may already have delivered, paused or failed: a synchronous source (BufferReadStream for a memory-tier body, the
             // testkit's streams) runs inside handler(). Until this moment the sink thread never resumes the source, so exactly one party
-            // decides here, under the monitor; afterwards the sink does (BlobStore contract: a stream handed over paused flows once the
-            // handlers are attached, and a pause or failure of our own is never undone).
+            // decides here, under the monitor — except a pause of ours still being entered, which its own re-check resumes; afterwards
+            // the sink does (BlobStore contract: a stream handed over paused flows once the handlers are attached, and a pause or
+            // failure of our own is never undone). The hand-over resume is issued after the monitor, so what another thread does or wants
+            // meanwhile is reconciled after it (handingOver): a pause of ours it may undo (pausedDuringHandover), a resume the sink must
+            // not duplicate (resumeDeferred).
             boolean resume;
             synchronized (this) {
                 attached = true;
-                resume = resumeOwed && !sourcePaused && failure == null && !result.future().isComplete();
-                if (resume) resumeOwed = false;
+                resume = resumeOwed && !sourcePaused && !pausing && failure == null && !result.future().isComplete();
+                if (resume) { resumeOwed = false; handingOver = Thread.currentThread(); }
             }
-            if (resume) in.resume();
-            if (resume && failed()) in.pause();   // a failure that landed in the window: never consume past it (a second pause cannot hang, nothing resumes after a failure)
+            if (!resume) return;
+            in.resume();
+            boolean repause, plainResume;
+            synchronized (this) {
+                handingOver = null;
+                // what another thread did or wanted during our resume: a pause of ours it issued (our resume may have undone it) is issued once
+                // more and its re-check decides the resume; a resume the sink left to us with no such pause finds the source paused by a pause of
+                // ours our resume did not undo, sourcePaused cleared — issued plainly. A re-check still pending (pausing) reconciles itself (again).
+                repause = pausedDuringHandover && !pausing;
+                plainResume = !repause && !pausing && resumeDeferred && failure == null;
+                if (repause || plainResume) { pausedDuringHandover = false; resumeDeferred = false; }
+                if (repause) pausing = true;
+            }
+            if (repause) pauseAndReCheck();
+            else if (plainResume) in.resume();
+            if (failed()) in.pause();   // a failure that landed in the window: never consume past it (a second pause cannot hang, nothing resumes after a failure)
         }
 
         private synchronized boolean over() { return failure != null || result.future().isComplete(); }
 
-        /** Every failure (the source's in fail(), the sink's in drain()) is recorded here before the future fails. */
+        /** Every failure (the source's in fail(), the sink's in drain()) is recorded here before the future fails; the first recorded is the cause. A sink failure after the source's rides as suppressed; a source failure after the sink's is dropped (fail() returns on over(); the future fails with the sink's after the sink's abort()). */
         private synchronized boolean failed() { return failure != null; }
 
         private void chunk(Buffer c) {
@@ -304,18 +333,44 @@ public final class TieredBlobStore implements BlobStore {
                 queue.addLast(c);
                 queued += c.length();
                 pauseSource = queued >= queueHighWater && !sourcePaused;
-                if (pauseSource) { sourcePaused = true; resumeOwed = true; }
+                if (pauseSource) {
+                    sourcePaused = true;
+                    resumeOwed = true;
+                    // one pausing at a time: a pause already being entered (start()'s re-issue) takes effect for this one too, and its
+                    // re-check sees sourcePaused and leaves the resume to the sink — a second re-check would resume a second time
+                    if (pausing) pauseSource = false;
+                    else {
+                        pausing = true;
+                        if (handingOver != null && handingOver != Thread.currentThread()) pausedDuringHandover = true;
+                    }
+                }
                 if (queued > peakQueued) peakQueued = queued;
                 notifyAll();
             }
-            if (pauseSource) {
+            if (pauseSource) pauseAndReCheck();
+        }
+
+        /** Pauses the source for a pause already marked under the monitor and re-checks after in.pause() returned: the pause is ours to resume when the sink's decision (or, before the attach, nobody) overtook it; a pause issued on another thread while the hand-over resume was in flight (pausedDuringHandover) or a resume the sink deferred meanwhile (resumeDeferred) is reconciled after it: the pause once more, this re-check decides. */
+        private void pauseAndReCheck() {
+            while (true) {
                 in.pause();   // outside the monitor: the source may lock around its own dispatch
-                boolean resumedMeanwhile;
+                boolean again, resume = false;
                 synchronized (this) {
-                    resumedMeanwhile = !sourcePaused;   // the sink drained and "resumed" before this pause landed (or, before the attach, left the resume to us)
-                    if (resumedMeanwhile) resumeOwed = false;
+                    again = (pausedDuringHandover || resumeDeferred) && handingOver == null;   // the hand-over resume completed while this pause was being entered and may have undone it
+                    if (again) { pausedDuringHandover = false; resumeDeferred = false; }
+                    else {
+                        pausing = false;
+                        resume = !sourcePaused && failure == null;   // ours to resume — never after a failure
+                        if (resume && handingOver != null && handingOver != Thread.currentThread()) resume = false;   // the hand-over resume is in flight on another thread: ours now would be a second one for this pause; the hand-over thread reconciles after its resume (this pause is marked)
+                        if (resume) resumeOwed = false;
+                    }
                 }
-                if (resumedMeanwhile) in.resume();
+                if (again) continue;
+                if (resume) {
+                    in.resume();
+                    if (failed()) in.pause();   // a failure that landed between the decision and the resume: never consume past it
+                }
+                return;
             }
         }
 
@@ -365,12 +420,22 @@ public final class TieredBlobStore implements BlobStore {
                             queued -= next.length();
                             if (sourcePaused && queued < queueHighWater / 2) {
                                 sourcePaused = false;
-                                resumeSource = attached;   // before attach, the source thread (its re-check) or start() issues the one resume
-                                if (resumeSource) resumeOwed = false;
+                                // after the attach the sink resumes a pause whose re-check has run — unless the hand-over resume is in flight: then the hand-over
+                                // thread reconciles (a resume of ours now would be a second one for this pause and could undo the source's next); a pause still
+                                // being entered is resumed by its own re-check (which sees sourcePaused cleared); before the attach the re-check or start() issues the one resume
+                                if (attached && !pausing) {
+                                    if (handingOver == null) resumeSource = true;
+                                    else resumeDeferred = true;   // the hand-over resume is in flight: the hand-over thread issues this resume after it; a resume of ours now would be a second one for this pause and could undo the source's next
+                                }
                             }
                         }
                     }
-                    if (resumeSource) in.resume();
+                    Runnable hook = afterSinkDecision;
+                    if (hook != null) hook.run();
+                    if (resumeSource) {
+                        in.resume();
+                        if (failed()) in.pause();   // the source's fail() landed between the decision and the resume: never consume past it
+                    }
                     if (next == null) {
                         sink.finish();
                         objects.put(key, stored(key, seen));
@@ -381,10 +446,14 @@ public final class TieredBlobStore implements BlobStore {
                 }
             } catch (Throwable t) {
                 // the sink's failure takes the source's path: recorded under the monitor first, then the pause, then the promise,
-                // so every party that later looks (start()'s re-check, chunk(), fail()) sees the failure before the future fails
-                problem = t;
+                // so every party that later looks (start()'s re-check, chunk(), fail()) sees the failure before the future fails; the first
+                // failure recorded under the monitor (the source's in fail() or the sink's here) is the cause. A sink failure after the
+                // source's rides as suppressed; a source failure after the sink's is dropped (fail() returns on over(); the future fails
+                // with the sink's after the sink's abort())
                 synchronized (this) {
-                    failure = t;   // the cause the future fails with; a source failure racing in here has already stopped the source
+                    if (failure == null) failure = t;
+                    else if (t != failure) failure.addSuppressed(t);   // a source failure racing in here has already stopped the source
+                    problem = failure;
                     notifyAll();
                 }
                 in.pause();

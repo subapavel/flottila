@@ -28,7 +28,9 @@
   `onComplete(Handler<AsyncResult>)` and `onComplete(Completable)` (a Promise is a Completable).
 - Core may use Future, Promise, CompositeFuture, Completable, AsyncResult, Handler (archtest Rules.java:39).
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and
-  never resumes one it paused or failed itself (`resumeOwed` / `attached` in `StreamingWrite`).
+  never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;
+  the full one-resume-per-pause rule is in agent/NOTES.md "FIX-10").
+- `Throwable.addSuppressed(this)` throws IllegalArgumentException: guard `t != failure` in a catch that merges causes.
 - Testkit: FakeRuntime, FakeTimer (`nextDelay()` drives backoffs), FakeIds, InMemoryBlobStore,
   BlobStoreContract, ComponentContract (9 cases), RecordingComponent (`sentTo`, `replyWith`,
   `failNext`), GeneratedReadStream, BlockedPlatformThreadDetector.
@@ -37,3 +39,5 @@
 - Buffering an error-path body without a bound (http producer non-2xx, P1-06): keep a head, drain.
 - Parsing untrusted headers on the event loop without a guard (`Long.parseLong`, P1-06).
 - A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05).
+- Before changing who resumes in `StreamingWrite`, grep the blob tests' fixtures for latches that wait on a
+  sink resume (`TieredBlobStoreFailureTest.LatePauseStream` waits for one inside `pause()`): they pin the ordering.

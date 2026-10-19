@@ -38,10 +38,11 @@ line 310) and the wrapper entering `pause()`: then `GeneratedReadStream.resume` 
 true on the attach thread), the latch never opens and the case fails after its 10 s bound — once on the
 2-vCPU runner (run 39253266191), never on the VM (45 loops, 15 of them under stress-ng on 4 cores). For this
 ordering the product's re-check (lines 313–318) is right: it resumes the source after the pause has landed.
-Two neighbours found by the FIX-11 review, not fixed there: the sink's own resume in `drain` (367–373) is
-issued after the lock — a late one can undo the source's next pause, `sourcePaused` stays true and `enqueue`
-does not pause again until the sink has drained below half the mark: with a source faster than the sink the
-queue grows up to the body limit (FIX-10, no longer "harmless");
+Two neighbours found by the FIX-11 review, not fixed there: the sink's own resume in `drain` (367–373) was
+issued after the lock — a late one could undo the source's next pause, `sourcePaused` stayed true and `enqueue`
+did not pause again until the sink had drained below half the mark: with a source faster than the sink the
+queue grew up to the body limit (FIX-10, fixed the same day — see below; D7 and the FIX-11 case pinned the
+double resume and were rewritten / deleted there);
 and the testkit's `GeneratedReadStream.drain` could lose a resume that lands between its loop-condition read of
 `paused` and `draining = false` (FIX-12, fixed the same day — see below). Rule for fixtures that stage a race:
 the signal must be accepted on either side of the window, and the "other" ordering needs its own
@@ -60,6 +61,45 @@ any fixture that must prove a cross-thread hand-over; cases G/H prove handlers n
 handing `pause()` + `delivered()` to another thread from inside them. The reviews named the mutants
 (old gating, rerun ignored, hook before the end check or the end call, handler / end / hook under the lock,
 catch's `draining = false`, `credit--`); the PROGRESS entry FIX-12 records which case each one failed.
+
+### FIX-10 — one party resumes a pause of the streaming write's source (2026-10-19)
+`TieredBlobStore.StreamingWrite`: `pausing` is true while the source is inside a pause of ours — from `enqueue`
+marking it paused until that pause's re-check (after `in.pause()` returned) has run. Such a pause is resumed by
+its re-check only: the sink resumes `attached && !pausing`, `start()` resumes `resumeOwed && !sourcePaused &&
+!pausing` (pre-attach, for the handover or a pause whose re-check already ran and left `resumeOwed`), the
+re-check resumes `!sourcePaused && failure == null` (the sink's decision, or nobody before the attach, overtook
+the pause; never after a failure). Every pause in effect gets exactly one resume (the pending re-check's re-issue —
+`again` — may add an idempotent pause call, R16: assert event order there, not counts); the sink's resume, issued after the
+monitor, can never undo the source's next pause. Every resume is issued *after* the monitor that decided it, so
+each has a post-check: `if (failed()) in.pause()` — a failure's pause that landed in between is re-issued (never
+consume past a failure). The hand-over resume of `start()` is the one resume issued while the source may already
+be flowing (`!sourcePaused`), so during it only the hand-over thread resumes the source: `handingOver` (the hand-over
+thread) is set under the monitor around it; a pause of ours issued meanwhile on another thread goes out at once
+(our resume may undo it) and is marked `pausedDuringHandover`; a resume the sink decides meanwhile (a second
+resume for the pause — and it could land after the reconcile and undo the source's next pause, review 4) is left
+to the hand-over thread (`resumeDeferred`); a re-check wanting a resume meanwhile on another thread issues none
+(its pause is marked); a failure's pause (`fail()`, the sink's catch) goes out at once and `start()`'s post-check
+re-issues it. After its resume returned the hand-over thread reconciles: a marked pause → the pause once more
+through `pauseAndReCheck()`, whose re-check decides (`!sourcePaused && failure == null` — never a `sourcePaused`
+read in the reconcile: "the sink cleared it" is "decided", not "resumed"); a deferred resume with no marked pause
+→ the source is paused by a pause of ours the resume did not undo (one issued on the hand-over thread inside it)
+→ resumed plainly, with the failure post-check (re-issuing a pause there made one resume for two pause calls —
+the verifier's loop caught it in D7); a pending re-check (`pausing`) reconciles both itself (`again`). A call on
+the hand-over thread itself (a
+synchronous source pausing and re-checking inside the resume) is nested in it and stays direct (marking it adds
+a duplicate pause that R1/R2/R4/D7 catch). One `pausing`
+at a time, checked at every setter: `enqueue` finding one in flight (`start()`'s re-issue) marks `sourcePaused` and
+issues no pause — the pause in flight takes effect for both and its re-check leaves the resume to the sink. `resumeOwed` is read by `start()` only — meaningful until the attach, so the sink does not write it.
+Failures: the first one recorded under the monitor (the source's in `fail()`, the sink's in `drain`'s catch) is
+the cause the future fails with; a later sink failure rides as suppressed; a later source failure is dropped
+(`fail()` returns on `over()`). Rule: decision under the monitor, call after it — ask what lands in between.
+Test seam `afterSinkDecision(Runnable)` on the store: the sink thread runs it after each polling iteration's
+decision block and before the resume it may issue (not on the failure-break iteration) — with a `HeldKey` (the
+spool key's `getEncoded()` held at a gate, so the sink cannot open until the test says), a stream wrapper holding
+the attach thread inside chosen pauses and an own-thread source fixture, every ordering of the hand-over is
+staged (`TieredBlobStoreBackpressureTest` R1–R16, the rewritten D7). Rules: a fixture that waits for "the sink's
+resume" before its pause lands pins the double resume — wait for the sink's decision (the seam) instead; test a
+pause after the first one, and the attach and failure paths of the re-check.
 
 ## Delivery modes (P1-08, D-049)
 

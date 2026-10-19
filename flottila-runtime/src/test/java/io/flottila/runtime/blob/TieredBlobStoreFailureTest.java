@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -131,36 +132,40 @@ class TieredBlobStoreFailureTest {
     }
 
     @Test
-    void aPauseThatLandsAfterTheSinkAlreadyResumedIsNotLostForever(@TempDir Path dir) {
-        // a socket-like source: handed over paused, it starts delivering on the attach thread's resume — after the attach, so the
-        // sink thread may resume it. The source decides to pause, is descheduled, the sink drains and "resumes" a stream that is
-        // not paused yet, then the pause lands: without the re-check nobody would ever resume it and the write would hang.
-        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 100);
-        LatePauseStream source = new LatePauseStream(new GeneratedReadStream(5000, 60));
+    void aPauseThatLandsAfterTheSinkAlreadyDecidedIsResumedOnceByItsOwnReCheck(@TempDir Path dir) throws Exception {
+        // a socket-like source: handed over paused, it starts delivering on the attach thread's resume — after the attach. The source
+        // decides to pause and is descheduled inside pause() before the pause lands; meanwhile the sink drains below half the mark and
+        // decides. The sink resumes only a pause that has landed, so it leaves this one to the source's own re-check, which resumes it
+        // exactly once — the pause is not lost (the write would hang) and not resumed twice (a second resume undoes the next pause).
+        // Staged, not raced: the spool key holds the sink at its open until the attach thread is inside pause(); the attach thread lets
+        // its pause land only once the sink has made its decision (the store's afterSinkDecision seam, call 2: chunk 2 polled, queued 0).
+        // The write runs on its own virtual thread (Attach): the attach thread is the one held inside pause(), never a platform thread.
+        TieredBlobStoreBackpressureTest.HeldKey key = new TieredBlobStoreBackpressureTest.HeldKey(false);
+        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, key, null, false), TieredBlobStoreTest.HASHER, 100);
+        java.util.concurrent.CountDownLatch sinkDecided = new java.util.concurrent.CountDownLatch(1);
+        AtomicInteger hookCalls = new AtomicInteger();
+        s.afterSinkDecision(() -> {
+            if (hookCalls.incrementAndGet() == 2) sinkDecided.countDown();
+        });
+        LatePauseStream source = new LatePauseStream(new GeneratedReadStream(5000, 60), key.gate, sinkDecided);
         source.pause();
-        Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), source, 10_000));
-        assertEquals(5000, body.size());
-        assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 5000), body.hash());
-        assertEquals(1, source.lateLandings.get(), "the race was produced, exactly once — only the first pause after the attach is held: " + source.lateLandings);
-    }
-
-    @Test
-    void aPauseEnteredOnlyAfterTheSinkAlreadyResumedIsResumedOnceMoreByTheReCheck(@TempDir Path dir) {
-        // the other side of the window: enqueue() has marked the source paused and released the monitor, the attach thread is
-        // descheduled before it even enters pause(); the sink drains and resumes a source that is not paused yet. Staged, not raced:
-        // the wrapper holds the attach thread at the top of pause() until it has seen the sink's resume, then lets the pause land.
-        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 100);
-        LatePauseStream source = new LatePauseStream(new GeneratedReadStream(5000, 60), true);
-        source.pause();
-        Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), source, 10_000));
-        assertEquals(5000, body.size());
-        assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 5000), body.hash());
+        try {
+            Future<Body> write = new TieredBlobStoreBackpressureTest.Attach(s, BlobKey.body("m-1", 0), source)
+                    .joined("the attach thread's write(...) never returned");
+            TieredBlobStoreBackpressureTest.settled(write, "the write never completed");
+            assertTrue(write.succeeded(), "the write succeeds: " + write.cause());
+            Body body = write.result();
+            assertEquals(5000, body.size());
+            assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 5000), body.hash());
+        } finally {
+            key.gate.countDown();   // a failure before the first pause must not leave the sink waiting at its open
+        }
         assertEquals(1, source.lateLandings.get(), "exactly the first pause after the attach was held: " + source.lateLandings);
         List<LatePauseStream.Event> events = List.copyOf(source.events);
         int landed = events.indexOf(new LatePauseStream.Event("landed", true));
         assertTrue(landed > 0, "the late pause landed: " + events);
-        assertTrue(events.subList(0, landed).contains(new LatePauseStream.Event("resume", false)),
-                "the sink's resume arrived before the pause was even entered: " + events);
+        assertFalse(events.subList(0, landed).contains(new LatePauseStream.Event("resume", false)),
+                "the sink decided before the pause landed and left it alone: no sink resume before the landing: " + events);
         List<String> attachAfterLanding = new java.util.ArrayList<>();
         for (LatePauseStream.Event e : events.subList(landed + 1, events.size())) {
             if (!e.byAttach()) continue;
@@ -169,6 +174,8 @@ class TieredBlobStoreFailureTest {
         }
         assertEquals(List.of("resume"), attachAfterLanding,
                 "the re-check resumed the source exactly once after the late pause landed, before the attach thread paused it again: " + events);
+        assertEquals(source.pauses.get(), source.resumes.get(),
+                "every pause matched by exactly one resume — a sink resume on top of the re-check's would leave one over: " + events);
     }
 
     @Test
@@ -211,23 +218,28 @@ class TieredBlobStoreFailureTest {
     }
 
     /**
-     * A source whose first pause() after the handler was attached lands only after the sink has called resume() for it. With
-     * {@code enterPauseAfterSinkResume} the attach thread is also held at the top of that pause(), before it marks anything, until
-     * the sink's resume has been seen — the ordering where the sink's resume precedes the pause altogether.
+     * A source whose first pause() after the handler was attached is entered before the sink decides and lands only after it:
+     * it records "entering", opens {@code gate} (the spool key's: the sink may now open and drain what is queued), waits for
+     * {@code sinkDecided}, then pauses the inner stream and records "landed". Every pause and resume is counted and recorded
+     * in call order with whether the attach thread (the one that called handler()) made it.
      */
     static final class LatePauseStream implements ReadStream<Buffer> {
         record Event(String kind, boolean byAttach) {}
         final ReadStream<Buffer> inner;
-        final boolean enterPauseAfterSinkResume;
-        final java.util.concurrent.CountDownLatch resumedOnce = new java.util.concurrent.CountDownLatch(1);
-        final java.util.concurrent.CountDownLatch sinkResumeSeen = new java.util.concurrent.CountDownLatch(1);   // staging only
+        private final java.util.concurrent.CountDownLatch gate;
+        private final java.util.concurrent.CountDownLatch sinkDecided;
         final AtomicInteger lateLandings = new AtomicInteger();
+        final AtomicInteger pauses = new AtomicInteger();
+        final AtomicInteger resumes = new AtomicInteger();
         final java.util.Queue<Event> events = new java.util.concurrent.ConcurrentLinkedQueue<>();
         volatile Thread attachThread;
         volatile boolean attached;
         volatile boolean delayed;
-        LatePauseStream(ReadStream<Buffer> inner) { this(inner, false); }
-        LatePauseStream(ReadStream<Buffer> inner, boolean enterPauseAfterSinkResume) { this.inner = inner; this.enterPauseAfterSinkResume = enterPauseAfterSinkResume; }
+        LatePauseStream(ReadStream<Buffer> inner, java.util.concurrent.CountDownLatch gate, java.util.concurrent.CountDownLatch sinkDecided) {
+            this.inner = inner;
+            this.gate = gate;
+            this.sinkDecided = sinkDecided;
+        }
         private boolean onAttachThread() { return Thread.currentThread() == attachThread; }
         private static void await(java.util.concurrent.CountDownLatch latch, String failure) {
             try { if (!latch.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError(failure); }
@@ -236,10 +248,12 @@ class TieredBlobStoreFailureTest {
         @Override public ReadStream<Buffer> exceptionHandler(Handler<Throwable> h) { inner.exceptionHandler(h); return this; }
         @Override public ReadStream<Buffer> handler(Handler<Buffer> h) { attachThread = Thread.currentThread(); inner.handler(h); attached = true; return this; }
         @Override public ReadStream<Buffer> pause() {
+            pauses.incrementAndGet();
             if (attached && !delayed) {
-                if (enterPauseAfterSinkResume && onAttachThread()) await(sinkResumeSeen, "the sink's resume was never seen before the pause");
                 delayed = true;
-                await(resumedOnce, "the sink never resumed");
+                events.add(new Event("entering", onAttachThread()));
+                gate.countDown();
+                await(sinkDecided, "the sink never made its decision for the first pause");
                 lateLandings.incrementAndGet();
                 inner.pause();
                 events.add(new Event("landed", onAttachThread()));
@@ -250,12 +264,8 @@ class TieredBlobStoreFailureTest {
             return this;
         }
         @Override public ReadStream<Buffer> resume() {
-            boolean bySink = attached && !onAttachThread();
-            events.add(new Event("resume", !bySink));
-            if (bySink) {   // the sink's resume opens the latch whichever side of pause() it lands; start()'s handover resume (attach thread) never does
-                sinkResumeSeen.countDown();
-                resumedOnce.countDown();
-            }
+            resumes.incrementAndGet();
+            events.add(new Event("resume", onAttachThread()));
             inner.resume();
             return this;
         }
