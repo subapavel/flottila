@@ -1,8 +1,10 @@
 # Flottila — rules for Claude
 
-Read in this order before any work: this file, `agent/HANDOFF.md`, `agent/BACKLOG.md`,
-`docs/WORKFLOW.md`, `docs/ARCHITECTURE.md` (binding design), `docs/PROTOTYPE-VS-ARCHITECTURE.md`,
-`docs/GATE.md`. Everything in the repo is in English.
+Read before any work: this file, `AGENTS.md`, `agent/HANDOFF.md` and the task's row in
+`agent/BACKLOG.md`. `docs/WORKFLOW.md` §1 is the loop. `docs/ARCHITECTURE.md` (binding design) is
+read by section — the sections the row or the packet names, through the scout — never whole;
+`docs/PROTOTYPE-VS-ARCHITECTURE.md`, `docs/GATE.md` and `docs/DECISIONS.md` only where a row or a
+packet refers to them. Everything in the repo is in English.
 
 ## What this is
 
@@ -66,6 +68,10 @@ build; this file holds the rules that keep the code and the way of working align
 
 ## Working rules
 
+- The main session is the architect (`AGENTS.md`): it writes the acceptance spec and the task
+  packet, approves the red tests, decides, commits. It never edits `src/`, never writes a test,
+  never runs Maven — the test-author, implementer, verifier and reviewer do, on Opus 5.5 and
+  Sonnet 5.5. Fable 5.1 is the architect and the gate reviewer, nothing else.
 - Library APIs: Context7 (`.mcp.json`) first — Vert.x 5.1, Saxon, Kafka clients, Testcontainers.
   If unreachable or ambiguous, `javap -cp <jar>` on the resolved jar in `~/.m2` decides. Never
   guess an API from memory.
@@ -82,6 +88,7 @@ build; this file holds the rules that keep the code and the way of working align
 - Never: weaken or skip a test to go green; skip a gate measurement; force-push or rewrite
   history; claim a build, test, benchmark or push you did not observe; put a secret in the repo.
 - Never ask the owner during autonomous execution. If blocked, write the issue and move on. The
+  session ends only on `GATE_MET` or `IDLE_NO_READY_TASK` (see `docs/WORKFLOW.md`).
 
 ## Context hygiene
 
@@ -94,8 +101,21 @@ build; this file holds the rules that keep the code and the way of working align
   lines — use offsets, grep, or the scout; never paste a diff you do not need to reason about.
 - Large reads (surveying modules, finding call sites, reading logs) go to the scout agent; its
   summary comes back, not the files.
-- From a delegated task only the handback enters the coordinator's context; review the change
-  with `git diff --stat` and targeted reads, not the whole patch.
+- From a delegated task only the handback (at most 40 lines) enters the architect's context. The
+  diff goes to `target/<task>.diff` for the reviewer; the architect reads `git diff --stat` and
+  the test files it approves, never the whole patch.
+- `agent/HANDOFF.md` is at most 20 lines of at most 160 characters: state, last commit, next exact
+  action, open issues, pointers. Module notes live in `agent/NOTES.md`, read by section on demand.
+  A PROGRESS entry is at most 15 lines; the review-round narrative goes to the commit body.
 - One task per context episode: finish, commit, push, rewrite HANDOFF, then start the next. Never
   carry an in-flight task across a compaction without a WIP line in `agent/HANDOFF.md`.
-  session ends only on `GATE_MET` or `IDLE_NO_READY_TASK` (see `docs/WORKFLOW.md`).
+
+## Compact instructions
+
+When compacting, keep: the HANDOFF state line and next exact action, the id and status of the
+task in flight, the acceptance spec and the task packet as written, the names of the red tests
+and whether their red was observed, every evidence line (`VERIFIED_PASS` / `EXECUTED_FAIL` with
+its log path), the reviewer's last verdict with its reasons, open decisions and findings by id.
+Drop: tool output, build logs, diffs, file contents already committed, and the handbacks of
+finished agents beyond their last line. After compaction re-read `agent/HANDOFF.md` and run
+`git status` and `git log -3` before changing anything.

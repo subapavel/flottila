@@ -13,11 +13,18 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
 2. Pick the first `ready` row in `agent/BACKLOG.md`. A row is `ready` when every id in its
    depends-on column is `done`. Phase gates are rows too; nothing in the next phase becomes
    `ready` until the gate row is `done`.
-3. Write the task packet (`AGENTS.md`). Red first: the failing test exists before the code.
-4. Implement — yourself or through the implementer. One writer at a time.
-5. Verify: `mvn -B -ntp verify` green, ArchUnit green, coverage not decreased, scoped PIT on the
-   touched classes. Record each check with its evidence state.
-6. Review by the reviewer agent. `FAIL` reopens the task at step 4.
+3. Write the acceptance spec (`AGENTS.md`); the test-author writes the red tests; approve them by
+   reading the test files. Red first: the failing test exists, observed red, before the code.
+   Then the task packet.
+4. Implement through the implementer (Opus 5.5; `model: sonnet` for CI, docs, fixtures). The
+   coordinator never implements. One writer at a time.
+5. Verify through the verifier: `mvn -B -ntp verify` green, ArchUnit green, coverage not
+   decreased, scoped PIT on the touched classes. The verifier reports exit codes and the failing
+   section; the coordinator reads the log tail itself and records each check with its evidence
+   state.
+6. Review by the reviewer agent (Opus 5.5), the diff handed over as `target/<task>.diff`. `FAIL`
+   reopens the task at step 4; a second `FAIL` reopens it at step 3 with a rewritten spec. A gate
+   row is reviewed by the gate-reviewer (Fable 5.1) instead.
 7. Commit and push to `main`. Append the PROGRESS entry, rewrite HANDOFF, set the row to `done`.
    These three edits go in the same commit as the code.
 8. Continue with the next `ready` row without asking. Stop only on `GATE_MET` (docs/GATE.md
@@ -31,8 +38,10 @@ nothing that matters may exist only in the conversation or in an unpushed workin
 | File | Purpose | Written by |
 | --- | --- | --- |
 | `agent/BACKLOG.md` | one row per task: id, phase, title, depends-on, status, evidence | coordinator |
-| `agent/HANDOFF.md` | ≤ 20 lines: state, last commit, next exact action, open issues; rewritten after every task | coordinator |
-| `PROGRESS.md` | append-only journal, one entry per task (format below) | coordinator |
+| `agent/HANDOFF.md` | ≤ 20 lines of ≤ 160 characters: state, last commit, next exact action, open issues, pointers; rewritten after every task | coordinator |
+| `agent/NOTES.md` | module notes (shapes, commands, open follow-ups) that HANDOFF used to carry; one section per module, read on demand | coordinator |
+| `.claude/agent-memory/<name>/MEMORY.md` | durable facts an agent learned (build quirks, verified APIs, recurring findings); never task state | that agent |
+| `PROGRESS.md` | append-only journal, one entry per task, ≤ 15 lines (format below) | coordinator |
 | `docs/DECISIONS.md` | reversible decisions, one line each | coordinator |
 | `docs/findings/F-<n>.md` | contradictions between practice and ARCHITECTURE.md | coordinator |
 | `issues/ISSUE-<n>.md` | things only the owner can resolve | coordinator |
