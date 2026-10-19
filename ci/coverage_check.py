@@ -7,11 +7,13 @@ previous main commit in CI, HEAD locally). A module whose coverage dropped by mo
 percentage points (D-029 noise band; the JaCoCo floors in the poms stay exact) fails the check; a
 module that has compiled classes (other than package-info) but no report fails too, because
 jacoco:check silently skips a module in which no test ran. New modules without a baseline pass.
+`--write` writes every value as measured (D-050, no high-water mark): the committed baseline describes
+the tree it is committed with; TOLERANCE is the tolerance of the comparison, never of the file.
 
 Usage:
   python3 ci/coverage_check.py                       # compare against HEAD's baseline file
   python3 ci/coverage_check.py --baseline-ref <sha>  # compare against that commit's baseline file
-  python3 ci/coverage_check.py --write               # rewrite ci/coverage-baseline.json (task commits)
+  python3 ci/coverage_check.py --write               # rewrite ci/coverage-baseline.json as measured (task commits)
   python3 ci/coverage_check.py --check-baseline      # CI: the committed file describes this tree (±TOLERANCE)
 """
 from __future__ import annotations
@@ -107,19 +109,10 @@ def check_baseline(current: dict[str, dict[str, float]], committed: dict[str, di
 
 
 def write_baseline(current: dict[str, dict[str, float]], path: Path) -> None:
-    """Writes the measurement, except that a value within TOLERANCE below the committed one keeps the
-    committed value (high-water mark): run-to-run noise never lowers the baseline, a real drop beyond the
-    band is written as measured and shows in the diff. Modules no longer measured are dropped."""
-    committed = json.loads(path.read_text()) if path.exists() else {}
-    merged: dict[str, dict[str, float]] = {}
-    for name, values in current.items():
-        base = committed.get(name, {})
-        merged[name] = {}
-        for key, measured in values.items():
-            old = base.get(key)
-            keep_old = old is not None and measured < old <= measured + TOLERANCE
-            merged[name][key] = old if keep_old else measured
-    path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n")
+    """Writes the measurement as measured, always (D-050): the committed file describes the tree it is
+    committed with, nothing remembered from earlier trees. TOLERANCE is the check's band, never the
+    file's. Modules no longer measured are dropped."""
+    path.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n")
 
 
 class BaselineError(RuntimeError):

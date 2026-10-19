@@ -265,7 +265,8 @@ public final class TieredBlobStore implements BlobStore {
 
         private synchronized boolean over() { return failure != null || result.future().isComplete(); }
 
-        private synchronized boolean failed() { return failure != null || result.future().failed(); }
+        /** Every failure (the source's in fail(), the sink's in drain()) is recorded here before the future fails. */
+        private synchronized boolean failed() { return failure != null; }
 
         private void chunk(Buffer c) {
             if (over()) return;
@@ -379,7 +380,13 @@ public final class TieredBlobStore implements BlobStore {
                     sink.write(next);
                 }
             } catch (Throwable t) {
+                // the sink's failure takes the source's path: recorded under the monitor first, then the pause, then the promise,
+                // so every party that later looks (start()'s re-check, chunk(), fail()) sees the failure before the future fails
                 problem = t;
+                synchronized (this) {
+                    failure = t;   // the cause the future fails with; a source failure racing in here has already stopped the source
+                    notifyAll();
+                }
                 in.pause();
             }
             if (sink != null) sink.abort();

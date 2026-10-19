@@ -2,6 +2,8 @@
 
 Run: python3 -m unittest ci.test_coverage_check  (from the repository root; also run by the CI build job)
 """
+import contextlib
+import io
 import json
 import subprocess
 import tempfile
@@ -147,21 +149,39 @@ class CoverageCheckTest(unittest.TestCase):
         problems = cc.check_baseline(cc.measure(self.root), {"flottila-api": {"line": 95.0, "branch": 100.0}})
         self.assertEqual(["flottila-api: line 90.0 % is below the committed baseline 95.0 % by more than 2.0 — coverage dropped; run --write and say why"], problems)
 
-    def test_write_keeps_the_high_water_mark_inside_the_band(self):
-        module(self.root, "flottila-api", report=(2, 98, 11, 89))      # 98.0 / 89.0 measured
+    def test_write_writes_the_measured_value_inside_the_band(self):
+        # D-050: --write records the measurement, never a remembered higher value; the band is a tolerance of the check, not of the file
+        module(self.root, "flottila-api", report=(1, 99, 3, 197))      # 99.0 / 98.5 measured, each inside the 2.0 band below 100.0
         path = self.root / "ci" / "coverage-baseline.json"
         path.parent.mkdir()
-        path.write_text(json.dumps({"flottila-api": {"line": 99.5, "branch": 90.5}, "flottila-gone": {"line": 1.0, "branch": 1.0}}))
+        path.write_text(json.dumps({"flottila-api": {"line": 100.0, "branch": 100.0}, "flottila-gone": {"line": 1.0, "branch": 1.0}}))
         cc.write_baseline(cc.measure(self.root), path)
-        self.assertEqual({"flottila-api": {"line": 99.5, "branch": 90.5}}, json.loads(path.read_text()),
-                         "noise never lowers the baseline; a removed module leaves it")
-        path.write_text(json.dumps({"flottila-api": {"line": 99.5, "branch": 92.0}}))
+        self.assertEqual({"flottila-api": {"line": 99.0, "branch": 98.5}}, json.loads(path.read_text()),
+                         "a drop inside the band is written as measured; a removed module leaves the file")
+        report = self.root / "flottila-api" / "target" / "site" / "jacoco" / "jacoco.xml"
+        report.write_text(JACOCO_XML.format(name="flottila-api", lm=3, lc=97, bm=20, bc=80))        # 97.0 / 80.0: branch drops beyond the band
         cc.write_baseline(cc.measure(self.root), path)
-        self.assertEqual({"flottila-api": {"line": 99.5, "branch": 89.0}}, json.loads(path.read_text()),
+        self.assertEqual({"flottila-api": {"line": 97.0, "branch": 80.0}}, json.loads(path.read_text()),
                          "a drop beyond the band is written as measured — visible in the diff")
-        path.write_text(json.dumps({"flottila-api": {"line": 97.0, "branch": 80.0}}))
+        report.write_text(JACOCO_XML.format(name="flottila-api", lm=2, lc=98, bm=11, bc=89))        # 98.0 / 89.0: a rise
         cc.write_baseline(cc.measure(self.root), path)
-        self.assertEqual({"flottila-api": {"line": 98.0, "branch": 89.0}}, json.loads(path.read_text()), "a rise is written")
+        self.assertEqual({"flottila-api": {"line": 98.0, "branch": 89.0}}, json.loads(path.read_text()), "a rise is written as measured")
+
+    def test_write_then_check_baseline_is_current(self):
+        module(self.root, "flottila-api", report=(1, 99, 3, 197))      # 99.0 / 98.5 measured
+        module(self.root, "flottila-core", report=(19, 981, 15, 985))  # 98.1 / 98.5 measured
+        path = self.root / "ci" / "coverage-baseline.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({"flottila-api": {"line": 100.0, "branch": 100.0},     # every committed value above the
+                                    "flottila-core": {"line": 100.0, "branch": 99.9}}))  # measurement by less than the band
+        args = ["--root", str(self.root), "--baseline-file", str(path)]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(0, cc.main(args + ["--write"]))
+            self.assertEqual(0, cc.main(args + ["--check-baseline"]))
+        self.assertIn("baseline: current", out.getvalue())
+        self.assertEqual([], cc.check_baseline(cc.measure(self.root), json.loads(path.read_text())),
+                         "the file --write produced describes this very tree")
 
     def test_main_check_baseline_exit_code(self):
         module(self.root, "flottila-api", report=(0, 100, 0, 10))

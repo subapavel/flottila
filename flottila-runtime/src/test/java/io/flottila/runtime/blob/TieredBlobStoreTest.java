@@ -126,6 +126,17 @@ class TieredBlobStoreTest {
     }
 
     @Test
+    void aDotDotMessageIdIsRefused(@TempDir Path dir) {
+        TieredBlobStore s = store(dir, 0, 1 << 20);
+        IllegalArgumentException whole = assertThrows(IllegalArgumentException.class, () -> s.write(BlobKey.body("..", 0), Buffer.buffer("x"), 100));
+        assertTrue(whole.getMessage().contains(".."), "the refusal names the id: " + whole.getMessage());
+        IllegalArgumentException streamed = assertThrows(IllegalArgumentException.class, () -> s.write(BlobKey.body("..", 0), new GeneratedReadStream(3, 1), 100));
+        assertTrue(streamed.getMessage().contains(".."), "the refusal names the id: " + streamed.getMessage());
+        assertEquals(Optional.empty(), s.location(BlobKey.body("..", 0)));
+        assertTrue(spoolFiles(dir).isEmpty(), "nothing written under the spool directory");
+    }
+
+    @Test
     void aStreamAboveTheMaxSizeStopsSpoolingAndLeavesNoFileBehind(@TempDir Path dir) {
         TieredBlobStore s = store(dir, 1024, 1 << 20);
         Future<Body> f = s.write(BlobKey.body("m-1", 0), new GeneratedReadStream(200_000, 4096), 100_000);

@@ -70,6 +70,7 @@ final class SpoolCipher {
     InputStream decrypting(Path file) throws IOException {
         InputStream raw = Files.newInputStream(file);
         try {
+            masterMaterial(key);   // refused before any byte of the file is read
             byte[] salt = raw.readNBytes(SALT_BYTES);
             if (salt.length != SALT_BYTES) throw new IOException("spool file too short for its salt: " + file);
             SecretKey fileKey = fileKey(key, salt);
@@ -83,8 +84,7 @@ final class SpoolCipher {
 
     /** HKDF-SHA256 (RFC 5869) with the JDK's Mac: extract with the salt, expand one block with a fixed info string → AES-256 key. */
     static SecretKey fileKey(SecretKey master, byte[] salt) throws GeneralSecurityException {
-        byte[] ikm = master.getEncoded();
-        if (ikm == null || !"AES".equals(master.getAlgorithm())) throw new java.security.InvalidKeyException("spool master key must be an encodable AES key");
+        byte[] ikm = masterMaterial(master);
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(salt, "HmacSHA256"));
         byte[] prk = mac.doFinal(ikm);
@@ -92,6 +92,12 @@ final class SpoolCipher {
         mac.update("flottila-spool-v1".getBytes(StandardCharsets.US_ASCII));
         mac.update((byte) 1);
         return new SecretKeySpec(mac.doFinal(), "AES");
+    }
+
+    private static byte[] masterMaterial(SecretKey master) throws java.security.InvalidKeyException {
+        byte[] ikm = master.getEncoded();
+        if (ikm == null || !"AES".equals(master.getAlgorithm())) throw new java.security.InvalidKeyException("spool master key must be an encodable AES key");
+        return ikm;
     }
 
     private static Cipher cipher(SecretKey fileKey, int mode, byte[] salt, int counterWithFlag) throws GeneralSecurityException {
@@ -203,11 +209,11 @@ final class SpoolCipher {
             if (ct.length != length) throw new EOFException("spool file truncated inside segment " + counter);
             try {
                 Cipher c = cipher(fileKey, Cipher.DECRYPT_MODE, salt, counter | (last ? LAST : 0));
-                byte[] out = new byte[length];   // GCM releases nothing from update(); doFinal yields length - TAG_BYTES bytes
+                byte[] out = new byte[length - TAG_BYTES];   // exactly the plaintext: an authenticated GCM segment yields length - TAG_BYTES bytes
                 int produced = 0;
                 for (int off = 0; off < length; off += SLICE) produced += c.update(ct, off, Math.min(SLICE, length - off), out, produced);
-                produced += c.doFinal(out, produced);
-                plain = produced == out.length ? out : java.util.Arrays.copyOf(out, produced);
+                c.doFinal(out, produced);
+                plain = out;
             } catch (GeneralSecurityException e) {
                 throw new IOException("spool segment " + counter + " failed authentication", e);
             }

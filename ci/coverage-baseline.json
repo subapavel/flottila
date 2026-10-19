@@ -4,24 +4,24 @@
     "line": 98.8
   },
   "flottila-bench": {
-    "branch": 92.6,
-    "line": 96.5
+    "branch": 91.0,
+    "line": 95.2
   },
   "flottila-components/http": {
-    "branch": 84.6,
-    "line": 100.0
+    "branch": 83.1,
+    "line": 99.2
   },
   "flottila-components/mock": {
     "branch": 98.5,
     "line": 100.0
   },
   "flottila-core": {
-    "branch": 100.0,
+    "branch": 99.3,
     "line": 99.7
   },
   "flottila-runtime": {
     "branch": 100.0,
-    "line": 100.0
+    "line": 99.7
   },
   "flottila-schemas": {
     "branch": 94.6,
@@ -36,7 +36,7 @@
     "line": 100.0
   },
   "flottila-testkit": {
-    "branch": 93.2,
+    "branch": 91.3,
     "line": 98.8
   }
 }

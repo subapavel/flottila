@@ -161,4 +161,34 @@ class SpoolCipherTest {
         write(cipher, dir.resolve("ok"), new byte[] {1});
         assertThrows(IOException.class, () -> wrong.decrypting(dir.resolve("ok")));
     }
+
+    /** An HSM-style key: it names AES but will not hand out its material. */
+    private static final class UnencodableAesKey implements javax.crypto.SecretKey {
+        @Override public String getAlgorithm() { return "AES"; }
+        @Override public String getFormat() { return null; }
+        @Override public byte[] getEncoded() { return null; }
+    }
+
+    private static boolean namesTheMasterKey(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) if (c.getMessage() != null && c.getMessage().contains("master key")) return true;
+        return false;
+    }
+
+    @Test
+    void aMasterKeyWithoutEncodableMaterialIsRefusedAtOpen(@TempDir Path dir) throws IOException {
+        SpoolCipher hsm = new SpoolCipher(new UnencodableAesKey());
+        Path never = dir.resolve("never");
+        IOException onWrite = assertThrows(IOException.class, () -> hsm.encrypting(never));
+        assertTrue(namesTheMasterKey(onWrite), "the refusal names the master key: " + onWrite + " / " + onWrite.getCause());
+        assertTrue(!Files.exists(never) || Files.size(never) == 0, "refused before any byte was written");
+        Path empty = Files.createFile(dir.resolve("empty"));   // no salt to read: only a check before the first read names the key
+        IOException onRead = assertThrows(IOException.class, () -> hsm.decrypting(empty));
+        assertTrue(namesTheMasterKey(onRead), "the refusal names the master key before any byte is read: " + onRead + " / " + onRead.getCause());
+        assertFalse(chainContains(onRead, "too short"), "the key is refused before the salt is read: " + onRead + " / " + onRead.getCause());
+    }
+
+    private static boolean chainContains(Throwable t, String text) {
+        for (Throwable c = t; c != null; c = c.getCause()) if (c.getMessage() != null && c.getMessage().contains(text)) return true;
+        return false;
+    }
 }
