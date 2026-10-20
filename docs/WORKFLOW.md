@@ -22,11 +22,13 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
    decreased, scoped PIT on the touched classes. The verifier reports exit codes and the failing
    section; the coordinator reads the log tail itself and records each check with its evidence
    state.
-6. Review by the reviewer agent (Opus 5.5), the diff handed over as `target/<task>.diff`. `FAIL`
+6. Review by the reviewer agent (Opus 5.5), the diff handed over as `target/<task>.diff`. When
+   the diff goes to the reviewer the architect runs `touch target/.batch-in-review` (§10). `FAIL`
    reopens the task at step 4; a second `FAIL` reopens it at step 3 with a rewritten spec. A gate
    row is reviewed by the gate-reviewer (Fable 5.1) instead.
-7. Commit and push to `main`. Append the PROGRESS entry, rewrite HANDOFF, set the row to `done`.
-   These three edits go in the same commit as the code.
+7. Commit and push to `main`: `rm -f target/.batch-in-review && git commit …`. Append the
+   PROGRESS entry, rewrite HANDOFF, set the row to `done`. These three edits go in the same
+   commit as the code.
 8. Continue with the next `ready` row without asking. Stop only on `GATE_MET` (docs/GATE.md
    satisfied → write `HANDOVER.md`) or `IDLE_NO_READY_TASK`.
 
@@ -154,3 +156,43 @@ worked around silently:
 Nothing is reported outside the repo. The owner reads `HANDOVER.md` at the gate, and
 `agent/HANDOFF.md` + `PROGRESS.md` at any time. Chat messages per task are fine but carry nothing
 that is not also in the files.
+
+## 10. Turn economy (D-053)
+
+The architect runs on the most expensive model and every one of its turns is priced over the whole
+session context. Measured on 2026-10-20 over the session of 2026-10-19 (FIX-14 … FIX-6): 119 turns
+answered the environment's Stop hook ("uncommitted changes, please commit and push") while a task was
+mid-flight, and 131 turns only relayed a background subagent's completion — against 41 turns that
+carried an owner message. The rules below remove most of them.
+
+- **A. Wait in the foreground.** When the architect would otherwise go idle waiting for one
+  subagent, it launches that subagent with `run_in_background: false`: the turn stays open, no Stop
+  hook fires. With two subagents in flight the first runs in the background and the second in the
+  foreground. Background only when the architect has other work to do while waiting. A *resumed*
+  agent (a message to an existing agent) always runs in the background; a fresh agent can run in
+  the foreground. The same holds for `gh run watch`: foreground, with a timeout.
+- **B. Mark the batch under review.** When a batch leaves for the reviewer the architect runs
+  `touch target/.batch-in-review` (`target/` is gitignored). The commit command removes it:
+  `rm -f target/.batch-in-review && git commit …`.
+- **C. Gated Stop hook.** `.claude/hooks/stop-hook-git-check.gated.sh` fronts the environment's
+  `~/.claude/stop-hook-git-check.sh`: silent while the marker exists, silent on a `claude/*` branch
+  with a dirty tree (the normal mid-batch state there; Flottila works on `main`, so that gate is
+  inert here), at most one reminder per 30 minutes, then the original hook runs so its signing and
+  unpushed-commit checks still apply.
+- **D. Installed at session start, not by the Setup script.** The environment manager rewrites
+  `~/.claude/stop-hook-git-check.sh` at every container start (its mtime equals the boot time), so
+  the swap happens in a `startup|resume` SessionStart hook in `.claude/settings.json`: it backs the
+  original up to `~/.claude/stop-hook-git-check.orig.sh` and copies the gated script over it,
+  idempotently (it checks for the marker string `batch-in-review`). The agent never installs or
+  edits its own hooks: changes under `.claude/` are committed by the owner from a patch the agent
+  leaves in `agent/patches/`.
+- **E. Author self-check list.** `implementer.md` and `test-author.md` carry a "Self-check before
+  every hand-back" list that mirrors the reviewer's memory, so the author checks what the reviewer
+  will check. When a review FAIL repeats a lesson, the lesson goes into the reviewer memory and the
+  author self-check in the same commit.
+- **F. Smaller review units.** A fix packet names file, line, the evidence to open and the sentence
+  to write, nothing else; closure checks are limited to the fix list. A large review is split by
+  file set across two read-only reviewers in parallel. Every long-running writer or reviewer keeps a
+  running hand-back file from its first turn, so a turn-limit stop loses nothing.
+- **Stop-hook messages are advisory.** A reminder that arrives while a task is mid-flight is
+  declined in one line; it never triggers a commit of an unreviewed tree.

@@ -109,6 +109,10 @@ build; this file holds the rules that keep the code and the way of working align
   A PROGRESS entry is at most 15 lines; the review-round narrative goes to the commit body.
 - One task per context episode: finish, commit, push, rewrite HANDOFF, then start the next. Never
   carry an in-flight task across a compaction without a WIP line in `agent/HANDOFF.md`.
+- Turn economy (`docs/WORKFLOW.md` §10, D-053): wait for a single subagent in the foreground;
+  `touch target/.batch-in-review` when a batch goes to the reviewer and `rm -f` it in the commit
+  command; a Stop-hook reminder mid-task is declined in one line; a fix packet names file, line,
+  evidence and sentence, nothing else.
 
 ## Compact instructions
 
