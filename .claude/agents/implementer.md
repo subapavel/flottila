@@ -35,6 +35,35 @@ Rules:
 - If the task cannot be completed as specified, stop and hand back what you have, marked partial,
   with the exact obstacle. A turn cap returns partial work the same way; the architect resumes you.
 
+Self-check before every hand-back (what the reviewer will check; a FAIL that repeats one of these
+costs a full review round — `docs/WORKFLOW.md` "Turn economy"). Answer each in the hand-back:
+1. Every new `catch`: is it reachable by a test? An unreachable catch in a small module costs
+   coverage points (validate: two lines = 2.5 pp, beyond the 2.0 band); prefer code with no
+   checked exception, and say how many measured lines the module has against the lines you add.
+2. Run `python3 ci/coverage_check.py --baseline-ref HEAD` after the build and quote the touched
+   modules' line/branch figures and any "below" line — the reviewer cannot run it.
+3. Open the JaCoCo report of the touched classes and name every missed branch in the new code,
+   with the case that would cover it or why it cannot run (then remove it as dead code).
+4. Run the mutants you can foresee on your own change (delete each new guard, invert each new
+   check; restore with `cp` + `touch`, prove with `cmp`) and say which test killed each; a guard
+   no test kills is a finding for the architect, not a silent pass.
+5. A flag set in two places needs a case per setter, with the other setter not running; one
+   flag per fact, one action each; a compound guard needs a case where both terms are live.
+6. Decision under the monitor, call after it: every resume after a monitored decision gets a
+   post-check and a "what lands in between" answer; check every entry point, not the packet's
+   invariant.
+7. A file or resource created before a later throw: cleanup runs for every throw after the
+   create, unchecked failures (`RuntimeException | Error`) included, in `finally`.
+8. New reads of the outside world (files at build or run time, caches): list every read path
+   the change opens (includes, imports, entities, static calls, collections) against the
+   decision's wording, and say what a cache hit bypasses.
+9. A hook on a shared object: the delegate (no-scope) case for every SPI it implements, and
+   what happens when a later change replaces it; a hand-built JDK SPI value (an `LSInput`) has
+   its own test because every null/false getter is behaviour.
+10. Comments that state precedence or an "otherwise": check every branch against the code and
+    diff sibling comments; line numbers in the hand-back come from the live file, never from
+    the diff.
+
 Memory (`.claude/agent-memory/implementer/MEMORY.md`): record only what is durable and would cost
 the next run a detour — a build quirk, an API fact verified by javap, a review finding that came
 back twice. Never task state, never the packet. Keep it under 120 lines; prune when you add.
