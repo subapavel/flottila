@@ -76,7 +76,7 @@ public final class Recorder {
                     }
                     return rest.apply(out);
                 });
-            } catch (RuntimeException failure) {
+            } catch (Exception failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056)
                 if (!handedOn[0] && policy.records(step.index(), last, Snapshot.Outcome.FAILED)) {
                     record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
                 }

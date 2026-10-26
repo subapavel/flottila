@@ -86,9 +86,12 @@ public final class MockComponent implements Component {
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> h) {
         Objects.requireNonNull(h, "handler");
         Objects.requireNonNull(cfg, "cfg");
+        Drain drain = new Drain();
+        Function<Envelope, Future<Ack>> tracked = e -> drain.track(h.apply(e));
         return new Consumer() {
-            @Override public Future<Void> start() { handlers.put(cfg.name(), h); return Future.succeededFuture(); }
-            @Override public Future<Void> stop() { handlers.remove(cfg.name(), h); return Future.succeededFuture(); }
+            @Override public Future<Void> start() { handlers.put(cfg.name(), tracked); return Future.succeededFuture(); }
+            /** Unregisters the handler at once; completes once every answer it handed out has completed (D-056). */
+            @Override public Future<Void> stop() { handlers.remove(cfg.name(), tracked); return drain.stop(); }
         };
     }
 
@@ -118,6 +121,39 @@ public final class MockComponent implements Component {
     @Override
     public Future<Health> health() {
         return Future.succeededFuture(handlers.isEmpty() ? Health.down("no consumer running") : Health.up());
+    }
+
+    /**
+     * The answers a consumer's handler handed out and that are still outstanding (D-056): the consumer itself holds one more
+     * until {@link #stop}, so the count reaches zero — and the drain completes — only after the stop and the last answer.
+     */
+    private static final class Drain {
+        private final Promise<Void> drained = Promise.promise();
+        private final Promise<Void> stopping = Promise.promise();   // completes once, however often stop() is called
+        private int open = 1;                                       // guarded by this: the consumer's own hold plus each outstanding answer
+
+        Drain() {
+            stopping.future().onComplete(stopped -> release());
+        }
+
+        /** Counts {@code answer} until it completes, either way; returns it unchanged. */
+        Future<Ack> track(Future<Ack> answer) {
+            synchronized (this) { open++; }
+            answer.onComplete(done -> release());
+            return answer;
+        }
+
+        private void release() {
+            boolean last;
+            synchronized (this) { last = --open == 0; }
+            if (last) drained.tryComplete();
+        }
+
+        /** Completes once no answer is outstanding, at once when none is; the same future for every call. */
+        Future<Void> stop() {
+            stopping.tryComplete();
+            return drained.future();
+        }
     }
 
     private <T> Future<T> after(java.time.Duration delay, java.util.function.Supplier<Future<T>> then) {

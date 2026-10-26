@@ -31,6 +31,7 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.PoolOptions;
 import io.vertx.core.http.RequestOptions;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -45,7 +46,7 @@ import java.util.function.Function;
  * the one place that opens an HTTP socket.
  *
  * <p><b>Consumer</b> (endpoint options {@code host}, {@code port} — 0 for an ephemeral one, see {@link HttpConsumer#port()} —,
- * {@code path}, {@code flow}, {@code maxBodyBytes}): the server verticle owns the socket and never runs a pipeline. A request
+ * {@code path}, {@code flow}, {@code maxBodyBytes}, {@code shutdownTimeoutMs} — default 30 000, positive): the server verticle owns the socket and never runs a pipeline. A request
  * at the path is streamed into the {@link BlobStore} under {@code maxBodyBytes} (413 above it), becomes the ingress envelope
  * (new id, the request headers, {@link #METHOD} / {@link #PATH} props) and is handed to the handler on its own virtual thread;
  * the answer follows the {@link Ack}: {@code Reply} → 200 with the reply's headers and its body streamed, {@code Accepted} →
@@ -77,8 +78,10 @@ public final class HttpComponent implements Component {
     static final String CONFIG_SCHEMA = """
             {"type":"object","properties":{"host":{"type":"string"},"port":{"type":"integer","minimum":0,"maximum":65535},"path":{"type":"string"},
              "flow":{"type":"string"},"url":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1},"timeoutMs":{"type":"integer","minimum":1},
-             "poolSize":{"type":"integer","minimum":1}}}""";
+             "poolSize":{"type":"integer","minimum":1},"shutdownTimeoutMs":{"type":"integer","minimum":1}}}""";
     private static final Set<String> HOP_BY_HOP = Set.of("content-length", "transfer-encoding", "connection", "host", "keep-alive", "upgrade", "expect", "te", "trailer", "proxy-authorization", "proxy-authenticate");
+    /** The consumer's {@code shutdownTimeoutMs} when the endpoint sets none: how long a stop waits for the requests in flight. */
+    static final long DEFAULT_SHUTDOWN_TIMEOUT_MS = 30_000;
     /** How much of a non-2xx response body travels in the failure's message; the rest is read and dropped. */
     static final int ERROR_BODY_BYTES = 512;
 
@@ -123,6 +126,11 @@ public final class HttpComponent implements Component {
         return n.longValue();
     }
 
+    /** {@code key} as a positive integer, {@code fallback} when absent; present and not positive is refused as by {@link #requiredLong}. */
+    static long positiveLong(EndpointConfig cfg, String key, long fallback) {
+        return cfg.options().get(key) == null ? fallback : requiredLong(cfg, key);
+    }
+
     static String string(EndpointConfig cfg, String key, String fallback) {
         Object v = cfg.options().get(key);
         return v == null ? fallback : String.valueOf(v);
@@ -151,6 +159,7 @@ public final class HttpComponent implements Component {
         private final String path;
         private final String flow;
         private final long maxBodyBytes;
+        private final Duration shutdownTimeout;
         private volatile HttpServer server;
 
         HttpConsumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
@@ -161,6 +170,12 @@ public final class HttpComponent implements Component {
             this.path = string(cfg, "path", cfg.uri().getPath() == null || cfg.uri().getPath().isEmpty() ? "/" : cfg.uri().getPath());
             this.flow = string(cfg, "flow", cfg.name());
             this.maxBodyBytes = requiredLong(cfg, "maxBodyBytes");
+            this.shutdownTimeout = Duration.ofMillis(positiveLong(cfg, "shutdownTimeoutMs", DEFAULT_SHUTDOWN_TIMEOUT_MS));
+        }
+
+        /** How long {@link #stop()} lets the requests in flight answer before the server force-closes: {@code shutdownTimeoutMs}. */
+        Duration shutdownTimeout() {
+            return shutdownTimeout;
         }
 
         /** The port the server listens on (the actual one when configured 0); -1 before {@link #start()}. */
@@ -175,12 +190,17 @@ public final class HttpComponent implements Component {
             return s.listen().map(listening -> { server = listening; running.put(this, Boolean.TRUE); return null; });
         }
 
+        /**
+         * Stops (D-056): health DOWN at once; a request whose body completes from now on is answered 503 + {@code retry-after}
+         * without calling the handler; the server stops listening and its connections close once their requests are answered
+         * — the deliveries in flight answer their senders — or, the transport's backstop, after {@code shutdownTimeoutMs}.
+         */
         @Override
         public Future<Void> stop() {
             HttpServer s = server;
             server = null;
-            running.remove(this);
-            return s == null ? Future.succeededFuture() : s.close();
+            running.remove(this);   // health DOWN, and a request whose body completes from now on is refused
+            return s == null ? Future.succeededFuture() : s.shutdown(shutdownTimeout);
         }
 
         private void handle(HttpServerRequest req) {
@@ -200,13 +220,17 @@ public final class HttpComponent implements Component {
                     else res.setStatusCode(500).end(String.valueOf(written.cause().getMessage()));
                     return;
                 }
+                if (!running.containsKey(this)) {   // stopping (or not yet started): never handed to the handler
+                    res.setStatusCode(503).putHeader("retry-after", "1").end("consumer of flow " + flow + " is stopping");
+                    return;
+                }
                 Envelope in = Envelope.ingress(id, flow, headers, written.result()).with(METHOD, method).with(PATH, path);
                 // the handler runs the flow on the message's own virtual thread; the socket's event loop never does
                 Thread.ofVirtual().name("flottila-http-" + handled.incrementAndGet()).start(() -> {
                     Future<Ack> ack;
                     try {
                         ack = handler.apply(in);
-                    } catch (RuntimeException e) {
+                    } catch (Exception e) {   // a checked one too, thrown sneakily (an interrupted await): a 500, never a hanging request
                         ack = Future.failedFuture(e);
                     }
                     ack.onComplete(done -> ctx.runOnContext(v -> answer(res, done.succeeded() ? done.result() : null, done.cause())));

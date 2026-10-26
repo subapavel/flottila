@@ -28,6 +28,8 @@
   PgMessageStoreIT (@BeforeAll, `start:53`) and bench BenchMainIT:36 — packets tend to name only MigrationsIT (P1-08b).
 - Focused core runs are ~5 s (`-pl flottila-core -am test -Dtest=A,B -Dsurefire.failIfNoSpecifiedTests=false
   -Djacoco.skip=true`): a scripted mutant loop (cp backup, replace, run, read surefire XML, cp + touch, cmp) is cheap.
+- Mutant loop: add `-Dsurefire.timeout=150` so a mutant that hangs a stop()/await is killed by "timeout in the fork" (mock and
+  some testkit tests have no @Timeout). Never kill a running loop without restoring the mutated file from its backup (cp + touch + cmp).
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
   fixture with no test in its own module trips the 2 pp band even when other modules exercise it.
 
@@ -43,6 +45,8 @@
   completes after the handler ran, `eventually(Supplier<Future<U>>)`; `Future.await()` works on a plain virtual thread.
 - FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
   cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
+- Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (observed, P1-08c): stops accepting, keeps an HTTP/1.1 connection until its
+  in-flight response ends, force-closes at the timeout; `close()` drops in-flight requests ("Connection was closed").
 - Core may use Future, Promise, CompositeFuture, Completable, AsyncResult, Handler (archtest Rules.java:39).
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and
   never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;
@@ -53,6 +57,8 @@
   `failNext`), GeneratedReadStream, BlockedPlatformThreadDetector.
 
 ## Findings that came back in review
+- A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
+  before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
 - Buffering an error-path body without a bound (http producer non-2xx, P1-06): keep a head, drain.
 - Parsing untrusted headers on the event loop without a guard (`Long.parseLong`, P1-06).
 - A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05).

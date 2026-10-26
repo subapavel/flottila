@@ -9,6 +9,7 @@ import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.api.Health;
+import io.flottila.api.NackException;
 import io.flottila.api.Producer;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -20,14 +21,18 @@ import org.junit.jupiter.api.Timeout;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * The cases every component passes, real or mock (ARCHITECTURE §11: "both must pass the same contract suite"). A
@@ -35,7 +40,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * an observable: the scheme, the config schema's shape, delivery to the running consumer's handler with the body
  * intact (the receiver mints its own message id — a transport carries bytes and headers), a stopped consumer receiving nothing, health, the send completing only after the handler acknowledged, a
  * Nack failing the send, a body above the tree limit streaming through, a second send of the same envelope delivering
- * the same body again (a retry re-opens the body, nothing is consumed).
+ * the same body again (a retry re-opens the body, nothing is consumed), and a consumer stopped mid-delivery (D-056):
+ * {@link Consumer#stop()} accepts nothing new, waits for the delivery in flight and lets its answer reach the sender — a
+ * cancel reaches the component as a retryable {@link Ack.Nack} the sender sees as a retryable {@link NackException}.
  *
  * @since 0.1
  */
@@ -60,6 +67,19 @@ public abstract class ComponentContract {
 
     /** How long a case waits for an asynchronous delivery before it fails (a real transport needs a moment). */
     protected Duration patience() { return Duration.ofSeconds(10); }
+
+    /**
+     * Waits until {@code f} has completed, either way, for at most {@link #patience()}; a future still pending then fails
+     * the case (a transport that never answers must not hang the suite).
+     */
+    private <T> Future<T> settled(Future<T> f) {
+        try {
+            f.otherwiseEmpty().await(patience().toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException pending) {
+            fail("still pending after " + patience() + ": " + f);
+        }
+        return f;
+    }
 
     /** Spins (yielding, never sleeping) until {@code condition} holds or {@link #patience()} is spent. */
     protected final boolean soon(BooleanSupplier condition) {
@@ -162,6 +182,7 @@ public abstract class ComponentContract {
             pending.get().complete(new Ack.Reply(sent.withHeader("x-acked", "yes")));
             assertEquals("yes", outcome.await().header("x-acked").orElse(null));
         } finally {
+            if (pending.get() != null) pending.get().tryComplete(new Ack.Nack("contract cleanup", true));   // a stop drains the answers in flight (D-056)
             producer.close().await();
             consumer.stop().await();
         }
@@ -227,6 +248,74 @@ public abstract class ComponentContract {
         } finally {
             producer.close().await();
             consumer.stop().await();
+        }
+    }
+
+    /** The reason a delivery cancelled by its flow's stop deadline answers with (D-056: core's {@code Delivery} decides it). */
+    static final String CANCELLED = "cancelled: flow contract stopping after PT30S";
+
+    @Test
+    public void stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender() throws Exception {
+        Component component = component();
+        AtomicInteger invoked = new AtomicInteger();
+        Promise<Ack> answer = Promise.promise();
+        Consumer consumer = component.consumer(endpoint(), e -> invoked.incrementAndGet() == 1
+                ? answer.future()
+                : Future.succeededFuture(new Ack.Reply(e.withHeader("x-answer", "reached-after-stop"))));
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        Future<Void> stopped = null;
+        try {
+            Envelope sent = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("in-flight"));
+            Future<Envelope> first = producer.send(sent);
+            assertTrue(soon(() -> invoked.get() == 1), "the handler was invoked");
+            stopped = consumer.stop();
+            assertFalse(stopped.isComplete(), "stop waits for the delivery in flight: " + stopped);
+            Future<Envelope> second = settled(producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("late"))));
+            assertEquals(1, invoked.get(), "a send after stop began never reaches the handler (it was answered " + second + ")");
+            assertFalse(first.isComplete(), "the delivery in flight is answered by its handler, not by the stop: " + first);
+            assertFalse(stopped.isComplete(), "stop still waits: the delivery in flight has no answer yet");
+            answer.complete(new Ack.Reply(sent.withHeader("x-answer", "given-while-stopping")));
+            assertTrue(settled(first).succeeded(), "the answer given while the consumer stops reaches the sender: " + first.cause());
+            assertEquals("given-while-stopping", first.result().header("x-answer").orElse(null), "the reply is what the handler answered");
+            assertTrue(settled(stopped).succeeded(), "stop completes once the delivery in flight was answered: " + stopped.cause());
+        } finally {
+            answer.tryComplete(new Ack.Nack("contract cleanup", true));
+            (stopped == null ? consumer.stop() : stopped).otherwiseEmpty().await(patience().toMillis(), TimeUnit.MILLISECONDS);
+            producer.close().await();
+        }
+    }
+
+    @Test
+    public void aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable() throws Exception {
+        Component component = component();
+        AtomicInteger invoked = new AtomicInteger();
+        Promise<Ack> answer = Promise.promise();
+        Consumer consumer = component.consumer(endpoint(), e -> invoked.incrementAndGet() == 1
+                ? answer.future()
+                : Future.succeededFuture(new Ack.Reply(e.withHeader("x-answer", "reached-after-stop"))));
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        Future<Void> stopped = null;
+        try {
+            Future<Envelope> sent = producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("cancel-me")));
+            assertTrue(soon(() -> invoked.get() == 1), "the handler was invoked");
+            stopped = consumer.stop();
+            assertFalse(stopped.isComplete(), "the consumer is stopping, not stopped, while the delivery is in flight: " + stopped);
+            // the stop has acted by the time a later send is answered (a refused connection, a refusal, a behaviour)
+            Future<Envelope> late = settled(producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("late"))));
+            assertEquals(1, invoked.get(), "a send after stop began never reaches the handler (it was answered " + late + ")");
+            assertFalse(sent.isComplete(), "the delivery in flight waits for its answer while the consumer stops: " + sent);
+            answer.complete(new Ack.Nack(CANCELLED, true));
+            assertTrue(settled(sent).failed(), "a cancelled delivery is not a delivery: " + sent);
+            NackException nack = assertInstanceOf(NackException.class, sent.cause(), "a producer reports a NACK as NackException");
+            assertTrue(nack.retryable(), "the sender may try again once the flow runs again: " + nack);
+            assertTrue(nack.reason().contains(CANCELLED), "the reason travels: " + nack.reason());
+            assertTrue(settled(stopped).succeeded(), "stop completes once the cancelled delivery was answered: " + stopped.cause());
+        } finally {
+            answer.tryComplete(new Ack.Nack("contract cleanup", true));
+            (stopped == null ? consumer.stop() : stopped).otherwiseEmpty().await(patience().toMillis(), TimeUnit.MILLISECONDS);
+            producer.close().await();
         }
     }
 }

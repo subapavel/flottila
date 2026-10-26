@@ -7,11 +7,13 @@ import io.flottila.api.Envelope;
 import io.flottila.api.NackException;
 import io.flottila.components.http.HttpComponent;
 import io.flottila.core.dlq.InMemoryDlq;
+import io.flottila.core.flow.Delivery;
 import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Snapshot;
 import io.flottila.steps.validate.XsdValidate;
@@ -21,6 +23,7 @@ import io.flottila.testkit.NoBlockedPlatformThreads;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
@@ -38,18 +41,25 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * P1-08 delivery modes as the sender sees them over http (ARCHITECTURE §4 lifecycle table, admission, D-049): the flow's
@@ -124,9 +134,52 @@ class DeliveryModesTest {
     }
 
     FlowBuilder builder() {
+        return builder(store);
+    }
+
+    /** {@link #builder()} recording into {@code recordInto} (a decorator of {@link #store}). */
+    FlowBuilder builder(MessageStore recordInto) {
         SaxonXml xml = new SaxonXml();
         return new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints)
-                .recording(store, Meter.system()).queue(queue).dlq(dlq);
+                .recording(recordInto, Meter.system()).queue(queue).dlq(dlq);
+    }
+
+    /**
+     * {@link #store} whose next {@code record} — an at-least-once flow's durable save of the ingress snapshot — is held until
+     * the test completes the gate {@link #holdNext()} returned; {@link #awaitHeld()} returns once that save has begun.
+     */
+    static final class HeldSave implements MessageStore {
+        private final MessageStore inner;
+        private final AtomicReference<Promise<Void>> next = new AtomicReference<>();
+        private final CountDownLatch began = new CountDownLatch(1);   // taken before any save can signal it
+
+        HeldSave(MessageStore inner) { this.inner = inner; }
+
+        Promise<Void> holdNext() {
+            Promise<Void> gate = Promise.promise();
+            next.set(gate);
+            return gate;
+        }
+
+        void awaitHeld() {
+            try {
+                if (!began.await(5, TimeUnit.SECONDS)) fail("the held save never began");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                fail("interrupted waiting for the held save");
+            }
+        }
+
+        @Override public Future<Void> record(Snapshot snapshot) {
+            Promise<Void> gate = next.getAndSet(null);
+            if (gate == null) return inner.record(snapshot);
+            began.countDown();
+            return gate.future().compose(open -> inner.record(snapshot));
+        }
+
+        @Override public Future<List<Snapshot>> timeline(String messageId) { return inner.timeline(messageId); }
+
+        @Override public Future<List<String>> findByKey(String name, String value) { return inner.findByKey(name, value); }
     }
 
     /** The http consumer at {@code /in} on an ephemeral port with {@code handler}; {@link #port} is the port it got. */
@@ -324,5 +377,80 @@ class DeliveryModesTest {
         assertEquals("r-42", got.headers().get("x-request-id"));
         assertEquals("application/xml", got.headers().get("content-type"));
         assertNull(got.headers().get("x-secret"), "nothing propagates implicitly: " + got.headers());
+    }
+
+    // --- stop (D-056): the consumer drains, core's Delivery owns the deadline and the cancel
+
+    @Test
+    void aSyncHttpDeliveryCancelledAtTheStopDeadlineAnswers503WithRetryAfter() {
+        Map<String, Object> doc = flow("sync", List.of(TO_PARTNER));
+        doc.put("retry", Map.of("attempts", 1, "initial", "100ms", "max", "100ms"));   // one attempt: the cancel is not retried into a reply
+        FlowDefinition def = FlowDefinition.from(doc);
+        Delivery delivery = builder().delivery(def, FLOWS);
+        listen(def, delivery);
+        Consumer consumer = started.get(0);
+        holdAtPartner();   // never released by the test: only the stop deadline ends this send
+        Future<Answer> inFlight = send(ORDER, Map.of("content-type", "application/xml"));
+        partner.awaitSent(1);
+        String id = partner.sent().get(0).id();
+
+        Future<Void> deliveryStopped = delivery.stop(Duration.ofSeconds(5));
+        Future<Void> consumerStopped = consumer.stop();
+        assertFalse(deliveryStopped.isComplete(), "a delivery is in flight until the deadline");
+        rt.clock().advance(Duration.ofSeconds(5));   // the deadline: the fake timer interrupts the message's thread on this thread
+
+        Answer a = inFlight.await();
+        assertEquals(503, a.status(), "the cancel reaches the sender as a retryable Nack: " + a.body());
+        assertEquals("1", a.headers().get("retry-after"));
+        assertTrue(a.body().contains("cancelled"), a.body());
+        deliveryStopped.await();
+        consumerStopped.await();
+        started.remove(consumer);   // stopped here; the teardown does not stop it twice
+        assertEquals(1, partner.sent().size(), "the cancelled message ran once, nothing after it");
+        List<Snapshot> timeline = store.timeline(id).await();
+        assertEquals(List.of("ingress", "partner"), timeline.stream().map(Snapshot::stepName).toList());
+        assertEquals(Snapshot.Outcome.FAILED, timeline.get(1).outcome(), "the cancelled step is visible in the record: " + timeline.get(1));
+    }
+
+    @Test
+    void anAsyncHttpDeliverySavedBeforeStopKeeps202AndItsWorkItem() {
+        Map<String, Object> doc = flow("at-least-once", List.of(TO_PARTNER));
+        doc.put("delivery", Map.of("mode", "at-least-once", "saveTimeout", "60s"));
+        doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", 8));
+        FlowDefinition def = FlowDefinition.from(doc);
+        HeldSave saves = new HeldSave(store);
+        FlowBuilder b = builder(saves);
+        Delivery delivery = b.delivery(def, FLOWS);
+        listen(def, delivery);
+        Consumer consumer = started.get(0);
+        FlowWorker worker = b.worker(def, FLOWS, "w1");
+
+        Answer before = post(ORDER);
+        assertEquals(202, before.status(), before.body());
+        String savedBefore = before.headers().get(HttpComponent.H_MESSAGE_ID);
+        Promise<Void> gate = saves.holdNext();
+        Future<Answer> saving = send(ORDER, Map.of("content-type", "application/xml"));
+        saves.awaitHeld();
+
+        Future<Void> deliveryStopped = delivery.stop(Duration.ofSeconds(5));
+        Future<Void> consumerStopped = consumer.stop();
+        assertFalse(deliveryStopped.isComplete(), "the second save is in flight");
+        gate.complete();   // the save completes before the deadline
+
+        Answer during = saving.await();
+        assertEquals(202, during.status(), "a save done before the deadline keeps its 202: " + during.body());
+        String savedDuring = during.headers().get(HttpComponent.H_MESSAGE_ID);
+        assertNotNull(savedDuring);
+        deliveryStopped.await();
+        consumerStopped.await();
+        started.remove(consumer);
+        assertEquals(2, queue.size(), "both accepted messages have their work item");
+        rt.clock().advance(Duration.ofSeconds(6));   // past the deadline: nothing is cancelled any more
+        assertEquals(2, queue.size(), "the deadline takes no accepted item back");
+        assertEquals(List.of(), partner.sent(), "nothing ran before the worker");
+
+        assertEquals(2, worker.poll().await());
+        assertEquals(Set.of(savedBefore, savedDuring), partner.sentTo("partner").stream().map(Envelope::id).collect(Collectors.toSet()));
+        assertEquals(0, queue.size(), "both items are completed");
     }
 }

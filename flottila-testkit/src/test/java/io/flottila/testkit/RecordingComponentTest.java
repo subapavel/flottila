@@ -172,4 +172,23 @@ class RecordingComponentTest extends ComponentContract {
         assertTrue(sent.isComplete(), "holdNext(0) holds nothing");
         assertSame(a, sent.result());
     }
+
+    @Test
+    void aSecondStopWithAnAnswerOutstandingDoesNotCompleteEarly() {
+        io.vertx.core.Promise<io.flottila.api.Ack> answer = io.vertx.core.Promise.promise();
+        List<Envelope> handled = new CopyOnWriteArrayList<>();
+        var consumer = http.consumer(partner, e -> { handled.add(e); return answer.future(); });
+        consumer.start().await();
+        Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer("a"));
+        Future<Envelope> sent = http.producer(partner).send(in);
+        assertEquals(List.of(in), handled, "the send reached the running consumer's handler");
+
+        Future<Void> first = consumer.stop();
+        Future<Void> again = consumer.stop();
+        assertFalse(first.isComplete(), "one answer is outstanding");
+        assertFalse(again.isComplete(), "a second stop is not an answer: the drain still waits for the outstanding one");
+        answer.complete(new io.flottila.api.Ack.Accepted(in.id()));
+        assertTrue(sent.succeeded(), "the answer reached its sender: " + sent);
+        assertTrue(first.succeeded() && again.succeeded(), "both stops complete with the last answer: " + first + ", " + again);
+    }
 }

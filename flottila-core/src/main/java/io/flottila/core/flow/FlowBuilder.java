@@ -135,8 +135,8 @@ public final class FlowBuilder {
         long requests = inFlightRequests(flow);
         Admission admission = new Admission(requests, flow.maxInFlightBytes().orElseGet(() -> defaultInFlightBytes(flow, requests)));
         return switch (flow.deliveryMode()) {
-            case "sync" -> Delivery.sync(admission, Pipeline.of(stages(flow, baseDir, true)));
-            case "at-most-once" -> Delivery.atMostOnce(admission, Pipeline.of(stages(flow, baseDir, true)));
+            case "sync" -> Delivery.sync(admission, Pipeline.of(stages(flow, baseDir, true)), runtime.timer());
+            case "at-most-once" -> Delivery.atMostOnce(admission, Pipeline.of(stages(flow, baseDir, true)), runtime.timer());
             case "at-least-once" -> {
                 requireStoreAndQueue(flow, "delivery");
                 requireDlq(flow);

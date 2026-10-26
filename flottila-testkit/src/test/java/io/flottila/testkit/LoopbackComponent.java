@@ -13,30 +13,35 @@ import java.util.function.Function;
 
 /**
  * Test-only component for the testkit's own tests: the producer hands the envelope straight to the
- * last started consumer's handler and returns it; health is UP once a consumer runs. Not the mock
+ * last started consumer's handler and returns it; health is UP once a consumer runs. A stopped consumer's handler is
+ * gone at once and its {@code stop()} completes when the answers still outstanding have completed (D-056). Not the mock
  * component (P1-06), which lives in flottila-components/mock and passes the same contract suite.
  */
 final class LoopbackComponent implements Component {
 
-    private Function<Envelope, Future<Ack>> handler;
-    private boolean running;
+    private record Running(Function<Envelope, Future<Ack>> handler, ConsumerDrain drain) {}
+
+    private volatile Running handler;
+    private volatile boolean running;
 
     @Override public String scheme() { return "loopback"; }
 
     @Override public String configSchema() { return "{\"type\":\"object\",\"properties\":{}}"; }
 
     @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> h) {
+        ConsumerDrain drain = new ConsumerDrain();
         return new Consumer() {
-            @Override public Future<Void> start() { handler = h; running = true; return Future.succeededFuture(); }
-            @Override public Future<Void> stop() { running = false; handler = null; return Future.succeededFuture(); }
+            @Override public Future<Void> start() { handler = new Running(h, drain); running = true; return Future.succeededFuture(); }
+            @Override public Future<Void> stop() { running = false; handler = null; return drain.stop(); }
         };
     }
 
     @Override public Producer producer(EndpointConfig cfg) {
         return new Producer() {
             @Override public Future<Envelope> send(Envelope e) {
-                if (handler == null) return Future.failedFuture(new IllegalStateException("no consumer running"));
-                return handler.apply(e).compose(ack -> switch (ack) {
+                Running at = handler;
+                if (at == null) return Future.failedFuture(new IllegalStateException("no consumer running"));
+                return at.drain().track(at.handler().apply(e)).compose(ack -> switch (ack) {
                     case Ack.Reply r -> Future.succeededFuture(r.reply());
                     case Ack.Accepted a -> Future.succeededFuture(e);
                     case Ack.Nack n -> Future.failedFuture(new io.flottila.api.NackException(n.reason(), n.retryable()));

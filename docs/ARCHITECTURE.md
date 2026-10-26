@@ -13,6 +13,7 @@
 | 2026-10-18 | 3.3 | §6: the step SPI (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`) lives in `flottila-api`, as §7 and §12 require for pluggable steps; the built-in `route` sets a prop (`route.prop` / `routes[].when` / `set` / `otherwise`, schema v1) and `to … byProp` acts on it — the form where a branch is itself a pipeline named `route:<branch>` is deferred until a flow needs it; `split` has a stage but no flow-file shape yet (D-043) | — |
 | 2026-10-19 | 3.3 | §4: the at-least-once durable save is the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK whatever the flow's recording level says; the worker runs the pipeline without stage 0 for a message saved that way (D-049) | F-2 (minor) |
 | 2026-10-26 | 3.3 | §7 WorkQueue row: the lease is renewed while the item runs (not derived from a producer timeout), every claim counts an attempt that fences the lease, and an item past its attempts bound is parked or, when the park fails, held — held rows block their key and wait for a human (D-055, P1-08b) | — |
+| 2026-10-26 | 3.3 | §4: until a `RequestScope` wraps each delivery, a stop's cancel is the interrupt of the message's virtual thread at the stop deadline, which wakes its awaits and cancels the children of any scope opened on it; a cancelled delivery answers a retryable NACK (D-056, P1-08c) | F-3 |
 
 ## Amendments (Part A, 2026-10-17)
 

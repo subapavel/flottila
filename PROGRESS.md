@@ -463,3 +463,13 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (unit 670/0, IT 45
 Review: FAIL round 1 (the left-to-lease answer and WARNING unpinned; follow-up round after a failed claim untested; `running` after a failed settle untested); PASS round 2. Follow-ups: FIX-19 (byte budget for worker runs), FIX-20 (re-claim of an own running seq; negative-lease renew); reword the "held … : false" ERROR when next touched.
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 27; review rounds 2.
 Next: P1-08c [C] (cancel semantics).
+
+## P1-08c · 2026-10-26 · commit `feat(core): consumer stop drains, delivery stop deadline cancels`
+Deviation: F-3 (no RequestScope wraps a delivery yet; the stop's cancel interrupts the message's thread).
+Red: contract `stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender`, "cancel" `aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable` (assertion red on http, mock, RecordingComponent), http `HttpConsumerStopTest`, `aHandlerThrowingACheckedExceptionIsAnswered500`, core `DeliveryTest` stop cases 3–16, `DeliveryStopPropertyTest` (jqwik), `RecorderTest.aCancelledStepRecordsItsFailureSnapshot`, runtime `DeliveryModesTest` 23/24 — EXECUTED_FAIL (target/p108c-red-*.log; core/runtime by compile errors on `Delivery.stop`).
+Changed: D-056; `Delivery.stop(Duration)`, `sync`/`atMostOnce` take the `Timer`; `Recorder` snapshots a checked throwable; http `stop()` (health DOWN, late requests 503, `HttpServer.shutdown(Duration)` with `shutdownTimeoutMs` 30 000), handler catch → `Exception`; mock and testkit `RecordingComponent` drain on stop; F-3 + ARCHITECTURE §4 changelog line.
+Test-author fixture edits outside its listed paths (testkit `ConsumerDrain`, Loopback/Ephemeral drains, `HeldPipeline`) — test sources only, accepted by the reviewer.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (760/0; target/p108c-verify3b.log) — one EXECUTED_FAIL before it (target/p108c-verify3.log: `InvoiceSyncHttpTest` hung 60 s; not reproduced in 12 runs; reviewer: not caused by this change, FIX-21); coverage "no decrease" VERIFIED_PASS, baseline written; scoped PIT `Delivery*`, `Recorder*` 65/65 (target/p108c-pit.log); reviewer mutants M8, R8 killed (target/p108c-m8.log, p108c-r8.log), H11 killed by the round-2 assert.
+Review: FAIL round 1 (F-3 / changelog / Deviation missing; the finite shutdown default pinned only by `assertDoesNotThrow`); PASS round 2. Vert.x API checked by `javap` on vertx-core 5.1.10 (Context7: ISSUE-1).
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 30; review rounds 2 (test-author and reviewer each hit the turn cap once and were resumed).
+Next: P1-09 [B] (admin API).

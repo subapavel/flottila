@@ -10,6 +10,7 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.core.admission.Admission;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.queue.InMemoryWorkQueue;
@@ -24,7 +25,11 @@ import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -37,23 +42,32 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * P1-08 delivery modes at the {@link Ack} level (ARCHITECTURE §4 lifecycle table, admission line 112, D-049): the
  * {@link Delivery} handler and the {@link FlowWorker} over a {@link RecordingComponent} partner, the in-memory store,
  * queue and DLQ and the fake clock. Sync replies or fails with the step's exception; at-least-once accepts only once the
  * ingress snapshot and the queue item are durable and the worker runs the pipeline later; at-most-once accepts before
- * anything runs and drops a failure; a delivery over the flow's in-flight limits is a retryable Nack.
+ * anything runs and drops a failure; a delivery over the flow's in-flight limits is a retryable Nack. P1-08c (D-056):
+ * {@link Delivery#stop} refuses new deliveries, lets those in flight finish until the deadline on the fake timer, then
+ * cancels — a sync run is interrupted and answers a retryable Nack unless it still replies, an at-least-once save still
+ * pending is a retryable Nack that enqueues nothing, an at-most-once run is interrupted and its failure logged.
  */
 @Timeout(10)
 class DeliveryTest {
@@ -595,5 +609,428 @@ class DeliveryTest {
         String noQueue = assertThrows(IllegalStateException.class, () -> bare().recording(store, Meter.system()).dlq(dlq).worker(def, NO_FILES, "w")).getMessage();
         assertTrue(noStore.toLowerCase(Locale.ROOT).contains("recording") || noStore.toLowerCase(Locale.ROOT).contains("store"), noStore);
         assertTrue(noQueue.toLowerCase(Locale.ROOT).contains("queue"), noQueue);
+    }
+
+    // --- stop and cancel (P1-08c, D-056). Signatures assumed: Delivery.stop(Duration) -> Future<Void>;
+    //     Delivery.sync(Admission, Pipeline, Timer) and Delivery.atMostOnce(Admission, Pipeline, Timer): the deadline's timer.
+
+    static final Duration DEADLINE = Duration.ofSeconds(5);
+    static final Map<String, Object> PARK = Map.of("type", "park", "name", "park");
+
+    /** Room for every case here: admission never refuses unless a case says so. */
+    static Admission roomy() { return new Admission(8, 1 << 20); }
+
+    /** A failure that says what kind it is and nothing else. */
+    static final class KindedFault extends RuntimeException implements Fault {
+        private final Kind kind;
+        KindedFault(Kind kind, String message) { super(message); this.kind = kind; }
+        @Override public Kind kind() { return kind; }
+    }
+
+    /** What {@code apply} answered and whether the calling thread's interrupt flag was set the moment it returned. */
+    record Applied(Future<Ack> ack, boolean interruptedAfter) {}
+
+    /** Applies {@code in} on a virtual thread of its own, as a consumer does, noting the interrupt flag right after apply. */
+    static CompletableFuture<Applied> applyOn(Delivery delivery, Envelope in) {
+        CompletableFuture<Applied> applied = new CompletableFuture<>();
+        Thread.ofVirtual().name("consumer-" + in.id()).start(() -> {
+            try {
+                Future<Ack> ack = delivery.apply(in);
+                applied.complete(new Applied(ack, Thread.currentThread().isInterrupted()));
+            } catch (Throwable escaped) {
+                applied.completeExceptionally(escaped);
+            }
+        });
+        return applied;
+    }
+
+    /** The outcome of {@link #applyOn}; an exception escaping {@code apply} or no return within the bound fails the case. */
+    static Applied applied(CompletableFuture<Applied> f) {
+        try {
+            return f.get(HeldPipeline.BOUND_SECONDS, TimeUnit.SECONDS);
+        } catch (ExecutionException escaped) {
+            return fail("apply threw instead of answering: " + escaped.getCause(), escaped.getCause());
+        } catch (TimeoutException | InterruptedException stuck) {
+            return fail("apply did not return within " + HeldPipeline.BOUND_SECONDS + " s");
+        }
+    }
+
+    /** {@code f} once complete, either way; still pending after the bound fails the case. */
+    static <T> Future<T> settled(Future<T> f) {
+        try {
+            f.otherwiseEmpty().await(HeldPipeline.BOUND_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException pending) {
+            fail("still pending after " + HeldPipeline.BOUND_SECONDS + " s: " + f);
+        }
+        return f;
+    }
+
+    static Ack.Nack cancelled(Future<Ack> ack) {
+        assertTrue(ack.isComplete(), "answered: " + ack);
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, ack.result(), "a cancelled delivery answers a Nack: " + ack);
+        assertTrue(nack.retryable(), "the sender may try again once the flow runs again: " + nack.reason());
+        assertTrue(nack.reason().contains("cancelled"), "says it was cancelled: " + nack.reason());
+        return nack;
+    }
+
+    Delivery heldFlow(String mode, HeldPipeline held) {
+        return new FlowBuilder(rt.runtime(), List.of(held.step("park")), List.of(BuiltInStepsTest.HEADERS), endpoints)
+                .delivery(FlowDefinition.from(flow(mode, List.of(PARK))), NO_FILES);
+    }
+
+    /** An at-least-once flow over the holding store whose own save timeout (30 s) stays out of the stop's way. */
+    FlowDefinition atLeastOnceSaving30s() {
+        Map<String, Object> doc = flow("at-least-once", List.of(TO_PARTNER));
+        doc.put("delivery", Map.of("mode", "at-least-once", "saveTimeout", "30s"));
+        return FlowDefinition.from(doc);
+    }
+
+    @Test
+    void stopRefusesNewDeliveriesWithARetryableNackBeforeAdmission() {
+        Admission onePermit = new Admission(1, 1 << 20);
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery sync = Delivery.sync(onePermit, held, rt.timer());
+        Envelope first = ingress(ORDER);
+        CompletableFuture<Applied> firstApplied = applyOn(sync, first);
+        HeldPipeline.Run run = held.run(first.id());
+        Future<Void> stopped = sync.stop(DEADLINE);
+
+        Ack.Nack refused = retryableNack(applied(applyOn(sync, ingress(ORDER))).ack());
+        assertTrue(refused.reason().contains("stopping") && refused.reason().contains("orders"), "names the flow and why: " + refused.reason());
+        assertFalse(refused.reason().startsWith("admission refused"), "refused before admission: the only permit is taken, yet the answer is the stop's: " + refused.reason());
+        assertEquals(1, held.entered(), "the refused message ran nothing");
+        assertEquals(1, onePermit.inFlightRequests(), "only the delivery in flight holds a permit");
+        run.reply("in-time");
+        assertInstanceOf(Ack.Reply.class, applied(firstApplied).ack().result(), "the delivery in flight finishes normally before the deadline");
+        assertTrue(settled(stopped).succeeded());
+        assertEquals(0, onePermit.inFlightRequests());
+
+        Admission amoRoom = roomy();
+        HeldPipeline amoHeld = HeldPipeline.awaiting();
+        Delivery amo = Delivery.atMostOnce(amoRoom, amoHeld, rt.timer());
+        assertTrue(amo.stop(DEADLINE).isComplete());
+        Ack.Nack amoRefused = retryableNack(amo.apply(ingress(ORDER)));
+        assertTrue(amoRefused.reason().contains("stopping"), "at-most-once is refused too, not accepted: " + amoRefused.reason());
+        assertEquals(0, amoRoom.inFlightRequests(), "no permit taken");
+
+        Delivery alo = builder().delivery(atLeastOnceSaving30s(), NO_FILES);
+        assertTrue(alo.stop(DEADLINE).isComplete());
+        Ack.Nack aloRefused = retryableNack(alo.apply(ingress(ORDER)));
+        assertTrue(aloRefused.reason().contains("stopping") && aloRefused.reason().contains("orders"), aloRefused.reason());
+        assertEquals(0, store.recorded("ingress"), "a refused at-least-once message saves nothing");
+        assertEquals(0, queue.size(), "and enqueues nothing");
+        assertEquals(0, amoHeld.entered(), "nothing ran");
+    }
+
+    @Test
+    void aSyncDeliveryIsNotInterruptedOneMillisecondBeforeTheDeadline() {
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(roomy(), held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        HeldPipeline.Run run = held.run(in.id());
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        assertEquals(DEADLINE, rt.timer().nextDelay(), "the deadline runs on the injected timer");
+
+        rt.clock().advance(DEADLINE.minusMillis(1));
+        assertEquals(Duration.ofMillis(1), rt.timer().nextDelay(), "one millisecond to go: the deadline has not fired");
+        assertFalse(stopped.isComplete(), "the delivery is still in flight");
+        run.reply("in-time");
+        Ack.Reply reply = assertInstanceOf(Ack.Reply.class, applied(applied).ack().result(), "answered before the deadline: its own answer");
+        assertEquals("in-time", reply.reply().header(HeldPipeline.H_ANSWER).orElse(null));
+        assertFalse(run.interrupted, "the message's thread was never interrupted before the deadline");
+        assertTrue(settled(stopped).succeeded(), "the last delivery answered: stopped");
+    }
+
+    @Test
+    void aSyncDeliveryAwaitingAtTheDeadlineIsInterruptedAndAnswersARetryableNack() {
+        Admission admission = roomy();
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(admission, held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        HeldPipeline.Run run = held.run(in.id());
+        Future<Void> stopped = delivery.stop(DEADLINE);
+
+        rt.clock().advance(DEADLINE);
+        Ack.Nack nack = cancelled(applied(applied).ack());
+        assertTrue(nack.reason().contains("PT5S") || nack.reason().contains("5s"), "names the deadline: " + nack.reason());
+        assertTrue(run.interrupted, "the message's thread was interrupted at the deadline: its await woke");
+        assertEquals(0, admission.inFlightRequests(), "the permit is back");
+        assertEquals(0, admission.inFlightBytes());
+        assertTrue(settled(stopped).succeeded(), "the last delivery answered: stopped");
+        assertEquals(0, rt.timer().pending(), "nothing left on the timer");
+    }
+
+    static Stream<Arguments> failuresAfterTheCancel() {
+        return Stream.of(
+                Arguments.of("MALFORMED", (Supplier<Throwable>) () -> new KindedFault(Fault.Kind.MALFORMED, "the body is not xml")),
+                Arguments.of("INVALID", (Supplier<Throwable>) () -> new KindedFault(Fault.Kind.INVALID, "validation failed at step 'park'")),
+                Arguments.of("DOWNSTREAM final", (Supplier<Throwable>) () -> new NackException("partner refused the order", false)),
+                Arguments.of("INTERNAL", (Supplier<Throwable>) () -> new KindedFault(Fault.Kind.INTERNAL, "stylesheet raised an error")),
+                Arguments.of("no fault", (Supplier<Throwable>) () -> new IllegalStateException("gave up")),
+                Arguments.of("checked", (Supplier<Throwable>) () -> new IOException("connection reset while stopping")));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("failuresAfterTheCancel")
+    void aSyncFailureAfterTheCancelIsARetryableNackWhateverItsFaultKind(String kind, Supplier<Throwable> failure) {
+        HeldPipeline held = HeldPipeline.awaitingThenThrowing(failure);
+        Delivery delivery = heldFlow("sync", held);   // built by the FlowBuilder: the runtime's timer drives the deadline
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        HeldPipeline.Run run = held.run(in.id());
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        rt.clock().advance(DEADLINE);
+        cancelled(applied(applied).ack());
+        assertTrue(run.interrupted, kind + ": interrupted at the deadline");
+        assertTrue(settled(stopped).succeeded(), kind);
+    }
+
+    @Test
+    void aSyncFailureWhileStoppingButBeforeTheDeadlineKeepsTheStepsException() {
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(roomy(), held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        HeldPipeline.Run run = held.run(in.id());
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        rt.clock().advance(DEADLINE.minusMillis(1));
+        KindedFault invalid = new KindedFault(Fault.Kind.INVALID, "validation failed at step 'park'");
+        run.fail(invalid);
+        Future<Ack> ack = applied(applied).ack();
+        assertTrue(ack.failed(), "not cancelled — the deadline has not come — so the step's own failure is the answer: " + ack);
+        assertSame(invalid, ack.cause());
+        assertTrue(settled(stopped).succeeded());
+    }
+
+    @Test
+    void aSyncPipelineThrowingACheckedExceptionFailsTheFutureNotTheCaller() {
+        Admission admission = roomy();
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(admission, held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        IOException reset = new IOException("partner socket reset");
+        held.run(in.id()).fail(reset);   // thrown from await sneakily, as Vert.x does with a checked cause
+        Future<Ack> ack = applied(applied).ack();
+        assertTrue(ack.failed(), "a checked exception fails the answer like any other: " + ack);
+        assertSame(reset, ack.cause());
+        assertEquals(0, admission.inFlightRequests(), "the permit is back");
+    }
+
+    @Test
+    void aSyncPipelineThatRepliesDespiteTheInterruptKeepsItsReply() {
+        Admission admission = roomy();
+        HeldPipeline held = HeldPipeline.stubborn(true);
+        Delivery delivery = Delivery.sync(admission, held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        HeldPipeline.Run run = held.run(in.id());
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        rt.clock().advance(DEADLINE);
+        Future<Ack> ack = applied(applied).ack();
+        Ack.Reply reply = assertInstanceOf(Ack.Reply.class, ack.result(), "a real answer beats a retry: " + ack);
+        assertEquals(HeldPipeline.DESPITE_INTERRUPT, reply.reply().header(HeldPipeline.H_ANSWER).orElse(null));
+        assertTrue(run.interrupted, "it was interrupted, and replied anyway");
+        assertEquals(0, admission.inFlightRequests(), "the permit is back");
+        assertTrue(settled(stopped).succeeded());
+    }
+
+    @Test
+    void aCancelledSyncDeliveryLeavesTheCallersInterruptFlagClear() {
+        for (boolean replies : new boolean[] {true, false}) {
+            HeldPipeline held = HeldPipeline.stubborn(replies);   // returns or throws with the flag the deadline set still set
+            Delivery delivery = Delivery.sync(roomy(), held, rt.timer());
+            Envelope in = ingress(ORDER);
+            CompletableFuture<Applied> applied = applyOn(delivery, in);
+            HeldPipeline.Run run = held.run(in.id());
+            Future<Void> stopped = delivery.stop(DEADLINE);
+            rt.clock().advance(DEADLINE);
+            Applied a = applied(applied);
+            String path = replies ? "replied" : "failed";
+            assertTrue(run.interrupted, path + ": the pipeline saw the interrupt and left the flag set");
+            Class<? extends Ack> expected = replies ? Ack.Reply.class : Ack.Nack.class;
+            assertInstanceOf(expected, a.ack().result(), path + ": " + a.ack());
+            assertFalse(a.interruptedAfter(), path + ": the interrupt the stop caused does not leak to the consumer's thread");
+            assertTrue(settled(stopped).succeeded(), path);
+        }
+    }
+
+    @Test
+    void anAtLeastOnceSaveDoneBeforeTheDeadlineKeepsAccepted() {
+        FlowDefinition def = atLeastOnceSaving30s();
+        FlowBuilder b = builder();
+        Delivery delivery = b.delivery(def, NO_FILES);
+        FlowWorker worker = b.worker(def, NO_FILES, "w1");
+        store.hold();
+        Envelope in = ingress(ORDER);
+        Future<Ack> ack = delivery.apply(in);
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        assertFalse(ack.isComplete(), "the save in flight is not answered by the stop");
+        assertFalse(stopped.isComplete(), "a save is in flight");
+        rt.clock().advance(DEADLINE.minusMillis(1));
+        assertFalse(ack.isComplete(), "nor one millisecond before the deadline");
+
+        store.release();
+        assertEquals(new Ack.Accepted(in.id()), settled(ack).result(), "saved before the deadline: the sender keeps its 202");
+        assertTrue(settled(stopped).succeeded(), "the last answer is decided: stopped");
+        rt.clock().advance(Duration.ofMillis(1));   // the deadline passes
+        List<WorkQueue.Item> items = queue.snapshot();
+        assertEquals(1, items.size(), "its work item stays");
+        assertEquals(in.id(), items.get(0).messageId());
+        assertEquals(1, worker.poll().await(), "and runs: the worker is not stopped by the delivery's stop");
+        assertEquals(1, partner.sentTo("partner").size());
+        assertEquals(0, rt.timer().pending(), "neither the save timeout nor the stop deadline is left");
+    }
+
+    @Test
+    void anAtLeastOnceSavePendingAtTheDeadlineAnswersARetryableNackAndEnqueuesNothing() {
+        FlowDefinition def = atLeastOnceSaving30s();
+        FlowBuilder b = builder();
+        Delivery delivery = b.delivery(def, NO_FILES);
+        FlowWorker worker = b.worker(def, NO_FILES, "w1");
+        store.hold();
+        Envelope in = ingress(ORDER);
+        Future<Ack> ack = delivery.apply(in);
+        Future<Void> stopped = delivery.stop(DEADLINE);
+
+        rt.clock().advance(DEADLINE);
+        Ack.Nack nack = cancelled(ack);
+        assertFalse(nack.reason().contains("timed out"), "the stop's deadline decided it, not the 30 s save timeout: " + nack.reason());
+        assertTrue(settled(stopped).succeeded(), "its answer is decided: nothing is in flight");
+        store.release();   // the save completes late
+        assertEquals(0, queue.size(), "a save completing after the cancel enqueues nothing");
+        assertEquals(0, worker.poll().await());
+        assertEquals(List.of(), partner.sent());
+        assertEquals(0, rt.timer().pending(), "the save timeout went with the late save");
+    }
+
+    @Test
+    void anAtMostOnceRunAtTheDeadlineIsInterruptedAndLogged() throws InterruptedException {
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = heldFlow("at-most-once", held);   // built by the FlowBuilder: the runtime's timer drives the deadline
+        Envelope in = ingress(ORDER);
+        CountDownLatch logged = new CountDownLatch(1);
+        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(Delivery.class.getName());   // System.Logger delegates to it
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            @Override public void publish(java.util.logging.LogRecord r) {
+                String text = new java.util.logging.SimpleFormatter().formatMessage(r);
+                if (r.getLevel().intValue() >= java.util.logging.Level.WARNING.intValue() && text != null && text.contains(in.id())) logged.countDown();
+            }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        jul.addHandler(handler);
+        try {
+            Future<Ack> ack = delivery.apply(in);
+            assertEquals(new Ack.Accepted(in.id()), ack.result(), "accepted at once, as before");
+            HeldPipeline.Run run = held.run(in.id());
+            Future<Void> stopped = delivery.stop(DEADLINE);
+            assertFalse(stopped.isComplete(), "an at-most-once run is in flight until its pipeline ends");
+            rt.clock().advance(DEADLINE);
+            assertTrue(logged.await(HeldPipeline.BOUND_SECONDS, TimeUnit.SECONDS), "the interrupted run's failure is logged with the message id " + in.id());
+            run.joined();
+            assertTrue(run.interrupted, "the run was interrupted at the deadline");
+            assertTrue(settled(stopped).succeeded(), "stopped once the interrupted run ended");
+            assertEquals(0, rt.timer().pending());
+        } finally {
+            jul.removeHandler(handler);
+        }
+    }
+
+    @Test
+    void stopCompletesWhenTheLastDeliveryIsAnsweredAndLeavesNoTimerPending() {
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(roomy(), held, rt.timer());
+        Envelope a = ingress(ORDER);
+        Envelope b = ingress(ORDER);
+        CompletableFuture<Applied> appliedA = applyOn(delivery, a);
+        CompletableFuture<Applied> appliedB = applyOn(delivery, b);
+        HeldPipeline.Run runA = held.run(a.id());
+        HeldPipeline.Run runB = held.run(b.id());
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        assertEquals(1, rt.timer().pending(), "the deadline is scheduled");
+
+        runA.reply("a");
+        assertInstanceOf(Ack.Reply.class, applied(appliedA).ack().result());
+        assertFalse(stopped.isComplete(), "b is still in flight");
+        runB.reply("b");
+        assertInstanceOf(Ack.Reply.class, applied(appliedB).ack().result());
+        assertTrue(settled(stopped).succeeded(), "the last delivery answered: stopped");
+        assertEquals(0, rt.timer().pending(), "the deadline timer is cancelled, not left to fire");
+        rt.clock().advance(DEADLINE);
+        assertFalse(runA.interrupted || runB.interrupted, "nothing was interrupted");
+    }
+
+    @Test
+    void stopWithNothingInFlightCompletesAtOnce() {
+        Delivery idle = Delivery.sync(roomy(), HeldPipeline.awaiting(), rt.timer());
+        Future<Void> stopped = idle.stop(DEADLINE);
+        assertTrue(stopped.isComplete() && stopped.succeeded(), "nothing in flight: stopped when stop returns");
+        assertEquals(0, rt.timer().pending(), "no deadline left scheduled");
+
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery answeredBefore = Delivery.sync(roomy(), held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(answeredBefore, in);
+        held.run(in.id()).reply("done");
+        assertInstanceOf(Ack.Reply.class, applied(applied).ack().result());
+        assertTrue(answeredBefore.stop(DEADLINE).isComplete(), "a delivery answered before the stop is not in flight any more");
+
+        Delivery saved = builder().delivery(atLeastOnceSaving30s(), NO_FILES);
+        Envelope accepted = ingress(ORDER);
+        assertEquals(new Ack.Accepted(accepted.id()), saved.apply(accepted).await());
+        assertTrue(saved.stop(DEADLINE).isComplete(), "an at-least-once delivery whose save is done is not in flight");
+        assertEquals(0, rt.timer().pending());
+    }
+
+    @Test
+    void stopTwiceReturnsTheSameFuture() {
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(roomy(), held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        HeldPipeline.Run run = held.run(in.id());
+        Future<Void> first = delivery.stop(DEADLINE);
+        assertSame(first, delivery.stop(Duration.ofSeconds(1)), "a second call returns the stop under way");
+        assertEquals(1, rt.timer().pending(), "one deadline, the first call's");
+        rt.clock().advance(Duration.ofSeconds(1));
+        assertEquals(Duration.ofSeconds(4), rt.timer().nextDelay(), "the first call's deadline still governs");
+        run.reply("in-time");
+        assertInstanceOf(Ack.Reply.class, applied(applied).ack().result());
+        assertFalse(run.interrupted);
+        assertTrue(settled(first).succeeded());
+        assertSame(first, delivery.stop(DEADLINE), "also once it has completed");
+    }
+
+    @Test
+    void stopRefusesANegativeOrNullDeadline() {
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(roomy(), held, rt.timer());
+        assertThrows(NullPointerException.class, () -> delivery.stop(null));
+        assertThrows(IllegalArgumentException.class, () -> delivery.stop(Duration.ofMillis(-1)));
+        assertEquals(0, rt.timer().pending(), "nothing scheduled");
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        held.run(in.id()).reply("still-running");
+        assertInstanceOf(Ack.Reply.class, applied(applied).ack().result(), "a refused stop stopped nothing: the flow still delivers");
+    }
+
+    @Test
+    void aZeroDeadlineCancelsAtOnce() {
+        Admission admission = roomy();
+        HeldPipeline held = HeldPipeline.awaiting();
+        Delivery delivery = Delivery.sync(admission, held, rt.timer());
+        Envelope in = ingress(ORDER);
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        HeldPipeline.Run run = held.run(in.id());
+        Future<Void> stopped = delivery.stop(Duration.ZERO);   // the clock never moves in this case
+        cancelled(applied(applied).ack());
+        assertTrue(run.interrupted, "interrupted without the clock moving");
+        assertTrue(settled(stopped).succeeded());
+        assertEquals(0, admission.inFlightRequests(), "the permit is back");
+        assertEquals(0, rt.timer().pending(), "nothing left on the timer");
     }
 }

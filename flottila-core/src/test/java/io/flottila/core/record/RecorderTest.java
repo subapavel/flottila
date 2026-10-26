@@ -17,6 +17,7 @@ import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -208,5 +209,33 @@ class RecorderTest {
                 .build(FlowDefinition.from(flow(null, List.of(step("mark", "a")))), java.nio.file.Path.of("")).apply(in3);
         assertEquals(Snapshot.CPU_UNKNOWN, store.timeline(in3.id()).await().get(1).cpuNanos(), "a meter without a reading records unknown, not a difference of -1s");
         assertSame(RecordingPolicy.DEFAULT, FlowDefinition.from(flow(null, List.of(step("mark", "a")))).recording());
+    }
+
+    /** Throws a checked {@code failure} from code that declares none, as Vert.x {@code Future.await()} does when interrupted. */
+    @SuppressWarnings("unchecked")
+    static <T extends Throwable> RuntimeException sneaky(Throwable failure) throws T {
+        throw (T) failure;
+    }
+
+    @Test
+    void aCancelledStepRecordsItsFailureSnapshot() {
+        Map<String, Exception> thrown = Map.of(
+                "awaiting", new InterruptedException("woken by the stop deadline"),   // what an interrupted await throws, sneakily
+                "reading", new IOException("connection reset"));
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        thrown.forEach((type, failure) -> all.add(factory(type, s -> Stage.of(e -> { throw sneaky(failure); }))));
+        for (Map.Entry<String, Exception> c : thrown.entrySet()) {
+            Envelope in = in();
+            Pipeline p = new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, meter)
+                    .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a"), step(c.getKey(), "x")))), java.nio.file.Path.of(""));
+            Exception escaped = assertThrows(Exception.class, () -> p.apply(in));
+            assertSame(c.getValue(), escaped, c.getKey() + ": the failure goes on unchanged");
+            List<Snapshot> t = store.timeline(in.id()).await();
+            assertEquals(List.of("ingress", "a", "x"), t.stream().map(Snapshot::stepName).toList(), c.getKey() + ": a checked failure leaves the step's row like any other");
+            assertEquals(Snapshot.Outcome.FAILED, t.get(2).outcome(), c.getKey());
+            String error = t.get(2).error().orElse("");
+            assertTrue(error.contains(c.getValue().getClass().getSimpleName()) && error.contains(c.getValue().getMessage()), c.getKey() + ": the row says what failed: " + error);
+            assertEquals("yes", t.get(2).headers().get("seen-a"), c.getKey() + ": the failed step's snapshot shows what it was given");
+        }
     }
 }

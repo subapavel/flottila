@@ -1,12 +1,15 @@
 package io.flottila.components.mock;
 
+import io.flottila.api.Ack;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
+import io.flottila.api.Health;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +20,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -146,5 +150,52 @@ class MockComponentTest {
         Future<Envelope> missing = http.producer(domestic).send(invoice());
         missing.otherwiseEmpty().await();
         assertTrue(missing.cause().getMessage().contains("nowhere.xml"), "a missing fixture fails the send, named");
+    }
+
+    // --- stop (D-056: the mock's stop unregisters the handler and completes once every outstanding handler future has completed)
+
+    @Test
+    void stopCompletesOnlyOnceEveryOutstandingAnswerHasCompletedAFailedOneIncluded() {
+        List<Promise<Ack>> answers = new CopyOnWriteArrayList<>();
+        var consumer = http.consumer(domestic, e -> { Promise<Ack> p = Promise.promise(); answers.add(p); return p.future(); });
+        consumer.start().await();
+        Producer p = http.producer(domestic);
+        Future<Envelope> first = p.send(invoice());
+        Future<Envelope> second = p.send(invoice());
+        assertEquals(2, answers.size(), "both sends reached the running consumer's handler");
+
+        Future<Void> stopped = consumer.stop();
+        assertEquals(Health.Status.DOWN, http.health().await().status(), "no consumer runs once its stop began");
+        assertFalse(stopped.isComplete(), "two answers are outstanding");
+        Envelope late = invoice();
+        assertEquals(late, p.send(late).await(), "a send after stop began gets the endpoint's behaviour (echo), not the handler");
+        assertEquals(2, answers.size(), "the stopping consumer's handler saw nothing new");
+
+        answers.get(0).fail(new IllegalStateException("the flow failed"));
+        assertTrue(first.failed(), "the failed answer reached its sender");
+        assertFalse(stopped.isComplete(), "one answer is still outstanding");
+        assertFalse(second.isComplete(), "its answer is still outstanding");
+        answers.get(1).complete(new Ack.Reply(invoice().withHeader("x-answer", "last")));
+        assertEquals("last", second.await().header("x-answer").orElse(null), "the last answer reached its sender");
+        assertTrue(stopped.isComplete() && stopped.succeeded(), "stop completes with the last outstanding answer, a failed one counted as completed: " + stopped);
+    }
+
+    @Test
+    void aSecondStopWithAnAnswerOutstandingDoesNotCompleteEarly() {
+        Promise<Ack> answer = Promise.promise();
+        List<Envelope> handled = new CopyOnWriteArrayList<>();
+        var consumer = http.consumer(domestic, e -> { handled.add(e); return answer.future(); });
+        consumer.start().await();
+        Envelope in = invoice();
+        Future<Envelope> sent = http.producer(domestic).send(in);
+        assertEquals(List.of(in), handled, "the send reached the running consumer's handler");
+
+        Future<Void> first = consumer.stop();
+        Future<Void> again = consumer.stop();
+        assertFalse(first.isComplete(), "one answer is outstanding");
+        assertFalse(again.isComplete(), "a second stop is not an answer: the drain still waits for the outstanding one");
+        answer.complete(new Ack.Accepted(in.id()));
+        assertTrue(sent.succeeded(), "the answer reached its sender: " + sent);
+        assertTrue(first.succeeded() && again.succeeded(), "both stops complete with the last answer: " + first + ", " + again);
     }
 }

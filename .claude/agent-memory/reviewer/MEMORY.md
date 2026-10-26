@@ -81,3 +81,5 @@
 - A cleanup helper run from a `finally` that catches only `IOException` lets an unchecked cleanup failure replace the primary and skip later steps — check the helper's own catches too (FIX-15, SpoolCipher `discard`).
 - A driver's failure paths (the follow-up round after a failed claim, the bookkeeping after a failed settle) cannot be mutated by PIT — check that some test fails the queue call there (P1-08b, FlowWorker:179/:198).
 - Tests that read a round through `otherwiseEmpty()` leave the round's answer and that path's log unpinned (P1-08b :222/:224).
+- A design-rule default (a finite limit) pinned only by `assertDoesNotThrow` is unpinned; ask for the value to be asserted (P1-08c, http `shutdownTimeoutMs`).
+- A D-xxx rationale saying ARCHITECTURE is "not yet true" needs F-n + changelog line + PROGRESS `Deviation:` (WORKFLOW §7), not only the decision row (P1-08c).

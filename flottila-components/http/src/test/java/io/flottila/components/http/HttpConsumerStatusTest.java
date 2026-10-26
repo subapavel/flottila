@@ -19,15 +19,22 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.io.IOException;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
-/** D-049: a failed handler future is answered by the failure's {@link Fault.Kind}; anything that is no fault is a 500. */
+/**
+ * D-049: a failed handler future is answered by the failure's {@link Fault.Kind}; anything that is no fault is a 500 — a
+ * checked exception a handler throws (sneakily, as an interrupted {@code await} does) included (D-056).
+ */
 @Timeout(30)
 class HttpConsumerStatusTest {
 
@@ -101,6 +108,39 @@ class HttpConsumerStatusTest {
             assertTrue(contentType != null && contentType.startsWith("text/plain"), c.getKey() + ": content-type " + contentType);
             if (c.getValue() == 503) assertEquals("1", a.headers().get("retry-after"), c.getKey() + ": a retryable answer says when to retry");
             else assertNull(a.headers().get("retry-after"), c.getKey() + ": only a retryable answer carries retry-after");
+        }
+    }
+
+    /** Throws a checked {@code failure} from code that declares none, as Vert.x {@code Future.await()} does with an interrupt. */
+    @SuppressWarnings("unchecked")
+    static <T extends Throwable> RuntimeException sneaky(Throwable failure) throws T {
+        throw (T) failure;
+    }
+
+    @Test
+    void aHandlerThrowingACheckedExceptionIsAnswered500() throws Exception {
+        Map<String, Exception> thrown = new LinkedHashMap<>();
+        thrown.put("io", new IOException("disk gone"));
+        thrown.put("interrupted", new InterruptedException("woken by the stop deadline"));
+        EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", "orders", "maxBodyBytes", 1024));
+        consumer = (HttpComponent.HttpConsumer) http.consumer(in, (Envelope e) -> { throw sneaky(thrown.get(e.headers().get("x-case"))); });
+        consumer.start().await();
+        for (Map.Entry<String, Exception> c : thrown.entrySet()) {
+            Future<Answer> answered = raw.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + consumer.port() + "/in").setTimeout(5_000))
+                    .compose(req -> { req.putHeader("x-case", c.getKey()); return req.send(Buffer.buffer("<x/>")); })
+                    .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b.toString())));
+            try {
+                answered.otherwiseEmpty().await(10, TimeUnit.SECONDS);
+            } catch (TimeoutException pending) {
+                fail(c.getKey() + ": no answer within 10 s");
+            }
+            assertTrue(answered.succeeded(), c.getKey() + ": a handler that throws a checked exception is answered, not left hanging: " + answered.cause());
+            Answer a = answered.result();
+            assertEquals(500, a.status(), c.getKey() + ": " + a.body());
+            assertEquals(c.getValue().getMessage(), a.body(), c.getKey() + ": the body is the failure's message");
+            String contentType = a.headers().get("content-type");
+            assertTrue(contentType != null && contentType.startsWith("text/plain"), c.getKey() + ": content-type " + contentType);
+            assertNull(a.headers().get("retry-after"), c.getKey() + ": a 500 carries no retry-after");
         }
     }
 }

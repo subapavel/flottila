@@ -23,12 +23,15 @@ import java.util.function.Function;
  * beforehand; a producer reaches a consumer only through the option {@code address} of its own config and fails the send
  * with {@code "no consumer at " + address} when nothing runs there. Delivery and the {@link Ack} semantics are the mock
  * component's: a {@link Ack.Reply} answers with its reply, {@link Ack.Accepted} with the envelope sent, a {@link Ack.Nack}
- * fails the send with a {@link NackException} carrying its reason. Health is up while a consumer runs.
+ * fails the send with a {@link NackException} carrying its reason. Health is up while a consumer runs. {@link Consumer#stop()}
+ * completes when the handler answers still outstanding have completed (D-056).
  */
 final class EphemeralAddressComponent implements Component {
 
     private final AtomicInteger addresses = new AtomicInteger();
-    private final Map<String, Function<Envelope, Future<Ack>>> running = new ConcurrentHashMap<>();
+    private record Running(Function<Envelope, Future<Ack>> handler, ConsumerDrain drain) {}
+
+    private final Map<String, Running> running = new ConcurrentHashMap<>();
     private final boolean stopKeepsTheAddressRegistered;
 
     /** The correct component: {@link Consumer#stop()} unregisters the consumer's address. */
@@ -56,9 +59,9 @@ final class EphemeralAddressComponent implements Component {
         Object address = Objects.requireNonNull(cfg, "cfg").options().get("address");
         return new Producer() {
             @Override public Future<Envelope> send(Envelope e) {
-                Function<Envelope, Future<Ack>> handler = running.get(String.valueOf(address));   // no address: "null", never assigned
-                if (handler == null) return Future.failedFuture(new IllegalStateException("no consumer at " + address));
-                return handler.apply(e).compose(ack -> switch (ack) {
+                Running at = running.get(String.valueOf(address));   // no address: "null", never assigned
+                if (at == null) return Future.failedFuture(new IllegalStateException("no consumer at " + address));
+                return at.drain().track(at.handler().apply(e)).compose(ack -> switch (ack) {
                     case Ack.Reply r -> Future.succeededFuture(r.reply());
                     case Ack.Accepted a -> Future.succeededFuture(e);
                     case Ack.Nack n -> Future.failedFuture(new NackException(n.reason(), n.retryable()));
@@ -75,26 +78,26 @@ final class EphemeralAddressComponent implements Component {
     /** A consumer whose address is assigned at {@link #start()}; {@code null} before it and after {@link #stop()}. */
     final class EphemeralConsumer implements Consumer {
 
-        private final Function<Envelope, Future<Ack>> handler;
+        private final Running registered;
         private volatile String address;
 
-        private EphemeralConsumer(Function<Envelope, Future<Ack>> handler) { this.handler = handler; }
+        private EphemeralConsumer(Function<Envelope, Future<Ack>> handler) { this.registered = new Running(handler, new ConsumerDrain()); }
 
         /** The address the consumer listens on; {@code null} unless it runs. */
         String address() { return address; }
 
         @Override public Future<Void> start() {
             String assigned = "addr-" + addresses.incrementAndGet();
-            running.put(assigned, handler);
+            running.put(assigned, registered);
             address = assigned;
             return Future.succeededFuture();
         }
 
         @Override public Future<Void> stop() {
             String was = address;
-            if (was != null && !stopKeepsTheAddressRegistered) running.remove(was, handler);
+            if (was != null && !stopKeepsTheAddressRegistered) running.remove(was, registered);
             address = null;
-            return Future.succeededFuture();
+            return registered.drain().stop();
         }
     }
 }

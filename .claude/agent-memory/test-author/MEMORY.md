@@ -106,3 +106,9 @@
 - FakeTimer runs due tasks on the thread calling `advance`: after an advance wait `until(renews == k && timer.pending() == 1)` (spin, no sleep).
 - Docker works here: a Testcontainers IT can run in scratch (runtime classpath via `-pl flottila-runtime -am compile dependency:build-classpath`);
   an extra `db/migration` dir on the classpath adds a scratch Flyway migration. Scratch reference + mutants = `javac` the copied main sources.
+- Stop/cancel fixtures (P1-08c): core flow test tree `HeldPipeline` (pipeline/step holding each run in `Future.await()` until
+  `Run.reply/fail`; `awaiting()`, `awaitingThenThrowing(..)`, `stubborn(replies)` keeps the interrupt flag); testkit src/test `ConsumerDrain`
+  (draining stop for fixture components). A draining `stop()` hangs any contract case that leaves a pending answer: complete it in `finally`.
+- Never name a test fixture after a production class (core `dlq.Parking` exists). Scratch reference: compile only the copied files into a
+  fresh out dir (a stale `ref/` with old sources gave bogus constructor errors). `-Dmaven.compiler.failOnError=false` with `-am` shows a
+  downstream module's test compile errors when an upstream test tree does not compile (exit 0: read the ERROR lines).
