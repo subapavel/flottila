@@ -502,3 +502,17 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (906 tests; target
 Review: FAIL round 1 (count-before-handler and handler failure unpinned; acceptance claimed Main and drain; §7/javadoc ServiceLoader; `catch (Throwable)` in NodeIT); PASS round 2.
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 22; review rounds 2 (test-author hit the turn cap once).
 Next: P1-09d [C] — design first: at-least-once bodies across a restart (spool key per start, S3 in P2-05).
+
+## P1-09d3 · 2026-10-26 · commit `test(runtime): Main runs a node in its own process`
+Context compacted once mid-task (re-verified with `git status` and `git log -3`).
+Red: `MainIT` (4 cases, in-process: start codes 0/2/1, stopper closes node then Vert.x, also when the node's close fails) and `MainProcessIT` (5 cases, a separate JVM with the JaCoCo agent: exit 2, exit 1 on unreachable Postgres, non-daemon threads serve /health 200, SIGTERM closes the node, as witnessed by EOF in the Postgres DEBUG1 log) — target/p109d3-red-*.log.
+Changed: `Main.start` → `Started(code, node, vertx)`; `Main.stopper(node, vertx)`; the shutdown hook runs the stopper on a virtual thread and joins it without a bound of its own. The runtime pom merges the child exec into `target/jacoco-merged.exec` for the report and the floors.
+Ledger: D-058 (durable at-least-once bodies in Postgres until S3, the deploy split), F-6, ARCHITECTURE §5 + changelog 3.4, the BACKLOG split P1-09d → d1/h/d3/d2, the P1-09c migration renumbered to V7, FIX-27, FIX-28; WORKFLOW:22 names `verify -Pit` (D-030). F-6 is ledger-only here; its Deviation lands with P1-09h.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (runtime 268 tests; target/p109d3-verify2.log); coverage "no decrease", runtime back to 09a's 99.3 line (99.4 branch), baseline written.
+Mutants: M2 (the stopper does not await Vert.x's close) was killed by both MainIT stopper cases (target/p109d3-mut-M2.log); the impl mutants (vertx-first, no-finally, no-hook, no-join, invert) and `setUseDaemonThread(true)` were killed (target/p109d3-red-process-mutant-daemon.log). Accepted as surviving:
+- M1, the start-failure path's close: not observable, because `main` exits after code 1.
+- the hook thread made a daemon: equivalent, because the JVM joins every hook.
+- hook-on-platform-thread.
+Review: FAIL round 1 (ledger text: P1-09c and F-5 still said V6); PASS round 2. Follow-up FIX-28 (a stale child exec when MainProcessIT does not run).
+D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 14; review rounds 2.
+Next: P1-09d1 [C] (designer draft of 2026-10-26 in D-058).

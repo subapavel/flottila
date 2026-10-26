@@ -8,13 +8,11 @@
   GeneratedReadStream, BlockedPlatformThreadDetector / `NoBlockedPlatformThreads`.
 - End-to-end reference: flottila-runtime `flow/InvoiceSyncFlowTest` (demo package → FlowDefinition
   → FlowBuilder → FakeRuntime). Reference package: `packages/demo` (flows, fixtures, `*.test.yaml`).
-- Every new schema rule needs a negative fixture under
-  `flottila-schemas/src/test/resources/invalid/<kind>/`. Every ArchUnit rule has a fixture.
-- Two fresh id generators both mint `m-1`: an id-equality assertion can pass by accident (P1-06
-  review round 5) — assert against the id the component actually recorded.
+- Every new schema rule needs a negative fixture under `flottila-schemas/src/test/resources/invalid/<kind>/`; every ArchUnit rule a
+  fixture. Jackson YAML reads `off`/`yes`/`no` as booleans: quote them in fixtures.
+- Two fresh id generators both mint `m-1`: an id-equality assertion can pass by accident — assert the id the component recorded.
 - A timing assertion observed against wall time passes for the wrong reason (P0-04 round 1):
   drive the window from the fake clock, assert the probe saw the threshold.
-- Jackson YAML reads `off`/`yes`/`no` as booleans (P1-03 round 1): quote them in fixtures.
 - `mvn -pl <module>` alone fails to resolve sibling 0.1.0-SNAPSHOTs (not installed in ~/.m2): add `-am`
   with `-Dsurefire.failIfNoSpecifiedTests=false`. `-q` hides the counts: read target/surefire-reports/*.txt.
 - TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose
@@ -90,7 +88,6 @@
   URI (also via `ResourceRequest.resolve`). A static/use-when `collection()` in XSLT throws ClassCastException (PackageData →
   StylesheetPackage, CollectionFn.call) before any CollectionFinder; `uri-collection('..')` lists the directory. A failing static
   `unparsed-text()` stops further static vars; `unparsed-text-available()` swallows and compilation continues.
-- `mvn -o` can fail at POM load (import BOMs vertx-stack-depchain / junit-bom absent from ~/.m2, FIX-15): drop `-o`, the proxy resolves them.
 - Worker fixtures (core flow test tree, P1-08b): `RunGate` (step `gate`: holds each run until `Run.release()`, records thread → `joined()`,
   `overlaps()` per message id, `peakActive()`, `open()`), `RecordingWorkQueue` (decorates InMemoryWorkQueue: claims with max/in-flight/
   running probe, `holdNext`/`releaseHeld`, `failClaims`, `answerRenews`/`failRenews`, renews/holds/completes; one-shot `failNextClaim`,
@@ -101,7 +98,8 @@
   property method; a class-level @Timeout only draws a jqwik warning. `frequencyOf(Tuple.of(n, Arbitraries.just(new R())))` infers R:
   declare each as `Arbitrary<Iface>` first.
 - FakeTimer runs due tasks on the thread calling `advance`: after an advance wait `until(renews == k && timer.pending() == 1)` (spin, no sleep).
-- Docker works: a Testcontainers IT runs in scratch (runtime cp as above); an extra `db/migration` dir on the cp adds a scratch migration.
+- Docker works: a Testcontainers IT runs in scratch (runtime cp as above; `mvn -o` may fail on import BOMs: drop -o); an extra `db/migration`
+  dir on the cp adds a scratch migration. Ryuk/port-mapping "failed to set up container networking" (500) is a docker flake: rerun.
 - Stop/cancel fixtures (P1-08c): core flow test tree `HeldPipeline` (pipeline/step holding each run in `Future.await()` until
   `Run.reply/fail`; `awaiting()`, `awaitingThenThrowing(..)`, `stubborn(replies)` keeps the interrupt flag); testkit src/test `ConsumerDrain`
   (draining stop for fixture components). A draining `stop()` hangs any contract case that leaves a pending answer: complete it in `finally`.
@@ -117,3 +115,5 @@
   unpaused reply can end before reply() listens (~1/2000 sends under load); deterministic pin: http `HttpComponentTest.LateListeningStore`.
 - P1-09b: testkit test `ConsumerDrain.deliver` (track, then handler on own virtual thread); runtime test `node/OnVirtualThread`, `node/PlainComponent`; ArchUnit DoNotIncludeTests treats a scratch out dir as production.
 - Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic.
+- Process tests (P1-09d3 `MainProcessIT`): child cp `surefire.test.class.path`, JaCoCo agent from the test JVM's `-javaagent` arg, env cleared
+  (JAVA_TOOL_OPTIONS = stderr line); SIGTERM exit 143; "main returned" = jcmd Thread.print has DestroyJavaVM, no "main"; closed-vs-died: pg debug1 "unexpected EOF" (no Terminate).

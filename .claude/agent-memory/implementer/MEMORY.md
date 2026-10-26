@@ -32,6 +32,10 @@
   some testkit tests have no @Timeout). Never kill a running loop without restoring the mutated file from its backup (cp + touch + cmp).
 - Failsafe `-Dit.test=A,B` together with `-am` fails upstream modules ("No tests matching pattern"): add
   `-Dfailsafe.failIfNoSpecifiedTests=false` (and `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false` to skip unit tests).
+- jacoco-maven-plugin 0.8.15 `merge` (javap): fileSet lists only existing files, writes nothing when no data (report then skips),
+  saves with append=false. Runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec) since P1-09d3.
+- JaCoCo in a child JVM: a `System.exit(code)` line is always missed (no probe after it); a shutdown hook's tail races the agent's
+  own dump hook, so lines after a hook's blocking join are not reliably recorded.
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
   fixture with no test in its own module trips the 2 pp band even when other modules exercise it.
 
