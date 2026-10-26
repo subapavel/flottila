@@ -3,7 +3,7 @@
 state: SESSION_END (owner, 2026-10-19) — FIX-6 committed (`Task: FIX-6`, D-052), CI green (run 39337858206 on ab6a86e); next: FIX-15 (row 80, spec in the row)
 last commit: 58a0053 designer + settings (D-054); 6902682 D-054 docs; 3fa3585 FIX-6 close-out; ab6a86e `Task: FIX-6` (review PASS)
 branch: main
-next exact action: FIX-15 [B] — test-author on the three red cases in BACKLOG row FIX-15 (seam `encrypting(Path, OutputStream)`), implementer, verifier, reviewer
+next exact action: FIX-15 [B] — test-author on the three red cases in row FIX-15 (seam `encrypting(Path, OutputStream)`), implementer, verifier, reviewer
 then: P1-08b (worker driver, lease, attempts bound, ghost WARNING test), P1-08c (cancel), P1-09 (admin API); stop before P1-10 (Q-2 waits for P1-10)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: ab6a86e run 39337858206 green; fc10914 run 39329800061 green; 2be5c0e run 39329153094 green; 04c73ce run 39327954728 green
