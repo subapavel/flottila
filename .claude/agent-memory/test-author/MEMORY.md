@@ -21,15 +21,13 @@
 - RecordingComponent.holdNext(n) → CountDownLatch (send recorded at once, answered after countDown, no caller thread
   waits); awaitSent(n) waits on a latch (10 s bound), awaitSent(n, Duration) with its own bound. Count every hold down
   in @AfterEach. Vert.x 5 `Future.await(long, TimeUnit)` works on any thread (latch), rethrows the cause.
-- Surefire: `-Dtest=A+B` selects NO class (`+` joins methods: `A#m1+m2`); with failIfNoSpecifiedTests=false the run
-  is a silent green with stale reports. Use `-Dtest=A,B` and check the surefire-reports mtime.
+- Surefire: `-Dtest=A+B` selects NO class (silent green with stale reports): use `-Dtest=A,B`, check the surefire-reports mtime.
 - core flow tests without XML: `BuiltInStepsTest.HEADERS` (header expression language, package-visible). Core's
   `flow/HoldingMessageStore` (test tree) holds / releases / fails `record` futures, `throwNext`, `failReads`/`readsOk`,
   `recorded(stepName)`; `flow/FailingDlq` refuses parks (`failParks`/`parksOk`).
 - `System.Logger` in core tests resolves to JUL: a `java.util.logging.Handler` on `Logger.getLogger(X.class.getName())`
   sees the records. Acting inside `publish` (it runs on the logging thread, synchronously) pins "X happened before
   the log line" without a race.
-- A red upstream test tree blocks `-am` before the module under test compiles: `-fn` (fail never) lets the reactor reach it.
 - ScriptedStream records "resume" before its hooks run, so the call order is not the effective state: a pause issued in
   `beforeResume` is undone by that resume. Assert the end state through the private `paused` field (enclosing class sees it).
   A script chunk delivered inside handler() starts the sink before the attach: whether the handover resume is issued races.
@@ -103,9 +101,8 @@
 - Stop/cancel fixtures (P1-08c): core flow test tree `HeldPipeline` (pipeline/step holding each run in `Future.await()` until
   `Run.reply/fail`; `awaiting()`, `awaitingThenThrowing(..)`, `stubborn(replies)` keeps the interrupt flag); testkit src/test `ConsumerDrain`
   (draining stop for fixture components). A draining `stop()` hangs any contract case that leaves a pending answer: complete it in `finally`.
-- Never name a test fixture after a production class (core `dlq.Parking` exists). Scratch reference: compile only the copied files into a
-  fresh out dir (a stale `ref/` with old sources gave bogus constructor errors). `-Dmaven.compiler.failOnError=false` with `-am` shows a
-  downstream module's test compile errors when an upstream test tree does not compile (exit 0: read the ERROR lines).
+- Never name a test fixture after a production class (core `dlq.Parking` exists). Scratch reference: copied files only, fresh out dir.
+  `-fn` (or `-Dmaven.compiler.failOnError=false`) with `-am` reaches a downstream test compile past a red upstream test tree (exit 0: read ERROR lines).
 - Pg lock-order (deadlock) staging without sleeps (P1-09a, PgMessageStoreIT): a holder tx keeps an uncommitted payloads row (plug batch
   waits → BatchingWriter's first save with inFlight 0 goes alone, so the next `batchSize` saves form one batch) and one middle key row;
   poll `pg_stat_activity where wait_event_type='Lock'` for 1/2/3 waiters, then roll back. Unsorted inserts → 40P01, observed in scratch.
@@ -117,3 +114,6 @@
 - Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic.
 - Process tests (P1-09d3 `MainProcessIT`): child cp `surefire.test.class.path`, JaCoCo agent from the test JVM's `-javaagent` arg, env cleared
   (JAVA_TOOL_OPTIONS = stderr line); SIGTERM exit 143; "main returned" = jcmd Thread.print has DestroyJavaVM, no "main"; closed-vs-died: pg debug1 "unexpected EOF" (no Terminate).
+- jqwik: test dep of core only (not runtime at P1-09d1a); it writes `.jqwik-database` into the cwd (core's is tracked). JDK 25 ZipFile
+  (probed): reads both entries of a byte-patched duplicate name, inflates actual size whatever the CEN says, keeps `/abs` and `..` names;
+  helpers `replaced`/`claimingUncompressedSize` in runtime `deploy/PackageArchiveTest`. json-schema Basic: one violation = several problems.

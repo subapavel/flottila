@@ -113,6 +113,11 @@
       <artifactId>flottila-testkit</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>net.jqwik</groupId>
+      <artifactId>jqwik</artifactId>
+      <scope>test</scope>
+    </dependency>
     <!-- the node (F-4): runtime.node validates packages with the schemas; runtime.Main, and no other runtime class
          (archtest), wires the shipped http component, the xslt steps with the xpath language and the xsd step.
          Components and steps depend on api only, so this is no reactor cycle. -->

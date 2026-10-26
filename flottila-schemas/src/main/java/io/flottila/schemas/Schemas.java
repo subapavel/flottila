@@ -34,7 +34,11 @@ public enum Schemas {
     Schemas(String kind) {
         this.kind = kind;
         this.json = load("/schemas/" + kind + ".schema.json");
-        this.validator = Validator.create(JsonSchema.of(json), new JsonSchemaOptions()
+        this.validator = validator(json);
+    }
+
+    private static Validator validator(JsonObject schema) {
+        return Validator.create(JsonSchema.of(schema), new JsonSchemaOptions()
                 .setDraft(Draft.DRAFT202012).setBaseUri("urn:flottila:schema:").setOutputFormat(OutputFormat.Basic));
     }
 
@@ -60,7 +64,20 @@ public enum Schemas {
 
     public Report validate(JsonObject document) {
         Objects.requireNonNull(document, "document");
-        OutputUnit out = validator.validate(document);
+        return report(validator.validate(document));
+    }
+
+    /**
+     * Validates {@code document} against {@code schemaJson}, a draft 2020-12 JSON Schema given as text — a component's
+     * {@code configSchema()} for an endpoint's {@code config} — and reports as {@link #validate} does. The schema is compiled
+     * on every call: nothing is kept between calls.
+     */
+    public static Report check(String schemaJson, JsonObject document) {
+        Objects.requireNonNull(document, "document");
+        return report(validator(new JsonObject(schemaJson)).validate(document));
+    }
+
+    private static Report report(OutputUnit out) {
         if (Boolean.TRUE.equals(out.getValid())) return new Report(true, List.of());
         List<Problem> problems = new ArrayList<>();
         collect(out, problems);

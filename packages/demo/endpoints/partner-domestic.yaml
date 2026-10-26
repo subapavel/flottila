@@ -4,7 +4,8 @@ id: partner-domestic
 scheme: http
 direction: out
 config:
-  url: http://localhost:8081/echo
+  url: http://localhost:8090/echo
+  maxBodyBytes: 1048576
 environments:
   prod:
     config:

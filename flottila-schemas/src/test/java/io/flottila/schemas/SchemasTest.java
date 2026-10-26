@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -109,5 +111,35 @@ class SchemasTest {
                 """));
         assertFalse(r.valid());
         assertTrue(r.problems().stream().anyMatch(p -> p.path().startsWith("/steps/1")), r.toString());
+    }
+
+    /**
+     * P1-09d1a (D-059): a component's {@code configSchema()} is a JSON Schema string without {@code $schema} or {@code $id} (the
+     * http component's shape); {@code check} validates an endpoint's config against it and reports like {@link Schemas#validate}.
+     */
+    @Test
+    void checkValidatesAgainstAComponentSchemaString() {
+        String component = """
+                {"type":"object","required":["url"],"properties":{"url":{"type":"string"},
+                 "port":{"type":"integer","minimum":0,"maximum":65535},"maxBodyBytes":{"type":"integer","minimum":1}}}""";
+
+        Schemas.Report ok = Schemas.check(component, new JsonObject().put("url", "http://localhost:8090/echo").put("maxBodyBytes", 1_048_576));
+        assertTrue(ok.valid(), "a config none of the four file schemas would accept is valid against the component's: " + ok);
+        assertEquals(List.of(), ok.problems());
+
+        Schemas.Report tooSmall = Schemas.check(component, new JsonObject().put("url", "http://localhost:8090/echo").put("maxBodyBytes", 0));
+        assertFalse(tooSmall.valid());
+        assertTrue(tooSmall.problems().stream().anyMatch(p -> p.path().equals("/maxBodyBytes")), "the problem's pointer: " + tooSmall);
+
+        Schemas.Report wrongType = Schemas.check(component, new JsonObject().put("url", "http://localhost:8090/echo").put("port", "eighty"));
+        assertFalse(wrongType.valid());
+        assertTrue(wrongType.problems().stream().anyMatch(p -> p.path().equals("/port")), "the problem's pointer: " + wrongType);
+
+        Schemas.Report missing = Schemas.check(component, new JsonObject().put("maxBodyBytes", 5));
+        assertFalse(missing.valid());
+        assertTrue(missing.problems().stream().anyMatch(p -> p.path().equals("") && p.message().contains("url")), "the missing key at the root: " + missing);
+
+        assertTrue(Schemas.check("{\"type\":\"object\"}", new JsonObject().put("maxBodyBytes", 5)).valid(),
+                "each call validates against the schema it is given, not one it saw before");
     }
 }

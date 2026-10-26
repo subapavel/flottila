@@ -58,7 +58,7 @@ class NodeConfigTest {
                 () -> assertEquals(Duration.ofSeconds(10), c.stopDeadline()),
                 () -> assertEquals(64 * MIB, c.maxPackageBytes()),
                 () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 16), c.pg()),
-                () -> assertEquals(new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB), c.blobs()));
+                () -> assertEquals(new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), c.blobs(), "durableMax defaults to 1 MiB (D-059)"));
     }
 
     @Test
@@ -82,6 +82,7 @@ class NodeConfigTest {
         env.put("FLOTTILA_BLOB_TREE_LIMIT", "4194304");
         env.put("FLOTTILA_BLOB_MEMORY_TIER", "524288");
         env.put("FLOTTILA_BLOB_MEMORY_BUDGET", "8589934592");   // 8 GiB: sizes are long
+        env.put("FLOTTILA_BLOB_DURABLE_MAX", "2097152");
         NodeConfig c = NodeConfig.from(env);
         assertAll(
                 () -> assertEquals("edge-7", c.nodeId(), "FLOTTILA_NODE_ID wins over $HOSTNAME"),
@@ -92,7 +93,7 @@ class NodeConfigTest {
                 () -> assertEquals(Duration.ofSeconds(90), c.stopDeadline(), "ISO-8601"),
                 () -> assertEquals(MIB, c.maxPackageBytes()),
                 () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32), c.pg()),
-                () -> assertEquals(new NodeConfig.Blobs(4 * MIB, 512 * 1024, 8 * GIB), c.blobs()));
+                () -> assertEquals(new NodeConfig.Blobs(4 * MIB, 512 * 1024, 8 * GIB, 2 * MIB), c.blobs()));
     }
 
     @Test
@@ -133,7 +134,10 @@ class NodeConfigTest {
                         "FLOTTILA_BLOB_MEMORY_TIER"),
                 Arguments.of("memory tier above the configured memory budget",
                         with(with(minimal(), "FLOTTILA_BLOB_MEMORY_BUDGET", String.valueOf(4 * MIB)), "FLOTTILA_BLOB_MEMORY_TIER", String.valueOf(4 * MIB + 1)),
-                        "FLOTTILA_BLOB_MEMORY_TIER"));
+                        "FLOTTILA_BLOB_MEMORY_TIER"),
+                Arguments.of("blob durable max 0", with(minimal(), "FLOTTILA_BLOB_DURABLE_MAX", "0"), "FLOTTILA_BLOB_DURABLE_MAX"),
+                Arguments.of("blob durable max above 64 MiB", with(minimal(), "FLOTTILA_BLOB_DURABLE_MAX", String.valueOf(64 * MIB + 1)), "FLOTTILA_BLOB_DURABLE_MAX"),
+                Arguments.of("blob durable max not a number", with(minimal(), "FLOTTILA_BLOB_DURABLE_MAX", "1MiB"), "FLOTTILA_BLOB_DURABLE_MAX"));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -156,7 +160,9 @@ class NodeConfigTest {
                 Arguments.of("FLOTTILA_NODE_ID", sixtyThree, (Function<NodeConfig, Object>) NodeConfig::nodeId, sixtyThree),
                 Arguments.of("FLOTTILA_BLOB_MEMORY_TIER", String.valueOf(256 * MIB), (Function<NodeConfig, Object>) c -> c.blobs().memoryTier(), 256 * MIB),
                 Arguments.of("FLOTTILA_BLOB_TREE_LIMIT", String.valueOf(Integer.MAX_VALUE), (Function<NodeConfig, Object>) c -> c.blobs().treeLimit(),
-                        (long) Integer.MAX_VALUE));
+                        (long) Integer.MAX_VALUE),
+                Arguments.of("FLOTTILA_BLOB_DURABLE_MAX", "1", (Function<NodeConfig, Object>) c -> c.blobs().durableMax(), 1L),
+                Arguments.of("FLOTTILA_BLOB_DURABLE_MAX", String.valueOf(64 * MIB), (Function<NodeConfig, Object>) c -> c.blobs().durableMax(), 64 * MIB));
     }
 
     @ParameterizedTest(name = "{0}={1}")

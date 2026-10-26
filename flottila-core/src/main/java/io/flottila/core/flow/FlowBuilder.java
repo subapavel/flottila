@@ -86,6 +86,7 @@ public final class FlowBuilder {
     private Meter meter;
     private Dlq dlq;
     private WorkQueue queue;
+    private Map<String, String> extraVersions = Map.of();
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -117,6 +118,18 @@ public final class FlowBuilder {
         return this;
     }
 
+    /**
+     * Configuration versions every message of the flows built from now on carries beside the flow's own, on its snapshots and
+     * DLQ rows — a deploy's {@code package=<name>@<version>} and {@code revision} (D-059); they replace those of an earlier call.
+     * The {@code flow} key is the builder's to write: an {@link IllegalArgumentException}.
+     */
+    public FlowBuilder versions(Map<String, String> extra) {
+        Map<String, String> copy = Map.copyOf(extra);
+        if (copy.containsKey("flow")) throw new IllegalArgumentException("the 'flow' version is the flow's own id@version, written by the builder; extra versions may not set it: " + copy);
+        this.extraVersions = copy;
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the flow file's directory). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
         return Pipeline.of(stages(flow, baseDir, true));
@@ -140,7 +153,7 @@ public final class FlowBuilder {
             case "at-least-once" -> {
                 requireStoreAndQueue(flow, "delivery");
                 requireDlq(flow);
-                Recorder recorder = new Recorder(store, runtime.clock(), meter, versions(flow));
+                Recorder recorder = new Recorder(store, runtime.clock(), meter, versionsOf(flow));
                 yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
                         store, queue, runtime.timer(), flow.saveTimeout());
             }
@@ -165,7 +178,7 @@ public final class FlowBuilder {
         requireStoreAndQueue(flow, "worker");
         requireDlq(flow);
         int max = (int) Math.min(inFlightRequests(flow), Integer.MAX_VALUE);
-        Parking parking = new Parking(dlq, runtime.clock(), versions(flow));
+        Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
         return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), Pipeline.of(stages(flow, baseDir, false)),
                 parking, flow.steps().get(0), runtime.timer());
     }
@@ -179,9 +192,11 @@ public final class FlowBuilder {
         if (dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' is at-least-once and needs a DLQ to park failed messages in: call dlq(...) first");
     }
 
-    /** The configuration versions a message runs with, on its snapshots and DLQ rows. */
-    private static Map<String, String> versions(FlowDefinition flow) {
-        return Map.of("flow", flow.id() + "@" + flow.version());
+    /** The configuration versions a message runs with, on its snapshots and DLQ rows: the flow's own and those of {@link #versions(Map)}. */
+    private Map<String, String> versionsOf(FlowDefinition flow) {
+        Map<String, String> all = new HashMap<>(extraVersions);
+        all.put("flow", flow.id() + "@" + flow.version());
+        return Map.copyOf(all);
     }
 
     /** The default byte budget: {@code requests} bodies of {@code maxBodyBytes}; one that does not fit a {@code long} is a configuration error. */
@@ -244,7 +259,7 @@ public final class FlowBuilder {
 
     private Built built(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
-        Map<String, String> versions = versions(flow);
+        Map<String, String> versions = versionsOf(flow);
         boolean parks = "at-least-once".equals(flow.deliveryMode());
         if (parks) requireDlq(flow);
         Parking parking = parks ? new Parking(dlq, runtime.clock(), versions) : null;

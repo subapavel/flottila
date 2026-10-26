@@ -516,3 +516,27 @@ Mutants: M2 (the stopper does not await Vert.x's close) was killed by both MainI
 Review: FAIL round 1 (ledger text: P1-09c and F-5 still said V6); PASS round 2. Follow-up FIX-28 (a stale child exec when MainProcessIT does not run).
 D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 14; review rounds 2.
 Next: P1-09d1 [C] (designer draft of 2026-10-26 in D-058).
+
+## P1-09d1a · 2026-10-26 · commit `feat(schemas,runtime): package problems, safe archive unpack and version stamps`
+Red: schemas `PackageTest` (problems with file and pointer, duplicate flow/endpoint ids, demo has no problems, schema-refused flow and mistyped step fields as problems not exceptions, package-relative paths), `SchemasTest.checkValidatesAgainstAComponentSchemaString`; core `FlowBuilderTest.versionsReachEverySnapshotAndDlqRow`/`versionsRefuseTheFlowKey`; runtime `NodeConfigTest` (durableMax), `PackageArchiveTest` (16 cases + jqwik `noEntryNameWritesOutsideTheTarget`), `DemoBindingsTest` — target/p109d1a-red*.log.
+Changed:
+- schemas `Package.problems()` and `Schemas.check`. crossCheck reads only schema-valid documents, with type guards.
+- core `FlowBuilder.versions`.
+- `NodeConfig` `FLOTTILA_BLOB_DURABLE_MAX`, 1 B..64 MiB, default 1 MiB.
+- runtime `deploy.PackageArchive`: check pass, then a counted inflate pass, then write; refusals are IAE.
+- demo partners on 8090 with `maxBodyBytes`.
+- Outside the packet's paths: runtime pom jqwik (EPL-2.0, test scope, version managed) and `flottila-runtime/.jqwik-database` (regenerated clean).
+Ledger:
+- D-059 (deploy, first version) and D-060 (owner's request: `<package>/<flow>` identity, `GET /admin/packages`, effective-hash redeploy, folders P2-02a, dependencies P2-02b).
+- ARCHITECTURE §9 sentence plus changelog lines.
+- BACKLOG: d1 split into d1a/d1b; P2-05 deps listed explicitly.
+- Packet at agent/packets/P1-09d1.md.
+Checks:
+- Whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS: verifier r1 (target/p109d1a-verify.log); impl round 3 (target/p109d1a-impl3-verify.log, `-q`). The surefire/failsafe XMLs sum to 960 tests, 0 failures, errors or skips; the implementer counted 951, and the XML sum may include reports from modules it did not count.
+- Coverage "no decrease"; schemas 98.7/97.7; baseline written.
+- PIT core FlowBuilder 90/92 (survivors :220/:250 pre-existing).
+- Reviewer mutants a, b1–b4, c1–c4, d and e1–e4 killed (target/p109d1a-impl3-mut-*.log).
+Accepted: a coercion confined to `stylesheet`/`schema` still gives a 422 naming the file and field (pinned in d1b).
+Review: FAIL round 1 (crossCheck cast on a schema-valid step, nothing-written unpinned, §7→§9, accessors row, a stale P1-09d1 reference); PASS round 2. Non-blocking items moved to the d1b packet.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 24; review rounds 2.
+Next: P1-09d1b [C] (packet agent/packets/P1-09d1.md, D-060 amendment).

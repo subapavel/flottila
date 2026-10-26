@@ -13,6 +13,12 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.core.dlq.InMemoryDlq;
+import io.flottila.core.dlq.Parked;
+import io.flottila.core.dlq.ParkedException;
+import io.flottila.core.queue.InMemoryWorkQueue;
+import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -20,9 +26,12 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -151,5 +160,105 @@ class FlowBuilderTest {
         // Map.of has no fixed iteration order: the first build resolved both endpoints (in either order), the second only 'dom'
         assertEquals(java.util.Set.of("dom", "for"), new java.util.HashSet<>(echo.producersBuilt.subList(0, 2)), "producers are resolved per build, for the endpoints the flow names");
         assertEquals(List.of("dom"), echo.producersBuilt.subList(2, 3));
+    }
+
+    // --- versions (P1-09d1a, D-059): the deploy adds package=<name>@<version> and revision to the flow's own versions
+
+    static final Map<String, String> DEPLOYED = Map.of("package", "shop@2.3.0", "revision", "9f8e7d6");
+    static final Map<String, String> MERGED = Map.of("flow", "f@1.0.0", "package", "shop@2.3.0", "revision", "9f8e7d6");
+    static final Duration LEASE = Duration.ofSeconds(30);
+
+    static Map<String, Object> versionedFlow(String mode) {
+        Map<String, Object> doc = new java.util.HashMap<>(flow(List.of(Map.of("type", "mark", "name", "a"), Map.of("type", "partner", "name", "p"))));
+        doc.put("delivery", Map.of("mode", mode));
+        doc.put("limits", Map.of("maxBodyBytes", 4096, "maxInFlight", 4));
+        return doc;
+    }
+
+    static List<Integer> steps(List<Snapshot> timeline) {
+        return timeline.stream().map(Snapshot::step).toList();
+    }
+
+    static void assertVersions(List<Snapshot> timeline, String what) {
+        for (Snapshot s : timeline) assertEquals(MERGED, s.versions(), what + ", snapshot of step " + s.step() + " (" + s.stepName() + ")");
+    }
+
+    /**
+     * Every place the builder hands the flow's versions on carries the extra ones beside {@code flow}: the sync pipeline's
+     * snapshots (ingress and steps), a replay's snapshots, an at-least-once pipeline's DLQ row when a step fails, the at-least-once
+     * delivery's ingress snapshot, the worker's snapshots and the worker's DLQ row for an item past its attempts.
+     */
+    @Test
+    void versionsReachEverySnapshotAndDlqRow() throws Exception {
+        InMemoryMessageStore store = new InMemoryMessageStore();
+        InMemoryDlq dlq = new InMemoryDlq();
+        InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
+        AtomicBoolean partnerDown = new AtomicBoolean();
+        FlowBuilder b = new FlowBuilder(rt.runtime(), List.of(
+                factory("mark", s -> Stage.of(e -> e.withHeader("seen-" + s.name(), "yes"))),
+                factory("partner", s -> Stage.of(e -> { if (partnerDown.get()) throw new IllegalStateException("partner down"); return e; }))),
+                List.of(), Map.of()).recording(store, () -> 0).dlq(dlq).queue(queue).versions(DEPLOYED);
+
+        // sync: the ingress and both steps, then a replay of step 2 as a new message
+        FlowDefinition sync = FlowDefinition.from(versionedFlow("sync"));
+        Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>"));
+        b.build(sync, NO_FILES).apply(in);
+        List<Snapshot> synced = store.timeline(in.id()).await();
+        assertEquals(List.of(0, 1, 2), steps(synced), "fixture: the ingress and both steps recorded");
+        assertVersions(synced, "sync");
+        Envelope replayed = b.replay(sync, NO_FILES).from(in.id(), 2);
+        List<Snapshot> replay = store.timeline(replayed.id()).await();
+        assertEquals(List.of(1, 2), steps(replay), "fixture: the replay's input and step 2 recorded");
+        assertVersions(replay, "replay");
+
+        // at-least-once pipeline: a failing step is parked
+        FlowDefinition atLeastOnce = FlowDefinition.from(versionedFlow("at-least-once"));
+        partnerDown.set(true);
+        Envelope failing = rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>"));
+        assertThrows(ParkedException.class, () -> b.build(atLeastOnce, NO_FILES).apply(failing));
+        Parked parkedByStep = dlq.get(failing.id()).await().orElseThrow(() -> new AssertionError("fixture: the failing step was parked"));
+        assertEquals("p", parkedByStep.stepName());
+        assertEquals(MERGED, parkedByStep.versions(), "the DLQ row of a failed step");
+        assertVersions(store.timeline(failing.id()).await(), "parked message");
+
+        // at-least-once delivery and worker: 'exhausted' had one claim already (attempt 1 of 1), 'runs' none
+        Delivery delivery = b.delivery(atLeastOnce, NO_FILES);
+        Envelope exhausted = rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>"));
+        assertEquals(new Ack.Accepted(exhausted.id()), delivery.apply(exhausted).await());
+        assertEquals(1, queue.claim("another-worker", "f", 1, LEASE).await().size(), "fixture: the first attempt is claimed elsewhere");
+        rt.clock().advance(LEASE);
+        partnerDown.set(false);
+        Envelope runs = rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>"));
+        assertEquals(new Ack.Accepted(runs.id()), delivery.apply(runs).await());
+        FlowWorker worker = b.worker(atLeastOnce, NO_FILES, "w1", new WorkerPolicy(LEASE, 1, Duration.ofSeconds(1)));
+        try {
+            assertEquals(2, worker.poll().await(5, TimeUnit.SECONDS), "fixture: both items claimed in one round");
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (queue.size() > 0 || dlq.size() < 2) {
+                if (System.nanoTime() - deadline > 0) throw new AssertionError("not settled within 5 s: queue " + queue.snapshot() + ", DLQ rows " + dlq.size());
+                Thread.onSpinWait();
+            }
+        } finally {
+            worker.stop();
+        }
+        Parked parkedByWorker = dlq.get(exhausted.id()).await().orElseThrow(() -> new AssertionError("fixture: the item past its attempts was parked"));
+        assertTrue(parkedByWorker.error().contains("AttemptsExhaustedException"), "fixture: parked by the worker's attempts bound: " + parkedByWorker.error());
+        assertEquals(MERGED, parkedByWorker.versions(), "the DLQ row of an item past its attempts");
+        List<Snapshot> accepted = store.timeline(exhausted.id()).await();
+        assertEquals(List.of(0), steps(accepted), "fixture: the delivery's ingress snapshot, no run");
+        assertVersions(accepted, "at-least-once ingress");
+        List<Snapshot> ran = store.timeline(runs.id()).await();
+        assertEquals(List.of(0, 1, 2), steps(ran), "fixture: the delivery's ingress snapshot and the worker's two steps");
+        assertVersions(ran, "worker run");
+    }
+
+    @Test
+    void versionsRefuseTheFlowKey() {
+        FlowBuilder b = new FlowBuilder(rt.runtime(), List.of(), List.of(), Map.of());
+        IllegalArgumentException alone = assertThrows(IllegalArgumentException.class, () -> b.versions(Map.of("flow", "other@9.9.9")),
+                "the flow's own version is the builder's to write");
+        assertTrue(String.valueOf(alone.getMessage()).contains("flow"), "names the key: " + alone.getMessage());
+        assertThrows(IllegalArgumentException.class, () -> b.versions(Map.of("package", "shop@2.3.0", "flow", "other@9.9.9")),
+                "refused beside other keys too");
     }
 }

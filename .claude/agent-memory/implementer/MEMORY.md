@@ -36,6 +36,9 @@
   saves with append=false. Runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec) since P1-09d3.
 - JaCoCo in a child JVM: a `System.exit(code)` line is always missed (no probe after it); a shutdown hook's tail races the agent's
   own dump hook, so lines after a hook's blocking join are not reliably recorded.
+- Mutant loop runs offline (`-o`) fine: `-pl <m> -am test -Dtest=..` is ~5 s (schemas/core) to ~12 s (runtime) per mutant.
+- Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
+  a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
   fixture with no test in its own module trips the 2 pp band even when other modules exercise it.
 
@@ -75,6 +78,9 @@
 - Vert.x 5.1.10 source: `Future.future(h)` fails its promise with what `h` throws (null answer included); `compose` with a
   mapper that returns null throws NPE inside a listener and the composed future NEVER completes. `VertxOptions.setUseDaemonThread`
   (default null: Vert.x threads inherit the daemon flag of the thread that first runs them — a virtual thread's is true).
+
+- JDK 25 ZipFile (javap + probe, P1-09d1a): no-zip / empty / truncated file → ZipException at open; corrupt deflate data →
+  ZipException on read; zeroed deflate bytes inflated to 8 wrong bytes with no error (no CRC check); `size()` matched 10 000/10 001.
 
 ## Findings that came back in review
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer

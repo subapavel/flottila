@@ -58,9 +58,11 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param treeLimit {@code FLOTTILA_BLOB_TREE_LIMIT} (8 MiB)
      * @param memoryTier {@code FLOTTILA_BLOB_MEMORY_TIER} (1 MiB)
      * @param memoryBudget {@code FLOTTILA_BLOB_MEMORY_BUDGET} (256 MiB)
+     * @param durableMax {@code FLOTTILA_BLOB_DURABLE_MAX} (1 MiB, at most 64 MiB): the largest max body an at-least-once flow
+     *                   may declare (D-058, D-059)
      * @since 0.1
      */
-    public record Blobs(long treeLimit, long memoryTier, long memoryBudget) {}
+    public record Blobs(long treeLimit, long memoryTier, long memoryBudget, long durableMax) {}
 
     private static final long MIB = 1024L * 1024;
     private static final long GIB = 1024 * MIB;
@@ -85,7 +87,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         if (memoryTier > memoryBudget) {
             throw new IllegalArgumentException("FLOTTILA_BLOB_MEMORY_TIER " + memoryTier + " is above FLOTTILA_BLOB_MEMORY_BUDGET " + memoryBudget);
         }
-        Blobs blobs = new Blobs(number(env, "FLOTTILA_BLOB_TREE_LIMIT", 8 * MIB, 1, Integer.MAX_VALUE), memoryTier, memoryBudget);
+        Blobs blobs = new Blobs(number(env, "FLOTTILA_BLOB_TREE_LIMIT", 8 * MIB, 1, Integer.MAX_VALUE), memoryTier, memoryBudget,
+                number(env, "FLOTTILA_BLOB_DURABLE_MAX", MIB, 1, 64 * MIB));
         return new NodeConfig(nodeId, name, admin,
                 Path.of(env.getOrDefault("FLOTTILA_DATA_DIR", "/var/lib/flottila")), stopDeadline(env),
                 number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs);
