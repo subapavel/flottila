@@ -15,6 +15,7 @@ import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
+import io.flottila.core.record.Page;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
@@ -219,7 +220,7 @@ class FlowWorkerTest {
 
         /** The single DLQ row. */
         Parked parkedRow() {
-            List<Parked> all = parked.list().await();
+            List<Parked> all = parked.list(Optional.empty(), Page.MAX_LIMIT).await().items();
             assertEquals(1, all.size(), "one DLQ row: " + all);
             return all.get(0);
         }
@@ -786,7 +787,7 @@ class FlowWorkerTest {
         }
         assertEquals(maxAttempts, w.partner.sent().size(), "no endless send");
         assertEquals(1, logs.at(Level.SEVERE, in.id()).size(), "one alert, not one per lease");
-        assertEquals(List.of(), w.parked.list().await());
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items());
         assertEquals(1, w.queue.holds().size());
         assertEquals(1, w.rows.size());
     }
@@ -809,7 +810,7 @@ class FlowWorkerTest {
         assertEquals(1, errors.size(), "one ERROR naming the message: " + logs.all());
         assertTrue(errors.get(0).contains("orders") && errors.get(0).contains("pg away"), errors.get(0));
         assertEquals(0, w.gate.entered());
-        assertEquals(List.of(), w.parked.list().await());
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items());
 
         w.store.readsOk();
         w.rt.clock().advance(LEASE);
@@ -864,7 +865,7 @@ class FlowWorkerTest {
         assertFalse(logs.at(Level.WARNING, "ghost").isEmpty(), "a WARNING naming the message: " + logs.all());
         assertEquals(List.of(), logs.at(Level.SEVERE, "ghost"));
         assertEquals(0, w.gate.entered());
-        assertEquals(List.of(), w.parked.list().await());
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items());
     }
 
     @Test
@@ -881,7 +882,7 @@ class FlowWorkerTest {
         assertEquals(0, w.rows.size(), "a ghost past the bound is completed like any ghost");
         assertEquals(List.of(), w.queue.holds(), "not held: there is nothing a human could retry");
         assertFalse(logs.at(Level.WARNING, "ghost").isEmpty(), "a WARNING naming the message: " + logs.all());
-        assertEquals(List.of(), w.parked.list().await());
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items());
     }
 
     // --- the policy

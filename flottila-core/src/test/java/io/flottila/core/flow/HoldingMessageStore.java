@@ -1,6 +1,7 @@
 package io.flottila.core.flow;
 
 import io.flottila.core.record.MessageStore;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -10,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A {@link MessageStore} decorator whose saves the test decides on: after {@link #hold()} every {@link #record} is kept
@@ -109,8 +111,8 @@ final class HoldingMessageStore implements MessageStore {
     }
 
     @Override
-    public Future<List<String>> findByKey(String name, String value) {
+    public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
         Throwable failure = readFailure;
-        return failure != null ? Future.failedFuture(failure) : delegate.findByKey(name, value);
+        return failure != null ? Future.failedFuture(failure) : delegate.findByKey(name, value, after, limit);
     }
 }

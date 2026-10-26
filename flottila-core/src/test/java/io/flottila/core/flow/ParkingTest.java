@@ -13,6 +13,7 @@ import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
@@ -85,7 +86,7 @@ class ParkingTest {
         assertEquals(in.body().key(), parked.bodyKey(), "by reference, whatever the recording payload setting");
         assertEquals(Map.of("flow", "f@1.0.0"), parked.versions());
         assertTrue(e.getCause() instanceof IllegalStateException && e.getCause().getMessage().equals("boom at x"), "the failure travels as the cause");
-        assertEquals(List.of(parked), dlq.list().await(), "durable before the exception surfaces");
+        assertEquals(List.of(parked), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "durable before the exception surfaces");
         List<Snapshot> t = store.timeline(in.id()).await();
         assertEquals(List.of("ingress", "a", "x"), t.stream().map(Snapshot::stepName).toList(), "the FAILED snapshot is recorded as well");
         assertEquals(Snapshot.Outcome.FAILED, t.get(2).outcome());
@@ -98,10 +99,10 @@ class ParkingTest {
         assertEquals("boom at x", sync.getMessage());
         IllegalStateException atMostOnce = assertThrows(IllegalStateException.class, () -> builder(dlq).build(FlowDefinition.from(flow("at-most-once", MARK_THEN_BOOM)), Path.of("")).apply(in()));
         assertEquals("boom at x", atMostOnce.getMessage());
-        assertEquals(List.of(), dlq.list().await());
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items());
         Envelope fine = builder(dlq).build(FlowDefinition.from(flow("at-least-once", List.of(Map.of("type", "mark", "name", "a")))), Path.of("")).apply(in());
         assertEquals("yes", fine.header("seen-a").orElseThrow(), "a message that goes through is never parked");
-        assertEquals(List.of(), dlq.list().await());
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items());
     }
 
     @Test
@@ -116,7 +117,7 @@ class ParkingTest {
     void aParkThatFailsSurfacesTheOriginalFailureWithTheParkFailureSuppressed() {
         Dlq broken = new Dlq() {
             @Override public Future<Void> park(Parked p) { return Future.failedFuture(new IllegalStateException("dlq down")); }
-            @Override public Future<List<Parked>> list() { return Future.succeededFuture(List.of()); }
+            @Override public Future<Page<Parked>> list(Optional<String> after, int limit) { return Future.succeededFuture(new Page<>(List.of(), Optional.empty())); }
             @Override public Future<Optional<Parked>> get(String id) { return Future.succeededFuture(Optional.empty()); }
             @Override public Future<Void> remove(String id) { return Future.succeededFuture(); }
         };

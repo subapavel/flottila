@@ -473,3 +473,14 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (760/0; target/p10
 Review: FAIL round 1 (F-3 / changelog / Deviation missing; the finite shutdown default pinned only by `assertDoesNotThrow`); PASS round 2. Vert.x API checked by `javap` on vertx-core 5.1.10 (Context7: ISSUE-1).
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 30; review rounds 2 (test-author and reviewer each hit the turn cap once and were resumed).
 Next: P1-09 [B] (admin API).
+
+## P1-09a · 2026-10-26 · commit `feat(runtime): admin read API with paged key search and DLQ`
+Context compacted once during this task (re-verified with `git status`, `git log -3`, HANDOFF).
+Red: core `PageTest`, `FindByKeyPagingPropertyTest` (jqwik), `InMemoryMessageStoreTest`/`InMemoryDlqTest` paging cases; runtime `AdminServerTest` (27), `PgMessageStoreIT`, `PgDlqIT`, `MigrationsIT` (V5) — EXECUTED_FAIL (target/p109a-red-*.log, round 2 target/p109a-red2-maven.log).
+Changed: D-057 (a) (in-memory DLQ cursor amended to parkedAt + id); core `Page`, paged `MessageStore.findByKey` / `Dlq.list` (unbounded methods removed, call sites migrated); `V5__admin_paging.sql` (key seq, dedup, unique + partial indexes); Pg stores sorted, deduplicated key inserts; `runtime.admin.AdminServer` on vertx-web (javap-checked, EPL-2.0/Apache-2.0), loopback + bearer token, routes on virtual threads, answers on the context.
+Expectation fixes (approved): MigrationsIT 4→5 migrations, PgMessageStoreIT and BenchMainIT schema "5".
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/p109a-verify3.log) after one EXECUTED_FAIL (target/p109a-verify2.log: `InvoiceSyncHttpTest` hung 60 s again — FIX-21, second sighting); coverage "no decrease" VERIFIED_PASS, baseline written; scoped PIT 37/37 (target/p109a-pit2.log); reviewer mutants M1–M3 killed (target/p109a-rev-M*.log).
+Review: FAIL round 1 (blob stream failure after the head hung the client; missing object answered 400; send stage outside the catch; amended in-memory cursor clause untested in core; "answers on the context" unpinned); PASS round 2. Accepted: the `send()` guard as defence in depth (2 equivalent mutants, 3 unreachable lines).
+Follow-ups: FIX-22 (http pipe), FIX-23 (health deadline), FIX-24 (admin error-mapping nits).
+D-054 data: class C (designer, test-author, implementer, verifier, reviewer opus/xhigh); architect turns 24; review rounds 2.
+Next: FIX-21 [B] (second hang sighting), then P1-09b [C].

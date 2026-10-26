@@ -3,6 +3,7 @@ package io.flottila.core.flow;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
+import io.flottila.core.record.Page;
 import io.vertx.core.Future;
 
 import java.util.List;
@@ -40,7 +41,7 @@ final class FailingDlq implements Dlq {
         return failure != null ? Future.failedFuture(failure) : delegate.park(parked);
     }
 
-    @Override public Future<List<Parked>> list() { return delegate.list(); }
+    @Override public Future<Page<Parked>> list(Optional<String> after, int limit) { return delegate.list(after, limit); }
 
     @Override public Future<Optional<Parked>> get(String messageId) { return delegate.get(messageId); }
 

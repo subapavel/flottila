@@ -7,13 +7,17 @@ import io.flottila.api.Keys;
 import io.flottila.api.Props;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The in-memory MessageStore (tests, bench, the CLI's dry run): the same contract the Postgres one keeps. */
 class InMemoryMessageStoreTest {
@@ -45,10 +49,62 @@ class InMemoryMessageStoreTest {
         store.record(snap("m-2", 1, "k", Keys.empty().with("invoiceId", "4712"))).await();
         store.record(snap("m-3", 1, "k", Keys.empty().with("invoiceId", "4711").with("orderNo", "9"))).await();
         store.record(snap("m-1", 2, "k2", Keys.empty().with("invoiceId", "4711"))).await();
-        assertEquals(List.of("m-1", "m-3"), store.findByKey("invoiceId", "4711").await());
-        assertEquals(List.of("m-3"), store.findByKey("orderNo", "9").await());
-        assertEquals(List.of(), store.findByKey("invoiceId", "0").await());
+        assertEquals(List.of("m-1", "m-3"), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items());
+        assertEquals(List.of("m-3"), store.findByKey("orderNo", "9", Optional.empty(), Page.MAX_LIMIT).await().items());
+        assertEquals(List.of(), store.findByKey("invoiceId", "0", Optional.empty(), Page.MAX_LIMIT).await().items());
         assertThrows(NullPointerException.class, () -> store.record(null));
+    }
+
+    static Page<String> page(InMemoryMessageStore store, String value, Optional<String> after, int limit) {
+        return store.findByKey("invoiceId", value, after, limit).await();
+    }
+
+    @Test
+    void aMessageRecordedAtManyStepsIsFoundOnce() {
+        for (int step = 0; step < 5; step++) store.record(snap("m-1", step, "s" + step, Keys.empty().with("invoiceId", "4711"))).await();
+        store.record(snap("m-2", 1, "s1", Keys.empty().with("invoiceId", "4711"))).await();
+        store.record(snap("m-1", 7, "s7", Keys.empty().with("invoiceId", "4711"))).await();
+        assertEquals(List.of("m-1", "m-2"), page(store, "4711", Optional.empty(), Page.MAX_LIMIT).items(), "once each, in the order each first carried the key");
+        Page<String> first = page(store, "4711", Optional.empty(), 1);
+        assertEquals(List.of("m-1"), first.items());
+        Page<String> second = page(store, "4711", first.next(), 1);
+        assertEquals(List.of("m-2"), second.items(), "m-1's later steps do not come back on a later page");
+        assertEquals(Optional.empty(), second.next());
+    }
+
+    @Test
+    void theLastPageHasNoNextCursor() {
+        for (String id : List.of("m-1", "m-2", "m-3")) store.record(snap(id, 0, "ingress", Keys.empty().with("invoiceId", "4711"))).await();
+        Page<String> exact = page(store, "4711", Optional.empty(), 3);
+        assertEquals(List.of("m-1", "m-2", "m-3"), exact.items());
+        assertEquals(Optional.empty(), exact.next(), "exactly limit items left: limit + 1 fetch, no empty page after");
+        assertEquals(Optional.empty(), page(store, "4711", Optional.empty(), 4).next());
+        Page<String> first = page(store, "4711", Optional.empty(), 2);
+        assertEquals(List.of("m-1", "m-2"), first.items());
+        assertTrue(first.next().isPresent(), "a third item exists");
+        Page<String> last = page(store, "4711", first.next(), 2);
+        assertEquals(List.of("m-3"), last.items());
+        assertEquals(Optional.empty(), last.next());
+        Page<String> none = page(store, "0", Optional.empty(), 2);
+        assertEquals(List.of(), none.items());
+        assertEquals(Optional.empty(), none.next());
+    }
+
+    @Test
+    void aGarbledCursorOrLimitOutsideOneToFiveHundredIsRefused() {
+        store.record(snap("m-1", 0, "ingress", Keys.empty().with("invoiceId", "4711"))).await();
+        store.record(snap("m-2", 0, "ingress", Keys.empty().with("invoiceId", "4711"))).await();
+        for (int limit : new int[] {0, -1, Page.MAX_LIMIT + 1, Integer.MIN_VALUE}) refused(() -> page(store, "4711", Optional.empty(), limit), "limit " + limit);
+        String notANumber = Base64.getUrlEncoder().withoutPadding().encodeToString("x".getBytes(StandardCharsets.UTF_8));
+        for (String cursor : List.of("!!!", notANumber)) refused(() -> page(store, "4711", Optional.of(cursor), 1), "cursor " + cursor);
+        assertEquals(List.of("m-1"), page(store, "4711", Optional.empty(), 1).items(), "1 is a limit");
+        assertEquals(List.of("m-1", "m-2"), page(store, "4711", Optional.empty(), Page.MAX_LIMIT).items(), "500 is a limit");
+    }
+
+    /** Refused with IllegalArgumentException (the admin API's 400), thrown at the call or as the failed future's cause. */
+    static void refused(org.junit.jupiter.api.function.Executable call, String what) {
+        Throwable t = assertThrows(Throwable.class, call, what + " is refused");
+        assertInstanceOf(IllegalArgumentException.class, t, what + ": " + t);
     }
 
     @Test

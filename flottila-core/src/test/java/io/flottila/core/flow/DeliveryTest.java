@@ -17,6 +17,7 @@ import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.RecordingComponent;
@@ -303,7 +304,7 @@ class DeliveryTest {
         assertEquals(1, queue.size());
         assertEquals(1, worker.poll().await(), "the item is claimed and counted as processed");
         assertEquals(0, queue.size(), "completed, never a poison loop: no lease expiry hands it back");
-        assertEquals(List.of(), dlq.list().await(), "nothing to park: there is no message to retry from");
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing to park: there is no message to retry from");
         assertEquals(List.of(), partner.sent(), "nothing reached the partner");
     }
 
@@ -330,7 +331,7 @@ class DeliveryTest {
         assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
         assertEquals(1, worker.poll().await(), "a parked message counts as processed");
         assertEquals(1, partner.sent().size());
-        List<Parked> parked = dlq.list().await();
+        List<Parked> parked = dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(1, parked.size());
         assertEquals(in.id(), parked.get(0).messageId());
         assertEquals("partner", parked.get(0).stepName());
@@ -388,7 +389,7 @@ class DeliveryTest {
         Envelope in = ingress(ORDER);
         assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
         partner.awaitSent(1);
-        assertEquals(List.of(), dlq.list().await(), "nothing parked");
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing parked");
         assertEquals(0, queue.size(), "nothing queued");
     }
 
@@ -423,14 +424,14 @@ class DeliveryTest {
         assertEquals(1, left.size(), "the sender had its 202: a message the DLQ could not take stays queued");
         assertEquals(in.id(), left.get(0).messageId());
         assertEquals("orders", left.get(0).flow());
-        assertEquals(List.of(), failing.list().await(), "nothing parked");
+        assertEquals(List.of(), failing.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing parked");
         worker.poll().otherwiseEmpty().await();
         assertEquals(1, partner.sent().size(), "leased: not run again before the lease runs out");
 
         failing.parksOk();
         rt.clock().advance(WorkerPolicy.DEFAULT.lease());
         worker.poll().await();
-        List<Parked> parked = failing.list().await();
+        List<Parked> parked = failing.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(1, parked.size(), "after the lease the item runs again and its failure is parked");
         assertEquals(in.id(), parked.get(0).messageId());
         assertEquals(0, queue.size(), "parked: the item is done");
@@ -450,7 +451,7 @@ class DeliveryTest {
         worker.poll().otherwiseEmpty().await();
         assertEquals(1, queue.size(), "a store that cannot be read is not a snapshot that is gone: the item stays");
         assertEquals(List.of(), partner.sent());
-        assertEquals(List.of(), dlq.list().await());
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items());
 
         store.readsOk();
         rt.clock().advance(WorkerPolicy.DEFAULT.lease());
@@ -536,7 +537,7 @@ class DeliveryTest {
             Future<Ack> thirdAck = admittedAtTheLogLine.get();
             assertTrue(thirdAck.isComplete());
             assertEquals(new Ack.Accepted(third.id()), thirdAck.result(), "the permit was released before the log line");
-            assertEquals(List.of(), dlq.list().await(), "logged and dropped, not parked");
+            assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "logged and dropped, not parked");
         } finally {
             jul.removeHandler(handler);
         }

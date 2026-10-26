@@ -8,6 +8,7 @@ import io.flottila.api.Props;
 import io.flottila.api.Timer;
 import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.record.MessageStore;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.batch.PgBatchSink;
 import io.vertx.core.Future;
@@ -15,6 +16,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.Tuple;
 
 import java.nio.ByteBuffer;
@@ -35,9 +37,11 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * The MessageStore over Postgres (ARCHITECTURE §7, §8): every snapshot goes through the P0-06 {@link BatchingWriter} into
  * one transaction per batch — {@code payloads} (hash, size, algorithm; {@code ON CONFLICT DO NOTHING}, the bytes are the
- * BlobStore's), {@code messages} (one row per message and step, the first wins) and {@code message_keys} (one row per key,
- * what {@link #findByKey} searches through its {@code (name, value)} index). Reads are plain queries. A failed commit fails
- * the snapshot's future and counts in {@link #failed()}; the message path does not wait for it.
+ * BlobStore's), {@code messages} (one row per message and step, the first wins) and {@code message_keys} (one row per
+ * (name, value, message), numbered by V5's {@code seq} in the order the message first carried the key — what
+ * {@link #findByKey} pages through its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads
+ * are plain queries. A failed commit fails the snapshot's future and counts in {@link #failed()}; the message path does
+ * not wait for it.
  *
  * @since 0.1
  */
@@ -49,10 +53,15 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
             select * from unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[], $8::bigint[], $9::bigint[],
                                  $10::jsonb[], $11::jsonb[], $12::jsonb[], $13::bytea[], $14::text[], $15::bigint[], $16::jsonb[])
             on conflict (id, step) do nothing""";
-    private static final String INSERT_KEYS = "insert into message_keys(name, value, message_id, step) select * from unnest($1::text[], $2::text[], $3::text[], $4::int[])";
+    private static final String INSERT_KEYS = "insert into message_keys(name, value, message_id, step) select * from unnest($1::text[], $2::text[], $3::text[], $4::int[]) "
+            + "on conflict (name, value, message_id) do nothing";
     private static final String TIMELINE = "select id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, body_key, body_size, versions, "
             + "(select algorithm from payloads p where p.hash = m.body_hash) as algorithm from messages m where id = $1 order by step";
-    private static final String FIND_BY_KEY = "select message_id from message_keys where name = $1 and value = $2 group by message_id order by min(ctid)";
+    private static final String FIND_BY_KEY = "select message_id, seq from message_keys where name = $1 and value = $2 order by seq limit $3";
+    private static final String FIND_BY_KEY_AFTER = "select message_id, seq from message_keys where name = $1 and value = $2 and seq > $3 order by seq limit $4";
+    private static final Comparator<KeyRow> KEY_ORDER = Comparator.comparing(KeyRow::name).thenComparing(KeyRow::value).thenComparing(KeyRow::messageId);
+
+    private record KeyRow(String name, String value, String messageId) {}
 
     private final Pool pool;
     private final BatchingWriter<Snapshot> writer;
@@ -81,12 +90,26 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     }
 
     @Override
-    public Future<List<String>> findByKey(String name, String value) {
-        return pool.preparedQuery(FIND_BY_KEY).execute(Tuple.of(name, value)).map(rows -> {
+    public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        Future<RowSet<Row>> rows = after.isPresent()
+                ? pool.preparedQuery(FIND_BY_KEY_AFTER).execute(Tuple.of(name, value, seq(after.get()), limit + 1))
+                : pool.preparedQuery(FIND_BY_KEY).execute(Tuple.of(name, value, limit + 1));
+        return rows.map(found -> {
             List<String> ids = new ArrayList<>();
-            for (Row r : rows) ids.add(r.getString(0));
-            return List.copyOf(ids);
+            long last = 0;
+            for (Row r : found) {
+                if (ids.size() == limit) return new Page<>(ids, Optional.of(Page.cursor(Long.toString(last))));   // the limit + 1st row: another page exists
+                ids.add(r.getString(0));
+                last = r.getLong(1);
+            }
+            return new Page<>(ids, Optional.<String>empty());
         });
+    }
+
+    /** The key sequence a cursor carries; a garbled cursor is a NumberFormatException (an IllegalArgumentException). */
+    private static long seq(String cursor) {
+        return Long.parseLong(Page.position(cursor));
     }
 
     /** Commits what is queued now; completes when it is committed. */
@@ -153,18 +176,27 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
         return Tuple.wrap(new Object[] {ids, steps, flows, names, outcomes, errors, started, walls, cpus, headers, props, keys, hashes, bodyKeys, sizes, versions});
     }
 
+    /**
+     * One row per (name, value, message) of the batch, at the lowest step of the batch that carried it, sorted (D-044's
+     * deadlock rule: V5's unique key is locked in one order by every transaction); a row already in the table — an earlier
+     * batch's — is a no-op, so the first row written keeps its step and its place.
+     */
     private static Tuple keys(List<Snapshot> batch) {
-        List<String> names = new ArrayList<>(), values = new ArrayList<>(), ids = new ArrayList<>();
-        List<Integer> steps = new ArrayList<>();
+        Map<KeyRow, Integer> distinct = new TreeMap<>(KEY_ORDER);
         for (Snapshot s : batch) {
-            for (Map.Entry<String, String> k : s.keys().asMap().entrySet()) {
-                names.add(k.getKey());
-                values.add(k.getValue());
-                ids.add(s.messageId());
-                steps.add(s.step());
-            }
+            for (Map.Entry<String, String> k : s.keys().asMap().entrySet()) distinct.merge(new KeyRow(k.getKey(), k.getValue(), s.messageId()), s.step(), Math::min);
         }
-        return Tuple.wrap(new Object[] {names.toArray(String[]::new), values.toArray(String[]::new), ids.toArray(String[]::new), steps.toArray(Integer[]::new)});
+        int n = distinct.size(), i = 0;
+        String[] names = new String[n], values = new String[n], ids = new String[n];
+        Integer[] steps = new Integer[n];
+        for (Map.Entry<KeyRow, Integer> e : distinct.entrySet()) {
+            names[i] = e.getKey().name();
+            values[i] = e.getKey().value();
+            ids[i] = e.getKey().messageId();
+            steps[i] = e.getValue();
+            i++;
+        }
+        return Tuple.wrap(new Object[] {names, values, ids, steps});
     }
 
     /** Props as JSON: JSON-native values as they are, anything else by its string form (props never leave the runtime, ARCHITECTURE §5). */

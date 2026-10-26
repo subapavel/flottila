@@ -7,13 +7,18 @@ import io.flottila.api.Keys;
 import io.flottila.api.Props;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
+import io.flottila.core.record.Page;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonObject;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.Tuple;
 
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -21,11 +26,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The DLQ over Postgres (ARCHITECTURE §6, §7): one row per parked message in V1's {@code dlq} with V3's columns, written
  * at once — a park is rare and must be durable before the failure surfaces — and never behind a foreign key, so a park
- * never fails on write ordering. The first park of a message wins.
+ * never fails on write ordering. The first park of a message wins. Listed oldest first by V3's {@code (parked_at, id)}
+ * index; the cursor is the page's last position — {@code parked_at} in microseconds, Postgres' precision, and the id — so
+ * a removal before it skips nothing.
  *
  * @since 0.1
  */
@@ -33,7 +42,14 @@ public final class PgDlq implements Dlq {
 
     private static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions";
     private static final String PARK = "insert into dlq(" + COLUMNS + ") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) on conflict (id) do nothing";
-    private static final String LIST = "select " + COLUMNS + " from dlq order by parked_at, id";
+    private static final String LIST = "select " + COLUMNS + " from dlq order by parked_at, id limit $1";
+    private static final String LIST_AFTER = "select " + COLUMNS + " from dlq where (parked_at, id) > ($1, $2) order by parked_at, id limit $3";
+    private static final Pattern CURSOR = Pattern.compile("(-?\\d+):(.+)");
+    /**
+     * Postgres' earliest timestamp, Julian day 0 (4714-11-24 BC), in microseconds since 1970. Its latest, 294276 AD, lies
+     * beyond any long of microseconds since 1970 (294247 AD), so only the lower bound can be crossed.
+     */
+    private static final long PG_MIN_MICROS = ChronoUnit.MICROS.between(Instant.EPOCH, LocalDate.of(-4713, 11, 24).atStartOfDay(ZoneOffset.UTC).toInstant());
     private static final String GET = "select " + COLUMNS + " from dlq where id = $1";
     private static final String REMOVE = "delete from dlq where id = $1";
 
@@ -54,12 +70,37 @@ public final class PgDlq implements Dlq {
     }
 
     @Override
-    public Future<List<Parked>> list() {
-        return pool.query(LIST).execute().map(rows -> {
+    public Future<Page<Parked>> list(Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        Future<RowSet<Row>> rows = after.isPresent()
+                ? pool.preparedQuery(LIST_AFTER).execute(position(after.get(), limit + 1))
+                : pool.preparedQuery(LIST).execute(Tuple.of(limit + 1));
+        return rows.map(found -> {
             List<Parked> out = new ArrayList<>();
-            for (Row r : rows) out.add(parked(r));
-            return List.copyOf(out);
+            for (Row r : found) {
+                if (out.size() == limit) return new Page<>(out, Optional.of(cursor(out.getLast())));   // the limit + 1st row: another page exists
+                out.add(parked(r));
+            }
+            return new Page<>(out, Optional.<String>empty());
         });
+    }
+
+    /** The row's position: {@code parked_at} as read back (whole microseconds) and the id. */
+    private static String cursor(Parked last) {
+        return Page.cursor(ChronoUnit.MICROS.between(Instant.EPOCH, last.parkedAt()) + ":" + last.messageId());
+    }
+
+    /**
+     * The (parked_at, id) a cursor carries, then the fetch size. A garbled cursor is an IllegalArgumentException — a number
+     * out of the long range is a NumberFormatException, one too — and so is a time before Postgres' range, refused here
+     * rather than by the query.
+     */
+    private static Tuple position(String cursor, int fetch) {
+        Matcher m = CURSOR.matcher(Page.position(cursor));
+        if (!m.matches()) throw new IllegalArgumentException("not a cursor of this DLQ");
+        long micros = Long.parseLong(m.group(1));
+        if (micros < PG_MIN_MICROS) throw new IllegalArgumentException("a cursor time before Postgres' range: " + micros + " µs");
+        return Tuple.of(Instant.EPOCH.plus(micros, ChronoUnit.MICROS).atOffset(ZoneOffset.UTC), m.group(2), fetch);
     }
 
     @Override

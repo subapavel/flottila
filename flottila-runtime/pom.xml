@@ -60,6 +60,11 @@
       <groupId>io.vertx</groupId>
       <artifactId>vertx-pg-client</artifactId>
     </dependency>
+    <!-- the admin API's Router (D-057 a); version from vertx-stack-depchain, EPL-2.0 / Apache-2.0 (vertx-web-5.1.10.pom) -->
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-web</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-junit5</artifactId>

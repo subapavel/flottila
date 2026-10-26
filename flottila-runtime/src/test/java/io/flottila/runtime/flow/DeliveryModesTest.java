@@ -15,6 +15,7 @@ import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
@@ -45,6 +46,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -179,7 +181,7 @@ class DeliveryModesTest {
 
         @Override public Future<List<Snapshot>> timeline(String messageId) { return inner.timeline(messageId); }
 
-        @Override public Future<List<String>> findByKey(String name, String value) { return inner.findByKey(name, value); }
+        @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) { return inner.findByKey(name, value, after, limit); }
     }
 
     /** The http consumer at {@code /in} on an ephemeral port with {@code handler}; {@link #port} is the port it got. */

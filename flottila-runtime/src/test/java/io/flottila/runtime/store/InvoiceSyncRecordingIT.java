@@ -7,6 +7,7 @@ import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.record.Meter;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.time.VertxTimer;
@@ -119,7 +120,7 @@ class InvoiceSyncRecordingIT {
         assertEquals(Optional.of(io.flottila.api.BlobKey.body(in.id(), 4)), t.get(4).bodyKey());
         assertEquals(out.body().hash(), t.get(5).bodyHash(), "the partner's reply is step 5's body");
         assertTrue(t.stream().allMatch(s -> s.wallNanos() >= 0 && s.cpuNanos() >= Snapshot.CPU_UNKNOWN));
-        assertEquals(List.of(in.id()), store.findByKey("invoiceId", "4711").await(), "GATE check 6: found by business key");
+        assertEquals(List.of(in.id()), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items(), "GATE check 6: found by business key");
         assertEquals(0, store.failed());
     }
 

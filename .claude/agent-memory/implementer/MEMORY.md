@@ -30,10 +30,20 @@
   -Djacoco.skip=true`): a scripted mutant loop (cp backup, replace, run, read surefire XML, cp + touch, cmp) is cheap.
 - Mutant loop: add `-Dsurefire.timeout=150` so a mutant that hangs a stop()/await is killed by "timeout in the fork" (mock and
   some testkit tests have no @Timeout). Never kill a running loop without restoring the mutated file from its backup (cp + touch + cmp).
+- Failsafe `-Dit.test=A,B` together with `-am` fails upstream modules ("No tests matching pattern"): add
+  `-Dfailsafe.failIfNoSpecifiedTests=false` (and `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false` to skip unit tests).
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
   fixture with no test in its own module trips the 2 pp band even when other modules exercise it.
 
 ## APIs
+- `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`.
+- vertx-web 5.1.10 (javap, P1-09a; fetch with `mvn dependency:get -Dartifact=io.vertx:vertx-web:5.1.10` if ~/.m2 lacks it):
+  `Router.router(Vertx)`, `get(String)`/`route(String)` → `Route.handler(Handler<RoutingContext>)`, `Router.errorHandler(int, Handler)`
+  answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`.
+  Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.
+- `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
+  answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
+- Probing an HttpClient answer: read `res.body()` inside the compose chain; after `await()` on another thread the body is lost.
 - Context7 monthly quota can be exhausted (ISSUE-1), or its tools are not exposed to this agent; then
   `javap -cp ~/.m2/repository/io/vertx/vertx-core/5.1.10/vertx-core-5.1.10.jar <class>`.
 - Vert.x 5.1.10 (javap): `Promise.tryComplete(T)`, `Future.all(List)` → CompositeFuture, `map(V)`,

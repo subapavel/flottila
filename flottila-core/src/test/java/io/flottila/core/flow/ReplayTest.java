@@ -12,6 +12,7 @@ import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.buffer.Buffer;
@@ -93,7 +94,7 @@ class ReplayTest {
         assertEquals(Replay.REPLAY_INPUT, t.get(0).stepName());
         assertEquals(Optional.of(in.id()), Optional.ofNullable(t.get(0).props().asMap().get("replayOf")));
         assertEquals("c", t.get(1).stepName());
-        assertEquals(List.of(in.id(), again.id()), store.findByKey("invoiceId", "4711").await(), "found by key like any message");
+        assertEquals(List.of(in.id(), again.id()), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items(), "found by key like any message");
         Envelope fromTwo = replay.from(in.id(), 2);
         assertEquals(List.of(1, 2, 3), List.of(aCalls.get(), bCalls.get(), cCalls.get()));
         assertEquals("<b><in/></b>", fromTwo.body().whole().toString(), "step b ran on the ingress body again");
@@ -158,7 +159,7 @@ class ReplayTest {
         assertEquals(2, echo.producersBuilt.size());
         assertEquals(2, third.step(), "reconfiguring the builder afterwards changes nothing in a replay built before");
         assertEquals(2, store.timeline(third.id()).await().size(), "its snapshots (input and the send) still go to the store it was built with");
-        assertEquals(List.of(), other.list().await());
+        assertEquals(List.of(), other.list(Optional.empty(), Page.MAX_LIMIT).await().items());
     }
 
     @Test
@@ -173,7 +174,7 @@ class ReplayTest {
         ParkedException still = assertThrows(ParkedException.class, () -> replay.retry(in.id()));
         assertNotEquals(in.id(), still.parked().messageId(), "the retry is its own message");
         assertEquals(Optional.of(in.id()), Optional.ofNullable(still.parked().props().asMap().get("replayOf")));
-        assertEquals(2, dlq.list().await().size(), "the retry parked itself; the original row stays");
+        assertEquals(2, dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items().size(), "the retry parked itself; the original row stays");
         assertEquals(2, cCalls.get());
         partnerDown.set(false);
         Envelope delivered = replay.retry(in.id());
@@ -181,7 +182,7 @@ class ReplayTest {
         assertEquals(Optional.of(in.id()), delivered.get(Envelope.REPLAY_OF));
         assertEquals(3, cCalls.get(), "only the parked step ran");
         assertEquals(1, bCalls.get(), "step b never ran again");
-        List<Parked> left = dlq.list().await();
+        List<Parked> left = dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(1, left.size(), "the original row is gone; the failed retry's row remains for the operator");
         assertFalse(left.get(0).messageId().equals(in.id()));
         List<Snapshot> t = store.timeline(delivered.id()).await();
@@ -189,6 +190,6 @@ class ReplayTest {
         assertEquals(Optional.of(parked.parked().bodyKey()), t.get(0).bodyKey(), "the parked body reference (step 2's output), not a new copy");
         Envelope retried = replay.retry(left.get(0).messageId());
         assertEquals("yes", retried.header("sent").orElseThrow());
-        assertEquals(List.of(), dlq.list().await(), "the failed retry's own row is retried and removed too");
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "the failed retry's own row is retried and removed too");
     }
 }

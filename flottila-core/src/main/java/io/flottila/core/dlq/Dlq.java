@@ -1,8 +1,8 @@
 package io.flottila.core.dlq;
 
+import io.flottila.core.record.Page;
 import io.vertx.core.Future;
 
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -15,8 +15,13 @@ public interface Dlq {
 
     Future<Void> park(Parked parked);
 
-    /** Every parked message, oldest first. */
-    Future<List<Parked>> list();
+    /**
+     * One page of the parked messages, oldest first ({@code parkedAt}, then id; D-057 a). {@code after} is the previous
+     * page's {@link Page#next()} cursor, empty for the first page; the cursor is a position, so a removal before it skips
+     * nothing. A {@code limit} outside 1..{@link Page#MAX_LIMIT} or a cursor this store did not hand out is an
+     * {@link IllegalArgumentException}, thrown or as the failed future's cause.
+     */
+    Future<Page<Parked>> list(Optional<String> after, int limit);
 
     Future<Optional<Parked>> get(String messageId);
 

@@ -83,3 +83,8 @@
 - Tests that read a round through `otherwiseEmpty()` leave the round's answer and that path's log unpinned (P1-08b :222/:224).
 - A design-rule default (a finite limit) pinned only by `assertDoesNotThrow` is unpinned; ask for the value to be asserted (P1-08c, http `shutdownTimeoutMs`).
 - A D-xxx rationale saying ARCHITECTURE is "not yet true" needs F-n + changelog line + PROGRESS `Deviation:` (WORKFLOW §7), not only the decision row (P1-08c).
+- `pipeTo` a response after content-length is set: a source failure mid-body leaves a short body on keep-alive; ask for 500 before the head, reset after, WARNING both (P1-09a AdminServer; FIX-22 http).
+- A send stage outside the route's catch (encode, header validation on the loop) can leave a request unanswered; check what runs after the try (P1-09a).
+- A blanket IAE → 400 also catches IAEs a store throws for its own state (missing object) — check which IAEs reach the mapping (P1-09a).
+- An amended in-memory clause tested only by the Pg IT twin is unpinned in core (P1-09a InMemoryDlq cursor).
+- Predict the failure mode but let the red decide: the PgDlq out-of-range cursor was predicted 500 and in fact succeeded silently (P1-09a).

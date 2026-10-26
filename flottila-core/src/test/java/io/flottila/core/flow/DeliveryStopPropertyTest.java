@@ -9,6 +9,7 @@ import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.Snapshot;
@@ -30,6 +31,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -138,7 +140,7 @@ class DeliveryStopPropertyTest {
             return saves.computeIfAbsent(snapshot.messageId(), id -> Promise.promise()).future();
         }
         @Override public Future<List<Snapshot>> timeline(String messageId) { return Future.succeededFuture(List.of()); }
-        @Override public Future<List<String>> findByKey(String name, String value) { return Future.succeededFuture(List.of()); }
+        @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) { return Future.succeededFuture(new Page<>(List.of(), Optional.empty())); }
 
         void answer(String messageId, boolean ok) {
             Promise<Void> save = saves.get(messageId);

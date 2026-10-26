@@ -12,6 +12,7 @@ import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.Replay;
 import io.flottila.core.record.Meter;
+import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.time.VertxTimer;
@@ -134,7 +135,7 @@ class InvoiceSyncReplayIT {
         assertTrue(outcome instanceof ParkedException, String.valueOf(outcome));
         Parked parked = ((ParkedException) outcome).parked();
         assertEquals(4, http.sentTo("partner-domestic").size(), "one try and three retries before the park");
-        assertEquals(List.of(parked), dlq.list().await(), "durable in Postgres before the failure surfaced");
+        assertEquals(List.of(parked), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "durable in Postgres before the failure surfaced");
         assertEquals(in.id(), parked.messageId());
         assertEquals(5, parked.step());
         assertEquals("partner", parked.stepName());
@@ -154,12 +155,12 @@ class InvoiceSyncReplayIT {
         assertEquals(5, out.step());
         assertEquals(5, http.sentTo("partner-domestic").size(), "exactly one more delivery: the parked step only");
         assertTrue(http.sentTo("partner-domestic").get(4).body().whole().toString().contains("<PartnerInvoice number=\"4711\""), "the parked mapped body went out");
-        assertEquals(List.of(), dlq.list().await(), "GATE check 7: the retry delivered, the row is gone");
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "GATE check 7: the retry delivered, the row is gone");
         store.flush().await();
         List<Snapshot> retried = store.timeline(out.id()).await();
         assertEquals(List.of(4, 5), retried.stream().map(Snapshot::step).toList());
         assertEquals(List.of(Replay.REPLAY_INPUT, "partner"), retried.stream().map(Snapshot::stepName).toList());
-        assertEquals(List.of(in.id(), out.id()), store.findByKey("invoiceId", "4711").await());
+        assertEquals(List.of(in.id(), out.id()), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items());
     }
 
     @Test
@@ -175,6 +176,6 @@ class InvoiceSyncReplayIT {
         assertEquals(first.body().hash(), again.body().hash(), "the same ack came back");
         store.flush().await();
         assertEquals(List.of(3, 4, 5), store.timeline(again.id()).await().stream().map(Snapshot::step).toList(), "input, xslt, to");
-        assertEquals(List.of(), dlq.list().await(), "nothing parked");
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing parked");
     }
 }

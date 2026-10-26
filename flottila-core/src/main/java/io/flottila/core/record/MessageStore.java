@@ -3,6 +3,7 @@ package io.flottila.core.record;
 import io.vertx.core.Future;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Where snapshots go and come back from (ARCHITECTURE §8: a snapshot after every stage, searchable by business key).
@@ -19,6 +20,12 @@ public interface MessageStore {
     /** The message's snapshots in step order; empty for an unknown message. */
     Future<List<Snapshot>> timeline(String messageId);
 
-    /** Ids of the messages that carried the key, each once, in recording order. */
-    Future<List<String>> findByKey(String name, String value);
+    /**
+     * One page of the ids of the messages that carried the key, each once, in insertion (seq) order of their first key row
+     * (D-057 a). {@code after} is the previous page's {@link Page#next()} cursor, empty for the first page; a cursor stays
+     * valid while the store grows, and rows committed behind a cursor appear in a new search. A {@code limit} outside
+     * 1..{@link Page#MAX_LIMIT} or a cursor this store did not hand out is an {@link IllegalArgumentException}, thrown or as
+     * the failed future's cause.
+     */
+    Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit);
 }

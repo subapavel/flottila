@@ -112,3 +112,8 @@
 - Never name a test fixture after a production class (core `dlq.Parking` exists). Scratch reference: compile only the copied files into a
   fresh out dir (a stale `ref/` with old sources gave bogus constructor errors). `-Dmaven.compiler.failOnError=false` with `-am` shows a
   downstream module's test compile errors when an upstream test tree does not compile (exit 0: read the ERROR lines).
+- Pg lock-order (deadlock) staging without sleeps (P1-09a, PgMessageStoreIT): a holder tx keeps an uncommitted payloads row (plug batch
+  waits → BatchingWriter's first save with inFlight 0 goes alone, so the next `batchSize` saves form one batch) and one middle key row;
+  poll `pg_stat_activity where wait_event_type='Lock'` for 1/2/3 waiters, then roll back. Unsorted inserts → 40P01, observed in scratch.
+- Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`). Scratch
+  runtime reference: out-rt + scratch `db/migration` dir ahead of flottila-runtime/target/classes (V1..V4); the cp file lists deps only.
