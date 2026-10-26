@@ -445,3 +445,12 @@ Not committed by the agent (D-053 rule D): agent/patches/opus-architect-claude.p
 Checks: `git apply --check` of the patch ok on this tree; settings diff adds keys only (6 lines, hooks untouched); documented settings keys and per-call effort (Claude Code ≥ 2.1.292) checked against code.claude.com docs.
 Review: none (docs and a patch; no src/ change, no test).
 Next: the owner applies and commits the patch; re-measure turns and tokens per task after five tasks against 2026-10-19 (D-054); then FIX-15 [B].
+
+## FIX-15 · 2026-10-26 · commit `fix(runtime): SpoolCipher cleans up after unchecked failures`
+Red: `SpoolCipherTest` `anUncheckedWriteFailureLeavesNoFileClosesTheStreamAndIsRethrownAsIs`, `anErrorFromTheWriteLeavesNoFileAndClosesTheStreamToo`, `aCloseFailureAfterAnUncheckedWriteFailureIsSuppressedAndTheFileIsStillDeleted` — EXECUTED_FAIL on the old code (3 failures of 12, target/fix15-red.log).
+Changed: `SpoolCipher.open` records the failure (IOException wrapped as before, `RuntimeException | Error` rethrown as is) and closes + deletes once in `finally` through `discard`, each cleanup IOException suppressed; `FailingOutputStream` takes what `write` throws.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/fix15-verify.log, BUILD SUCCESS; ArchUnit 27/0); coverage "no decrease" VERIFIED_PASS (runtime 99.6/99.2, target/fix15-coverage.log); mutants VERIFIED_PASS 6/6 killed by the verifier (`Error` dropped from the catch, rethrown wrapped, close skipped, delete skipped, suppression dropped, guard off; target/fix15-mut-*.log).
+Review: PASS round 1. Follow-up FIX-18 (`discard` catches only IOException; an unchecked close failure replaces the primary) — reviewer, not blocking.
+Branch: committed on the environment's session branch `claude/stoic-cannon-2byixj` and pushed to it and to `main`.
+D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 13; review rounds 1 (plus one verifier rerun: the first mutant command lacked `-am`).
+Next: P1-08b [C] — designer draft in hand.

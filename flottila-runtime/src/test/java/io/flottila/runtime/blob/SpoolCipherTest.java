@@ -11,9 +11,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -189,18 +191,33 @@ class SpoolCipherTest {
         assertFalse(chainContains(onRead, "too short"), "the key is refused before the salt is read: " + onRead + " / " + onRead.getCause());
     }
 
-    /** A spool device that refuses every byte (a full disk) and records that it was closed; optionally its close fails too. */
+    /** A spool device that refuses every byte and records that it was closed; optionally its close fails too. By default a write
+     *  throws a fresh IOException("disk full") (a full disk); given an unchecked failure, every write throws that very instance. */
     private static final class FailingOutputStream extends OutputStream {
+        private final Throwable writeFailure;   // null: IOException("disk full"); else a RuntimeException or an Error
         private final boolean closeFails;
         boolean closed;
         FailingOutputStream() { this(false); }
-        FailingOutputStream(boolean closeFails) { this.closeFails = closeFails; }
-        @Override public void write(int b) throws IOException { throw new IOException("disk full"); }
-        @Override public void write(byte[] b, int off, int len) throws IOException { throw new IOException("disk full"); }
+        FailingOutputStream(boolean closeFails) { this((Throwable) null, closeFails); }
+        FailingOutputStream(RuntimeException writeFailure, boolean closeFails) { this((Throwable) writeFailure, closeFails); }
+        FailingOutputStream(Error writeFailure, boolean closeFails) { this((Throwable) writeFailure, closeFails); }
+        private FailingOutputStream(Throwable writeFailure, boolean closeFails) { this.writeFailure = writeFailure; this.closeFails = closeFails; }
+        private void refuse() throws IOException {
+            if (writeFailure instanceof RuntimeException r) throw r;
+            if (writeFailure instanceof Error e) throw e;
+            throw new IOException("disk full");
+        }
+        @Override public void write(int b) throws IOException { refuse(); }
+        @Override public void write(byte[] b, int off, int len) throws IOException { refuse(); }
         @Override public void close() throws IOException {
             closed = true;
             if (closeFails) throw new IOException("close failed");
         }
+    }
+
+    /** Stands for the OutOfMemoryError the segment allocation in the encrypting stream's constructor can throw. */
+    private static final class SegmentAllocationFailed extends Error {
+        SegmentAllocationFailed() { super("segment allocation failed"); }
     }
 
     @Test
@@ -244,6 +261,49 @@ class SpoolCipherTest {
         assertTrue(suppressed[0] instanceof java.nio.file.DirectoryNotEmptyException, "the suppressed failure is the delete's: " + suppressed[0]);
         assertTrue(failing.closed, "the stream was closed before the delete was attempted");
         assertTrue(Files.isDirectory(part), "the delete could not remove the non-empty directory");
+    }
+
+    @Test
+    void anUncheckedWriteFailureLeavesNoFileClosesTheStreamAndIsRethrownAsIs(@TempDir Path dir) throws IOException {
+        SpoolCipher cipher = new SpoolCipher(TieredBlobStoreTest.key());
+        Path part = Files.createFile(dir.resolve("part"));
+        IllegalStateException boom = new IllegalStateException("device vanished");
+        FailingOutputStream failing = new FailingOutputStream(boom, false);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> cipher.encrypting(part, failing));
+        assertSame(boom, e, "the unchecked failure is rethrown as is, never wrapped: " + e);
+        assertAll(
+                () -> assertFalse(Files.exists(part), "an unchecked write failure leaves no spool file behind"),
+                () -> assertTrue(failing.closed, "the stream over the spool file is closed on an unchecked failure"),
+                () -> assertEquals(0, e.getSuppressed().length, "a clean close and delete add nothing: " + Arrays.toString(e.getSuppressed())));
+    }
+
+    @Test
+    void anErrorFromTheWriteLeavesNoFileAndClosesTheStreamToo(@TempDir Path dir) throws IOException {
+        SpoolCipher cipher = new SpoolCipher(TieredBlobStoreTest.key());
+        Path part = Files.createFile(dir.resolve("part"));
+        SegmentAllocationFailed oom = new SegmentAllocationFailed();
+        FailingOutputStream failing = new FailingOutputStream(oom, false);
+        SegmentAllocationFailed e = assertThrows(SegmentAllocationFailed.class, () -> cipher.encrypting(part, failing));
+        assertSame(oom, e, "the Error is rethrown as is, never wrapped: " + e);
+        assertAll(
+                () -> assertFalse(Files.exists(part), "an Error during the open leaves no spool file behind"),
+                () -> assertTrue(failing.closed, "the stream over the spool file is closed on an Error too"));
+    }
+
+    @Test
+    void aCloseFailureAfterAnUncheckedWriteFailureIsSuppressedAndTheFileIsStillDeleted(@TempDir Path dir) throws IOException {
+        SpoolCipher cipher = new SpoolCipher(TieredBlobStoreTest.key());
+        Path part = Files.createFile(dir.resolve("part"));
+        IllegalStateException boom = new IllegalStateException("device vanished");
+        FailingOutputStream failing = new FailingOutputStream(boom, true);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> cipher.encrypting(part, failing));
+        assertSame(boom, e, "the unchecked write failure is rethrown, the close failure does not replace it: " + e);
+        Throwable[] suppressed = e.getSuppressed();
+        assertAll(
+                () -> assertEquals(1, suppressed.length, "exactly the close failure rides as suppressed: " + Arrays.toString(suppressed)),
+                () -> assertEquals("close failed", suppressed.length == 0 ? null : suppressed[0].getMessage()),
+                () -> assertTrue(failing.closed, "the close was attempted"),
+                () -> assertFalse(Files.exists(part), "a failing close does not skip the delete"));
     }
 
     private static boolean chainContains(Throwable t, String text) {

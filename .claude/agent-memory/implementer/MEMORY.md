@@ -22,6 +22,8 @@
 - `-Dtest='Foo*'` also selects nested classes (`FooTest$BlockingTestCase`, an EngineTestKit fixture built to
   fail) — default `**/*$*` excludes are dropped; use `-Dtest=FooTest,FooConfigTest` and delete the stale XML.
 - dockerd/pg often already up: `setsid dockerd` exits 1, `pg_ctlcluster` says "already running"; check `docker info`.
+- flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
+  false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
   fixture with no test in its own module trips the 2 pp band even when other modules exercise it.
 

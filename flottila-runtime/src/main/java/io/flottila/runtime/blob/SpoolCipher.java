@@ -65,23 +65,36 @@ final class SpoolCipher {
         return open(file, raw, fileMaterial());
     }
 
+    /** Writes the salt and wraps the stream. Any failure closes the stream and deletes the file once, in the finally: an
+     *  IOException is wrapped as IOException("cannot open the spool cipher", e); a RuntimeException or an Error (the OOM of the
+     *  segment allocation in Encrypting's constructor) is rethrown as is. A cleanup failure rides as suppressed on it. */
     private OutputStream open(Path file, OutputStream raw, FileMaterial m) throws IOException {
+        Throwable failure = null;   // null on success: the finally then leaves the stream open and the file in place
         try {
             raw.write(m.salt());
             return new Encrypting(raw, m.salt(), m.fileKey());
-        } catch (IOException e) {   // Encrypting's constructor throws nothing checked
-            IOException failure = new IOException("cannot open the spool cipher", e);
-            try {
-                raw.close();
-            } catch (IOException x) {
-                failure.addSuppressed(x);
-            }
-            try {
-                Files.deleteIfExists(file);
-            } catch (IOException x) {
-                failure.addSuppressed(x);
-            }
-            throw failure;
+        } catch (IOException e) {
+            failure = new IOException("cannot open the spool cipher", e);
+            throw (IOException) failure;
+        } catch (RuntimeException | Error e) {
+            failure = e;
+            throw e;
+        } finally {
+            if (failure != null) discard(file, raw, failure);
+        }
+    }
+
+    /** Closes the stream, then deletes the file; a failure of either is added as suppressed to the primary failure. */
+    private static void discard(Path file, OutputStream raw, Throwable failure) {
+        try {
+            raw.close();
+        } catch (IOException x) {
+            failure.addSuppressed(x);
+        }
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException x) {
+            failure.addSuppressed(x);
         }
     }
 

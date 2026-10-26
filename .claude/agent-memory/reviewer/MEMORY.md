@@ -78,3 +78,4 @@
 - An unreachable checked-exception catch in a small module costs pp: in validate (~80 lines) two lines are 2.5 pp, beyond D-050's band. Ask early for the module's line count against new catch blocks, and prefer code with no checked exception (FIX-6, ConfinedSchemaResolver:33).
 - When a JDK SPI value is built by hand (an `LSInput` with throwing setters), the getters' null/false values are behaviour (Xerces reads character data before bytes). Each one needs an assertion, and the hand-built class needs its own test (FIX-6, SchemaInput).
 - Xerces reads an `LSInput` the resolver hands over through its system id even when the byte stream is null and `ACCESS_EXTERNAL_SCHEMA=""`. The resolver's own system id is the confinement, not the belt (FIX-6 M28).
+- A cleanup helper run from a `finally` that catches only `IOException` lets an unchecked cleanup failure replace the primary and skip later steps — check the helper's own catches too (FIX-15, SpoolCipher `discard`).

@@ -93,3 +93,4 @@
   URI (also via `ResourceRequest.resolve`). A static/use-when `collection()` in XSLT throws ClassCastException (PackageData →
   StylesheetPackage, CollectionFn.call) before any CollectionFinder; `uri-collection('..')` lists the directory. A failing static
   `unparsed-text()` stops further static vars; `unparsed-text-available()` swallows and compilation continues.
+- `mvn -o` can fail at POM load (import BOMs vertx-stack-depchain / junit-bom absent from ~/.m2, FIX-15): drop `-o`, the proxy resolves them.
