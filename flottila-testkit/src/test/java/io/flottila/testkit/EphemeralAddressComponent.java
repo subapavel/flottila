@@ -23,7 +23,8 @@ import java.util.function.Function;
  * beforehand; a producer reaches a consumer only through the option {@code address} of its own config and fails the send
  * with {@code "no consumer at " + address} when nothing runs there. Delivery and the {@link Ack} semantics are the mock
  * component's: a {@link Ack.Reply} answers with its reply, {@link Ack.Accepted} with the envelope sent, a {@link Ack.Nack}
- * fails the send with a {@link NackException} carrying its reason. Health is up while a consumer runs. {@link Consumer#stop()}
+ * fails the send with a {@link NackException} carrying its reason; the handler runs on a virtual thread of its own per
+ * delivery (D-057). Health is up while a consumer runs. {@link Consumer#stop()}
  * completes when the handler answers still outstanding have completed (D-056).
  */
 final class EphemeralAddressComponent implements Component {
@@ -61,7 +62,7 @@ final class EphemeralAddressComponent implements Component {
             @Override public Future<Envelope> send(Envelope e) {
                 Running at = running.get(String.valueOf(address));   // no address: "null", never assigned
                 if (at == null) return Future.failedFuture(new IllegalStateException("no consumer at " + address));
-                return at.drain().track(at.handler().apply(e)).compose(ack -> switch (ack) {
+                return at.drain().deliver(at.handler(), e).compose(ack -> switch (ack) {
                     case Ack.Reply r -> Future.succeededFuture(r.reply());
                     case Ack.Accepted a -> Future.succeededFuture(e);
                     case Ack.Nack n -> Future.failedFuture(new NackException(n.reason(), n.retryable()));

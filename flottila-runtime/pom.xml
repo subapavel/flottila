@@ -75,28 +75,24 @@
       <artifactId>flottila-testkit</artifactId>
       <scope>test</scope>
     </dependency>
-    <!-- the milestone-1 flow end to end (P1-03): the demo package's files through the schema loader, the xslt step and the
-         builder, in the fake Runtime -->
+    <!-- the node (F-4): runtime.node validates packages with the schemas; runtime.Main, and no other runtime class
+         (archtest), wires the shipped http component, the xslt steps with the xpath language and the xsd step.
+         Components and steps depend on api only, so this is no reactor cycle. -->
     <dependency>
       <groupId>io.flottila</groupId>
       <artifactId>flottila-schemas</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.flottila</groupId>
       <artifactId>flottila-step-xslt</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>io.flottila</groupId>
       <artifactId>flottila-step-validate</artifactId>
-      <scope>test</scope>
     </dependency>
     <dependency>
-      <!-- GATE check 3 end to end: the demo flow behind the real http component (P1-06) -->
       <groupId>io.flottila</groupId>
       <artifactId>flottila-component-http</artifactId>
-      <scope>test</scope>
     </dependency>
     <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
          driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->

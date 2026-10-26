@@ -105,4 +105,20 @@ final class Rules {
 
     static final ArchRule NO_CYCLES = slices().matching("io.flottila.(*)..").should().beFreeOfCycles()
             .because("a cycle between modules would break the dependency direction");
+
+    /** The one runtime class that names the shipped components and steps (F-4). */
+    static final String MAIN = "io.flottila.runtime.Main";
+
+    /** {@link #MAIN} by its full name, and the classes nested in it (an anonymous class's body is still the wiring point). */
+    static final DescribedPredicate<JavaClass> THE_WIRING_POINT = describe(MAIN + " and the classes nested in it",
+            c -> c.getName().equals(MAIN) || c.getName().startsWith(MAIN + "$"));
+
+    static final ArchRule ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS = noClasses().that().resideInAPackage(RUNTIME)
+            .and(DescribedPredicate.not(THE_WIRING_POINT))
+            .should().dependOnClassesThat().resideInAnyPackage(COMPONENTS, STEPS)
+            .because("runtime reaches components and steps through the SPI; only Main names the shipped ones (F-4)");
+
+    static final ArchRule RUNTIME_NEVER_NAMES_THE_MOCK = noClasses().that().resideInAPackage(RUNTIME)
+            .should().dependOnClassesThat().resideInAPackage("io.flottila.components.mock..")
+            .because("a deployed node refuses a mock binding (ARCHITECTURE §11); no runtime class, Main included, names one (F-4)");
 }

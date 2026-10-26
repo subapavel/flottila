@@ -5,8 +5,9 @@ import java.util.function.Function;
 
 /**
  * The only way the platform touches the outside world (ARCHITECTURE §7). One implementation per
- * scheme, discovered through {@code ServiceLoader}; every component ships with its mock and both
- * pass the same contract suite.
+ * scheme; the node's {@code Main} wires the shipped components explicitly, because a component needs
+ * the node's Vert.x, which api may not name (D-057, F-4). Every component ships with its mock and
+ * both pass the same contract suite.
  *
  * @since 0.1
  */

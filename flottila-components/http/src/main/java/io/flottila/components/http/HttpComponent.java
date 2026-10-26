@@ -226,15 +226,10 @@ public final class HttpComponent implements Component {
                 }
                 Envelope in = Envelope.ingress(id, flow, headers, written.result()).with(METHOD, method).with(PATH, path);
                 // the handler runs the flow on the message's own virtual thread; the socket's event loop never does
-                Thread.ofVirtual().name("flottila-http-" + handled.incrementAndGet()).start(() -> {
-                    Future<Ack> ack;
-                    try {
-                        ack = handler.apply(in);
-                    } catch (Exception e) {   // a checked one too, thrown sneakily (an interrupted await): a 500, never a hanging request
-                        ack = Future.failedFuture(e);
-                    }
-                    ack.onComplete(done -> ctx.runOnContext(v -> answer(res, done.succeeded() ? done.result() : null, done.cause())));
-                });
+                // a handler that throws (a checked one too, sneakily: an interrupted await) or answers null fails the answer — Future.future
+                // catches either — and the request gets a 500, never a hang
+                Thread.ofVirtual().name("flottila-http-" + handled.incrementAndGet()).start(() -> Future.<Ack>future(p -> handler.apply(in).onComplete(p))
+                        .onComplete(done -> ctx.runOnContext(v -> answer(res, done.succeeded() ? done.result() : null, done.cause()))));
             });
         }
 

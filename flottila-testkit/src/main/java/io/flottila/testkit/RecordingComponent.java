@@ -29,9 +29,9 @@ import java.util.function.Supplier;
  * mocks live next to it). A producer records every envelope it is sent, per endpoint, and answers: with the
  * reply of the consumer running on that same endpoint (the loopback of the contract suite), else
  * with {@link #replyWith(Function)} (identity by default), or with the next failure queued by
- * {@link #failNext(int, Supplier)} — the way a test plays "partner down" for a retry. A consumer's {@code stop()} completes once
- * the answers its handler handed out have completed (D-056). Health is up while a
- * consumer runs. Passes {@link ComponentContract}.
+ * {@link #failNext(int, Supplier)} — the way a test plays "partner down" for a retry. Each delivery calls a consumer's handler
+ * on a virtual thread of its own (D-057); a consumer's {@code stop()} completes once the answers its handler handed out have
+ * completed (D-056). Health is up while a consumer runs. Passes {@link ComponentContract}.
  *
  * @since 0.1
  */
@@ -129,7 +129,7 @@ public final class RecordingComponent implements Component {
         Objects.requireNonNull(h, "handler");
         Objects.requireNonNull(cfg, "cfg");
         Drain drain = new Drain();
-        Function<Envelope, Future<Ack>> tracked = e -> drain.track(h.apply(e));
+        Function<Envelope, Future<Ack>> tracked = e -> drain.deliver(h, e);
         return new Consumer() {
             @Override public Future<Void> start() { handlers.put(cfg.name(), tracked); return Future.succeededFuture(); }
             /** Unregisters the handler at once; completes once every answer it handed out has completed (D-056). */
@@ -150,11 +150,17 @@ public final class RecordingComponent implements Component {
             stopping.future().onComplete(stopped -> release());
         }
 
-        /** Counts {@code answer} until it completes, either way; returns it unchanged. */
-        Future<Ack> track(Future<Ack> answer) {
+        /**
+         * Calls {@code handler} with {@code e} on a virtual thread of its own — one per delivery, never the sender's (D-057) —
+         * and returns its answer, counted until it completes before the handler runs: a stop issued meanwhile waits for it.
+         * A handler that throws or answers null fails the answer ({@link Future#future} catches what its handler throws).
+         */
+        Future<Ack> deliver(Function<Envelope, Future<Ack>> handler, Envelope e) {
+            Promise<Ack> answer = Promise.promise();
             synchronized (this) { open++; }
-            answer.onComplete(done -> release());
-            return answer;
+            answer.future().onComplete(done -> release());
+            Thread.ofVirtual().name("recording-handler").start(() -> Future.<Ack>future(p -> handler.apply(e).onComplete(p)).onComplete(answer));
+            return answer.future();
         }
 
         private void release() {

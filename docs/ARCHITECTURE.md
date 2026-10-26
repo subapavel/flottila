@@ -14,6 +14,8 @@
 | 2026-10-19 | 3.3 | §4: the at-least-once durable save is the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK whatever the flow's recording level says; the worker runs the pipeline without stage 0 for a message saved that way (D-049) | F-2 (minor) |
 | 2026-10-26 | 3.3 | §7 WorkQueue row: the lease is renewed while the item runs (not derived from a producer timeout), every claim counts an attempt that fences the lease, and an item past its attempts bound is parked or, when the park fails, held — held rows block their key and wait for a human (D-055, P1-08b) | — |
 | 2026-10-26 | 3.3 | §4: until a `RequestScope` wraps each delivery, a stop's cancel is the interrupt of the message's virtual thread at the stop deadline, which wakes its awaits and cancels the children of any scope opened on it; a cancelled delivery answers a retryable NACK (D-056, P1-08c) | F-3 |
+| 2026-10-26 | 3.4 | §7, §12: components and steps are wired explicitly by `runtime.Main`, not discovered through ServiceLoader; runtime depends on core and schemas, and `runtime.Main` wires the shipped components and steps (http, xslt/xpath, xsd); components depend on api only; ArchUnit: only `Main` names components or steps, nothing in runtime names the mock component (D-057, P1-09b) | F-4 |
+| 2026-10-26 | 3.4 | §9 item 3: a redeploy validates and builds the whole package before anything stops; each flow then swaps stop-then-start (old worker, old delivery with the stop deadline and old consumer, new consumer, new worker), all flows in parallel, with a brief refusal window per flow; a failed start rebuilds the old version; deployed state is in memory until P1-09c (D-057, P1-09d) | F-5 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -217,7 +219,7 @@ interface Component {
 }
 ```
 
-The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a bare `ReadStream`: the handler returns the ack state the consumer needs to finish its own protocol (delete the file, commit the JMS session, send 202). Blocking SDKs implement `BlockingConsumer/BlockingProducer` and are wrapped onto virtual threads by the platform. One jar per component via `ServiceLoader`; same classpath until a dependency conflict forces isolation. Steps (xslt, groovy, js, validate, map, ai) are pluggable the same way.
+The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a bare `ReadStream`: the handler returns the ack state the consumer needs to finish its own protocol (delete the file, commit the JMS session, send 202). Blocking SDKs implement `BlockingConsumer/BlockingProducer` and are wrapped onto virtual threads by the platform. One jar per component, wired explicitly by the node's `Main` (components need the node's `Vertx` and `BlobStore`, which `api` may not name — F-4); same classpath until a dependency conflict forces isolation. Steps (xslt, groovy, js, validate, map, ai) are wired the same way.
 
 | Component | Transport | Notes |
 | --- | --- | --- |
@@ -403,8 +405,8 @@ One Maven monorepo (`~/flottila/`, Apache 2.0), dependency direction strictly do
 | --- | --- | --- |
 | `flottila-api` | Step, Stage, Component, Envelope, Body, Props/Keys/Headers, BlobStore, Runtime record, extension manifest types — the only jar an extension classloader sees | nothing but the JDK (Vert.x `Buffer`/`ReadStream` as the one exception) |
 | `flottila-core` | pipeline builder, patterns, RequestScope, admission control, batcher, MessageStore/WorkQueue/MonitoringStore interfaces with in-memory implementations | api |
-| `flottila-runtime` | Vert.x bootstrap, endpoint verticles, Postgres/Kafka/Valkey/S3/ClickHouse implementations, wallet, caching, recording, replay, admin API server | core |
-| `flottila-components/*` | one module per scheme: http, xi (JCo `provided`), sftp, jms, kafka, mail, as2, as4, edi, db, mock | api (+ runtime only where a shared client is needed) |
+| `flottila-runtime` | Vert.x bootstrap, endpoint verticles, Postgres/Kafka/Valkey/S3/ClickHouse implementations, wallet, caching, recording, replay, admin API server, node and deploy | core, schemas; `Main` wires the shipped components and steps (F-4) |
+| `flottila-components/*` | one module per scheme: http, xi (JCo `provided`), sftp, jms, kafka, mail, as2, as4, edi, db, mock | api |
 | `flottila-steps/*` | xslt, validate, groovy, js, map, ai, split/aggregate formats | api |
 | `flottila-sap` | PO/CPI mapping facades, XI/IDoc simulator, migration converters | api, steps |
 | `flottila-testkit` | fake Runtime, contract suites, protocol doubles, fake clock and timer, in-memory BlobStore (golden-test runner: `flottila-cli` or a later module — F-1) | api (F-1, 2026-10-18; was core) |

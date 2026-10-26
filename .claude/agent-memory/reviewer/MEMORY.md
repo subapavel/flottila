@@ -89,3 +89,5 @@
 - An amended in-memory clause tested only by the Pg IT twin is unpinned in core (P1-09a InMemoryDlq cursor).
 - Predict the failure mode but let the red decide: the PgDlq out-of-range cursor was predicted 500 and in fact succeeded silently (P1-09a).
 - A row naming two failure sites is met only if the diff touches both; "accepted uncovered" must point at code that exists (FIX-21, Delivery.java:247).
+- A wrong-expectation fix that waits for an async step before acting removes the window the old synchronous test pinned; re-run the mutant of what that window guarded (P1-09b, Drain count).
+- `catch (Throwable)` around a harness call swallows the harness's own timeout `fail()` (P1-09b, NodeIT).

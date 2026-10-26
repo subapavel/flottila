@@ -59,4 +59,14 @@ class ModuleBoundaryViolationTest {
     @Test void testkitDependingOnRuntimeIsCaught() { assertFails(Rules.TESTKIT_DEPENDS_ON_CORE_AND_API, "TestkitDependsOnRuntime"); }
     @Test void cliDependingOnRuntimeIsCaught() { assertFails(Rules.CLI_DEPENDS_ON_API_AND_TESTKIT, "CliDependsOnRuntime"); }
     @Test void packageCycleIsCaught() { assertFails(Rules.NO_CYCLES, "cyclea"); }
+
+    @Test void runtimeDependingOnAComponentIsCaught() { assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "RuntimeDependsOnAComponent"); }
+    @Test void runtimeDependingOnAStepIsCaught() { assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "RuntimeDependsOnAStep"); }
+    @Test void aMainOutsideTheRuntimePackageIsNoWiringPoint() {
+        assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "io.flottila.runtime.violation.Main");
+    }
+    @Test void aClassWhoseNameStartsWithMainIsNoWiringPoint() {
+        assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "io.flottila.runtime.MainHelper");
+    }
+    @Test void runtimeDependingOnTheMockIsCaught() { assertFails(Rules.RUNTIME_NEVER_NAMES_THE_MOCK, "RuntimeDependsOnTheMock"); }
 }

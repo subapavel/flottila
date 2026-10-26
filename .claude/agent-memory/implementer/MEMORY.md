@@ -68,6 +68,9 @@
 - Testkit: FakeRuntime, FakeTimer (`nextDelay()` drives backoffs), FakeIds, InMemoryBlobStore,
   BlobStoreContract, ComponentContract (9 cases), RecordingComponent (`sentTo`, `replyWith`,
   `failNext`), GeneratedReadStream, BlockedPlatformThreadDetector.
+- Vert.x 5.1.10 source: `Future.future(h)` fails its promise with what `h` throws (null answer included); `compose` with a
+  mapper that returns null throws NPE inside a listener and the composed future NEVER completes. `VertxOptions.setUseDaemonThread`
+  (default null: Vert.x threads inherit the daemon flag of the thread that first runs them — a virtual thread's is true).
 
 ## Findings that came back in review
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
@@ -77,3 +80,7 @@
 - A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05).
 - Before changing who resumes in `StreamingWrite`, grep the blob tests' fixtures for latches that wait on a
   sink resume (`TieredBlobStoreFailureTest.LatePauseStream` waits for one inside `pause()`): they pin the ordering.
+- Moving a handler call onto its own thread (P1-09b, Mock/RecordingComponent): unit tests that assert the handler ran right
+  after `send` returned race (MockComponentTest, RecordingComponentTest D-056 cases) — grep the component's own tests first.
+- JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)` in a refusal test); runtime has ~980 measured
+  lines, so 10 uncovered lines are 1 pp of the 2 pp band — count before adding untestable wiring (Main).

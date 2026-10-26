@@ -493,3 +493,12 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/fix21-veri
 Review: FAIL round 1 (Thread.start half silently dropped; "nothing is saved" unpinned); PASS round 2. Follow-ups FIX-25 (paused reply leaks its connection on a failed store write), FIX-26.
 D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 16; review rounds 2.
 Next: P1-09b [C] (designer first).
+
+## P1-09b · 2026-10-26 · commit `feat(runtime): node with env config, start and close`
+Deviation: F-4 (runtime wires the shipped components and steps through `Main`; §7 and §12, ARCHITECTURE 3.4).
+Red: `NodeConfigTest`, `NodeTest`, `NodeIT`, archtest `ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS` / `RUNTIME_NEVER_NAMES_THE_MOCK` (+ violation fixtures), contract `theHandlerRunsOnAVirtualThreadOfItsOwnPerDelivery` (red on mock and RecordingComponent) — target/p109b-red-*.log; rounds 2–3 target/p109b-red2-*.log, p109b-red3-*.log (count before handler, throwing/null handler — red on http, bind error, spool, derived `deployed`, tree cap).
+Changed: D-057 amendment (b split into P1-09b node and P1-09d deploy; P1-09e/f/g new), F-4, F-5 (for P1-09d), ARCHITECTURE §7/§9/§12 + changelog 3.4; runtime `node.NodeConfig`, `ComponentContext`, `Node`, `Main`; runtime compile deps on schemas, http, xslt, validate; mock and RecordingComponent run each handler on its own virtual thread, counting the answer first; http answers 500 for a null or throwing handler; `Component` javadoc without ServiceLoader. Approved expectation fixes: D-056 stop cases wait for the handler to be entered.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (906 tests; target/p109b-verify3.log); coverage "no decrease" (runtime 97.4, 0.1 pp inside the band — P1-09d's Main process test must win it back), baseline written; mutants M1–M6 and impl rounds killed (target/p109b-impl*-mut-*.log); `partial-start-cleanup` accepted as equivalent (lazy pool).
+Review: FAIL round 1 (count-before-handler and handler failure unpinned; acceptance claimed Main and drain; §7/javadoc ServiceLoader; `catch (Throwable)` in NodeIT); PASS round 2.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 22; review rounds 2 (test-author hit the turn cap once).
+Next: P1-09d [C] — design first: at-least-once bodies across a restart (spool key per start, S3 in P2-05).

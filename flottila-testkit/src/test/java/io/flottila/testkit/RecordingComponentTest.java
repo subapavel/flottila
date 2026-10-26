@@ -174,13 +174,14 @@ class RecordingComponentTest extends ComponentContract {
     }
 
     @Test
-    void aSecondStopWithAnAnswerOutstandingDoesNotCompleteEarly() {
+    void aSecondStopWithAnAnswerOutstandingDoesNotCompleteEarly() throws Exception {
         io.vertx.core.Promise<io.flottila.api.Ack> answer = io.vertx.core.Promise.promise();
         List<Envelope> handled = new CopyOnWriteArrayList<>();
         var consumer = http.consumer(partner, e -> { handled.add(e); return answer.future(); });
         consumer.start().await();
         Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer("a"));
         Future<Envelope> sent = http.producer(partner).send(in);
+        assertTrue(soon(() -> !handled.isEmpty()), "the send reached the running consumer's handler");   // on a thread of its own (D-057)
         assertEquals(List.of(in), handled, "the send reached the running consumer's handler");
 
         Future<Void> first = consumer.stop();
@@ -188,7 +189,36 @@ class RecordingComponentTest extends ComponentContract {
         assertFalse(first.isComplete(), "one answer is outstanding");
         assertFalse(again.isComplete(), "a second stop is not an answer: the drain still waits for the outstanding one");
         answer.complete(new io.flottila.api.Ack.Accepted(in.id()));
+        sent.otherwiseEmpty().await(10, TimeUnit.SECONDS);   // the handler's thread may pass the answer on after it returned
         assertTrue(sent.succeeded(), "the answer reached its sender: " + sent);
         assertTrue(first.succeeded() && again.succeeded(), "both stops complete with the last answer: " + first + ", " + again);
+    }
+
+    /**
+     * The answer is counted when the send hands it out, before the handler's thread runs (D-056 with D-057): a stop issued
+     * right after the send, while that thread is still queued behind held carriers, waits for the answer all the same.
+     */
+    @Test
+    void aStopBeforeTheHandlerWasEnteredStillWaitsForItsAnswer() throws Exception {
+        io.vertx.core.Promise<io.flottila.api.Ack> answer = io.vertx.core.Promise.promise();
+        List<Envelope> handled = new CopyOnWriteArrayList<>();
+        var consumer = http.consumer(partner, e -> { handled.add(e); return answer.future(); });
+        consumer.start().await();
+        Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer("a"));
+        Future<Envelope> sent;
+        Future<Void> stopped;
+        try (HeldCarriers held = HeldCarriers.hold()) {   // the handler's virtual thread is started by the send but cannot run
+            sent = http.producer(partner).send(in);
+            stopped = consumer.stop();
+            assertEquals(List.of(), handled, "the window is real: the handler has not been entered when stop is called");
+            assertFalse(stopped.isComplete(), "the answer the send handed out is outstanding before its handler runs: stop waits for it");
+        }
+        assertTrue(soon(() -> handled.size() == 1), "the handler runs once the carriers are free");
+        assertFalse(stopped.isComplete(), "stop still waits: the handler has not answered");
+        answer.complete(new io.flottila.api.Ack.Accepted(in.id()));
+        sent.otherwiseEmpty().await(10, TimeUnit.SECONDS);
+        assertTrue(sent.succeeded(), "the answer reached its sender: " + sent);
+        stopped.otherwiseEmpty().await(10, TimeUnit.SECONDS);
+        assertTrue(stopped.succeeded(), "stop completes with the answer: " + stopped);
     }
 }

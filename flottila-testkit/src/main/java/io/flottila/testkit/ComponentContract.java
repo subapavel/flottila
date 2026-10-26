@@ -19,18 +19,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -42,7 +46,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * Nack failing the send, a body above the tree limit streaming through, a second send of the same envelope delivering
  * the same body again (a retry re-opens the body, nothing is consumed), and a consumer stopped mid-delivery (D-056):
  * {@link Consumer#stop()} accepts nothing new, waits for the delivery in flight and lets its answer reach the sender — a
- * cancel reaches the component as a retryable {@link Ack.Nack} the sender sees as a retryable {@link NackException}.
+ * cancel reaches the component as a retryable {@link Ack.Nack} the sender sees as a retryable {@link NackException} — and
+ * each delivery calling the handler on a virtual thread of its own, never the sender's (D-057); a handler that throws or
+ * answers null fails the send, and a stop after it completes.
  *
  * @since 0.1
  */
@@ -207,6 +213,39 @@ public abstract class ComponentContract {
     }
 
     @Test
+    public void aHandlerThatThrowsFailsTheSendAndStopStillCompletes() {
+        aBrokenHandlerFailsTheSendAndStopStillCompletes("throws", e -> { throw new IllegalStateException("handler-threw"); });
+    }
+
+    @Test
+    public void aHandlerThatAnswersNullFailsTheSendAndStopStillCompletes() {
+        aBrokenHandlerFailsTheSendAndStopStillCompletes("answers null", e -> null);
+    }
+
+    /**
+     * A handler that {@code what} acknowledged nothing: the send fails — it neither succeeds nor hangs — and the answer the
+     * delivery counted (D-056) counts as answered, so a stop that follows completes.
+     */
+    private void aBrokenHandlerFailsTheSendAndStopStillCompletes(String what, Function<Envelope, Future<Ack>> broken) {
+        Component component = component();
+        AtomicInteger invoked = new AtomicInteger();
+        Consumer consumer = component.consumer(endpoint(), e -> { invoked.incrementAndGet(); return broken.apply(e); });
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        Future<Void> stopped = null;
+        try {
+            Future<Envelope> sent = producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("broken-handler")));
+            assertTrue(soon(() -> invoked.get() == 1), "the handler was invoked");
+            assertTrue(settled(sent).failed(), "a handler that " + what + " acknowledged nothing: the send fails: " + sent);
+            stopped = consumer.stop();
+            assertTrue(settled(stopped).succeeded(), "the failed answer counts as answered: stop completes: " + stopped.cause());
+        } finally {
+            if (stopped == null) consumer.stop();   // the case has failed already; a send that never settled may hold this stop
+            producer.close().await();
+        }
+    }
+
+    @Test
     public void aBodyAboveTheTreeLimitStreamsThroughIntact() {
         Component component = component();
         List<Envelope> seen = new CopyOnWriteArrayList<>();
@@ -248,6 +287,73 @@ public abstract class ComponentContract {
         } finally {
             producer.close().await();
             consumer.stop().await();
+        }
+    }
+
+    /**
+     * Each delivery calls the handler on a virtual thread of its own (D-057): never on the sender's thread — a stop deadline's
+     * interrupt aimed at the handler's thread then never reaches a sender — and never on one thread shared by the deliveries:
+     * two deliveries in flight at once are in their handlers at the same time, on two threads. The senders are virtual
+     * threads, the way a flow sends, so a component that calls the handler on the caller's thread fails on the sender check,
+     * not on the thread kind. A handler blocks only on a virtual thread: a broken component's event loop is never held.
+     */
+    @Test
+    public void theHandlerRunsOnAVirtualThreadOfItsOwnPerDelivery() throws Exception {
+        Component component = component();
+        List<Thread> handlers = new CopyOnWriteArrayList<>();
+        List<Boolean> together = new CopyOnWriteArrayList<>();
+        CountDownLatch entered = new CountDownLatch(2);
+        Consumer consumer = component.consumer(endpoint(), e -> {
+            Thread self = Thread.currentThread();
+            handlers.add(self);
+            entered.countDown();
+            if (self.isVirtual()) together.add(bothEntered(entered));   // waits until the other delivery is in its handler too
+            return Future.succeededFuture(new Ack.Accepted(e.id()));
+        });
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        List<Thread> senders = new CopyOnWriteArrayList<>();
+        List<Future<Envelope>> sends = new CopyOnWriteArrayList<>();
+        try {
+            List<Thread> sending = new ArrayList<>();
+            for (String body : List.of("first", "second")) {
+                sending.add(Thread.ofVirtual().name("contract-sender-" + body).start(() -> {
+                    senders.add(Thread.currentThread());
+                    sends.add(producer.send(FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer(body))));
+                }));
+            }
+            for (Thread t : sending) {
+                assertTrue(t.join(patience().multipliedBy(2)), "the sender " + t + " is still inside send(), at " + java.util.Arrays.toString(t.getStackTrace()));
+            }
+            assertEquals(2, sends.size(), "both sends were issued");
+            for (Future<Envelope> s : sends) {   // a handler that waited for the other one in vain answers after a patience: wait for both
+                try {
+                    s.otherwiseEmpty().await(patience().toMillis() * 3, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException pending) {
+                    fail("still pending after three times " + patience() + ": " + s);
+                }
+                assertTrue(s.succeeded(), "delivered: " + s.cause());
+            }
+            assertTrue(soon(() -> handlers.size() >= 2), "both deliveries reached the handler: " + handlers);   // a send acknowledged early must not race the check
+            assertEquals(2, handlers.size(), "one handler call per delivery: " + handlers);
+            for (Thread h : handlers) assertTrue(h.isVirtual(), "the handler runs on a virtual thread, not on " + h);
+            for (Thread h : handlers) assertFalse(senders.contains(h), "the handler runs on a thread of its own, not on the sender's " + h + " (senders " + senders + ")");
+            assertNotSame(handlers.get(0), handlers.get(1), "two deliveries in flight at once run on two threads, not both on " + handlers.get(0));
+            assertTrue(soon(() -> together.size() == 2), "both handlers finished waiting for each other: " + together);
+            assertEquals(List.of(true, true), together, "both deliveries were in their handlers at the same time (false: one waited " + patience() + " for the other)");
+        } finally {
+            producer.close().await();
+            consumer.stop().await();
+        }
+    }
+
+    /** Waits, at most {@link #patience()}, until both deliveries entered the handler; an interrupt is an answer of {@code false}, the flag kept. */
+    private boolean bothEntered(CountDownLatch entered) {
+        try {
+            return entered.await(patience().toMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 

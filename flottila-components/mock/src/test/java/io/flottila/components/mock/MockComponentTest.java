@@ -155,14 +155,15 @@ class MockComponentTest {
     // --- stop (D-056: the mock's stop unregisters the handler and completes once every outstanding handler future has completed)
 
     @Test
-    void stopCompletesOnlyOnceEveryOutstandingAnswerHasCompletedAFailedOneIncluded() {
+    void stopCompletesOnlyOnceEveryOutstandingAnswerHasCompletedAFailedOneIncluded() throws Exception {
         List<Promise<Ack>> answers = new CopyOnWriteArrayList<>();
         var consumer = http.consumer(domestic, e -> { Promise<Ack> p = Promise.promise(); answers.add(p); return p.future(); });
         consumer.start().await();
         Producer p = http.producer(domestic);
         Future<Envelope> first = p.send(invoice());
+        assertTrue(soon(() -> answers.size() == 1), "the first send reached the running consumer's handler");   // in order: answers.get(0) is first's
         Future<Envelope> second = p.send(invoice());
-        assertEquals(2, answers.size(), "both sends reached the running consumer's handler");
+        assertTrue(soon(() -> answers.size() == 2), "both sends reached the running consumer's handler");
 
         Future<Void> stopped = consumer.stop();
         assertEquals(Health.Status.DOWN, http.health().await().status(), "no consumer runs once its stop began");
@@ -172,6 +173,7 @@ class MockComponentTest {
         assertEquals(2, answers.size(), "the stopping consumer's handler saw nothing new");
 
         answers.get(0).fail(new IllegalStateException("the flow failed"));
+        first.otherwiseEmpty().await(10, java.util.concurrent.TimeUnit.SECONDS);   // the handler's thread may pass the answer on after it returned
         assertTrue(first.failed(), "the failed answer reached its sender");
         assertFalse(stopped.isComplete(), "one answer is still outstanding");
         assertFalse(second.isComplete(), "its answer is still outstanding");
@@ -181,13 +183,14 @@ class MockComponentTest {
     }
 
     @Test
-    void aSecondStopWithAnAnswerOutstandingDoesNotCompleteEarly() {
+    void aSecondStopWithAnAnswerOutstandingDoesNotCompleteEarly() throws Exception {
         Promise<Ack> answer = Promise.promise();
         List<Envelope> handled = new CopyOnWriteArrayList<>();
         var consumer = http.consumer(domestic, e -> { handled.add(e); return answer.future(); });
         consumer.start().await();
         Envelope in = invoice();
         Future<Envelope> sent = http.producer(domestic).send(in);
+        assertTrue(soon(() -> !handled.isEmpty()), "the send reached the running consumer's handler");
         assertEquals(List.of(in), handled, "the send reached the running consumer's handler");
 
         Future<Void> first = consumer.stop();
@@ -195,7 +198,47 @@ class MockComponentTest {
         assertFalse(first.isComplete(), "one answer is outstanding");
         assertFalse(again.isComplete(), "a second stop is not an answer: the drain still waits for the outstanding one");
         answer.complete(new Ack.Accepted(in.id()));
+        sent.otherwiseEmpty().await(10, java.util.concurrent.TimeUnit.SECONDS);   // the handler's thread may pass the answer on after it returned
         assertTrue(sent.succeeded(), "the answer reached its sender: " + sent);
         assertTrue(first.succeeded() && again.succeeded(), "both stops complete with the last answer: " + first + ", " + again);
+    }
+
+    /**
+     * The answer is counted when the send hands it out, before the handler's thread runs (D-056 with D-057): a stop issued
+     * right after the send, while that thread is still queued behind held carriers, waits for the answer all the same.
+     */
+    @Test
+    void aStopBeforeTheHandlerWasEnteredStillWaitsForItsAnswer() throws Exception {
+        Promise<Ack> answer = Promise.promise();
+        List<Envelope> handled = new CopyOnWriteArrayList<>();
+        var consumer = http.consumer(domestic, e -> { handled.add(e); return answer.future(); });
+        consumer.start().await();
+        Envelope in = invoice();
+        Future<Envelope> sent;
+        Future<Void> stopped;
+        try (HeldCarriers held = HeldCarriers.hold()) {   // the handler's virtual thread is started by the send but cannot run
+            sent = http.producer(domestic).send(in);
+            stopped = consumer.stop();
+            assertEquals(List.of(), handled, "the window is real: the handler has not been entered when stop is called");
+            assertFalse(stopped.isComplete(), "the answer the send handed out is outstanding before its handler runs: stop waits for it");
+        }
+        assertTrue(soon(() -> handled.size() == 1), "the handler runs once the carriers are free");
+        assertFalse(stopped.isComplete(), "stop still waits: the handler has not answered");
+        answer.complete(new Ack.Accepted(in.id()));
+        sent.otherwiseEmpty().await(10, java.util.concurrent.TimeUnit.SECONDS);
+        assertTrue(sent.succeeded(), "the answer reached its sender: " + sent);
+        stopped.otherwiseEmpty().await(10, java.util.concurrent.TimeUnit.SECONDS);
+        assertTrue(stopped.succeeded(), "stop completes with the answer: " + stopped);
+    }
+
+    /** Spins (never sleeps) until {@code condition} holds, at most 10 s: each delivery calls the handler on a virtual thread of its own (D-057). */
+    static boolean soon(java.util.function.BooleanSupplier condition) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) return false;
+            Thread.onSpinWait();
+            Thread.yield();
+        }
+        return true;
     }
 }

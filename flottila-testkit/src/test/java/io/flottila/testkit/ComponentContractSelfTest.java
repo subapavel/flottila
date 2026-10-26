@@ -22,6 +22,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
@@ -39,7 +42,8 @@ class ComponentContractSelfTest {
     /**
      * A loopback component with one thing wrong, chosen by the variant. The correct one's {@code stop()} unregisters the
      * handler at once and completes when the handler answers still outstanding have completed (D-056); a Nack fails the
-     * send with a {@link NackException} carrying the reason and the retryable flag.
+     * send with a {@link NackException} carrying the reason and the retryable flag; each delivery calls the handler on a
+     * virtual thread of its own (D-057).
      */
     static final class Variant implements Component {
         final String scheme;
@@ -56,6 +60,12 @@ class ComponentContractSelfTest {
         boolean stopDropsPendingAnswers;
         /** How a Nack fails the send; the correct variant reports a {@link NackException} with reason and flag. */
         Function<Ack.Nack, Throwable> nackAs = n -> new NackException(n.reason(), n.retryable());
+        /** Where the handler runs; {@code null} (the correct variant) is a virtual thread of its own per delivery. */
+        Executor handlerThread;
+        /** Broken: the handler runs on the sender's thread, inside {@code send()}. */
+        boolean handlerOnTheSendersThread;
+        /** Broken: a handler that throws or answers null leaves the answer pending (its own thread dies with the exception). */
+        boolean handlerFailureLost;
         private final Set<Promise<Envelope>> waiting = ConcurrentHashMap.newKeySet();
 
         Variant(String scheme, String schema, boolean handlerSurvivesStop, boolean healthAlwaysUp, boolean ackBeforeHandler, boolean nackIsSuccess,
@@ -71,6 +81,37 @@ class ComponentContractSelfTest {
 
         /** A Nack reaches the sender with {@code nackAs}. */
         static Variant nackReportedAs(Function<Ack.Nack, Throwable> nackAs) { Variant v = correct(); v.nackAs = nackAs; return v; }
+
+        /** The handler runs inside {@code send()}, on the sender's thread (the mock and RecordingComponent before D-057). */
+        static Variant handlerOnTheSendersThread() { Variant v = correct(); v.handlerOnTheSendersThread = true; return v; }
+
+        /** The handler runs on {@code where} instead of a virtual thread of its own. */
+        static Variant handlerOn(Executor where) { Variant v = correct(); v.handlerThread = where; return v; }
+
+        /** The handler runs on a virtual thread of its own, but what it throws — a null answer included — never reaches the answer. */
+        static Variant handlerFailureLost() { Variant v = correct(); v.handlerFailureLost = true; return v; }
+
+        /** Calls the handler the way the variant does; the drain counts the answer before the handler runs. */
+        private Future<Ack> dispatch(Running at, Envelope e) {
+            if (handlerOnTheSendersThread) return at.drain().track(Future.future(p -> at.handler().apply(e).onComplete(p)));   // a throw fails the answer
+            if (handlerFailureLost) {
+                Promise<Ack> answer = Promise.promise();
+                at.drain().track(answer.future());
+                Thread.ofVirtual().name("variant-handler-failure-lost").start(() -> at.handler().apply(e).onComplete(answer));
+                return answer.future();
+            }
+            if (handlerThread == null) return at.drain().deliver(at.handler(), e);
+            Promise<Ack> answer = Promise.promise();
+            at.drain().track(answer.future());
+            handlerThread.execute(() -> {
+                try {
+                    at.handler().apply(e).onComplete(answer);
+                } catch (Throwable failed) {
+                    answer.tryFail(failed);
+                }
+            });
+            return answer.future();
+        }
 
         @Override public String scheme() { return scheme; }
         @Override public String configSchema() { return schema; }
@@ -91,7 +132,7 @@ class ComponentContractSelfTest {
                 @Override public Future<Envelope> send(Envelope e) {
                     Running at = handler;
                     if (at == null) return Future.failedFuture(new IllegalStateException("no consumer running"));
-                    Future<Ack> ack = at.drain().track(at.handler().apply(deliveredAs.apply(e)));
+                    Future<Ack> ack = dispatch(at, deliveredAs.apply(e));
                     if (ackBeforeHandler) return Future.succeededFuture(e);
                     Promise<Envelope> answer = Promise.promise();
                     waiting.add(answer);
@@ -117,6 +158,11 @@ class ComponentContractSelfTest {
         @Override protected EndpointConfig endpoint() { return LOOP; }
     }
 
+    /** The same suite with a second of patience: a handler that waits in vain for the other delivery gives up sooner. */
+    static class ImpatientVariantContractTest extends VariantContractTest {
+        @Override protected Duration patience() { return Duration.ofSeconds(1); }
+    }
+
     static final EndpointConfig EPHEMERAL = new EndpointConfig("in", URI.create("ephemeral://in"), Map.of());   // no address before start
 
     /** An address assigned at start, but the suite never asks the started consumer for it: every producer targets {@link #endpoint()}. */
@@ -138,6 +184,11 @@ class ComponentContractSelfTest {
     static Set<String> failing(Component variant) {
         current = variant;
         return failing(VariantContractTest.class);
+    }
+
+    static Set<String> failingImpatiently(Component variant) {
+        current = variant;
+        return failing(ImpatientVariantContractTest.class);
     }
 
     static Set<String> failing(Class<? extends ComponentContract> suite) {
@@ -169,7 +220,7 @@ class ComponentContractSelfTest {
                 failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e,
                         e -> e.withHeader("x-seen", "dropped").withHeader("x-acked", "dropped").withHeader("x-answer", "dropped"))), "reply dropped (headers replaced)");
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged", "aNackFromTheHandlerFailsTheSendWithItsReason",
-                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable"),
+                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER),
                 failing(new Variant("loopback", ok.schema, false, false, true, false, e -> e, e -> e)), "acknowledged before the handler answered");
         assertEquals(Set.of(), failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e.withId("receiver-minted"), e -> e)),
                 "a receiver that mints its own id (every real transport does) passes: the id is not what crosses");
@@ -200,11 +251,46 @@ class ComponentContractSelfTest {
         current = Variant.correct();
     }
 
+    static final String OWN_THREAD = "theHandlerRunsOnAVirtualThreadOfItsOwnPerDelivery";
+    static final String THROWS = "aHandlerThatThrowsFailsTheSendAndStopStillCompletes";
+    static final String NULL_ANSWER = "aHandlerThatAnswersNullFailsTheSendAndStopStillCompletes";
+
+    @Test
+    void aHandlerCalledOnTheSendersThreadFailsOnlyTheOwnThreadCase() {
+        assertEquals(Set.of(OWN_THREAD), failing(Variant.handlerOnTheSendersThread()),
+                "the handler runs inside send(): virtual (the senders are), one per delivery, but the sender's own thread");
+        current = Variant.correct();
+    }
+
+    @Test
+    void aHandlerCalledOnAPlatformThreadPerDeliveryFailsOnlyTheOwnThreadCase() {
+        assertEquals(Set.of(OWN_THREAD), failing(Variant.handlerOn(r -> Thread.ofPlatform().daemon().name("variant-platform-handler").start(r))),
+                "a thread of its own per delivery, but a platform thread");
+        current = Variant.correct();
+    }
+
+    @Test
+    void handlersSharingOneVirtualThreadFailOnlyTheOwnThreadCase() {
+        try (ExecutorService one = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("variant-shared-handler").factory())) {
+            assertEquals(Set.of(OWN_THREAD), failingImpatiently(Variant.handlerOn(one)),
+                    "virtual and never the sender's, but one thread for every delivery: the second waits until the first has answered");
+        }
+        current = Variant.correct();
+    }
+
+    @Test
+    void aHandlerFailureThatNeverReachesTheAnswerFailsExactlyTheBrokenHandlerCases() {
+        assertEquals(Set.of(THROWS, NULL_ANSWER), failingImpatiently(Variant.handlerFailureLost()),
+                "a thrown exception or a null answer kills the handler's thread and leaves the send and the stop pending");
+        current = Variant.correct();
+    }
+
     @Test
     void anAddressAssignedAtStartIsReachedOnlyThroughTheStartedConsumersProducerEndpoint() {
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged",
                         "aNackFromTheHandlerFailsTheSendWithItsReason", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain",
-                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable"),
+                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", OWN_THREAD,
+                        THROWS, NULL_ANSWER),
                 failing(EphemeralWithoutOverrideContractTest.class),
                 "without producerEndpoint the producer has no address: every case that needs a delivery fails, the component delivers only to the address named");
     }

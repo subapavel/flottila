@@ -82,6 +82,12 @@ public final class AdminServer {
             }
         }
 
+        /** The token redacted: a log line never carries it. */
+        @Override
+        public String toString() {
+            return "Config[host=" + host + ", port=" + port + ", token=" + token.map(t -> "***") + "]";
+        }
+
         private static boolean loopback(String host) {
             try {
                 return InetAddress.ofLiteral(host).isLoopbackAddress();
