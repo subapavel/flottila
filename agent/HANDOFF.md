@@ -1,9 +1,9 @@
 # Handoff
 
 state: SESSION_END (owner, 2026-10-19) — FIX-6 committed (`Task: FIX-6`, D-052), CI green (run 39337858206 on ab6a86e); next: FIX-15 (row 80, spec in the row)
-last commit: `chore(agent): turn economy` (D-053, docs + owner patch); 3fa3585 FIX-6 close-out; ab6a86e `Task: FIX-6` (review PASS); gate MET on 7f3e4e3
+last commit: 58a0053 designer + settings (D-054); 6902682 D-054 docs; 3fa3585 FIX-6 close-out; ab6a86e `Task: FIX-6` (review PASS)
 branch: main
-next exact action: FIX-15 — test-author on the three red cases in BACKLOG row FIX-15 (seam `encrypting(Path, OutputStream)`), implementer, verifier, reviewer
+next exact action: FIX-15 [B] — test-author on the three red cases in BACKLOG row FIX-15 (seam `encrypting(Path, OutputStream)`), implementer, verifier, reviewer
 then: P1-08b (worker driver, lease, attempts bound, ghost WARNING test), P1-08c (cancel), P1-09 (admin API); stop before P1-10 (Q-2 waits for P1-10)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: ab6a86e run 39337858206 green; fc10914 run 39329800061 green; 2be5c0e run 39329153094 green; 04c73ce run 39327954728 green
@@ -14,7 +14,7 @@ decisions pending review at hand-over: D-022, D-025–D-047 except D-028, D-049�
 roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort per call; designer Opus xhigh for C; gate-reviewer Fable 5.1 (AGENTS.md)
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
 VM: services detached (NOTES.md "Build and VM"); mutant restore with `cp`/`touch`, never `mv`; never `mvn clean` at the reactor root; no stress-ng (shell hogs)
-owner first: merge `claude/tender-bohr-fqlr7i` into main (D-054, patch applied); re-scout P1-08b/c, P1-09
+D-054 live on main (58a0053: Opus architect, row classes, designer agent); start the session with /model claude-opus-5-5, /effort medium
 proposal for the owner (FIX-10 PROGRESS "Found"): a reconcile loop would replace the hand-over flags (`pausing`, `handingOver`, two flags, `again`) — not done
 fixtures: NOTES "FIX-10" (hand-over protocol, staged fixtures) and "FIX-12" (drain pattern); contract suite hook `producerEndpoint` + self-test variants (FIX-8)
 notes: agent/NOTES.md, one section per area (fix main, delivery modes, steps (FIX-6 Saxon reads), components, DLQ, recording, pipeline, core, bench, VM)
