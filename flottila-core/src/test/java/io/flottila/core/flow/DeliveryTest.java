@@ -414,7 +414,7 @@ class DeliveryTest {
         assertEquals(1, partner.sent().size(), "leased: not run again before the lease runs out");
 
         failing.parksOk();
-        rt.clock().advance(FlowWorker.LEASE);
+        rt.clock().advance(WorkerPolicy.DEFAULT.lease());
         worker.poll().await();
         List<Parked> parked = failing.list().await();
         assertEquals(1, parked.size(), "after the lease the item runs again and its failure is parked");
@@ -439,7 +439,7 @@ class DeliveryTest {
         assertEquals(List.of(), dlq.list().await());
 
         store.readsOk();
-        rt.clock().advance(FlowWorker.LEASE);
+        rt.clock().advance(WorkerPolicy.DEFAULT.lease());
         worker.poll().await();
         List<Envelope> got = partner.sentTo("partner");
         assertEquals(1, got.size(), "after the lease the message runs");

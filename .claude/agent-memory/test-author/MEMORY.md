@@ -94,3 +94,15 @@
   StylesheetPackage, CollectionFn.call) before any CollectionFinder; `uri-collection('..')` lists the directory. A failing static
   `unparsed-text()` stops further static vars; `unparsed-text-available()` swallows and compilation continues.
 - `mvn -o` can fail at POM load (import BOMs vertx-stack-depchain / junit-bom absent from ~/.m2, FIX-15): drop `-o`, the proxy resolves them.
+- Worker fixtures (core flow test tree, P1-08b): `RunGate` (step `gate`: holds each run until `Run.release()`, records thread → `joined()`,
+  `overlaps()` per message id, `peakActive()`, `open()`), `RecordingWorkQueue` (decorates InMemoryWorkQueue: claims with max/in-flight/
+  running probe, `holdNext`/`releaseHeld`, `failClaims`, `answerRenews`/`failRenews`, renews/holds/completes; one-shot `failNextClaim`,
+  `throwOnNextClaim` (sync throw), `failCompletes(n,c)`, `failHolds(n,c)`, `answerHolds(Boolean)`). `FlowWorkerTest.World` = per case/try.
+- Mutating a tree production class without touching the tree: copy it to scratch, `javac -d m/out -cp core/target/classes:<cp>`, run the
+  launcher with `m/out` ahead of core target/classes + test-classes (a class earlier on the classpath shadows the tree's).
+- jqwik in a Jupiter class: @BeforeEach/@AfterEach do not run for @Property and instances may be shared — build all state inside the
+  property method; a class-level @Timeout only draws a jqwik warning. `frequencyOf(Tuple.of(n, Arbitraries.just(new R())))` infers R:
+  declare each as `Arbitrary<Iface>` first.
+- FakeTimer runs due tasks on the thread calling `advance`: after an advance wait `until(renews == k && timer.pending() == 1)` (spin, no sleep).
+- Docker works here: a Testcontainers IT can run in scratch (runtime classpath via `-pl flottila-runtime -am compile dependency:build-classpath`);
+  an extra `db/migration` dir on the classpath adds a scratch Flyway migration. Scratch reference + mutants = `javac` the copied main sources.

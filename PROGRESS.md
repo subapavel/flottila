@@ -454,3 +454,12 @@ Review: PASS round 1. Follow-up FIX-18 (`discard` catches only IOException; an u
 Branch: committed on the environment's session branch `claude/stoic-cannon-2byixj` and pushed to it and to `main`.
 D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 13; review rounds 1 (plus one verifier rerun: the first mutant command lacked `-am`).
 Next: P1-08b [C] — designer draft in hand.
+
+## P1-08b · 2026-10-26 · commit `feat(core): worker driver, renewed lease and attempts bound`
+Red: core `FlowWorkerTest` (22 → 26 cases incl. `oneHolderPerItemUnderAnyInterleaving`, `runningItemsNeverExceedTheInFlightLimit` jqwik), `InMemoryWorkQueueTest` / `PgWorkQueueIT` `claimAndFastPathCountAttempts`, `renewIsFencedByAttempts`, `aHeldRowIsNeverClaimedAndBlocksItsKey` — EXECUTED_FAIL by compile errors on the D-055 API (target/p108b-red.log, p108b-red-runtime.log); round 2 `aClaimThatThrowsDoesNotWedgeTheWorker`, `anUnparkableItemIsAlertedWhateverTheHoldAnswers` EXECUTED_FAIL on assertions (target/p108b-r2-red.log).
+Changed: D-055 (draft — review at hand-over, supersedes D-049 c in part); `WorkQueue` `Item.attempts`, `renew`, `hold`; V4 `work.attempts`, `held_at`; `WorkerPolicy`, `AttemptsExhaustedException`, `Parking.park(Envelope, StepConfig, Throwable)`; `FlowWorker` driver (start/stop/pollingAfterAccept, renewal per item); `FlowWorker.LEASE` gone; ARCHITECTURE §7 WorkQueue row + changelog; NOTES "Delivery modes". Schema-version expectations 3 → 4 in `MigrationsIT`, `PgMessageStoreIT`, `BenchMainIT` (wrong after V4, approved by the architect).
+Post-code tests: `FlowWorkerLifecycleTest` (8 cases) written by the implementer after the code, read and approved by the architect.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (unit 670/0, IT 45/0, ArchUnit 27/0; target/p108b-verify2.log); coverage "no decrease" VERIFIED_PASS (core 99.7/99.3; target/p108b-coverage2.log), baseline written; scoped PIT VERIFIED_PASS 117/121 = 97 % (target/p108b-pit.log); reviewer mutants 10/10 killed (target/p108b-m1..3.log, p108b-p1..7.log).
+Review: FAIL round 1 (the left-to-lease answer and WARNING unpinned; follow-up round after a failed claim untested; `running` after a failed settle untested); PASS round 2. Follow-ups: FIX-19 (byte budget for worker runs), FIX-20 (re-claim of an own running seq; negative-lease renew); reword the "held … : false" ERROR when next touched.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 27; review rounds 2.
+Next: P1-08c [C] (cancel semantics).

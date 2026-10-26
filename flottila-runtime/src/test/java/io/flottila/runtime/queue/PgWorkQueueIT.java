@@ -26,6 +26,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The proto-m1 WorkQueue claim SQL on the Vert.x 5 client: SKIP LOCKED, per-key order, lease expiry, the same-key fast path, two real workers. */
@@ -118,6 +121,89 @@ class PgWorkQueueIT {
         WorkQueue.Item n1 = claim("w1", 1, LEASE).get(0);
         assertTrue(queue.completeAndTakeNext(n1.seq(), "w1", LEASE).await().isEmpty(), "no key, no ordering, no fast path");
         assertEquals(1, pool.query("select count(*) from work").execute().await().iterator().next().getLong(0));
+    }
+
+    // --- P1-08b (D-055): attempts as the fencing token, renew, hold (V4__work_attempts)
+
+    private void expire(long seq) {
+        pool.preparedQuery("update work set locked_until = now() - interval '1 second' where seq = $1").execute(Tuple.of(seq)).await();
+    }
+
+    private io.vertx.sqlclient.Row row(long seq) {
+        return pool.preparedQuery("select locked_by, locked_until, attempts, held_at from work where seq = $1").execute(Tuple.of(seq)).await().iterator().next();
+    }
+
+    @Test
+    void claimAndFastPathCountAttempts() {
+        enqueue("x1", "K"); enqueue("x2", "K");
+        WorkQueue.Item first = claim("w1", 10, LEASE).get(0);
+        assertEquals("x1", first.messageId());
+        assertEquals(1, first.attempts(), "a claim counts itself");
+        assertEquals(1, row(first.seq()).getInteger("attempts"));
+        expire(first.seq());
+        WorkQueue.Item again = claim("w2", 10, LEASE).get(0);
+        assertEquals(first.seq(), again.seq());
+        assertEquals(2, again.attempts(), "a re-claim after the lease ran out is the second attempt");
+        WorkQueue.Item next = queue.completeAndTakeNext(again.seq(), "w2", LEASE).await().orElseThrow();
+        assertEquals("x2", next.messageId());
+        assertEquals(1, next.attempts(), "the fast path's claim counts as well");
+        assertEquals(1, row(next.seq()).getInteger("attempts"));
+    }
+
+    @Test
+    void renewIsFencedByAttempts() {
+        enqueue("r1", null);
+        WorkQueue.Item held = claim("w1", 1, Duration.ofSeconds(60)).get(0);
+        Object until = row(held.seq()).getValue("locked_until");
+        assertFalse(queue.renew(held.seq(), 2, Duration.ofSeconds(600)).await(), "attempts that are not the row's: refused");
+        assertFalse(queue.renew(held.seq(), 0, Duration.ofSeconds(600)).await());
+        assertEquals(until, row(held.seq()).getValue("locked_until"), "and the lease unchanged");
+        assertTrue(queue.renew(held.seq(), held.attempts(), Duration.ofSeconds(600)).await(), "the current holder renews");
+        java.time.OffsetDateTime renewed = row(held.seq()).getOffsetDateTime("locked_until");
+        assertTrue(renewed.isAfter(((java.time.OffsetDateTime) until).plusSeconds(300)), "extended by the renewal's lease of 600 s: " + until + " -> " + renewed);
+
+        expire(held.seq());
+        assertTrue(queue.renew(held.seq(), held.attempts(), LEASE).await(), "an expired lease nobody re-claimed is revived");
+        assertTrue(claim("w2", 1, LEASE).isEmpty(), "revived: not claimable");
+        assertEquals("w1", row(held.seq()).getString("locked_by"));
+
+        expire(held.seq());
+        WorkQueue.Item taken = claim("w2", 1, LEASE).get(0);
+        assertEquals(2, taken.attempts());
+        Object takenUntil = row(taken.seq()).getValue("locked_until");
+        assertFalse(queue.renew(held.seq(), held.attempts(), Duration.ofSeconds(600)).await(), "the old holder is fenced off by the new claim");
+        assertEquals(takenUntil, row(taken.seq()).getValue("locked_until"));
+        assertEquals("w2", row(taken.seq()).getString("locked_by"));
+
+        assertTrue(queue.hold(taken.seq(), taken.attempts()).await());
+        assertFalse(queue.renew(taken.seq(), taken.attempts(), LEASE).await(), "a held row is not renewed");
+        queue.complete(taken.seq()).await();
+        assertFalse(queue.renew(taken.seq(), taken.attempts(), LEASE).await(), "a completed row is not renewed");
+    }
+
+    @Test
+    void aHeldRowIsNeverClaimedAndBlocksItsKey() {
+        enqueue("a1", "A"); enqueue("a2", "A"); enqueue("n1", null);
+        WorkQueue.Item a1 = claim("w1", 1, LEASE).get(0);
+        assertEquals("a1", a1.messageId());
+        assertFalse(queue.hold(a1.seq(), 0).await(), "fenced: attempts that are not the row's hold nothing");
+        assertNull(row(a1.seq()).getValue("held_at"));
+        expire(a1.seq());
+        WorkQueue.Item again = claim("w2", 1, LEASE).get(0);
+        assertEquals(a1.seq(), again.seq(), "the refused hold left the row claimable");
+        assertFalse(queue.hold(a1.seq(), a1.attempts()).await(), "the old holder cannot hold what was claimed again");
+        assertTrue(queue.hold(again.seq(), again.attempts()).await(), "the current holder holds it");
+        assertNotNull(row(again.seq()).getValue("held_at"));
+
+        expire(again.seq());
+        List<WorkQueue.Item> rest = claim("w3", 10, LEASE);
+        assertEquals(List.of("n1"), rest.stream().map(WorkQueue.Item::messageId).toList(),
+                "a1 is held and a2 waits behind it; the null-key row is claimable");
+        queue.complete(rest.get(0).seq()).await();
+        pool.query("update work set locked_until = now() - interval '1 second'").execute().await();
+        assertTrue(claim("w3", 10, LEASE).isEmpty(), "never claimed again, its lease long gone");
+        assertEquals(2L, pool.query("select count(*) from work").execute().await().iterator().next().getLong(0), "the held row and the row behind it stay");
+        assertFalse(queue.hold(rest.get(0).seq(), rest.get(0).attempts()).await(), "a completed row cannot be held");
     }
 
     @Test

@@ -114,12 +114,16 @@ retryable `Nack`, a late save enqueues nothing, a timeout between the two writes
 the worker runs (D-049 b: the sender's retry is the duplicate); at-most-once is `Accepted` before
 the pipeline runs on its own virtual thread, a failure is logged and dropped. Admission per
 `Delivery` from `limits` (defaults cores × 2 and the request limit × `maxBodyBytes`); a refusal
-is a retryable `Nack`; the permit covers the save (at-least-once) or the run. `FlowWorker.poll()`
-(`FlowBuilder.worker(flow, baseDir, workerId)`) claims the flow's due items (`LEASE` 30 s, a
-named constant — draft), rebuilds the envelope from the ingress snapshot and the blobs (`Replay`'s
-rebuild), runs the pipeline without stage 0, completes the item on every outcome (a ghost item is
-completed and logged, never a poison loop) and returns the count. Nothing polls in production yet:
-wiring consumers + workers (poll on the timer and after each ACK) into deployed flows is P1-09's
+is a retryable `Nack`; the permit covers the save (at-least-once) or the run. `FlowWorker` (`FlowBuilder.worker(flow, baseDir, workerId[, WorkerPolicy])`, D-055): `poll()` claims
+`max − running` with at most one claim in flight (a poll during a claim shares one follow-up round,
+also after a failed or throwing claim); `start()` ticks every `pollInterval`, `stop()` ends ticks;
+`pollingAfterAccept` polls on `Accepted`; each finished item polls once. Per running item the lease
+is renewed every lease/3, fenced by the claim's `attempts`. Outcomes: success, a park, or a ghost
+(WARNING) → complete; any other failure → WARNING, left to its lease (NOTES used to say "every
+outcome" — wrong since D-049 c). Claimed with `attempts > maxAttempts` → parked at step 1 with
+`AttemptsExhaustedException`; park or timeline read fails → `hold` + one ERROR (held rows block their
+key; release is a P1-09 route). Open: FIX-19 (byte budget), FIX-20 (re-claim of an own running
+seq). Nothing polls in production yet: wiring consumers + workers into deployed flows is P1-09's
 deploy endpoint. Faults: api `Fault.kind()` → http `answer` 400 / 422 / 502 / 503 + Retry-After /
 500, body `text/plain` = `getMessage()`. `forwardHeaders` is applied in the `to` stage: the
 producer gets exactly the listed headers plus `content-type`, whatever set them; steps see every

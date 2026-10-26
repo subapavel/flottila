@@ -12,6 +12,7 @@
 | 2026-10-18 | 3.3 | §14: "Flow config JSON Schema" ticked as drafted — `flottila-schemas` v1 schemas for flow, package, endpoint, `*.test.yaml` (amendment 4 delegated the design to P0-12; D-040); body text unchanged | — |
 | 2026-10-18 | 3.3 | §6: the step SPI (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`) lives in `flottila-api`, as §7 and §12 require for pluggable steps; the built-in `route` sets a prop (`route.prop` / `routes[].when` / `set` / `otherwise`, schema v1) and `to … byProp` acts on it — the form where a branch is itself a pipeline named `route:<branch>` is deferred until a flow needs it; `split` has a stage but no flow-file shape yet (D-043) | — |
 | 2026-10-19 | 3.3 | §4: the at-least-once durable save is the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK whatever the flow's recording level says; the worker runs the pipeline without stage 0 for a message saved that way (D-049) | F-2 (minor) |
+| 2026-10-26 | 3.3 | §7 WorkQueue row: the lease is renewed while the item runs (not derived from a producer timeout), every claim counts an attempt that fences the lease, and an item past its attempts bound is parked or, when the park fails, held — held rows block their key and wait for a human (D-055, P1-08b) | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -232,7 +233,7 @@ The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a 
 
 | Queue | Backing | Used for |
 | --- | --- | --- |
-| WorkQueue | Postgres `work` table, `SELECT … FOR UPDATE SKIP LOCKED`, one row per message, `partition_key`, lease with expiry | async at-least-once flows on small installs; all XI ordered (EOIO) queues with block-on-failure |
+| WorkQueue | Postgres `work` table, `SELECT … FOR UPDATE SKIP LOCKED`, one row per message, `partition_key`, lease with expiry renewed while the item runs, an attempts count that fences the lease and bounds the retries, a held state that blocks its key | async at-least-once flows on small installs; all XI ordered (EOIO) queues with block-on-failure |
 | Kafka topics | one topic per flow or pool, key = partition key | async hand-over at scale, ingest buffer for monitoring, replay source, the durable `/xi` door |
 | Poller leases | Valkey (moved off Postgres) | which node polls which SFTP/mail/DB endpoint |
 

@@ -79,3 +79,5 @@
 - When a JDK SPI value is built by hand (an `LSInput` with throwing setters), the getters' null/false values are behaviour (Xerces reads character data before bytes). Each one needs an assertion, and the hand-built class needs its own test (FIX-6, SchemaInput).
 - Xerces reads an `LSInput` the resolver hands over through its system id even when the byte stream is null and `ACCESS_EXTERNAL_SCHEMA=""`. The resolver's own system id is the confinement, not the belt (FIX-6 M28).
 - A cleanup helper run from a `finally` that catches only `IOException` lets an unchecked cleanup failure replace the primary and skip later steps — check the helper's own catches too (FIX-15, SpoolCipher `discard`).
+- A driver's failure paths (the follow-up round after a failed claim, the bookkeeping after a failed settle) cannot be mutated by PIT — check that some test fails the queue call there (P1-08b, FlowWorker:179/:198).
+- Tests that read a round through `otherwiseEmpty()` leave the round's answer and that path's log unpinned (P1-08b :222/:224).

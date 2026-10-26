@@ -16,11 +16,13 @@ import java.util.Optional;
 
 /**
  * The Postgres {@link WorkQueue} (ported from proto-m1): {@code SELECT … FOR UPDATE SKIP LOCKED}
- * on the {@code work} table. A row is claimable when its lease is free, it is the oldest row of its
- * partition key and that key holds no live lease; the next row of a key becomes eligible only after
- * the previous one is completed (deleted) or its lease expired. Leases are measured by the
- * database clock. The same-key fast path completes and claims the next row of the key in one
- * transaction (ARCHITECTURE §7).
+ * on the {@code work} table. A row is claimable when it is not held, its lease is free, it is the
+ * oldest row of its partition key (held rows included) and that key holds no live lease; the next
+ * row of a key becomes eligible only after the previous one is completed (deleted) or its lease
+ * expired — never while it is held. Leases are measured by the database clock. Every hand-out
+ * increments the row's {@code attempts}, the holder's fencing token for {@link #renew} and
+ * {@link #hold} (D-055, {@code V4__work_attempts}). The same-key fast path completes and claims
+ * the next row of the key in one transaction (ARCHITECTURE §7).
  *
  * @since 0.1
  */
@@ -32,6 +34,7 @@ public final class PgWorkQueue implements WorkQueue {
             select w1.seq from work w1
             where w1.flow = $2
               and w1.available_at <= now()
+              and w1.held_at is null
               and (w1.locked_until is null or w1.locked_until < now())
               and (w1.partition_key is null or (
                     not exists (select 1 from work w2 where w2.flow = $2
@@ -40,16 +43,24 @@ public final class PgWorkQueue implements WorkQueue {
                                   and w3.partition_key = w1.partition_key and w3.seq < w1.seq)))
             """;
 
-    private static final String CLAIM = "update work w set locked_by = $1, locked_until = now() + make_interval(secs => $4)"
-            + " where w.seq in (" + ELIGIBLE + " order by w1.seq limit $3 for update skip locked)"
-            + " returning seq, id, flow, step, partition_key";
+    private static final String TAKE = "update work w set locked_by = $1, locked_until = now() + make_interval(secs => $4), attempts = w.attempts + 1";
+
+    private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts";
+
+    private static final String CLAIM = TAKE + " where w.seq in (" + ELIGIBLE + " order by w1.seq limit $3 for update skip locked)" + ITEM;
 
     /** The fast path: same rule, restricted to one key, one row. Note the parameters: $3 is the key here, the int limit in CLAIM. */
-    private static final String CLAIM_NEXT_OF_KEY = "update work w set locked_by = $1, locked_until = now() + make_interval(secs => $4)"
-            + " where w.seq in (" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked)"
-            + " returning seq, id, flow, step, partition_key";
+    private static final String CLAIM_NEXT_OF_KEY = TAKE
+            + " where w.seq in (" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked)" + ITEM;
 
     private static final String COMPLETE = "delete from work where seq = $1 returning flow, partition_key";
+
+    /** The holder's claim is the row's current one: it exists, is not held and was last handed out with these attempts. */
+    private static final String CURRENT = " where seq = $1 and attempts = $2 and held_at is null";
+
+    private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
+
+    private static final String HOLD = "update work set held_at = now()" + CURRENT;
 
     private final Pool pool;
 
@@ -81,6 +92,14 @@ public final class PgWorkQueue implements WorkQueue {
         }));
     }
 
+    @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
+        return pool.preparedQuery(RENEW).execute(Tuple.of(seq, attempts, seconds(lease))).map(rows -> rows.rowCount() == 1);
+    }
+
+    @Override public Future<Boolean> hold(long seq, int attempts) {
+        return pool.preparedQuery(HOLD).execute(Tuple.of(seq, attempts)).map(rows -> rows.rowCount() == 1);
+    }
+
     private static Future<Optional<Item>> next(SqlClient conn, String workerId, String flow, String key, Duration lease) {
         return conn.preparedQuery(CLAIM_NEXT_OF_KEY).execute(Tuple.of(workerId, flow, key, seconds(lease)))
                 .map(rows -> items(rows).stream().findFirst());
@@ -92,7 +111,8 @@ public final class PgWorkQueue implements WorkQueue {
 
     private static List<Item> items(RowSet<Row> rows) {
         List<Item> items = new ArrayList<>();
-        for (Row r : rows) items.add(new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key")));
+        for (Row r : rows) items.add(new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"),
+                r.getInteger("attempts")));
         return items;
     }
 }

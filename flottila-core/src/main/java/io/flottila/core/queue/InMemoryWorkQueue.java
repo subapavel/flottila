@@ -12,18 +12,20 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * In-memory {@link WorkQueue} with the exact eligibility rule of the Postgres claim (oldest row of
- * its key, no live lease on the key), leases on an injected {@link Clock}. Single process only;
- * state whose loss loses messages belongs to Postgres (CLAUDE.md) — this is for tests.
+ * In-memory {@link WorkQueue} with the exact eligibility rule of the Postgres claim (not held, oldest
+ * row of its key, no live lease on the key), the same attempts and fencing (D-055), leases on an
+ * injected {@link Clock}. Single process only; state whose loss loses messages belongs to Postgres
+ * (CLAUDE.md) — this is for tests.
  *
  * @since 0.1
  */
 public final class InMemoryWorkQueue implements WorkQueue {
 
     private static final class Row {
-        final Item item;
+        Item item;            // as last handed out: its attempts are the current holder's
         String lockedBy;
         Instant lockedUntil;
+        boolean held;
         Row(Item item) { this.item = item; }
     }
 
@@ -39,7 +41,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Objects.requireNonNull(messageId, "messageId");
         Objects.requireNonNull(flow, "flow");
         long seq = nextSeq++;
-        rows.put(seq, new Row(new Item(seq, messageId, flow, step, partitionKey)));
+        rows.put(seq, new Row(new Item(seq, messageId, flow, step, partitionKey, 0)));
         return Future.succeededFuture();
     }
 
@@ -48,9 +50,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
         List<Item> taken = new ArrayList<>();
         for (Row r : rows.values()) {
             if (taken.size() >= max) break;
-            if (!r.item.flow().equals(flow) || live(r, now) || !eligible(r)) continue;
-            take(r, workerId, now, lease);
-            taken.add(r.item);
+            if (!r.item.flow().equals(flow) || r.held || live(r, now) || !eligible(r)) continue;
+            taken.add(take(r, workerId, now, lease));
         }
         return Future.succeededFuture(taken);
     }
@@ -66,13 +67,26 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Instant now = clock.instant();
         for (Row r : rows.values()) {   // seq order: the first row of the key is its oldest, and only the oldest is ever leased
             if (!r.item.flow().equals(done.item.flow()) || !done.item.partitionKey().equals(r.item.partitionKey())) continue;
-            take(r, workerId, now, lease);
-            return Future.succeededFuture(Optional.of(r.item));
+            return Future.succeededFuture(Optional.of(take(r, workerId, now, lease)));
         }
         return Future.succeededFuture(Optional.empty());
     }
 
-    /** Rows currently queued (leased or not). */
+    @Override public synchronized Future<Boolean> renew(long seq, int attempts, Duration lease) {
+        Row r = rows.get(seq);
+        if (!current(r, attempts)) return Future.succeededFuture(false);
+        r.lockedUntil = clock.instant().plus(lease);
+        return Future.succeededFuture(true);
+    }
+
+    @Override public synchronized Future<Boolean> hold(long seq, int attempts) {
+        Row r = rows.get(seq);
+        if (!current(r, attempts)) return Future.succeededFuture(false);
+        r.held = true;
+        return Future.succeededFuture(true);
+    }
+
+    /** Rows currently queued (leased, held or neither). */
     public synchronized int size() { return rows.size(); }
 
     /** The worker holding a live lease on {@code seq}, if any. */
@@ -95,7 +109,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
      * with a live lease has its oldest row live and {@link #claim} already skips it: the SQL's second
      * condition ("no live lease on the key") is implied here. The one divergence from the SQL is on
      * misuse: a fast path on a seq that was never handed out would lease the key's oldest row even
-     * while it is live; the contract (complete only what you were handed; Q-1) excludes that.
+     * while it is live or held; the contract (complete only what you were handed; Q-1) excludes that —
+     * a row handed out had no older row of its key, held or not, so the row after it is never held.
      */
     private boolean eligible(Row candidate) {
         String key = candidate.item.partitionKey();
@@ -107,8 +122,17 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return true;
     }
 
-    private static void take(Row r, String workerId, Instant now, Duration lease) {
+    /** The caller's claim is the row's current one: the row exists, is not held and was last handed out with {@code attempts}. */
+    private static boolean current(Row r, int attempts) {
+        return r != null && !r.held && r.item.attempts() == attempts;
+    }
+
+    /** Leases {@code r} to {@code workerId} and counts the attempt; the item as handed out. */
+    private static Item take(Row r, String workerId, Instant now, Duration lease) {
         r.lockedBy = Objects.requireNonNull(workerId, "workerId");
         r.lockedUntil = now.plus(lease);
+        Item i = r.item;
+        r.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts() + 1);
+        return r.item;
     }
 }

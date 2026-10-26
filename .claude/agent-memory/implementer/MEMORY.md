@@ -24,6 +24,10 @@
 - dockerd/pg often already up: `setsid dockerd` exits 1, `pg_ctlcluster` says "already running"; check `docker info`.
 - flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
+- A new Flyway migration bumps the schema version asserted in THREE ITs: runtime MigrationsIT, runtime
+  PgMessageStoreIT (@BeforeAll, `start:53`) and bench BenchMainIT:36 — packets tend to name only MigrationsIT (P1-08b).
+- Focused core runs are ~5 s (`-pl flottila-core -am test -Dtest=A,B -Dsurefire.failIfNoSpecifiedTests=false
+  -Djacoco.skip=true`): a scripted mutant loop (cp backup, replace, run, read surefire XML, cp + touch, cmp) is cheap.
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
   fixture with no test in its own module trips the 2 pp band even when other modules exercise it.
 
@@ -35,6 +39,10 @@
 - Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
   static `doc()`/`unparsed-text()`/`use-when` read via `Configuration.getResourceResolver()` (UseWhenFilter builds
   `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
+- Vert.x 5.1.10 (javap): `transform(Function<AsyncResult<T>,Future<U>>)` (+ BiFunction overload), `andThen(Handler<AsyncResult>)`
+  completes after the handler ran, `eventually(Supplier<Future<U>>)`; `Future.await()` works on a plain virtual thread.
+- FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
+  cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
 - Core may use Future, Promise, CompositeFuture, Completable, AsyncResult, Handler (archtest Rules.java:39).
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and
   never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;

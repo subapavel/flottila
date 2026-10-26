@@ -58,7 +58,7 @@ import java.util.function.UnaryOperator;
  *
  * <p>{@link #delivery} gives the flow's consumer handler per delivery mode, under the flow's {@link Admission} — at-least-once
  * saves durably into the store and the {@link WorkQueue} given through {@link #queue(WorkQueue)} — and {@link #worker} the
- * {@link FlowWorker} that runs what an at-least-once delivery accepted (ARCHITECTURE §4 lifecycle table, D-049). The steps
+ * {@link FlowWorker} that runs what an at-least-once delivery accepted (ARCHITECTURE §4 lifecycle table, D-049, D-055). The steps
  * see every header; a producer receives only the headers the flow's {@code forwardHeaders} name (case-insensitive) plus
  * {@code content-type}, the body's media type, whatever set them — the {@code to} step filters at the producer boundary
  * (ARCHITECTURE Envelope table "nothing propagates implicitly", D-049 e).
@@ -148,15 +148,26 @@ public final class FlowBuilder {
         };
     }
 
-    /**
-     * The worker {@code workerId} of an at-least-once flow (see {@link FlowWorker}): claims up to the flow's in-flight request
-     * limit per poll and runs the pipeline without stage 0. Needs the store, the {@link #queue} and the {@link #dlq}.
-     */
+    /** {@link #worker(FlowDefinition, Path, String, WorkerPolicy)} under {@link WorkerPolicy#DEFAULT}. */
     public FlowWorker worker(FlowDefinition flow, Path baseDir, String workerId) {
+        return worker(flow, baseDir, workerId, WorkerPolicy.DEFAULT);
+    }
+
+    /**
+     * The worker {@code workerId} of an at-least-once flow (see {@link FlowWorker}) under {@code policy}: runs at most the flow's
+     * in-flight request limit of items at once and the pipeline without stage 0, leases and polls on the runtime's timer and
+     * parks an item past {@link WorkerPolicy#maxAttempts()} at the flow's first step. Needs the store, the {@link #queue} and
+     * the {@link #dlq}.
+     */
+    public FlowWorker worker(FlowDefinition flow, Path baseDir, String workerId, WorkerPolicy policy) {
         Objects.requireNonNull(flow, "flow");
+        Objects.requireNonNull(policy, "policy");
         requireStoreAndQueue(flow, "worker");
+        requireDlq(flow);
         int max = (int) Math.min(inFlightRequests(flow), Integer.MAX_VALUE);
-        return new FlowWorker(flow.id(), workerId, max, queue, store, runtime.blobs(), Pipeline.of(stages(flow, baseDir, false)));
+        Parking parking = new Parking(dlq, runtime.clock(), versions(flow));
+        return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), Pipeline.of(stages(flow, baseDir, false)),
+                parking, flow.steps().get(0), runtime.timer());
     }
 
     private void requireStoreAndQueue(FlowDefinition flow, String what) {
