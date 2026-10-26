@@ -437,3 +437,11 @@ Checks: `jq .` on settings.json ok; `bash -n` on the hook ok; the hook exercised
 Live now: rules A, B, F in the architect's practice (this commit's CI watch ran in the foreground). From the next session after the owner's commit: C, D, E.
 Review: none (docs and a patch; no src/ change, no test).
 Next: the owner applies and commits the patch; the next session starts FIX-15 (BACKLOG row 80).
+
+## CHORE opus architect · 2026-10-26 · commit `chore(agent): Opus architect, effort by task class` (D-054)
+Why: owner's decision — the Fable 5.1 architect consumed most of the tokens; every architect turn is priced over the whole context at 2.5× Opus 5.5 (D-048).
+Changed (committed): AGENTS.md roles (architect Opus 5.5 medium, new designer Opus 5.5 xhigh) and the class matrix A/B/C/G replacing "Model per call", "Design draft" section; CLAUDE.md Working rules; docs/WORKFLOW.md §1 steps 3, 4, 6 and §10 opening; docs/DECISIONS.md D-054; agent/BACKLOG.md class header and a class on all 19 rows not `done`; deploy/claude-cloud/README.md session start (`/model claude-opus-5-5`, `/effort medium`); HANDOFF.
+Not committed by the agent (D-053 rule D): agent/patches/opus-architect-claude.patch — `.claude/agents/designer.md` and `model` + `modelSettings` (Opus 5.5 at medium) in `.claude/settings.json`; gate-reviewer stays Fable 5.1 (owner, 2026-10-26).
+Checks: `git apply --check` of the patch ok on this tree; settings diff adds keys only (6 lines, hooks untouched); documented settings keys and per-call effort (Claude Code ≥ 2.1.292) checked against code.claude.com docs.
+Review: none (docs and a patch; no src/ change, no test).
+Next: the owner applies and commits the patch; re-measure turns and tokens per task after five tasks against 2026-10-19 (D-054); then FIX-15 [B].

@@ -11,10 +11,10 @@ baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` a
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
 open fixes: FIX-15 (FIX-14 review); FIX-16 (XSLT run-time `doc()`, a decision row; compose with `CompileConfinement`); FIX-17 (compile caches keyed by hash)
 decisions pending review at hand-over: D-022, D-025–D-047 except D-028, D-049–D-052 (D-026/D-032 joined, D-029 addendum, D-031/F-1, D-033/Q-1, D-043)
-roles (D-048): the session is the architect only; test-author, implementer, reviewer on Opus 5.5, verifier on Sonnet 5.5; gate-reviewer Fable 5.1 (AGENTS.md)
+roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort per call; designer Opus xhigh for C; gate-reviewer Fable 5.1 (AGENTS.md)
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
 VM: services detached (NOTES.md "Build and VM"); mutant restore with `cp`/`touch`, never `mv`; never `mvn clean` at the reactor root; no stress-ng (shell hogs)
-owner first: `git apply agent/patches/turn-economy-claude.patch` + commit (gated Stop hook, self-checks; D-053); scratchpad gone — re-scout P1-08b/c, P1-09
+owner first: `git apply agent/patches/opus-architect-claude.patch` + commit (model, designer; D-054); re-scout P1-08b/c, P1-09
 proposal for the owner (FIX-10 PROGRESS "Found"): a reconcile loop would replace the hand-over flags (`pausing`, `handingOver`, two flags, `again`) — not done
 fixtures: NOTES "FIX-10" (hand-over protocol, staged fixtures) and "FIX-12" (drain pattern); contract suite hook `producerEndpoint` + self-test variants (FIX-8)
 notes: agent/NOTES.md, one section per area (fix main, delivery modes, steps (FIX-6 Saxon reads), components, DLQ, recording, pipeline, core, bench, VM)

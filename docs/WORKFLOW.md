@@ -13,19 +13,21 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
 2. Pick the first `ready` row in `agent/BACKLOG.md`. A row is `ready` when every id in its
    depends-on column is `done`. Phase gates are rows too; nothing in the next phase becomes
    `ready` until the gate row is `done`.
-3. Write the acceptance spec (`AGENTS.md`); the test-author writes the red tests; approve them by
-   reading the test files. Red first: the failing test exists, observed red, before the code.
-   Then the task packet.
-4. Implement through the implementer (Opus 5.5; `model: sonnet` for CI, docs, fixtures). The
-   coordinator never implements. One writer at a time.
+3. Read the row's class (A/B/C/G, `AGENTS.md`); it sets the model and effort of every call below.
+   For a class-C row the designer drafts the design first. Write the acceptance spec
+   (`AGENTS.md`); the test-author writes the red tests; approve them by reading the test files.
+   Red first: the failing test exists, observed red, before the code. Then the task packet.
+4. Implement through the implementer (model and effort by the row's class). The coordinator never
+   implements. One writer at a time.
 5. Verify through the verifier: `mvn -B -ntp verify` green, ArchUnit green, coverage not
    decreased, scoped PIT on the touched classes. The verifier reports exit codes and the failing
    section; the coordinator reads the log tail itself and records each check with its evidence
    state.
-6. Review by the reviewer agent (Opus 5.5), the diff handed over as `target/<task>.diff`. When
-   the diff goes to the reviewer the architect runs `touch target/.batch-in-review` (§10). `FAIL`
-   reopens the task at step 4; a second `FAIL` reopens it at step 3 with a rewritten spec. A gate
-   row is reviewed by the gate-reviewer (Fable 5.1) instead.
+6. Review by the reviewer agent (Opus 5.5, effort by the row's class), the diff handed over as
+   `target/<task>.diff`. When the diff goes to the reviewer the architect runs
+   `touch target/.batch-in-review` (§10). `FAIL` reopens the task at step 4; a second `FAIL`
+   reopens it at step 3 with a rewritten spec, drafted by the designer, and raises the row's class
+   if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.1) instead.
 7. Commit and push to `main`: `rm -f target/.batch-in-review && git commit …`. Append the
    PROGRESS entry, rewrite HANDOFF, set the row to `done`. These three edits go in the same
    commit as the code.
@@ -159,9 +161,10 @@ that is not also in the files.
 
 ## 10. Turn economy (D-053)
 
-The architect runs on the most expensive model and every one of its turns is priced over the whole
-session context. Measured on 2026-10-20 over the session of 2026-10-19 (FIX-14 … FIX-6): 119 turns
-answered the environment's Stop hook ("uncommitted changes, please commit and push") while a task was
+The architect holds the largest context of the session and every one of its turns is priced over
+that whole context (it ran on Fable 5.1 until D-054; it runs on Opus 5.5 at medium since).
+Measured on 2026-10-20 over the session of 2026-10-19 (FIX-14 … FIX-6): 119 turns answered the
+environment's Stop hook ("uncommitted changes, please commit and push") while a task was
 mid-flight, and 131 turns only relayed a background subagent's completion — against 41 turns that
 carried an owner message. The rules below remove most of them.
 
