@@ -32,7 +32,8 @@ import java.util.function.Function;
  * payload is recorded — whatever the flow's recording level — then the message is enqueued in the flow's {@link WorkQueue},
  * and only when both are durable is the answer {@link Ack.Accepted}. A save not done within the flow's
  * {@code saveTimeout} is a retryable {@link Ack.Nack}, and a save that completes after that enqueues nothing; a failed save
- * is a retryable Nack too, whether its future fails or the store throws. Nothing of the pipeline runs here: a {@link FlowWorker} runs it. The permit is released when
+ * is a retryable Nack too, whether its future fails or the store throws, and so is a timer that refuses to bound the save
+ * (nothing is saved then). Nothing of the pipeline runs here: a {@link FlowWorker} runs it. The permit is released when
  * the answer is decided.</li>
  * <li><b>at-most-once</b>: {@link Ack.Accepted} at once; the pipeline runs afterwards on a virtual thread of its own and a
  * failure is logged and dropped — not parked, not queued. The permit is released when the pipeline ends.</li>
@@ -200,7 +201,13 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 Promise<Ack> answer = flight.answer;
                 answer.future().onComplete(decided -> flight.land());
                 // whichever completes the answer first wins — the save, its timeout, the stop's deadline; the others' completion is a no-op
-                Timer.Cancellable timeout = timer.schedule(saveTimeout, () -> answer.tryComplete(new Ack.Nack("durable save timed out after " + saveTimeout, true)));
+                Timer.Cancellable timeout;
+                try {
+                    timeout = timer.schedule(saveTimeout, () -> answer.tryComplete(new Ack.Nack("durable save timed out after " + saveTimeout, true)));
+                } catch (RuntimeException refused) {   // a timer that refuses (shutting down): nothing saved, the flight lands, the sender retries
+                    answer.tryComplete(retryable(refused));
+                    return answer.future();
+                }
                 Future<Void> record;
                 try {
                     record = store.record(ingress.apply(e));
@@ -211,7 +218,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                         .onComplete(saved -> {
                             timeout.cancel();
                             if (saved.succeeded()) answer.tryComplete(new Ack.Accepted(e.id()));
-                            else answer.tryComplete(new Ack.Nack(Objects.toString(saved.cause().getMessage(), saved.cause().toString()), true));
+                            else answer.tryComplete(retryable(saved.cause()));
                         });
                 return answer.future();
             }
@@ -284,6 +291,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         }
         // outside the lock: completing an answer runs the consumer's callbacks, and the flight lands
         for (Flight f : inFlight) if (f.answer != null) f.answer.tryComplete(cancelled(f.flow, after));
+    }
+
+    /** A retryable Nack naming {@code failure}: its message, else (none) the failure itself. */
+    private static Ack.Nack retryable(Throwable failure) {
+        return new Ack.Nack(Objects.toString(failure.getMessage(), failure.toString()), true);
     }
 
     private static Ack.Nack cancelled(String flow, Duration deadline) {

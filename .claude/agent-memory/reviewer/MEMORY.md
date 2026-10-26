@@ -88,3 +88,4 @@
 - A blanket IAE → 400 also catches IAEs a store throws for its own state (missing object) — check which IAEs reach the mapping (P1-09a).
 - An amended in-memory clause tested only by the Pg IT twin is unpinned in core (P1-09a InMemoryDlq cursor).
 - Predict the failure mode but let the red decide: the PgDlq out-of-range cursor was predicted 500 and in fact succeeded silently (P1-09a).
+- A row naming two failure sites is met only if the diff touches both; "accepted uncovered" must point at code that exists (FIX-21, Delivery.java:247).

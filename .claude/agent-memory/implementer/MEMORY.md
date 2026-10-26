@@ -57,6 +57,9 @@
   cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
 - Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (observed, P1-08c): stops accepting, keeps an HTTP/1.1 connection until its
   in-flight response ends, force-closes at the timeout; `close()` drops in-flight requests ("Connection was closed").
+- Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
+  loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
+  `compose` can end unheard. `req.response().onSuccess(HttpClientResponse::pause)` registered BEFORE `send` runs inline in the head emit.
 - Core may use Future, Promise, CompositeFuture, Completable, AsyncResult, Handler (archtest Rules.java:39).
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and
   never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;

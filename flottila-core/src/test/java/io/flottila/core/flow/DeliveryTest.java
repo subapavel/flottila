@@ -10,6 +10,7 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.api.Timer;
 import io.flottila.core.admission.Admission;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
@@ -18,6 +19,8 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Page;
+import io.flottila.core.record.Recorder;
+import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.RecordingComponent;
@@ -46,6 +49,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -1033,5 +1037,59 @@ class DeliveryTest {
         assertTrue(settled(stopped).succeeded());
         assertEquals(0, admission.inFlightRequests(), "the permit is back");
         assertEquals(0, rt.timer().pending(), "nothing left on the timer");
+    }
+
+    // --- a boarding that fails (FIX-21): the flight must not outlive it
+
+    /** The fake timer, except that its next {@code schedule} throws instead of scheduling; counts the refusals. */
+    static final class RefusingTimer implements Timer {
+        private final Timer delegate;
+        private final AtomicInteger toRefuse = new AtomicInteger(1);
+        final AtomicInteger refused = new AtomicInteger();
+        final String message;
+
+        RefusingTimer(Timer delegate, String message) {
+            this.delegate = delegate;
+            this.message = message;
+        }
+
+        @Override
+        public Cancellable schedule(Duration delay, Runnable task) {
+            if (toRefuse.getAndDecrement() > 0) {
+                refused.incrementAndGet();
+                throw new IllegalStateException(message);
+            }
+            return delegate.schedule(delay, task);
+        }
+    }
+
+    @Test
+    void anAtLeastOnceDeliveryWhoseTimerRefusesAnswersARetryableNackAndLeavesNothingInFlight() {
+        Admission admission = new Admission(2, 1 << 20);
+        RefusingTimer timer = new RefusingTimer(rt.timer(), "timer refused: shutting down");
+        Recorder recorder = new Recorder(store, rt.clock(), Meter.system(), Map.of());
+        Delivery delivery = Delivery.atLeastOnce(admission, "orders", e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
+                store, queue, timer, Duration.ofSeconds(30));
+
+        Envelope in = ingress(ORDER);
+        Future<Ack> ack = assertDoesNotThrow(() -> delivery.apply(in), "a refused timer is an answer to the sender, not an exception escaping apply");
+        assertEquals(1, timer.refused.get(), "the delivery asked the timer and was refused");
+        assertTrue(ack.isComplete(), "answered at once: " + ack);
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, ack.result(), "an internal failure of an at-least-once delivery is a Nack: " + ack);
+        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
+        assertTrue(nack.reason().contains("timer refused: shutting down"), "names the failure: " + nack.reason());
+        assertEquals(List.of(), store.timeline(in.id()).await(), "nothing is saved then: no ingress snapshot for the refused message");
+        assertEquals(List.of(), queue.snapshot(), "nothing is enqueued for the refused message");
+
+        assertEquals(0, admission.inFlightRequests(), "the permit is back");
+        assertEquals(0, admission.inFlightBytes(), "its bytes are back");
+        List<Admission.Permit> full = Stream.generate(() -> admission.tryAcquire(ORDER.length())).limit(admission.maxRequests())
+                .map(p -> p.orElseThrow(() -> new AssertionError("admission refused within its full count: a permit is still held")))
+                .toList();
+        full.forEach(Admission.Permit::close);
+
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        assertTrue(stopped.isComplete() && stopped.succeeded(), "nothing in flight: the stop completes at once, the clock never moving: " + stopped);
+        assertEquals(0, rt.timer().pending(), "no deadline scheduled for a flight that never flew");
     }
 }

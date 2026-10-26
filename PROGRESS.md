@@ -484,3 +484,12 @@ Review: FAIL round 1 (blob stream failure after the head hung the client; missin
 Follow-ups: FIX-22 (http pipe), FIX-23 (health deadline), FIX-24 (admin error-mapping nits).
 D-054 data: class C (designer, test-author, implementer, verifier, reviewer opus/xhigh); architect turns 24; review rounds 2.
 Next: FIX-21 [B] (second hang sighting), then P1-09b [C].
+
+## FIX-21 · 2026-10-26 · commit `fix(http): pause the partner's reply in its head callback`
+Red: core `DeliveryTest.anAtLeastOnceDeliveryWhoseTimerRefusesAnswersARetryableNackAndLeavesNothingInFlight` (target/fix21-red-b.log); http `HttpComponentTest.theReplyIsHandedToTheStorePausedSoALateListeningStore…` 3/3 red (target/fix21-red-c.log); `InvoiceSyncHttpTest` made fail-fast (4/4 scratch loops red naming "Response already ended", target/fix21-red-a-loop.log).
+Root cause of the hang: a production race — `HttpProducer` attached its reply handlers in a deferred task on another context, so a small reply ended unheard → retry → the partner received the message twice. Fix: `req.response().onSuccess(HttpClientResponse::pause)` before `send` (vertx-core 5.1.10 sources and javap). `Delivery`: a refusing `timer.schedule` → retryable Nack, nothing saved, flight lands.
+Not covered by a deterministic test: the exact race (stress evidence 0/16 000 with the fix, 4/8 000 without, target/fix21-impl-stress.log); `Thread.start` half split to FIX-26 (needs a seam).
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/fix21-verify2.log); coverage "no decrease", baseline written; scoped PIT `Delivery*` 44/44 (target/fix21-pit.log); mutants M1, M2, pause, Nack, catch killed (target/fix21-rev-M1.log, fix21-tests2-mut.log, fix21-impl-mut-*.log).
+Review: FAIL round 1 (Thread.start half silently dropped; "nothing is saved" unpinned); PASS round 2. Follow-ups FIX-25 (paused reply leaks its connection on a failed store write), FIX-26.
+D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 16; review rounds 2.
+Next: P1-09b [C] (designer first).

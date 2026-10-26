@@ -28,6 +28,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -277,5 +281,82 @@ class HttpComponentTest {
         slow.otherwiseEmpty().await();
         assertTrue(slow.failed(), "timeoutMs bounds the wait: " + slow.cause());
         toNever.close().await();
+    }
+
+    /** How long {@link LateListeningStore} waits for a reply to end on its own before it listens anyway (a paused reply never does). */
+    static final long LATE_LISTEN_MS = 1_000;
+
+    /**
+     * The store as the producer sees it, listening late — which the {@code BlobStore} contract allows: a stream "may be handed over
+     * paused, the store resumes it once its handlers are attached". It attaches its handlers only once the reply has ended (its
+     * {@code end()} future, which attaches nothing) or after {@link #LATE_LISTEN_MS}, and records whether the reply ended unheard.
+     */
+    static final class LateListeningStore implements io.flottila.api.BlobStore {
+        final io.flottila.api.BlobStore inner;
+        final AtomicInteger attached = new AtomicInteger();
+        final AtomicBoolean endedUnheard = new AtomicBoolean();
+        LateListeningStore(io.flottila.api.BlobStore inner) { this.inner = inner; }
+        @Override public long treeLimit() { return inner.treeLimit(); }
+        @Override public Future<io.flottila.api.Body> write(io.flottila.api.BlobKey key, Buffer whole, long maxSize) { return inner.write(key, whole, maxSize); }
+        @Override public io.vertx.core.streams.ReadStream<Buffer> open(io.flottila.api.BlobKey key) { return inner.open(key); }
+        @Override public Future<Buffer> read(io.flottila.api.BlobKey key) { return inner.read(key); }
+        @Override public Future<io.flottila.api.Body> write(io.flottila.api.BlobKey key, io.vertx.core.streams.ReadStream<Buffer> in, long maxSize) {
+            HttpClientResponse reply = (HttpClientResponse) in;   // the producer hands its partner's response over
+            io.vertx.core.Context ctx = Vertx.currentContext();
+            io.vertx.core.Promise<io.flottila.api.Body> written = io.vertx.core.Promise.promise();
+            AtomicBoolean listened = new AtomicBoolean();
+            Runnable listen = () -> {
+                attached.incrementAndGet();
+                try {
+                    inner.write(key, in, maxSize).onComplete(written);
+                } catch (RuntimeException refused) {   // e.g. "Response already ended": the reply's bytes went by unheard
+                    written.fail(refused);
+                }
+            };
+            reply.end().onComplete(done -> {   // an end after the store listened is the normal end, not this
+                if (listened.compareAndSet(false, true)) {
+                    endedUnheard.set(true);
+                    listen.run();
+                }
+            });
+            ctx.owner().setTimer(LATE_LISTEN_MS, id -> ctx.runOnContext(v -> { if (listened.compareAndSet(false, true)) listen.run(); }));
+            return written.future();
+        }
+    }
+
+    /**
+     * FIX-21: the producer hands its partner's reply to the store paused, like the consumer hands its request: a store that
+     * listens late still gets the whole 1-byte reply, the reply never ends before anyone listened (else the producer is left with
+     * "Response already ended" and its retryable step sends again), and the partner sees the send exactly once.
+     */
+    @Test
+    void theReplyIsHandedToTheStorePausedSoALateListeningStoreGetsItWholeAndThePartnerSeesTheSendOnce() throws Exception {
+        AtomicInteger partnerSaw = new AtomicInteger();
+        HttpServer partner = partner(req -> { req.body().onSuccess(b -> {
+            partnerSaw.incrementAndGet();
+            req.response().putHeader("content-type", "text/plain").end("k");
+        }); return null; });
+        LateListeningStore store = new LateListeningStore(rt.blobs());
+        HttpComponent late = new HttpComponent(vertx, store, rt.ids());
+        String url = "http://127.0.0.1:" + partner.actualPort() + "/tiny";
+        Producer p = late.producer(new EndpointConfig("partner", URI.create(url), Map.of("url", url, "maxBodyBytes", 16)));
+        Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer("x"));
+        java.util.concurrent.CompletableFuture<Future<Envelope>> sent = new java.util.concurrent.CompletableFuture<>();
+        Thread.ofVirtual().name("message").start(() -> {   // as in a flow: the send starts on the message's virtual thread
+            Future<Envelope> f = p.send(in);
+            try {
+                f.otherwiseEmpty().await(10, TimeUnit.SECONDS);
+                sent.complete(f);
+            } catch (TimeoutException stuck) {
+                sent.completeExceptionally(stuck);
+            }
+        });
+        Future<Envelope> f = sent.get(15, TimeUnit.SECONDS);
+        assertEquals(1, partnerSaw.get(), "the partner saw the send exactly once");
+        assertEquals(1, store.attached.get(), "the store listened once");
+        assertFalse(store.endedUnheard.get(), "the reply ended before the store listened: its bytes went by unheard; the send: " + (f.failed() ? f.cause() : "succeeded"));
+        assertTrue(f.succeeded(), "the send returns the partner's reply: " + f.cause());
+        assertEquals("k", f.result().body().whole().toString());
+        p.close().await(10, TimeUnit.SECONDS);
     }
 }

@@ -10,7 +10,6 @@
   → FlowBuilder → FakeRuntime). Reference package: `packages/demo` (flows, fixtures, `*.test.yaml`).
 - Every new schema rule needs a negative fixture under
   `flottila-schemas/src/test/resources/invalid/<kind>/`. Every ArchUnit rule has a fixture.
-- Property tests (jqwik) are expected for the batcher, admission and WorkQueue ordering.
 - Two fresh id generators both mint `m-1`: an id-equality assertion can pass by accident (P1-06
   review round 5) — assert against the id the component actually recorded.
 - A timing assertion observed against wall time passes for the wrong reason (P0-04 round 1):
@@ -40,8 +39,6 @@
   `beforeDrainExit(Runnable)` hook of Generated/ChunkedReadStream; `Kind` enum parameterises both streams (one-byte chunks "1".."n").
   `handOff(timeoutMsg, Runnable)` there runs a call on a second platform thread from inside a handler (detects handler-under-lock).
   Window records "<name> returned" on the other thread in `events`: a whole-list assertion must include it.
-- Checking a test against a reference fix / mutant without touching src: javac the scratch copies + the test with the classpath
-  from `dependency:build-classpath` (api's set suffices for testkit) plus junit-platform-launcher, run via LauncherFactory.
 - Wrapper sources in TieredBlobStore tests: tell the sink's resume from start()'s handover resume by the thread that called
   handler() (capture it there), never by wrapper state set in pause() — the sink can resume before pause() is entered (FIX-11).
 - Classpath for scratch checks: `mvn -o -q -pl flottila-runtime -am compile dependency:build-classpath -Dmdep.outputFile=target/x.txt
@@ -117,3 +114,5 @@
   poll `pg_stat_activity where wait_event_type='Lock'` for 1/2/3 waiters, then roll back. Unsorted inserts → 40P01, observed in scratch.
 - Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`). Scratch
   runtime reference: out-rt + scratch `db/migration` dir ahead of flottila-runtime/target/classes (V1..V4); the cp file lists deps only.
+- Rare hang (FIX-21): scratch Launcher loop, 4 JVMs, watchdog `jcmd <pid> Thread.dump_to_file` (shows virtual threads). HttpProducer's
+  unpaused reply can end before reply() listens (~1/2000 sends under load); deterministic pin: http `HttpComponentTest.LateListeningStore`.

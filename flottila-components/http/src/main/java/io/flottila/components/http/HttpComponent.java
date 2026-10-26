@@ -299,6 +299,10 @@ public final class HttpComponent implements Component {
             return client.request(options).compose(req -> {
                 e.headers().asMap().forEach((k, v) -> { if (!HOP_BY_HOP.contains(k)) req.putHeader(k, v); });
                 req.putHeader("content-length", String.valueOf(e.body().size()));
+                // Registered before the send, so it runs in the event-loop callback that delivers the response: nothing flows
+                // until reply() attached its handlers (the store resumes a 2xx reply, head() any other), which runs a deferred
+                // task later (FIX-21: a small reply could end unheard in between, "Response already ended", and a retry sent twice).
+                req.response().onSuccess(HttpClientResponse::pause);
                 return req.send(e.body().open());
             }).compose(res -> reply(e, res));
         }
