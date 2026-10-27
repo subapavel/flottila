@@ -307,6 +307,43 @@ class PackageArchiveTest {
     }
 
     /**
+     * Carried into d1b (d1a review round 2): a file entry that resolves to the target itself ({@code .}, {@code a/..} without a
+     * trailing slash) is refused in the check pass, as a bad request naming the entry — not a FileAlreadyExistsException at the
+     * write (a 500) — and nothing is written, not even the good entry before it.
+     */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {".", "a/..", "a/b/../.."})
+    void aFileEntryThatIsTheTargetItselfIsRefusedBeforeAnyWrite(String name) throws Exception {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("package.yaml", utf8("schemaVersion: 1\nkind: package\nname: shop\nversion: 1.0.0\n"));   // a good entry first
+        entries.put(name, utf8("the target itself"));
+        Path zip = write(tmp.resolve("archive.zip"), zip(entries));
+        Path into = Files.createDirectory(tmp.resolve("into"));
+
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> PackageArchive.unpack(zip, into, MIB),
+                "a file entry '" + name + "' that is the target directory itself");
+
+        assertTrue(String.valueOf(refused.getMessage()).contains(name), "the refusal names the entry '" + name + "': " + refused.getMessage());
+        assertEquals(Set.of(), everything(into), "refused in the check, before any write");
+        assertEquals(Set.of("archive.zip", "into"), everything(tmp), "nothing written beside the target");
+    }
+
+    /** P1-09d1b (implementer): a directory entry that is the target itself ({@code ./}, {@code a/../}) names a directory that exists: harmless, unpacked. */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"./", "a/../"})
+    void aDirectoryEntryThatIsTheTargetItselfUnpacks(String name) throws Exception {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put(name, new byte[0]);
+        entries.put("package.yaml", utf8("schemaVersion: 1\nkind: package\nname: shop\nversion: 1.0.0\n"));
+        Path zip = write(tmp.resolve("archive.zip"), zip(entries));
+        Path into = Files.createDirectory(tmp.resolve("into"));
+
+        PackageArchive.unpack(zip, into, MIB);
+
+        assertEquals(Set.of("package.yaml"), everything(into));
+    }
+
+    /**
      * Round 2: the target given as {@code <tmp>/x/../into} (both directories exist, so the operating system resolves it too) is the
      * same directory as {@code <tmp>/into}: every entry lands below it, nothing below {@code x}. A guard that compares normalised
      * entry paths with the target as given refuses every entry.

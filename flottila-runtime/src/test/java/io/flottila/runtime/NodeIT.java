@@ -306,6 +306,196 @@ class NodeIT {
 
     // --- helpers
 
+    // --- P1-09d1b: deploy over the admin API, close drains
+
+    static final Path DEMO = Path.of("../packages/demo");
+
+    /** A free loopback port: bound once and released (the demo's consumer binds it right after). */
+    static int freePort() throws IOException {
+        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+            return s.getLocalPort();
+        }
+    }
+
+    /** The demo package as a zip, its http-in endpoint on 127.0.0.1:{@code inPort}, its partners at {@code partnerBase}; every rewrite asserted. */
+    static Map<String, byte[]> demoFiles(int inPort, String partnerBase) throws IOException {
+        Map<String, byte[]> files = new java.util.TreeMap<>();
+        try (Stream<Path> walk = Files.walk(DEMO)) {
+            for (Path p : walk.filter(Files::isRegularFile).toList()) files.put(DEMO.relativize(p).toString().replace('\\', '/'), Files.readAllBytes(p));
+        }
+        files.put("endpoints/http-in.yaml", replaced(files.get("endpoints/http-in.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8080", "port: " + inPort)));
+        for (String partner : List.of("endpoints/partner-domestic.yaml", "endpoints/partner-foreign.yaml")) {
+            files.put(partner, replaced(files.get(partner), Map.of("http://localhost:8090", partnerBase)));
+        }
+        return files;
+    }
+
+    static byte[] replaced(byte[] file, Map<String, String> rewrites) {
+        String text = new String(file, StandardCharsets.UTF_8);
+        for (Map.Entry<String, String> r : rewrites.entrySet()) {
+            assertTrue(text.contains(r.getKey()), "fixture: the demo file holds '" + r.getKey() + "' to rewrite: " + text);
+            text = text.replace(r.getKey(), r.getValue());
+        }
+        return text.getBytes(StandardCharsets.UTF_8);
+    }
+
+    static byte[] zip(Map<String, byte[]> files) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(bytes)) {
+            for (Map.Entry<String, byte[]> f : files.entrySet()) {
+                out.putNextEntry(new java.util.zip.ZipEntry(f.getKey()));
+                out.write(f.getValue());
+                out.closeEntry();
+            }
+        }
+        return bytes.toByteArray();
+    }
+
+    static String sha256(byte[] bytes) throws Exception {
+        return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+    }
+
+    static HttpResponse<String> send(HttpClient client, String method, int port, String path, byte[] body, String contentType) throws IOException, InterruptedException {
+        return client.send(request(method, port, path, body, contentType), HttpResponse.BodyHandlers.ofString());
+    }
+
+    static HttpRequest request(String method, int port, String path, byte[] body, String contentType) {
+        return HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(20)).header("content-type", contentType)
+                .method(method, HttpRequest.BodyPublishers.ofByteArray(body)).build();
+    }
+
+    /** Every client here speaks HTTP/1.1: the JDK client would upgrade to h2c and share one connection between requests (FIX-29). */
+    static HttpClient http() {
+        return HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(5)).build();
+    }
+
+    /** The partner both demo endpoints send to: records what it saw, answers the demo's ack once {@code release} completes. */
+    io.vertx.core.http.HttpServer partner(List<String> saw, Future<Void> release, Buffer ack) {
+        return vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
+            saw.add(req.path() + " " + b);
+            release.onComplete(v -> req.response().putHeader("content-type", "application/xml").end(ack));
+        })).listen(0, "127.0.0.1").await();
+    }
+
+    Node startDemoNode(Map<String, String> env) throws Exception {
+        SaxonXml xml = new SaxonXml();
+        NodeConfig config = NodeConfig.from(env);
+        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
+        return node;
+    }
+
+    @Test
+    void deploysTheDemoZipAndAnInvoiceGetsThePartnersReply() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            byte[] zip = zip(files);
+            startDemoNode(env("ci"));
+            int admin = node.adminPort();
+
+            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo?revision=9df3f78", zip, "application/zip");
+
+            assertEquals(200, put.statusCode(), put.body());
+            assertEquals(new JsonObject().put("package", "demo").put("version", "0.1.0").put("revision", "9df3f78").put("archive", "sha256:" + sha256(zip))
+                    .put("flows", new io.vertx.core.json.JsonArray().add("demo/invoice-sync")), new JsonObject(put.body()), "the deploy's answer");
+
+            HttpResponse<String> invoice = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            assertEquals(200, invoice.statusCode(), invoice.body());
+            assertEquals(ack.toString(), invoice.body(), "the partner's reply comes back as the HTTP answer");
+            assertEquals(1, partnerSaw.size(), "the partner saw the invoice once: " + partnerSaw);
+            assertTrue(partnerSaw.get(0).startsWith("/echo ") && partnerSaw.get(0).contains("<PartnerInvoice number=\"4711\""), "the mapped invoice went to the domestic partner: " + partnerSaw);
+
+            HttpResponse<String> flows = get(admin, "/admin/flows");
+            assertEquals(200, flows.statusCode(), flows.body());
+            assertEquals(new JsonObject().put("items", new io.vertx.core.json.JsonArray().add(new JsonObject().put("id", "demo/invoice-sync").put("package", "demo")
+                    .put("packageVersion", "0.1.0").put("revision", "9df3f78").put("flowVersion", "0.1.0").put("delivery", "sync"))), new JsonObject(flows.body()));
+
+            HttpResponse<String> packages = get(admin, "/admin/packages");
+            assertEquals(200, packages.statusCode(), packages.body());
+            JsonObject item = new JsonObject(packages.body()).getJsonArray("items").getJsonObject(0);
+            Set<Object> expectedFiles = new java.util.HashSet<>();
+            for (Map.Entry<String, byte[]> f : files.entrySet()) expectedFiles.add(new JsonObject().put("path", f.getKey()).put("sha256", sha256(f.getValue())));
+            assertEquals(expectedFiles, item.getJsonArray("files").stream().collect(java.util.stream.Collectors.toSet()), "every file of the demo with its hash");
+
+            List<String> found = new CopyOnWriteArrayList<>();
+            until(() -> {
+                try {
+                    HttpResponse<String> search = get(admin, "/admin/messages?key=invoiceId:4711");
+                    found.clear();
+                    new JsonObject(search.body()).getJsonArray("items").forEach(id -> found.add((String) id));
+                    if (found.isEmpty()) return false;
+                    JsonObject timeline = new JsonObject(get(admin, "/admin/messages/" + found.get(0)).body());
+                    return timeline.getJsonArray("steps").size() == 6;
+                } catch (IOException | InterruptedException e) {
+                    throw new AssertionError("the admin API did not answer", e);
+                }
+            }, "the invoice is found by its key and its six steps are recorded");
+            JsonObject timeline = new JsonObject(get(admin, "/admin/messages/" + found.get(0)).body());
+            assertEquals("demo/invoice-sync", timeline.getString("flow"), "the timeline names the qualified flow");
+            for (Object s : timeline.getJsonArray("steps")) {
+                assertEquals(new JsonObject().put("flow", "demo/invoice-sync@0.1.0").put("package", "demo@0.1.0").put("revision", "9df3f78"),
+                        ((JsonObject) s).getJsonObject("versions"), "every snapshot carries flow, package and revision: " + s);
+            }
+        } finally {
+            partner.close().await();
+        }
+    }
+
+    @Test
+    void closeDrainsAHeldSyncRequestBeforeTheAdminPortRefuses() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.Promise<Void> release = io.vertx.core.Promise.promise();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, release.future(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_STOP_DEADLINE", "PT2M");
+            startDemoNode(env);
+            int admin = node.adminPort();
+            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo", zip, "application/zip");
+            assertEquals(200, put.statusCode(), put.body());
+            java.util.concurrent.CompletableFuture<HttpResponse<String>> held = client.sendAsync(
+                    request("POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml"), HttpResponse.BodyHandlers.ofString());
+            until(() -> partnerSaw.size() == 1, "the invoice is held at the partner");
+
+            closing = OnVirtualThread.start(node::close);
+
+            until(() -> {
+                try (HttpClient probe = http()) {   // its own client, so its own connection: never the held request's
+                    return send(probe, "POST", inPort, "/in", "<NotAnInvoice/>".getBytes(StandardCharsets.UTF_8), "application/xml").statusCode() == 503;
+                } catch (java.net.http.HttpTimeoutException noAnswer) {
+                    throw new AssertionError("a probe got no answer within its timeout: a stopping consumer answers 503 or refuses, it never hangs", noAnswer);
+                } catch (IOException refusedOrReset) {
+                    return true;   // the consumer's socket no longer takes the request: it is stopping as well
+                } catch (InterruptedException e) {
+                    throw new AssertionError(e);
+                }
+            }, "close stops the flow's consumer: a new request is 503 or refused");
+            assertFalse(refuses(admin), "the admin port still listens while the held request drains");
+            HttpResponse<String> health = get(admin, "/health");
+            assertTrue(health.statusCode() == 200 || health.statusCode() == 503, "the admin API still answers: " + health.statusCode());
+            assertFalse(closing.isDone(), "close waits for the held request (stop deadline PT2M)");
+            assertFalse(held.isDone(), "the held request is not answered before the partner answers");
+
+            release.complete();
+            HttpResponse<String> drained = held.get(20, TimeUnit.SECONDS);
+            assertEquals(200, drained.statusCode(), drained.body());
+            assertEquals(ack.toString(), drained.body(), "the held request drained with the partner's reply");
+            until(() -> refuses(admin), "after the drain the admin port is closed");
+            OnVirtualThread.join(closing);
+            assertEquals(1, partnerSaw.size(), "the probes never reached the partner: " + partnerSaw);
+        } finally {
+            release.tryComplete();
+            partner.close().await();
+        }
+    }
+
     static Buffer hashBytes(long hash) {
         return Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(hash).array());
     }
@@ -328,7 +518,7 @@ class NodeIT {
     }
 
     static HttpResponse<String> get(int port, String path) throws IOException, InterruptedException {
-        try (HttpClient client = HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).connectTimeout(Duration.ofSeconds(5)).build()) {
+        try (HttpClient client = HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(5)).build()) {
             return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(20)).GET().build(),
                     HttpResponse.BodyHandlers.ofString());
         }

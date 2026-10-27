@@ -4,6 +4,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.stream.Stream;
  * {@code flows/*.yaml} and {@code flows/*.test.yaml}. {@link #crossCheck()} is what no single-file schema
  * can say: a flow's endpoints exist, its stylesheets exist, a test's flow exists, the fixtures a test names exist.
  * {@link #problems()} is everything a deploy refuses the package for before any component is asked (D-059).
+ * {@link #manifest()}, {@link #endpoints()} and {@link #flows()} hand out copies of the documents as loaded, by id.
  *
  * @since 0.1
  */
@@ -27,14 +29,17 @@ public final class Package {
     private final JsonObject manifest;
     private final Map<String, JsonObject> endpoints;
     private final Map<String, JsonObject> flows;
+    private final Map<String, Path> flowFiles;
     private final List<Read> documents;
     private final List<String> duplicates;
 
-    private Package(Path dir, JsonObject manifest, Map<String, JsonObject> endpoints, Map<String, JsonObject> flows, List<Read> documents, List<String> duplicates) {
+    private Package(Path dir, JsonObject manifest, Map<String, JsonObject> endpoints, Map<String, JsonObject> flows, Map<String, Path> flowFiles,
+                    List<Read> documents, List<String> duplicates) {
         this.dir = dir;
         this.manifest = manifest;
         this.endpoints = endpoints;
         this.flows = flows;
+        this.flowFiles = flowFiles;
         this.documents = documents;
         this.duplicates = duplicates;
     }
@@ -44,11 +49,17 @@ public final class Package {
         Read(Path file, Schemas schema, JsonObject document) { this(file, schema, document, schema.validate(document)); }
     }
 
+    /**
+     * Reads the package in {@code dir}. A file that does not parse, or cannot be read, stops the load: an
+     * {@link IllegalArgumentException} whose message starts with that file's path relative to {@code dir} (never an absolute one).
+     *
+     * @throws IOException a folder of the package cannot be listed
+     */
     public static Package load(Path dir) throws IOException {
         List<Read> documents = new ArrayList<>();
         List<String> duplicates = new ArrayList<>();
         Path manifestFile = dir.resolve("package.yaml");
-        JsonObject manifest = Documents.read(manifestFile);
+        JsonObject manifest = read(dir, manifestFile);
         documents.add(new Read(manifestFile, Schemas.PACKAGE, manifest));
         Map<String, JsonObject> endpoints = new LinkedHashMap<>();
         Map<String, Path> endpointFiles = new LinkedHashMap<>();
@@ -56,13 +67,23 @@ public final class Package {
         Map<String, JsonObject> flows = new LinkedHashMap<>();
         Map<String, Path> flowFiles = new LinkedHashMap<>();
         for (Path p : documents(dir.resolve("flows"), false)) readById(dir, p, Schemas.FLOW, documents, flows, flowFiles, duplicates);
-        for (Path p : documents(dir.resolve("flows"), true)) documents.add(new Read(p, Schemas.TEST, Documents.read(p)));
-        return new Package(dir, manifest, endpoints, flows, List.copyOf(documents), List.copyOf(duplicates));
+        for (Path p : documents(dir.resolve("flows"), true)) documents.add(new Read(p, Schemas.TEST, read(dir, p)));
+        return new Package(dir, manifest, endpoints, flows, flowFiles, List.copyOf(documents), List.copyOf(duplicates));
+    }
+
+    /** {@code file} as a document; one that does not parse or cannot be read is refused naming its path relative to {@code dir}. */
+    private static JsonObject read(Path dir, Path file) {
+        try {
+            return Documents.read(file);
+        } catch (IllegalArgumentException | UncheckedIOException unreadable) {
+            String why = unreadable instanceof UncheckedIOException io ? "cannot be read (" + io.getCause().getClass().getSimpleName() + ")" : unreadable.getMessage();
+            throw new IllegalArgumentException(dir.relativize(file) + ": " + why, unreadable);
+        }
     }
 
     /** Reads {@code file} under its id (its file name when it has none); a later file of the same id replaces the earlier one, and is a duplicate. */
     private static void readById(Path dir, Path file, Schemas schema, List<Read> documents, Map<String, JsonObject> byId, Map<String, Path> files, List<String> duplicates) {
-        JsonObject d = Documents.read(file);
+        JsonObject d = read(dir, file);
         documents.add(new Read(file, schema, d));
         String id = id(d, file);
         byId.put(id, d);
@@ -89,6 +110,32 @@ public final class Package {
     public Set<String> endpointIds() { return endpoints.keySet(); }
 
     public List<String> flowIds() { return List.copyOf(flows.keySet()); }
+
+    /** {@code package.yaml} as loaded: a copy, the caller's to change. */
+    public JsonObject manifest() { return manifest.copy(); }
+
+    /** Every endpoint document by its id, in file order: copies, the caller's to change. */
+    public Map<String, JsonObject> endpoints() { return copies(endpoints); }
+
+    /** Every flow document by its id, in file order: copies, the caller's to change. */
+    public Map<String, JsonObject> flows() { return copies(flows); }
+
+    /**
+     * The file the flow {@code id} was read from, whatever it is called: the steps' file references resolve against its folder.
+     *
+     * @throws IllegalArgumentException no flow of this package has the id
+     */
+    public Path flowFile(String id) {
+        Path file = flowFiles.get(id);
+        if (file == null) throw new IllegalArgumentException("no flow '" + id + "' in this package " + flowFiles.keySet());
+        return file;
+    }
+
+    private static Map<String, JsonObject> copies(Map<String, JsonObject> documents) {
+        Map<String, JsonObject> copies = new LinkedHashMap<>();
+        documents.forEach((id, d) -> copies.put(id, d.copy()));
+        return copies;
+    }
 
     /**
      * Everything wrong with the package, empty when nothing is: every document against its kind's schema, each problem as

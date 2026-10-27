@@ -79,6 +79,14 @@
   mapper that returns null throws NPE inside a listener and the composed future NEVER completes. `VertxOptions.setUseDaemonThread`
   (default null: Vert.x threads inherit the daemon flag of the thread that first runs them — a virtual thread's is true).
 
+- Vert.x 5.1.10 HTTP/1 server upload (source + tests, P1-09d1b): a hang-up mid-body reaches `req.exceptionHandler` only if it is
+  set when the close lands — set handlers on the route while paused (the vertx-web Router never resumes a paused request);
+  `isEnded()` flips when the end is delivered from the paused queue; `req.handler(null)` drops queued chunks; `AsyncFile.write`
+  after `close()` throws IllegalStateException synchronously, `close()` waits for writes in flight; `res.reset()` is a Future.
+  Netty answers 400 before routing for Content-Length `abc`, `-1`, overflow, `5, 6` (observed). An answer before the request's
+  end must close the connection (`!req.isEnded()` → `connection().close()`), or the client waits on a paused socket.
+- JDK HttpClient defaults to HTTP_2 and upgrades h2c against a Vert.x server (h2c on by default): requests to one port share a
+  connection, so a probe sent during a consumer's shutdown rides the held request's connection (NodeIT drain flake, P1-09d1b).
 - JDK 25 ZipFile (javap + probe, P1-09d1a): no-zip / empty / truncated file → ZipException at open; corrupt deflate data →
   ZipException on read; zeroed deflate bytes inflated to 8 wrong bytes with no error (no CRC check); `size()` matched 10 000/10 001.
 

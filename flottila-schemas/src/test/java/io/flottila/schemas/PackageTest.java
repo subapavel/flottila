@@ -246,6 +246,117 @@ class PackageTest {
         assertEquals(List.of(), demo.problems());
     }
 
+    // --- P1-09d1b (F1): the documents by id, as the deploy reads them
+
+    /**
+     * {@code manifest()} is package.yaml as a JSON object; {@code endpoints()} and {@code flows()} map each id to its document;
+     * {@code flowFile(id)} is the file a flow was read from, by its id, whatever the file is called.
+     */
+    @org.junit.jupiter.api.Test
+    void manifestEndpointsAndFlowsAreTheDocumentsById(@TempDir Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "endpoints/partner.yaml", PARTNER);
+        write(dir, "flows/orders.yaml", flow("orders", 1024, "partner"));
+        Path renamed = write(dir, "flows/refund-flow.yaml", flow("refunds", 2048, "partner"));   // flows/ itself: sub-folders come with P2-02a (D-060 d)
+        Package pkg = Package.load(dir);
+
+        io.vertx.core.json.JsonObject manifest = pkg.manifest();
+        assertEquals("shop", manifest.getString("name"));
+        assertEquals("1.0.0", manifest.getString("version"));
+        assertEquals("package", manifest.getString("kind"));
+
+        assertEquals(java.util.Set.of("in", "partner"), pkg.endpoints().keySet());
+        assertEquals("in", pkg.endpoints().get("in").getString("direction"));
+        assertEquals(8080, pkg.endpoints().get("in").getJsonObject("config").getInteger("port"));
+        assertEquals("http://localhost:8090/echo", pkg.endpoints().get("partner").getJsonObject("config").getString("url"));
+
+        assertEquals(java.util.Set.of("orders", "refunds"), pkg.flows().keySet());
+        assertEquals(1024L, pkg.flows().get("orders").getJsonObject("limits").getLong("maxBodyBytes"));
+        assertEquals(2048L, pkg.flows().get("refunds").getJsonObject("limits").getLong("maxBodyBytes"));
+        assertEquals("partner", pkg.flows().get("refunds").getJsonArray("steps").getJsonObject(0).getString("endpoint"));
+
+        assertTrue(Files.isSameFile(dir.resolve("flows/orders.yaml"), pkg.flowFile("orders")), "orders was read from flows/orders.yaml: " + pkg.flowFile("orders"));
+        assertTrue(Files.isSameFile(renamed, pkg.flowFile("refunds")), "refunds was read from a file named otherwise: " + pkg.flowFile("refunds"));
+    }
+
+    /** What the accessors return is the caller's own copy: changing it changes neither the next answer nor what problems() judges. */
+    @org.junit.jupiter.api.Test
+    void theAccessorsReturnDeepCopies(@TempDir Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "endpoints/partner.yaml", PARTNER);
+        write(dir, "flows/orders.yaml", flow("orders", 1024, "partner"));
+        Package pkg = Package.load(dir);
+        assertEquals(List.of(), pkg.problems(), "fixture: a valid package");
+
+        pkg.manifest().put("name", "Not A Name").put("dependencies", "x");
+        pkg.endpoints().get("in").put("direction", "sideways").getJsonObject("config").put("port", "x");
+        pkg.flows().get("orders").getJsonObject("limits").put("maxBodyBytes", -1);
+        pkg.flows().get("orders").getJsonArray("steps").getJsonObject(0).put("endpoint", "nowhere");
+
+        assertEquals("shop", pkg.manifest().getString("name"));
+        assertFalse(pkg.manifest().containsKey("dependencies"));
+        assertEquals("in", pkg.endpoints().get("in").getString("direction"));
+        assertEquals(8080, pkg.endpoints().get("in").getJsonObject("config").getInteger("port"));
+        assertEquals(java.util.Set.of("in", "partner"), pkg.endpoints().keySet());
+        assertEquals(java.util.Set.of("orders"), pkg.flows().keySet());
+        assertEquals(1024L, pkg.flows().get("orders").getJsonObject("limits").getLong("maxBodyBytes"));
+        assertEquals("partner", pkg.flows().get("orders").getJsonArray("steps").getJsonObject(0).getString("endpoint"));
+        assertEquals(List.of(), pkg.problems(), "problems() judges the documents as loaded");
+    }
+
+    /** Carried into d1b: a {@code stylesheet} or {@code schema} that is not a string is a line saying so, naming the file, flow and step. */
+    @ParameterizedTest(name = "{0}")
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"stylesheet", "schema"})
+    void aNonStringStylesheetOrSchemaSaysItMustBeAString(String field, @TempDir Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "endpoints/partner.yaml", PARTNER);
+        write(dir, "flows/orders.yaml", flowWithStep("{ type: to, name: send, endpoint: partner, " + field + ": 42 }"));
+
+        List<String> problems = Package.load(dir).problems();
+
+        assertTrue(problems.contains("flows/orders.yaml: flow 'orders' step 'send' " + field + " must be a string, was 42"), "the line: " + problems);
+    }
+
+    // --- P1-09d1b (implementer): what the deploy's 422 says when the load itself stops
+
+    /** A file that does not parse stops the load; the refusal starts with that file's package-relative path and says why. */
+    @org.junit.jupiter.api.Test
+    void aFileThatDoesNotParseStopsTheLoadNamingItsRelativePath(@TempDir Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "flows/broken.yaml", "id: [unclosed\n");
+
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> Package.load(dir));
+
+        assertTrue(refused.getMessage().startsWith("flows/broken.yaml: not valid YAML: "), "the file, relative, then the parser's reason: " + refused.getMessage());
+        assertFalse(refused.getMessage().contains(dir.toString()), "no absolute path: " + refused.getMessage());
+    }
+
+    /** A package without package.yaml stops the load naming the file and the kind of failure, never the absolute path the JDK names. */
+    @org.junit.jupiter.api.Test
+    void aMissingManifestStopsTheLoadNamingPackageYaml(@TempDir Path dir) throws IOException {
+        write(dir, "endpoints/in.yaml", IN);
+
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> Package.load(dir));
+
+        assertEquals("package.yaml: cannot be read (NoSuchFileException)", refused.getMessage());
+    }
+
+    @org.junit.jupiter.api.Test
+    void flowFileOfAnUnknownIdIsRefusedNamingIt(@TempDir Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "endpoints/partner.yaml", PARTNER);
+        write(dir, "flows/orders.yaml", flow("orders", 1024, "partner"));
+
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> Package.load(dir).flowFile("refunds"));
+
+        assertTrue(refused.getMessage().contains("'refunds'"), refused.getMessage());
+    }
+
     /** A duplicate names the id and both files that declare it. */
     static void assertDuplicate(String problem, String id, String firstFile, String secondFile) {
         assertTrue(problem.contains(id), "names the id '" + id + "': " + problem);

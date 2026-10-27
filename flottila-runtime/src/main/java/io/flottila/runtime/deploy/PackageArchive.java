@@ -16,7 +16,8 @@ import java.util.zip.ZipFile;
  * Unpacks a package archive, a zip with {@code package.yaml} at its root, into a directory (D-059). The whole archive is checked
  * before anything is written; a refusal — the deploy's 400 — is an {@link IllegalArgumentException}: a file that is no zip (a
  * {@link ZipException} at open), more than {@value #MAX_ENTRIES} entries, an entry that is absolute, resolves outside the target
- * after normalisation, resolves where an earlier entry does, or is a file where another entry needs a directory; then, inflating
+ * after normalisation, is a file that resolves to the target itself ({@code .}, {@code a/..}), resolves where an earlier entry
+ * does, or is a file where another entry needs a directory; then, inflating
  * every entry without writing it, an entry that cannot be read (any {@link IOException}, e.g. data cut short) and more than
  * 4 × max bytes in total as the entries actually inflate (never as their headers claim). An {@link IOException} while writing
  * leaves what was written: the target is the caller's to delete.
@@ -61,6 +62,7 @@ final class PackageArchive {
             if (name.isAbsolute()) throw new IllegalArgumentException("entry '" + e.getName() + "' is an absolute path");
             Path target = root.resolve(name).normalize();
             if (!target.startsWith(root)) throw new IllegalArgumentException("entry '" + e.getName() + "' resolves outside the package directory");
+            if (!e.isDirectory() && target.equals(root)) throw new IllegalArgumentException("entry '" + e.getName() + "' is a file at the package directory itself");
             ZipEntry earlier = entries.putIfAbsent(target, e);
             if (earlier != null) throw new IllegalArgumentException("entry '" + e.getName() + "' is a duplicate: entry '" + earlier.getName() + "' unpacks to the same path");
             Path below = root.relativize(target);

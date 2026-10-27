@@ -8,15 +8,23 @@ import io.flottila.core.dlq.Parked;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
+import io.flottila.runtime.deploy.DeployRefusedException;
+import io.flottila.runtime.deploy.DeployedFlow;
+import io.flottila.runtime.deploy.DeployedPackage;
+import io.flottila.runtime.deploy.Deployments;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
+import io.vertx.core.Promise;
 import io.vertx.core.VerticleBase;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.file.AsyncFile;
+import io.vertx.core.file.OpenOptions;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -24,8 +32,11 @@ import io.vertx.core.streams.ReadStream;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
@@ -50,6 +61,15 @@ import java.util.function.Supplier;
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
  * take, 500 for anything else — a store that failed, a recorded header no response may carry, a stored body whose stream
  * fails before the head is out (after it, the response is reset).
+ *
+ * <p>With a {@link Deployments} (D-059, D-060 b) it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
+ * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
+ * {@code 100 Continue} and the body is streamed with back-pressure into a
+ * temp file in {@code incomingDir()} and counted, 413 at byte max+1; the deploy runs on the route's virtual thread and the temp
+ * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows}}, or a
+ * refusal by its kind — 400, 403, 409, 422 {@code {error, problems}}, 500, 503. An answer given before the request's body was read
+ * to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and {@code GET /admin/packages}
+ * list what runs, sorted, not paged. Without one these routes do not exist (404).
  *
  * @since 0.1
  */
@@ -115,14 +135,22 @@ public final class AdminServer {
     private final Dlq dlq;
     private final BlobStore blobs;
     private final HealthProbe health;
+    private final Optional<Deployments> deployments;
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
 
+    /** The read API only: no deploy routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health) {
+        this(config, messages, dlq, blobs, health, Optional.empty());
+    }
+
+    /** The read API and, with {@code deployments}, the deploy routes. */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
         this.health = Objects.requireNonNull(health, "health");
+        this.deployments = Objects.requireNonNull(deployments, "deployments");
     }
 
     /** Deploys the listening verticle; completes with the bound port (the actual one when configured 0). */
@@ -155,6 +183,11 @@ public final class AdminServer {
             router.get("/admin/messages/:id").handler(offload(AdminServer.this::timeline));
             router.get("/admin/messages/:id/steps/:n/body").handler(offload(AdminServer.this::body));
             router.get("/admin/dlq").handler(offload(AdminServer.this::dlq));
+            deployments.ifPresent(d -> {
+                router.put("/admin/packages/:name").handler(upload(d));
+                router.get("/admin/flows").handler(offload(c -> flows(d)));
+                router.get("/admin/packages").handler(offload(c -> packages(d)));
+            });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
                     .map(listening -> server = listening);
@@ -169,15 +202,66 @@ public final class AdminServer {
          * The route body on a fresh virtual thread — never on the event loop — where the answer is also encoded and its headers
          * checked; it is written back on this verticle's context.
          */
-        private Handler<RoutingContext> offload(Function<RoutingContext, Reply> body) {
+        private Handler<RoutingContext> offload(Route body) {
             return ctx -> Thread.ofVirtual().name("flottila-admin").start(() -> {
                 Reply reply = run(body, ctx);
                 context.runOnContext(v -> answer(ctx.response(), reply));
             });
         }
+
+        /**
+         * {@code PUT /admin/packages/{name}} on the event loop: a declared length above the limit is answered at once (Netty refused
+         * a Content-Length that is not a non-negative number before routing; were one to get here, the router answers 500); else
+         * the request is paused before a byte of it is read, {@code Expect: 100-continue} is answered, and the route body runs on a
+         * virtual thread.
+         */
+        private Handler<RoutingContext> upload(Deployments deployments) {
+            return ctx -> {
+                HttpServerRequest req = ctx.request();
+                String declared = req.getHeader(HttpHeaders.CONTENT_LENGTH);
+                if (declared != null && Long.parseLong(declared) > deployments.maxPackageBytes()) {
+                    answerAndClose(ctx, tooLarge(deployments.maxPackageBytes()));
+                    return;
+                }
+                req.pause();
+                Upload upload = new Upload(req, deployments.maxPackageBytes());
+                // a client that waits for 100 Continue before its body gets it now; one above the limit got its 413 instead
+                if (HttpHeaders.CONTINUE.toString().equalsIgnoreCase(req.getHeader(HttpHeaders.EXPECT))) ctx.response().writeContinue();
+                Thread.ofVirtual().name("flottila-admin").start(() -> {
+                    Reply reply = run(c -> deploy(c, deployments, upload), ctx);
+                    context.runOnContext(v -> answerAndClose(ctx, reply));
+                });
+            };
+        }
+
+        /** The body into a temp file in {@code incomingDir()}, then the deploy; the temp file is deleted before the answer, whatever it is. */
+        private Reply deploy(RoutingContext ctx, Deployments deployments, Upload body) throws IOException {
+            long max = deployments.maxPackageBytes();
+            Path incoming = deployments.incomingDir();
+            Files.createDirectories(incoming);
+            Path upload = Files.createTempFile(incoming, "upload-", ".zip");
+            try {
+                long received = Future.<Long>future(done -> context.runOnContext(v -> vertx.fileSystem().open(upload.toString(), new OpenOptions().setRead(false).setCreate(false))
+                        .compose(body::into).onComplete(done))).await();
+                if (received > max) return tooLarge(max);
+                DeployedPackage p = deployments.deploy(ctx.pathParam("name"), Optional.ofNullable(ctx.request().getParam("revision")), upload);
+                return Json.of(200, new JsonObject().put("package", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
+                        .put("archive", "sha256:" + p.archiveSha256()).put("flows", new JsonArray(p.flows())));
+            } catch (DeployRefusedException refused) {
+                return refusal(refused);
+            } finally {
+                Files.deleteIfExists(upload);
+            }
+        }
     }
 
-    private static Reply run(Function<RoutingContext, Reply> body, RoutingContext ctx) {
+    /** A route body; it may throw anything — {@link #run} answers it. */
+    @FunctionalInterface
+    private interface Route {
+        Reply apply(RoutingContext ctx) throws Exception;
+    }
+
+    private static Reply run(Route body, RoutingContext ctx) {
         try {
             return body.apply(ctx);
         } catch (Refused refused) {   // a bad limit, cursor, key or step number: only what the routes map to Refused
@@ -188,20 +272,31 @@ public final class AdminServer {
         }
     }
 
-    /** Writes the answer; when Vert.x refuses it, the request still ends — a 500 before the head is out, a reset after. */
-    private static void answer(HttpServerResponse res, Reply reply) {
+    /**
+     * Writes the answer; when Vert.x refuses it, the request still ends — a 500 before the head is out, a reset after. Completes
+     * once the answer is written (or refused).
+     */
+    private static Future<?> answer(HttpServerResponse res, Reply reply) {
         try {
-            reply.send(res);
+            return reply.send(res);
         } catch (RuntimeException refused) {
             LOG.log(System.Logger.Level.WARNING, "writing an admin answer failed", refused);
-            fail(res);
+            return fail(res);
         }
     }
 
+    /** {@link #answer}, then, when the request's body was not read to its end, the connection closes: the rest of it is never read. */
+    private static void answerAndClose(RoutingContext ctx, Reply reply) {
+        HttpServerRequest req = ctx.request();
+        answer(ctx.response(), reply).onComplete(written -> {
+            if (!req.isEnded()) req.connection().close();
+        });
+    }
+
     /** Ends a response that cannot be answered as meant: a 500 {@code {error}} while the head is not out, otherwise a reset. */
-    private static void fail(HttpServerResponse res) {
-        if (res.headWritten()) res.reset();
-        else Json.of(500, error("internal error")).send(res);
+    private static Future<?> fail(HttpServerResponse res) {
+        if (res.headWritten()) return res.reset();
+        return Json.of(500, error("internal error")).send(res);
     }
 
     /**
@@ -300,6 +395,45 @@ public final class AdminServer {
 
     // --- JSON
 
+    private static Reply flows(Deployments deployments) {
+        JsonArray items = new JsonArray();
+        for (DeployedFlow f : deployments.flows()) {
+            items.add(new JsonObject().put("id", f.id()).put("package", f.pkg()).put("packageVersion", f.packageVersion()).put("revision", f.revision().orElse(null))
+                    .put("flowVersion", f.flowVersion()).put("delivery", f.delivery()));
+        }
+        return Json.of(200, new JsonObject().put("items", items));
+    }
+
+    private static Reply packages(Deployments deployments) {
+        JsonArray items = new JsonArray();
+        for (DeployedPackage p : deployments.packages()) {
+            JsonArray files = new JsonArray();
+            for (DeployedPackage.PackageFile f : p.files()) files.add(new JsonObject().put("path", f.path()).put("sha256", f.sha256()));
+            items.add(new JsonObject().put("name", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
+                    .put("archive", "sha256:" + p.archiveSha256()).put("deployedAt", p.deployedAt().toString()).put("flows", new JsonArray(p.flows())).put("files", files));
+        }
+        return Json.of(200, new JsonObject().put("items", items));
+    }
+
+    /** A refusal by its kind: 400, 403, 409, 422 (with every problem), 500, 503. */
+    private static Reply refusal(DeployRefusedException refused) {
+        int status = switch (refused.kind()) {
+            case BAD_REQUEST -> 400;
+            case FORBIDDEN -> 403;
+            case CONFLICT -> 409;
+            case INVALID -> 422;
+            case FAILED -> 500;
+            case STOPPING -> 503;
+        };
+        JsonObject body = error(refused.error());
+        if (refused.kind() == DeployRefusedException.Kind.INVALID) body.put("problems", new JsonArray(refused.problems()));
+        return Json.of(status, body);
+    }
+
+    private static Reply tooLarge(long max) {
+        return Json.of(413, error("the package is above FLOTTILA_MAX_PACKAGE_BYTES " + max + " bytes"));
+    }
+
     private static <T> JsonObject page(Page<T> page, Function<T, Object> item) {
         JsonArray items = new JsonArray();
         for (T t : page.items()) items.add(item.apply(t));
@@ -355,7 +489,8 @@ public final class AdminServer {
     // --- answers (on the verticle's context)
 
     private interface Reply {
-        void send(HttpServerResponse res);
+        /** Sends the answer; completes once it is written. */
+        Future<?> send(HttpServerResponse res);
     }
 
     /** A JSON answer, encoded where it is built (the route's virtual thread); its content-length overrides any set before. */
@@ -365,8 +500,8 @@ public final class AdminServer {
         }
 
         @Override
-        public void send(HttpServerResponse res) {
-            res.setStatusCode(status).putHeader("content-type", JSON).putHeader("content-length", Integer.toString(body.length())).end(body);
+        public Future<?> send(HttpServerResponse res) {
+            return res.setStatusCode(status).putHeader("content-type", JSON).putHeader("content-length", Integer.toString(body.length())).end(body);
         }
     }
 
@@ -376,12 +511,60 @@ public final class AdminServer {
      */
     private record Bytes(MultiMap head, ReadStream<Buffer> bytes) implements Reply {
         @Override
-        public void send(HttpServerResponse res) {
+        public Future<?> send(HttpServerResponse res) {
             res.setStatusCode(200).headers().setAll(head);
-            bytes.pipe().endOnFailure(false).to(res).onFailure(failed -> {
+            return bytes.pipe().endOnFailure(false).to(res).onFailure(failed -> {
                 LOG.log(System.Logger.Level.WARNING, "streaming a stored body failed", failed);
                 fail(res);
             });
+        }
+    }
+
+    /**
+     * One upload, on the verticle's context: the request's body into a file, counted, one write in flight at a time — the request
+     * is paused from each chunk until its write is done, so what arrives meanwhile waits in the request and then in the socket. It
+     * finishes once: at the request's end, at byte {@code max}+1 (the request stays paused: the rest is never read), or at the
+     * first failure of the request or a write. Finishing closes the file and completes with the bytes counted, or fails with that
+     * first failure. It is made on the route, with the request paused, so a failure of the request (the client hangs up) before
+     * the file is open is the upload's failure all the same; after a failure the rest of the body is dropped unread, so no write
+     * reaches the file once it closes.
+     */
+    private static final class Upload {
+        private final HttpServerRequest req;
+        private final long max;
+        private final Promise<Long> received = Promise.promise();
+        private final Promise<Void> finished = Promise.promise();
+        private AsyncFile file;   // on the verticle's context only, as count is
+        private long count;
+
+        /** On the route, the request paused: no chunk arrives before {@link #into} resumes it. */
+        Upload(HttpServerRequest req, long max) {
+            this.req = req;
+            this.max = max;
+            req.exceptionHandler(this::failed);
+            req.endHandler(end -> finished.tryComplete());
+            req.handler(this::chunk);
+        }
+
+        /** Pipes the body into {@code file}, open for writing; completes as the class comment says. */
+        Future<Long> into(AsyncFile file) {
+            this.file = file;
+            finished.future().compose(v -> file.close()).onSuccess(closed -> received.tryComplete(count)).onFailure(received::tryFail);
+            req.resume();
+            return received.future();
+        }
+
+        private void chunk(Buffer chunk) {
+            count += chunk.length();
+            req.pause();
+            if (count > max) finished.tryComplete();
+            else file.write(chunk).onSuccess(written -> req.resume()).onFailure(this::failed);
+        }
+
+        private void failed(Throwable failure) {
+            req.handler(null);   // a chunk still queued in the request, or released by the write in flight, is dropped
+            received.tryFail(failure);
+            finished.tryComplete();
         }
     }
 }

@@ -540,3 +540,13 @@ Accepted: a coercion confined to `stylesheet`/`schema` still gives a 422 naming 
 Review: FAIL round 1 (crossCheck cast on a schema-valid step, nothing-written unpinned, §7→§9, accessors row, a stale P1-09d1 reference); PASS round 2. Non-blocking items moved to the d1b packet.
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 24; review rounds 2.
 Next: P1-09d1b [C] (packet agent/packets/P1-09d1.md, D-060 amendment).
+
+## P1-09d1b · 2026-10-27 · commit `feat(runtime): deploy a package through the admin API`
+Deviation: F-5 (deployed state lives in memory until P1-09c).
+Red: `DeploymentsTest` (first deploy, all 422 rules incl. the durable bound and `from` on an `out` endpoint, 403/409/503, qualified `<package>/<flow>` identity, file hashes, failed start, close), `AdminServerDeployTest` (413 header/stream, 100-continue, refusal→status, token, 404 without Deployments, flows/packages listings, temp file deleted on every outcome), NodeIT deploy-demo and close-drains, `PackageTest` accessors and "must be a string", `PackageArchiveTest` self-target — target/p109d1b-red*.log.
+Changed: runtime `deploy.Deployments` (+ DeployRefusedException, DeployedFlow, DeployedPackage) taking components and Clock explicitly (Runtime only into FlowBuilder); `AdminServer` PUT `/admin/packages/:name`, GET `/admin/flows`, `/admin/packages`; `Node` builds Deployments, close order deployments → admin → stores; schemas `Package` accessors. Beyond the packet: closing re-checked under the deploy lock; upload handlers set while paused; implementer tests `AdminServerUploadTest`, `DeploymentsEdgeTest`. Expectation fix: PackageTest:262 uses a flat path (subfolders are P2-02a).
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (runtime 294 unit / 73 IT, schemas 75; target/p109d1b-verify2.log); NodeIT 3/3 (target/p109d1b-nodeit-*.log); coverage "no decrease" (runtime 99.3/99.5), baseline written; mutants 48/50 + 5/5 + M1 killed (target/p109d1b-impl*-mut-*.log, p109d1b-mut-M1.log).
+Accepted survivors: a36 (back-pressure pause), a20 (`handler(null)` race), M3 (`join`→`all`), M4 (stop wrapper), M5 (`deployed.clear()`); M2 → FIX-31.
+Review: FAIL round 1 (mid-body failure never deployed was unpinned; NodeIT counted a timeout as refused); PASS round 2. Found: FIX-29 (h2c drain), FIX-30 (producers never closed; P1-09d2 depends on it), FIX-31..34.
+D-054 data: class C (test-author, implementer, reviewer opus/xhigh); architect turns 30; review rounds 2 (test-author hit the turn cap once).
+Next: P1-09h [C] (D-058, F-6).

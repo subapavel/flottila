@@ -111,7 +111,7 @@
 - Rare hang (FIX-21): scratch Launcher loop, 4 JVMs, watchdog `jcmd <pid> Thread.dump_to_file` (shows virtual threads). HttpProducer's
   unpaused reply can end before reply() listens (~1/2000 sends under load); deterministic pin: http `HttpComponentTest.LateListeningStore`.
 - P1-09b: testkit test `ConsumerDrain.deliver` (track, then handler on own virtual thread); runtime test `node/OnVirtualThread`, `node/PlainComponent`; ArchUnit DoNotIncludeTests treats a scratch out dir as production.
-- Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic.
+- Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic. P1-09d1b runtime test `deploy/`: `Doors` (scheme rec: held/failed start, failStop, onStop, drained stop), `TracingTimer`, `CountingQueue`, `PackageDraft` (zip a package). Red past an upstream test that does not compile: `-Dmaven.compiler.failOnError=false`; a stub compile check = javac against scratch stubs + `dependency:build-classpath`.
 - Process tests (P1-09d3 `MainProcessIT`): child cp `surefire.test.class.path`, JaCoCo agent from the test JVM's `-javaagent` arg, env cleared
   (JAVA_TOOL_OPTIONS = stderr line); SIGTERM exit 143; "main returned" = jcmd Thread.print has DestroyJavaVM, no "main"; closed-vs-died: pg debug1 "unexpected EOF" (no Terminate).
 - jqwik: test dep of core only (not runtime at P1-09d1a); it writes `.jqwik-database` into the cwd (core's is tracked). JDK 25 ZipFile

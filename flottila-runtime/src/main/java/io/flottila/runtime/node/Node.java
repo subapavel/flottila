@@ -10,9 +10,12 @@ import io.flottila.api.StepFactory;
 import io.flottila.api.Timer;
 import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.record.MessageStore;
+import io.flottila.core.record.Meter;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.deploy.Deployments;
+import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
@@ -34,6 +37,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -46,9 +50,12 @@ import java.util.stream.Stream;
  * with a fresh key, the timer, ids and
  * clock, builds the components from them, refuses two components for one scheme (in every environment) and, in a deployed
  * environment, a mock binding — the scheme {@code mock}, or a component class in {@code io.flottila.components.mock..} or
- * {@code io.flottila.testkit..} — before it touches Postgres. It then migrates the database, opens the pool and the stores and starts the admin server; when the admin server
- * does not start, the store and the pool close again, so nothing is left listening or pooled. {@code close} stops the admin
- * server, then flushes and closes the message store, then closes the pool; Vert.x stays its caller's.
+ * {@code io.flottila.testkit..} — before it touches Postgres. It then migrates the database, opens the pool and the stores, builds
+ * the {@link Deployments} (D-059) over them and starts the admin server with the deploy routes; when the admin server does not
+ * start, the store and the pool close again, so nothing is left listening or pooled. {@code close} first closes the deployments
+ * — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, while the admin port still
+ * answers — then stops the admin server, then flushes and closes the message store, then closes the pool, each step even when
+ * the one before failed; Vert.x stays its caller's.
  *
  * @since 0.1
  */
@@ -57,24 +64,18 @@ public final class Node implements AutoCloseable {
     /** Where a mock lives, whatever scheme it is bound to (the testkit's RecordingComponent included); names, never classes (F-4). */
     private static final List<String> MOCK_PACKAGES = List.of("io.flottila.components.mock", "io.flottila.testkit");
 
+    private final Deployments deployments;
     private final AdminServer admin;
     private final int adminPort;
     private final PgMessageStore messages;
     private final Pool pool;
-    // What the deploy hands to FlowBuilder (P1-09d); no stage captures the Runtime.
-    private final Runtime runtime;
-    private final List<StepFactory> steps;
-    private final List<Expressions> languages;
 
-    private Node(AdminServer admin, int adminPort, PgMessageStore messages, Pool pool, Runtime runtime, List<StepFactory> steps,
-                 List<Expressions> languages) {
+    private Node(Deployments deployments, AdminServer admin, int adminPort, PgMessageStore messages, Pool pool) {
+        this.deployments = deployments;
         this.admin = admin;
         this.adminPort = adminPort;
         this.messages = messages;
         this.pool = pool;
-        this.runtime = runtime;
-        this.steps = steps;
-        this.languages = languages;
     }
 
     /**
@@ -108,11 +109,15 @@ public final class Node implements AutoCloseable {
                 .connectingTo(new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password()))
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
         PgMessageStore messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
-        AdminServer admin = new AdminServer(config.admin(), messages, new PgDlq(pool), blobs,
-                new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed));
+        PgDlq dlq = new PgDlq(pool);
+        Deployments deployments = new Deployments(config, runtime, byScheme, clock, stepFactories, expressions, messages, dlq, new PgWorkQueue(pool),
+                Meter.system());
+        AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
+                new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed),
+                Optional.of(deployments));
         boolean started = false;
         try {
-            Node node = new Node(admin, admin.start(vertx).await(), messages, pool, runtime, stepFactories, expressions);
+            Node node = new Node(deployments, admin, admin.start(vertx).await(), messages, pool);
             started = true;
             return node;
         } finally {
@@ -127,13 +132,20 @@ public final class Node implements AutoCloseable {
     /** The node's message store over Postgres. */
     public MessageStore messages() { return messages; }
 
-    /** Stops the admin server, then flushes and closes the message store, then closes the pool — each step even when the one before failed. */
+    /**
+     * Closes the deployments (every flow stopped, deploys refused), then stops the admin server, then flushes and closes the message
+     * store, then closes the pool — each step even when the one before failed.
+     */
     @Override
     public void close() {
         try {
-            admin.stop().await();
+            deployments.close();
         } finally {
-            closeStores(messages, pool);
+            try {
+                admin.stop().await();
+            } finally {
+                closeStores(messages, pool);
+            }
         }
     }
 
