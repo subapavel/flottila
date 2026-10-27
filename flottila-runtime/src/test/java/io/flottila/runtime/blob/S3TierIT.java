@@ -80,6 +80,21 @@ class S3TierIT extends BlobStoreContract {
         assertTrue(awaitOutcome(s.read(body.key())).failed());
     }
 
+    /** D-061: an S3 body is durable already — persist completes at once, even on a store with no Postgres tier, and the body stays in S3. */
+    @Test
+    void persistOfAnS3BodyCompletesWithoutADurableTier() {
+        TieredBlobStore s = tiered();   // the two-argument store: no durable tier
+        BlobKey key = BlobKey.body("m-durable", 0);
+        Buffer bytes = Buffer.buffer("already outlives the process");
+        await(s.write(key, bytes, TREE_LIMIT));
+        assertEquals(Optional.of(TieredBlobStore.Location.S3), s.location(key), "fixture: the body went to S3");
+        await(s.persist(key));
+        await(s.persist(key));
+        assertEquals(Optional.of(TieredBlobStore.Location.S3), s.location(key), "nothing moved: the S3 object is the durable copy");
+        assertEquals((long) bytes.length(), s3.headObject(HeadObjectRequest.builder().bucket(BUCKET).key(s.objectKey(key)).build()).contentLength(), "the object is still there");
+        assertEquals(bytes, await(s.read(key)));
+    }
+
     @Test
     void anAbortedMultipartLeavesNoObject() {
         TieredBlobStore s = tiered();

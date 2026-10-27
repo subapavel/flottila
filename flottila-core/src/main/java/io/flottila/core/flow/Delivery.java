@@ -28,13 +28,14 @@ import java.util.function.Function;
  * <li><b>sync</b>: the pipeline runs on the caller's (virtual) thread; its result is the {@link Ack.Reply}, its failure fails
  * the returned future with the step's exception as thrown, a checked one included — the consumer maps it (by
  * {@link io.flottila.api.Fault.Kind}). The permit is released when the pipeline has returned or thrown.</li>
- * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2): the ingress snapshot with its
- * payload is recorded — whatever the flow's recording level — then the message is enqueued in the flow's {@link WorkQueue},
- * and only when both are durable is the answer {@link Ack.Accepted}. A save not done within the flow's
- * {@code saveTimeout} is a retryable {@link Ack.Nack}, and a save that completes after that enqueues nothing; a failed save
- * is a retryable Nack too, whether its future fails or the store throws, and so is a timer that refuses to bound the save
- * (nothing is saved then). Nothing of the pipeline runs here: a {@link FlowWorker} runs it. The permit is released when
- * the answer is decided.</li>
+ * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2): the ingress body is persisted in
+ * its own store ({@link io.flottila.api.BlobStore#persist}, D-058) and, beside it, the ingress snapshot with its payload is
+ * recorded — whatever the flow's recording level; once both succeeded the message is enqueued in the flow's
+ * {@link WorkQueue}, and only when that is durable too is the answer {@link Ack.Accepted}. A save not done within the
+ * flow's {@code saveTimeout} is a retryable {@link Ack.Nack}, and a save that completes after that enqueues nothing; a
+ * failed persist or record is a retryable Nack at once (it does not wait for the other), whether its future fails or its
+ * store throws, and so is a timer that refuses to bound the save (nothing is saved then). Nothing of the pipeline runs
+ * here: a {@link FlowWorker} runs it. The permit is released when the answer is decided.</li>
  * <li><b>at-most-once</b>: {@link Ack.Accepted} at once; the pipeline runs afterwards on a virtual thread of its own and a
  * failure is logged and dropped — not parked, not queued. The permit is released when the pipeline ends.</li>
  * </ul>
@@ -178,8 +179,9 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     }
 
     /**
-     * At-least-once: {@code ingress} gives the snapshot to save (payload kept), {@code store} saves it, {@code queue} takes the
-     * item for {@code flow}; {@code timer} bounds the whole save by {@code saveTimeout} and runs the stop's deadline. The item
+     * At-least-once: the envelope's body is persisted in the body's own store, {@code ingress} gives the snapshot to save
+     * (payload kept), {@code store} saves it, {@code queue} takes the item for {@code flow}; {@code timer} bounds the whole save
+     * by {@code saveTimeout} and runs the stop's deadline. The item
      * has no partition key: business keys are set by steps, and none has run at the save (D-049 b).
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, MessageStore store, WorkQueue queue,
@@ -208,13 +210,22 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                     answer.tryComplete(retryable(refused));
                     return answer.future();
                 }
+                // both saves are asked now, side by side (D-058): the body in its own store, the ingress snapshot in the message store
+                Future<Void> persist;
+                try {
+                    persist = e.body().store().persist(e.body().key());
+                } catch (RuntimeException failure) {   // a blob store that throws instead of failing its future: the same failed save
+                    persist = Future.failedFuture(failure);
+                }
                 Future<Void> record;
                 try {
                     record = store.record(ingress.apply(e));
                 } catch (RuntimeException failure) {   // a store that throws instead of failing its future: the same failed save
                     record = Future.failedFuture(failure);
                 }
-                record.compose(recorded -> answer.future().isComplete() ? Future.<Void>succeededFuture() : queue.enqueue(e.id(), flow, 1, null))
+                // the first failure decides at once, without waiting for the other save
+                Future.all(persist, record)
+                        .compose(saved -> answer.future().isComplete() ? Future.<Void>succeededFuture() : queue.enqueue(e.id(), flow, 1, null))
                         .onComplete(saved -> {
                             timeout.cancel();
                             if (saved.succeeded()) answer.tryComplete(new Ack.Accepted(e.id()));

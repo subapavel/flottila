@@ -496,6 +496,112 @@ class NodeIT {
         }
     }
 
+    // --- P1-09h (D-058, D-061): durable at-least-once bodies; a node commits synchronously or does not start
+
+    /**
+     * The demo package with its flow switched to at-least-once (its 1 MiB body limit is FLOTTILA_BLOB_DURABLE_MAX's default):
+     * the 202 promises the body, so another session sees its {@code bodies} row the moment the 202 arrives, with the posted
+     * bytes; the worker then reads the body back from Postgres (the node keeps no local copy after persist) and sends it on.
+     */
+    @Test
+    void anAcceptedAtLeastOnceMessageHasItsBodiesRow() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+            startDemoNode(env("ci"));
+            HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip(files), "application/zip");
+            assertEquals(200, put.statusCode(), put.body());
+
+            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", invoice, "application/xml");
+            assertEquals(202, accepted.statusCode(), accepted.body());
+            String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
+            assertEquals(Optional.of(Buffer.buffer(invoice)), bodiesRow(id), "no wait: what the 202 promised is in Postgres, the ingress body's bytes under (id, 0, body)");
+
+            until(() -> partnerSaw.size() == 1, "the worker sends the invoice on, its body read back from Postgres");
+            assertTrue(partnerSaw.get(0).startsWith("/echo ") && partnerSaw.get(0).contains("<PartnerInvoice number=\"4711\""), "the mapped invoice went to the domestic partner: " + partnerSaw);
+        } finally {
+            partner.close().await();
+        }
+    }
+
+    /**
+     * D-061: a node refuses to start unless {@code synchronous_commit} is {@code on}, {@code remote_write} or {@code remote_apply}
+     * for its sessions — an ACK promises a commit that survives a crash. Set on the case database: {@code off} stops {@code Main}
+     * with one {@code flottila:} line and exit 1; {@code local} fails {@code Node.start}, which closes the pool it opened; the
+     * same database with {@code remote_write} starts — the refusal is the setting's, nothing else's.
+     */
+    @Test
+    void aNodeRefusesAsynchronousCommit() throws Exception {
+        synchronousCommit("off");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        PrintStream err = new PrintStream(bytes, true, StandardCharsets.UTF_8);
+        int code = OnVirtualThread.call(() -> Main.run(env("ci"), err));
+        List<String> lines = bytes.toString(StandardCharsets.UTF_8).lines().toList();
+        assertEquals(1, code, "a node that does not start exits with 1: " + lines);
+        assertEquals(1, lines.size(), "one line on stderr, no stack trace: " + lines);
+        assertTrue(lines.get(0).startsWith("flottila:"), lines.get(0));
+        assertTrue(lines.get(0).contains("synchronous_commit") && lines.get(0).contains("off"), "the line names the setting and its value: " + lines.get(0));
+        until(() -> connections() == 0, "the refused node left no connection to its database");
+        assertEquals(List.of(), tables(), "the check runs before migrate: the refused node left its database untouched, no flyway_schema_history");
+
+        synchronousCommit("local");
+        NodeConfig config = NodeConfig.from(env("ci"));
+        Set<String> before = Set.copyOf(vertx.deploymentIDs());
+        Exception refused = null;
+        try {
+            node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new PlainComponent("sftp")), List.of(), List.of()));
+        } catch (Exception expected) {
+            refused = expected;
+        }
+        assertNotNull(refused, "local commits only wait for the local flush: refused too (the node started on port " + (node == null ? "?" : node.adminPort()) + ")");
+        assertTrue(causes(refused).stream().anyMatch(c -> c.contains("synchronous_commit")), "names the setting: " + causes(refused));
+        node = null;
+        until(() -> connections() == 0, "the failed start closed the pool it opened: no connection to the case database is left");
+        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "no verticle stays deployed");
+        assertEquals(List.of(), tables(), "refused before migrate: still no flyway_schema_history, no table at all");
+
+        synchronousCommit("remote_write");
+        start(env("ci"), ctx -> List.of(new PlainComponent("sftp")));
+        assertEquals(200, get(node.adminPort(), "/health").statusCode(), "remote_write commits synchronously: the node starts on the same database");
+        assertTrue(tables().contains("public.flyway_schema_history"), "witness for the refusals: a started node migrates, so the history table shows: " + tables());
+    }
+
+    /** D-061: {@code remote_apply} waits for the standby to apply the commit — accepted, as {@code remote_write} is. */
+    @Test
+    void aNodeStartsUnderRemoteApply() throws Exception {
+        synchronousCommit("remote_apply");
+        start(env("ci"), ctx -> List.of(new PlainComponent("sftp")));
+        assertEquals(200, get(node.adminPort(), "/health").statusCode(), "remote_apply commits synchronously: the node starts");
+        assertTrue(tables().contains("public.flyway_schema_history"), "and migrates its database: " + tables());
+    }
+
+    /** {@code synchronous_commit} for every new session of the case database. */
+    void synchronousCommit(String value) throws SQLException {
+        try (Connection admin = DriverManager.getConnection(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
+             Statement alter = admin.createStatement()) {
+            alter.execute("ALTER DATABASE \"" + database + "\" SET synchronous_commit = " + value);
+        }
+    }
+
+    /** The bytes of the message's ingress body row, as a session of its own on the case database sees them, or empty. */
+    Optional<Buffer> bodiesRow(String messageId) {
+        PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+        try {
+            for (io.vertx.sqlclient.Row r : reader.preparedQuery("select bytes from bodies where message_id = $1 and step = 0 and part = 'body'")
+                    .execute(Tuple.of(messageId)).await()) {
+                return Optional.of(r.getBuffer(0));
+            }
+            return Optional.empty();
+        } finally {
+            reader.close().await();
+        }
+    }
+
     static Buffer hashBytes(long hash) {
         return Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(hash).array());
     }
@@ -509,6 +615,21 @@ class NodeIT {
     long lockWaiters() {
         return observer.preparedQuery("select count(*) from pg_stat_activity where datname = $1 and wait_event_type = 'Lock'")
                 .execute(Tuple.of(database)).await().iterator().next().getLong(0);
+    }
+
+    /** The tables of the case database outside the system schemas, as {@code schema.table}, read by a session of its own. */
+    List<String> tables() {
+        PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+        try {
+            List<String> names = new java.util.ArrayList<>();
+            for (io.vertx.sqlclient.Row r : reader.query("select schemaname || '.' || tablename from pg_tables "
+                    + "where schemaname not in ('pg_catalog', 'information_schema') order by 1").execute().await()) {
+                names.add(r.getString(0));
+            }
+            return names;
+        } finally {
+            reader.close().await();
+        }
     }
 
     /** Backends connected to the case database. */

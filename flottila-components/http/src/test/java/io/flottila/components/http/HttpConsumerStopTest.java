@@ -90,6 +90,7 @@ class HttpConsumerStopTest {
         }
         @Override public ReadStream<Buffer> open(BlobKey key) { return delegate.open(key); }
         @Override public Future<Buffer> read(BlobKey key) { return delegate.read(key); }
+        @Override public Future<Void> persist(BlobKey key) { return delegate.persist(key); }
     }
 
     @BeforeAll

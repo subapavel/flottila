@@ -158,6 +158,27 @@ class TieredBlobStoreTest {
         BlobStoreContract.await(s.evict(body.key()));   // evicting twice is quiet
     }
 
+    /** D-061: the two-argument store has no durable tier; persisting a local body is refused, and the body stays where it was. */
+    @Test
+    void persistWithoutADurableTierFailsIllegalState(@TempDir Path dir) {
+        TieredBlobStore s = store(dir, 1024, 1 << 20);
+        Body inMemory = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), Buffer.buffer("in memory"), 4096));
+        Body spooled = BlobStoreContract.await(s.write(BlobKey.body("m-2", 0), Buffer.buffer(new byte[2000]), 4096));
+        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(inMemory.key()), "fixture");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(spooled.key()), "fixture");
+        for (Body b : List.of(inMemory, spooled)) {
+            Future<Void> f = BlobStoreContract.awaitOutcome(s.persist(b.key()));
+            assertTrue(f.failed(), "no durable tier: nothing can be made durable (" + b.key() + ")");
+            assertInstanceOf(IllegalStateException.class, f.cause(), "a store without a durable tier, not the caller's key: " + f.cause());
+        }
+        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(inMemory.key()), "the body stays local");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(spooled.key()));
+        assertEquals(9, s.memoryInUse(), "its budget stays reserved");
+        assertEquals(1, spoolFiles(dir).size(), "the spool file stays");
+        assertEquals("in memory", BlobStoreContract.await(s.read(inMemory.key())).toString());
+        assertEquals(2000, BlobStoreContract.await(s.read(spooled.key())).length());
+    }
+
     static List<Path> spoolFiles(Path dir) {
         try (Stream<Path> files = Files.walk(dir)) {
             return files.filter(Files::isRegularFile).toList();

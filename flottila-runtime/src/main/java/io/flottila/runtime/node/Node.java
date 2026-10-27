@@ -12,6 +12,7 @@ import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.runtime.admin.AdminServer;
+import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.deploy.Deployments;
@@ -38,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -46,13 +48,14 @@ import java.util.stream.Stream;
  * A running node (D-057 b amended): the Postgres stores, the blob store, the components and the admin API on its caller's
  * Vert.x. {@link #start} and {@link #close} block on Vert.x futures: call them on a virtual thread.
  *
- * <p>{@code start} clears {@code <dataDir>/spool} (and nothing else under the data directory), builds the blob store over it
- * with a fresh key, the timer, ids and
- * clock, builds the components from them, refuses two components for one scheme (in every environment) and, in a deployed
- * environment, a mock binding — the scheme {@code mock}, or a component class in {@code io.flottila.components.mock..} or
- * {@code io.flottila.testkit..} — before it touches Postgres. It then migrates the database, opens the pool and the stores, builds
- * the {@link Deployments} (D-059) over them and starts the admin server with the deploy routes; when the admin server does not
- * start, the store and the pool close again, so nothing is left listening or pooled. {@code close} first closes the deployments
+ * <p>{@code start} clears {@code <dataDir>/spool} (and nothing else under the data directory), builds the pool (no connection
+ * yet), the blob store over the spool with a fresh key and over the pool's {@code bodies} tier bounded by
+ * {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), the timer, ids and clock, builds the components from them, refuses two components
+ * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
+ * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — before it touches Postgres. It then refuses a
+ * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
+ * refused node leaves its database untouched, migrates the database, opens the stores, builds the {@link Deployments} (D-059) over them and starts the admin server with the deploy routes; when any
+ * of this fails, what was opened — the store, the pool — closes again, so nothing is left listening or pooled. {@code close} first closes the deployments
  * — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, while the admin port still
  * answers — then stops the admin server, then flushes and closes the message store, then closes the pool, each step even when
  * the one before failed; Vert.x stays its caller's.
@@ -63,6 +66,12 @@ public final class Node implements AutoCloseable {
 
     /** Where a mock lives, whatever scheme it is bound to (the testkit's RecordingComponent included); names, never classes (F-4). */
     private static final List<String> MOCK_PACKAGES = List.of("io.flottila.components.mock", "io.flottila.testkit");
+
+    /**
+     * The {@code synchronous_commit} values a node accepts (D-061). {@code off} does not wait for the WAL flush; {@code local}
+     * waits for the local flush only and is refused because it does not wait for a standby.
+     */
+    private static final Set<String> SYNCHRONOUS_COMMIT = Set.of("on", "remote_write", "remote_apply");
 
     private final Deployments deployments;
     private final AdminServer admin;
@@ -82,7 +91,8 @@ public final class Node implements AutoCloseable {
      * Starts a node on {@code vertx}; see the class comment for the order.
      *
      * @param components builds the node's components, once, from the node's own context
-     * @throws IllegalStateException two components for one scheme, or a deployed environment and a mock binding among the components
+     * @throws IllegalStateException two components for one scheme, a deployed environment and a mock binding among the components,
+     *                               or a {@code synchronous_commit} that does not wait for the commit's flush
      * @throws IOException the spool a previous run left cannot be cleared
      */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
@@ -96,33 +106,50 @@ public final class Node implements AutoCloseable {
         NodeConfig.Blobs tiers = config.blobs();
         Path spool = config.dataDir().resolve("spool");
         clearSpool(spool);
-        TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
-                spool, spoolKey(), null, false), hasher);
-        List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, blobs, ids, timer, clock)));
-        Map<String, Component> byScheme = byScheme(built);
-        if (config.deployed()) refuseMocks(config.env(), built);
-
         NodeConfig.Pg pg = config.pg();
-        Migrations.migrate("jdbc:postgresql://" + pg.host() + ":" + pg.port() + "/" + pg.database(), pg.user(), pg.password());
-        Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
+        // building the pool connects nowhere (connections open on the first query), so the refusals below still come before
+        // anything touches Postgres; from here on every failed start closes it again
         Pool pool = PgBuilder.pool()
                 .connectingTo(new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password()))
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
-        PgMessageStore messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
-        PgDlq dlq = new PgDlq(pool);
-        Deployments deployments = new Deployments(config, runtime, byScheme, clock, stepFactories, expressions, messages, dlq, new PgWorkQueue(pool),
-                Meter.system());
-        AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
-                new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed),
-                Optional.of(deployments));
+        PgMessageStore messages = null;
         boolean started = false;
         try {
+            TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
+                    spool, spoolKey(), null, false), hasher, new PgBodies(pool, tiers.durableMax()));
+            List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, blobs, ids, timer, clock)));
+            Map<String, Component> byScheme = byScheme(built);
+            if (config.deployed()) refuseMocks(config.env(), built);
+
+            requireSynchronousCommit(pool);   // before the migration: a refused node leaves its database untouched
+            Migrations.migrate("jdbc:postgresql://" + pg.host() + ":" + pg.port() + "/" + pg.database(), pg.user(), pg.password());
+            Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
+            messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
+            PgDlq dlq = new PgDlq(pool);
+            Deployments deployments = new Deployments(config, runtime, byScheme, clock, stepFactories, expressions, messages, dlq, new PgWorkQueue(pool),
+                    Meter.system());
+            AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
+                    new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed),
+                    Optional.of(deployments));
             Node node = new Node(deployments, admin, admin.start(vertx).await(), messages, pool);
             started = true;
             return node;
         } finally {
-            // nothing listens (a port in use, an address not bound; a checked failure arrives sneakily): close what was opened for it
+            // refused, or nothing listens (a port in use, an address not bound; a checked failure arrives sneakily): close what was opened for it
             if (!started) closeStores(messages, pool);
+        }
+    }
+
+    /**
+     * D-061: an ACK promises a commit that survives a crash, so the node's sessions must commit with {@code synchronous_commit}
+     * {@code on}, {@code remote_write} or {@code remote_apply}. {@code off} does not wait for the WAL flush; {@code local} waits
+     * for the local flush, and is refused because it does not wait for a standby.
+     */
+    private static void requireSynchronousCommit(Pool pool) {
+        String value = pool.query("show synchronous_commit").execute().await().iterator().next().getString(0);
+        if (!SYNCHRONOUS_COMMIT.contains(value)) {
+            throw new IllegalStateException("Postgres synchronous_commit is " + value + " for the node's sessions: an accepted message must survive a"
+                    + " crash, so it must be on, remote_write or remote_apply (D-061)");
         }
     }
 
@@ -149,10 +176,10 @@ public final class Node implements AutoCloseable {
         }
     }
 
-    /** Flushes and closes the store, then closes the pool — even when the flush failed. */
+    /** Flushes and closes the store (none yet: nothing to flush), then closes the pool — even when the flush failed. */
     private static void closeStores(PgMessageStore messages, Pool pool) {
         try {
-            messages.close();
+            if (messages != null) messages.close();
         } finally {
             pool.close().await();
         }

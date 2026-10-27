@@ -361,13 +361,14 @@ public final class AdminServer {
         if (at.bodyKey().isEmpty()) return Json.of(404, error("step " + n + " of message " + id + " was recorded as metadata only: hash and size, no bytes"));
         // the head first: a recorded content-type no response may carry is refused here (IllegalArgumentException, a 500), before any stream is opened
         MultiMap head = HttpHeaders.headers().set("content-type", at.headers().getOrDefault("content-type", OCTETS)).set("content-length", Long.toString(at.bodySize()));
+        String gone = "the bytes of step " + n + " of message " + id + " are no longer stored";
         ReadStream<Buffer> bytes;
         try {
             bytes = blobs.open(at.bodyKey().get());
         } catch (IllegalArgumentException missing) {   // the store holds no object under the key: retention took the bytes
-            return Json.of(404, error("the bytes of step " + n + " of message " + id + " are no longer stored"));
+            return Json.of(404, error(gone));
         }
-        return new Bytes(head, bytes);
+        return new Bytes(head, bytes, gone);
     }
 
     /** {@code key=name:value}, split at the first colon: a value may contain colons, a name may not. */
@@ -507,13 +508,19 @@ public final class AdminServer {
 
     /**
      * The stored bytes, streamed with back-pressure under the head checked on the virtual thread (content-type and length
-     * from the snapshot). A stream that fails is never a complete answer: before the head is out a 500, after it a reset.
+     * from the snapshot). A stream that fails is never a complete answer: before the head is out a 500 — or, when it fails
+     * with an {@link IllegalArgumentException}, the store holding nothing under the key (a durable tier opens lazily and finds
+     * no row only when read), the 404 {@code gone} — after it a reset, whatever the failure.
      */
-    private record Bytes(MultiMap head, ReadStream<Buffer> bytes) implements Reply {
+    private record Bytes(MultiMap head, ReadStream<Buffer> bytes, String gone) implements Reply {
         @Override
         public Future<?> send(HttpServerResponse res) {
             res.setStatusCode(200).headers().setAll(head);
             return bytes.pipe().endOnFailure(false).to(res).onFailure(failed -> {
+                if (failed instanceof IllegalArgumentException && !res.headWritten()) {
+                    Json.of(404, error(gone)).send(res);
+                    return;
+                }
                 LOG.log(System.Logger.Level.WARNING, "streaming a stored body failed", failed);
                 fail(res);
             });

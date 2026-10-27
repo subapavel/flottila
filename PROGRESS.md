@@ -550,3 +550,35 @@ Accepted survivors: a36 (back-pressure pause), a20 (`handler(null)` race), M3 (`
 Review: FAIL round 1 (mid-body failure never deployed was unpinned; NodeIT counted a timeout as refused); PASS round 2. Found: FIX-29 (h2c drain), FIX-30 (producers never closed; P1-09d2 depends on it), FIX-31..34.
 D-054 data: class C (test-author, implementer, reviewer opus/xhigh); architect turns 30; review rounds 2 (test-author hit the turn cap once).
 Next: P1-09h [C] (D-058, F-6).
+
+## P1-09h · 2026-10-27 · commit `feat: durable at-least-once bodies in Postgres`
+Deviation: F-6 (bodies up to FLOTTILA_BLOB_DURABLE_MAX are made durable in Postgres until S3, P2-05).
+Context: the container restarted mid-task; the tree survived; re-verified with `git status` and `git log -3`.
+Red:
+- core `DeliveryTest` (+6) and jqwik `DeliverySavePropertyTest`;
+- testkit `DurableBlobStoreContract`;
+- runtime `PgBodiesIT`, `PgTierContractIT`, `PgBodiesTest`, `TieredBlobStoreTest`, `S3TierIT`, `MigrationsIT` (6), `DeliveryModesIT` (202 after commit; a fresh store reads after restart), `NodeIT` (bodies row, synchronous_commit refusal before migrate, remote_apply);
+- round 2: AdminServerTest/PgBodiesIT 404 "no longer stored" — target/p109h-red*.log.
+Changed:
+- api `BlobStore.persist` (abstract);
+- core `Delivery.atLeastOnce` saves `Future.all(persist, record)` before the enqueue;
+- runtime `PgBodies` and `TieredBlobStore` (Postgres tier; index-miss reads; spool fallback for an already-open stream);
+- `Node` builds the pool first and refuses a non-synchronous commit;
+- `AdminServer` answers 404 for a lazily missing body;
+- `V6__bodies.sql`; testkit `InMemoryBlobStore.persist`.
+Ledger:
+- D-061 (persist semantics; first bytes win; no DELETE outside retention);
+- F-7 (DLQ bodies are node-local) → P1-09j, which P1-09c depends on;
+- P2-07 (retention);
+- FIX-27 raised to C;
+- P1-10 measures the durable ACK with the bodies insert.
+Checks:
+- whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS: verifier 1098 (target/p109h-verify.log), round 2 1103 (target/p109h-impl2-verify.log);
+- Postgres ITs 3×58 green (target/p109h-it-*.log);
+- coverage "no decrease" (runtime 99.4/99.6), baseline written;
+- PIT Delivery 44/44;
+- mutants 30/30 in scratch and M1, M3, M4, M4b, D1, T4, N1 in the tree, all killed.
+Accepted: M2 (Node passes 64 MiB instead of durableMax): deploy refuses every body above the configured bound.
+Review: FAIL round 1 (the admin body route answered 500 instead of 404 over the Postgres tier); PASS round 2.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 22; review rounds 2 (test-author hit the turn cap once).
+Next: P1-09j [C] (F-7, designer first).

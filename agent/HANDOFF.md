@@ -1,16 +1,16 @@
 # Handoff
 
-state: RUNNING — P1-09d1b done; next row P1-09h [C]
-last commit: `Task: P1-09d1b` (this commit); ca57fa8 `Task: P1-09d1a`; 9df3f78 `Task: P1-09d3`
+state: RUNNING — P1-09h done; next row P1-09j [C]
+last commit: `Task: P1-09h` (this commit); eeec775 `Task: P1-09d1b`; ca57fa8 `Task: P1-09d1a`
 branch: claude/stoic-cannon-2byixj (session branch set by the environment; main = 17c6fbf at start)
-next exact action: P1-09h [C] — designer confirms D-058 packet (persist, V6 bodies, Delivery.atLeastOnce), then test-author opus/xhigh
-then: FIX-30 (before d2), P1-09d2 (F-5, effective hash), P1-09c (V7), P1-10 (label the machine honestly), P1-GATE, Phase 2 (P2-02a/b)
+next exact action: P1-09j [C] (F-7, durable DLQ bodies) — designer first
+then: FIX-30 (before d2), P1-09d2 (F-5, effective hash), P1-09c (V7), P1-10 (bodies insert in durable ACK; label the machine), P1-GATE, Phase 2
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: 22da747 run 40336093434 green (P1-08c); bfa400c run 40315078572 green (P1-08b); 1a8bba8 run 40300828984 green (FIX-15)
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
 open fixes: FIX-16..20, FIX-22..26, FIX-27 (sync bodies), FIX-28, FIX-29 (h2c drain), FIX-30 (producer close), FIX-31..34 (upload/deploy)
-pending at hand-over: D-022, D-025–D-047 exc. D-028, D-049–D-052, D-055, D-056/F-3, D-057/F-4/F-5, D-058/F-6, D-059, D-060
+pending at hand-over: D-022, D-025–D-047 exc. D-028, D-049–D-052, D-055, D-056/F-3, D-057/F-4/F-5, D-058/F-6, D-059, D-060, D-061/F-7
 roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort per call; designer Opus xhigh for C; gate-reviewer Fable 5.1 (AGENTS.md)
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
 VM: services detached (NOTES.md "Build and VM"); mutant restore with `cp`/`touch`, never `mv`; never `mvn clean` at the reactor root; no stress-ng (shell hogs)

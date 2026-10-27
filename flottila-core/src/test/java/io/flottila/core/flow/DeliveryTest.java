@@ -1,6 +1,8 @@
 package io.flottila.core.flow;
 
 import io.flottila.api.Ack;
+import io.flottila.api.BlobKey;
+import io.flottila.api.Body;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Fault;
@@ -23,6 +25,7 @@ import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.InMemoryBlobStore;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
@@ -1091,5 +1094,140 @@ class DeliveryTest {
         Future<Void> stopped = delivery.stop(DEADLINE);
         assertTrue(stopped.isComplete() && stopped.succeeded(), "nothing in flight: the stop completes at once, the clock never moving: " + stopped);
         assertEquals(0, rt.timer().pending(), "no deadline scheduled for a flight that never flew");
+    }
+    // --- the durable body (P1-09h, D-058 / D-061): at-least-once persists the ingress body beside the ingress snapshot
+
+    /** The ingress body's own store — not the runtime's — holding, failing or throwing its persists as the case says. */
+    final InMemoryBlobStore ownBytes = new InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT);
+    final HoldingBlobStore own = new HoldingBlobStore(ownBytes);
+
+    /** A stage-0 envelope of flow {@code orders} whose body lives in {@link #own}, under {@code body(id, 0)}. */
+    Envelope ingressInOwnStore(Buffer bytes) {
+        String id = rt.ids().next();
+        Body body = own.write(BlobKey.body(id, 0), bytes, own.treeLimit()).await();
+        return Envelope.ingress(id, "orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), body);
+    }
+
+    /** At-least-once over the holding message store, the in-memory queue and the fake timer, with {@code admission} and a 2 s save timeout. */
+    Delivery atLeastOnce(Admission admission) {
+        Recorder recorder = new Recorder(store, rt.clock(), Meter.system(), Map.of());
+        return Delivery.atLeastOnce(admission, "orders", e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
+                store, queue, rt.timer(), Duration.ofSeconds(2));
+    }
+
+    @Test
+    void anAtLeastOnceAckWaitsForThePersistedBody() {
+        Map<String, Object> doc = flow("at-least-once", List.of(TO_PARTNER));
+        doc.put("recording", Map.of("level", "off"));
+        Delivery delivery = delivery(doc);   // through the FlowBuilder as it is: the body's store is reached through the envelope
+        Envelope in = ingressInOwnStore(ORDER);
+        own.hold();
+        Future<Ack> ack = delivery.apply(in);
+        assertEquals(List.of(in.body().key()), own.persists(), "the ingress body is persisted under its own key");
+        assertEquals(1, own.held());
+        assertEquals(List.of("ingress"), store.timeline(in.id()).await().stream().map(Snapshot::stepName).toList(),
+                "the ingress snapshot is saved beside the persist, not after it");
+        assertFalse(ack.isComplete(), "no ACK while the body is not durable, although the snapshot is saved");
+        assertEquals(0, queue.size(), "nothing enqueued before the body and the snapshot are both durable");
+        assertFalse(own.persisted(in.body().key()), "fixture: the held persist reached nothing yet");
+        own.release();
+        assertEquals(new Ack.Accepted(in.id()), ack.await());
+        assertTrue(own.persisted(in.body().key()), "the body is durable when the sender has its ACK");
+        List<WorkQueue.Item> items = queue.snapshot();
+        assertEquals(1, items.size(), "then the item is enqueued");
+        assertEquals(in.id(), items.get(0).messageId());
+        assertEquals(List.of(in.body().key()), own.persists(), "persisted once");
+    }
+
+    @Test
+    void aFailedPersistIsARetryableNackAndEnqueuesNothing() {
+        Admission admission = new Admission(1, 1 << 20);
+        Delivery delivery = atLeastOnce(admission);
+        Envelope in = ingressInOwnStore(ORDER);
+        own.hold();
+        Future<Ack> ack = delivery.apply(in);
+        assertFalse(ack.isComplete(), "the persist is held");
+        own.fail(new IllegalStateException("bodies: insert refused"));
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "a failed persist is an answer, not a failed future: " + ack);
+        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
+        assertTrue(nack.reason().contains("bodies: insert refused"), "names the cause: " + nack.reason());
+        assertEquals(List.of(), queue.snapshot(), "nothing enqueued for a body that is not durable");
+        assertFalse(own.persisted(in.body().key()));
+        assertEquals(0, admission.inFlightRequests(), "the permit is back with the Nack");
+        assertEquals(0, admission.inFlightBytes());
+        assertEquals(0, rt.timer().pending(), "the failed save's timeout went with it");
+        Envelope next = ingressInOwnStore(ORDER);
+        assertEquals(new Ack.Accepted(next.id()), delivery.apply(next).await(), "the next one is admitted (one permit) and persisted");
+        assertEquals(List.of(next.id()), queue.snapshot().stream().map(WorkQueue.Item::messageId).toList(), "only the persisted one is queued");
+    }
+
+    @Test
+    void aPersistThatThrowsIsARetryableNackAndReleasesThePermit() {
+        Admission admission = new Admission(1, 1 << 20);
+        Delivery delivery = atLeastOnce(admission);
+        Envelope in = ingressInOwnStore(ORDER);
+        own.throwNext(new IllegalStateException("blob store closed"));
+        Future<Ack> ack = assertDoesNotThrow(() -> delivery.apply(in), "a store that throws is a failed persist, not an exception escaping apply");
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "answered with a Nack: " + ack);
+        assertTrue(nack.retryable(), nack.reason());
+        assertTrue(nack.reason().contains("blob store closed"), "names the cause: " + nack.reason());
+        assertEquals(List.of(in.body().key()), own.persists(), "fixture: the persist was asked, and threw");
+        assertEquals(List.of(), queue.snapshot(), "nothing enqueued");
+        assertEquals(0, admission.inFlightRequests(), "the permit is back");
+        assertEquals(0, admission.inFlightBytes(), "its bytes are back");
+        Envelope next = ingressInOwnStore(ORDER);
+        assertEquals(new Ack.Accepted(next.id()), delivery.apply(next).await(), "admitted again: the one permit came back");
+        assertEquals(List.of(next.id()), queue.snapshot().stream().map(WorkQueue.Item::messageId).toList());
+    }
+
+    @Test
+    void aPersistPendingAtTheSaveTimeoutEnqueuesNothing() {
+        Admission admission = new Admission(1, 1 << 20);
+        Delivery delivery = atLeastOnce(admission);   // save timeout 2 s
+        Envelope in = ingressInOwnStore(ORDER);
+        own.hold();
+        Future<Ack> ack = delivery.apply(in);
+        assertEquals(List.of("ingress"), store.timeline(in.id()).await().stream().map(Snapshot::stepName).toList(), "only the persist is pending");
+        assertEquals(Duration.ofSeconds(2), rt.timer().nextDelay(), "the save timeout runs on the injected timer");
+        rt.clock().advance(Duration.ofMillis(1999));
+        assertFalse(ack.isComplete(), "not answered before the timeout");
+        rt.clock().advance(Duration.ofMillis(1));
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result());
+        assertTrue(nack.retryable(), nack.reason());
+        assertTrue(nack.reason().contains("PT2S") || nack.reason().contains("2s"), "the save timed out: " + nack.reason());
+        assertEquals(0, admission.inFlightRequests(), "the permit is back with the Nack");
+        own.release();   // the persist completes after the timeout
+        assertTrue(own.persisted(in.body().key()), "fixture: the late persist did complete");
+        assertEquals(List.of(), queue.snapshot(), "a persist that completes after the timeout enqueues nothing");
+        assertEquals(new Ack.Nack(nack.reason(), true), ack.result(), "the answer stays the timeout's");
+    }
+
+    @Test
+    void theIngressBodyIsPersistedInItsOwnStore() {
+        Delivery delivery = delivery(flow("at-least-once", List.of(TO_PARTNER)));
+        Envelope in = ingressInOwnStore(ORDER);
+        BlobKey key = in.body().key();
+        rt.blobs().write(key, ORDER, rt.blobs().treeLimit()).await();   // the runtime's store holds the same key: a persist there would succeed too
+        assertSame(own, in.body().store(), "fixture: the body lives in a store of its own");
+        assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
+        assertEquals(List.of(key), own.persists(), "persisted in the body's own store, under the body's key");
+        assertTrue(own.persisted(key));
+        assertFalse(rt.blobs().persisted(key), "not in the runtime's store");
+    }
+
+    @Test
+    void syncAndAtMostOnceNeverPersist() {
+        partner.replyWith(e -> e.next(rt.store(e, Buffer.buffer("<ack/>"))));
+        Envelope sync = ingressInOwnStore(ORDER);
+        assertInstanceOf(Ack.Reply.class, delivery(flow("sync", List.of(TO_PARTNER))).apply(sync).await(), "the sync delivery replied");
+        Delivery atMostOnce = delivery(flow("at-most-once", List.of(TO_PARTNER)));
+        Envelope dropped = ingressInOwnStore(ORDER);
+        assertEquals(new Ack.Accepted(dropped.id()), atMostOnce.apply(dropped).await());
+        assertTrue(settled(atMostOnce.stop(Duration.ofHours(1))).succeeded(), "the at-most-once run is over: its stop completes once nothing is in flight");
+        assertEquals(List.of(sync.id(), dropped.id()), partner.sent().stream().map(Envelope::id).toList(), "both pipelines ran to the partner");
+        assertEquals(List.of(), own.persists(), "neither sync nor at-most-once persists its body");
+        Envelope durable = ingressInOwnStore(ORDER);
+        assertEquals(new Ack.Accepted(durable.id()), delivery(flow("at-least-once", List.of(TO_PARTNER))).apply(durable).await());
+        assertEquals(List.of(durable.body().key()), own.persists(), "the witness: the same store counts the persist an at-least-once delivery asks for");
     }
 }

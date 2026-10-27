@@ -44,4 +44,9 @@ final class InMemoryBlobStore implements BlobStore {
         reads.incrementAndGet();
         return Future.succeededFuture(blobs.get(key).copy());
     }
+
+    /** The bytes are already where they stay (the map): durable for these tests; a key with nothing stored is refused. */
+    @Override public Future<Void> persist(BlobKey key) {
+        return blobs.containsKey(key) ? Future.succeededFuture() : Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+    }
 }

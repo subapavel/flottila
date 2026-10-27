@@ -351,6 +351,37 @@ class AdminServerTest {
     }
 
     @Test
+    void aBodyWhoseStreamFailsLazilyWithIllegalArgumentBeforeAnyDataIs404() throws Exception {
+        start();
+        recordInvoice();
+        blobs.missingLazily.add(BlobKey.body("m-1", 2));   // a durable tier's lazy open: the row is gone, found only once read
+        Answer missing = admin("/admin/messages/m-1/steps/2/body");
+        assertJsonError(404, missing, "an IllegalArgumentException from the stream before the head is the store holding nothing: a 404, not a 500");
+        assertTrue(missing.error().contains("no longer stored"), "says the bytes are no longer stored: " + missing.error());
+        assertTrue(blobs.lazyFailures.get() > 0, "the stream was opened and read, and failed with the IllegalArgumentException");
+        assertEquals(200, admin("/admin/messages/m-1/steps/0/body").status(), "another body still streams");
+    }
+
+    /** The 404 is only for a stream that fails before the head: an IllegalArgumentException after bytes went out cuts the response like any failure. */
+    @Test
+    void aBlobStreamFailingWithIllegalArgumentMidBodyCutsTheResponse() throws Exception {
+        start();
+        recordInvoice();
+        blobs.illegalAfter.put(BlobKey.body("m-1", 2), big.slice(0, 65_536));
+        AtomicInteger head = new AtomicInteger();
+        Future<Buffer> body = client.request(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI("http://127.0.0.1:" + port + "/admin/messages/m-1/steps/2/body"))
+                .compose(req -> req.putHeader("Authorization", "Bearer " + TOKEN).send())
+                .compose(res -> {
+                    head.set(res.statusCode());
+                    return res.body();
+                });
+        Throwable cut = assertThrows(Throwable.class, () -> body.await(10, TimeUnit.SECONDS), "a body that broke after the head is never a complete answer");
+        assertFalse(cut instanceof TimeoutException, "the connection is reset or closed, the client does not hang: " + cut);
+        assertTrue(head.get() == 0 || head.get() == 200, "if the head arrived, it was the 200 sent before the failure, never a 404: " + head.get());
+        assertEquals(200, get("/health", null).status(), "the server goes on");
+    }
+
+    @Test
     void aContentTypeVertxRefusesIs500() throws Exception {
         start();
         Body b = blobs.write(BlobKey.body("m-crlf", 0), xml, MAX).await();
@@ -761,9 +792,23 @@ class AdminServerTest {
         final List<Boolean> attachedOnEventLoop = new CopyOnWriteArrayList<>();
         /** Keys whose stream fails: the bytes delivered first (empty: the first read fails), then an IOException. */
         final Map<BlobKey, Buffer> failAfter = new ConcurrentHashMap<>();
+        /** Keys whose open() answers a stream that, once read, fails with an IllegalArgumentException before any data (a lazy durable tier, row gone). */
+        final Set<BlobKey> missingLazily = ConcurrentHashMap.newKeySet();
+        /** How many IllegalArgumentExceptions a lazily missing stream has delivered to an exception handler. */
+        final AtomicInteger lazyFailures = new AtomicInteger();
+        /** Keys whose stream delivers these bytes and then fails with an IllegalArgumentException (after the head is out). */
+        final Map<BlobKey, Buffer> illegalAfter = new ConcurrentHashMap<>();
 
         @Override public ReadStream<Buffer> open(BlobKey key) {
             saw("blob");
+            if (missingLazily.contains(key)) {
+                return new AttachWatch(new BrokenStream(Buffer.buffer(), () -> {
+                    lazyFailures.incrementAndGet();
+                    return new IllegalArgumentException("no object stored under " + key);
+                }));
+            }
+            Buffer illegal = illegalAfter.get(key);
+            if (illegal != null) return new AttachWatch(new BrokenStream(illegal, () -> new IllegalArgumentException("no object stored under " + key)));
             Buffer before = failAfter.get(key);
             return new AttachWatch(before != null ? new BrokenStream(before) : inner.open(key));
         }
@@ -772,6 +817,8 @@ class AdminServerTest {
             saw("blob");
             return inner.read(key);
         }
+
+        @Override public Future<Void> persist(BlobKey key) { return inner.persist(key); }
     }
 
     /** Delegates; records whether the data handler was attached on an event loop (the answer is written on the verticle's context). */
@@ -794,16 +841,22 @@ class AdminServerTest {
 
     /**
      * A store-boundary stream that breaks: once read (a data handler on a flowing stream, a resume or a fetch) it delivers
-     * {@code before} and then fails with an IOException, both on the reader's context. Never ends.
+     * {@code before} and then fails with {@code cause} (an IOException by default), both on the reader's context. Never ends.
      */
     static final class BrokenStream implements ReadStream<Buffer> {
         final Buffer before;
+        final java.util.function.Supplier<Throwable> cause;
         volatile Handler<Buffer> data;
         volatile Handler<Throwable> failure;
         volatile boolean paused;
         boolean started;
 
-        BrokenStream(Buffer before) { this.before = before; }
+        BrokenStream(Buffer before) { this(before, () -> new java.io.IOException("the blob store could not read the object")); }
+
+        BrokenStream(Buffer before, java.util.function.Supplier<Throwable> cause) {
+            this.before = before;
+            this.cause = cause;
+        }
 
         @Override public ReadStream<Buffer> exceptionHandler(Handler<Throwable> h) { failure = h; return this; }
         @Override public ReadStream<Buffer> handler(Handler<Buffer> h) { data = h; if (!paused) read(); return this; }
@@ -820,7 +873,7 @@ class AdminServerTest {
                 Handler<Buffer> d = data;
                 if (before.length() > 0 && d != null) d.handle(before);
                 Handler<Throwable> f = failure;
-                if (f != null) f.handle(new java.io.IOException("the blob store could not read the object"));
+                if (f != null) f.handle(cause.get());
             });
         }
     }

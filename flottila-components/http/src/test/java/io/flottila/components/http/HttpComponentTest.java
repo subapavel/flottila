@@ -149,6 +149,7 @@ class HttpComponentTest {
         @Override public Future<io.flottila.api.Body> write(io.flottila.api.BlobKey key, io.vertx.core.streams.ReadStream<Buffer> in, long maxSize) { streamingWrites.incrementAndGet(); return inner.write(key, in, maxSize); }
         @Override public io.vertx.core.streams.ReadStream<Buffer> open(io.flottila.api.BlobKey key) { return inner.open(key); }
         @Override public Future<Buffer> read(io.flottila.api.BlobKey key) { return inner.read(key); }
+        @Override public Future<Void> persist(io.flottila.api.BlobKey key) { return inner.persist(key); }
     }
 
     @Test
@@ -300,6 +301,7 @@ class HttpComponentTest {
         @Override public Future<io.flottila.api.Body> write(io.flottila.api.BlobKey key, Buffer whole, long maxSize) { return inner.write(key, whole, maxSize); }
         @Override public io.vertx.core.streams.ReadStream<Buffer> open(io.flottila.api.BlobKey key) { return inner.open(key); }
         @Override public Future<Buffer> read(io.flottila.api.BlobKey key) { return inner.read(key); }
+        @Override public Future<Void> persist(io.flottila.api.BlobKey key) { return inner.persist(key); }
         @Override public Future<io.flottila.api.Body> write(io.flottila.api.BlobKey key, io.vertx.core.streams.ReadStream<Buffer> in, long maxSize) {
             HttpClientResponse reply = (HttpClientResponse) in;   // the producer hands its partner's response over
             io.vertx.core.Context ctx = Vertx.currentContext();

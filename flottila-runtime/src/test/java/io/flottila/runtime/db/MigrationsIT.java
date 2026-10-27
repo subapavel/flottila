@@ -86,12 +86,12 @@ class MigrationsIT {
     @Test
     @Order(1)
     void freshDatabaseIsMigratedToV1AndASecondRunIsANoOp() {
-        Set<String> app = Set.of("dlq", "message_keys", "messages", "payloads", "work");
+        Set<String> app = Set.of("bodies", "dlq", "message_keys", "messages", "payloads", "work");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(5, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a)");
-        assertEquals("5", first.schemaVersion());
-        assertEquals(Set.of("dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "work"), tables());
+        assertEquals(6, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h)");
+        assertEquals("6", first.schemaVersion());
+        assertEquals(Set.of("bodies", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "work"), tables());
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
         assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "dlq_parked_at", "messages_pkey", "payloads_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
@@ -101,11 +101,34 @@ class MigrationsIT {
         assertTrue(defs.get("message_keys_name_value_message").startsWith("CREATE UNIQUE INDEX") && defs.get("message_keys_name_value_message").endsWith("(name, value, message_id)"),
                 "V5: one key row per (name, value, message): " + defs.get("message_keys_name_value_message"));
         assertTrue(String.valueOf(defs.get("work_held")).endsWith("(seq) WHERE (held_at IS NOT NULL)"), "V5: held work rows, partial: " + defs.get("work_held"));
+        assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V5");
-        assertEquals("5", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V6");
+        assertEquals("6", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(5, applied);
+        assertEquals(6, applied);
+    }
+
+    /**
+     * V6 (D-058, D-061): {@code bodies} keyed by message id, step and part — never by content — with the bytes not null and
+     * stored out of line uncompressed (storage {@code external}: bodies are mostly compressed or small, and a read is a slice).
+     */
+    private void assertBodiesTable() {
+        java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
+        for (Row r : pool.query("select column_name, data_type, is_nullable, column_default from information_schema.columns "
+                + "where table_schema = 'public' and table_name = 'bodies' order by ordinal_position").execute().await()) {
+            columns.put(r.getString(0), r.getString(1) + (r.getString(2).equals("NO") ? " not null" : "") + (r.getString(3) == null ? "" : " default " + r.getString(3)));
+        }
+        assertEquals(java.util.Map.of("message_id", "text not null", "step", "integer not null", "part", "text not null", "bytes", "bytea not null",
+                "created_at", "timestamp with time zone not null default now()"), columns, "V6: the bodies columns");
+        assertEquals(List.of("message_id", "step", "part", "bytes", "created_at"), List.copyOf(columns.keySet()), "in this order");
+        String pk = pool.query("select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'bodies'::regclass and contype = 'p'")
+                .execute().await().iterator().next().getString(0);
+        assertEquals("PRIMARY KEY (message_id, step, part)", pk, "V6: one row per message, step and part");
+        Row bytes = pool.query("select attnotnull, attstorage::text from pg_attribute where attrelid = 'bodies'::regclass and attname = 'bytes'")
+                .execute().await().iterator().next();
+        assertTrue(bytes.getBoolean(0), "V6: bytes not null");
+        assertEquals("e", bytes.getString(1), "V6: bytes storage external (out of line, not compressed)");
     }
 
     @Test
@@ -145,8 +168,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(1, r.migrationsExecuted(), "V5 on top of V4");
-        assertEquals("5", r.schemaVersion());
+        assertEquals(2, r.migrationsExecuted(), "V5 and V6 on top of V4");
+        assertEquals("6", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));

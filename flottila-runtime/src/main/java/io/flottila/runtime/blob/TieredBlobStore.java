@@ -14,15 +14,18 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 
 import javax.crypto.SecretKey;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * The runtime {@link BlobStore} (ARCHITECTURE §4 "where the bytes live"): a body stays in memory while it is
@@ -35,6 +38,11 @@ import java.util.concurrent.ConcurrentHashMap;
 * <p>Blocking I/O (file, S3) runs on a virtual thread per write or read — opening the sink included; the
  * caller's stream is paused while the sink is behind and resumed as it drains, so an event-loop source is
  * never blocked.
+ *
+ * <p>With a durable tier ({@link PgBodies}, D-058, D-061) {@link #persist} moves a memory or spool body into Postgres: once
+ * the insert has committed, the index entry and its memory budget go before the future completes, a spool file is unlinked
+ * afterwards on a virtual thread. From then on — and on any node, after any restart — a key missing from the index is read
+ * from Postgres; nothing is cached locally. An S3 body is durable already. No path of this store deletes a durable body.
  *
  * @since 0.1
  */
@@ -79,23 +87,38 @@ public final class TieredBlobStore implements BlobStore {
     private final SpoolCipher cipher;
     private final long queueHighWater;
     private final Map<BlobKey, Stored> objects = new ConcurrentHashMap<>();
+    private final PgBodies bodies;   // the durable tier; null = none
     private volatile long peakQueued;   // the most bytes any streaming write held ahead of its sink (a test seam for the back-pressure bound)
     private volatile Runnable afterSinkDecision;   // test seam: see afterSinkDecision(Runnable)
+    private volatile Consumer<BlobKey> afterRelease;   // test seam: see afterRelease(Consumer)
+
+    private static final System.Logger LOG = System.getLogger(TieredBlobStore.class.getName());
 
     private record Stored(Location location, Buffer bytes, Path file, String s3Key, long size) {}
 
+    /** A store without a durable tier: {@link #persist} succeeds for an S3 body only. */
     public TieredBlobStore(Config config, Hasher hasher) {
-        this(config, hasher, DEFAULT_QUEUE_HIGH_WATER);
+        this(config, hasher, null, DEFAULT_QUEUE_HIGH_WATER);
+    }
+
+    /** A store whose {@link #persist} moves memory and spool bodies into {@code bodies}, the Postgres tier. */
+    public TieredBlobStore(Config config, Hasher hasher, PgBodies bodies) {
+        this(config, hasher, Objects.requireNonNull(bodies, "bodies"), DEFAULT_QUEUE_HIGH_WATER);
     }
 
     /** Test seam: a small high-water mark makes the pause / resume of the source deterministic. */
     TieredBlobStore(Config config, Hasher hasher, long queueHighWater) {
+        this(config, hasher, null, queueHighWater);
+    }
+
+    private TieredBlobStore(Config config, Hasher hasher, PgBodies bodies, long queueHighWater) {
         this.config = Objects.requireNonNull(config, "config");
         this.hasher = Objects.requireNonNull(hasher, "hasher");
         if (queueHighWater <= 1) throw new IllegalArgumentException("queueHighWater must be above 1, was " + queueHighWater);
         this.budget = new MemoryBudget(config.memoryBudgetBytes());
         this.cipher = new SpoolCipher(config.spoolKey());
         this.queueHighWater = queueHighWater;
+        this.bodies = bodies;
     }
 
     /** The most bytes any streaming write has queued ahead of its sink since this store was created: back-pressure keeps it near the high-water mark plus one chunk. */
@@ -108,9 +131,16 @@ public final class TieredBlobStore implements BlobStore {
      */
     void afterSinkDecision(Runnable hook) { this.afterSinkDecision = hook; }
 
+    /**
+     * Test-only: called once per persisted local body with its key once its local copy is gone — a memory body's right after
+     * its budget is released (before the persist completes), a spool body's after the unlink was attempted, on the unlinking
+     * virtual thread; {@code null} (the default) = none.
+     */
+    void afterRelease(Consumer<BlobKey> hook) { this.afterRelease = hook; }
+
     @Override public long treeLimit() { return config.treeLimit(); }
 
-    /** Where a stored body lives, or empty when nothing is stored under the key. */
+    /** Where a body is held locally (memory, spool) or in S3, or empty when none is — a persisted body lives in Postgres only. */
     public Optional<Location> location(BlobKey key) { return Optional.ofNullable(objects.get(key)).map(Stored::location); }
 
     /** Bytes of bodies currently held in the memory tier. */
@@ -166,32 +196,125 @@ public final class TieredBlobStore implements BlobStore {
         return w.result.future();
     }
 
+    /**
+     * {@inheritDoc} A key the index misses is read from the durable tier when there is one, lazily: the stream asks Postgres
+     * when it is first read and fails with an {@link IllegalArgumentException} when no row exists. Without a durable tier an
+     * unknown key throws that at once.
+     */
     @Override
     public ReadStream<Buffer> open(BlobKey key) {
         Stored s = objects.get(key);
-        if (s == null) throw new IllegalArgumentException("no object stored under " + key);
+        if (s != null) return open(key, s);
+        if (bodies == null) throw noObject(key);
+        return new InputStreamReadStream(() -> durable(key));
+    }
+
+    private ReadStream<Buffer> open(BlobKey key, Stored s) {
         return switch (s.location()) {
             case MEMORY -> new BufferReadStream(s.bytes());
-            case SPOOL -> new InputStreamReadStream(() -> cipher.decrypting(s.file()));
+            case SPOOL -> new InputStreamReadStream(() -> spooled(key, s));
             case S3 -> new InputStreamReadStream(() -> s3Stream(s.s3Key()));
         };
     }
 
+    /** A key the index misses is read from the durable tier when there is one; no row (or no tier) fails with an {@link IllegalArgumentException}. */
     @Override
     public Future<Buffer> read(BlobKey key) {
         Stored s = objects.get(key);
-        if (s == null) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+        if (s == null) {
+            if (bodies == null) return Future.failedFuture(noObject(key));
+            return bodies.select(key).compose(row -> row.isPresent() ? Future.succeededFuture(row.get()) : Future.failedFuture(noObject(key)));
+        }
         if (s.location() == Location.MEMORY) return Future.succeededFuture(s.bytes().copy());
+        return collect(open(key, s));
+    }
+
+    /**
+     * Makes a body durable (D-061). An S3 body is already: done at once. Without a durable tier every other key — a local body
+     * or one the index misses — is refused with an {@link IllegalStateException}. With one: a key the index misses is done when
+     * its row exists, else refused with an
+     * {@link IllegalArgumentException}; a body above the tier's bound fails with {@link BodyTooLargeException} and stays where it
+     * is; otherwise its bytes are read and inserted, and once the insert has committed the local copy goes — the index entry and
+     * the memory budget before the future completes, a spool file afterwards on a virtual thread (an unlink that fails is
+     * logged). A failed read or insert fails the persist and leaves the body local. Nothing is ever deleted from Postgres.
+     */
+    @Override
+    public Future<Void> persist(BlobKey key) {
+        Stored s = objects.get(key);
+        if (s != null && s.location() == Location.S3) return Future.succeededFuture();   // the S3 object outlives the process already
+        if (bodies == null) return Future.failedFuture(new IllegalStateException("this blob store has no durable tier: " + key + " cannot be persisted"));
+        if (s == null) return bodies.exists(key).compose(found -> found ? Future.succeededFuture() : Future.failedFuture(noObject(key)));
+        if (s.size() > bodies.maxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), bodies.maxBytes()));
+        Future<Buffer> local = s.location() == Location.MEMORY ? Future.succeededFuture(s.bytes()) : collect(open(key, s));
+        return local.compose(bytes -> bodies.insert(key, bytes)).map(inserted -> {
+            release(key, s);   // before the future completes: whoever awaits it finds the local copy gone
+            return null;
+        });
+    }
+
+    /**
+     * The local copy of a persisted body goes, when the index still holds {@code s} — otherwise it was evicted, written again
+     * or released by another persist meanwhile, and its budget and file are not this persist's: the entry and its memory budget
+     * now, a spool file afterwards on a virtual thread, never on the caller's.
+     */
+    private void release(BlobKey key, Stored s) {
+        if (!objects.remove(key, s)) return;
+        if (s.location() == Location.MEMORY) {
+            budget.release(s.size());
+            released(key);
+            return;
+        }
+        Thread.ofVirtual().name("flottila-blob-unlink").start(() -> {
+            try {
+                Files.deleteIfExists(s.file());
+            } catch (IOException left) {   // the bytes are durable: a stale spool file costs disk until the next start clears the spool
+                LOG.log(System.Logger.Level.WARNING, "the spool file of the persisted body " + key + " was not unlinked: " + s.file(), left);
+            }
+            released(key);
+        });
+    }
+
+    private void released(BlobKey key) {
+        Consumer<BlobKey> hook = afterRelease;
+        if (hook != null) hook.accept(key);
+    }
+
+    /**
+     * A spool body's bytes, on the stream's virtual thread; a file a persist unlinked after this stream was opened means the
+     * bytes are in Postgres now (a store without a durable tier fails as before).
+     */
+    private InputStream spooled(BlobKey key, Stored s) throws IOException {
+        try {
+            return cipher.decrypting(s.file());
+        } catch (NoSuchFileException gone) {
+            if (bodies == null) throw gone;
+            return durable(key);
+        }
+    }
+
+    /** The durable row's bytes, on the stream's virtual thread (it blocks on the query); no row fails with an {@link IllegalArgumentException}. */
+    private InputStream durable(BlobKey key) {
+        Optional<Buffer> row = bodies.select(key).await();
+        if (row.isEmpty()) throw noObject(key);
+        return new ByteArrayInputStream(row.get().getBytes());
+    }
+
+    private static IllegalArgumentException noObject(BlobKey key) { return new IllegalArgumentException("no object stored under " + key); }
+
+    /** Every byte of {@code stream}, in order. */
+    private static Future<Buffer> collect(ReadStream<Buffer> stream) {
         Promise<Buffer> p = Promise.promise();
         Buffer all = Buffer.buffer();
-        ReadStream<Buffer> stream = open(key);
         stream.exceptionHandler(p::tryFail);
         stream.endHandler(v -> p.tryComplete(all));
         stream.handler(all::appendBuffer);
         return p.future();
     }
 
-    /** Forgets a body and frees what it held (budget, spool file, S3 object); quiet for an unknown key. Not for the hot path. */
+    /**
+     * Forgets a body and frees what it held (budget, spool file, S3 object); quiet for an unknown key — a persisted body's row
+     * stays, only the retention job deletes from {@code bodies} (P2-07). Not for the hot path.
+     */
     public Future<Void> evict(BlobKey key) {
         Stored s = objects.remove(key);
         if (s == null) return Future.succeededFuture();

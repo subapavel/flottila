@@ -90,8 +90,8 @@
   `overlaps()` per message id, `peakActive()`, `open()`), `RecordingWorkQueue` (decorates InMemoryWorkQueue: claims with max/in-flight/
   running probe, `holdNext`/`releaseHeld`, `failClaims`, `answerRenews`/`failRenews`, renews/holds/completes; one-shot `failNextClaim`,
   `throwOnNextClaim` (sync throw), `failCompletes(n,c)`, `failHolds(n,c)`, `answerHolds(Boolean)`). `FlowWorkerTest.World` = per case/try.
-- Mutating a tree production class without touching the tree: copy it to scratch, `javac -d m/out -cp core/target/classes:<cp>`, run the
-  launcher with `m/out` ahead of core target/classes + test-classes (a class earlier on the classpath shadows the tree's).
+- Scratch reference (P1-09h): no rsync on the VM; `tar --exclude=./target --exclude='*/target' --exclude=./.git -cf - . | (cd $S/repo && tar -xf -)`,
+  edit production there, `mvn -o test`/`verify -Pit` there (Docker ok; `-Dit.test='Outer*'` runs @Nested classes). One class: javac to m/out ahead on the cp.
 - jqwik in a Jupiter class: @BeforeEach/@AfterEach do not run for @Property and instances may be shared — build all state inside the
   property method; a class-level @Timeout only draws a jqwik warning. `frequencyOf(Tuple.of(n, Arbitraries.just(new R())))` infers R:
   declare each as `Arbitrary<Iface>` first.
@@ -106,10 +106,10 @@
 - Pg lock-order (deadlock) staging without sleeps (P1-09a, PgMessageStoreIT): a holder tx keeps an uncommitted payloads row (plug batch
   waits → BatchingWriter's first save with inFlight 0 goes alone, so the next `batchSize` saves form one batch) and one middle key row;
   poll `pg_stat_activity where wait_event_type='Lock'` for 1/2/3 waiters, then roll back. Unsorted inserts → 40P01, observed in scratch.
-- Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`). Scratch
-  runtime reference: out-rt + scratch `db/migration` dir ahead of flottila-runtime/target/classes (V1..V4); the cp file lists deps only.
-- Rare hang (FIX-21): scratch Launcher loop, 4 JVMs, watchdog `jcmd <pid> Thread.dump_to_file` (shows virtual threads). HttpProducer's
-  unpaused reply can end before reply() listens (~1/2000 sends under load); deterministic pin: http `HttpComponentTest.LateListeningStore`.
+- Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`).
+- Rare hang (FIX-21): watchdog `jcmd <pid> Thread.dump_to_file` (virtual threads); late-listening reply pin: http `HttpComponentTest.LateListeningStore`.
+- P1-09h: core flow test `HoldingBlobStore` (persist hold/release/fail/answer(key,ok)/throwNext, `persists()`, `persisted(k)`); runtime blob
+  `PgBodiesIT.neverDeleted(pool)` (statement trigger: any DELETE on bodies fails); NodeIT `synchronousCommit(v)` = ALTER DATABASE (new sessions).
 - P1-09b: testkit test `ConsumerDrain.deliver` (track, then handler on own virtual thread); runtime test `node/OnVirtualThread`, `node/PlainComponent`; ArchUnit DoNotIncludeTests treats a scratch out dir as production.
 - Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic. P1-09d1b runtime test `deploy/`: `Doors` (scheme rec: held/failed start, failStop, onStop, drained stop), `TracingTimer`, `CountingQueue`, `PackageDraft` (zip a package). Red past an upstream test that does not compile: `-Dmaven.compiler.failOnError=false`; a stub compile check = javac against scratch stubs + `dependency:build-classpath`.
 - Process tests (P1-09d3 `MainProcessIT`): child cp `surefire.test.class.path`, JaCoCo agent from the test JVM's `-javaagent` arg, env cleared

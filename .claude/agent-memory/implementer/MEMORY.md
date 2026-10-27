@@ -37,6 +37,8 @@
 - JaCoCo in a child JVM: a `System.exit(code)` line is always missed (no probe after it); a shutdown hook's tail races the agent's
   own dump hook, so lines after a hook's blocking join are not reliably recorded.
 - Mutant loop runs offline (`-o`) fine: `-pl <m> -am test -Dtest=..` is ~5 s (schemas/core) to ~12 s (runtime) per mutant.
+  No rsync on the box: scratch copy = `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`; then mutants
+  can run there while the main tree builds (cmp the restored file against the main tree).
 - Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
   a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
 - JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
@@ -53,6 +55,11 @@
 - Probing an HttpClient answer: read `res.body()` inside the compose chain; after `await()` on another thread the body is lost.
 - Context7 monthly quota can be exhausted (ISSUE-1), or its tools are not exposed to this agent; then
   `javap -cp ~/.m2/repository/io/vertx/vertx-core/5.1.10/vertx-core-5.1.10.jar <class>`.
+- vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
+  connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
+  commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
+- runtime tests: System.Logger goes to JUL (slf4j-simple is on the classpath, no platform-logging bridge): capture a WARNING with a
+  JUL Handler on `Logger.getLogger(<class name>)`.
 - Vert.x 5.1.10 (javap): `Promise.tryComplete(T)`, `Future.all(List)` → CompositeFuture, `map(V)`,
   `onComplete(Handler<AsyncResult>)` and `onComplete(Completable)` (a Promise is a Completable).
 - Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,

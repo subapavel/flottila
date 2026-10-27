@@ -36,4 +36,14 @@ public interface BlobStore {
      * which enforces {@link #treeLimit()}; nothing else may call this.
      */
     Future<Buffer> read(BlobKey key);
+
+    /**
+     * Makes the stored body durable (D-058, D-061): the future completes once the bytes outlive the process and every node
+     * can read them by {@code key} — for a database tier, once the insert has committed. Idempotent: a key that is already
+     * durable completes again, and the first durable bytes win for a key. Never deletes anything. Every failure is a failed
+     * future: {@link BodyTooLargeException} above the store's durable bound (nothing is written, the body stays where it
+     * was), {@link IllegalArgumentException} for a key with nothing stored, {@link IllegalStateException} when the store has
+     * no durable tier. An at-least-once delivery calls it on the ingress body before it answers Accepted.
+     */
+    Future<Void> persist(BlobKey key);
 }

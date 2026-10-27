@@ -13,6 +13,7 @@ import io.vertx.core.streams.ReadStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -28,6 +29,7 @@ public final class InMemoryBlobStore implements BlobStore {
     private final Hasher hasher;
     private final long treeLimit;
     private final Map<BlobKey, Buffer> objects = new ConcurrentHashMap<>();
+    private final Set<BlobKey> persisted = ConcurrentHashMap.newKeySet();
 
     public InMemoryBlobStore(Hasher hasher, long treeLimit) {
         this.hasher = Objects.requireNonNull(hasher, "hasher");
@@ -79,6 +81,19 @@ public final class InMemoryBlobStore implements BlobStore {
         if (stored == null) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
         return Future.succeededFuture(stored.copy());
     }
+
+    /**
+     * The heap is this store's durable tier: a stored key is durable at once — {@link #persisted(BlobKey)} says so from then
+     * on, and persisting it again succeeds; a key with nothing stored is refused with an {@link IllegalArgumentException}.
+     */
+    @Override public Future<Void> persist(BlobKey key) {
+        if (!objects.containsKey(key)) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+        persisted.add(key);
+        return Future.succeededFuture();
+    }
+
+    /** Whether {@link #persist(BlobKey)} made {@code key} durable. */
+    public boolean persisted(BlobKey key) { return persisted.contains(key); }
 
     /** Whether an object is stored under {@code key}. */
     public boolean contains(BlobKey key) { return objects.containsKey(key); }

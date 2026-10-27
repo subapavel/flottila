@@ -105,4 +105,20 @@ class InMemoryBlobStoreTest {
         assertThrows(IllegalArgumentException.class, () -> store.open(BlobKey.body("nope", 0)));
         assertFalse(store.contains(BlobKey.body("nope", 0)));
     }
+
+    /** D-061: {@code persisted} answers for exactly the keys a successful persist made durable — not for a stored key, not for a refused one. */
+    @Test
+    void persistedSaysWhichKeysAPersistMadeDurable() {
+        BlobKey other = BlobKey.body("m-2", 0);
+        store.write(key, Buffer.buffer("kept"), 100).await();
+        store.write(other, Buffer.buffer("stored only"), 100).await();
+        assertFalse(store.persisted(key), "stored is not yet durable");
+        store.persist(key).await();
+        assertTrue(store.persisted(key));
+        assertFalse(store.persisted(other), "only the persisted key");
+        Future<Void> refused = store.persist(BlobKey.body("nope", 0));
+        assertTrue(refused.failed());
+        assertInstanceOf(IllegalArgumentException.class, refused.cause());
+        assertFalse(store.persisted(BlobKey.body("nope", 0)), "a refused persist makes nothing durable");
+    }
 }
