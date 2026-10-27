@@ -5,6 +5,7 @@ import io.flottila.api.Hash;
 import io.flottila.api.Health;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
+import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
@@ -75,6 +76,11 @@ import java.util.function.Supplier;
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
  * (D-063). Without one these routes do not exist (404).
  *
+ * <p>With a {@link WorkQueue} (D-067) it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
+ * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
+ * {@code POST /admin/work/{seq}/release} answers 200 {@code {seq}}, 404 for a seq unknown or not held, 400 for a seq that is
+ * not a long. Without one these routes do not exist (404).
+ *
  * @since 0.1
  */
 public final class AdminServer {
@@ -140,6 +146,7 @@ public final class AdminServer {
     private final BlobStore blobs;
     private final HealthProbe health;
     private final Optional<Deployments> deployments;
+    private final Optional<WorkQueue> work;
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
 
     /** The read API only: no deploy routes. */
@@ -147,14 +154,26 @@ public final class AdminServer {
         this(config, messages, dlq, blobs, health, Optional.empty());
     }
 
-    /** The read API and, with {@code deployments}, the deploy routes. */
+    /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty());
+    }
+
+    /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}. */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work));
+    }
+
+    private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                        Optional<WorkQueue> work) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
         this.health = Objects.requireNonNull(health, "health");
         this.deployments = Objects.requireNonNull(deployments, "deployments");
+        this.work = work;
     }
 
     /** Deploys the listening verticle; completes with the bound port (the actual one when configured 0). */
@@ -191,6 +210,10 @@ public final class AdminServer {
                 router.put("/admin/packages/:name").handler(upload(d));
                 router.get("/admin/flows").handler(offload(c -> flows(d)));
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
+            });
+            work.ifPresent(q -> {
+                router.get("/admin/work/held").handler(offload(c -> held(c, q)));
+                router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q)));
             });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
@@ -390,6 +413,17 @@ public final class AdminServer {
         return Json.of(200, page(refusable(() -> dlq.list(after(ctx), limit(ctx)).await()), AdminServer::parked));
     }
 
+    private static Reply held(RoutingContext ctx, WorkQueue work) {
+        return Json.of(200, page(refusable(() -> work.held(after(ctx), limit(ctx)).await()), AdminServer::held));
+    }
+
+    /** 200 {@code {seq}} for a held row; 404 for any other seq the queue does not release; a seq that is not a long never reaches it. */
+    private static Reply release(RoutingContext ctx, WorkQueue work) {
+        long seq = refusable(() -> Long.parseLong(ctx.pathParam("seq")));
+        if (!work.release(seq).await()) return Json.of(404, error("no held work item " + seq));
+        return Json.of(200, new JsonObject().put("seq", seq));
+    }
+
     private static Optional<String> after(RoutingContext ctx) {
         return Optional.ofNullable(ctx.request().getParam("after"));
     }
@@ -476,6 +510,18 @@ public final class AdminServer {
                 .put("keys", new JsonObject(new HashMap<>(p.keys().asMap())))
                 .put("body", new JsonObject().put("hash", hash(p.bodyHash())).put("size", p.bodySize()))
                 .put("versions", new JsonObject(new HashMap<>(p.versions())));
+    }
+
+    private static JsonObject held(WorkQueue.Held h) {
+        WorkQueue.Item i = h.item();
+        return new JsonObject()
+                .put("seq", i.seq())
+                .put("messageId", i.messageId())
+                .put("flow", i.flow())
+                .put("step", i.step())
+                .put("partitionKey", i.partitionKey())
+                .put("attempts", i.attempts())
+                .put("heldAt", h.heldAt().toString());
     }
 
     private static String hash(Hash h) {

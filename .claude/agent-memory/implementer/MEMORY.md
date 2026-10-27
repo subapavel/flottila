@@ -47,6 +47,7 @@
   `Router.router(Vertx)`, `get(String)`/`route(String)` → `Route.handler(Handler<RoutingContext>)`, `Router.errorHandler(int, Handler)`
   answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`.
   Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.
+- vertx-web 5.1.10 `Router.post(String)`→Route; RouterImpl never pauses (javap). Pg `UPDATE…RETURNING` has no order: CLAIM sorts in a CTE (P1-09c1).
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
@@ -78,9 +79,8 @@
   never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;
   the full one-resume-per-pause rule is in agent/NOTES.md "FIX-10").
 - `Throwable.addSuppressed(this)` throws IllegalArgumentException: guard `t != failure` in a catch that merges causes.
-- Testkit: FakeRuntime, FakeTimer (`nextDelay()` drives backoffs), FakeIds, InMemoryBlobStore,
-  BlobStoreContract, ComponentContract (9 cases), RecordingComponent (`sentTo`, `replyWith`,
-  `failNext`), GeneratedReadStream, BlockedPlatformThreadDetector.
+- Testkit: FakeRuntime, FakeTimer (`nextDelay()` drives backoffs), FakeIds, InMemoryBlobStore, BlobStoreContract, ComponentContract (9 cases),
+  RecordingComponent (`sentTo`, `replyWith`, `failNext`), GeneratedReadStream, BlockedPlatformThreadDetector.
 - Vert.x 5.1.10 source: `Future.future(h)` fails its promise with what `h` throws (null answer included); `compose` with a
   mapper that returns null throws NPE inside a listener and the composed future NEVER completes. `VertxOptions.setUseDaemonThread`
   (default null: Vert.x threads inherit the daemon flag of the thread that first runs them — a virtual thread's is true).

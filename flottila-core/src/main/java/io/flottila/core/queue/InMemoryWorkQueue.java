@@ -1,5 +1,6 @@
 package io.flottila.core.queue;
 
+import io.flottila.core.record.Page;
 import io.vertx.core.Future;
 
 import java.time.Clock;
@@ -25,7 +26,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Item item;            // as last handed out: its attempts are the current holder's
         String lockedBy;
         Instant lockedUntil;
-        boolean held;
+        Instant heldAt;       // null: not held
         Row(Item item) { this.item = item; }
     }
 
@@ -50,7 +51,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         List<Item> taken = new ArrayList<>();
         for (Row r : rows.values()) {
             if (taken.size() >= max) break;
-            if (!r.item.flow().equals(flow) || r.held || live(r, now) || !eligible(r)) continue;
+            if (!r.item.flow().equals(flow) || r.heldAt != null || live(r, now) || !eligible(r)) continue;
             taken.add(take(r, workerId, now, lease));
         }
         return Future.succeededFuture(taken);
@@ -82,7 +83,28 @@ public final class InMemoryWorkQueue implements WorkQueue {
     @Override public synchronized Future<Boolean> hold(long seq, int attempts) {
         Row r = rows.get(seq);
         if (!current(r, attempts)) return Future.succeededFuture(false);
-        r.held = true;
+        r.heldAt = clock.instant();
+        return Future.succeededFuture(true);
+    }
+
+    /** Seq order over every flow; the cursor is the last seq handed out, as the Postgres queue's. */
+    @Override public synchronized Future<Page<Held>> held(Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        long from = after.map(InMemoryWorkQueue::seqOf).orElse(Long.MIN_VALUE);
+        List<Held> page = new ArrayList<>();
+        for (Row r : rows.tailMap(from, false).values()) {
+            if (r.heldAt == null) continue;
+            if (page.size() == limit) return Future.succeededFuture(new Page<>(page, Optional.of(cursorOf(page.getLast()))));
+            page.add(new Held(r.item, r.heldAt));
+        }
+        return Future.succeededFuture(new Page<>(page, Optional.empty()));
+    }
+
+    @Override public synchronized Future<Boolean> release(long seq) {
+        Row r = rows.get(seq);
+        if (r == null || r.heldAt == null) return Future.succeededFuture(false);
+        r.heldAt = null;
+        r.lockedUntil = null;   // the lease cleared (lockedBy is read only under a live lease, and the next take sets it)
         return Future.succeededFuture(true);
     }
 
@@ -129,7 +151,17 @@ public final class InMemoryWorkQueue implements WorkQueue {
 
     /** The caller's claim is the row's current one: the row exists, is not held and was last handed out with {@code attempts}. */
     private static boolean current(Row r, int attempts) {
-        return r != null && !r.held && r.item.attempts() == attempts;
+        return r != null && r.heldAt == null && r.item.attempts() == attempts;
+    }
+
+    /** The cursor after {@code last}: its seq. */
+    private static String cursorOf(Held last) {
+        return Page.cursor(Long.toString(last.item().seq()));
+    }
+
+    /** The seq inside a cursor; {@link IllegalArgumentException} (a {@link NumberFormatException} included) when it holds none. */
+    private static long seqOf(String cursor) {
+        return Long.parseLong(Page.position(cursor));
     }
 
     /** Leases {@code r} to {@code workerId} and counts the attempt; the item as handed out. */

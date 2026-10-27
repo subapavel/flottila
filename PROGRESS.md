@@ -674,3 +674,12 @@ Review: FAIL r1 (Durable :116/:117/:158 had deterministic witnesses); PASS r2. N
 Owner: CONSIDER-2 (skip storing a step body equal to its input) added, deferred to the first real-world test phase.
 D-054 data: class B (test-author, verifier, reviewer opus/high); architect turns ~10; review rounds 2.
 Next: P1-09c [C] (designer first; call Replay on a virtual thread).
+
+## 2026-10-27 — P1-09c1 WorkQueue held/release + admin work routes (D-067, D-068) — done, review PASS
+Test first: InMemoryWorkQueueTest + PgWorkQueueIT 5 each, jqwik heldRowsBlockTheirKeyUntilReleased, FlowWorkerTest.aReleasedExhaustedItemIsParkedAtStepOneOnItsNextClaim, AdminServerWorkTest 4 — observed red (target/P1-09c1-red.log, -red-runtime.log). NodeIT.theAdminApiReleasesAHeldRowOfTheNodesQueue written by the implementer (kills its Node-wiring mutant) — approved by the architect after the fact.
+Change: core `WorkQueue.Held`, `held(after, limit)`, `release(seq)` (keeps attempts) in both stores; Pg claim returns rows in seq order (D-068); `GET /admin/work/held`, `POST /admin/work/{seq}/release` (token, virtual thread, 400/404); Node shares one PgWorkQueue. P1-09c split c1–c3 (packet P1-09c.md, D-067; owner chose option A: deploy record in Postgres, archive once in S3 by sha256 — git-first).
+Found in scope: HttpConsumerStopTest race (countDown before the counter it guards; since 22da747) failed one reactor run (target/P1-09c1-verify-all.log:19239) — test-author swapped the two lines, no assertion changed.
+Checks: whole reactor -Pit VERIFIED_PASS, archtest 35 (target/P1-09c1-verify-all-2.log); coverage no decrease, baseline written; 21 hand mutants + Pg claim-order mutant killed (target/P1-09c1-claim-order-2.log); PIT core 712/719 (InMemoryWorkQueue:147 pre-existing, equivalent).
+Review: PASS r1. Raised FIX-55 (failed release → 500; held() throws at the call); P1-09c2 note: decide a header/Origin check for token-less POST before replay/retry.
+D-054 data: class B (test-author, implementer, verifier, reviewer opus/high; designer opus/xhigh for the split); architect turns ~20; review rounds 1.
+Next: P1-09c2 [C] (replay/retry routes; packet §c2; F-11 at its commit).

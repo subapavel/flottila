@@ -1,6 +1,7 @@
 package io.flottila.runtime.queue;
 
 import io.flottila.core.queue.WorkQueue;
+import io.flottila.core.record.Page;
 import io.vertx.core.Future;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
@@ -22,7 +23,8 @@ import java.util.Optional;
  * expired — never while it is held. Leases are measured by the database clock. Every hand-out
  * increments the row's {@code attempts}, the holder's fencing token for {@link #renew} and
  * {@link #hold} (D-055, {@code V4__work_attempts}). The same-key fast path completes and claims
- * the next row of the key in one transaction (ARCHITECTURE §7).
+ * the next row of the key in one transaction (ARCHITECTURE §7). {@link #held} pages the held rows on V5's {@code work_held}
+ * index; {@link #release} clears a hold and its lease and keeps the attempts (D-067).
  *
  * @since 0.1
  */
@@ -47,7 +49,9 @@ public final class PgWorkQueue implements WorkQueue {
 
     private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts";
 
-    private static final String CLAIM = TAKE + " where w.seq in (" + ELIGIBLE + " order by w1.seq limit $3 for update skip locked)" + ITEM;
+    /** Handed out in seq order, as {@code InMemoryWorkQueue} does: an UPDATE's RETURNING has no order of its own. */
+    private static final String CLAIM = "with taken as (" + TAKE + " where w.seq in (" + ELIGIBLE + " order by w1.seq limit $3 for update skip locked)"
+            + ITEM + ") select * from taken order by seq";
 
     /** The fast path: same rule, restricted to one key, one row. Note the parameters: $3 is the key here, the int limit in CLAIM. */
     private static final String CLAIM_NEXT_OF_KEY = TAKE
@@ -61,6 +65,13 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
 
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
+
+    /** Every flow's held rows after a seq, in seq order, on the partial index {@code work_held} (V5); $2 is the limit plus one. */
+    private static final String HELD = "select seq, id, flow, step, partition_key, attempts, held_at from work"
+            + " where held_at is not null and seq > $1 order by seq limit $2";
+
+    /** Only a held row: the hold and the lease cleared, the attempts kept. */
+    private static final String RELEASE = "update work set held_at = null, locked_by = null, locked_until = null where seq = $1 and held_at is not null";
 
     /** Any row of the flow, held or not: a completed row is deleted ({@link #COMPLETE}). On the index {@code work_flow_seq}. */
     private static final String HAS_ITEMS = "select exists(select 1 from work where flow = $1)";
@@ -103,6 +114,22 @@ public final class PgWorkQueue implements WorkQueue {
         return pool.preparedQuery(HOLD).execute(Tuple.of(seq, attempts)).map(rows -> rows.rowCount() == 1);
     }
 
+    @Override public Future<Page<Held>> held(Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        long from = after.map(cursor -> Long.parseLong(Page.position(cursor))).orElse(Long.MIN_VALUE);
+        return pool.preparedQuery(HELD).execute(Tuple.of(from, limit + 1)).map(rows -> {
+            List<Held> page = new ArrayList<>();
+            for (Row r : rows) page.add(new Held(item(r), r.getOffsetDateTime("held_at").toInstant()));
+            if (page.size() <= limit) return new Page<>(page, Optional.empty());
+            List<Held> full = page.subList(0, limit);
+            return new Page<>(full, Optional.of(Page.cursor(Long.toString(full.getLast().item().seq()))));
+        });
+    }
+
+    @Override public Future<Boolean> release(long seq) {
+        return pool.preparedQuery(RELEASE).execute(Tuple.of(seq)).map(rows -> rows.rowCount() == 1);
+    }
+
     @Override public Future<Boolean> hasItems(String flow) {
         Objects.requireNonNull(flow, "flow");
         return pool.preparedQuery(HAS_ITEMS).execute(Tuple.of(flow)).map(rows -> rows.iterator().next().getBoolean(0));
@@ -119,8 +146,11 @@ public final class PgWorkQueue implements WorkQueue {
 
     private static List<Item> items(RowSet<Row> rows) {
         List<Item> items = new ArrayList<>();
-        for (Row r : rows) items.add(new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"),
-                r.getInteger("attempts")));
+        for (Row r : rows) items.add(item(r));
         return items;
+    }
+
+    private static Item item(Row r) {
+        return new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"), r.getInteger("attempts"));
     }
 }

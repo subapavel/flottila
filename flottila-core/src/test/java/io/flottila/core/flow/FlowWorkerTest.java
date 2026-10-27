@@ -839,6 +839,53 @@ class FlowWorkerTest {
         assertEquals(1, w.rows.size());
     }
 
+    /**
+     * P1-09c1 (D-067): a release keeps the row's attempts, so an item held past the bound (its park refused) is, once the DLQ is
+     * back and a human released it, parked at step 1 on its very next claim — no clock advance: the release cleared the lease as
+     * well as the hold — without another run, and completed; nothing is sent again, nothing held again, no second alert.
+     */
+    @Test
+    void aReleasedExhaustedItemIsParkedAtStepOneOnItsNextClaim() throws Exception {
+        int maxAttempts = 2;
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+        w.gate.open();
+        w.partner.failNext(100, () -> new NackException("order refused", false));
+        w.dlq.failParks(new IllegalStateException("dlq down"));
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            w1.poll().otherwiseEmpty().await(5, SECONDS);
+            w.gate.joinPassed();
+            until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+            w.rt.clock().advance(LEASE);
+        }
+        assertEquals(1, w1.poll().await(5, SECONDS), "fixture: the claim past the bound");
+        long seq = w.rows.snapshot().get(0).seq();
+        assertEquals(List.of(new RecordingWorkQueue.HoldCall(seq, maxAttempts + 1, true)), w.queue.holds(), "fixture: past the bound and unparkable, held");
+        assertEquals(1, logs.at(Level.SEVERE, in.id()).size(), "fixture: one alert");
+        w.dlq.parksOk();
+        assertEquals(0, w1.poll().await(5, SECONDS), "fixture: held, not claimed with the DLQ back either");
+        assertEquals(maxAttempts, w.partner.sent().size(), "fixture: two runs, both refused by the partner");
+
+        assertTrue(w.queue.release(seq).await(), "a human releases the held item");
+        assertEquals(1, w1.poll().await(5, SECONDS), "claimed on the next poll, the clock where the hold left it: the release cleared the lease too");
+
+        assertEquals(List.of(1, 2, 3, 4), w.claimedAttempts(), "the release kept the attempts: the claim after it is the fourth");
+        assertEquals(maxAttempts, w.gate.entered(), "past the bound: parked without a run");
+        assertEquals(maxAttempts, w.partner.sent().size(), "nothing sent again");
+        Parked p = w.parkedRow();
+        assertEquals(in.id(), p.messageId());
+        assertEquals(1, p.step(), "parked at step 1");
+        assertEquals("gate", p.stepName());
+        assertTrue(p.error().contains("AttemptsExhaustedException") && p.error().contains("claimed " + (maxAttempts + 2) + " times"),
+                "exhausted, counting the attempts kept through the release: " + p.error());
+        assertEquals(in.body().key(), p.bodyKey(), "the ingress envelope, rebuilt, by reference");
+        assertEquals(0, w.rows.size(), "parked: the item is completed");
+        assertEquals(1, w.queue.holds().size(), "not held again");
+        assertEquals(1, logs.at(Level.SEVERE, in.id()).size(), "no second alert: " + logs.all());
+    }
+
     @Test
     void anItemWhoseTimelineCannotBeReadAtTheBoundIsHeld() throws Exception {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));

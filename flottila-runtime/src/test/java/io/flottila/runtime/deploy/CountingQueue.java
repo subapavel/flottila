@@ -83,6 +83,10 @@ public final class CountingQueue implements WorkQueue {
 
     @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
 
+    @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }
+
+    @Override public Future<Boolean> release(long seq) { return inner.release(seq); }
+
     /** From now on every {@link #hasItems} call (still recorded) fails with {@code failure}; {@code null} answers again. */
     public void failHasItems(Throwable failure) { hasItemsFailure = failure; }
 

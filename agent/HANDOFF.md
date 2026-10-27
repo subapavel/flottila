@@ -1,16 +1,16 @@
 # Handoff
 
-state: RUNNING — FIX-53 done; next row P1-09c [C]
-last commit: `Task: FIX-53` (this commit); 5ef06d7 `Task: P1-09k2`; 2b650c2 `Task: P1-09k1`
+state: RUNNING — P1-09c1 done; next row P1-09c2 [C] (packet P1-09c.md §c2)
+last commit: `Task: P1-09c1` (this commit); e327b91 `Task: FIX-53`; 5ef06d7 `Task: P1-09k2`
 branch: claude/stoic-cannon-2byixj (session branch set by the environment; main = 17c6fbf at start)
-next exact action: P1-09c [C] — designer first (opus/xhigh); row note: call Replay on a virtual thread
-then: P1-10, P1-GATE, Phase 2
+next exact action: P1-09c2 [C] — test-author red tests from packet §c2 (opus/xhigh); decide the token-less POST header/Origin check first
+then: P1-09c3 [C] (designer rewrites §c3 for the S3 archive, owner option A), P1-10, P1-GATE, Phase 2
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: 22da747 run 40336093434 green (P1-08c); bfa400c run 40315078572 green (P1-08b); 1a8bba8 run 40300828984 green (FIX-15)
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
 open issues: ISSUE-1 (Context7 quota; javap fallback in use, nothing blocked)
-open fixes: FIX-16, FIX-18..20, FIX-22..29, FIX-31, FIX-33,34,36..43, FIX-45..52, FIX-54; CONSIDER-1, CONSIDER-2 (owner: not ready)
-pending at hand-over: D-022, D-025–D-061 exc. D-028/D-048/D-053/D-054, D-062/F-7, D-063 (+Listing), D-066/F-10, D-065/F-9 (B → FIX-40); decided: D-064/F-8
+open fixes: FIX-16, FIX-18..20, FIX-22..29, FIX-31, FIX-33,34,36..43, FIX-45..52, FIX-54,55; CONSIDER-1, CONSIDER-2 (owner: not ready)
+pending at hand-over: D-022, D-025–D-061 exc. D-028/D-048/D-053/D-054, D-062/F-7, D-063 (+Listing), D-066/F-10, D-067, D-068; decided: D-064, D-065 B, D-067 A
 roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort per call; designer Opus xhigh for C; gate-reviewer Fable 5.1 (AGENTS.md)
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
 VM: services detached (NOTES.md "Build and VM"); mutant restore with `cp`/`touch`, never `mv`; never `mvn clean` at the reactor root; no stress-ng (shell hogs)

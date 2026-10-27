@@ -1,6 +1,7 @@
 package io.flottila.runtime.queue;
 
 import io.flottila.core.queue.WorkQueue;
+import io.flottila.core.record.Page;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -13,8 +14,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,12 +31,16 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** The proto-m1 WorkQueue claim SQL on the Vert.x 5 client: SKIP LOCKED, per-key order, lease expiry, the same-key fast path, two real workers. */
+/**
+ * The proto-m1 WorkQueue claim SQL on the Vert.x 5 client: SKIP LOCKED, per-key order, lease expiry, the same-key fast path, two real workers.
+ * P1-09c1 (D-067): the held rows a page at a time (V5's {@code work_held}), and release — the same cases as InMemoryWorkQueueTest.
+ */
 class PgWorkQueueIT {
 
     static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
@@ -295,5 +303,160 @@ class PgWorkQueueIT {
         queue.enqueue("n1", "shop/audit", 1, null).await();
         assertThrows(NullPointerException.class, () -> queue.hasItems(null), "a null flow is a NullPointerException at the call, never false");
         assertTrue(queue.hasItems("shop/audit").await(), "witness: the queue answers for a flow");
+    }
+
+    // --- P1-09c1 (D-067): held(after, limit) a page at a time in seq order, release(seq)
+
+    /** Refused with IllegalArgumentException (the admin API's 400), thrown at the call or as the failed future's cause. */
+    static void refused(org.junit.jupiter.api.function.Executable call, String what) {
+        Throwable t = assertThrows(Throwable.class, call, what + " is refused");
+        assertInstanceOf(IllegalArgumentException.class, t, what + ": " + t);
+    }
+
+    static List<String> heldIds(List<WorkQueue.Held> held) {
+        return held.stream().map(h -> h.item().messageId()).toList();
+    }
+
+    static WorkQueue.Item one(List<WorkQueue.Item> claimed, String id) {
+        return claimed.stream().filter(i -> i.messageId().equals(id)).findFirst().orElseThrow(() -> new AssertionError(id + " not in " + claimed));
+    }
+
+    /** The row's {@code held_at} as the database stored it. */
+    private Instant heldAt(long seq) {
+        return row(seq).getOffsetDateTime("held_at").toInstant();
+    }
+
+    /**
+     * Rows held in two flows, a queued row behind a held one and a leased row between them: the listing holds only the held rows,
+     * across flows, in seq order, each as last handed out with its {@code held_at}; pages of 2 walk them, the last page has no cursor
+     * (an exact fit included), and the cursor is a position: releasing the rows up to the cursor skips nothing after it.
+     */
+    @Test
+    void heldListsOnlyHeldRowsInSeqOrderAPageAtATime() {
+        queue.enqueue("h1", "t", 1, "A").await();
+        queue.enqueue("q1", "t", 1, "A").await();
+        queue.enqueue("h2", "t", 2, null).await();
+        queue.enqueue("l1", "t", 1, null).await();
+        queue.enqueue("h3", "u", 3, null).await();
+        queue.enqueue("h4", "t", 1, "B").await();
+        assertEquals(new Page<WorkQueue.Held>(List.of(), Optional.empty()), queue.held(Optional.empty(), 10).await(), "nothing held yet: an empty last page");
+
+        List<WorkQueue.Item> t = claim("w1", 10, LEASE);
+        assertEquals(List.of("h1", "h2", "l1", "h4"), t.stream().map(WorkQueue.Item::messageId).toList(), "fixture: q1 waits behind h1");
+        WorkQueue.Item u1 = queue.claim("w2", "u", 1, LEASE).await().get(0);
+        expire(u1.seq());
+        WorkQueue.Item u2 = queue.claim("w2", "u", 1, LEASE).await().get(0);
+        assertEquals(u1.seq(), u2.seq(), "fixture");
+        assertEquals(2, u2.attempts(), "fixture");
+        for (WorkQueue.Item it : List.of(one(t, "h4"), u2, one(t, "h1"), one(t, "h2"))) {   // held out of seq order
+            assertTrue(queue.hold(it.seq(), it.attempts()).await(), "fixture: " + it.messageId() + " held");
+        }
+
+        List<WorkQueue.Held> expected = new ArrayList<>();
+        for (WorkQueue.Item it : List.of(one(t, "h1"), one(t, "h2"), u2, one(t, "h4"))) expected.add(new WorkQueue.Held(it, heldAt(it.seq())));
+        Page<WorkQueue.Held> all = queue.held(Optional.empty(), Page.MAX_LIMIT).await();
+        assertEquals(expected, all.items(), "only held rows, every flow's, in seq order, as last handed out (h3 at attempt 2), with held_at");
+        assertEquals(Optional.empty(), all.next());
+
+        Page<WorkQueue.Held> first = queue.held(Optional.empty(), 2).await();
+        assertEquals(List.of("h1", "h2"), heldIds(first.items()));
+        assertTrue(first.next().isPresent(), "two more held rows");
+        Page<WorkQueue.Held> second = queue.held(first.next(), 2).await();
+        assertEquals(List.of("h3", "h4"), heldIds(second.items()));
+        assertEquals(Optional.empty(), second.next(), "exactly limit rows left: no cursor to an empty page");
+        Page<WorkQueue.Held> ofThree = queue.held(Optional.empty(), 3).await();
+        assertEquals(List.of("h1", "h2", "h3"), heldIds(ofThree.items()));
+        Page<WorkQueue.Held> rest = queue.held(ofThree.next(), 3).await();
+        assertEquals(List.of("h4"), heldIds(rest.items()));
+        assertEquals(Optional.empty(), rest.next());
+
+        assertTrue(queue.release(one(t, "h1").seq()).await(), "fixture");
+        assertTrue(queue.release(one(t, "h2").seq()).await(), "fixture: the cursor's own row released");
+        assertEquals(List.of("h3", "h4"), heldIds(queue.held(first.next(), 2).await().items()),
+                "the cursor is a position in seq order, never an offset: the rows released before it skip nothing");
+    }
+
+    @Test
+    void heldRefusesABadLimitOrCursor() {
+        enqueue("h1", null); enqueue("h2", null);
+        for (WorkQueue.Item it : claim("w1", 10, LEASE)) assertTrue(queue.hold(it.seq(), it.attempts()).await(), "fixture");
+        for (int limit : new int[] {0, -1, Page.MAX_LIMIT + 1, Integer.MIN_VALUE}) refused(() -> queue.held(Optional.empty(), limit).await(), "limit " + limit);
+        String notASeq = Base64.getUrlEncoder().withoutPadding().encodeToString("x".getBytes(StandardCharsets.UTF_8));
+        for (String cursor : List.of("!!!", notASeq)) refused(() -> queue.held(Optional.of(cursor), 1).await(), "cursor " + cursor);
+        assertEquals(List.of("h1"), heldIds(queue.held(Optional.empty(), 1).await().items()), "1 is a limit");
+        assertEquals(List.of("h1", "h2"), heldIds(queue.held(Optional.empty(), Page.MAX_LIMIT).await().items()), "500 is a limit");
+        Optional<String> next = queue.held(Optional.empty(), 1).await().next();
+        assertEquals(List.of("h2"), heldIds(queue.held(next, 1).await().items()), "the cursor the store handed out is one it takes");
+    }
+
+    /**
+     * Handed out twice, held by the second claim whose lease still runs: release answers true and clears held_at, locked_by and
+     * locked_until; attempts stay 2 — the row is claimable at once, before the row behind it, and its next hand-out is the third.
+     */
+    @Test
+    void releaseClearsHoldAndLeaseKeepsAttempts() {
+        enqueue("r1", "K"); enqueue("r2", "K");
+        WorkQueue.Item first = claim("w1", 10, LEASE).get(0);
+        expire(first.seq());
+        WorkQueue.Item again = claim("w2", 10, LEASE).get(0);
+        assertEquals(first.seq(), again.seq(), "fixture");
+        assertEquals(2, again.attempts(), "fixture");
+        assertTrue(queue.hold(again.seq(), again.attempts()).await(), "fixture: held by its current holder");
+        assertEquals("w2", row(again.seq()).getString("locked_by"), "fixture: the hold left w2's lease");
+        assertNotNull(row(again.seq()).getValue("locked_until"), "fixture");
+
+        assertTrue(queue.release(again.seq()).await(), "a held row is released");
+        io.vertx.sqlclient.Row r = row(again.seq());
+        assertNull(r.getValue("held_at"), "the hold cleared");
+        assertNull(r.getValue("locked_by"), "the lease cleared: no holder");
+        assertNull(r.getValue("locked_until"), "the lease cleared: no expiry");
+        assertEquals(2, r.getInteger("attempts"), "attempts kept: the row still counts its two hand-outs");
+        assertEquals(List.of(), queue.held(Optional.empty(), Page.MAX_LIMIT).await().items(), "no longer listed");
+        assertEquals(List.of(new WorkQueue.Item(again.seq(), "r1", "t", 1, "K", 3)), claim("w3", 10, LEASE),
+                "claimable at once, before r2, and its next hand-out is the third attempt");
+    }
+
+    @Test
+    void releaseOfAnUnheldOrUnknownSeqIsFalse() {
+        enqueue("l1", null); enqueue("q1", "K"); enqueue("h1", null);
+        WorkQueue.Item l1 = claim("w1", 1, LEASE).get(0);
+        assertEquals("l1", l1.messageId(), "fixture: leased, never held");
+        long q1 = pool.query("select seq from work where id = 'q1'").execute().await().iterator().next().getLong("seq");
+        Object leased = row(l1.seq()).getValue("locked_until");
+        assertFalse(queue.release(-1L).await(), "an unknown seq");
+        assertFalse(queue.release(q1).await(), "a queued row never handed out");
+        assertFalse(queue.release(l1.seq()).await(), "a leased row that is not held");
+        assertEquals("w1", row(l1.seq()).getString("locked_by"), "the refused release left the lease where it was");
+        assertEquals(leased, row(l1.seq()).getValue("locked_until"));
+        assertEquals(1, row(l1.seq()).getInteger("attempts"));
+        List<WorkQueue.Item> rest = claim("w2", 10, LEASE);
+        assertEquals(List.of("q1", "h1"), rest.stream().map(WorkQueue.Item::messageId).toList(), "the refused release changed nothing: q1 claimable as before");
+        assertEquals(1, one(rest, "q1").attempts(), "q1's first hand-out");
+        WorkQueue.Item h1 = one(rest, "h1");
+        assertTrue(queue.hold(h1.seq(), h1.attempts()).await(), "fixture");
+        assertTrue(queue.release(h1.seq()).await(), "witness: a held row is released");
+        assertFalse(queue.release(h1.seq()).await(), "released already: no longer held");
+        queue.complete(h1.seq()).await();
+        assertFalse(queue.release(h1.seq()).await(), "completed: unknown");
+    }
+
+    /** a1 held blocks a2 behind it; released, a1 is the key's next hand-out, and a2 follows only once a1 completed. */
+    @Test
+    void aReleasedRowIsClaimedBeforeTheRowsBehindItsKey() {
+        enqueue("a1", "A"); enqueue("a2", "A"); enqueue("b1", "B");
+        List<WorkQueue.Item> first = claim("w1", 10, LEASE);
+        assertEquals(List.of("a1", "b1"), first.stream().map(WorkQueue.Item::messageId).toList(), "fixture");
+        WorkQueue.Item a1 = one(first, "a1");
+        assertTrue(queue.hold(a1.seq(), a1.attempts()).await(), "fixture");
+        queue.complete(one(first, "b1").seq()).await();
+        expire(a1.seq());
+        assertTrue(claim("w2", 10, LEASE).isEmpty(), "held: a1 is never claimed and a2 waits behind it");
+
+        assertTrue(queue.release(a1.seq()).await());
+        assertEquals(List.of(new WorkQueue.Item(a1.seq(), "a1", "t", 1, "A", 2)), claim("w2", 10, LEASE), "the released row comes first; a2 stays behind it");
+        assertTrue(claim("w3", 10, LEASE).isEmpty(), "a1 leased again: key A blocked by its live lease");
+        WorkQueue.Item a2 = queue.completeAndTakeNext(a1.seq(), "w2", LEASE).await().orElseThrow();
+        assertEquals("a2", a2.messageId(), "a2 once a1 completed");
+        assertEquals(1, a2.attempts());
     }
 }

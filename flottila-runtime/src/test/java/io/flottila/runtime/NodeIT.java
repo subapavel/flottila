@@ -80,6 +80,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -209,6 +210,40 @@ class NodeIT {
         assertEquals(200, get(node.adminPort(), "/health").statusCode(), "the node runs with every kind of mock binding");
         assertNotEquals(before, Set.copyOf(vertx.deploymentIDs()),
                 "the running node's admin server is a deployed verticle: what NodeTest's 'nothing left listening' looks at");
+    }
+
+    /**
+     * P1-09c1 (D-067): the node's admin API shows and releases held work items over its own Postgres queue — a row held in the
+     * case database is listed with its {@code held_at}, and a release over the API clears the hold and the lease in that database.
+     */
+    @Test
+    void theAdminApiReleasesAHeldRowOfTheNodesQueue() throws Exception {
+        start(env("dev"), ctx -> List.of());
+        PgConnection db = PgConnection.connect(vertx, options(database)).await();
+        try {
+            long seq = db.query("insert into work(id, flow, step, partition_key, attempts, held_at, locked_by, locked_until)"
+                    + " values ('m-1', 'demo/invoice', 2, 'K', 3, now(), 'w1', now() + interval '1 hour') returning seq").execute().await()
+                    .iterator().next().getLong(0);
+            JsonObject page = new JsonObject(get(node.adminPort(), "/admin/work/held").body());
+            assertEquals(1, page.getJsonArray("items").size(), page.encode());
+            JsonObject item = page.getJsonArray("items").getJsonObject(0);
+            assertEquals(seq, item.getLong("seq"), item.encode());
+            assertEquals("m-1", item.getString("messageId"));
+            assertEquals(3, item.getInteger("attempts"));
+            assertNull(page.getValue("next"));
+            try (HttpClient client = http()) {
+                HttpResponse<String> released = send(client, "POST", node.adminPort(), "/admin/work/" + seq + "/release", new byte[0], "application/json");
+                assertEquals(200, released.statusCode(), released.body());
+                assertEquals(new JsonObject().put("seq", seq), new JsonObject(released.body()));
+            }
+            io.vertx.sqlclient.Row row = db.preparedQuery("select held_at, locked_by, locked_until, attempts from work where seq = $1")
+                    .execute(Tuple.of(seq)).await().iterator().next();
+            assertNull(row.getValue("held_at"), "released in the node's database");
+            assertNull(row.getValue("locked_until"), "the lease cleared");
+            assertEquals(3, row.getInteger("attempts"), "attempts kept");
+        } finally {
+            db.close().await();
+        }
     }
 
     /** A spooled object is encrypted with a key that died with its process: what a previous run left under the spool is garbage. */

@@ -101,6 +101,8 @@ class DeploymentsRedeployEdgeTest {
         @Override public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) { return counting.completeAndTakeNext(seq, workerId, lease); }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return counting.renew(seq, attempts, lease); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return counting.hold(seq, attempts); }
+        @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return counting.held(after, limit); }
+        @Override public Future<Boolean> release(long seq) { return counting.release(seq); }
         @Override public Future<Boolean> hasItems(String flow) {
             int n = hasItemsCalls.incrementAndGet();
             if (failHasItemsFrom > 0 && n >= failHasItemsFrom) return Future.failedFuture(new IllegalStateException("queue down at hasItems #" + n));

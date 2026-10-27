@@ -269,4 +269,15 @@ final class RecordingWorkQueue implements WorkQueue {
         holds.add(new HoldCall(seq, attempts, answer.succeeded() ? answer.result() : null));
         return answer;
     }
+
+    /** The delegate's listing (P1-09c1): this class's own {@code Held} is a held claim, not the queue's held row. */
+    @Override
+    public Future<io.flottila.core.record.Page<WorkQueue.Held>> held(Optional<String> after, int limit) {
+        return delegate.held(after, limit);
+    }
+
+    @Override
+    public Future<Boolean> release(long seq) {
+        return delegate.release(seq);
+    }
 }

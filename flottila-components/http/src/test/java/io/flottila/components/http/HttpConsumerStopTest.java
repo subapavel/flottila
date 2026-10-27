@@ -172,8 +172,9 @@ class HttpConsumerStopTest {
         AtomicInteger handled = new AtomicInteger();
         Promise<Ack> answer = Promise.promise();
         listen(Map.of(), e -> {
+            int n = handled.incrementAndGet();   // the state the test reads after the latch, set before it opens
             invoked.countDown();
-            return handled.incrementAndGet() == 1 ? answer.future() : Future.succeededFuture(new Ack.Accepted(e.id()));
+            return n == 1 ? answer.future() : Future.succeededFuture(new Ack.Accepted(e.id()));
         });
         assertEquals(Health.Status.UP, http.health().await().status(), "a consumer listens");
         Future<Answer> inFlight = send("<in-flight/>");
