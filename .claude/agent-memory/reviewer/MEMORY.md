@@ -64,7 +64,6 @@
 - A "may block" negative on a thread kind that is never registered is vacuous: pin the thread kind itself (FIX-2, `watchedVirtualThread` → `assertTrue(vt.isVirtual())`).
 - When a fix gives each case its own database, mutate the URL and the pool separately — each is pinned by a different case (FIX-5: the pool only by the fresh-database case).
 - Read the testcase order in each random-order XML: one of FIX-5's three random runs repeated the committed order and was no new evidence.
-- With a resolver plus a deny-all setting, a post-compile "failure recorded" check makes the setting unpinnable by message tests; pin "not fetched / not read" with a counting local server (FIX-6, XsdStepFactory ACCESS_EXTERNAL_SCHEMA).
 - XML steps: check compile-time reads besides include/import (DTD entities, XSLT `static` / `use-when` calls to `doc()` / `unparsed-text()`) against the decision's "every file" wording (FIX-6).
 - A compile cache keyed by the main file's hash skips any per-flow check on a cache hit; ask what a cache hit bypasses (FIX-6 → FIX-17).
 - A thread-scoped hook on a shared object needs two cases: the scope's effect, and its absence after close on the same thread; mutate `close()` and the no-scope branch (FIX-6, CompileConfinement / XsltStepFactory).
@@ -118,3 +117,4 @@
 - Doc paraphrases drop a packet's exception clauses ("steps never wait" vs the 257th flush wait); diff every new § sentence against each packet clause, and grep the edited section and D-row/finding for older never/always/unchanged sentences the new exception falsifies (P1-09k2 r1, r2).
 - A new "always" invariant in ARCHITECTURE: check every writer of that row, old paths too (the at-least-once ingress row is saved beside its persist, D-058, Delivery:250-263; P1-09k2).
 - Context read on the run's thread for a store callback (Trail.current() in Parking): in-memory stores answer inline, so core tests can't tell; ask for a store that answers on another thread (P1-09k2).
+- Not-chased contract assertions: try a stale per-key cache (read/open not invalidated on rewrite) and a part-blind local tier before accepting 'no variant reaches it' (FIX-53, Durable :116/:117/:158).

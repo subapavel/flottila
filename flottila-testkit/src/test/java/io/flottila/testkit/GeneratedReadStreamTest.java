@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -126,5 +127,43 @@ class GeneratedReadStreamTest {
         assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(-1, 4));
         assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(4, 0));
         assertThrows(IllegalArgumentException.class, () -> new GeneratedReadStream(4, 1).fetch(-1));
+    }
+
+    // ---- FIX-53 ---------------------------------------------------------------------------------------------------
+
+    @Test
+    void byteIIsIMultipliedBy31Plus7AsTheJavadocSays() {
+        assertEquals((byte) 7, GeneratedReadStream.byteAt(0));
+        assertEquals((byte) 38, GeneratedReadStream.byteAt(1));
+        assertEquals((byte) 100, GeneratedReadStream.byteAt(3));
+        assertEquals((byte) (1000L * 31 + 7), GeneratedReadStream.byteAt(1000));
+        GeneratedReadStream s = new GeneratedReadStream(3, 3);
+        List<Buffer> got = new ArrayList<>();
+        s.handler(got::add);
+        assertEquals(Buffer.buffer(new byte[] {7, 38, 69}), got.getFirst(), "the stream delivers those bytes");
+    }
+
+    @Test
+    void aFetchOfNothingIsAllowedAndDeliversNothing() {
+        GeneratedReadStream s = new GeneratedReadStream(4, 1);
+        List<Buffer> got = new ArrayList<>();
+        s.pause().handler(got::add);
+        assertSame(s, s.fetch(0), "fetch(0) is no error: it adds no demand");
+        assertEquals(0, s.delivered());
+        s.fetch(1);
+        assertEquals(1, s.delivered(), "and demand still works after it");
+        assertThrows(IllegalArgumentException.class, () -> s.fetch(-1));
+    }
+
+    @Test
+    void everyStreamCallReturnsTheStreamItself() {
+        GeneratedReadStream s = new GeneratedReadStream(3, 1);
+        assertSame(s, s.exceptionHandler(t -> { }));
+        assertSame(s, s.pause());
+        assertSame(s, s.handler(b -> { }));
+        assertSame(s, s.fetch(1));
+        assertSame(s, s.endHandler(v -> { }));
+        assertSame(s, s.resume());
+        assertEquals(3, s.delivered(), "the chained calls drove the stream to its end");
     }
 }

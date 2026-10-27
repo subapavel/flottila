@@ -2,12 +2,14 @@ package io.flottila.testkit;
 
 import io.flottila.api.Ack;
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
+import io.flottila.api.Hasher;
 import io.flottila.api.Health;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
@@ -15,6 +17,8 @@ import io.flottila.api.Props;
 import io.flottila.api.Views;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
@@ -28,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
@@ -74,7 +79,11 @@ class ComponentContractSelfTest {
          * whatever the attempt (the reply writer before run-scoped keys), or under the envelope's next key but without the
          * sender's props ({@link #restoredWithoutProps}); {@code null} (the correct variant) returns the reply as is.
          */
-        InMemoryBlobStore restoredReplies;
+        BlobStore restoredReplies;
+        /** With {@link #restoredReplies} (FIX-53): the key each reply is re-stored under; {@code null} = as {@link #restoredWithoutProps} says. */
+        Function<Envelope, BlobKey> restoredKeyOf;
+        /** Broken (FIX-53): given the envelope sent and the handler's reply, a non-null answer fails the send with it. */
+        BiFunction<Envelope, Envelope, Throwable> replyRefused;
         /** With {@link #restoredReplies}: keyed by {@link Envelope#nextKey()}, the attempt kept, but the sender's props dropped. */
         boolean restoredWithoutProps;
         private final Set<Promise<Envelope>> waiting = ConcurrentHashMap.newKeySet();
@@ -105,6 +114,20 @@ class ComponentContractSelfTest {
         /** Every reply re-stored under the plain next-step key of the envelope sent, the reply's headers kept. */
         static Variant replyStoredUnderThePlainKey() { Variant v = correct(); v.restoredReplies = new InMemoryBlobStore(io.flottila.api.Hasher.sha256(), 1 << 20); return v; }
 
+        /** Every reply re-stored under the key {@code keyOf} gives the envelope sent, the sender's props carried on (FIX-53). */
+        static Variant replyStoredUnder(Function<Envelope, BlobKey> keyOf) { Variant v = replyStoredUnderThePlainKey(); v.restoredKeyOf = keyOf; return v; }
+
+        /** Every reply re-stored under the envelope's next key, but in {@code store} (FIX-53). */
+        static Variant replyStoredIn(BlobStore store) { Variant v = correct(); v.restoredReplies = store; v.restoredKeyOf = Envelope::nextKey; return v; }
+
+        /** The handler's reply fails the send with what {@code refused} answers for it (FIX-53). */
+        static Variant replyRefused(BiFunction<Envelope, Envelope, Throwable> refused) { Variant v = correct(); v.replyRefused = refused; return v; }
+
+        /** The reply comes back as {@code repliedAs} makes it (FIX-53). */
+        static Variant repliedAs(UnaryOperator<Envelope> repliedAs) {
+            return new Variant("loopback", "{\"type\":\"object\"}", false, false, false, false, e -> e, repliedAs);
+        }
+
         /** Every reply re-stored under the next key of the envelope sent — its attempt's — but carrying none of the sender's props. */
         static Variant replyStoredWithoutTheProps() { Variant v = replyStoredUnderThePlainKey(); v.restoredWithoutProps = true; return v; }
 
@@ -116,7 +139,8 @@ class ComponentContractSelfTest {
 
         /** The reply's bytes stored for {@code sent}'s next step, the reply's headers kept: what the sender gets back. */
         private Future<Envelope> restored(Envelope sent, Envelope reply) {
-            BlobKey key = restoredWithoutProps ? sent.nextKey() : BlobKey.body(sent.id(), sent.step() + 1);
+            BlobKey key = restoredKeyOf != null ? restoredKeyOf.apply(sent)
+                    : restoredWithoutProps ? sent.nextKey() : BlobKey.body(sent.id(), sent.step() + 1);
             Props props = restoredWithoutProps ? Props.empty() : sent.props();
             return restoredReplies.write(key, reply.body().whole(), 1 << 20)
                     .map(body -> new Envelope(sent.id(), sent.flow(), sent.step() + 1, reply.headers(), props, sent.keys(), body, Map.of(), new Views()));
@@ -169,6 +193,8 @@ class ComponentContractSelfTest {
                     waiting.add(answer);
                     answer.future().onComplete(done -> waiting.remove(answer));
                     ack.<Envelope>compose(a -> switch (a) {
+                        case Ack.Reply r when replyRefused != null && replyRefused.apply(e, r.reply()) != null ->
+                                Future.failedFuture(replyRefused.apply(e, r.reply()));
                         case Ack.Reply r -> restoredReplies == null ? Future.succeededFuture(repliedAs.apply(r.reply()))
                                 : restored(e, repliedAs.apply(r.reply()));
                         case Ack.Accepted ok -> Future.succeededFuture(e);
@@ -355,5 +381,100 @@ class ComponentContractSelfTest {
                         "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable"),
                 failing(EphemeralStopKeepsTheAddressContractTest.class),
                 "stop() leaves the address registered: the producer built from where the consumer was still delivers, also while a delivery is in flight; health stays up");
+    }
+
+    // ---- FIX-53: the attempt case, check by check — each defect is caught by the check that names it ------------------------
+
+    static Map<String, Throwable> failures(Component variant) {
+        current = variant;
+        try {
+            return ContractRun.failures(VariantContractTest.class);
+        } finally {
+            current = Variant.correct();
+        }
+    }
+
+    /**
+     * A reply store whose object key drops the part: every attempt's reply of a step lands in one slot, while the body handed
+     * back still names the key asked for. {@code firstWins}: a slot already written keeps its bytes.
+     */
+    static final class PartBlindStore implements BlobStore {
+        private final InMemoryBlobStore slots = new InMemoryBlobStore(Hasher.sha256(), 1 << 20);
+        private final boolean firstWins;
+
+        PartBlindStore(boolean firstWins) { this.firstWins = firstWins; }
+
+        private static BlobKey slot(BlobKey key) { return BlobKey.body(key.messageId(), key.step()); }
+
+        @Override public long treeLimit() { return slots.treeLimit(); }
+
+        @Override public Future<Body> write(BlobKey key, Buffer whole, long maxSize) {
+            if (firstWins && slots.contains(slot(key))) {
+                return slots.read(slot(key)).map(kept -> Body.of(this, key, Hasher.sha256().hashOf(kept), kept.length()));
+            }
+            return slots.write(slot(key), whole, maxSize).map(b -> Body.of(this, key, b.hash(), b.size()));
+        }
+
+        @Override public Future<Body> write(BlobKey key, ReadStream<Buffer> in, long maxSize) {
+            return Future.failedFuture(new UnsupportedOperationException("replies are re-stored whole"));
+        }
+
+        @Override public ReadStream<Buffer> open(BlobKey key) { return slots.open(slot(key)); }
+
+        @Override public Future<Buffer> read(BlobKey key) { return slots.read(slot(key)); }
+
+        @Override public Future<Void> persist(BlobKey key) { return slots.persist(slot(key)); }
+    }
+
+    @Test
+    void aReplyWithABodyOfItsOwnThatFailsTheSendIsCaughtByTheFirstAttemptsAnswerCheck() {
+        Map<String, Throwable> f = failures(Variant.replyRefused((sent, reply) -> reply.body().hash().equals(sent.body().hash()) ? null
+                : new IllegalStateException("only echoes pass")));
+        assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
+        ContractRun.caughtBy(f, ATTEMPT_REPLY, "the first attempt's send is answered: java.lang.IllegalStateException: only echoes pass");
+    }
+
+    @Test
+    void aRerunsSendThatFailsIsCaughtByTheSecondAttemptsAnswerCheckOnly() {
+        Map<String, Throwable> f = failures(Variant.replyRefused((sent, reply) -> sent.get(Envelope.ATTEMPT).isPresent()
+                ? new IllegalStateException("a rerun is refused") : null));
+        assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
+        ContractRun.caughtBy(f, ATTEMPT_REPLY, "the second attempt's send is answered: java.lang.IllegalStateException: a rerun is refused");
+    }
+
+    @Test
+    void aFirstAttemptsReplyUnderAnAttemptSuffixIsCaughtByThePlainPartCheckOnly() {
+        Map<String, Throwable> f = failures(Variant.replyStoredUnder(sent ->
+                new BlobKey(sent.id(), sent.step() + 1, BlobKey.BODY + "~" + sent.get(Envelope.ATTEMPT).orElse(1))));
+        assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
+        ContractRun.caughtBy(f, ATTEMPT_REPLY, "a first attempt's reply under the plain part, as before D-066");
+    }
+
+    @Test
+    void aSecondAttemptsReplyUnderThePlainKeyIsCaughtByTheAttemptPartCheck() {
+        Map<String, Throwable> f = failures(Variant.replyStoredUnderThePlainKey());
+        assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
+        ContractRun.caughtBy(f, ATTEMPT_REPLY, "the second attempt's reply under its attempt");
+    }
+
+    @Test
+    void aSecondAttemptsReplyOverwritingTheFirstsBytesIsCaughtByTheFirstsBytesCheck() {
+        Map<String, Throwable> f = failures(Variant.replyStoredIn(new PartBlindStore(false)));
+        assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
+        ContractRun.caughtBy(f, ATTEMPT_REPLY, "the second attempt's reply left the first's bytes in place ==> expected: <reply-1> but was: <reply-2>");
+    }
+
+    @Test
+    void aSecondAttemptsReplyLosingItsBytesToTheFirstsIsCaughtByTheSecondsBytesCheck() {
+        Map<String, Throwable> f = failures(Variant.replyStoredIn(new PartBlindStore(true)));
+        assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
+        ContractRun.caughtExactlyBy(f, ATTEMPT_REPLY, "org.opentest4j.AssertionFailedError: expected: <reply-2> but was: <reply-1>");
+    }
+
+    @Test
+    void aFirstAttemptsReplyThatGainsAnAttemptIsCaughtByTheNoAttemptCheck() {
+        Map<String, Throwable> f = failures(Variant.repliedAs(e -> e.get(Envelope.ATTEMPT).isPresent() ? e : e.with(Envelope.ATTEMPT, 1)));
+        assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
+        ContractRun.caughtBy(f, ATTEMPT_REPLY, "the first attempt's reply runs on as no attempt in particular");
     }
 }

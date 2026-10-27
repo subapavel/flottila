@@ -341,6 +341,30 @@ class BlockedPlatformThreadDetectorTest {
         assertFalse(detector.firstViolation().isDone());
     }
 
+    // ---- FIX-53: a block first seen at nano 0 ---------------------------------------------------------------------
+
+    @Test
+    void drivenAtTheEpochABlockFirstSeenAtNanoZeroIsReportedAfterTheThreshold() throws Exception {
+        FakeClock clock = FakeClock.at(Instant.EPOCH);
+        try (BlockedPlatformThreadDetector detector = BlockedPlatformThreadDetector.driven(THRESHOLD, clock)) {
+            ExecutorService pool = detector.watchedPlatformPool("epoch", 1);
+            CountDownLatch gate = new CountDownLatch(1);
+            AtomicReference<Thread> worker = new AtomicReference<>();
+            Future<?> task = pool.submit(() -> { worker.set(Thread.currentThread()); gate.await(); return null; });
+            Thread t = spinUntil(worker, task, Thread.State.WAITING);
+            try {
+                clock.advance(Duration.ZERO);   // the first blocked sample, at nano 0: the block starts there
+                assertEquals(List.of(), detector.violations());
+                clock.advance(THRESHOLD);
+                assertEquals(1, detector.violations().size(), "nano 0 is a block start like any other: " + detector.violations());
+                assertEquals(THRESHOLD, detector.violations().getFirst().blockedFor(), "counted from nano 0");
+            } finally {
+                gate.countDown();
+                join(task, t);
+            }
+        }
+    }
+
     // ---- 8. the JUnit extension -------------------------------------------------------------
 
     @Test

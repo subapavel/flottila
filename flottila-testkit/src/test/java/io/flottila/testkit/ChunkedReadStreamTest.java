@@ -76,4 +76,14 @@ class ChunkedReadStreamTest {
         s.handler(b -> b.appendString("y"));
         assertEquals("x", source.toString());
     }
+
+    @Test
+    void pauseAndResumeReturnTheStreamItself() {   // FIX-53
+        ChunkedReadStream s = new ChunkedReadStream(List.of("a", "b"));
+        List<String> got = new ArrayList<>();
+        assertSame(s, s.pause());
+        s.handler(b -> got.add(b.toString()));
+        assertSame(s, s.resume());
+        assertEquals(List.of("a", "b"), got);
+    }
 }

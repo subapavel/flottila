@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -20,10 +21,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -220,5 +223,35 @@ class RecordingComponentTest extends ComponentContract {
         assertTrue(sent.succeeded(), "the answer reached its sender: " + sent);
         stopped.otherwiseEmpty().await(10, TimeUnit.SECONDS);
         assertTrue(stopped.succeeded(), "stop completes with the answer: " + stopped);
+    }
+
+    // ---- FIX-53 ---------------------------------------------------------------------------------------------------
+
+    @Test
+    void failNextReturnsTheComponentAndZeroTimesQueuesNothing() {
+        assertSame(http, http.failNext(0, () -> new IllegalStateException("never used")), "zero failures is no error");
+        assertEquals(0, http.failuresLeft());
+        assertSame(http, http.failNext(1, () -> new IllegalStateException("503")));
+        assertEquals(1, http.failuresLeft());
+    }
+
+    @Test
+    void awaitSentWaitsForASendThatArrivesWhileItWaits() throws InterruptedException {
+        Producer p = http.producer(partner);
+        AtomicReference<Throwable> failed = new AtomicReference<>();
+        Thread waiter = Thread.ofVirtual().name("await-sent").start(() -> {
+            try {
+                http.awaitSent(1);
+            } catch (Throwable t) {
+                failed.set(t);
+            }
+        });
+        // the waiter parks in its bounded latch wait (TIMED_WAITING) — a broken awaitSent returns at once (TERMINATED)
+        Thread.State state;
+        while ((state = waiter.getState()) != Thread.State.TIMED_WAITING && state != Thread.State.TERMINATED) Thread.onSpinWait();
+        assertEquals(Thread.State.TIMED_WAITING, state, "nothing was sent: awaitSent(1) waits");
+        p.send(rt.ingress("f", Headers.empty(), Buffer.buffer("a"))).await();
+        assertTrue(waiter.join(Duration.ofSeconds(5)), "the send released the waiter; it sits at " + Arrays.toString(waiter.getStackTrace()));
+        assertNull(failed.get(), "awaitSent returned normally");
     }
 }

@@ -11,11 +11,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import org.junit.platform.testkit.engine.Events;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static io.flottila.testkit.ContractRun.caughtBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
@@ -99,40 +101,98 @@ class DurableBlobStoreContractSelfTest {
         return prior == null || prior.equals(bytes) ? Future.succeededFuture() : refused(key, bytes);
     };
 
-    /** A heap store whose {@code persist} follows {@code rule}; everything else is the in-memory store's. */
+    /** How a variant's local tier serves reads (FIX-53): right, or with one defect. */
+    enum Local {
+        RIGHT,
+        /** read serves a key's durable row when it has one, not the bytes written last. */
+        READ_PREFERS_THE_ROW,
+        /** open serves a key's durable row when it has one. */
+        OPEN_PREFERS_THE_ROW,
+        /** read caches its first answer per key; a later write does not invalidate it. */
+        READ_CACHED,
+        /** open caches its first answer per key; a later write does not invalidate it. */
+        OPEN_CACHED,
+        /** the local bytes are slotted by message id and step, the part dropped (rows keep the full key): an attachment's write
+         *  overwrites the body of its step. */
+        PART_BLIND
+    }
+
+    /** A heap store whose {@code persist} follows {@code rule}; everything else is the in-memory store's, served as {@link Local} says. */
     static final class Variant implements BlobStore {
         private final InMemoryBlobStore local = new InMemoryBlobStore(Hasher.sha256(), BlobStoreContract.TREE_LIMIT);
         private final Map<BlobKey, Buffer> rows = new ConcurrentHashMap<>();
+        private final Map<BlobKey, Buffer> readCache = new ConcurrentHashMap<>();
+        private final Map<BlobKey, Buffer> openCache = new ConcurrentHashMap<>();
         private final Rule rule;
+        private final Local served;
 
-        Variant(Rule rule) { this.rule = rule; }
+        Variant(Rule rule) { this(rule, Local.RIGHT); }
+
+        Variant(Rule rule, Local served) {
+            this.rule = rule;
+            this.served = served;
+        }
+
+        /** Where the local tier keeps {@code key}'s bytes. */
+        private BlobKey slot(BlobKey key) { return served == Local.PART_BLIND ? BlobKey.body(key.messageId(), key.step()) : key; }
 
         @Override public long treeLimit() { return local.treeLimit(); }
 
         @Override public Future<Body> write(BlobKey key, Buffer whole, long maxSize) {
-            return local.write(key, whole, maxSize).map(b -> Body.of(this, b.key(), b.hash(), b.size()));
+            return local.write(slot(key), whole, maxSize).map(b -> Body.of(this, key, b.hash(), b.size()));
         }
 
         @Override public Future<Body> write(BlobKey key, ReadStream<Buffer> in, long maxSize) {
-            return local.write(key, in, maxSize).map(b -> Body.of(this, b.key(), b.hash(), b.size()));
+            return local.write(slot(key), in, maxSize).map(b -> Body.of(this, key, b.hash(), b.size()));
         }
 
-        @Override public ReadStream<Buffer> open(BlobKey key) { return local.open(key); }
+        @Override public ReadStream<Buffer> open(BlobKey key) {
+            Buffer row = rows.get(key);
+            if (served == Local.OPEN_PREFERS_THE_ROW && row != null) return new ChunkedReadStream(List.of(row));
+            if (served == Local.OPEN_CACHED && local.contains(key)) {
+                return new ChunkedReadStream(List.of(openCache.computeIfAbsent(key, k -> local.read(k).result())));
+            }
+            return local.open(slot(key));
+        }
 
-        @Override public Future<Buffer> read(BlobKey key) { return local.read(key); }
+        @Override public Future<Buffer> read(BlobKey key) {
+            Buffer row = rows.get(key);
+            if (served == Local.READ_PREFERS_THE_ROW && row != null) return Future.succeededFuture(row.copy());
+            if (served == Local.READ_CACHED && local.contains(key)) {
+                return Future.succeededFuture(readCache.computeIfAbsent(key, k -> local.read(k).result()).copy());
+            }
+            return local.read(slot(key));
+        }
 
         @Override public Future<Void> persist(BlobKey key) {
-            if (!local.contains(key)) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
-            return rule.persist(rows, local, key, local.read(key).result());
+            if (!local.contains(slot(key))) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+            return rule.persist(rows, local, key, local.read(slot(key)).result());
         }
     }
 
     /** The engine instantiates the suite itself; the rule under test is handed over through this slot. */
     static volatile Rule current = CORRECT;
 
+    /** As {@link #current}, for the local tier's defects (FIX-53). */
+    static volatile Local served = Local.RIGHT;
+
     static class VariantContractTest extends DurableBlobStoreContract {
-        @Override protected BlobStore store() { return new Variant(current); }
+        @Override protected BlobStore store() { return new Variant(current, served); }
     }
+
+    /** FIX-53: the failing cases of {@code rule}'s variant with what each failed with — the check that caught the defect. */
+    static Map<String, Throwable> failures(Rule rule, Local served) {
+        current = rule;
+        DurableBlobStoreContractSelfTest.served = served;
+        try {
+            return ContractRun.failures(VariantContractTest.class);
+        } finally {
+            current = CORRECT;
+            DurableBlobStoreContractSelfTest.served = Local.RIGHT;
+        }
+    }
+
+    static Map<String, Throwable> failures(Rule rule) { return failures(rule, Local.RIGHT); }
 
     static Set<String> failing(Rule rule) {
         current = rule;
@@ -187,5 +247,87 @@ class DurableBlobStoreContractSelfTest {
     @Test
     void oneRowPerMessageFailsTheSiblingCase() {
         assertEquals(Set.of(SIBLINGS), failing(ONE_ROW_PER_MESSAGE));
+    }
+
+    // ---- FIX-53: the check that catches each defect (the first failing assertion of the case), not only the cases ----------
+
+    /** The first loop round of the other-bytes case: other bytes of the same size, the last byte changed. */
+    static final String SAME_SIZE = "(same size, last byte changed)";
+
+    @Test
+    void aQuietPersistOfOtherBytesIsCaughtByTheRefusalChecks() {
+        Map<String, Throwable> f = failures(FIRST_BYTES_WIN);
+        assertEquals(Set.of(OTHER_BYTES, SIBLINGS), f.keySet());
+        caughtBy(f, OTHER_BYTES, "other bytes under a durable key are not persisted " + SAME_SIZE);
+        caughtBy(f, SIBLINGS, "a sibling's durable bytes are no match");
+    }
+
+    /** Other bytes refused, but with a text of the store's own instead of {@link DurableBlobStoreContract#otherBytesRefused}. */
+    static final Rule REFUSED_IN_OTHER_WORDS = (rows, local, key, bytes) -> {
+        Buffer prior = rows.putIfAbsent(key, bytes.copy());
+        return prior == null || prior.equals(bytes) ? Future.succeededFuture() : Future.failedFuture(new IllegalStateException("conflict under " + key));
+    };
+
+    @Test
+    void aRefusalInOtherWordsIsCaughtByTheRefusalTextChecks() {
+        Map<String, Throwable> f = failures(REFUSED_IN_OTHER_WORDS);
+        assertEquals(Set.of(OTHER_BYTES, SIBLINGS), f.keySet());
+        caughtBy(f, OTHER_BYTES, "but was: <conflict under " + BlobKey.body("p-other-0", 1) + ">");
+        caughtBy(f, SIBLINGS, "but was: <conflict under " + BlobKey.body("p-sib", 1) + ">");
+    }
+
+    @Test
+    void aRefusedBodyThatDoesNotStayLocalIsCaughtByTheFirstReadBack() {
+        Map<String, Throwable> f = failures(MISMATCH_RELEASES);
+        caughtBy(f, OTHER_BYTES, "the body stays as written: the key reads the other bytes " + SAME_SIZE);
+    }
+
+    @Test
+    void aReadServingTheDurableRowIsCaughtByTheFixtureReadBeforeThePersist() {
+        Map<String, Throwable> f = failures(CORRECT, Local.READ_PREFERS_THE_ROW);
+        assertEquals(Set.of(OTHER_BYTES, SIBLINGS), f.keySet());
+        caughtBy(f, OTHER_BYTES, "fixture: the key reads the other bytes before the persist " + SAME_SIZE);
+        caughtBy(f, SIBLINGS, "the body stays as written");
+    }
+
+    @Test
+    void anOpenServingTheDurableRowIsCaughtByTheStreamedReadBack() {
+        Map<String, Throwable> f = failures(CORRECT, Local.OPEN_PREFERS_THE_ROW);
+        assertEquals(Set.of(OTHER_BYTES), f.keySet());
+        caughtBy(f, OTHER_BYTES, "streamed too " + SAME_SIZE);
+    }
+
+    @Test
+    void anOverwrittenRowIsCaughtByTheSecondRefusal() {
+        Map<String, Throwable> f = failures(OVERWRITES);
+        caughtBy(f, OTHER_BYTES, "the durable bytes are still the first: the other bytes are refused again " + SAME_SIZE);
+    }
+
+    @Test
+    void refusingTheSameBytesAgainIsCaughtByTheQuietRepersist() {
+        Map<String, Throwable> f = failures(REFUSES_EVERY_REPERSIST);
+        caughtBy(f, SAME_BYTES, "the same bytes again: idempotent and quiet");
+    }
+
+    @Test
+    void aReadCachedAcrossAWriteIsCaughtByTheReadAfterTheFirstBytesPersistAgain() {
+        Map<String, Throwable> f = failures(CORRECT, Local.READ_CACHED);
+        assertEquals(Set.of(OTHER_BYTES, SIBLINGS), f.keySet());
+        caughtBy(f, OTHER_BYTES, "last byte changed ==>");
+        caughtBy(f, SIBLINGS, "the body stays as written");
+    }
+
+    @Test
+    void anOpenCachedAcrossAWriteIsCaughtByTheStreamedReadAfterTheFirstBytesPersistAgain() {
+        Map<String, Throwable> f = failures(CORRECT, Local.OPEN_CACHED);
+        assertEquals(Set.of(OTHER_BYTES), f.keySet());
+        caughtBy(f, OTHER_BYTES, "last byte changed ==>");
+    }
+
+    @Test
+    void aPartBlindLocalTierIsCaughtByTheDurableKeyReadingItsOwnBytesAfterTheSiblingsWrites() {
+        Map<String, Throwable> f = failures(CORRECT, Local.PART_BLIND);
+        assertEquals(Set.of(SIBLINGS), f.keySet());
+        caughtBy(f, SIBLINGS, "the durable key reads its own bytes");
     }
 }

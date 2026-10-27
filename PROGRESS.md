@@ -665,3 +665,12 @@ Review: FAIL r1 (docs: "steps never wait", body_key-always-durable vs D-058 ingr
 Raised FIX-49 (bound close), FIX-50 (fork carries Trail), FIX-51 (metadataOnly counter), FIX-52 [C] (ingress row beside persist, owner point), FIX-53 (testkit PIT 67<70), FIX-54 (TrailTest assertions); P1-09c note: Replay on a virtual thread.
 D-054 data: class C (test-author, implementer, reviewer opus/xhigh); architect turns ~30; review rounds 3.
 Next: FIX-53 [B] (testkit PIT below threshold; before the next scheduled CI run), then P1-09c [C].
+
+## 2026-10-27 — FIX-53 testkit mutation score back above its threshold — done, review PASS
+Test first (tests only, no production/threshold/exclusion change): BlobStoreContractSelfTest 15 (Defect variants), DurableBlobStoreContractSelfTest +10 (Variant: READ_CACHED, OPEN_CACHED, PART_BLIND, …), ComponentContractSelfTest +7, ContractRun (pins the first failing check; asserts started == @Test count), NoBlockedPlatformThreadsTest 2, GeneratedReadStream/ChunkedReadStream/RecordingComponent/BlockedPlatformThreadDetector cases; hand mutants red (target/FIX-53-mut1..3.log, -mutD116/117/158.log).
+Change: testkit PIT 331/491 (67 %) → 402/491 (82 %); the CI PIT command exits 0 as is (target/FIX-53-r2-pit.log); survivors listed with reasons (target/FIX-53-survivors.txt).
+Checks: whole reactor -Pit VERIFIED_PASS, testkit 220 (target/FIX-53-r2-verify-all.log); coverage no decrease, baseline written.
+Review: FAIL r1 (Durable :116/:117/:158 had deterministic witnesses); PASS r2. Note: ~2 testkit kills vary between PIT runs (TIMED_OUT minions in ComponentContract cases) — a row if the score nears 70.
+Owner: CONSIDER-2 (skip storing a step body equal to its input) added, deferred to the first real-world test phase.
+D-054 data: class B (test-author, verifier, reviewer opus/high); architect turns ~10; review rounds 2.
+Next: P1-09c [C] (designer first; call Replay on a virtual thread).
