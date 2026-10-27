@@ -159,6 +159,11 @@ final class RecordingWorkQueue implements WorkQueue {
 
     List<Long> completes() { return List.copyOf(completes); }
 
+    /** Runs at every {@code complete} / {@code completeAndTakeNext} call, before it reaches the delegate: what held at the call (P1-09k2). */
+    private volatile java.util.function.LongConsumer onComplete = seq -> { };
+
+    void onComplete(java.util.function.LongConsumer hook) { onComplete = java.util.Objects.requireNonNull(hook, "hook"); }
+
     synchronized int claimsInFlight() { return inFlight; }
 
     synchronized int peakClaimsInFlight() { return peakInFlight; }
@@ -227,6 +232,7 @@ final class RecordingWorkQueue implements WorkQueue {
 
     @Override
     public Future<Void> complete(long seq) {
+        onComplete.accept(seq);
         completes.add(seq);
         Throwable failure = completeFailures.pollFirst();
         if (failure != null) return Future.failedFuture(failure);
@@ -235,6 +241,7 @@ final class RecordingWorkQueue implements WorkQueue {
 
     @Override
     public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) {
+        onComplete.accept(seq);
         completes.add(seq);
         Future<Optional<Item>> next = delegate.completeAndTakeNext(seq, workerId, lease);
         if (next.succeeded() && next.result().isPresent()) handedOut.merge(workerId, 1, Integer::sum);

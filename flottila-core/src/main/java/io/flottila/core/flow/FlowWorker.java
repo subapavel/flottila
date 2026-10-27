@@ -12,6 +12,7 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Recorder;
 import io.flottila.core.record.Snapshot;
+import io.flottila.core.record.Trail;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -33,6 +34,11 @@ import java.util.function.Function;
  * 0 — the save recorded it — on one virtual thread per item. While an item runs its lease is renewed every third of the
  * {@link WorkerPolicy#lease()} on the timer, fenced by the claim's attempts: a slow healthy message is never claimed twice at
  * once; a renewal that fails is tried again a third of the lease later; a lease found lost is logged and no longer renewed.
+ *
+ * <p>The run is bound to a {@link Trail} seeded with the ingress body's key (D-064, D-066, F-10): its step bodies are
+ * persisted and its rows written when the pipeline ended — succeeded, parked or thrown, an {@link Error} included — and the
+ * item is settled only after that trail closed, so a crash before that leaves the item to a rerun that records again. What the
+ * trail could not persist or write never changes what is done with the item.
  *
  * <p>An item is completed only when its message is done with: the pipeline succeeded; a step failed and the message was
  * parked (the DLQ row is its record, nothing is logged); or the timeline was read and holds no ingress snapshot (a ghost that
@@ -252,7 +258,12 @@ public final class FlowWorker {
             if (exhausted) {
                 parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), policy.maxAttempts())).await();
             } else {
-                pipeline.apply(ingress);
+                Trail trail = new Trail(List.of(ingress.body().key()));   // its seed: the delivery made the ingress durable (D-058)
+                try {
+                    trail.apply(pipeline, ingress);
+                } finally {   // an Error too: a crashed run's bodies and rows are kept, and a rerun re-records what is missing
+                    trail.close().toCompletionStage().toCompletableFuture().join();   // never fails; waits through an interrupt
+                }
             }
             return Verdict.COMPLETE;
         } catch (ParkedException parked) {

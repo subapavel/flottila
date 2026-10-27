@@ -64,6 +64,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -180,6 +181,17 @@ class FlowWorkerTest {
             stamped.add(bytes);
             return e.next(stepBodies.write(BlobKey.body(e.id(), e.step() + 1), bytes, ParkingTest.MAX).await());
         }));
+        /** {@code stamp} under the envelope's next key (D-066): each run's bytes under a key of its own from the second attempt on. */
+        final StepFactory stampNext = ParkingTest.factory("stamp-next", s -> Stage.of(e -> {
+            Buffer bytes = Buffer.buffer("<run n='" + (stamped.size() + 1) + "'/>");
+            stamped.add(bytes);
+            return e.next(stepBodies.write(e.nextKey(), bytes, ParkingTest.MAX).await());
+        }));
+        /** Crashes (an {@link Error}: no park, the item is left to its lease) on a message's first run; a rerun carries its attempt and passes. */
+        final StepFactory crashFirst = ParkingTest.factory("crash-first", s -> Stage.of(e -> {
+            if (e.get(Envelope.ATTEMPT).isEmpty()) throw new Crash("crashed at " + s.name() + " on the first run");
+            return e;
+        }));
         /** The key of each body a {@code store} run wrote into the runtime's store, in run order. */
         final List<BlobKey> storedKeys = new CopyOnWriteArrayList<>();
         /** The run's attempt prop ({@link Envelope#ATTEMPT}) each {@code store} run saw, in run order. */
@@ -202,7 +214,7 @@ class FlowWorkerTest {
         }
 
         FlowBuilder builder(Runtime runtime) {
-            return new FlowBuilder(runtime, List.of(gate, crash, rewrite, stamp, storing), List.of(BuiltInStepsTest.HEADERS), endpoints)
+            return new FlowBuilder(runtime, List.of(gate, crash, rewrite, stamp, storing, stampNext, crashFirst), List.of(BuiltInStepsTest.HEADERS), endpoints)
                     .recording(store, Meter.system()).queue(queue).dlq(dlq);
         }
 
@@ -939,7 +951,8 @@ class FlowWorkerTest {
         assertEquals(1, w1.poll().await(5, SECONDS), "the round claimed the item and ended without failing");
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(1, w.partner.sent().size(), "fixture: the run reached the partner, which refused");
-        assertEquals(List.of(stepBody), w.stepBodies.persists(), "the park asked to persist the partner step's input, the rewritten body");
+        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(),
+                "the park, then the run's trail (D-064: a failed park persist leaves the key not durable), asked to persist the rewritten body");
         assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "no DLQ row: the body could not be made durable");
         assertEquals(1, w.rows.size(), "the item stays queued");
         assertEquals(List.of(), w.queue.completes(), "not completed");
@@ -996,7 +1009,8 @@ class FlowWorkerTest {
         assertEquals(in.body().key(), p.bodyKey(), "the ingress, by reference");
         assertTrue(p.error().contains("AttemptsExhaustedException"), p.error());
         assertTrue(w.rt.blobs().persisted(in.body().key()), "the ingress body is durable");
-        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(), "the step body was tried once per run, never by the exhausted park");
+        assertEquals(List.of(stepBody, stepBody, stepBody, stepBody), w.stepBodies.persists(),
+                "the step body was tried by each run's park and each run's trail (D-064), never by the exhausted park");
         assertEquals(0, w.rows.size(), "parked: the item is completed");
         assertEquals(List.of(), w.queue.holds());
         assertEquals(List.of(), logs.at(Level.SEVERE, in.id()), "no alert: the park succeeded");
@@ -1035,7 +1049,8 @@ class FlowWorkerTest {
         assertEquals(2, w.stamped.size(), "fixture: stamp ran twice");
         assertFalse(w.stamped.get(0).equals(w.stamped.get(1)), "fixture: the rerun wrote other bytes: " + w.stamped);
         assertEquals(w.stamped.get(1), w.stepBodies.read(stepBody).await(), "fixture: the key holds the rerun's bytes locally");
-        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(), "attempt 2's park asked to persist the step body too");
+        assertEquals(List.of(stepBody, stepBody, stepBody), w.stepBodies.persists(),
+                "attempt 2's park and attempt 2's trail (D-064: its park's persist failed) asked to persist the step body too");
         assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(),
                 "no DLQ row: the key's durable bytes are attempt 1's, not the bytes attempt 2 parked");
         assertEquals(1, w.rows.size(), "the item stays queued");
@@ -1060,7 +1075,7 @@ class FlowWorkerTest {
         assertEquals(in.body().key(), p.bodyKey(), "the ingress, by reference");
         assertTrue(p.error().contains("AttemptsExhaustedException"), p.error());
         assertTrue(w.rt.blobs().persisted(in.body().key()), "the ingress body is durable");
-        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(), "the exhausted park does not touch the step body");
+        assertEquals(List.of(stepBody, stepBody, stepBody), w.stepBodies.persists(), "the exhausted park does not touch the step body");
         assertEquals(0, w.rows.size(), "parked: the item is completed");
         assertEquals(List.of(), w.queue.holds());
         assertEquals(List.of(), logs.at(Level.SEVERE, in.id()), "no alert: the park succeeded");
@@ -1101,6 +1116,216 @@ class FlowWorkerTest {
             assertEquals("<store n='" + run + "'/>", w.rt.blobs().read(w.storedKeys.get(run - 1)).await().toString(), "run " + run + "'s bytes stay under its key");
         }
         assertEquals(rows.get(0).bodyHash(), w.rt.hasher().hashOf(w.rt.blobs().read(rowKey).await()), "the row still reads the bytes it describes");
+    }
+
+    // --- P1-09k2 (D-064, D-066, F-10): the run trail
+
+    /** {@code t} ended, or parked waiting (never a transient state): where a run that may wait for its trail has got to. */
+    static boolean endedOrWaiting(Thread t) {
+        Thread.State st = t.getState();
+        return st == Thread.State.TERMINATED || st == Thread.State.WAITING || st == Thread.State.TIMED_WAITING;
+    }
+
+    /** The step names of {@code messageId}'s rows in the store, in step order. */
+    List<String> rowNames(String messageId) {
+        return w.store.timeline(messageId).await().stream().map(Snapshot::stepName).toList();
+    }
+
+    /**
+     * The worker completes an item only once its run's trail closed: the run's step body persisted, then the rows written. At
+     * the {@code complete} call the step body is durable and every row of the run is in the store. The ingress — the run's
+     * seed, made durable by the delivery (D-058) — is not persisted again although the gate's row shows it.
+     */
+    @Test
+    void anItemCompletesOnlyAfterItsRunsBodiesPersisted() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, REWRITE, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        String id = w.rt.ids().next();
+        Envelope in = Envelope.ingress(id, "orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"),
+                w.stepBodies.write(BlobKey.body(id, 0), ORDER, ParkingTest.MAX).await());
+        assertEquals(new Ack.Accepted(id), b.delivery(def, NO_FILES).apply(in).await());
+        assertEquals(List.of(in.body().key()), w.stepBodies.persists(), "fixture: the delivery made the ingress durable in its own store");
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 3));
+        BlobKey stepBody = BlobKey.body(id, 2);   // rewrite is step 2 (after the gate): it writes under (id, 2)
+        List<String> atComplete = new CopyOnWriteArrayList<>();
+        w.queue.onComplete(seq -> atComplete.add("step body durable " + w.stepBodies.persisted(stepBody) + ", rows " + rowNames(id)));
+        w.gate.open();
+        w.stepBodies.hold();
+
+        Future<Integer> polled = w1.poll();
+        until(() -> w.gate.entered() == 1, () -> "the run entered the gate");
+        Thread run = w.gate.runs().get(0).thread;
+        until(() -> w.stepBodies.held() == 1 && (!atComplete.isEmpty() || (w.gate.runs().get(0).exited && endedOrWaiting(run))),
+                () -> "the trail's persist asked and the run waiting or done: held " + w.stepBodies.held() + ", " + run.getState() + ", completes " + atComplete);
+        assertEquals(List.of(), atComplete, "no complete while the run's step body is not durable");
+        assertEquals(List.of("ingress"), rowNames(id), "the run's rows wait for their body: only the delivery's ingress row so far");
+        assertFalse(polled.isComplete(), "the round waits for its item: " + polled);
+
+        w.stepBodies.release();
+        assertEquals(1, polled.await(5, SECONDS));
+        assertEquals(List.of("step body durable true, rows [ingress, gate, rewrite, partner]"), atComplete,
+                "completed once, after the step body was durable and the run's rows were written");
+        assertEquals(List.of(in.body().key(), stepBody), w.stepBodies.persists(), "the step body once; the seed never again");
+        assertEquals(0, w.rows.size());
+    }
+
+    /**
+     * Recording is monitoring: a run whose trail cannot persist its step body nor write its rows — a row write that throws,
+     * the others failing — still went through, so its item completes; it is neither left to its lease nor parked.
+     */
+    @Test
+    void aRecordingFailureNeitherLeavesNorParksTheItem() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(REWRITE, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 3));
+        w.stepBodies.refuse(new IllegalStateException("bodies down"));
+        w.store.throwNext(new IllegalStateException("store threw"));
+        w.store.hold();
+
+        Future<Integer> polled = w1.poll();
+        until(() -> w.store.recorded("rewrite") + w.store.recorded("partner") == 2 && w.store.held() == 1,
+                () -> "the run's two rows handed to the store: rewrite " + w.store.recorded("rewrite") + ", partner " + w.store.recorded("partner") + ", held " + w.store.held());
+        w.store.fail(new IllegalStateException("store down"));
+        assertEquals(1, polled.await(5, SECONDS));
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+
+        assertEquals(1, w.partner.sent().size(), "fixture: the run went through to the partner");
+        assertEquals(1, w.queue.completes().size(), "the item is completed: a recording failure does not change the verdict");
+        assertEquals(0, w.rows.size(), "not left to its lease");
+        assertEquals(List.of(), w.queue.holds());
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "not parked");
+        assertEquals(List.of(), logs.at(Level.WARNING, in.id()).stream().filter(t -> t.contains("left to its lease")).toList());
+        assertEquals(List.of(), logs.at(Level.SEVERE, in.id()));
+    }
+
+    /**
+     * D-066 with the trail (F-8's FIX-35 note): the first run of a message stamps its step body and crashes, so its trail made
+     * the first run's bytes durable under the plain key. The rerun stamps other bytes under a key of its own ({@code body~2}),
+     * so its park at the partner step persists without meeting the first run's durable bytes: the message is parked at the
+     * step that failed, by the rerun's body — never at the ingress past the attempts bound — and the stamp row (the first
+     * run's) still describes durable bytes.
+     */
+    @Test
+    void aRerunOfAStampingNextKeyStepParksAtItsStepNotTheIngress() throws Exception {
+        int maxAttempts = 2;
+        Map<String, Object> stampNext = Map.of("type", "stamp-next", "name", "stamp");
+        Map<String, Object> crashFirst = Map.of("type", "crash-first", "name", "crash-first");
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(stampNext, crashFirst, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+        BlobKey first = BlobKey.body(in.id(), 1);
+        BlobKey rerun = new BlobKey(in.id(), 1, "body~2");
+        w.partner.failNext(100, () -> new NackException("order refused", false));
+
+        assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1");
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(1, w.rows.size(), "fixture: attempt 1 crashed, its item is left to its lease");
+        assertTrue(w.stepBodies.persisted(first), "attempt 1's trail made its stamp body durable");
+        w.rt.clock().advance(LEASE);
+
+        assertEquals(1, w1.poll().await(5, SECONDS), "attempt 2");
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(2, w.stamped.size(), "fixture: stamp ran twice");
+        assertNotEquals(w.stamped.get(0), w.stamped.get(1), "fixture: the rerun stamped other bytes");
+        Parked p = w.parkedRow();
+        assertEquals(3, p.step(), "parked at the step that failed, not at the ingress");
+        assertEquals("partner", p.stepName());
+        assertEquals(rerun, p.bodyKey(), "by the rerun's body, under its attempt's key");
+        assertTrue(w.stepBodies.persisted(rerun));
+        assertEquals(w.stamped.get(1), w.stepBodies.read(rerun).await());
+        assertEquals(0, w.rows.size(), "parked: the item is completed");
+        assertEquals(List.of(1, 2), w.claimedAttempts());
+        Snapshot stampRow = w.store.timeline(in.id()).await().stream().filter(s -> "stamp".equals(s.stepName())).findFirst().orElseThrow();
+        assertEquals(Optional.of(first), stampRow.bodyKey(), "the stamp row is the first run's");
+        assertEquals(w.rt.hasher().hashOf(w.stamped.get(0)), stampRow.bodyHash(), "fixture: it describes the first run's bytes");
+        assertTrue(w.stepBodies.persisted(first), "and they are durable");
+        assertEquals(w.stamped.get(0), w.stepBodies.read(first).await(), "the plain key still holds the first run's bytes");
+        assertEquals(List.of(), logs.at(Level.SEVERE, in.id()));
+    }
+
+    /**
+     * The worker's trail is seeded with the ingress key (P1-09k2 r1b): the delivery made the ingress durable (D-058), so a
+     * row that shows it — the gate's, which hands the ingress on — keeps the key and the trail never persists it again. The
+     * worker rebuilds the ingress in the runtime's store, here the recording one, where the same trail persists the
+     * rewritten step body: a persist of the ingress would be seen.
+     */
+    @Test
+    void theWorkersTrailNeverPersistsTheDeliveredIngressAgain() throws Exception {
+        io.flottila.api.Runtime r = w.rt.runtime();
+        FlowBuilder b = w.builder(new io.flottila.api.Runtime(r.clock(), r.timer(), r.ids(), w.stepBodies, r.hasher(), r.components()));
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, REWRITE, TO_PARTNER)));
+        String id = w.rt.ids().next();
+        Envelope in = Envelope.ingress(id, "orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"),
+                w.stepBodies.write(BlobKey.body(id, 0), ORDER, ParkingTest.MAX).await());
+        assertEquals(new Ack.Accepted(id), b.delivery(def, NO_FILES).apply(in).await());
+        assertEquals(List.of(in.body().key()), w.stepBodies.persists(), "fixture: the delivery made the ingress durable in the runtime's store");
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 3));
+        w.gate.open();
+
+        assertEquals(1, w1.poll().await(5, SECONDS));
+        until(() -> w.queue.completes().size() == 1, () -> "the item completed");
+        BlobKey stepBody = BlobKey.body(id, 2);   // rewrite is step 2, after the gate
+        assertEquals(List.of(in.body().key(), stepBody), w.stepBodies.persists(), "the trail persisted the step body in the same store, never the ingress");
+        Snapshot gateRow = w.store.timeline(id).await().stream().filter(s -> "gate".equals(s.stepName())).findFirst().orElseThrow();
+        assertEquals(Optional.of(in.body().key()), gateRow.bodyKey(), "the gate's row shows the ingress and keeps its key: it is durable");
+    }
+
+    /**
+     * {@code t} parked in a {@code Future.await()} that {@link io.flottila.core.dlq.Parking} called: the run waits for its park,
+     * every listener of the park's persist registered on the run's thread already.
+     */
+    static boolean waitingInPark(Thread t) {
+        if (t.getState() != Thread.State.WAITING) return false;
+        StackTraceElement[] stack = t.getStackTrace();
+        for (int i = 1; i < stack.length; i++) {
+            if (stack[i].getClassName().equals(io.flottila.core.dlq.Parking.class.getName())) return "await".equals(stack[i - 1].getMethodName());
+        }
+        return false;
+    }
+
+    /**
+     * D-066 when the park's persist answers on another thread (P1-09k2, M26): the run parks at the partner step under its
+     * trail; the persist of the parked body is held until the run waits on it, then answered from the test thread, where no
+     * trail is bound. The park still tells the run's trail — the one bound where the park started — that the key is durable,
+     * so the trail's close does not persist it again: the parked key is persisted once in total, and the rows keep it.
+     */
+    @Test
+    void aParkPersistAnsweredOffTheRunsThreadStillSparesTheTrailASecondPersist() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, REWRITE, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 3));
+        BlobKey stepBody = BlobKey.body(in.id(), 2);   // rewrite is step 2 (after the gate); the partner, step 3, parks it
+        w.partner.failNext(100, () -> new NackException("order refused", false));
+        w.gate.open();
+        w.stepBodies.hold();
+        try {
+            Future<Integer> polled = w1.poll();
+            until(() -> w.gate.entered() == 1, () -> "the run entered the gate");
+            Thread run = w.gate.runs().get(0).thread;
+            until(() -> w.stepBodies.held() == 1 && waitingInPark(run),
+                    () -> "the park's persist held and the run waiting on it: held " + w.stepBodies.held() + ", " + run.getState() + " at "
+                            + java.util.Arrays.toString(run.getStackTrace()));
+            assertEquals(List.of(stepBody), w.stepBodies.persists(), "fixture: the park asked to persist the partner's input, the rewritten body");
+            assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "no DLQ row while the persist is held");
+            assertFalse(polled.isComplete(), "the round waits for its item: " + polled);
+
+            w.stepBodies.release();   // the persist answers here, on the test thread: no trail is bound on it
+            assertEquals(1, polled.await(5, SECONDS));
+            until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        } finally {
+            w.stepBodies.release();
+        }
+        assertEquals(1, w.partner.sent().size(), "fixture: the run reached the partner, which refused");
+        assertEquals(stepBody, w.parkedRow().bodyKey(), "parked at the partner by the rewritten body");
+        assertEquals(0, w.rows.size(), "parked: the item is completed");
+        assertEquals(List.of(stepBody), w.stepBodies.persists(),
+                "the parked key persisted once in total: the park marked it durable for the run's trail, whose close did not persist it again");
+        Snapshot rewriteRow = w.store.timeline(in.id()).await().stream().filter(s -> "rewrite".equals(s.stepName())).findFirst().orElseThrow();
+        assertEquals(Optional.of(stepBody), rewriteRow.bodyKey(), "the rewrite row keeps the parked key: it is durable");
+        assertEquals(List.of(), logs.at(Level.WARNING, in.id()), "no persist failed, no row went metadata-only");
     }
 
     // --- the policy

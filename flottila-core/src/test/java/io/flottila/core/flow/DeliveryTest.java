@@ -1215,19 +1215,139 @@ class DeliveryTest {
         assertFalse(rt.blobs().persisted(key), "not in the runtime's store");
     }
 
+    /**
+     * Sync and at-most-once never persist before the reply / the ACK (D-064 amended D-045's "never persist"): both answer
+     * with the ingress body's persist still held; once their runs ended, their trails persisted the recorded bodies.
+     */
     @Test
-    void syncAndAtMostOnceNeverPersist() {
+    void syncAndAtMostOnceNeverPersistBeforeTheReplyOrAck() {
         partner.replyWith(e -> e.next(rt.store(e, Buffer.buffer("<ack/>"))));
+        own.hold();
         Envelope sync = ingressInOwnStore(ORDER);
-        assertInstanceOf(Ack.Reply.class, delivery(flow("sync", List.of(TO_PARTNER))).apply(sync).await(), "the sync delivery replied");
+        Delivery syncDelivery = delivery(flow("sync", List.of(TO_PARTNER)));
+        assertInstanceOf(Ack.Reply.class, applied(applyOn(syncDelivery, sync)).ack().result(), "the sync delivery replied");
+        assertFalse(own.persisted(sync.body().key()), "nothing of it was durable when it replied");
         Delivery atMostOnce = delivery(flow("at-most-once", List.of(TO_PARTNER)));
         Envelope dropped = ingressInOwnStore(ORDER);
         assertEquals(new Ack.Accepted(dropped.id()), atMostOnce.apply(dropped).await());
+        assertFalse(own.persisted(dropped.body().key()), "nor of the at-most-once message when it was accepted");
+        own.release();
+        assertTrue(settled(syncDelivery.stop(Duration.ofHours(1))).succeeded(), "the sync run is over");
         assertTrue(settled(atMostOnce.stop(Duration.ofHours(1))).succeeded(), "the at-most-once run is over: its stop completes once nothing is in flight");
         assertEquals(List.of(sync.id(), dropped.id()), partner.sent().stream().map(Envelope::id).toList(), "both pipelines ran to the partner");
-        assertEquals(List.of(), own.persists(), "neither sync nor at-most-once persists its body");
-        Envelope durable = ingressInOwnStore(ORDER);
-        assertEquals(new Ack.Accepted(durable.id()), delivery(flow("at-least-once", List.of(TO_PARTNER))).apply(durable).await());
-        assertEquals(List.of(durable.body().key()), own.persists(), "the witness: the same store counts the persist an at-least-once delivery asks for");
+        assertEquals(Set.of(sync.body().key(), dropped.body().key()), Set.copyOf(own.persists()), "afterwards each run's trail persisted its recorded ingress body");
+        assertTrue(own.persisted(sync.body().key()) && own.persisted(dropped.body().key()));
+    }
+
+    // --- P1-09k2 (D-064, D-066, F-10): sync and at-most-once runs close their trail
+
+    /** {@code t} ended, or parked waiting (never a transient state). */
+    static boolean endedOrWaiting(Thread t) {
+        Thread.State st = t.getState();
+        return st == Thread.State.TERMINATED || st == Thread.State.WAITING || st == Thread.State.TIMED_WAITING;
+    }
+
+    static void until(java.util.function.BooleanSupplier condition, java.util.function.Supplier<String> what) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() - deadline > 0) fail("not within 5 s: " + what.get());
+            Thread.onSpinWait();
+        }
+    }
+
+    /** {@code mode} with the one partner step and one permit. */
+    static Map<String, Object> onePermit(String mode) {
+        Map<String, Object> doc = flow(mode, List.of(TO_PARTNER));
+        doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", 1));
+        return doc;
+    }
+
+    List<String> rowNames(String messageId) {
+        return store.timeline(messageId).await().stream().map(io.flottila.core.record.Snapshot::stepName).toList();
+    }
+
+    @Test
+    void aSyncReplyIsAnsweredBeforeItsBodiesPersistAndThePermitReturnsAfter() {
+        Delivery delivery = delivery(onePermit("sync"));
+        Envelope in = ingressInOwnStore(ORDER);
+        own.hold();
+
+        Ack reply = applied(applyOn(delivery, in)).ack().result();
+        assertInstanceOf(Ack.Reply.class, reply, "the reply is answered with the run's persist still held");
+        until(() -> own.held() == 1, () -> "the trail's persist of the ingress body: " + own.persists());
+        assertFalse(own.persisted(in.body().key()));
+        assertEquals(List.of(), rowNames(in.id()), "the rows wait for their body");
+        Ack probe = applied(applyOn(delivery, ingressInOwnStore(ORDER))).ack().result();
+        assertInstanceOf(Ack.Nack.class, probe, "the permit is still out while the run's bodies persist: the next delivery is refused");
+        Future<Void> stopped = delivery.stop(Duration.ofHours(1));
+        assertFalse(stopped.isComplete(), "its flight has not landed: " + stopped);
+
+        own.release();
+        assertTrue(settled(stopped).succeeded(), "the flight landed once the trail closed");
+        assertTrue(own.persisted(in.body().key()));
+        assertEquals(List.of("ingress", "partner"), rowNames(in.id()), "and the run's rows were written");
+    }
+
+    @Test
+    void atMostOnceLandsAfterItsBodiesPersisted() {
+        Delivery delivery = delivery(onePermit("at-most-once"));
+        Envelope in = ingressInOwnStore(ORDER);
+        List<Thread> runs = new CopyOnWriteArrayList<>();
+        partner.replyWith(e -> { runs.add(Thread.currentThread()); return e; });
+        own.hold();
+
+        assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
+        until(() -> own.held() == 1 && runs.size() == 1 && endedOrWaiting(runs.get(0)),
+                () -> "the run past its pipeline, its trail's persist asked: held " + own.held() + ", runs " + runs);
+        Future<Void> stopped = delivery.stop(Duration.ofHours(1));
+        assertFalse(stopped.isComplete(), "the run has not landed while its body's persist is held: " + stopped);
+        assertEquals(List.of(), rowNames(in.id()), "the rows wait for their body");
+
+        own.release();
+        assertTrue(settled(stopped).succeeded(), "it landed once its trail closed");
+        assertTrue(own.persisted(in.body().key()));
+        assertEquals(List.of("ingress", "partner"), rowNames(in.id()));
+    }
+
+    /**
+     * A sync caller's thread leaves its delivery with the reply (P1-09k2 r1b): a stop's deadline that comes while the run's
+     * trail still closes (its persist held) interrupts nothing — the thread that called goes on with its own work — and the
+     * trail closes as usual, the flight landing after it.
+     */
+    @Test
+    void aDeadlineWhileASyncTrailClosesNeverInterruptsTheCallersThread() throws Exception {
+        Delivery delivery = delivery(onePermit("sync"));
+        Envelope in = ingressInOwnStore(ORDER);
+        own.hold();
+        CountDownLatch answered = new CountDownLatch(1);
+        CountDownLatch goOn = new CountDownLatch(1);
+        holds.add(goOn);
+        AtomicReference<Ack> ack = new AtomicReference<>();
+        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread caller = Thread.ofVirtual().name("consumer-" + in.id()).start(() -> {
+            ack.set(delivery.apply(in).result());
+            answered.countDown();
+            try {
+                goOn.await();   // the consumer's thread goes on with other work after the reply
+                interrupted.set(Thread.currentThread().isInterrupted());
+            } catch (InterruptedException e) {
+                interrupted.set(true);
+            }
+        });
+        assertTrue(answered.await(5, TimeUnit.SECONDS), "the reply came");
+        assertInstanceOf(Ack.Reply.class, ack.get(), "answered with the run's reply");
+        until(() -> own.held() == 1, () -> "the trail's persist of the ingress body: " + own.persists());
+
+        Future<Void> stopped = delivery.stop(DEADLINE);
+        rt.clock().advance(DEADLINE);   // the deadline fires now, on this thread, while the trail still closes
+        assertFalse(stopped.isComplete(), "fixture: the flight is still out, its trail closing: " + stopped);
+        goOn.countDown();
+        if (!caller.join(Duration.ofSeconds(5))) fail("the caller's thread did not end: " + List.of(caller.getStackTrace()));
+        assertFalse(interrupted.get(), "no interrupt reached the thread that called: it left its delivery with the reply");
+
+        own.release();
+        assertTrue(settled(stopped).succeeded(), "the flight landed once the trail closed");
+        assertTrue(own.persisted(in.body().key()), "the trail closed normally: the ingress body is durable");
+        assertEquals(List.of("ingress", "partner"), rowNames(in.id()), "and the run's rows were written");
     }
 }

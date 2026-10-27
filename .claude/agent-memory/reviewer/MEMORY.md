@@ -44,7 +44,7 @@
 - Do not read pass/fail from target/surefire-reports while the verifier runs mutants in the same tree.
 - Staging that only shifts where an event lands is fine for order-relative assertions; flag it only if a hold may never be reached.
 - A fixture that signals "reached" before taking a pending one-shot latch hands that latch to the hold already observed. Take it first, then signal (FIX-10 r9, OwnThreadStream.block).
-- A load loop at 29/30 is a finding: match the lost seconds to a 10 s fixture hold, then decide fixture or store.
+- A `git diff` artifact omits untracked new files (P1-09k2: TrailTest, StepBodiesIT missing from target/<task>.diff); glob the packet's test classes on disk and ask for `git status --short` before a PASS.
 - An endless re-check loop that records events dies of heap exhaustion, not by timeout. That is a kill (PIT: MEMORY_ERROR) if the restore is proven by `cmp`.
 - Testkit twin streams (ChunkedReadStream / GeneratedReadStream): when one twin's guard gets a pinning case, grep the other twin for the same case (FIX-13).
 - A "seen-with-X" flag the test sets just before the call proves only "after this line": a second witness at most, never proof of internal state.
@@ -68,14 +68,11 @@
 - XML steps: check compile-time reads besides include/import (DTD entities, XSLT `static` / `use-when` calls to `doc()` / `unparsed-text()`) against the decision's "every file" wording (FIX-6).
 - A compile cache keyed by the main file's hash skips any per-flow check on a cache hit; ask what a cache hit bypasses (FIX-6 → FIX-17).
 - A thread-scoped hook on a shared object needs two cases: the scope's effect, and its absence after close on the same thread; mutate `close()` and the no-scope branch (FIX-6, CompileConfinement / XsltStepFactory).
-- XSLT compile-time reads: the resource resolver covers `doc` / `unparsed-text` / entities; check `collection()` / `uri-collection()` separately — they go through the collection finder (FIX-6).
 - A hook installed into a shared Configuration in a constructor: ask what happens if someone later replaces the resolver (FIX-6 → FIX-16).
 - A hook that implements two SPIs needs the "no scope, delegate" case for each one; FIX-6 round 4 pinned the resolver and missed the finder (CompileConfinement).
 - A delegation test where the delegate answers null cannot tell "delegates" from "returns null"; pick an input the delegate answers non-null (CompileConfinement).
-- Saxon 12.4: static `collection()` throws a ClassCastException before any finder; re-probe compile-time collection reads (catalog files) on every Saxon upgrade.
 - An unreachable checked-exception catch in a small module costs pp: in validate (~80 lines) two lines are 2.5 pp, beyond D-050's band. Ask early for the module's line count against new catch blocks, and prefer code with no checked exception (FIX-6, ConfinedSchemaResolver:33).
 - When a JDK SPI value is built by hand (an `LSInput` with throwing setters), the getters' null/false values are behaviour (Xerces reads character data before bytes). Each one needs an assertion, and the hand-built class needs its own test (FIX-6, SchemaInput).
-- Xerces reads an `LSInput` the resolver hands over through its system id even when the byte stream is null and `ACCESS_EXTERNAL_SCHEMA=""`. The resolver's own system id is the confinement, not the belt (FIX-6 M28).
 - A cleanup helper run from a `finally` that catches only `IOException` lets an unchecked cleanup failure replace the primary and skip later steps — check the helper's own catches too (FIX-15, SpoolCipher `discard`).
 - A driver's failure paths (the follow-up round after a failed claim, the bookkeeping after a failed settle) cannot be mutated by PIT — check that some test fails the queue call there (P1-08b, FlowWorker:179/:198).
 - Tests that read a round through `otherwiseEmpty()` leave the round's answer and that path's log unpinned (P1-08b :222/:224).
@@ -118,3 +115,6 @@
 - Architect decisions on open points that land in api javadoc (edge values, null) need one assertion each; an implementer's "untested" note is a ready-made blocking reason (P1-09k1, Envelope.nextKey 0/negative/null).
 - A typed prop platform code reads (Key<Integer>) collides with user-named props (route prop:/byProp) and throws ClassCastException; check new reserved names against FlowBuilder's user keys (P1-09k1, "attempt").
 - A PIT survivor in a touched class on a line outside the diff (FlowWorker:245 ingress filter → true, P1-09k1 r2) is a note plus a FIX row, not a block, if the floor holds; first name the reachable input that kills it (a step-ordered timeline always puts the ingress first).
+- Doc paraphrases drop a packet's exception clauses ("steps never wait" vs the 257th flush wait); diff every new § sentence against each packet clause, and grep the edited section and D-row/finding for older never/always/unchanged sentences the new exception falsifies (P1-09k2 r1, r2).
+- A new "always" invariant in ARCHITECTURE: check every writer of that row, old paths too (the at-least-once ingress row is saved beside its persist, D-058, Delivery:250-263; P1-09k2).
+- Context read on the run's thread for a store callback (Trail.current() in Parking): in-memory stores answer inline, so core tests can't tell; ask for a store that answers on another thread (P1-09k2).

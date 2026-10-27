@@ -26,7 +26,7 @@ import java.util.Objects;
  * its bound). {@link #persists()} lists every key {@code persist} was called with — held, thrown, refused, failed or passed
  * alike — and {@link #persisted(BlobKey)} says whether the inner store made it durable.
  */
-final class HoldingBlobStore implements BlobStore {
+public final class HoldingBlobStore implements BlobStore {
 
     private final InMemoryBlobStore inner;
     private final Map<BlobKey, Promise<Void>> held = new LinkedHashMap<>();   // guarded by this
@@ -35,32 +35,32 @@ final class HoldingBlobStore implements BlobStore {
     private RuntimeException throwNext;                                       // guarded by this
     private Throwable refusal;                                                // guarded by this
 
-    HoldingBlobStore(InMemoryBlobStore inner) {
+    public HoldingBlobStore(InMemoryBlobStore inner) {
         this.inner = Objects.requireNonNull(inner, "inner");
     }
 
     /** From now on every {@code persist} waits for {@link #release()}, {@link #fail(Throwable)} or {@link #answer}. */
-    synchronized HoldingBlobStore hold() {
+    public synchronized HoldingBlobStore hold() {
         holding = true;
         return this;
     }
 
     /** Persists waiting right now. */
-    synchronized int held() { return held.size(); }
+    public synchronized int held() { return held.size(); }
 
     /** Stops holding; every held key is persisted in the inner store and its future completes as the inner store's does. */
-    void release() {
+    public void release() {
         for (Map.Entry<BlobKey, Promise<Void>> h : drain().entrySet()) inner.persist(h.getKey()).onComplete(h.getValue());
     }
 
     /** Stops holding; every held persist fails with {@code cause}, nothing is made durable. */
-    void fail(Throwable cause) {
+    public void fail(Throwable cause) {
         Objects.requireNonNull(cause, "cause");
         for (Promise<Void> p : drain().values()) p.fail(cause);
     }
 
     /** Settles the held persist of {@code key} (quiet when none is held): {@code ok} persists it in the inner store, else fails it. */
-    void answer(BlobKey key, boolean ok) {
+    public void answer(BlobKey key, boolean ok) {
         Promise<Void> p;
         synchronized (this) {
             p = held.remove(key);
@@ -78,22 +78,22 @@ final class HoldingBlobStore implements BlobStore {
     }
 
     /** The next {@code persist} throws {@code failure} synchronously — no future — once; then persists behave as before. */
-    synchronized HoldingBlobStore throwNext(RuntimeException failure) {
+    public synchronized HoldingBlobStore throwNext(RuntimeException failure) {
         throwNext = Objects.requireNonNull(failure, "failure");
         return this;
     }
 
     /** From now on every {@code persist} fails at once with {@code cause} — the same instance each time — and makes nothing durable. */
-    synchronized HoldingBlobStore refuse(Throwable cause) {
+    public synchronized HoldingBlobStore refuse(Throwable cause) {
         refusal = Objects.requireNonNull(cause, "cause");
         return this;
     }
 
     /** Every key {@code persist} was called with, in call order. */
-    synchronized List<BlobKey> persists() { return List.copyOf(persists); }
+    public synchronized List<BlobKey> persists() { return List.copyOf(persists); }
 
     /** Whether the inner store made {@code key} durable. */
-    boolean persisted(BlobKey key) { return inner.persisted(key); }
+    public boolean persisted(BlobKey key) { return inner.persisted(key); }
 
     @Override public long treeLimit() { return inner.treeLimit(); }
 

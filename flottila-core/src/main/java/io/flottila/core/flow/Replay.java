@@ -11,6 +11,7 @@ import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Snapshot;
+import io.flottila.core.record.Trail;
 
 import java.util.HashMap;
 import java.util.List;
@@ -23,8 +24,9 @@ import java.util.function.IntFunction;
  * <em>new</em> message marked {@link Envelope#REPLAY_OF} on the envelope step {@code n−1} handed on — taken from its
  * snapshot ({@link #from}), or from the DLQ row of the failed step ({@link #retry}), which carries that envelope by
  * reference so a retry needs no snapshot. The new message is a first run: the {@link Envelope#ATTEMPT} of the run that left
- * that envelope is dropped (D-066). It leaves its own snapshots, the first one its input ({@value #REPLAY_INPUT}). Built by
- * {@link FlowBuilder#replay}.
+ * that envelope is dropped (D-066). It leaves its own snapshots, the first one its input ({@value #REPLAY_INPUT}), through a
+ * {@link Trail} of its own: {@link #from} and {@link #retry} return once its step bodies are durable and its rows written.
+ * Built by {@link FlowBuilder#replay}.
  *
  * @since 0.1
  */
@@ -59,7 +61,7 @@ public final class Replay {
                 .orElseThrow(() -> new IllegalArgumentException("step " + (step - 1) + " of message " + messageId + " was not recorded (recording level); replay from step " + step + " needs it"));
         if (input.bodyKey().isEmpty()) throw new IllegalArgumentException("step " + (step - 1) + " of message " + messageId + " was recorded metadata-only: no reachable body to replay");
         Envelope start = rebuild(input, ids.next(), flow.id(), replayOf(input.props(), messageId), blobs);
-        return tail.apply(step).apply(start);
+        return run(tail.apply(step), start);
     }
 
     /** Replays the parked step of {@code messageId} on the parked input; the row is removed once the new message went through. */
@@ -69,9 +71,22 @@ public final class Replay {
         Parked parked = dlq.get(messageId).await().orElseThrow(() -> new IllegalArgumentException("no DLQ row for message '" + messageId + "'"));
         Envelope start = new Envelope(ids.next(), flow.id(), parked.step() - 1, parked.headers(), replayOf(parked.props(), messageId), parked.keys(),
                 Body.of(blobs, parked.bodyKey(), parked.bodyHash(), parked.bodySize()), Map.of(), new Views());
-        Envelope out = tail.apply(parked.step()).apply(start);
+        Envelope out = run(tail.apply(parked.step()), start);
         dlq.remove(messageId).await();
         return out;
+    }
+
+    /**
+     * {@code pipeline} on {@code start} under a {@link Trail} of its own, seeded with {@code start}'s body — durable already: a
+     * recorded row's or a parked one's — and returning, or throwing, only once that trail closed (D-064, F-10).
+     */
+    private static Envelope run(Pipeline pipeline, Envelope start) {
+        Trail trail = new Trail(List.of(start.body().key()));
+        try {
+            return trail.apply(pipeline, start);
+        } finally {
+            trail.close().toCompletionStage().toCompletableFuture().join();   // never fails; waits through an interrupt
+        }
     }
 
     /**

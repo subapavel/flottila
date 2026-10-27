@@ -181,6 +181,16 @@ class ParkingTest {
 
     static final StepConfig STEP_X = new StepConfig(2, "boom", "x", false, Map.of());
 
+    /**
+     * {@code doc} recorded metadata-only: no row keeps a body, so the recorder persists nothing (D-064: without a trail it
+     * persists every kept body, then records) and a park's persist is the only one these cases see.
+     */
+    static Map<String, Object> metadataOnly(Map<String, Object> doc) {
+        Map<String, Object> m = new java.util.HashMap<>(doc);
+        m.put("recording", Map.of("payload", "metadata-only"));
+        return m;
+    }
+
     Parking parking(Dlq dlq) {
         return new Parking(dlq, rt.clock(), Map.of("flow", "f@1.0.0"));
     }
@@ -278,7 +288,7 @@ class ParkingTest {
             HoldingBlobStore bodies = bodies();
             WatchingDlq dlq = new WatchingDlq(bodies);
             RuntimeException refused = r.arm().apply(bodies);
-            Pipeline p = builder(dlq, bodies).build(FlowDefinition.from(flow("at-least-once", REWRITE_THEN_BOOM)), Path.of(""));
+            Pipeline p = builder(dlq, bodies).build(FlowDefinition.from(metadataOnly(flow("at-least-once", REWRITE_THEN_BOOM))), Path.of(""));
             Envelope in = in();
 
             RuntimeException surfaced = assertThrows(RuntimeException.class, () -> p.apply(in), r.name());
@@ -296,7 +306,7 @@ class ParkingTest {
     void theParkedBodyIsPersistedInItsOwnStore() {
         HoldingBlobStore own = bodies();   // step r writes here; the runtime's store is rt.blobs()
         WatchingDlq dlq = new WatchingDlq(own);
-        Pipeline p = builder(dlq, own).build(FlowDefinition.from(flow("at-least-once", REWRITE_THEN_BOOM)), Path.of(""));
+        Pipeline p = builder(dlq, own).build(FlowDefinition.from(metadataOnly(flow("at-least-once", REWRITE_THEN_BOOM))), Path.of(""));
         Envelope in = in();   // the ingress body lives in the runtime's store
         BlobKey key = BlobKey.body(in.id(), 1);
 
@@ -314,7 +324,7 @@ class ParkingTest {
         HoldingBlobStore bodies = bodies();
         WatchingDlq dlq = new WatchingDlq(bodies);
         List<Map<String, Object>> steps = List.of(Map.of("type", "rewrite", "name", "a"), Map.of("type", "rewrite", "name", "b"), Map.of("type", "boom", "name", "x"));
-        Pipeline p = builder(dlq, bodies).build(FlowDefinition.from(flow("at-least-once", steps)), Path.of(""));
+        Pipeline p = builder(dlq, bodies).build(FlowDefinition.from(metadataOnly(flow("at-least-once", steps))), Path.of(""));
         Envelope in = ingressIn(bodies);   // every body of the message in one store: only the key tells them apart
         BlobKey stepThreesInput = BlobKey.body(in.id(), 2);
 
@@ -333,16 +343,16 @@ class ParkingTest {
         HoldingBlobStore bodies = bodies();
         WatchingDlq dlq = new WatchingDlq(bodies);
         Supplier<Envelope> in = () -> ingressIn(bodies);
-        Pipeline sync = builder(dlq, bodies).build(FlowDefinition.from(flow("sync", REWRITE_THEN_BOOM)), Path.of(""));
+        Pipeline sync = builder(dlq, bodies).build(FlowDefinition.from(metadataOnly(flow("sync", REWRITE_THEN_BOOM))), Path.of(""));
 
         IllegalStateException e = assertThrows(IllegalStateException.class, () -> sync.apply(in.get()));
         assertEquals("boom at x", e.getMessage(), "the caller gets the step's failure");
         assertEquals(0, e.getSuppressed().length, "nothing was tried on the side: " + List.of(e.getSuppressed()));
-        assertEquals(List.of(), bodies.persists(), "a sync flow never persists (D-045)");
+        assertEquals(List.of(), bodies.persists(), "a sync flow never persists outside its recording (D-045; D-064: kept bodies persist at a run's end)");
         assertEquals(List.of(), dlq.durableAtPark, "and never parks");
 
         // witness: the same steps over the same store, at-least-once, persist the parked body through it
-        Pipeline atLeastOnce = builder(dlq, bodies).build(FlowDefinition.from(flow("at-least-once", REWRITE_THEN_BOOM)), Path.of(""));
+        Pipeline atLeastOnce = builder(dlq, bodies).build(FlowDefinition.from(metadataOnly(flow("at-least-once", REWRITE_THEN_BOOM))), Path.of(""));
         Envelope parkedIn = in.get();
         assertThrows(ParkedException.class, () -> atLeastOnce.apply(parkedIn));
         assertEquals(List.of(BlobKey.body(parkedIn.id(), 1)), bodies.persists(), "this store records a park's persist");

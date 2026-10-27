@@ -655,3 +655,13 @@ Review: FAIL r1 (reply props unpinned; 0/negative/null untested); PASS r2. Raise
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns ~12; review rounds 2.
 Next: P1-09k2 [C] (run trail; F-10 §8 edit at its commit).
 
+
+## 2026-10-27 — P1-09k2 run trail: step bodies durable before their rows (D-066) — done, review PASS — Deviation: F-10
+context compacted (re-verified with git status / git log -3 before changing anything).
+Test first: TrailTest 10, RecordingPropertyTest, StepBodiesIT 8; DeliveryTest, FlowWorkerTest, ReplayTest, ParkingTest cases — observed red (P1-09k2 red logs in target/); 3 implementer fixture fixes accepted by the reviewer (FlowWorkerTest:1149, ReplayTest:259-261, StepBodiesIT:217-219).
+Change: core `record/Trail` (per-run buffer; each distinct kept body persists once, then its row, `body_key` only if durable; flush when >256 buffered or at close); Recorder, Parking (marks a parked key durable), FlowWorker, Delivery, Replay await the close. ARCHITECTURE §8 + 3.4 changelog, D-066, F-10.
+Checks: whole reactor -Pit VERIFIED_PASS, core 292 (target/P1-09k2-r3-verify-all.log); coverage no decrease, baseline written; hand mutants M0–M26 + Trail :144/:157/:167 killed; PIT api 125/125, core 702/709 (only touched-class survivor FlowWorker:251 → FIX-48), threshold override for testkit (FIX-53).
+Review: FAIL r1 (docs: "steps never wait", body_key-always-durable vs D-058 ingress); FAIL r2 (docs: "processing never waits", durableMax exception, sync-reply wording); PASS r3.
+Raised FIX-49 (bound close), FIX-50 (fork carries Trail), FIX-51 (metadataOnly counter), FIX-52 [C] (ingress row beside persist, owner point), FIX-53 (testkit PIT 67<70), FIX-54 (TrailTest assertions); P1-09c note: Replay on a virtual thread.
+D-054 data: class C (test-author, implementer, reviewer opus/xhigh); architect turns ~30; review rounds 3.
+Next: FIX-53 [B] (testkit PIT below threshold; before the next scheduled CI run), then P1-09c [C].

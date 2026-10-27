@@ -4,11 +4,13 @@ import io.flottila.api.Body;
 import io.flottila.api.Envelope;
 import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
+import io.flottila.core.record.Trail;
 import io.vertx.core.Future;
 
 import java.time.Clock;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * The at-least-once failure path (ARCHITECTURE §4 lifecycle table, §6): a step's failure parks the step's input in the
@@ -58,11 +60,13 @@ public final class Parking {
      * Parks {@code e}, the input of {@code step}, for {@code failure}; completes with the row once it is durable. The row
      * refers to {@code e}'s body, so that body is made durable first — persisted in the store it lives in, under its own key
      * (D-062) — and the row is written only after that completed: a DLQ row implies a durable body. A persist that fails, or
-     * throws, fails the park with its cause and writes no row.
+     * throws, fails the park with its cause and writes no row. A persist that succeeded tells the run's {@link Trail}, when one
+     * is bound on the calling thread, that the key is durable: the trail does not persist it again (D-066).
      */
     public Future<Parked> park(Envelope e, StepConfig step, Throwable failure) {
         Parked parked = Parked.of(e, step, failure, clock.instant(), versions);
-        return persist(e.body()).compose(durable -> dlq.park(parked)).map(parked);
+        Optional<Trail> run = Trail.current();   // read here, on the run's thread: the persist answers on another
+        return persist(e.body()).onSuccess(durable -> run.ifPresent(t -> t.durable(e.body().key()))).compose(durable -> dlq.park(parked)).map(parked);
     }
 
     /** {@code body} made durable in its own store; what the store throws becomes the failed future's cause. */

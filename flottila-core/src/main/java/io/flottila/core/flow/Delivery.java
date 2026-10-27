@@ -9,6 +9,7 @@ import io.flottila.core.admission.AdmissionRefusedException;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Snapshot;
+import io.flottila.core.record.Trail;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
@@ -27,7 +28,8 @@ import java.util.function.Function;
  * <ul>
  * <li><b>sync</b>: the pipeline runs on the caller's (virtual) thread; its result is the {@link Ack.Reply}, its failure fails
  * the returned future with the step's exception as thrown, a checked one included — the consumer maps it (by
- * {@link io.flottila.api.Fault.Kind}). The permit is released when the pipeline has returned or thrown.</li>
+ * {@link io.flottila.api.Fault.Kind}). The answer is returned as soon as the pipeline has returned or thrown; the permit is
+ * released once the run's {@link Trail} closed (D-064, F-10).</li>
  * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2): the ingress body is persisted in
  * its own store ({@link io.flottila.api.BlobStore#persist}, D-058) and, beside it, the ingress snapshot with its payload is
  * recorded — whatever the flow's recording level; once both succeeded the message is enqueued in the flow's
@@ -37,8 +39,14 @@ import java.util.function.Function;
  * store throws, and so is a timer that refuses to bound the save (nothing is saved then). Nothing of the pipeline runs
  * here: a {@link FlowWorker} runs it. The permit is released when the answer is decided.</li>
  * <li><b>at-most-once</b>: {@link Ack.Accepted} at once; the pipeline runs afterwards on a virtual thread of its own and a
- * failure is logged and dropped — not parked, not queued. The permit is released when the pipeline ends.</li>
+ * failure is logged and dropped — not parked, not queued. The permit is released when the pipeline ended and its
+ * {@link Trail} closed, before the failure is logged.</li>
  * </ul>
+ * A sync or at-most-once run is bound to a {@link Trail} of its own, with no seed: nothing of it was made durable before it
+ * ran. Its kept bodies persist and its rows are written in a mid-run flush when more than 256 snapshots
+ * are buffered — the step whose snapshot crosses that line waits for that flush, and so does a sync answer behind it — and
+ * when it ended. Otherwise the answer waits for no persist: the end-of-run persists and rows are awaited only by the permit
+ * release (and, for at-most-once, the landing).
  * {@link #stop(Duration)} (D-056) refuses new deliveries, lets those in flight — from the permit until the permit is released —
  * finish until its deadline on the injected {@link Timer}, then cancels them. {@link #close()} (FIX-30) closes the producers
  * the builder created for its pipeline once that stop has completed.
@@ -66,7 +74,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     private final class Flight {
         private final Admission.Permit permit;
         private final String flow;
-        private Thread thread;          // sync, at-most-once: interrupted at the deadline; set under the lock
+        private Thread thread;          // sync, at-most-once: interrupted at the deadline; set under the lock, null once it left (leave)
         private Promise<Ack> answer;    // at-least-once: a retryable Nack at the deadline while still pending; set under the lock
 
         private Flight(Admission.Permit permit, String flow) {
@@ -75,18 +83,23 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         }
 
         /**
-         * The permit back, once, and the flight out of the stop's sight — the stop done when it was the last. Returns the
-         * cancel's retryable Nack when the deadline came while it flew (its thread was interrupted then), else null; from here
-         * on the deadline does not touch its thread.
+         * The flight's thread leaves its delivery: from here on the deadline does not touch it. Returns the cancel's retryable
+         * Nack when the deadline came while it flew (its thread was interrupted then), else null.
          */
-        private Ack.Nack land() {
+        private Ack.Nack leave() {
+            synchronized (lock) {
+                thread = null;
+                return cancelling ? cancelled(flow, deadline) : null;
+            }
+        }
+
+        /** The permit back, once, and the flight out of the stop's sight — the stop done when it was the last. */
+        private void land() {
             permit.close();
             Promise<Void> last = null;
             Timer.Cancellable pending = null;
-            Ack.Nack cancel;
             synchronized (lock) {
                 flights.remove(this);
-                cancel = cancelling ? cancelled(flow, deadline) : null;
                 if (stopped != null && flights.isEmpty()) {
                     last = stopped;
                     pending = deadlineTimer;
@@ -96,7 +109,6 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 pending.cancel();
                 last.complete();
             }
-            return cancel;
         }
     }
 
@@ -137,16 +149,18 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
 
             @Override
             public Future<Ack> deliver(Envelope e, Flight flight) {
+                Trail trail = new Trail(List.of());
                 Envelope reply = null;
                 Exception failure = null;
                 Ack.Nack cancel;
                 try {
-                    reply = pipeline.apply(e);
+                    reply = trail.apply(pipeline, e);
                 } catch (Exception thrown) {   // an interrupted await throws InterruptedException, sneakily
                     failure = thrown;
                 } finally {
-                    cancel = flight.land();
+                    cancel = flight.leave();
                     if (cancel != null) Thread.interrupted();   // the deadline's interrupt: the caller's thread leaves with its flag clear
+                    trail.close().onComplete(closed -> flight.land());   // the answer does not wait for the run's bodies, the permit does
                 }
                 if (failure == null) return Future.succeededFuture(new Ack.Reply(reply));   // a real answer beats a retry
                 if (cancel != null) return Future.succeededFuture(cancel);   // whatever the failure's kind
@@ -179,17 +193,26 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             }
 
             private void run(Envelope e, Flight flight) {
+                Trail trail = new Trail(List.of());
                 Exception dropped = null;
                 try {
-                    pipeline.apply(e);
+                    trail.apply(pipeline, e);
                 } catch (Exception failure) {   // an interrupted await throws InterruptedException, sneakily
                     dropped = failure;
                 } finally {
-                    flight.land();   // the run is over: the permit is back before anything is logged
+                    flight.leave();
+                    landAfter(trail.close(), flight, e, dropped);
                 }
-                if (dropped != null) {
-                    LOG.log(System.Logger.Level.WARNING, "at-most-once message " + e.id() + " of flow " + e.flow() + " failed and is dropped", dropped);
-                }
+            }
+
+            /** The run is over once its trail closed: the permit is back before anything is logged. */
+            private void landAfter(Future<Void> closed, Flight flight, Envelope e, Exception dropped) {
+                closed.onComplete(done -> {
+                    flight.land();
+                    if (dropped != null) {
+                        LOG.log(System.Logger.Level.WARNING, "at-most-once message " + e.id() + " of flow " + e.flow() + " failed and is dropped", dropped);
+                    }
+                });
             }
         });
     }
@@ -281,8 +304,12 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
      * deliveries in flight finish as usual until {@code deadline} on the injected timer, then are cancelled — a sync or
      * at-most-once run's thread is interrupted (a sync failure after that answers a retryable Nack "cancelled: ..." whatever
      * its kind, a reply still returned is kept), a pending at-least-once answer becomes that Nack (its late save enqueues
-     * nothing). A zero deadline cancels at once. The future completes when nothing is in flight any more — at once when
-     * nothing is — and the deadline's timer is cancelled then. A second call returns the same future, whatever its deadline.
+     * nothing). A zero deadline cancels at once. A sync or at-most-once flight stays in flight until its run's {@link Trail}
+     * closed, and the deadline does not cancel that close: a flight whose trail is still closing at the deadline (its run
+     * ended before it, or was interrupted by it) is left to close, and stop completes only after that close ends — a close
+     * that never ends holds the stop open, with no bound yet (FIX-49). The future completes when nothing is in flight any
+     * more — at once when nothing is — and the deadline's timer is cancelled then. A second call returns the same future,
+     * whatever its deadline.
      *
      * @throws NullPointerException     for a null {@code deadline}
      * @throws IllegalArgumentException for a negative one
@@ -331,7 +358,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             cancelling = true;
             after = deadline;
             inFlight = List.copyOf(flights);
-            // under the lock: a flight that landed is out of the set, so no interrupt reaches a thread that left its delivery
+            // under the lock: a thread that left its delivery is null, so no interrupt reaches it
             for (Flight f : inFlight) if (f.thread != null) f.thread.interrupt();
         }
         // outside the lock: completing an answer runs the consumer's callbacks, and the flight lands

@@ -101,11 +101,9 @@
 - FIX-30: core flow test `ClosingPartner` (scheme mock over RecordingComponent: every producer an `Out` counting closes, `onClose` hook,
   `failClose(nth, FAILED_FUTURE|THROWN, text)`, `holdClose(nth)` → Promise, `open()`; an Out refuses sends after its close); runtime `Doors.Out`
   (openProducers(), `unansweredAtClose` = closed-after-stop witness; opt-in `doors.closeFailsSends()` fails in-flight + later sends), `CountingQueue.size()`.
-- Scratch mutants: `-DargLine` never reaches the fork: toggle by a file (static `mutant()` reading `<scratch>/mutant.txt`). Pre-existing 1/30 flakes:
+- PIT NullReturnVals keeps the side effects: hand mutant `expr; return null;`. Scratch mutants: `-DargLine` never reaches the fork: toggle by a file (static `mutant()` reading `<scratch>/mutant.txt`). Pre-existing 1/30 flakes:
   DeploymentsTest.closeStops...503, AdminServerDeployTest.getFlows... / AdminServerTest.dlqWithoutLimit... DecodeException.
-- P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant (own data dir, Doors, `new SaxonXml().steps()` + XsdValidate),
-  `changed(base, variant)` = moved hashes; `node(steps, xml)` + `Shared` = one compile cache over two nodes. `SaxonXml.steps()` builds a NEW
-  XsltStepFactory per call (share the list). Cache-hit witness: `compiledStylesheets()`/`compiledSchemas()` = entries kept (FIX-17). Static `unparsed-text-available()` / `uri-collection('dir')` report an absent path / a directory.
+- P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant, `changed(base, variant)`; `SaxonXml.steps()` builds a NEW XsltStepFactory per call; cache-hit witness `compiledStylesheets()`/`compiledSchemas()`.
 - P1-09d2b fixtures: `Doors.trace(sink)` (start/stop/"stopped <flow>"/"close <ep> #n" one log), `Doors.onConsumer`, `TracingTimer.trace` (schedule/cancel), `CountingQueue`
   claimedIds/renews/hasItemsCalls/afterFirstHasItems/failHasItems; root-proof failing recursive delete = a dir chain > PATH_MAX (move-built).
 - P1-09d2c: `Doors.holdStartOf/failStartOf/holdStopOf(flow)` (per-flow FIFO gates), `Door.history()/first/last/stops()`, `Out.closedAt()`; `TracingTimer.Task.owner()`
@@ -117,3 +115,6 @@
 - P1-09k1: InMemoryMessageStore keeps the FIRST row per (id, step) (putIfAbsent: a rerun's row is dropped). Mock/loopbacks hand the handler the sender's
   envelope (id, step, props) and return Ack.Reply as is; mock writes only fixture replies (no consumer). `pgrep -f`/`pkill -f <path>` match the calling
   shell (pkill = exit 144). Runtime `-Dtest='io.flottila.runtime.**'` gives 14 false failures (*HeapTest outside heap-bounded, nested TieredBlobStoreTest$Reader).
+- P1-09k2 `record.Trail` (TrailTest `HeldRows`, `trailWarnings()`): `new Trail(seed)`, `call`/`apply`, `add(store,snap,body)`, `durable(k)`, `close()`, `metadataOnly()`. Flow `HoldingBlobStore` public; `RecordingWorkQueue.onComplete` (state at the call); World `stamp-next`/`crash-first`; `ParkingTest.metadataOnly(doc)`
+  (unbound Recorder persists then records). Worker/Replay rebuild bodies in the RUNTIME store: a persist-recording fixture must be it (M19). Runtime `flow/StepBodiesIT` (two-node PG, `rowsOf` spin: PG writer lags).
+- Off-run-thread completion (P1-09k2 M26): a context-less Promise runs its listeners on the completing thread; FlowWorkerTest `waitingInPark(t)` (WAITING + Parking frame under `await`) + HoldingBlobStore hold/release from the test thread. Future.await() off Vert.x = trySuspend CountDownLatch.

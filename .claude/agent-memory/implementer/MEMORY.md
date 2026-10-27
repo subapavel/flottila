@@ -63,6 +63,8 @@
   static `unparsed-text*()` → `uri` already absolute, base and rel null; DTD entity → `uri` = literal, rel null, base set;
   CollectionFinder gets only the absolute URI. Xerces LSResourceResolver: `systemId` literal, `baseURI` of the including schema.
 - An unreadable file even as root (a catch over `Files.readAllBytes`): symlink to `/proc/self/mem` (isRegularFile, read → EIO).
+- Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()
+  .join()` waits uninterruptibly (no catch) — used to await a never-failing close in a finally (P1-09k2 Trail).
 - Vert.x 5.1.10: `andThen(Handler<AsyncResult>)` completes after the handler ran; `Future.await()` works on a plain virtual thread.
 - FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
   cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
@@ -88,13 +90,15 @@
   after `close()` throws IllegalStateException synchronously, `close()` waits for writes in flight; `res.reset()` is a Future.
   Netty answers 400 before routing for Content-Length `abc`, `-1`, overflow, `5, 6` (observed). An answer before the request's
   end must close the connection (`!req.isEnded()` → `connection().close()`), or the client waits on a paused socket.
-- JDK HttpClient defaults to HTTP_2 and upgrades h2c against a Vert.x server (h2c on by default): requests to one port share a
-  connection, so a probe sent during a consumer's shutdown rides the held request's connection (NodeIT drain flake, P1-09d1b).
 - TieredBlobStore spool files are per write since FIX-35: `<id>/<step>-<part>-<n>.blob` (n per store); a write that replaces a
   spool entry unlinks its own file off-thread; a missing file reads the row only for a `Stored` persist flagged durable, else
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
 
 ## Findings that came back in review
+- Packet red tests can carry fixture bugs that no implementation fixes (P1-09k2: a step key off by one past a gate, a replay over a
+  store the runtime cannot read, a replay rerunning a crash-first step): check the fixture first, fix with a one-line reason.
+- Core mutant loop over `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true` is ~20 s per mutant (P1-09k2);
+  a double guard (two never-fail transforms) makes each single-drop mutant equivalent: drop the redundant one instead.
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
 - Buffering an error-path body without a bound (http producer non-2xx, P1-06): keep a head, drain.
@@ -102,12 +106,8 @@
 - A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05).
 - Before changing who resumes in `StreamingWrite`, grep the blob tests' fixtures for latches that wait on a
   sink resume (`TieredBlobStoreFailureTest.LatePauseStream` waits for one inside `pause()`): they pin the ordering.
-- Moving a handler call onto its own thread (P1-09b, Mock/RecordingComponent): unit tests that assert the handler ran right
-  after `send` returned race (MockComponentTest, RecordingComponentTest D-056 cases) — grep the component's own tests first.
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)` in a refusal test); runtime has ~980 measured
   lines, so 10 uncovered lines are 1 pp of the 2 pp band — count before adding untestable wiring (Main).
-- Deploy tests (DeploymentsRedeployTest) count Doors `stop <flow>` events: a consumer built but never started must not be stopped
-  (HttpConsumer creates its server only in start()); keep consumer-less Flow builds until phase B (P1-09d2b).
 - Known flake (FIX-30; P1-09d2b with a mutant loop running: never verify beside one; testkit, not fixed): `RecordingComponent.send`
   counts `awaitSent` waiters down BEFORE `holds.pollFirst()`: hold(); send A; awaitSent(1); hold(); send B can give A's latch
   to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").

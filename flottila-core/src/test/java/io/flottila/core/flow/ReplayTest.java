@@ -229,4 +229,110 @@ class ReplayTest {
         List<Snapshot> t = store.timeline(delivered.id()).await();
         assertEquals(Optional.empty(), t.get(0).props().get(Envelope.ATTEMPT), "its input row carries no attempt: " + t.get(0).props());
     }
+
+    // --- P1-09k2 (D-064, D-066, F-10)
+
+    /**
+     * A replay runs under a trail of its own and returns only once it closed: its step body persisted once (step b's row and
+     * step c's show the same key), then its rows written, each with its body already durable. Its input — the recorded body
+     * the replay started from, durable since its row was written — is not persisted again.
+     */
+    @Test
+    void aReplayPersistsItsStepBodiesBeforeItReturns() throws Exception {
+        HoldingBlobStore held = new HoldingBlobStore(new io.flottila.testkit.InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT));
+        List<String> early = new java.util.concurrent.CopyOnWriteArrayList<>();
+        io.flottila.core.record.MessageStore watching = new io.flottila.core.record.MessageStore() {
+            @Override public io.vertx.core.Future<Void> record(Snapshot s) {
+                if (s.bodyKey().isPresent() && !held.persisted(s.bodyKey().get())) early.add(s.messageId() + " step " + s.step() + " before " + s.bodyKey().get() + " was durable");
+                return store.record(s);
+            }
+            @Override public io.vertx.core.Future<List<Snapshot>> timeline(String messageId) { return store.timeline(messageId); }
+            @Override public io.vertx.core.Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
+                return store.findByKey(name, value, after, limit);
+            }
+        };
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("bh", s -> Stage.of(e -> e.next(held.write(e.nextKey(), Buffer.buffer("<bh>" + e.body().whole() + "</bh>"), 4096).await()))));
+        Map<String, Object> doc = new java.util.HashMap<>(flow("sync", null));
+        doc.put("steps", List.of(Map.of("type", "a", "name", "a"), Map.of("type", "bh", "name", "b"), Map.of("type", "c", "name", "c")));
+        FlowDefinition def = FlowDefinition.from(doc);
+        io.flottila.api.Runtime fake = rt.runtime();   // over the held store: a replay reads its input by key from the runtime's store
+        FlowBuilder b = new FlowBuilder(new io.flottila.api.Runtime(fake.clock(), fake.timer(), fake.ids(), held, fake.hasher(), fake.components()), all, List.of(),
+                Map.<String, EndpointConfig>of()).recording(watching, () -> 0).dlq(dlq);
+        String id = rt.ids().next();
+        Envelope in = Envelope.ingress(id, "f", Headers.empty().with("x", "1"), held.write(BlobKey.body(id, 0), Buffer.buffer("<in/>"), 4096).await());
+        b.build(def, Path.of("")).apply(in);   // the original run, no trail bound: its rows follow their persists
+        DeliveryTest.until(() -> store.timeline(id).await().size() == 4, () -> "fixture: the original run's rows");
+        int before = held.persists().size();
+        Replay replay = b.replay(def, Path.of(""));
+        held.hold();
+
+        java.util.concurrent.atomic.AtomicReference<Envelope> out = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread caller = Thread.ofVirtual().start(() -> out.set(replay.from(id, 2)));
+        DeliveryTest.until(() -> held.held() == 1 && DeliveryTest.endedOrWaiting(caller),
+                () -> "the replay's step body persist asked: held " + held.held() + ", caller " + caller.getState());
+        assertNotEquals(Thread.State.TERMINATED, caller.getState(), "the replay has not returned while its step body's persist is held");
+        assertEquals(List.of(), early, "no row ahead of its body");
+
+        held.release();
+        if (!caller.join(java.time.Duration.ofSeconds(5))) throw new AssertionError("the replay did not return within 5 s: " + List.of(caller.getStackTrace()));
+        Envelope again = out.get();
+        assertTrue(again != null, "the replay returned its result");
+        List<Snapshot> t = store.timeline(again.id()).await();
+        assertEquals(List.of(Replay.REPLAY_INPUT, "b", "c"), t.stream().map(Snapshot::stepName).toList(), "the replay's rows were written before it returned");
+        assertTrue(t.stream().allMatch(r -> r.bodyKey().isPresent()), "each keeps its key: " + t);
+        assertEquals(List.of(), early, "every row was written with its body already durable");
+        assertEquals(List.of(BlobKey.body(again.id(), 2)), held.persists().subList(before, held.persists().size()),
+                "step b's body once; the replay's input (the original's ingress body) never again");
+    }
+
+    /**
+     * A DLQ retry runs under a trail of its own, seeded with the parked body (P1-09k2 r1b): it returns — and removes the DLQ
+     * row — only once that trail closed, its step body persisted once, then its rows written; the parked input is never
+     * persisted again.
+     */
+    @Test
+    void aRetryPersistsItsStepBodiesBeforeItReturnsAndRemovesTheRow() throws Exception {
+        HoldingBlobStore held = new HoldingBlobStore(new io.flottila.testkit.InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT));
+        AtomicBoolean bDown = new AtomicBoolean(true);
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("bh", s -> Stage.of(e -> {
+            if (bDown.get()) throw new IllegalStateException("b down");
+            return e.next(held.write(e.nextKey(), Buffer.buffer("<bh>" + e.body().whole() + "</bh>"), 4096).await());
+        })));
+        Map<String, Object> doc = new java.util.HashMap<>(flow("at-least-once", null));
+        doc.put("steps", List.of(Map.of("type", "a", "name", "a"), Map.of("type", "bh", "name", "b"), Map.of("type", "c", "name", "c")));
+        FlowDefinition def = FlowDefinition.from(doc);
+        io.flottila.api.Runtime fake = rt.runtime();   // over the held store: a retry reads the parked body by key from the runtime's store
+        FlowBuilder b = new FlowBuilder(new io.flottila.api.Runtime(fake.clock(), fake.timer(), fake.ids(), held, fake.hasher(), fake.components()), all, List.of(),
+                Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+        String id = rt.ids().next();
+        Envelope in = Envelope.ingress(id, "f", Headers.empty().with("x", "1"), held.write(BlobKey.body(id, 0), Buffer.buffer("<in/>"), 4096).await());
+        assertThrows(ParkedException.class, () -> b.build(def, Path.of("")).apply(in), "fixture: step b failed and the message was parked there");
+        BlobKey parkedInput = dlq.get(id).await().orElseThrow().bodyKey();
+        assertEquals(in.body().key(), parkedInput, "fixture: step b's input is step a's output, the ingress body");
+        assertTrue(held.persisted(parkedInput), "fixture: the park made it durable");
+        bDown.set(false);
+        Replay replay = b.replay(def, Path.of(""));
+        int before = held.persists().size();
+        held.hold();
+
+        java.util.concurrent.atomic.AtomicReference<Envelope> out = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread caller = Thread.ofVirtual().start(() -> out.set(replay.retry(id)));
+        DeliveryTest.until(() -> held.held() >= 1 && DeliveryTest.endedOrWaiting(caller),
+                () -> "the retry's step body persist asked: held " + held.held() + ", caller " + caller.getState());
+        assertNotEquals(Thread.State.TERMINATED, caller.getState(), "the retry has not returned while its step body's persist is held");
+        assertTrue(dlq.get(id).await().isPresent(), "the DLQ row stays until the retry went through, its trail included");
+
+        held.release();
+        if (!caller.join(java.time.Duration.ofSeconds(5))) throw new AssertionError("the retry did not return within 5 s: " + List.of(caller.getStackTrace()));
+        Envelope again = out.get();
+        assertTrue(again != null, "the retry returned its result");
+        assertEquals(Optional.empty(), dlq.get(id).await(), "the row is removed once the retry went through");
+        List<Snapshot> t = store.timeline(again.id()).await();
+        assertEquals(List.of(Replay.REPLAY_INPUT, "b", "c"), t.stream().map(Snapshot::stepName).toList(), "the retry's rows were written before it returned");
+        assertTrue(t.stream().allMatch(r -> r.bodyKey().isPresent() && held.persisted(r.bodyKey().get())), "each keeps a durable key: " + t);
+        assertEquals(List.of(BlobKey.body(again.id(), 2)), held.persists().subList(before, held.persists().size()),
+                "step b's body once; the parked input (the retry's seed) never again");
+    }
 }
