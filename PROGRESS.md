@@ -582,3 +582,13 @@ Accepted: M2 (Node passes 64 MiB instead of durableMax): deploy refuses every bo
 Review: FAIL round 1 (the admin body route answered 500 instead of 404 over the Postgres tier); PASS round 2.
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 22; review rounds 2 (test-author hit the turn cap once).
 Next: P1-09j [C] (F-7, designer first).
+
+## 2026-10-27 — P1-09j durable DLQ bodies (F-7) — done, review PASS — Deviation: F-7
+Context compacted before this task (re-verified with git status / git log -3).
+Red: ParkingTest 7, FlowWorkerTest 2, DlqBodiesIT 4, PgBodiesIT 1 — all observed red (target/P1-09j-red-core.log, -red-runtime.log).
+Change: `Parking.park` persists the parked body in its own store, then writes the DLQ row (sequence, never Future.all); a failed persist fails the park, no row; the item reruns and past its bound parks the durable ingress. `TieredBlobStore.Stored` identity equality; Node refusal message names why off/local are refused. ARCHITECTURE §6 edited (sync never parks).
+Decided: D-062; F-8 (replay from step ≥ 2 after restart → P1-09c); FIX-35 (different bytes on conflict) before P1-09c; FIX-36 (rewrite leaks budget), FIX-37 (pin refusal wording, Dlq must not block).
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS 1117 tests (target/P1-09j-verify-all.log); coverage no decrease, baseline written; PIT Parking 9/9; packet mutants + 2 extra all killed in the tree (target/P1-09j-mutants-*.log).
+Review: PASS round 1.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 9; review rounds 1.
+Next: FIX-30 [B] (before d2).

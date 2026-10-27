@@ -73,19 +73,11 @@
   (FIX-2 r2): start the FakeClock at `.850Z`. Mutant runner for a scratch copy: JUnit `LauncherFactory` + `SummaryGeneratingListener`.
 - Testcontainers-postgresql 2.0.5 `getJdbcUrl()` ends with `?loggerLevel=OFF` (db name is NOT the URL's tail). A database per case
   (FIX-5 `MigrationsIT`): admin JDBC `CREATE DATABASE`, swap the path segment before `?`. Failsafe honours `-Dit.test=<Class>`.
-- XML resolution (FIX-6, JDK 25 / Saxon-HE 12.4): the JDK schema parser's refusal message names only the file part of a remote
-  URL ('x.xsd', not the URL); `ACCESS_EXTERNAL_SCHEMA=""` still loads inputs an LSResourceResolver supplies. A Saxon
-  ResourceResolver's XPathException message is the SaxonApiException's message at compile(). `Path.toUri()` of a NON-existing
-  dir has no trailing slash, so `dirUri.resolve("a")` lands in the parent. Probes: java single-file source + ~/.m2 jars.
-  With ACCESS_EXTERNAL_SCHEMA="" a refused import/include/DTD entity is a parser ERROR (stops at the first; a later reference
-  never reaches the resolver), not a warning. Saxon-HE 12.4 XsltCompiler.setResourceResolver does NOT cover a stylesheet's
-  DTD external entity, static unparsed-text()/doc() or use-when: all read files at compile time (FIX-6 r3). Counting
-  loopback `com.sun.net.httpserver.HttpServer` on 127.0.0.1:0 pins "never fetched" (JAVA_TOOL_OPTIONS nonProxyHosts has 127.*).
-  Scratch mutant runs of a module test class: relative `../../packages/demo` paths fail outside the module dir (6 cases).
-- Saxon-HE 12.4 (FIX-6 r4, probed): the default Configuration resolver (CatalogResourceResolver) answers NULL for a plain file:
-  URI (also via `ResourceRequest.resolve`). A static/use-when `collection()` in XSLT throws ClassCastException (PackageData →
-  StylesheetPackage, CollectionFn.call) before any CollectionFinder; `uri-collection('..')` lists the directory. A failing static
-  `unparsed-text()` stops further static vars; `unparsed-text-available()` swallows and compilation continues.
+- XML resolution (FIX-6, JDK 25 / Saxon-HE 12.4): JDK schema refusal names only the file part of a remote URL; ACCESS_EXTERNAL_SCHEMA=""
+  still loads LSResourceResolver inputs and makes a refused import/include/DTD entity a parser ERROR (stops at the first). Saxon
+  ResourceResolver misses DTD entities, static unparsed-text()/doc()/use-when (compile-time reads); default resolver answers NULL for
+  file: URIs; static collection() → ClassCastException. `Path.toUri()` of a non-existing dir has no trailing slash. Counting loopback
+  `HttpServer` on 127.0.0.1:0 pins "never fetched". Scratch mutant runs: `../../packages/demo` paths need the module dir as cwd.
 - Worker fixtures (core flow test tree, P1-08b): `RunGate` (step `gate`: holds each run until `Run.release()`, records thread → `joined()`,
   `overlaps()` per message id, `peakActive()`, `open()`), `RecordingWorkQueue` (decorates InMemoryWorkQueue: claims with max/in-flight/
   running probe, `holdNext`/`releaseHeld`, `failClaims`, `answerRenews`/`failRenews`, renews/holds/completes; one-shot `failNextClaim`,
@@ -108,7 +100,8 @@
   poll `pg_stat_activity where wait_event_type='Lock'` for 1/2/3 waiters, then roll back. Unsorted inserts → 40P01, observed in scratch.
 - Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`).
 - Rare hang (FIX-21): watchdog `jcmd <pid> Thread.dump_to_file` (virtual threads); late-listening reply pin: http `HttpComponentTest.LateListeningStore`.
-- P1-09h: core flow test `HoldingBlobStore` (persist hold/release/fail/answer(key,ok)/throwNext, `persists()`, `persisted(k)`); runtime blob
+- P1-09h: core flow test `HoldingBlobStore` (persist hold/release/fail/answer(key,ok)/throwNext/refuse(cause), `persists()`, `persisted(k)`;
+  `ParkingTest.rewrite(store)` step writes its output there, FlowWorkerTest `World.stepBodies` + `REWRITE`); runtime blob
   `PgBodiesIT.neverDeleted(pool)` (statement trigger: any DELETE on bodies fails); NodeIT `synchronousCommit(v)` = ALTER DATABASE (new sessions).
 - P1-09b: testkit test `ConsumerDrain.deliver` (track, then handler on own virtual thread); runtime test `node/OnVirtualThread`, `node/PlainComponent`; ArchUnit DoNotIncludeTests treats a scratch out dir as production.
 - Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic. P1-09d1b runtime test `deploy/`: `Doors` (scheme rec: held/failed start, failStop, onStop, drained stop), `TracingTimer`, `CountingQueue`, `PackageDraft` (zip a package). Red past an upstream test that does not compile: `-Dmaven.compiler.failOnError=false`; a stub compile check = javac against scratch stubs + `dependency:build-classpath`.
@@ -117,3 +110,6 @@
 - jqwik: test dep of core only (not runtime at P1-09d1a); it writes `.jqwik-database` into the cwd (core's is tracked). JDK 25 ZipFile
   (probed): reads both entries of a byte-patched duplicate name, inflates actual size whatever the CEN says, keeps `/abs` and `..` names;
   helpers `replaced`/`claimingUncompressedSize` in runtime `deploy/PackageArchiveTest`. json-schema Basic: one violation = several problems.
+- Pg IT event order (P1-09j DlqBodiesIT): "no DLQ row while the insert waits" let a Future.all mutant pass (its insert lags the lock-wait
+  probe); a BEFORE INSERT audit trigger noting exists(committed bodies row) kills it. Lease expiry: `update work set locked_until = now() - 1s`;
+  a second `worker.poll()` is a barrier (joins the in-flight follow-up claim). `verify -Pit -Dit.test=X` runs X twice (two failsafe executions).

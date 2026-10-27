@@ -18,6 +18,8 @@
 | 2026-10-26 | 3.4 | §9 item 3: a redeploy validates and builds the whole package before anything stops; each flow then swaps stop-then-start (old worker, old delivery with the stop deadline and old consumer, new consumer, new worker), all flows in parallel, with a brief refusal window per flow; a failed start rebuilds the old version; deployed state is in memory until P1-09c (D-057, P1-09d2) | F-5 |
 | 2026-10-26 | 3.4 | §5: until S3 (P2-05), the at-least-once save awaits `BlobStore.persist`, which moves bodies up to `FLOTTILA_BLOB_DURABLE_MAX` (1 MiB) into Postgres `bodies` keyed by message id + step; a flow whose max body is above the bound is refused at deploy (D-058; the refusal lands with P1-09d1b, durability with P1-09h) | F-6 |
 | 2026-10-26 | 3.4 | §9: a package folder is structure only (ids unique per package, `folder.yaml` keeps the namespace); a flow is addressed `<package>/<flow>`; a redeploy will swap only flows whose effective hash changed (lands with P1-09d2) (D-060) | — |
+| 2026-10-27 | 3.4 | §6 Retry per step: a DLQ row is written only after its body is persisted (`BlobStore.persist`, D-061); a park whose body cannot be persisted fails and the item reruns, past its attempts bound parking the already durable ingress; sync flows never park, they return the error (D-045, D-062) | F-7 (major) |
+| 2026-10-27 | 3.4 | §6 replay from step n: noted only — a replay from step n ≥ 2 after a restart reads node-local snapshot bodies; P1-09c answers 409, the text changes with P1-09c if that becomes the documented behaviour | F-8 (major) |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -191,7 +193,7 @@ With one virtual thread per message the reactive `Multi<Envelope>` stage contrac
 
 State rule: state whose loss loses messages goes to Postgres (aggregator, resequencer, idempotent ids, DLQ, ordered queues); state whose loss only changes tempo may be in memory or Valkey (throttle, circuit breaker, caches).
 
-Retry per step: policy from flow config, exponential backoff, only on steps marked retryable (I/O); final failure → DLQ row (by reference to the body) and, for sync flows, the error to the caller. At-most-once flows log and drop.
+Retry per step: policy from flow config, exponential backoff, only on steps marked retryable (I/O); final failure of an at-least-once flow → DLQ row by reference to the body, written only after that body is persisted (F-7); a sync flow returns the error to the caller and parks nothing (§4 table, D-045). At-most-once flows log and drop.
 
 **Inter-flow communication**, three mechanisms, all deploy-time checked for dependencies and cycles:
 

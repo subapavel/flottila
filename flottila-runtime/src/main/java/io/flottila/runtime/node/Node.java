@@ -92,7 +92,8 @@ public final class Node implements AutoCloseable {
      *
      * @param components builds the node's components, once, from the node's own context
      * @throws IllegalStateException two components for one scheme, a deployed environment and a mock binding among the components,
-     *                               or a {@code synchronous_commit} that does not wait for the commit's flush
+     *                               or a {@code synchronous_commit} other than on, remote_write or remote_apply ({@code off} does
+     *                               not wait for the WAL flush, {@code local} for a synchronous standby)
      * @throws IOException the spool a previous run left cannot be cleared
      */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
@@ -148,8 +149,8 @@ public final class Node implements AutoCloseable {
     private static void requireSynchronousCommit(Pool pool) {
         String value = pool.query("show synchronous_commit").execute().await().iterator().next().getString(0);
         if (!SYNCHRONOUS_COMMIT.contains(value)) {
-            throw new IllegalStateException("Postgres synchronous_commit is " + value + " for the node's sessions: an accepted message must survive a"
-                    + " crash, so it must be on, remote_write or remote_apply (D-061)");
+            throw new IllegalStateException("Postgres synchronous_commit is " + value + " for the node's sessions; it must be on, remote_write or"
+                    + " remote_apply (D-061): off acknowledges a commit before its WAL flush, local does not wait for a synchronous standby");
         }
     }
 

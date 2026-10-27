@@ -21,8 +21,10 @@ import java.util.Objects;
  * {@code persist} goes straight to the inner store. After {@link #hold()} every {@code persist} is kept pending — nothing
  * reaches the inner store — until {@link #release()} persists the held keys in the inner store and completes each future
  * with its outcome, {@link #fail(Throwable)} fails them, or {@link #answer(BlobKey, boolean)} settles one. {@link #throwNext}
- * makes the next {@code persist} throw instead of returning a future. {@link #persists()} lists every key {@code persist} was
- * called with — held, thrown, failed or passed alike — and {@link #persisted(BlobKey)} says whether the inner store made it durable.
+ * makes the next {@code persist} throw instead of returning a future; after {@link #refuse(Throwable)} every {@code persist}
+ * answers at once with a future failed by that cause (a store that cannot make the body durable: Postgres down, a body above
+ * its bound). {@link #persists()} lists every key {@code persist} was called with — held, thrown, refused, failed or passed
+ * alike — and {@link #persisted(BlobKey)} says whether the inner store made it durable.
  */
 final class HoldingBlobStore implements BlobStore {
 
@@ -31,6 +33,7 @@ final class HoldingBlobStore implements BlobStore {
     private final List<BlobKey> persists = new ArrayList<>();                 // guarded by this
     private boolean holding;                                                  // guarded by this
     private RuntimeException throwNext;                                       // guarded by this
+    private Throwable refusal;                                                // guarded by this
 
     HoldingBlobStore(InMemoryBlobStore inner) {
         this.inner = Objects.requireNonNull(inner, "inner");
@@ -80,6 +83,12 @@ final class HoldingBlobStore implements BlobStore {
         return this;
     }
 
+    /** From now on every {@code persist} fails at once with {@code cause} — the same instance each time — and makes nothing durable. */
+    synchronized HoldingBlobStore refuse(Throwable cause) {
+        refusal = Objects.requireNonNull(cause, "cause");
+        return this;
+    }
+
     /** Every key {@code persist} was called with, in call order. */
     synchronized List<BlobKey> persists() { return List.copyOf(persists); }
 
@@ -109,6 +118,7 @@ final class HoldingBlobStore implements BlobStore {
                 throwNext = null;
                 throw failure;
             }
+            if (refusal != null) return Future.failedFuture(refusal);
             if (holding) {
                 Promise<Void> p = Promise.promise();
                 held.put(key, p);

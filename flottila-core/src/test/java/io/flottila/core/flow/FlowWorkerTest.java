@@ -1,6 +1,8 @@
 package io.flottila.core.flow;
 
 import io.flottila.api.Ack;
+import io.flottila.api.BlobKey;
+import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
@@ -17,6 +19,7 @@ import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Page;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.InMemoryBlobStore;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -83,6 +86,8 @@ class FlowWorkerTest {
     static final Map<String, Object> TO_PARTNER = DeliveryTest.TO_PARTNER;
     /** A step that throws an {@link Error}: no parking catches it, so the item is left to its lease (D-049 c). */
     static final Map<String, Object> CRASH = Map.of("type", "crash", "name", "crash");
+    /** A step that hands on a new body written into {@link World#stepBodies}, a store the test makes refuse persists (P1-09j). */
+    static final Map<String, Object> REWRITE = Map.of("type", "rewrite", "name", "rewrite");
 
     World w;
     Logs logs;
@@ -155,6 +160,9 @@ class FlowWorkerTest {
         final FailingDlq dlq = new FailingDlq(parked);
         final RunGate gate = new RunGate();
         final StepFactory crash = ParkingTest.factory("crash", s -> Stage.of(e -> { throw new Crash("crashed at " + s.name()); }));
+        /** Where {@code rewrite} steps write the bodies they hand on: not the runtime's store, the ingress stays there. */
+        final HoldingBlobStore stepBodies = new HoldingBlobStore(new InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT));
+        final StepFactory rewrite = ParkingTest.rewrite(stepBodies);
         final Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", URI.create("mock://partner"), Map.of()));
         final List<FlowWorker> workers = new CopyOnWriteArrayList<>();
 
@@ -167,7 +175,7 @@ class FlowWorkerTest {
         }
 
         FlowBuilder builder(Runtime runtime) {
-            return new FlowBuilder(runtime, List.of(gate, crash), List.of(BuiltInStepsTest.HEADERS), endpoints)
+            return new FlowBuilder(runtime, List.of(gate, crash, rewrite), List.of(BuiltInStepsTest.HEADERS), endpoints)
                     .recording(store, Meter.system()).queue(queue).dlq(dlq);
         }
 
@@ -883,6 +891,88 @@ class FlowWorkerTest {
         assertEquals(List.of(), w.queue.holds(), "not held: there is nothing a human could retry");
         assertFalse(logs.at(Level.WARNING, "ghost").isEmpty(), "a WARNING naming the message: " + logs.all());
         assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items());
+    }
+
+    /**
+     * P1-09j (D-062): a park whose body cannot be made durable fails, writes no row and surfaces the step's failure, so the
+     * worker leaves the item to its lease — a WARNING, no completion, no hold — and the next claim runs it again.
+     */
+    @Test
+    void anItemWhoseParkCannotPersistIsLeftToItsLease() throws Exception {
+        int maxAttempts = 3;
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(REWRITE, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+        BlobKey stepBody = BlobKey.body(in.id(), 1);
+        BodyTooLargeException tooLarge = new BodyTooLargeException(stepBody, 70_000, 65_536);
+        w.stepBodies.refuse(tooLarge);
+        w.partner.failNext(100, () -> new NackException("order refused", false));
+
+        assertEquals(1, w1.poll().await(5, SECONDS), "the round claimed the item and ended without failing");
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(1, w.partner.sent().size(), "fixture: the run reached the partner, which refused");
+        assertEquals(List.of(stepBody), w.stepBodies.persists(), "the park asked to persist the partner step's input, the rewritten body");
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "no DLQ row: the body could not be made durable");
+        assertEquals(1, w.rows.size(), "the item stays queued");
+        assertEquals(List.of(), w.queue.completes(), "not completed");
+        assertEquals(List.of(), w.queue.holds(), "not held: within the bound");
+        String counted = "attempt 1 of " + maxAttempts;
+        List<String> warned = logs.at(Level.WARNING, in.id()).stream().filter(t -> t.contains(counted)).toList();
+        assertEquals(1, warned.size(), "one WARNING naming the message and '" + counted + "': " + logs.all());
+        assertTrue(warned.get(0).contains("left to its lease"), warned.get(0));
+        assertTrue(warned.get(0).contains("order refused"), "names the step's failure: " + warned.get(0));
+        assertTrue(warned.get(0).contains(tooLarge.getMessage()), "and, suppressed, the persist's: " + warned.get(0));
+        assertEquals(List.of(), logs.at(Level.SEVERE, in.id()));
+
+        assertEquals(0, w1.poll().await(5, SECONDS), "leased: nobody claims it before its lease ran out");
+        w.rt.clock().advance(LEASE);
+        assertEquals(1, w1.poll().await(5, SECONDS), "after its lease the item is claimed again");
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(List.of(1, 2), w.claimedAttempts(), "the second claim is attempt 2");
+        assertEquals(2, w.partner.sent().size(), "and ran again");
+        assertEquals(1, w.rows.size());
+    }
+
+    /**
+     * P1-09j (D-062): past the bound, a message whose step body can never be made durable is parked by its ingress at step 1 —
+     * durable since its delivery (D-058) — without a run; its item completes.
+     */
+    @Test
+    void pastTheBoundAnUnpersistableStepBodyParksTheIngressAtTheFirstStep() throws Exception {
+        int maxAttempts = 2;
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(REWRITE, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+        BlobKey stepBody = BlobKey.body(in.id(), 1);
+        w.stepBodies.refuse(new BodyTooLargeException(stepBody, 70_000, 65_536));
+        w.partner.failNext(100, () -> new NackException("order refused", false));
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt);
+            until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+            assertEquals(attempt, w.partner.sent().size(), "attempt " + attempt + " ran");
+            assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "attempt " + attempt + ": no DLQ row, the step body is not durable");
+            assertEquals(1, w.rows.size(), "attempt " + attempt + ": left to its lease");
+            w.rt.clock().advance(LEASE);
+        }
+        assertEquals(1, w1.poll().await(5, SECONDS), "the claim past the bound");
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+
+        assertEquals(maxAttempts, w.partner.sent().size(), "the claim past the bound does not run");
+        assertEquals(List.of(1, 2, 3), w.claimedAttempts());
+        Parked p = w.parkedRow();
+        assertEquals(in.id(), p.messageId());
+        assertEquals(1, p.step(), "parked at step 1");
+        assertEquals("rewrite", p.stepName());
+        assertEquals(in.body().key(), p.bodyKey(), "the ingress, by reference");
+        assertTrue(p.error().contains("AttemptsExhaustedException"), p.error());
+        assertTrue(w.rt.blobs().persisted(in.body().key()), "the ingress body is durable");
+        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(), "the step body was tried once per run, never by the exhausted park");
+        assertEquals(0, w.rows.size(), "parked: the item is completed");
+        assertEquals(List.of(), w.queue.holds());
+        assertEquals(List.of(), logs.at(Level.SEVERE, in.id()), "no alert: the park succeeded");
     }
 
     // --- the policy

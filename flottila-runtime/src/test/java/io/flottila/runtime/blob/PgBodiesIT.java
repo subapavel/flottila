@@ -238,6 +238,43 @@ class PgBodiesIT {
         assertEquals(0, s.memoryInUse());
     }
 
+    /**
+     * P1-09j (D-062): the key is written again — same size, other bytes, spooled to the same file name — while a persist's
+     * insert waits. Once that persist completes, the rewrite is not mistaken for the body the persist moved: its index entry
+     * and its spool file stay, and the key reads the rewrite.
+     */
+    @Test
+    void aSameSizeSpoolRewriteDuringAPersistKeepsTheRewrite() {
+        BlobKey k = BlobKey.body("m-rewritten", 1);
+        Buffer first = bytes(600, 11);
+        Buffer rewrite = bytes(600, 12);
+        assertFalse(first.equals(rewrite), "fixture: other bytes");
+        TieredBlobStore s = store(dir, 0, pool);   // no memory tier: both writes spool under the same file name
+        await(s.write(k, first, FLOW_MAX));
+        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "fixture: spooled");
+        Future<Void> persisted;
+        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
+        try {
+            Transaction held = holder.begin().await();
+            holder.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)")
+                    .execute(Tuple.of(k.messageId(), k.step(), k.part(), Buffer.buffer("the other session's, rolled back"))).await();
+            persisted = s.persist(k);
+            until(() -> lockWaiters() == 1, "the persist read the first bytes and its insert waits on the other session's uncommitted row");
+            await(s.write(k, rewrite, FLOW_MAX));   // written again meanwhile: same key, same size, other bytes
+            assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "fixture: the rewrite is spooled");
+            assertFalse(persisted.isComplete(), "fixture: the persist still waits: " + persisted);
+            held.rollback().await();
+        } finally {
+            holder.close().await();
+        }
+        await(persisted);
+        assertEquals(Optional.of(first), row(k), "fixture: the persist inserted the bytes it had read");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "the rewrite is not the body the persist moved: its index entry stays");
+        assertEquals(rewrite, await(s.read(k)), "and the key reads the rewrite, from its spool file");
+        assertEquals(rewrite, await(collect(s.open(k))), "streamed too");
+        assertEquals(1, files(dir).size(), "the rewrite's spool file stays: " + files(dir));
+    }
+
     @Test
     void aBodyOfExactlyTheBoundPersists() {
         BlobKey k = BlobKey.body("m-exact", 0);

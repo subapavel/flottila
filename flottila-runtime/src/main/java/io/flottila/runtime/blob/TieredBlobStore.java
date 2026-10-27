@@ -94,7 +94,31 @@ public final class TieredBlobStore implements BlobStore {
 
     private static final System.Logger LOG = System.getLogger(TieredBlobStore.class.getName());
 
-    private record Stored(Location location, Buffer bytes, Path file, String s3Key, long size) {}
+    /**
+     * One write's index entry. Identity equality, never value equality (D-062): a same-size rewrite of a spool body has the
+     * same location, file and size, and {@link #release} must not take it for the entry its persist read.
+     */
+    private static final class Stored {
+        private final Location location;
+        private final Buffer bytes;
+        private final Path file;
+        private final String s3Key;
+        private final long size;
+
+        Stored(Location location, Buffer bytes, Path file, String s3Key, long size) {
+            this.location = location;
+            this.bytes = bytes;
+            this.file = file;
+            this.s3Key = s3Key;
+            this.size = size;
+        }
+
+        Location location() { return location; }
+        Buffer bytes() { return bytes; }
+        Path file() { return file; }
+        String s3Key() { return s3Key; }
+        long size() { return size; }
+    }
 
     /** A store without a durable tier: {@link #persist} succeeds for an S3 body only. */
     public TieredBlobStore(Config config, Hasher hasher) {

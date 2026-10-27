@@ -92,3 +92,5 @@
 - A wrong-expectation fix that waits for an async step before acting removes the window the old synchronous test pinned; re-run the mutant of what that window guarded (P1-09b, Drain count).
 - `catch (Throwable)` around a harness call swallows the harness's own timeout `fail()` (P1-09b, NodeIT).
 - Ledger splits: grep migration numbers (Vn) across BACKLOG rows and findings when a D-row renumbers them (P1-09d3: P1-09c and F-5 kept V6).
+- TieredBlobStore.write (:192/:206/:527): a rewrite of a key replaces the index entry without releasing the old one's budget or spool file (FIX-36). Check on every task where reruns rewrite keys (P1-09j).
+- A `compose` after a store future runs the next store call on the thread that completes it (the event loop for Pg). Check the callee does not block (P1-09j, Parking:65).
