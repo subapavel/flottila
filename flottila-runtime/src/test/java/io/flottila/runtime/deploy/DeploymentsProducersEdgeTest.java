@@ -48,7 +48,7 @@ class DeploymentsProducersEdgeTest {
         env.put("FLOTTILA_DATA_DIR", tmp.resolve("data").toString());
         env.put("FLOTTILA_BLOB_DURABLE_MAX", "4096");
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), List.of(), List.of(),
+        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(),
                 new InMemoryMessageStore(), new InMemoryDlq(), new CountingQueue(rt.clock()), () -> 0L);
     }
 

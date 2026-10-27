@@ -129,7 +129,7 @@ class DeploymentsRedeployEdgeTest {
         env.put("FLOTTILA_DATA_DIR", data.toString());
         env.put("FLOTTILA_BLOB_DURABLE_MAX", "4096");
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        return new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), steps, List.of(),
+        return new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, steps, List.of(),
                 new InMemoryMessageStore(), new InMemoryDlq(), new Faulty(), () -> 0L);
     }
 

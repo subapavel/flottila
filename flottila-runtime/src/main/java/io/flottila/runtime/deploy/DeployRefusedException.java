@@ -5,7 +5,8 @@ import java.util.Objects;
 
 /**
  * Why {@link Deployments#deploy} refused a package (D-059): its {@link Kind} — the admin API answers each with its own status —
- * the error line, and for {@link Kind#INVALID} every problem found, one line each, none with an absolute path.
+ * the error line, and for {@link Kind#INVALID} every problem found, one line each, none with an absolute path; for a redeploy that
+ * did not start and rolled back ({@link Kind#FAILED}, D-063) every flow that did not start, build or start again.
  *
  * @since 0.1
  */
@@ -21,7 +22,10 @@ public final class DeployRefusedException extends Exception {
         CONFLICT,
         /** The node is closing (503). */
         STOPPING,
-        /** A flow did not start; every flow the deploy built was stopped again, the flows it replaced or removed stay stopped (500). */
+        /**
+         * A flow did not start (500): every flow the deploy built was stopped again; on a redeploy the flows it replaced or removed
+         * run again from the directories they ran from, or are listed FAILED (D-063).
+         */
         FAILED,
         /** A deployed environment: manual deploy is non-production only (403). */
         FORBIDDEN
@@ -44,6 +48,6 @@ public final class DeployRefusedException extends Exception {
     /** The error line. */
     public String error() { return error; }
 
-    /** Every problem of an {@link Kind#INVALID} package, one line each; empty for every other kind. */
+    /** Every problem of an {@link Kind#INVALID} package, or of a {@link Kind#FAILED} redeploy, one line each; otherwise empty. */
     public List<String> problems() { return problems; }
 }

@@ -81,7 +81,7 @@ class AdminServerUploadTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         InMemoryMessageStore messages = new InMemoryMessageStore();
         InMemoryDlq dlq = new InMemoryDlq();
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), List.of(), List.of(), messages, dlq, new InMemoryWorkQueue(rt.clock()), () -> 0L);
+        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq, new InMemoryWorkQueue(rt.clock()), () -> 0L);
         server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, rt.blobs(),
                 new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments));
         port = server.start(vertx).await(10, TimeUnit.SECONDS);

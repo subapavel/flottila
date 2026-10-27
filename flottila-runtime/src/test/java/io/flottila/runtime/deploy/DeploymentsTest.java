@@ -68,7 +68,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * worker ticks and stop deadlines — so nothing here waits on wall time.
  *
  * <p>The shape these tests assume (P1-09d1b test-author): in {@code io.flottila.runtime.deploy}, {@code Deployments(NodeConfig,
- * Runtime, Map<String, Component>, Clock, List<StepFactory>, List<Expressions>, MessageStore, Dlq, WorkQueue, Meter)} with {@code deploy(String
+ * Runtime, Map<String, Component>, Clock, Timer, List<StepFactory>, List<Expressions>, MessageStore, Dlq, WorkQueue, Meter)} (the
+ * {@code Timer} since P1-09d2c, the runtime's own, passed explicitly) with {@code deploy(String
  * name, Optional<String> revision, Path archive)} (its {@code DeployResult.pkg()} the {@code DeployedPackage} deployed since P1-09d2b, which made
  * a deploy of a running package a redeploy: {@code DeploymentsRedeployTest}), {@code List<DeployedFlow> flows()}, {@code List<DeployedPackage> packages()},
  * {@code long maxPackageBytes()}, {@code Path incomingDir()}, {@code void close()}; {@code DeployRefusedException} with
@@ -133,7 +134,7 @@ class DeploymentsTest {
     }
 
     Deployments deployments(NodeConfig c) {
-        return new Deployments(c, runtime(), Map.of(Doors.SCHEME, doors), rt.clock(), List.of(), List.of(), messages, dlq, queue, () -> 0L);
+        return new Deployments(c, runtime(), Map.of(Doors.SCHEME, doors), rt.clock(), timer, List.of(), List.of(), messages, dlq, queue, () -> 0L);
     }
 
     /**
@@ -757,7 +758,7 @@ class DeploymentsTest {
         assertFalse(orders.answer().isComplete() || refunds.answer().isComplete(), "both messages are still in flight");
         assertFalse(closing.isDone(), "close waits for them");
         assertEquals(Kind.STOPPING, refused("store", Optional.empty(), shop("store").zipTo(archives)).kind(), "a deploy while closing is 503");
-        until(() -> timer.all().stream().filter(t -> t.delay().equals(STOP_DEADLINE)).count() >= 2,
+        until(() -> timer.all().stream().filter(t -> t.owner().equals("Delivery") && t.delay().equals(STOP_DEADLINE)).count() >= 2,
                 "both deliveries with a message in flight were stopped with the node's stop deadline " + STOP_DEADLINE + " (their deadline timers): " + timer.all());
 
         ordersHeld.countDown();

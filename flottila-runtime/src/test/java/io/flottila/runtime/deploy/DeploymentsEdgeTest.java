@@ -60,7 +60,7 @@ class DeploymentsEdgeTest {
     Deployments deployments(Map<String, Component> components, List<StepFactory> steps) {
         Map<String, String> env = Map.of("FLOTTILA_ENV", "dev", "FLOTTILA_NODE_ID", "node-1", "FLOTTILA_DATA_DIR", tmp.resolve("data").toString());
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
-        Deployments d = new Deployments(NodeConfig.from(env), runtime, components, rt.clock(), steps, List.of(), new InMemoryMessageStore(), new InMemoryDlq(),
+        Deployments d = new Deployments(NodeConfig.from(env), runtime, components, rt.clock(), rt.timer(), steps, List.of(), new InMemoryMessageStore(), new InMemoryDlq(),
                 new InMemoryWorkQueue(rt.clock()), () -> 0L);
         made.add(d);
         return d;

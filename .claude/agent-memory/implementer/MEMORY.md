@@ -24,8 +24,6 @@
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
 - A new Flyway migration bumps the schema version asserted in THREE ITs: runtime MigrationsIT, runtime
   PgMessageStoreIT (@BeforeAll, `start:53`) and bench BenchMainIT:36 — packets tend to name only MigrationsIT (P1-08b).
-- Focused core runs are ~5 s (`-pl flottila-core -am test -Dtest=A,B -Dsurefire.failIfNoSpecifiedTests=false
-  -Djacoco.skip=true`): a scripted mutant loop (cp backup, replace, run, read surefire XML, cp + touch, cmp) is cheap.
 - Mutant loop: add `-Dsurefire.timeout=150` so a mutant that hangs a stop()/await is killed by "timeout in the fork" (mock and
   some testkit tests have no @Timeout). Never kill a running loop without restoring the mutated file from its backup (cp + touch + cmp).
 - Failsafe `-Dit.test=A,B` together with `-am` fails upstream modules ("No tests matching pattern"): add
@@ -52,13 +50,13 @@
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
 - Probing an HttpClient answer: read `res.body()` inside the compose chain; after `await()` on another thread the body is lost.
-- Context7 may be over quota (ISSUE-1) or not exposed: `javap -cp ~/.m2/repository/io/vertx/vertx-core/5.1.10/vertx-core-5.1.10.jar <class>`.
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
   connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
 - runtime tests: System.Logger goes to JUL (slf4j-simple, no platform-logging bridge): capture with a JUL Handler on `Logger.getLogger(<class>)`.
-- Vert.x 5.1.10 (javap): `Promise.tryComplete(T)`, `Future.all(List)` → CompositeFuture, `map(V)`,
-  `onComplete(Handler<AsyncResult>)` and `onComplete(Completable)` (a Promise is a Completable).
+- Vert.x 5.1.10 (javap/source): `Promise.tryComplete(T)`; `complete(T,Throwable)` THROWS when already done (use tryComplete/
+  tryFail); `Future.join` fails after all settle with the first failure in INDEX order; an `eventually` supplier throw is lost
+  (completes with the ORIGINAL outcome); `compose`/`transform`/`Future.future` fail on any Throwable, a listener's throw is lost.
 - Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
   static `doc()`/`unparsed-text()`/`use-when` read via `Configuration.getResourceResolver()` (UseWhenFilter builds
   `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
@@ -66,8 +64,7 @@
   static `unparsed-text*()` → `uri` already absolute, base and rel null; DTD entity → `uri` = literal, rel null, base set;
   CollectionFinder gets only the absolute URI. Xerces LSResourceResolver: `systemId` literal, `baseURI` of the including schema.
 - An unreadable file even as root (a catch over `Files.readAllBytes`): symlink to `/proc/self/mem` (isRegularFile, read → EIO).
-- Vert.x 5.1.10 (javap): `transform(Function<AsyncResult<T>,Future<U>>)` (+ BiFunction overload), `andThen(Handler<AsyncResult>)`
-  completes after the handler ran, `eventually(Supplier<Future<U>>)`; `Future.await()` works on a plain virtual thread.
+- Vert.x 5.1.10: `andThen(Handler<AsyncResult>)` completes after the handler ran; `Future.await()` works on a plain virtual thread.
 - FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
   cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
 - Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (observed, P1-08c): stops accepting, keeps an HTTP/1.1 connection until its
@@ -117,3 +114,7 @@
   to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
 - A fixture that bumps a counter a test polls (`until(closes() > 0)`) BEFORE recording what the test then reads races (FIX-30 r2,
   Doors.Out.close): record first, count last. Mutants that hang a close need `-Dsurefire.timeout`; N4-style ones take ~130 s.
+- deploy TracingTimer lists/traces a task BEFORE `inner.schedule`: advancing the FakeTimer in that window loses it; wait on
+  `rt.timer().pending()`. FlowWorker polls once more after each item finishes: read claim counts only after that claim (P1-09d2c).
+- A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
+  rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.

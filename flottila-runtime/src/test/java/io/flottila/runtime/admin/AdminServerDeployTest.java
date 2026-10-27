@@ -125,7 +125,7 @@ class AdminServerDeployTest {
         e.put("FLOTTILA_DATA_DIR", data.toString());
         e.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(MAX));
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), List.of(), List.of(), messages, dlq, new InMemoryWorkQueue(rt.clock()), () -> 0L);
+        Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq, new InMemoryWorkQueue(rt.clock()), () -> 0L);
         made.add(d);
         return d;
     }
@@ -502,6 +502,69 @@ class AdminServerDeployTest {
         assertEquals(new JsonArray().add("shop/audit"), body.getJsonArray("removed"), "the flow v2 no longer has: " + body);
         assertEquals(List.of("shop/orders", "shop/ping", "shop/refunds"),
                 get("/admin/flows").json().getJsonArray("items").stream().map(i -> ((JsonObject) i).getString("id")).toList(), "GET /admin/flows lists v2's flows");
+    }
+
+    /** {@code shop} at {@code version} with the sync flows {@code orders} and {@code ping}; {@code orders}' yaml carries {@code text}. */
+    static PackageDraft ordersAndPing(String version, String text) {
+        Map<String, String> flows = new java.util.LinkedHashMap<>();
+        flows.put("orders", "sync");
+        flows.put("ping", "sync");
+        PackageDraft p = pkg("shop", version, flows);
+        p.flowDoc("orders").put("description", text);
+        return p;
+    }
+
+    /**
+     * P1-09d2c (D-063; D-059's 500 gains {@code problems}): a redeploy whose start fails rolls back and answers 500
+     * {@code {error, problems}} — the error names the version that did not start and the one that runs again, each problem is a
+     * line, one names the flow and the cause — and GET /admin/flows and /admin/packages list what ran before, every flow RUNNING.
+     */
+    @Test
+    void failedStart500HasProblems() throws Exception {
+        assertJson(200, put("/admin/packages/shop?revision=r1", ordersAndPing("1.0.0", "v1").zip()), "fixture: v1");
+        JsonObject flowsBefore = get("/admin/flows").json();
+        JsonObject packagesBefore = get("/admin/packages").json();
+        doors.failStartOf("shop/orders", "address in use");
+
+        Answer a = put("/admin/packages/shop?revision=r2", ordersAndPing("1.1.0", "v2").zip());
+
+        assertJson(500, a, "a redeploy whose start failed");
+        JsonObject body = a.json();
+        assertEquals(Set.of("error", "problems"), body.fieldNames(), "a 500 of a failed start is {error, problems}: " + body);
+        String error = body.getString("error");
+        assertTrue(error.contains("version 1.1.0 did not start") && error.contains("1.0.0 runs again"), "the error says which version runs: " + body);
+        JsonArray problems = body.getJsonArray("problems");
+        assertTrue(!problems.isEmpty() && problems.stream().allMatch(String.class::isInstance), "problems are lines: " + problems);
+        assertTrue(problems.stream().map(String.class::cast).anyMatch(l -> l.contains("orders") && l.contains("address in use")), "a line names the flow and the cause: " + problems);
+        assertEquals(flowsBefore, get("/admin/flows").json(), "v1's flows are listed as before, RUNNING");
+        assertEquals(packagesBefore, get("/admin/packages").json(), "the package record is v1's");
+    }
+
+    /**
+     * P1-09d2c: a redeploy whose start fails and whose rollback cannot start {@code orders} again either answers 500 naming
+     * "flows [shop/orders] FAILED"; GET /admin/flows lists orders as before but in state FAILED, ping RUNNING; the package record
+     * is v1's and still names orders.
+     */
+    @Test
+    void aFlowWhoseRollbackFailedShowsFAILEDInGetFlows() throws Exception {
+        assertJson(200, put("/admin/packages/shop?revision=r1", ordersAndPing("1.0.0", "v1").zip()), "fixture: v1");
+        JsonObject flowsBefore = get("/admin/flows").json();
+        JsonObject packagesBefore = get("/admin/packages").json();
+        doors.failStartOf("shop/orders", "address in use");
+        doors.failStartOf("shop/orders", "still in use");
+
+        Answer a = put("/admin/packages/shop?revision=r2", ordersAndPing("1.1.0", "v2").zip());
+
+        assertJson(500, a, "a redeploy whose rollback failed");
+        assertEquals(Set.of("error", "problems"), a.json().fieldNames(), "{error, problems}: " + a.json());
+        assertTrue(a.json().getString("error").contains("flows [shop/orders] FAILED"), "the error names the FAILED flow: " + a.json());
+        JsonObject expected = flowsBefore.copy();
+        for (Object o : expected.getJsonArray("items")) {
+            JsonObject item = (JsonObject) o;
+            if (item.getString("id").equals("shop/orders")) item.put("state", "FAILED");
+        }
+        assertEquals(expected, get("/admin/flows").json(), "orders is listed as before, FAILED; ping RUNNING");
+        assertEquals(packagesBefore, get("/admin/packages").json(), "the package record is v1's, naming orders");
     }
 
     @Test

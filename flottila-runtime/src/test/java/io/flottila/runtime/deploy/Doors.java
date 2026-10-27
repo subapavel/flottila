@@ -42,6 +42,14 @@ import java.util.function.Function;
  * boundary — together with two kinds {@link #events()} leaves out: {@code "stopped <flow>"} when a door's stop() future
  * completes (before whoever awaits it sees it), and {@code "close <endpoint> #<ordinal>"} at each producer close call.
  * {@link #onConsumer} runs a hook at the top of every consumer() call.
+ *
+ * <p>P1-09d2c: a start or a stop can be held or failed by the flow it belongs to ({@link #holdStartOf}, {@link #failStartOf},
+ * {@link #holdStopOf}) — the gates of one flow apply to its next start() (stop()) calls in the order armed, whichever door makes
+ * them, and take precedence over an ordinal gate of {@link #holdStart} for that call. Every door keeps its own history on one
+ * sequence shared by every door and producer of this component ({@link Door#history()}, {@link Door#first}, {@link Door#last}):
+ * {@code start} (called), {@code started} (its future succeeded), {@code start failed}, {@code stop} (called) and {@code stopped}
+ * (its future completed) — and every producer the sequence number of its first close ({@link Out#closedAt()}), so a test orders
+ * the events of one door against another's even when both serve the same flow.
  */
 public final class Doors implements Component {
 
@@ -67,6 +75,10 @@ public final class Doors implements Component {
     private volatile java.util.function.Consumer<String> trace = e -> {};
     private volatile java.util.function.Consumer<EndpointConfig> onConsumer = c -> {};
     private int starts;   // guarded by this: start() calls so far
+    private final Map<String, java.util.Queue<Gate>> startGates = new ConcurrentHashMap<>();
+    private final Map<String, java.util.Queue<Gate>> stopGates = new ConcurrentHashMap<>();
+    /** One sequence for every door's history and every producer's close: a later event has a higher number. */
+    private final java.util.concurrent.atomic.AtomicLong seq = new java.util.concurrent.atomic.AtomicLong();
 
     /**
      * From now on every event of {@link #events()} also goes to {@code sink}, on the thread that made it, and so do
@@ -121,19 +133,58 @@ public final class Doors implements Component {
         return g;
     }
 
+    /**
+     * The next start() of a door whose {@code flow} option is {@code flow}, after those the earlier gates of that flow took, waits
+     * until the gate is released or failed; a gate never released is a start that never completes.
+     */
+    public Gate holdStartOf(String flow) {
+        return armed(startGates, flow, new Gate(0, null));
+    }
+
+    /** The next start() of a door whose {@code flow} option is {@code flow} (after the earlier gates of that flow) fails at once with {@code message}. */
+    public Gate failStartOf(String flow, String message) {
+        return armed(startGates, flow, new Gate(0, Objects.requireNonNull(message, "message")));
+    }
+
+    /**
+     * The next stop() of a door whose {@code flow} option is {@code flow} (after the earlier gates of that flow) is called as
+     * usual — the door refuses nothing new and drains — but its future completes only once its answers have completed and the
+     * gate is released; a gate never released is a stop that never completes. {@link Gate#reached()} counts down at the call.
+     */
+    public Gate holdStopOf(String flow) {
+        return armed(stopGates, flow, new Gate(0, null));
+    }
+
+    private Gate armed(Map<String, java.util.Queue<Gate>> byFlow, String flow, Gate g) {
+        byFlow.computeIfAbsent(Objects.requireNonNull(flow, "flow"), f -> new java.util.concurrent.ConcurrentLinkedQueue<>()).add(g);
+        gates.add(g);   // released by releaseAll; ordinal 0 never matches a start() call
+        return g;
+    }
+
+    private static Gate next(Map<String, java.util.Queue<Gate>> byFlow, String flow) {
+        java.util.Queue<Gate> q = byFlow.get(flow);
+        return q == null ? null : q.poll();
+    }
+
+    private long tick() {
+        return seq.incrementAndGet();
+    }
+
     /** The stop() of the door with flow option {@code flow} fails with {@code message} once its answers have completed. */
     public void failStop(String flow, String message) { stopFailures.put(flow, message); }
 
     /** Runs inside every door's stop(), on the stopping thread, before the stop returns. */
     public void onStop(java.util.function.Consumer<Door> hook) { this.onStop = Objects.requireNonNull(hook, "hook"); }
 
-    /** Releases every held start: what a case left held never outlives it. */
+    /** Releases every held start and stop: what a case left held never outlives it. */
     public void releaseAll() {
         for (Gate g : gates) g.release();
     }
 
-    private synchronized Gate gateFor() {
+    private synchronized Gate gateFor(String flow) {
         int n = ++starts;
+        Gate byFlow = next(startGates, flow);
+        if (byFlow != null) return byFlow;
         for (Gate g : gates) if (g.ordinal == n) return g;
         return null;
     }
@@ -193,6 +244,7 @@ public final class Doors implements Component {
         private final List<Integer> unansweredAtClose = new CopyOnWriteArrayList<>();
         private final List<String> sentIds = new CopyOnWriteArrayList<>();
         private final java.util.Set<Promise<Envelope>> pending = ConcurrentHashMap.newKeySet();
+        private volatile long closedAt = -1;
 
         Out(int ordinal, String endpoint, Producer inner) {
             this.ordinal = ordinal;
@@ -205,6 +257,9 @@ public final class Doors implements Component {
         public String endpoint() { return endpoint; }
 
         public int closes() { return closes.get(); }
+
+        /** The sequence number of its first close() call (P1-09d2c: comparable with {@link Door#first}); -1 before one. */
+        public long closedAt() { return closedAt; }
 
         /** The ids of the envelopes sent through this producer. */
         public List<String> sentIds() { return List.copyOf(sentIds); }
@@ -233,6 +288,10 @@ public final class Doors implements Component {
         @Override
         public Future<Void> close() {
             trace.accept("close " + endpoint + " #" + ordinal);
+            long at = tick();
+            synchronized (this) {
+                if (closedAt < 0) closedAt = at;
+            }
             unansweredAtClose.add(unanswered.get());   // before the count: a test that waits for closes() > 0 then reads it
             closes.incrementAndGet();
             if (closeFailsSends) {
@@ -249,7 +308,10 @@ public final class Doors implements Component {
 
     @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }
 
-    /** A start() held or failed by the test. */
+    /** One event of a door's history and its place in the component's sequence. */
+    record Mark(long seq, String kind) {}
+
+    /** A start() (or, from {@link #holdStopOf}, a stop()) held or failed by the test. */
     public static final class Gate {
         final int ordinal;
         final String failure;
@@ -262,13 +324,13 @@ public final class Doors implements Component {
             this.failure = failure;
         }
 
-        /** Counted down when the start() call this gate holds was made. */
+        /** Counted down when the start() (stop()) call this gate holds was made. */
         public CountDownLatch reached() { return reached; }
 
-        /** The door whose start() this gate holds; null before {@link #reached()}. */
+        /** The door whose start() (stop()) this gate holds; null before {@link #reached()}. */
         public Door door() { return door; }
 
-        /** Lets the held start succeed. */
+        /** Lets the held start (stop) succeed. */
         public void release() { result.tryComplete(); }
 
         /** Fails the held start with an {@link IllegalStateException} carrying {@code message}. */
@@ -284,6 +346,7 @@ public final class Doors implements Component {
         private int open = 1;                 // guarded by this: the door's own hold until stop, plus each outstanding answer
         private volatile boolean started;     // its start() succeeded
         private volatile boolean stopped;     // its stop() was called
+        private final List<Mark> history = new CopyOnWriteArrayList<>();
 
         Door(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
             this.cfg = cfg;
@@ -303,6 +366,27 @@ public final class Doors implements Component {
         public boolean started() { return started; }
 
         public boolean stopped() { return stopped; }
+
+        /** Its events in order: {@code start}, {@code started}, {@code start failed}, {@code stop}, {@code stopped}. */
+        public List<String> history() { return history.stream().map(Mark::kind).toList(); }
+
+        /** The sequence number of its first {@code kind} event (see {@link #history()}); -1 when there was none. */
+        public long first(String kind) {
+            for (Mark m : history) if (m.kind().equals(kind)) return m.seq();
+            return -1;
+        }
+
+        /** The sequence number of its last {@code kind} event; -1 when there was none. */
+        public long last(String kind) {
+            long found = -1;
+            for (Mark m : history) if (m.kind().equals(kind)) found = m.seq();
+            return found;
+        }
+
+        /** Its stop() calls so far. */
+        public int stops() { return (int) history.stream().filter(m -> m.kind().equals("stop")).count(); }
+
+        private void mark(String kind) { history.add(new Mark(tick(), kind)); }
 
         /**
          * Delivers {@code e} as a consumer would: the handler runs on a virtual thread of its own, the answer is counted until it
@@ -324,8 +408,9 @@ public final class Doors implements Component {
 
         @Override
         public Future<Void> start() {
+            mark("start");
             event("start " + flow());
-            Gate g = gateFor();
+            Gate g = gateFor(flow());
             Future<Void> result;
             if (g == null) {
                 result = Future.succeededFuture();
@@ -335,18 +420,32 @@ public final class Doors implements Component {
                 result = g.result.future();
                 g.reached.countDown();
             }
-            return result.onSuccess(v -> started = true);
+            return result.onSuccess(v -> {
+                started = true;
+                mark("started");
+            }).onFailure(failed -> mark("start failed"));
         }
 
         @Override
         public Future<Void> stop() {
             stopped = true;
+            mark("stop");
             event("stop " + flow());
             onStop.accept(this);
             stopping.tryComplete();
             String failure = stopFailures.get(flow());
             Future<Void> stop = failure == null ? drained.future() : drained.future().compose(v -> Future.failedFuture(new IllegalStateException(failure)));
-            return stop.andThen(done -> trace.accept("stopped " + flow()));
+            Gate held = next(stopGates, flow());
+            if (held != null) {
+                held.door = this;
+                Future<Void> drainedFirst = stop;
+                stop = drainedFirst.compose(v -> held.result.future());
+                held.reached.countDown();
+            }
+            return stop.andThen(done -> {
+                mark("stopped");
+                trace.accept("stopped " + flow());
+            });
         }
 
         @Override

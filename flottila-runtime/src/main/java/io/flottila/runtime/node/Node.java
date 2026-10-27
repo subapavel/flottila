@@ -127,7 +127,7 @@ public final class Node implements AutoCloseable {
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
-            Deployments deployments = new Deployments(config, runtime, byScheme, clock, stepFactories, expressions, messages, dlq, new PgWorkQueue(pool),
+            Deployments deployments = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, new PgWorkQueue(pool),
                     Meter.system());
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed),

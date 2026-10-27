@@ -69,7 +69,8 @@ import java.util.function.Supplier;
  * temp file in {@code incomingDir()} and counted, 413 at byte max+1; the deploy runs on the route's virtual thread and the temp
  * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows, added,
  * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed, D-063), or a refusal
- * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500, 503. An answer given before
+ * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500 ({@code {error}}; a redeploy
+ * whose start failed and rolled back: {@code {error, problems}}, D-063), 503. An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
  * (D-063). Without one these routes do not exist (404).
@@ -421,7 +422,7 @@ public final class AdminServer {
         return Json.of(200, new JsonObject().put("items", items));
     }
 
-    /** A refusal by its kind: 400, 403, 409, 422 (with every problem), 500, 503. */
+    /** A refusal by its kind: 400, 403, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503. */
     private static Reply refusal(DeployRefusedException refused) {
         int status = switch (refused.kind()) {
             case BAD_REQUEST -> 400;
@@ -432,7 +433,7 @@ public final class AdminServer {
             case STOPPING -> 503;
         };
         JsonObject body = error(refused.error());
-        if (refused.kind() == DeployRefusedException.Kind.INVALID) body.put("problems", new JsonArray(refused.problems()));
+        if (!refused.problems().isEmpty()) body.put("problems", new JsonArray(refused.problems()));
         return Json.of(status, body);
     }
 

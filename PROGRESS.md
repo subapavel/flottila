@@ -628,3 +628,14 @@ Checks: whole reactor -Pit VERIFIED_PASS surefire 1118 + failsafe 135 (target/P1
 Review: FAIL round 1 (phase A and phase B parallelism unpinned); PASS round 2. Notes for d2c, FIX-38, FIX-40 on their rows.
 D-054 data: class C (test-author, implementer, reviewer opus/xhigh); architect turns 12; review rounds 2.
 Next: P1-09d2c [C].
+
+## 2026-10-27 — P1-09d2c redeploy failure: rollback, FAILED, 500, start bound — done, review PASS
+Context compacted once mid-task (re-verified with git status / git log -3).
+Test first: DeploymentsRollbackTest, DeploymentsRollbackEdgeTest, AdminServerDeployTest +2 — observed red (target/P1-09d2c-red.log, -red2.log, -r1-red.log, -r3-red.log, -r3-red2.log). Constructor call sites in 10 test classes; STOP_DEADLINE waits filtered by owner "Delivery" (stricter). T3/T4 of round 3 rewritten by their author after the FIX-44 fold (architect decision).
+Change: a failed phase B rolls back from the kept dirs (Recipe), else FAILED; redeploy 500 `{error, problems}`; consumer start/stop bounded by stopDeadline on an injected Timer (<= 2x for a stop); a deploy is atomic to readers of flows()/packages() (single writer, D-063 "Listing"); FIX-44 folded: Vert.x 5.1.10 drops a listener's Throwable, so worker.start() runs inside the start future; retire/discard never throw (stopAndClose).
+Checks: whole reactor -Pit VERIFIED_PASS 1289, ArchUnit green (target/P1-09d2c-final-verify.log); coverage no decrease, baseline written (runtime 99.5/99.6; Deployments 0 missed); mutants r3 26/29 + MS killed, MA/MB equivalent (reviewer accepted).
+Review: FAIL r1 (Error in rollback left stopped flows RUNNING; previous dir unpinned); FAIL r2 (early FAILED mark flapped the listing on every redeploy) -> designer spec rewrite; PASS r3.
+Raised FIX-43 (late start outside the lock), FIX-45 [C] (Delivery.stop throw-safety, close() unwrapped, bounded() schedule); owner: CONSIDER-1 (auto-retry FAILED flows, not ready).
+D-054 data: class C (test-author, implementer, reviewer opus/xhigh; designer after 2nd FAIL); architect turns ~25; review rounds 3.
+Next: FIX-35 [C].
+

@@ -89,7 +89,7 @@ class DeploymentsProducersTest {
         env.put("FLOTTILA_BLOB_DURABLE_MAX", "4096");
         env.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), List.of(), List.of(), messages, dlq,
+        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
                 queue, () -> 0L);
         capture.setLevel(Level.ALL);
         flottila.addHandler(capture);

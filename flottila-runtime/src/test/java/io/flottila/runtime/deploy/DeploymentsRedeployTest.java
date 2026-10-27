@@ -139,7 +139,7 @@ class DeploymentsRedeployTest {
         SaxonXml xml = new SaxonXml();
         List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), steps, xml.languages(), messages, dlq,
+        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, steps, xml.languages(), messages, dlq,
                 queue, () -> 0L);
         capture.setLevel(Level.ALL);
         flottila.addHandler(capture);
@@ -363,8 +363,9 @@ class DeploymentsRedeployTest {
     /**
      * v2 changes {@code audit} (it would swap) and is invalid besides — a document its schema refuses (refused at the check), a
      * flow whose pipeline does not build (refused after the build opened producers), or a consumer the component refuses. The
-     * deploy is one 422 naming the problem; no running flow stops and nothing starts; flows and package are listed as before;
-     * v1's directory is untouched, v2's deleted; every producer v2's build opened is closed, v1's stay open; v1 keeps serving.
+     * deploy is one 422 naming the problem; no running flow stops and nothing starts; flows and package are listed as before —
+     * after the 422 and, d2c r3, while the deploy builds v2's consumers; v1's directory is untouched, v2's deleted; every producer
+     * v2's build opened is closed, v1's stay open; v1 keeps serving.
      */
     @ParameterizedTest(name = "{0}")
     @ValueSource(strings = {"a document its schema refuses", "a flow whose pipeline does not build", "a consumer the component refuses"})
@@ -396,6 +397,15 @@ class DeploymentsRedeployTest {
             default -> throw new IllegalArgumentException(why);
         };
         Path archive = v2.zipTo(archives);
+        // d2c r3 (D-063 "Listing"): what flows() and packages() answer each time v2's deploy, holding the lock, builds a consumer
+        List<String> listedWhileBuilding = new CopyOnWriteArrayList<>();
+        AtomicBoolean listingMoved = new AtomicBoolean();
+        doors.onConsumer(cfg -> {
+            List<DeployedFlow> flows = deployments.flows();
+            List<DeployedPackage> packages = deployments.packages();
+            listedWhileBuilding.add(cfg.name() + ": " + flows + " " + packages);
+            if (!flowsBefore.equals(flows) || !packagesBefore.equals(packages)) listingMoved.set(true);
+        });
         int mark = mark();
 
         DeployRefusedException refused = refused("shop", archive);
@@ -405,6 +415,10 @@ class DeploymentsRedeployTest {
         List<String> during = since(mark);
         assertEquals(List.of(), during.stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(),
                 "nothing of v1 stops and nothing of v2 starts: " + during);
+        if (!why.equals("a document its schema refuses")) {   // refused at the check: v2 builds nothing
+            assertFalse(listedWhileBuilding.isEmpty(), "fixture: v2 builds a consumer (audit's) before it is refused: " + during);
+        }
+        assertFalse(listingMoved.get(), "while v2's deploy runs, the flows and the package record are listed as before it: " + listedWhileBuilding);
         assertEquals(flowsBefore, deployments.flows(), "v1's flows are listed as they were: versions, revision, hash, state");
         assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
         assertEquals(v1Files, regularFiles(v1Dir), "v1's directory is untouched");
@@ -1142,7 +1156,7 @@ class DeploymentsRedeployTest {
 
         OnVirtualThread.Call<DeployResult> d = deploying(v2);
 
-        untilWhile(d, () -> log.contains("stop shop/orders") && timer.all().stream().anyMatch(t -> t.delay().equals(STOP_DEADLINE) && t.live()),
+        untilWhile(d, () -> log.contains("stop shop/orders") && timer.all().stream().anyMatch(t -> t.owner().equals("Delivery") && t.delay().equals(STOP_DEADLINE) && t.live()),
                 "phase A stops v1's orders, its delivery with the node's stop deadline " + STOP_DEADLINE + ": " + timer.all());
         Ack late = within(v1.deliver(envelope("shop/orders")), "a new message on v1's consumer during the swap");
         assertTrue(late instanceof Ack.Nack n && n.retryable(), "a new message in the window is refused, retryable: " + late);

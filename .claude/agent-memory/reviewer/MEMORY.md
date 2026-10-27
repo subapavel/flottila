@@ -99,3 +99,14 @@
 - Hash or listing sorts: a fixture whose creation order equals the sorted order (or its reverse) pins nothing on newest-first or creation-order filesystems; require ≥4 shuffled entries (P1-09d2a, FlowHash:97).
 - Cache keys built by relativizing normalised paths lose `..` that climbs above the base directory and comes back down by name; replay the reference in the requesting flow's directory instead (FIX-17).
 - A test's 'in parallel' claim holds only if the held flow comes first in the iteration order; check the list order against a sequential mutant (P1-09d2b, Deployments.retire).
+- Recovery code after a state change (phase A stopped): every SPI/StepFactory call there needs Error-safe bookkeeping; a RuntimeException-only catch leaves stopped flows listed RUNNING (P1-09d2c, Deployments.consumers/rebuild).
+- A field carried through a failure path (Deployed.previous on rollback) needs a case where the operation that reads it follows that path (P1-09d2c).
+- Mutant logs: read the M0 baseline line first; a red baseline voids kills that rest only on the flaky test (P1-09d2c M0).
+- A bound that times out a still-pending call leaves the resource live after the lock: check the next start on the same endpoint (rollback, next deploy, close) (P1-09d2c start()).
+- A safe-state-first write to a map that concurrent readers list (Deployments.deployed → GET /admin/flows) changes what the success path shows; check the state's documented meaning before accepting an early mark (P1-09d2c r2, Deployments:376 vs DeployedFlow.State).
+- Bookkeeping that moves between "early" and "on failure" is pinned only by a case that reads the listing while the next phase is held; ask for it whenever a mark moves (P1-09d2c r2).
+- Vert.x onSuccess on an already-completed future runs on the caller's thread: an Error in it escapes synchronously (Deployments.start); count it among throw sites after a state change.
+- A listing "atomic to readers" is pinned only by reads while each phase is held (phase A stop, phase B start, rollback restart); Doors holdStopOf/holdStartOf do this — reuse for P1-09c /health (P1-09d2c r3).
+- When a fix makes one call site throw-safe (stopAndClose in Future.future), grep its siblings: Deployments.close() kept the bare stop(List) (P1-09d2c r3 → FIX-45).
+- A throwing Timer.schedule is a reachable fixture precondition (DeploymentsRollbackEdgeTest hooks); check every schedule after a state change: Delivery.stop, Deployments.bounded in start(), close() (FIX-45).
+- An "X never throws" equivalence must include SPI Throwables whose getMessage()/toString() throw: reason()/problem() call them inside loops (Deployments.rollBack MB, P1-09d2c r3).
