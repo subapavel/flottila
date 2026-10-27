@@ -71,16 +71,21 @@ import java.util.stream.Stream;
  * delivery, its worker (at-least-once) and its consumer; every problem is one line of one {@link Kind#INVALID}, and nothing
  * starts before every check passed. Then the consumers start one after the other (an at-least-once flow's worker right after
  * its consumer, as worker {@code nodeId}); one that does not start is {@link Kind#FAILED}. Whatever refuses the deploy after
- * the unpack began stops every flow it built (zero deadline) and deletes its directories, {@code packages/<name>/} too when
- * nothing else is in it: nothing of it runs, is listed or stays on disk.
+ * the unpack began stops every flow it built (zero deadline), then closes their deliveries' producers and asks their workers to
+ * close theirs, a worker's once the items it still runs finished (FIX-30) — a flow that failed half way does the same for
+ * what it built of itself at once — and deletes its directories, {@code packages/<name>/} too when nothing else is in it:
+ * nothing of it is started again, is listed or stays on disk, and no producer stays open past the last item that sends.
  *
  * <p>A flow runs as {@code <package>/<flow>} (D-060 a): its snapshots, DLQ rows and queue items carry that id, and so does
  * the consumer option {@code flow}; the deploy also sets {@code maxBodyBytes}, the flow's limit. Every message carries the
  * versions {@code package=<name>@<version>} and, when the deploy names one, {@code revision}.
  *
  * <p>{@link #close} refuses deploys from then on, waits for a running one, then stops every flow at once: its worker first,
- * then its delivery (within the node's stop deadline) and its consumer together; it returns when all have stopped and
- * rethrows the first failure, in flow order. Worker items still running are not awaited (P1-09e): their lease runs them again.
+ * then its delivery (within the node's stop deadline) and its consumer together; once all have stopped it closes every
+ * delivery's producers (FIX-30; a failed close is logged), then returns and rethrows the first stop failure, in flow order.
+ * Worker items still running are not awaited (P1-09e): each runs to its end through its worker's open producers, renewing
+ * its lease, and the worker closes its producers once the last of them finished; only an item whose process ends first is
+ * claimed again when its lease runs out.
  *
  * <p>The {@link Runtime} only goes into each deploy's {@code new FlowBuilder}: nothing here reads it, and no flow or lambda
  * captures it (CLAUDE.md); the components and the clock come in on their own.
@@ -132,7 +137,16 @@ public final class Deployments {
     }
 
     /** One flow as the deploy built it; {@code worker} is null unless the flow is at-least-once. */
-    private record Flow(DeployedFlow flow, Delivery delivery, FlowWorker worker, Consumer consumer) {}
+    private record Flow(DeployedFlow flow, Delivery delivery, FlowWorker worker, Consumer consumer) {
+        /**
+         * Asks its stopped worker to close its producers, never awaited — that close waits for the items still running — and
+         * closes its delivery's producers once the delivery stopped; completes with the delivery's close, never fails (FIX-30).
+         */
+        Future<Void> close() {
+            if (worker != null) worker.close();
+            return delivery.close();
+        }
+    }
 
     private record Deployed(DeployedPackage pkg, List<Flow> flows) {}
 
@@ -190,8 +204,10 @@ public final class Deployments {
     }
 
     /**
-     * Refuses deploys from now on, waits for a running one, then stops every flow at once (see the class comment) and returns
-     * once all have stopped; the first failure, in flow order, is rethrown then. Blocking: on a virtual thread.
+     * Refuses deploys from now on, waits for a running one, then stops every flow at once and closes their producers (see the
+     * class comment) and returns once all have stopped and every delivery's producers closed — a worker's close is not awaited;
+     * the first stop failure, in flow order, is rethrown then.
+     * Blocking: on a virtual thread.
      */
     public void close() {
         closing = true;
@@ -199,7 +215,7 @@ public final class Deployments {
         try {
             List<Flow> running = deployed.values().stream().flatMap(d -> d.flows().stream()).toList();
             deployed.clear();
-            stop(running, config.stopDeadline()).await();
+            stop(running, config.stopDeadline()).eventually(() -> close(running)).await();
         } finally {
             deploying.unlock();
         }
@@ -217,7 +233,7 @@ public final class Deployments {
         boolean installed = false;
         try {
             Path unpacked = Files.createTempDirectory(incoming, "unpack-");
-            List<Flow> flows = List.of();
+            List<Flow> flows = new ArrayList<>();   // every flow built, as soon as it is: a refusal stops and closes them
             try {
                 unpack(archive, unpacked);
                 deleteTree(dir);   // what an earlier node left at <name>/<sha256> is replaced, never merged
@@ -225,11 +241,11 @@ public final class Deployments {
                 Package pkg = load(name, dir);
                 Checked checked = check(name, pkg);
                 String version = pkg.manifest().getString("version");
-                flows = build(name, revision, version, pkg, dir, checked);
+                build(name, revision, version, pkg, dir, checked, flows);
                 DeployedPackage deployedPackage = new DeployedPackage(name, version, revision, sha256, flows.stream().map(f -> f.flow().id()).sorted().toList(),
                         clock.instant(), files(dir));
                 start(flows);
-                deployed.put(name, new Deployed(deployedPackage, flows));
+                deployed.put(name, new Deployed(deployedPackage, List.copyOf(flows)));
                 installed = true;
                 return deployedPackage;
             } finally {
@@ -330,15 +346,17 @@ public final class Deployments {
         return cfg;
     }
 
-    /** Every flow built — delivery, worker, consumer — over one builder that carries the package's versions; every failure as one problem. */
-    private List<Flow> build(String name, Optional<String> revision, String version, Package pkg, Path dir, Checked checked) throws DeployRefusedException {
+    /**
+     * Every flow built — delivery, worker, consumer — over one builder that carries the package's versions, each added to
+     * {@code flows} as soon as it is built; every failure as one problem.
+     */
+    private void build(String name, Optional<String> revision, String version, Package pkg, Path dir, Checked checked, List<Flow> flows) throws DeployRefusedException {
         Map<String, String> versions = new HashMap<>();
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
         Map<String, EndpointConfig> endpoints = new LinkedHashMap<>();
         checked.configs().forEach((id, cfg) -> endpoints.put(id, endpoint(id, checked.schemes().get(id), cfg)));
         FlowBuilder builder = new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).versions(versions);
-        List<Flow> flows = new ArrayList<>();
         List<String> problems = new ArrayList<>();
         checked.flows().forEach((id, def) -> {
             try {
@@ -349,18 +367,36 @@ public final class Deployments {
             }
         });
         if (!problems.isEmpty()) throw invalid(name, problems);
-        return List.copyOf(flows);
     }
 
+    /**
+     * One flow built: its delivery, its worker (at-least-once), its consumer. A flow that fails after its delivery was built
+     * stops and closes what it built of itself before the failure leaves (FIX-30), unchecked ones included — its worker has
+     * run nothing yet, so its close runs at once; a worker that does not build has closed its own producers.
+     */
     private Flow flow(FlowBuilder builder, String name, String version, Optional<String> revision, FlowDefinition def, Path baseDir, EndpointConfig from) {
         Delivery delivery = builder.delivery(def, baseDir);
-        FlowWorker worker = AT_LEAST_ONCE.equals(def.deliveryMode()) ? builder.worker(def, baseDir, config.nodeId()) : null;
-        Function<Envelope, Future<Ack>> handler = worker == null ? delivery : worker.pollingAfterAccept(delivery);
-        Map<String, Object> options = new HashMap<>(from.options());
-        options.put("flow", def.id());
-        options.put("maxBodyBytes", def.maxBodyBytes());
-        Consumer consumer = components.get(from.scheme()).consumer(new EndpointConfig(from.name(), from.uri(), options), handler);
-        return new Flow(new DeployedFlow(def.id(), name, version, revision, def.version(), def.deliveryMode()), delivery, worker, consumer);
+        FlowWorker worker = null;
+        boolean built = false;
+        try {
+            worker = AT_LEAST_ONCE.equals(def.deliveryMode()) ? builder.worker(def, baseDir, config.nodeId()) : null;
+            Function<Envelope, Future<Ack>> handler = worker == null ? delivery : worker.pollingAfterAccept(delivery);
+            Map<String, Object> options = new HashMap<>(from.options());
+            options.put("flow", def.id());
+            options.put("maxBodyBytes", def.maxBodyBytes());
+            Consumer consumer = components.get(from.scheme()).consumer(new EndpointConfig(from.name(), from.uri(), options), handler);
+            built = true;
+            return new Flow(new DeployedFlow(def.id(), name, version, revision, def.version(), def.deliveryMode()), delivery, worker, consumer);
+        } finally {
+            if (!built) {
+                delivery.stop(Duration.ZERO);   // nothing was delivered yet: the stop completes at once, and the close after it
+                delivery.close();
+                if (worker != null) {
+                    worker.stop();
+                    worker.close();
+                }
+            }
+        }
     }
 
     /** One consumer after the other, an at-least-once flow's worker right after its consumer; the first that does not start refuses the deploy. */
@@ -388,9 +424,21 @@ public final class Deployments {
         return Future.join(stopped).mapEmpty();
     }
 
-    /** Stops what a refused deploy built, cancelling what is in flight at once; a failure to stop is logged: the refusal stays what is answered. */
+    /**
+     * Closes the producers of {@code flows} (FIX-30): each delivery's once it stopped, awaited; each worker's asked, not awaited
+     * ({@link Flow#close}). Never fails, a failed producer close is logged.
+     */
+    private static Future<Void> close(List<Flow> flows) {
+        return Future.all(flows.stream().map(Flow::close).toList()).mapEmpty();
+    }
+
+    /**
+     * Stops what a refused deploy built, cancelling what is in flight at once, then closes its producers; a failure to stop is
+     * logged: the refusal stays what is answered.
+     */
     private static void stopQuietly(List<Flow> flows) {
-        stop(flows, Duration.ZERO).onFailure(failed -> LOG.log(System.Logger.Level.WARNING, "a flow of a refused deploy did not stop: " + failed, failed))
+        stop(flows, Duration.ZERO).eventually(() -> close(flows))
+                .onFailure(failed -> LOG.log(System.Logger.Level.WARNING, "a flow of a refused deploy did not stop: " + failed, failed))
                 .otherwiseEmpty().await();
     }
 

@@ -69,7 +69,8 @@ import java.util.function.UnaryOperator;
  * {@link Producer}s, resolved once at build time from the endpoint's URI scheme. An unknown step type, endpoint,
  * scheme, language or expression is a build error naming the step; nothing is deferred to the first message. So is a
  * step that needs the whole body ({@link BodyKind#WHOLE}) on a flow whose max body exceeds the store's tree limit
- * without a {@code split} before it (ARCHITECTURE §5).
+ * without a {@code split} before it (ARCHITECTURE §5). A build that fails closes the producers it created before the failure
+ * leaves; those of a {@link Delivery} or {@link FlowWorker} built are theirs to close ({@code close()}, FIX-30).
  *
  * @since 0.1
  */
@@ -132,7 +133,7 @@ public final class FlowBuilder {
 
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the flow file's directory). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
-        return Pipeline.of(stages(flow, baseDir, true));
+        return built(flow, baseDir).pipeline(true);
     }
 
     /**
@@ -148,8 +149,14 @@ public final class FlowBuilder {
         long requests = inFlightRequests(flow);
         Admission admission = new Admission(requests, flow.maxInFlightBytes().orElseGet(() -> defaultInFlightBytes(flow, requests)));
         return switch (flow.deliveryMode()) {
-            case "sync" -> Delivery.sync(admission, Pipeline.of(stages(flow, baseDir, true)), runtime.timer());
-            case "at-most-once" -> Delivery.atMostOnce(admission, Pipeline.of(stages(flow, baseDir, true)), runtime.timer());
+            case "sync" -> {
+                Built built = built(flow, baseDir);
+                yield Delivery.sync(admission, built.pipeline(true), built.producers(), runtime.timer());
+            }
+            case "at-most-once" -> {
+                Built built = built(flow, baseDir);
+                yield Delivery.atMostOnce(admission, built.pipeline(true), built.producers(), runtime.timer());
+            }
             case "at-least-once" -> {
                 requireStoreAndQueue(flow, "delivery");
                 requireDlq(flow);
@@ -179,8 +186,9 @@ public final class FlowBuilder {
         requireDlq(flow);
         int max = (int) Math.min(inFlightRequests(flow), Integer.MAX_VALUE);
         Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
-        return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), Pipeline.of(stages(flow, baseDir, false)),
-                parking, flow.steps().get(0), runtime.timer());
+        Built built = built(flow, baseDir);
+        return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), built.pipeline(false),
+                parking, flow.steps().get(0), runtime.timer(), built.producers());
     }
 
     private void requireStoreAndQueue(FlowDefinition flow, String what) {
@@ -214,15 +222,6 @@ public final class FlowBuilder {
         return flow.maxInFlight().orElseGet(() -> 2L * java.lang.Runtime.getRuntime().availableProcessors());
     }
 
-    /** The flow's pipeline as stages: the ingress snapshot ({@code withIngress}, when recording), then the steps. */
-    private List<Stage> stages(FlowDefinition flow, Path baseDir, boolean withIngress) {
-        Built built = built(flow, baseDir);
-        List<Stage> stages = new ArrayList<>(built.steps().size() + 1);
-        if (withIngress && built.recorder() != null) stages.add(built.recorder().start(flow.recording(), Recorder.INGRESS));
-        stages.addAll(built.steps());
-        return stages;
-    }
-
     /** The envelope as a producer gets it: only the {@code allowed} headers (case-insensitive) and {@code content-type}, whatever set them. */
     static UnaryOperator<Envelope> forwardHeaders(List<String> allowed) {
         Set<String> names = new HashSet<>();
@@ -254,9 +253,21 @@ public final class FlowBuilder {
         }, store, dlq, runtime.blobs(), runtime.ids());
     }
 
-    /** The flow's steps as stages, wrapped (retry, numbering, recording, parking), without the start stage. */
-    private record Built(List<Stage> steps, Recorder recorder) {}
+    /**
+     * The flow's steps as stages, wrapped (retry, numbering, recording, parking), without the start stage; the recorder (null
+     * without a store) and the producers the steps send through.
+     */
+    private record Built(FlowDefinition flow, List<Stage> steps, Recorder recorder, Producers producers) {
+        /** The flow's pipeline: the ingress snapshot ({@code withIngress}, when recording), then the steps. */
+        Pipeline pipeline(boolean withIngress) {
+            List<Stage> stages = new ArrayList<>(steps.size() + 1);
+            if (withIngress && recorder != null) stages.add(recorder.start(flow.recording(), Recorder.INGRESS));
+            stages.addAll(steps);
+            return Pipeline.of(stages);
+        }
+    }
 
+    /** The flow built; a build that throws closes every producer it created before the failure leaves (FIX-30), unchecked ones included. */
     private Built built(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
         Map<String, String> versions = versionsOf(flow);
@@ -270,34 +281,41 @@ public final class FlowBuilder {
         int lastIndex = flow.steps().size();
         long treeLimit = runtime.blobs().treeLimit();
         boolean splitBefore = false;
-        for (StepConfig step : flow.steps()) {
-            BodyKind kind = switch (step.type()) {
-                case "to" -> BodyKind.STREAM;
-                case "split" -> language(step).bodyKind() == BodyKind.WHOLE ? BodyKind.WHOLE : BodyKind.SPLIT_ASSEMBLE;   // a splitter over the tree is itself a whole-body step
-                case "route", "filter", "extractKey", "validate" -> language(step).bodyKind();
-                default -> factoryFor(step).bodyKind();
-            };
-            if (kind == BodyKind.WHOLE && flow.maxBodyBytes() > treeLimit && !splitBefore) {
-                throw new IllegalStateException(step + " needs the whole body (" + kind + ") but the flow's maxBodyBytes " + flow.maxBodyBytes()
-                        + " exceeds the store's tree limit " + treeLimit + " and no split precedes it (ARCHITECTURE §5)");
+        List<Producer> opened = new ArrayList<>();
+        boolean done = false;
+        try {
+            for (StepConfig step : flow.steps()) {
+                BodyKind kind = switch (step.type()) {
+                    case "to" -> BodyKind.STREAM;
+                    case "split" -> language(step).bodyKind() == BodyKind.WHOLE ? BodyKind.WHOLE : BodyKind.SPLIT_ASSEMBLE;   // a splitter over the tree is itself a whole-body step
+                    case "route", "filter", "extractKey", "validate" -> language(step).bodyKind();
+                    default -> factoryFor(step).bodyKind();
+                };
+                if (kind == BodyKind.WHOLE && flow.maxBodyBytes() > treeLimit && !splitBefore) {
+                    throw new IllegalStateException(step + " needs the whole body (" + kind + ") but the flow's maxBodyBytes " + flow.maxBodyBytes()
+                            + " exceeds the store's tree limit " + treeLimit + " and no split precedes it (ARCHITECTURE §5)");
+                }
+                if (kind == BodyKind.SPLIT_ASSEMBLE) splitBefore = true;
+                Stage stage = switch (step.type()) {
+                    case "to" -> to(step, forward, opened);
+                    case "route" -> route(step, resources);
+                    case "filter" -> new Filter(predicate(step, step.requireString("when"), resources));
+                    case "extractKey" -> extractKey(step, resources);
+                    case "validate" -> validate(step, resources);
+                    case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources), runtime.ids());
+                    default -> factoryFor(step).create(step, resources);
+                };
+                if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
+                stage = numbered(stage, step);
+                if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
+                if (parking != null) stage = parking.wrap(stage, step);
+                stages.add(stage);
             }
-            if (kind == BodyKind.SPLIT_ASSEMBLE) splitBefore = true;
-            Stage stage = switch (step.type()) {
-                case "to" -> to(step, forward);
-                case "route" -> route(step, resources);
-                case "filter" -> new Filter(predicate(step, step.requireString("when"), resources));
-                case "extractKey" -> extractKey(step, resources);
-                case "validate" -> validate(step, resources);
-                case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources), runtime.ids());
-                default -> factoryFor(step).create(step, resources);
-            };
-            if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
-            stage = numbered(stage, step);
-            if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
-            if (parking != null) stage = parking.wrap(stage, step);
-            stages.add(stage);
+            done = true;
+        } finally {
+            if (!done) Producers.closeAll(flow.id(), opened);   // the flow does not build: nothing it created is left open
         }
-        return new Built(List.copyOf(stages), recorder);
+        return new Built(flow, List.copyOf(stages), recorder, new Producers(flow.id(), opened));
     }
 
     private StepFactory factoryFor(StepConfig step) {
@@ -362,10 +380,11 @@ public final class FlowBuilder {
     /**
      * The built-in {@code to}: {@code endpoint}, or {@code byProp} + {@code endpoints} (the route's decision picks the producer).
      * The producer gets the envelope through {@code forward} (the flow's {@code forwardHeaders}); what goes on is its reply.
+     * Every producer created is added to {@code opened} at once.
      */
-    private Stage to(StepConfig step, UnaryOperator<Envelope> forward) {
+    private Stage to(StepConfig step, UnaryOperator<Envelope> forward, List<Producer> opened) {
         if (step.config().get("endpoint") != null) {
-            Producer producer = producer(step, step.requireString("endpoint"));
+            Producer producer = producer(step, step.requireString("endpoint"), opened);
             return Stage.of(e -> producer.send(forward.apply(e)).await());
         }
         Key<String> prop = new Key<>(step.requireString("byProp"));
@@ -373,7 +392,7 @@ public final class FlowBuilder {
             throw new IllegalArgumentException(step + ": 'endpoints' must map every value of " + prop.name() + " to an endpoint");
         }
         Map<String, Producer> producers = new LinkedHashMap<>();
-        choices.forEach((choice, endpoint) -> producers.put(String.valueOf(choice), producer(step, String.valueOf(endpoint))));
+        choices.forEach((choice, endpoint) -> producers.put(String.valueOf(choice), producer(step, String.valueOf(endpoint), opened)));
         return Stage.of(e -> {
             String choice = e.get(prop).orElseThrow(() -> new IllegalStateException(step + ": prop " + prop.name() + " is not set; a route step before it decides"));
             Producer producer = producers.get(choice);
@@ -382,7 +401,7 @@ public final class FlowBuilder {
         });
     }
 
-    private Producer producer(StepConfig step, String endpoint) {
+    private Producer producer(StepConfig step, String endpoint, List<Producer> opened) {
         EndpointConfig cfg = endpoints.get(endpoint);
         if (cfg == null) throw new IllegalArgumentException(step + ": unknown endpoint '" + endpoint + "' (" + endpoints.keySet() + ")");
         Component component;
@@ -391,6 +410,8 @@ public final class FlowBuilder {
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(step + ": endpoint '" + endpoint + "' " + cfg.uri() + ": " + e.getMessage(), e);
         }
-        return component.producer(cfg);
+        Producer producer = component.producer(cfg);
+        opened.add(producer);
+        return producer;
     }
 }

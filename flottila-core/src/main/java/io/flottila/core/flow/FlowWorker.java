@@ -48,8 +48,9 @@ import java.util.function.Function;
  * timer; the handler of {@link #pollingAfterAccept} after each {@link Ack.Accepted}; and each finished item, once, so a
  * backlog drains without waiting for a tick. A poll nobody waits for logs its failure and never throws. {@link #stop()} ends
  * all of that; items already claimed run to their end and keep their lease renewed. A worker built later over the same store
- * and queue finishes what an earlier one accepted. Built by {@link FlowBuilder#worker}; it holds only what the builder handed
- * it — the timer, the policy, the parking and the first step — never the {@code Runtime}.
+ * and queue finishes what an earlier one accepted. {@link #close()} (FIX-30) closes the producers the builder created for its
+ * pipeline once it was stopped and nothing it claimed still runs. Built by {@link FlowBuilder#worker}; it holds only what the builder handed it — the timer,
+ * the policy, the parking, the first step and the producers — never the {@code Runtime}.
  *
  * @since 0.1
  */
@@ -68,6 +69,7 @@ public final class FlowWorker {
     private final Parking parking;
     private final StepConfig firstStep;
     private final Timer timer;
+    private final Producers producers;
 
     private final Object lock = new Object();
     private final Map<Long, Lease> running = new HashMap<>();   // guarded by lock: claimed by this worker and not finished
@@ -75,9 +77,10 @@ public final class FlowWorker {
     private Promise<Integer> followUp;                           // guarded by lock: the round after the claim in flight
     private Timer.Cancellable tick;                              // guarded by lock
     private boolean stopped;                                     // guarded by lock
+    private Promise<Void> closed;                                // guarded by lock: null until close(); then the close every call returns
 
     FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, WorkQueue queue, MessageStore store, BlobStore blobs,
-               Pipeline pipeline, Parking parking, StepConfig firstStep, Timer timer) {
+               Pipeline pipeline, Parking parking, StepConfig firstStep, Timer timer, Producers producers) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.max = max;
@@ -89,6 +92,7 @@ public final class FlowWorker {
         this.parking = Objects.requireNonNull(parking, "parking");
         this.firstStep = Objects.requireNonNull(firstStep, "firstStep");
         this.timer = Objects.requireNonNull(timer, "timer");
+        this.producers = Objects.requireNonNull(producers, "producers");
     }
 
     /**
@@ -138,6 +142,30 @@ public final class FlowWorker {
         }
     }
 
+    /**
+     * Closes the producers the builder created for this worker's pipeline (FIX-30), each once, as soon as no item this worker
+     * claimed still runs and no claim of its is in flight — the items of that claim run to their end too ({@link #stop()}):
+     * at once when the worker is idle, otherwise from whichever ends last: an item's end (its run settled in the queue) or a
+     * claim's return that started no item (nothing new, or the claim failed). Until then the
+     * close stays pending and closes nothing, so a running item sends through open producers. Every call returns the same
+     * future. A producer whose close fails is logged at WARNING and the others close all the same; the future completes,
+     * never fails, once every producer's close has settled.
+     *
+     * @throws IllegalStateException before {@link #stop()}: a close follows the stop, it never stops the worker itself
+     */
+    public Future<Void> close() {
+        Promise<Void> close;
+        Promise<Void> due;
+        synchronized (lock) {
+            if (!stopped) throw new IllegalStateException("worker " + workerId + " of flow " + flow + " is closed after its stop: call stop() first");
+            if (closed != null) return closed.future();
+            close = closed = Promise.promise();
+            due = closeDue();
+        }
+        closeProducers(due);
+        return close.future();
+    }
+
     /** {@code handler}, polling once after each of its {@link Ack.Accepted} answers; every answer and failure passes through as is. */
     public Function<Envelope, Future<Ack>> pollingAfterAccept(Function<Envelope, Future<Ack>> handler) {
         Objects.requireNonNull(handler, "handler");
@@ -168,6 +196,7 @@ public final class FlowWorker {
     private Future<Integer> claimed(AsyncResult<List<WorkQueue.Item>> claim) {
         List<Lease> fresh = new ArrayList<>();
         Promise<Integer> next;
+        Promise<Void> due;
         synchronized (lock) {
             claiming = false;
             next = followUp;
@@ -180,7 +209,9 @@ public final class FlowWorker {
                     fresh.add(lease);
                 }
             }
+            due = closeDue();   // a claim that returned nothing new to a closed worker running nothing
         }
+        closeProducers(due);
         List<Future<Void>> done = new ArrayList<>(fresh.size());
         for (Lease lease : fresh) done.add(process(lease));
         if (next != null) poll().onComplete(next);
@@ -250,10 +281,25 @@ public final class FlowWorker {
     }
 
     private void finished(WorkQueue.Item item) {
+        Promise<Void> due;
         synchronized (lock) {
             running.remove(item.seq());
+            due = closeDue();
         }
+        closeProducers(due);
         pollFor("after message " + item.messageId() + " finished");
+    }
+
+    /**
+     * The close to run now: the asked one, once nothing runs and no claim is in flight; else null. Under the lock. After the
+     * stop no claim starts, so that state is final: it is reached once — by the close, a claim's return or an item's end.
+     */
+    private Promise<Void> closeDue() {
+        return closed != null && !claiming && running.isEmpty() ? closed : null;
+    }
+
+    private void closeProducers(Promise<Void> due) {
+        if (due != null) producers.close().onComplete(due);
     }
 
     /** What a run decided for its item: complete it, leave it to its lease, or hold it ({@code unparkable}: past the bound, the park failed). */

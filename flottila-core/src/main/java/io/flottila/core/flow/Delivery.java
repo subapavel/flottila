@@ -40,7 +40,8 @@ import java.util.function.Function;
  * failure is logged and dropped — not parked, not queued. The permit is released when the pipeline ends.</li>
  * </ul>
  * {@link #stop(Duration)} (D-056) refuses new deliveries, lets those in flight — from the permit until the permit is released —
- * finish until its deadline on the injected {@link Timer}, then cancels them.
+ * finish until its deadline on the injected {@link Timer}, then cancels them. {@link #close()} (FIX-30) closes the producers
+ * the builder created for its pipeline once that stop has completed.
  * Built by {@link FlowBuilder#delivery}; it holds only what the builder handed it, never the {@code Runtime}.
  *
  * @since 0.1
@@ -101,6 +102,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
 
     private final Admission admission;
     private final Timer timer;
+    private final Producers producers;
     private final Mode mode;
     private final Object lock = new Object();
     private final Set<Flight> flights = new HashSet<>();      // guarded by lock: admitted and not landed
@@ -109,16 +111,25 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     private Timer.Cancellable deadlineTimer;                   // guarded by lock: scheduled by a stop with deliveries in flight
     private boolean cancelling;                                // guarded by lock: the deadline has come
 
-    private Delivery(Admission admission, Timer timer, Mode mode) {
+    private Delivery(Admission admission, Timer timer, Producers producers, Mode mode) {
         this.admission = Objects.requireNonNull(admission, "admission");
         this.timer = Objects.requireNonNull(timer, "timer");
+        this.producers = Objects.requireNonNull(producers, "producers");
         this.mode = mode;
     }
 
-    /** Sync request/reply: the pipeline on the caller's thread, its result the reply; {@code timer} runs the stop's deadline. */
+    /** {@link #sync(Admission, Pipeline, Producers, Timer)} over a pipeline that owns no producer. */
     static Delivery sync(Admission admission, Pipeline pipeline, Timer timer) {
+        return sync(admission, pipeline, Producers.NONE, timer);
+    }
+
+    /**
+     * Sync request/reply: the pipeline on the caller's thread, its result the reply; {@code timer} runs the stop's deadline,
+     * {@code producers} are the pipeline's, closed by {@link #close()}.
+     */
+    static Delivery sync(Admission admission, Pipeline pipeline, Producers producers, Timer timer) {
         Objects.requireNonNull(pipeline, "pipeline");
-        return new Delivery(admission, timer, new Mode() {
+        return new Delivery(admission, timer, producers, new Mode() {
             @Override
             public void board(Envelope e, Flight flight) {
                 flight.thread = Thread.currentThread();
@@ -144,13 +155,18 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         });
     }
 
+    /** {@link #atMostOnce(Admission, Pipeline, Producers, Timer)} over a pipeline that owns no producer. */
+    static Delivery atMostOnce(Admission admission, Pipeline pipeline, Timer timer) {
+        return atMostOnce(admission, pipeline, Producers.NONE, timer);
+    }
+
     /**
      * At-most-once: accepted at once, the pipeline afterwards on its own virtual thread, a failure logged and dropped;
-     * {@code timer} runs the stop's deadline.
+     * {@code timer} runs the stop's deadline, {@code producers} are the pipeline's, closed by {@link #close()}.
      */
-    static Delivery atMostOnce(Admission admission, Pipeline pipeline, Timer timer) {
+    static Delivery atMostOnce(Admission admission, Pipeline pipeline, Producers producers, Timer timer) {
         Objects.requireNonNull(pipeline, "pipeline");
-        return new Delivery(admission, timer, new Mode() {
+        return new Delivery(admission, timer, producers, new Mode() {
             @Override
             public void board(Envelope e, Flight flight) {
                 // started under the lock: the deadline only ever interrupts a run that is alive
@@ -192,7 +208,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         Objects.requireNonNull(queue, "queue");
         Objects.requireNonNull(timer, "timer");
         Objects.requireNonNull(saveTimeout, "saveTimeout");
-        return new Delivery(admission, timer, new Mode() {
+        return new Delivery(admission, timer, Producers.NONE, new Mode() {
             @Override
             public void board(Envelope e, Flight flight) {
                 flight.answer = Promise.promise();
@@ -287,6 +303,24 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         if (idle) stop.complete();
         else if (deadline.isZero()) cancelInFlight();   // at once, not on the timer's turn (a repeat then interrupts again)
         return stop.future();
+    }
+
+    /**
+     * Closes the producers the builder created for this delivery's pipeline (FIX-30) once its {@link #stop} has completed — no
+     * run of the pipeline is left to send through them then — each once: every call waits for the stop and then for the one
+     * close of the producers the first call started, so a later call returns a new future over that same close. A producer whose
+     * close fails is logged at WARNING and the others close all the same; the future completes, never fails, once every
+     * producer's close has settled. An at-least-once delivery owns no producer (its {@link FlowWorker} does).
+     *
+     * @throws IllegalStateException before {@link #stop}: a close waits for a stop, it never starts one
+     */
+    public Future<Void> close() {
+        Promise<Void> stop;
+        synchronized (lock) {
+            stop = stopped;
+        }
+        if (stop == null) throw new IllegalStateException("a delivery is closed after its stop: call stop(deadline) first");
+        return stop.future().compose(done -> producers.close());
     }
 
     /** The stop's deadline: every sync and at-most-once run in flight is interrupted, every pending at-least-once answer is the cancel's Nack. */

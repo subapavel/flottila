@@ -31,6 +31,12 @@ import java.util.function.Function;
  * option. A start can be held or failed ({@link #holdStart}, {@link #failStart}), a stop failed ({@link #failStop}), and a
  * hook runs inside every stop before it returns ({@link #onStop}). An endpoint whose options carry {@code refuse} makes
  * {@link #consumer} throw with that text: a consumer the component refuses to build.
+ *
+ * <p>Every producer built is an {@link Out} (FIX-30) over the partner's producer: it counts its {@code close()} calls and its
+ * sends still unanswered, and records at each close how many of its own sends were unanswered then. A hook runs inside every
+ * producer close ({@link #onProducerClose}); the close of the {@code nth} producer built can fail ({@link #failProducerClose}).
+ * After {@link #closeFailsSends()} a producer's close fails each of its sends still unanswered and every later send, as a
+ * real client closed under its requests does.
  */
 public final class Doors implements Component {
 
@@ -49,6 +55,10 @@ public final class Doors implements Component {
     private final Map<String, String> stopFailures = new ConcurrentHashMap<>();
     private final List<Gate> gates = new CopyOnWriteArrayList<>();
     private volatile java.util.function.Consumer<Door> onStop = d -> {};
+    private final List<Out> outs = new CopyOnWriteArrayList<>();
+    private final Map<Integer, String> closeFailures = new ConcurrentHashMap<>();
+    private volatile java.util.function.Consumer<Out> onProducerClose = o -> {};
+    private volatile boolean closeFailsSends;
     private int starts;   // guarded by this: start() calls so far
 
     /** The producers' side: what was sent to each out endpoint, holds and failures of sends. */
@@ -124,7 +134,93 @@ public final class Doors implements Component {
     @Override
     public Producer producer(EndpointConfig cfg) {
         producerConfigs.add(cfg);
-        return partner.producer(cfg);
+        Out out;
+        synchronized (outs) {
+            out = new Out(outs.size() + 1, cfg.name(), partner.producer(cfg));
+            outs.add(out);
+        }
+        return out;
+    }
+
+    /** Every producer built, in build order (ordinal 1 = the first). */
+    public List<Out> producers() { return List.copyOf(outs); }
+
+    /** The producers built and never closed. */
+    public List<Out> openProducers() { return outs.stream().filter(o -> o.closes() == 0).toList(); }
+
+    /** The producers closed more than once. */
+    public List<Out> producersClosedTwice() { return outs.stream().filter(o -> o.closes() > 1).toList(); }
+
+    /** Runs inside every producer's close, on the closing thread, before the close answers. */
+    public void onProducerClose(java.util.function.Consumer<Out> hook) { this.onProducerClose = Objects.requireNonNull(hook, "hook"); }
+
+    /** The close of the {@code nth} producer built (1 = the first ever) answers a failed future carrying {@code message}; it still counts. */
+    public void failProducerClose(int nth, String message) { closeFailures.put(nth, message); }
+
+    /** From now on a producer's close fails each of its sends still unanswered (they answer a failed future) and every later send. */
+    public void closeFailsSends() { this.closeFailsSends = true; }
+
+    /** A producer as built: its ordinal, its endpoint, its close calls, its sends not yet answered and what was unanswered at each close. */
+    public final class Out implements Producer {
+        private final int ordinal;
+        private final String endpoint;
+        private final Producer inner;
+        private final java.util.concurrent.atomic.AtomicInteger closes = new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.atomic.AtomicInteger unanswered = new java.util.concurrent.atomic.AtomicInteger();
+        private final List<Integer> unansweredAtClose = new CopyOnWriteArrayList<>();
+        private final List<String> sentIds = new CopyOnWriteArrayList<>();
+        private final java.util.Set<Promise<Envelope>> pending = ConcurrentHashMap.newKeySet();
+
+        Out(int ordinal, String endpoint, Producer inner) {
+            this.ordinal = ordinal;
+            this.endpoint = endpoint;
+            this.inner = inner;
+        }
+
+        public int ordinal() { return ordinal; }
+
+        public String endpoint() { return endpoint; }
+
+        public int closes() { return closes.get(); }
+
+        /** The ids of the envelopes sent through this producer. */
+        public List<String> sentIds() { return List.copyOf(sentIds); }
+
+        /** At each close, how many of this producer's sends were not answered yet. */
+        public List<Integer> unansweredAtClose() { return List.copyOf(unansweredAtClose); }
+
+        @Override
+        public Future<Envelope> send(Envelope e) {
+            sentIds.add(e.id());
+            if (closeFailsSends && closes.get() > 0) return Future.failedFuture(new IllegalStateException(this + ": a send after the close"));
+            unanswered.incrementAndGet();
+            Promise<Envelope> answer = Promise.promise();
+            pending.add(answer);
+            inner.send(e).onComplete(r -> {
+                if (r.succeeded()) answer.tryComplete(r.result());
+                else answer.tryFail(r.cause());
+            });
+            // andThen: the future the caller awaits completes only after the count went down
+            return answer.future().andThen(done -> {
+                pending.remove(answer);
+                unanswered.decrementAndGet();
+            });
+        }
+
+        @Override
+        public Future<Void> close() {
+            unansweredAtClose.add(unanswered.get());   // before the count: a test that waits for closes() > 0 then reads it
+            closes.incrementAndGet();
+            if (closeFailsSends) {
+                for (Promise<Envelope> p : List.copyOf(pending)) p.tryFail(new IllegalStateException(this + ": closed under a send"));
+            }
+            onProducerClose.accept(this);
+            String failure = closeFailures.get(ordinal);
+            return failure == null ? inner.close() : Future.failedFuture(new IllegalStateException(failure));
+        }
+
+        @Override
+        public String toString() { return "producer #" + ordinal + " of " + endpoint + " (closed " + closes() + "x, sent " + sentIds + ")"; }
     }
 
     @Override public Future<Health> health() { return Future.succeededFuture(Health.up()); }

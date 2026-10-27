@@ -592,3 +592,13 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS 1117 tests (target
 Review: PASS round 1.
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 9; review rounds 1.
 Next: FIX-30 [B] (before d2).
+
+## 2026-10-27 — FIX-30 close a flow's producers — done, review PASS
+Red: core FlowCloseTest 14, runtime DeploymentsProducersTest 6 (round 1); FlowCloseInFlightTest + 2 runtime cases (round 2) — all observed red (target/FIX-30-red*.log, target/FIX-30-r2-*-red.log).
+Change: `Delivery.close()` / `FlowWorker.close()` close the flow's producers once each (failures logged, the others still close; the future completes once all settled); the worker closes only when no item runs and no claim is in flight; a failed build closes what it created; Deployments closes producers on refusal and close, awaiting only delivery closes.
+Fixture: `Doors.Out.close()` two lines swapped by the implementer (a race in the fixture's bookkeeping; no expectation changed).
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS surefire 1026 + failsafe 131 (target/FIX-30-r2-verify-all.log); coverage no decrease, baseline written; PIT 223/226 (survivors not on new lines); mutants 24/24 killed (target/FIX-30-impl-mutants.log).
+Review: FAIL round 1 (worker producers closed under running items → parked; settle-wait unpinned); PASS round 2.
+Raised: FIX-38 (two runtime flakes), FIX-39 (build()/replay() producers). Redeploy producer close noted on P1-09d2.
+D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 14; review rounds 2.
+Next: P1-09d2 [C] (designer first).

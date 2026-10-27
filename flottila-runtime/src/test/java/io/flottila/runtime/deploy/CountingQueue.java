@@ -27,6 +27,9 @@ public final class CountingQueue implements WorkQueue {
     /** Every claim so far, as {@code "<workerId> <flow>"}. */
     public List<String> claims() { return List.copyOf(claims); }
 
+    /** The items queued and not completed (FIX-30: an item completed by its own success leaves none). */
+    public int size() { return inner.size(); }
+
     /** The flow of every enqueue so far. */
     public List<String> enqueued() { return List.copyOf(enqueued); }
 

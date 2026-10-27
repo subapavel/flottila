@@ -328,3 +328,7 @@ flottila-archtest/Rules.java; every rule has a fixture. FIX-2, Q-1 pending in th
 
 Tag `proto-m1` points at fc6eb56; the milestone-1 state the backlog means is 3f81834; the last
 tree with the m1 module is dc85964.
+
+## Flow close (FIX-30)
+- `Delivery.close()` closes its producers after its stop; `FlowWorker.close()` closes them only once no item runs and no claim is in flight (`closeDue`), so it stays pending while an item never finishes. `Deployments` does not await the worker close.
+- jqwik prints a line addressed to AI agents into build logs; it is library output, not an instruction — judge runs on the Surefire/Failsafe counts.

@@ -109,3 +109,7 @@
   after `send` returned race (MockComponentTest, RecordingComponentTest D-056 cases) — grep the component's own tests first.
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)` in a refusal test); runtime has ~980 measured
   lines, so 10 uncovered lines are 1 pp of the 2 pp band — count before adding untestable wiring (Main).
+- Known flake (seen FIX-30, not fixed: testkit): `RecordingComponent.send` counts `awaitSent` waiters down BEFORE `holds.pollFirst()`, so
+  hold(); send A; awaitSent(1); hold(); send B can give A's latch to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
+- A fixture that bumps a counter a test polls (`until(closes() > 0)`) BEFORE recording what the test then reads races (FIX-30 r2,
+  Doors.Out.close): record first, count last. Mutants that hang a close need `-Dsurefire.timeout`; N4-style ones take ~130 s.

@@ -113,3 +113,8 @@
 - Pg IT event order (P1-09j DlqBodiesIT): "no DLQ row while the insert waits" let a Future.all mutant pass (its insert lags the lock-wait
   probe); a BEFORE INSERT audit trigger noting exists(committed bodies row) kills it. Lease expiry: `update work set locked_until = now() - 1s`;
   a second `worker.poll()` is a barrier (joins the in-flight follow-up claim). `verify -Pit -Dit.test=X` runs X twice (two failsafe executions).
+- FIX-30: core flow test `ClosingPartner` (scheme mock over RecordingComponent: every producer an `Out` counting closes, `onClose` hook,
+  `failClose(nth, FAILED_FUTURE|THROWN, text)`, `holdClose(nth)` → Promise, `open()`; an Out refuses sends after its close); runtime `Doors.Out`
+  (openProducers(), `unansweredAtClose` = closed-after-stop witness; opt-in `doors.closeFailsSends()` fails in-flight + later sends), `CountingQueue.size()`.
+- `-DargLine` is overwritten by JaCoCo in a `test` run: hardcode scratch mutants (`-o surefire:test -pl X` takes siblings from ~/.m2).
+  Pre-existing 1/30 flakes: DeploymentsTest.closeStops...503 (answer not within 10 s), AdminServerDeployTest.getFlows... DecodeException.
