@@ -8,8 +8,10 @@ import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.steps.validate.XsdStepFactory;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.steps.xslt.XsltStepFactory;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
@@ -81,6 +83,12 @@ class DeploymentsHashTest {
 
     /** A node of its own: data directory, {@link Doors}, step factories (xslt + xsd) and in-memory stores; environment {@code dev}. */
     Deployments node() {
+        SaxonXml xml = new SaxonXml();
+        return node(Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml);
+    }
+
+    /** A node of its own over {@code steps} (xslt + xsd), which another node may share: one compile cache for both (FIX-17). */
+    Deployments node(List<StepFactory> steps, SaxonXml xml) {
         int n = nodes.size() + 1;
         Map<String, String> env = new HashMap<>();
         env.put("FLOTTILA_ENV", "dev");
@@ -90,8 +98,6 @@ class DeploymentsHashTest {
         env.put("FLOTTILA_BLOB_DURABLE_MAX", "4096");
         env.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
         Doors doors = new Doors();
-        SaxonXml xml = new SaxonXml();
-        List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         Deployments d = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), steps, xml.languages(),
                 new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L);
@@ -317,6 +323,49 @@ class DeploymentsHashTest {
                 "the probed file created: its reader's hash changes");
         assertEquals(Set.of(ORDERS), changed(base, hashes(probing().file("flows/lookup/b.txt", "b"))),
                 "an entry added to the listed directory: its reader's hash changes");
+    }
+
+    // --- FIX-17: one node's step factories compile once for every flow with the same files; a hit hashes as a fresh compile
+
+    /** The xslt and xsd step factories two nodes share, and what they compiled so far. */
+    record Shared(SaxonXml xml, List<StepFactory> steps) {
+        static Shared create() {
+            SaxonXml xml = new SaxonXml();
+            return new Shared(xml, Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList());
+        }
+
+        int stylesheets() { return ((XsltStepFactory) steps.get(0)).compiledStylesheets(); }
+
+        int schemas() { return ((XsdStepFactory) steps.get(1)).compiledSchemas(); }
+    }
+
+    @Test
+    void aCacheHitGivesTheSameHashAsAFreshCompile() throws Exception {
+        Shared shared = Shared.create();
+        Map<String, String> fresh = deploy(node(shared.steps(), shared.xml()), "shop", shop().zip(), "r1");
+        assertEquals(1, shared.stylesheets(), "fixture: the first node compiled main.xsl");
+        assertEquals(1, shared.schemas(), "fixture: the first node compiled order.xsd");
+
+        Map<String, String> hit = deploy(node(shared.steps(), shared.xml()), "shop", shop().zip(), "r1");
+
+        assertEquals(1, shared.stylesheets(), "fixture: the second node's build of the same files hit the shared cache");
+        assertEquals(1, shared.schemas(), "fixture: the same for the schema");
+        assertEquals(fresh, hit, "a flow built from the cache has the hash of the same flow compiled fresh: the hit reports the include it read");
+    }
+
+    @Test
+    void aChangedIncludeOnASharedFactoryChangesOnlyItsReaders() throws Exception {
+        Shared shared = Shared.create();
+        Map<String, String> base = deploy(node(shared.steps(), shared.xml()), "shop", shop().zip(), "r1");
+
+        Map<String, String> lib = deploy(node(shared.steps(), shared.xml()), "shop", shop().file("flows/xsl/lib.xsl", template("lib", "lib v2")).zip(), "r1");
+        assertEquals(Set.of(ORDERS), changed(base, lib), "the stylesheet's include changed: its reader only, the schema's reader hit the cache unchanged");
+        assertEquals(2, shared.stylesheets(), "the same main.xsl over another include compiled again, not served from the cache");
+        assertEquals(1, shared.schemas(), "the unchanged schema was served from the cache");
+
+        Map<String, String> types = deploy(node(shared.steps(), shared.xml()), "shop", shop().file("flows/xsd/types.xsd", typesXsd(4)).zip(), "r1");
+        assertEquals(Set.of(AUDIT), changed(base, types), "the schema's include changed: its reader only, the stylesheet's reader hit the cache unchanged");
+        assertEquals(2, shared.schemas(), "the same order.xsd over another include compiled again, not served from the cache");
     }
 
     @Test

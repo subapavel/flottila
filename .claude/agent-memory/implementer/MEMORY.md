@@ -66,6 +66,10 @@
 - Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
   static `doc()`/`unparsed-text()`/`use-when` read via `Configuration.getResourceResolver()` (UseWhenFilter builds
   `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
+- Saxon 12.4 compile-time ResourceRequest (probe, FIX-17): include/import/doc() → `relativeUri` = the literal, `baseUri` = module;
+  static `unparsed-text*()` → `uri` already absolute, base and rel null; DTD entity → `uri` = literal, rel null, base set;
+  CollectionFinder gets only the absolute URI. Xerces LSResourceResolver: `systemId` literal, `baseURI` of the including schema.
+- An unreadable file even as root (a catch over `Files.readAllBytes`): symlink to `/proc/self/mem` (isRegularFile, read → EIO).
 - Vert.x 5.1.10 (javap): `transform(Function<AsyncResult<T>,Future<U>>)` (+ BiFunction overload), `andThen(Handler<AsyncResult>)`
   completes after the handler ran, `eventually(Supplier<Future<U>>)`; `Future.await()` works on a plain virtual thread.
 - FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
@@ -112,7 +116,5 @@
   lines, so 10 uncovered lines are 1 pp of the 2 pp band — count before adding untestable wiring (Main).
 - Known flake (seen FIX-30, not fixed: testkit): `RecordingComponent.send` counts `awaitSent` waiters down BEFORE `holds.pollFirst()`, so
   hold(); send A; awaitSent(1); hold(); send B can give A's latch to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
-- Seen once (P1-09d2a mutant loop, not reproduced in 6 reruns): AdminServerDeployTest#putAndFlowsNeedTheToken "Failed to decode: No
-  content to map" — a 401 answered before the PUT body was read; unrelated to the mutant then running.
 - A fixture that bumps a counter a test polls (`until(closes() > 0)`) BEFORE recording what the test then reads races (FIX-30 r2,
   Doors.Out.close): record first, count last. Mutants that hang a close need `-Dsurefire.timeout`; N4-style ones take ~130 s.

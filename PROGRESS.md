@@ -611,3 +611,12 @@ Checks: whole reactor -Pit VERIFIED_PASS 1172 (target/P1-09d2a-verify-all.log); 
 Review: FAIL round 1 (dir-entry sort unpinned; F-9 major without changelog line); PASS round 2.
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 16; review rounds 2 (test-author hit the turn cap once).
 Next: FIX-17 [B].
+
+## 2026-10-27 — FIX-17 compile caches keyed by every file read — done, review PASS
+Test first: XsltCompileCacheTest 12, XsdCompileCacheTest 9, DeploymentsHashTest 2 new — observed red (target/FIX-17-red.log, target/FIX-17-r2-red.log). One expectation in XsltCompileCacheTest#aCacheHitReportsTheSameReadsAsACompile changed by its author on architect approval (null-base static reads are pinned). Implementer-written CompiledFilesTest (xslt 4, validate 3) approved.
+Change: xslt/xsd caches keep one entry per distinct file set under a main hash; a hit requires every recorded read (includes, imports, static unparsed-text, absent probes, listed dirs) identical where the requesting flow's own compile would read it (`..` kept, null base pinned); confinement runs for the requester; a hit reports every read to the `reads` sink. D-052 exception amended.
+Owner decision recorded: D-064 (F-8): every recorded step body durable → new row P1-09k before P1-09c.
+Checks: whole reactor -Pit VERIFIED_PASS 1205 (target/FIX-17-r2-verify-all.log); coverage no decrease (xslt, validate 100/100), baseline written; mutants all killed except "normalise the moving key" (equivalent, accepted by the reviewer).
+Review: FAIL round 1 (climbing `..` lost in the key; null-base reads served across flows; main-name clause untested); PASS round 2. Raised FIX-41 (SHA-256 keys), FIX-42 (eviction); run-time base URI on FIX-40.
+D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 12; review rounds 2.
+Next: P1-09d2b [C].

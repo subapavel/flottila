@@ -54,9 +54,9 @@ final class CompileConfinement implements ResourceResolver, CollectionFinder {
         }
     }
 
-    /** Confines what this thread reads to {@code resources}' directory until the scope is closed. */
-    Scope open(StepResources resources) {
-        Scope scope = new Scope(resources);
+    /** Confines what this thread reads to {@code resources}' directory until the scope is closed; {@code reads} records what it read. */
+    Scope open(StepResources resources, CompiledFiles.Recorder reads) {
+        Scope scope = new Scope(resources, reads);
         current.set(scope);
         return scope;
     }
@@ -89,20 +89,27 @@ final class CompileConfinement implements ResourceResolver, CollectionFinder {
     /** One compilation's confinement on one thread. */
     final class Scope implements AutoCloseable {
         private final StepResources resources;
+        private final CompiledFiles.Recorder reads;
         /** The first reference the compilation tried to read outside the directory; {@code null} while none. */
         String refused;
 
-        private Scope(StepResources resources) { this.resources = resources; }
+        private Scope(StepResources resources, CompiledFiles.Recorder reads) {
+            this.resources = resources;
+            this.reads = reads;
+        }
 
-        /** {@code reference} inside the directory, or the refusal recorded and thrown. */
+        /** {@code reference} inside the directory, recorded as read, or the refusal recorded and thrown. */
         private Path confine(String baseUri, String reference) throws XPathException {
+            Path file;
             try {
-                return resources.resolve(baseUri, reference);
+                file = resources.resolve(baseUri, reference);
             } catch (IllegalArgumentException x) {
                 // unparsed-text-available() swallows the error and the compilation goes on: the factory fails on the first
                 if (refused == null) refused = x.getMessage();
                 throw new XPathException(x.getMessage());
             }
+            reads.read(baseUri, reference, file);
+            return file;
         }
 
         @Override public void close() { current.remove(); }

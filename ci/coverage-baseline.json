@@ -28,11 +28,11 @@
     "line": 98.8
   },
   "flottila-steps/validate": {
-    "branch": 90.0,
+    "branch": 100.0,
     "line": 100.0
   },
   "flottila-steps/xslt": {
-    "branch": 96.6,
+    "branch": 100.0,
     "line": 100.0
   },
   "flottila-testkit": {

@@ -22,12 +22,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * The {@code xslt} step: {@code stylesheet} (a path relative to the flow file) compiled at build time — by content
- * hash, so a stylesheet shared by several flows compiles once — and applied to the body's document view; the
+ * The {@code xslt} step: {@code stylesheet} (a path relative to the flow file) compiled at build time — once for
+ * every flow whose stylesheet has the same content and whose files it reads while compiling are the same
+ * ({@link CompiledFiles}: the same bytes, absences and directory entries at the same places relative to the
+ * stylesheet), each other flow compiling its own — and applied to the body's document view; the
  * result is the next step's body, written to the blob store under the flow's body limit, with
  * {@code content-type} from the stylesheet's output method. The stylesheet and every file it reads while it compiles —
  * a module it includes or imports (relative to the including module), an external entity, a static {@code doc()},
@@ -43,7 +47,8 @@ public final class XsltStepFactory implements StepFactory {
             {"type":"object","required":["stylesheet"],"properties":{"stylesheet":{"type":"string","minLength":1}}}""";
 
     private final SaxonXml xml;
-    private final Map<Hash, XsltExecutable> compiled = new ConcurrentHashMap<>();
+    /** By the main file's content hash: one per distinct set of files its compile read. */
+    private final Map<Hash, List<Compiled>> compiled = new ConcurrentHashMap<>();
 
     private final CompileConfinement confinement;
 
@@ -56,8 +61,11 @@ public final class XsltStepFactory implements StepFactory {
 
     @Override public String configSchema() { return CONFIG_SCHEMA; }
 
-    /** Stylesheets compiled so far, by content hash. */
-    public int compiledStylesheets() { return compiled.size(); }
+    /** Stylesheets compiled and kept so far: one per main content and distinct set of files the compile read. */
+    public int compiledStylesheets() { return compiled.values().stream().mapToInt(List::size).sum(); }
+
+    /** A compiled stylesheet and what its compile read. */
+    private record Compiled(CompiledFiles files, XsltExecutable executable) { }
 
     @Override
     public Stage create(StepConfig step, StepResources resources) {
@@ -98,9 +106,11 @@ public final class XsltStepFactory implements StepFactory {
             throw new IllegalArgumentException(step + ": stylesheet " + file + " cannot be read: " + x.getMessage(), x);
         }
         Hash hash = resources.hasher().hashOf(Buffer.buffer(source));
-        XsltExecutable cached = compiled.get(hash);
-        if (cached != null) return cached;
-        CompileConfinement.Scope scope = confinement.open(resources);
+        for (Compiled entry : compiled.getOrDefault(hash, List.of())) {
+            if (entry.files().sameIn(file, resources)) return entry.executable();   // reported what it read, as a compile here would
+        }
+        CompiledFiles.Recorder reads = new CompiledFiles.Recorder(file);
+        CompileConfinement.Scope scope = confinement.open(resources, reads);
         XsltExecutable fresh;
         try {
             StreamSource in = new StreamSource(new ByteArrayInputStream(source));
@@ -117,8 +127,9 @@ public final class XsltStepFactory implements StepFactory {
         }
         // unparsed-text-available() answers false on a refusal and the stylesheet compiles: still a refusal
         if (scope.refused != null) throw new IllegalArgumentException(step + ": stylesheet " + file + " does not compile: " + scope.refused);
-        XsltExecutable raced = compiled.putIfAbsent(hash, fresh);
-        return raced == null ? fresh : raced;
+        // two builds of the same files at once may both keep theirs: the second is never served, the first matches first
+        compiled.computeIfAbsent(hash, h -> new CopyOnWriteArrayList<>()).add(new Compiled(reads.held(resources.hasher()), fresh));
+        return fresh;
     }
 
     /** The build error; a refusal Saxon wrapped in its own words is reported as the confinement words it. */

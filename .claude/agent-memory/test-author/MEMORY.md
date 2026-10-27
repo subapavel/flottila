@@ -95,8 +95,7 @@
 - Pg lock-order (deadlock) staging without sleeps (P1-09a, PgMessageStoreIT): a holder tx keeps an uncommitted payloads row (plug batch
   waits → BatchingWriter's first save with inFlight 0 goes alone, so the next `batchSize` saves form one batch) and one middle key row;
   poll `pg_stat_activity where wait_event_type='Lock'` for 1/2/3 waiters, then roll back. Unsorted inserts → 40P01, observed in scratch.
-- Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`).
-- Rare hang (FIX-21): watchdog `jcmd <pid> Thread.dump_to_file` (virtual threads); late-listening reply pin: http `HttpComponentTest.LateListeningStore`.
+- Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`). Rare hang (FIX-21): watchdog `jcmd <pid> Thread.dump_to_file` (virtual threads); late-listening reply pin: http `HttpComponentTest.LateListeningStore`.
 - P1-09h: core flow test `HoldingBlobStore` (persist hold/release/fail/answer(key,ok)/throwNext/refuse(cause), `persists()`, `persisted(k)`;
   `ParkingTest.rewrite(store)` step writes its output there, FlowWorkerTest `World.stepBodies` + `REWRITE`); runtime blob
   `PgBodiesIT.neverDeleted(pool)` (statement trigger: any DELETE on bodies fails); NodeIT `synchronousCommit(v)` = ALTER DATABASE (new sessions).
@@ -116,5 +115,5 @@
 - Scratch mutants: `-DargLine` never reaches the surefire fork (JaCoCo or not): toggle by a file (`Files.readString(<scratch>/mutant.txt)`).
   Pre-existing 1/30 flakes: DeploymentsTest.closeStops...503 (answer not within 10 s), AdminServerDeployTest.getFlows... DecodeException.
 - P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant (own data dir, Doors, `new SaxonXml().steps()` + XsdValidate),
-  `changed(base, variant)` = exact set of moved hashes. Compile caches are per factory, keyed by main-file content (FIX-17): a cache hit reads no
-  include, so never compare hashes on one node. Static `unparsed-text-available()` / `uri-collection('dir')` report an absent path / a directory.
+  `changed(base, variant)` = moved hashes; `node(steps, xml)` + `Shared` = one compile cache over two nodes. `SaxonXml.steps()` builds a NEW
+  XsltStepFactory per call (share the list). Cache-hit witness: `compiledStylesheets()`/`compiledSchemas()` = entries kept (FIX-17). Static `unparsed-text-available()` / `uri-collection('dir')` report an absent path / a directory.

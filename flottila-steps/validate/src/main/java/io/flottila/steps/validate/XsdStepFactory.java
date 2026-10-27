@@ -21,14 +21,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * The {@code xsd} step: {@code schema} (a path relative to the flow file) compiled at build time — by content hash,
- * so a schema shared by several flows compiles once — and applied to the body's bytes with a fresh
- * {@link Validator} per message (a {@link Schema} is thread-safe, a validator is not). A valid message goes on
- * untouched; an invalid one, or one that is not well-formed, fails with an {@link XsdValidationException}.
+ * The {@code xsd} step: {@code schema} (a path relative to the flow file) compiled at build time — once for every
+ * flow whose schema has the same content and whose files it includes or imports are the same ({@link CompiledFiles}:
+ * the same bytes at the same places relative to the schema), each other flow compiling its own — and applied to the
+ * body's bytes with a fresh {@link Validator} per message (a {@link Schema} is thread-safe, a validator is not). A
+ * valid message goes on untouched; an invalid one, or one that is not well-formed, fails with an
+ * {@link XsdValidationException}.
  * Secure processing is on and nothing is fetched over the network: the schema and every file it includes or imports
  * (relative to the including file) lie inside the flow's directory (D-052) — one that leaves it, or a URL, is a build
  * error naming the step and the reference — a document's external DTD is never read (it does not validate) and a
@@ -41,7 +45,8 @@ public final class XsdStepFactory implements StepFactory {
     static final String CONFIG_SCHEMA = """
             {"type":"object","required":["schema"],"properties":{"schema":{"type":"string","minLength":1}}}""";
 
-    private final Map<Hash, Schema> compiled = new ConcurrentHashMap<>();
+    /** By the main file's content hash: one per distinct set of files its compile read. */
+    private final Map<Hash, List<Compiled>> compiled = new ConcurrentHashMap<>();
 
     XsdStepFactory() { }
 
@@ -49,8 +54,11 @@ public final class XsdStepFactory implements StepFactory {
 
     @Override public String configSchema() { return CONFIG_SCHEMA; }
 
-    /** Schemas compiled so far, by content hash. */
-    public int compiledSchemas() { return compiled.size(); }
+    /** Schemas compiled and kept so far: one per main content and distinct set of files the compile read. */
+    public int compiledSchemas() { return compiled.values().stream().mapToInt(List::size).sum(); }
+
+    /** A compiled schema and what its compile read. */
+    private record Compiled(CompiledFiles files, Schema schema) { }
 
     @Override
     public Stage create(StepConfig step, StepResources resources) {
@@ -100,9 +108,11 @@ public final class XsdStepFactory implements StepFactory {
             throw new IllegalArgumentException(step + ": schema " + file + " cannot be read: " + x.getMessage(), x);
         }
         Hash hash = resources.hasher().hashOf(Buffer.buffer(source));
-        Schema cached = compiled.get(hash);
-        if (cached != null) return cached;
-        ConfinedSchemaResolver resolver = new ConfinedSchemaResolver(resources);
+        for (Compiled entry : compiled.getOrDefault(hash, List.of())) {
+            if (entry.files().sameIn(file, resources)) return entry.schema();   // reported what it read, as a compile here would
+        }
+        CompiledFiles.Recorder reads = new CompiledFiles.Recorder(file);
+        ConfinedSchemaResolver resolver = new ConfinedSchemaResolver(resources, reads);
         try {
             SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);   // no external DTD or schema access
@@ -111,8 +121,9 @@ public final class XsdStepFactory implements StepFactory {
             StreamSource in = new StreamSource(new ByteArrayInputStream(source));
             in.setSystemId(file.toUri().toString());
             Schema fresh = factory.newSchema(in);   // a reference the resolver did not hand over is the parser's error: it may load nothing itself
-            Schema raced = compiled.putIfAbsent(hash, fresh);
-            return raced == null ? fresh : raced;
+            // two builds of the same files at once may both keep theirs: the second is never served, the first matches first
+            compiled.computeIfAbsent(hash, h -> new CopyOnWriteArrayList<>()).add(new Compiled(reads.held(resources.hasher()), fresh));
+            return fresh;
         } catch (SAXException x) {
             String why = resolver.failure != null ? resolver.failure : x.getMessage();   // names the reference and why, the parser only its last segment and the belt
             throw new IllegalArgumentException(step + ": schema " + file + " does not compile: " + why, x);

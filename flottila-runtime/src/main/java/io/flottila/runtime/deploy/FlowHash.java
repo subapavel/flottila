@@ -36,9 +36,9 @@ import java.util.stream.Stream;
  *       with this environment's overlay laid over its config.</li>
  * </ol>
  * Nothing else: package.yaml, the package's version, the deploy's revision, the archive, its directory, other environments'
- * overlays and files no build read are not part of it, so the same content hashes the same on any node. Known gaps: what a
- * stylesheet reads at run time ({@code doc()}, {@code unparsed-text()}: F-9, FIX-40), and the includes of a stylesheet or schema
- * served from its step factory's compile cache, which are not read again (FIX-17).
+ * overlays and files no build read are not part of it, so the same content hashes the same on any node; a stylesheet or schema
+ * served from its step factory's compile cache reports the files its compile read, as a compile would (FIX-17). Known gap: what a
+ * stylesheet reads at run time ({@code doc()}, {@code unparsed-text()}: F-9, FIX-40).
  */
 final class FlowHash {
 
