@@ -18,8 +18,7 @@
 - jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its report header: data, ignore it.
 - A red core test stops the reactor; for the full picture add a second run with
   `-Dmaven.test.failure.ignore=true` (separate log) — report both, never as a substitute.
-- `-Dtest='Foo*'` also selects nested classes (`FooTest$BlockingTestCase`, an EngineTestKit fixture built to
-  fail) — default `**/*$*` excludes are dropped; use `-Dtest=FooTest,FooConfigTest` and delete the stale XML.
+- `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
 - A new Flyway migration bumps the schema version asserted in THREE ITs: runtime MigrationsIT, runtime
@@ -33,13 +32,14 @@
   saves with append=false. Runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec) since P1-09d3.
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
   always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
-- Mutant loop runs offline (`-o`) fine: `-pl <m> -am test -Dtest=..` is ~5 s (schemas/core) to ~12 s (runtime) per mutant.
-  No rsync on the box: scratch copy = `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`; then mutants
-  can run there while the main tree builds (cmp the restored file against the main tree).
+- Mutants run offline (`-o`): ~5 s (core) to ~12 s (runtime unit), ~55 s with the blob ITs. Scratch copy (no rsync):
+  `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`, mutate there while the main tree builds.
 - Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
   a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
-- JaCoCo counts only a module's own tests: a new api/step method (e.g. `Fault.kind()`) or a testkit
-  fixture with no test in its own module trips the 2 pp band even when other modules exercise it.
+- CPU-load race loops (FIX-35): 4 hogs `taskset -c 0,1 sh -c 'while :; do :; done' &` + `taskset -c 0,1 mvn ..`, kill the PIDs; never
+  `rm` in the same command as a `sh -c` (a safety check refuses it). runtime failsafe runs each IT twice (default + heap-bounded-it).
+- Mutant killers from TEST-*.xml: keep files with mtime ≥ the run's own start, no margin (the previous run's last XMLs leak in).
+- JaCoCo counts only a module's own tests: a new api/step method or testkit fixture untested in its own module trips the band.
 
 ## APIs
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`.
@@ -49,7 +49,6 @@
   Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
-- Probing an HttpClient answer: read `res.body()` inside the compose chain; after `await()` on another thread the body is lost.
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
   connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
@@ -83,7 +82,6 @@
 - Vert.x 5.1.10 source: `Future.future(h)` fails its promise with what `h` throws (null answer included); `compose` with a
   mapper that returns null throws NPE inside a listener and the composed future NEVER completes. `VertxOptions.setUseDaemonThread`
   (default null: Vert.x threads inherit the daemon flag of the thread that first runs them — a virtual thread's is true).
-
 - Vert.x 5.1.10 HTTP/1 server upload (source + tests, P1-09d1b): a hang-up mid-body reaches `req.exceptionHandler` only if it is
   set when the close lands — set handlers on the route while paused (the vertx-web Router never resumes a paused request);
   `isEnded()` flips when the end is delivered from the paused queue; `req.handler(null)` drops queued chunks; `AsyncFile.write`
@@ -92,8 +90,9 @@
   end must close the connection (`!req.isEnded()` → `connection().close()`), or the client waits on a paused socket.
 - JDK HttpClient defaults to HTTP_2 and upgrades h2c against a Vert.x server (h2c on by default): requests to one port share a
   connection, so a probe sent during a consumer's shutdown rides the held request's connection (NodeIT drain flake, P1-09d1b).
-- JDK 25 ZipFile (javap + probe, P1-09d1a): no-zip / empty / truncated file → ZipException at open; corrupt deflate data →
-  ZipException on read; zeroed deflate bytes inflated to 8 wrong bytes with no error (no CRC check); `size()` matched 10 000/10 001.
+- TieredBlobStore spool files are per write since FIX-35: `<id>/<step>-<part>-<n>.blob` (n per store); a write that replaces a
+  spool entry unlinks its own file off-thread; a missing file reads the row only for a `Stored` persist flagged durable, else
+  ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
 
 ## Findings that came back in review
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer

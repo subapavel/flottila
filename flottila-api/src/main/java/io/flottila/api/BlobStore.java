@@ -39,11 +39,14 @@ public interface BlobStore {
 
     /**
      * Makes the stored body durable (D-058, D-061): the future completes once the bytes outlive the process and every node
-     * can read them by {@code key} — for a database tier, once the insert has committed. Idempotent: a key that is already
-     * durable completes again, and the first durable bytes win for a key. Never deletes anything. Every failure is a failed
-     * future: {@link BodyTooLargeException} above the store's durable bound (nothing is written, the body stays where it
-     * was), {@link IllegalArgumentException} for a key with nothing stored, {@link IllegalStateException} when the store has
-     * no durable tier. An at-least-once delivery calls it on the ingress body before it answers Accepted.
+     * can read them by {@code key} — for a database tier, once the insert has committed. A key's durable bytes never change
+     * (D-061 amended by FIX-35): persisting a key that is already durable with the same bytes completes again, quietly; with
+     * other bytes — a key written again since — it fails with an {@link IllegalStateException} naming the key, nothing is
+     * persisted and the body stays as written. Never deletes anything. Every failure is a failed future:
+     * {@link BodyTooLargeException} above the store's durable bound (nothing is written, the body stays where it was),
+     * {@link IllegalArgumentException} for a key with nothing stored, {@link IllegalStateException} for other bytes under a
+     * durable key and when the store has no durable tier. An at-least-once delivery calls it on the ingress body before it
+     * answers Accepted.
      */
     Future<Void> persist(BlobKey key);
 }

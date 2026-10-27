@@ -71,6 +71,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * its DLQ row is written, so a DLQ row survives the node that wrote it: a fresh store (new spool directory and key, new pool:
  * a restart) retries it from Postgres. A step body that cannot be made durable (above the durable bound) writes no row and
  * leaves the item to its lease; past the attempts bound the message parks its ingress, durable since its delivery (D-058).
+ * So does a step body whose key already holds other durable bytes (FIX-35, D-061 amended): its persist fails.
  *
  * <p>Flow {@code orders}, at-least-once: {@code rewrite} (hands on a new body of {@value #H_SIZE} bytes, written into the
  * runtime's tiered store — memory up to {@value #MEMORY_TIER} bytes, spool above, Postgres tier bound {@value #DURABLE_BOUND}),
@@ -422,5 +423,47 @@ class DlqBodiesIT {
         assertEquals(2, partner.sent().size(), "and runs again");
         assertEquals(0, count("dlq"));
         assertEquals(1, count("work"));
+    }
+
+    /**
+     * FIX-35 (D-061 amended), the done-when witness on Postgres: the parked body's key already holds other durable bytes — a
+     * row an earlier run left whose DLQ row was lost — so the park's persist fails: no DLQ row, the row unchanged, the step
+     * body local, the item left to its lease; past the attempts bound the message parks its ingress, durable since its delivery.
+     */
+    @Test
+    void aStepBodyWhoseKeyHoldsOtherDurableBytesEndsInTheIngressPark() {
+        int maxAttempts = 2;
+        NodeStores node = new NodeStores("node");
+        String id = deliver(node, "dlq-conflict", SMALL);
+        BlobKey stepBody = BlobKey.body(id, 1);
+        Buffer earlier = bytes(SMALL, id.hashCode() + 1);   // the same size as this run's step body, other bytes
+        assertFalse(bytes(SMALL, id.hashCode()).equals(earlier), "fixture: other bytes than every run of rewrite writes");
+        admin.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)")
+                .execute(Tuple.of(stepBody.messageId(), stepBody.step(), stepBody.part(), earlier)).await();
+        partner.failNext(maxAttempts, DlqBodiesIT::refused);
+        FlowWorker worker = node.worker(maxAttempts);
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            assertEquals(1, worker.poll().await(), "attempt " + attempt + " claimed");
+            assertEquals(attempt, partner.sent().size(), "attempt " + attempt + " ran and the partner refused");
+            assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), where.get(stepBody), "fixture: attempt " + attempt + "'s step body was held in memory");
+            assertEquals(0, count("dlq"), "attempt " + attempt + ": no DLQ row, the parked body's key holds other durable bytes");
+            assertEquals(List.of(), bodyCommittedAtDlqInsert(), "attempt " + attempt + ": no DLQ insert was even tried");
+            assertEquals(Optional.of(earlier), bodiesRow(stepBody), "attempt " + attempt + ": the row keeps the earlier bytes");
+            assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), node.blobs.location(stepBody), "attempt " + attempt + ": the step body stays local");
+            assertEquals(written.get(stepBody), node.blobs.read(stepBody).await(), "attempt " + attempt + ": and reads this run's bytes");
+            assertEquals(0, worker.poll().await(), "attempt " + attempt + ": the item is left to its lease");
+            expireLease(id);
+        }
+        assertEquals(1, worker.poll().await(), "the claim past the bound");
+        assertEquals(maxAttempts, partner.sent().size(), "past the bound nothing runs");
+        Parked parked = dlqRow(id).orElseThrow(() -> new AssertionError("no DLQ row for " + id + " past the bound"));
+        assertEquals(1, parked.step(), "parked at step 1");
+        assertEquals(BlobKey.body(id, 0), parked.bodyKey(), "by its ingress");
+        assertTrue(parked.error().contains("AttemptsExhaustedException"), parked.error());
+        assertEquals(Optional.of(ORDER), bodiesRow(BlobKey.body(id, 0)), "the ingress is durable, since its delivery");
+        assertEquals(List.of(true), bodyCommittedAtDlqInsert(), "one DLQ insert, by the ingress, its row committed");
+        assertEquals(Optional.of(earlier), bodiesRow(stepBody), "the step body's row never changed");
+        assertEquals(0, count("work"), "parked: the item completed");
     }
 }

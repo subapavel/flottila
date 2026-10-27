@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -68,9 +69,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * The Postgres tier of {@link TieredBlobStore} (D-058, D-061, F-6): {@code persist} moves a memory or spool body into
  * {@code bodies(message_id, step, part, bytes)} and completes only once that insert committed; then the local copy is gone —
  * the index entry and the memory budget before the future completes, the spool file afterwards off the caller's path — and
- * every read of the key goes to Postgres, by a store of this node or a fresh one (a new spool directory, key and pool). The
- * first durable bytes win for a key; above the durable bound nothing is written and the body stays local; a failed insert
- * keeps the body local too. Every case runs on a database of its own (FIX-5).
+ * every read of the key goes to Postgres, by a store of this node or a fresh one (a new spool directory, key and pool). A
+ * key's durable bytes never change (D-061 amended by FIX-35): the same bytes again persist quietly, other bytes fail with an
+ * {@link IllegalStateException} and stay local; above the durable bound nothing is written and the body stays local; a failed
+ * insert keeps the body local too. Every case runs on a database of its own (FIX-5).
  *
  * <p>The test seam {@code afterRelease(Consumer<BlobKey>)} as these cases read it: called once per persisted local body,
  * with its key, once its local copy is gone — for a spool body after the unlink (attempted) on the unlinking virtual thread.
@@ -239,9 +241,9 @@ class PgBodiesIT {
     }
 
     /**
-     * P1-09j (D-062): the key is written again — same size, other bytes, spooled to the same file name — while a persist's
-     * insert waits. Once that persist completes, the rewrite is not mistaken for the body the persist moved: its index entry
-     * and its spool file stay, and the key reads the rewrite.
+     * P1-09j (D-062): the key is written again — same size, other bytes, spooled to a file of its own (FIX-35) — while a
+     * persist's insert waits. Once that persist completes, the rewrite is not mistaken for the body the persist moved: its
+     * index entry and its spool file stay, and the key reads the rewrite.
      */
     @Test
     void aSameSizeSpoolRewriteDuringAPersistKeepsTheRewrite() {
@@ -249,9 +251,11 @@ class PgBodiesIT {
         Buffer first = bytes(600, 11);
         Buffer rewrite = bytes(600, 12);
         assertFalse(first.equals(rewrite), "fixture: other bytes");
-        TieredBlobStore s = store(dir, 0, pool);   // no memory tier: both writes spool under the same file name
+        TieredBlobStore s = store(dir, 0, pool);   // no memory tier: both writes spool, each to a file of its own (FIX-35)
         await(s.write(k, first, FLOW_MAX));
         assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "fixture: spooled");
+        assertEquals(1, files(dir).size(), "fixture: the first write's spool file: " + files(dir));
+        Path firstFile = files(dir).get(0);
         Future<Void> persisted;
         PgConnection holder = PgConnection.connect(vertx, options(database)).await();
         try {
@@ -272,6 +276,8 @@ class PgBodiesIT {
         assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "the rewrite is not the body the persist moved: its index entry stays");
         assertEquals(rewrite, await(s.read(k)), "and the key reads the rewrite, from its spool file");
         assertEquals(rewrite, await(collect(s.open(k))), "streamed too");
+        // the replaced first copy's file goes on a virtual thread of its own (FIX-35): counted once it is gone, never raced
+        until(() -> !Files.exists(firstFile), "the replaced first copy's spool file is unlinked");
         assertEquals(1, files(dir).size(), "the rewrite's spool file stays: " + files(dir));
     }
 
@@ -417,21 +423,145 @@ class PgBodiesIT {
         assertInstanceOf(IllegalArgumentException.class, openGone.cause(), String.valueOf(openGone.cause()));
     }
 
+    /**
+     * FIX-35 (D-061 amended; the case was {@code aKeyWrittenAgainAfterPersistPersistsQuietlyAndTheFirstBytesWin}): a key written
+     * again with other bytes after its persist is not persisted — the persist fails with an {@link IllegalStateException}
+     * naming the key, the row keeps the first bytes, and the second copy stays local with its budget or its spool file. For
+     * the spool twin the first persist's unlink is awaited before the key is written again, so the spool directory holds the
+     * second copy's file alone (each write has a file of its own, FIX-35; the unlink runs after the persist completed).
+     */
     @Test
-    void aKeyWrittenAgainAfterPersistPersistsQuietlyAndTheFirstBytesWin() {
-        TieredBlobStore s = store(dir, 1L << 16, pool);
+    void aKeyWrittenAgainWithOtherBytesAfterPersistFailsIllegalStateAndTheRowKeepsTheFirst() throws InterruptedException {
+        TieredBlobStore inMemory = store(dir, 1L << 16, pool);
+        TieredBlobStore spooling = store(dir.resolve("spool-only"), 0, pool);
         BlobKey k = BlobKey.body("m-again", 0);
+        BlobKey ks = BlobKey.body("m-again-spooled", 0);
         Buffer first = bytes(400, 9);
         Buffer second = bytes(500, 10);
-        await(s.write(k, first, FLOW_MAX));
-        await(s.persist(k));
-        await(s.write(k, second, FLOW_MAX));   // a redelivery writes the key again
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(k), "fixture: the second bytes are local");
-        await(s.persist(k));
-        assertEquals(Optional.of(first), row(k), "the first durable bytes win (as snapshots do, D-044)");
-        assertEquals(first, await(s.read(k)), "and are what the key reads: no local copy of the second stays");
-        assertEquals(Optional.empty(), s.location(k));
-        assertEquals(0, s.memoryInUse(), "the second copy's budget is released too");
+        CountDownLatch firstUnlinked = new CountDownLatch(1);
+        spooling.afterRelease(released -> firstUnlinked.countDown());
+        await(inMemory.write(k, first, FLOW_MAX));
+        await(inMemory.persist(k));
+        await(spooling.write(ks, first, FLOW_MAX));
+        await(spooling.persist(ks));
+        assertTrue(firstUnlinked.await(10, TimeUnit.SECONDS), "fixture: the first spool copy was released");
+        await(inMemory.write(k, second, FLOW_MAX));   // a rerun writes the key again, with other bytes
+        await(spooling.write(ks, second, FLOW_MAX));
+        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), inMemory.location(k), "fixture: the second bytes are local");
+        assertEquals(500, inMemory.memoryInUse(), "fixture: with their budget");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(ks), "fixture: spooled");
+        assertEquals(1, files(dir.resolve("spool-only")).size(), "fixture: the second bytes' spool file");
+
+        for (Object[] c : new Object[][] {{inMemory, k}, {spooling, ks}}) {
+            TieredBlobStore s = (TieredBlobStore) c[0];
+            BlobKey key = (BlobKey) c[1];
+            Future<Void> f = awaitOutcome(s.persist(key));
+            assertTrue(f.failed(), "other bytes under a durable key are not persisted: " + key);
+            IllegalStateException e = assertInstanceOf(IllegalStateException.class, f.cause(), String.valueOf(f.cause()));
+            assertTrue(e.getMessage().contains(key.toString()), "names the key: " + e.getMessage());
+            assertEquals(Optional.of(first), row(key), "the row keeps the first bytes: " + key);
+            assertEquals(second, await(s.read(key)), "the key reads the second bytes, local: " + key);
+            assertEquals(second, await(collect(s.open(key))), "streamed too: " + key);
+        }
+        assertEquals(2, rows(), "no row added");
+        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), inMemory.location(k), "the second copy stays local");
+        assertEquals(500, inMemory.memoryInUse(), "its budget unchanged");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(ks), "the spooled second copy stays local");
+        assertEquals(1, files(dir.resolve("spool-only")).size(), "with its spool file");
+    }
+
+    /**
+     * FIX-35: a key written again with the same bytes after its persist — a rerun of a deterministic step — persists quietly,
+     * and that second local copy goes like the first: the index entry and the budget, or the spool file.
+     */
+    @Test
+    void aKeyWrittenAgainWithTheSameBytesAfterPersistPersistsQuietlyAndReleasesTheCopy() throws InterruptedException {
+        TieredBlobStore inMemory = store(dir, 1L << 16, pool);
+        TieredBlobStore spooling = store(dir.resolve("spool-only"), 0, pool);
+        BlobKey k = BlobKey.body("m-same", 0);
+        BlobKey ks = BlobKey.body("m-same-spooled", 0);
+        Buffer bytes = bytes(400, 9);
+        List<BlobKey> released = new CopyOnWriteArrayList<>();
+        inMemory.afterRelease(released::add);
+        Semaphore spoolReleases = new Semaphore(0);
+        spooling.afterRelease(key -> {
+            released.add(key);
+            spoolReleases.release();
+        });
+        await(inMemory.write(k, bytes, FLOW_MAX));
+        await(inMemory.persist(k));
+        await(spooling.write(ks, bytes, FLOW_MAX));
+        await(spooling.persist(ks));
+        assertTrue(spoolReleases.tryAcquire(10, TimeUnit.SECONDS), "fixture: the first spool copy was released");
+        await(inMemory.write(k, bytes.copy(), FLOW_MAX));   // a rerun writes the key again: equal bytes
+        await(spooling.write(ks, bytes.copy(), FLOW_MAX));
+        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), inMemory.location(k), "fixture: the second copy is local");
+        assertEquals(400, inMemory.memoryInUse(), "fixture: with its budget");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(ks), "fixture: spooled");
+        assertEquals(1, files(dir.resolve("spool-only")).size(), "fixture: the second copy's spool file");
+
+        await(inMemory.persist(k));
+        assertEquals(Optional.empty(), inMemory.location(k), "the second copy's index entry is gone");
+        assertEquals(0, inMemory.memoryInUse(), "and its budget released");
+        await(spooling.persist(ks));
+        assertEquals(Optional.empty(), spooling.location(ks), "the spooled second copy's index entry is gone");
+        assertTrue(spoolReleases.tryAcquire(10, TimeUnit.SECONDS), "the spooled second copy was released: " + released);
+        assertEquals(List.of(), files(dir.resolve("spool-only")), "and its spool file unlinked");
+        assertEquals(List.of(k, ks, k, ks), released, "each copy released once");
+        for (BlobKey key : List.of(k, ks)) {
+            assertEquals(Optional.of(bytes), row(key), "one row, the bytes: " + key);
+            assertEquals(bytes, await((key == k ? inMemory : spooling).read(key)), "read from Postgres: " + key);
+        }
+        assertEquals(2, rows());
+    }
+
+    /**
+     * FIX-35: the compare runs after the insert found the conflict, on what was committed meanwhile. Another session holds an
+     * uncommitted row under each of two keys — other bytes under one, the store's own bytes under the other — and both
+     * persists' inserts wait for it; once it commits, the persist of other bytes fails with an {@link IllegalStateException}
+     * and keeps its copy local, the persist of equal bytes completes quietly and releases its copy.
+     */
+    @Test
+    void aConflictingRowCommittedWhileThePersistWaitsIsCompared() {
+        TieredBlobStore s = store(dir, 1L << 16, pool);
+        BlobKey differs = BlobKey.body("m-raced", 1);
+        BlobKey equal = BlobKey.body("m-raced", 2);
+        Buffer ours = bytes(600, 21);
+        Buffer theirs = bytes(600, 22);   // the same size, other bytes
+        assertFalse(ours.equals(theirs), "fixture: other bytes");
+        await(s.write(differs, ours, FLOW_MAX));
+        await(s.write(equal, ours, FLOW_MAX));
+        Future<Void> refused;
+        Future<Void> quiet;
+        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
+        try {
+            Transaction held = holder.begin().await();
+            String insert = "insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)";
+            holder.preparedQuery(insert).execute(Tuple.of(differs.messageId(), differs.step(), differs.part(), theirs)).await();
+            holder.preparedQuery(insert).execute(Tuple.of(equal.messageId(), equal.step(), equal.part(), ours)).await();
+            refused = s.persist(differs);
+            quiet = s.persist(equal);
+            until(() -> lockWaiters() == 2, "both persists' inserts wait on the other session's uncommitted rows");
+            assertFalse(refused.isComplete(), "fixture: waiting: " + refused);
+            assertFalse(quiet.isComplete(), "fixture: waiting: " + quiet);
+            held.commit().await();
+        } finally {
+            holder.close().await();
+        }
+        Future<Void> r = awaitOutcome(refused);
+        assertTrue(r.failed(), "the committed row holds other bytes: the persist fails");
+        IllegalStateException e = assertInstanceOf(IllegalStateException.class, r.cause(), String.valueOf(r.cause()));
+        assertTrue(e.getMessage().contains(differs.toString()), "names the key: " + e.getMessage());
+        assertEquals(Optional.of(theirs), row(differs), "the committed row is unchanged");
+        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(differs), "the copy stays local");
+        assertEquals(ours, await(s.read(differs)), "and is what the key reads");
+
+        Future<Void> q = awaitOutcome(quiet);
+        assertTrue(q.succeeded(), "the committed row holds the same bytes: the persist is quiet: " + q.cause());
+        assertEquals(Optional.of(ours), row(equal));
+        assertEquals(Optional.empty(), s.location(equal), "and its copy released");
+        assertEquals(600, s.memoryInUse(), "only the refused copy's budget stays");
+        assertEquals(ours, await(s.read(equal)), "read from Postgres");
     }
 
     @Test

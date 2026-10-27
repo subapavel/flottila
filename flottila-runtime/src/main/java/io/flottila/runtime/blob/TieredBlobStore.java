@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -42,7 +43,13 @@ import java.util.function.Consumer;
  * <p>With a durable tier ({@link PgBodies}, D-058, D-061) {@link #persist} moves a memory or spool body into Postgres: once
  * the insert has committed, the index entry and its memory budget go before the future completes, a spool file is unlinked
  * afterwards on a virtual thread. From then on — and on any node, after any restart — a key missing from the index is read
- * from Postgres; nothing is cached locally. An S3 body is durable already. No path of this store deletes a durable body.
+ * from Postgres; nothing is cached locally. A key's durable bytes never change (D-061 amended by FIX-35): other bytes under a
+ * durable key are refused and stay local. An S3 body is durable already. No path of this store deletes a durable body.
+ *
+ * <p>Every spool write has a file of its own (FIX-35): the index entry holds its path, and an unlink — after a persist, an
+ * evict, or a write of the key that replaced the entry — only ever removes the file of the entry it took out of the index. A
+ * stream that finds its entry's file gone reads the key's row only when a persist proved the row holds that entry's bytes;
+ * otherwise it fails.
  *
  * @since 0.1
  */
@@ -87,6 +94,7 @@ public final class TieredBlobStore implements BlobStore {
     private final SpoolCipher cipher;
     private final long queueHighWater;
     private final Map<BlobKey, Stored> objects = new ConcurrentHashMap<>();
+    private final AtomicLong spoolNames = new AtomicLong();   // one spool file name per write: no two writes share a file
     private final PgBodies bodies;   // the durable tier; null = none
     private volatile long peakQueued;   // the most bytes any streaming write held ahead of its sink (a test seam for the back-pressure bound)
     private volatile Runnable afterSinkDecision;   // test seam: see afterSinkDecision(Runnable)
@@ -95,8 +103,9 @@ public final class TieredBlobStore implements BlobStore {
     private static final System.Logger LOG = System.getLogger(TieredBlobStore.class.getName());
 
     /**
-     * One write's index entry. Identity equality, never value equality (D-062): a same-size rewrite of a spool body has the
-     * same location, file and size, and {@link #release} must not take it for the entry its persist read.
+     * One write's index entry. Identity equality, never value equality (D-062): a same-size rewrite of a body has the same
+     * location and size, and {@link #release} must not take it for the entry its persist read. A spool entry's file is its
+     * write's own (FIX-35).
      */
     private static final class Stored {
         private final Location location;
@@ -104,6 +113,9 @@ public final class TieredBlobStore implements BlobStore {
         private final Path file;
         private final String s3Key;
         private final long size;
+        // set by a persist that found the key's row holding this entry's bytes, before it releases the entry (FIX-35): only then
+        // may a read whose spool file is gone read the row instead
+        private volatile boolean durable;
 
         Stored(Location location, Buffer bytes, Path file, String s3Key, long size) {
             this.location = location;
@@ -118,6 +130,8 @@ public final class TieredBlobStore implements BlobStore {
         Path file() { return file; }
         String s3Key() { return s3Key; }
         long size() { return size; }
+        boolean durable() { return durable; }
+        void provenDurable() { durable = true; }
     }
 
     /** A store without a durable tier: {@link #persist} succeeds for an S3 body only. */
@@ -173,7 +187,14 @@ public final class TieredBlobStore implements BlobStore {
     /** The S3 object key a body is (or would be) stored under: {@code <prefix>/<messageId>/<step>/<part>}. */
     public String objectKey(BlobKey key) { return config.s3().prefix() + "/" + key.messageId() + "/" + key.step() + "/" + key.part(); }
 
-    private Path spoolFile(BlobKey key) { return config.spoolDir().resolve(key.messageId()).resolve(key.step() + "-" + key.part() + ".blob"); }
+    /**
+     * A fresh spool file for one write: {@code <messageId>/<step>-<part>-<n>.blob}, {@code n} counting this store's spool
+     * names — keyed by id and step, never by content, and never shared by two writes of a key (FIX-35): the unlink of one
+     * write's file, which runs after its entry left the index, cannot remove a later write's.
+     */
+    private Path spoolFile(BlobKey key) {
+        return config.spoolDir().resolve(key.messageId()).resolve(key.step() + "-" + key.part() + "-" + spoolNames.incrementAndGet() + ".blob");
+    }
 
     /** Ids become path segments: a separator or a dot-name would escape the spool directory or the S3 prefix. */
     private static void checkKey(BlobKey key) {
@@ -189,13 +210,14 @@ public final class TieredBlobStore implements BlobStore {
         long size = whole.length();
         if (size > maxSize) return Future.failedFuture(new BodyTooLargeException(key, size, maxSize));
         if (size <= config.memoryTierBytes() && budget.tryReserve(size)) {
-            objects.put(key, new Stored(Location.MEMORY, whole.copy(), null, null, size));
+            index(key, new Stored(Location.MEMORY, whole.copy(), null, null, size));
             return Future.succeededFuture(Body.of(this, key, hasher.hashOf(whole), size));
         }
         Promise<Body> result = Promise.promise();
         Thread.ofVirtual().name("flottila-blob-write").start(() -> {
             try {
-                Sink sink = newSink(key);
+                Path file = spoolFile(key);
+                Sink sink = newSink(key, file);
                 try {
                     sink.write(whole);
                     sink.finish();
@@ -203,7 +225,7 @@ public final class TieredBlobStore implements BlobStore {
                     sink.abort();
                     throw t;
                 }
-                objects.put(key, stored(key, size));
+                index(key, stored(key, file, size));
                 result.complete(Body.of(this, key, hasher.hashOf(whole), size));
             } catch (Throwable t) {
                 result.fail(t);
@@ -258,9 +280,15 @@ public final class TieredBlobStore implements BlobStore {
      * or one the index misses — is refused with an {@link IllegalStateException}. With one: a key the index misses is done when
      * its row exists, else refused with an
      * {@link IllegalArgumentException}; a body above the tier's bound fails with {@link BodyTooLargeException} and stays where it
-     * is; otherwise its bytes are read and inserted, and once the insert has committed the local copy goes — the index entry and
-     * the memory budget before the future completes, a spool file afterwards on a virtual thread (an unlink that fails is
-     * logged). A failed read or insert fails the persist and leaves the body local. Nothing is ever deleted from Postgres.
+     * is; otherwise its bytes are read and inserted. Once the key's row holds these bytes — inserted now and committed, or
+     * found holding the same bytes — the entry is proven durable and its local copy goes: the index entry and the memory budget
+     * before the future completes, a spool file afterwards on a virtual thread (an unlink that fails is logged). A row that
+     * holds other bytes is kept: a key's durable bytes never change (D-061 amended by FIX-35), the persist fails with an
+     * {@link IllegalStateException} naming the key, and the body stays local with its budget or spool file. A spool entry
+     * whose file is gone before it is read — a write of the key replaced it, or an evict took it, meanwhile — and that no
+     * persist proved durable fails the persist with an {@link IllegalStateException} naming the key before any insert: the
+     * row is no witness of bytes never read (FIX-35). Any other failed read, or a failed insert, fails the persist and leaves
+     * the body local. Nothing is ever deleted from Postgres.
      */
     @Override
     public Future<Void> persist(BlobKey key) {
@@ -270,16 +298,21 @@ public final class TieredBlobStore implements BlobStore {
         if (s == null) return bodies.exists(key).compose(found -> found ? Future.succeededFuture() : Future.failedFuture(noObject(key)));
         if (s.size() > bodies.maxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), bodies.maxBytes()));
         Future<Buffer> local = s.location() == Location.MEMORY ? Future.succeededFuture(s.bytes()) : collect(open(key, s));
-        return local.compose(bytes -> bodies.insert(key, bytes)).map(inserted -> {
+        return local.compose(bytes -> bodies.insert(key, bytes)).compose(same -> {
+            if (!same) {
+                return Future.failedFuture(new IllegalStateException("the durable body under " + key + " holds other bytes than these " + s.size()
+                        + ": a key's durable bytes never change (D-061, FIX-35); nothing was persisted and the body stays local"));
+            }
+            s.provenDurable();   // before the release unlinks its file: a stream that then misses the file reads the row
             release(key, s);   // before the future completes: whoever awaits it finds the local copy gone
-            return null;
+            return Future.succeededFuture();
         });
     }
 
     /**
      * The local copy of a persisted body goes, when the index still holds {@code s} — otherwise it was evicted, written again
      * or released by another persist meanwhile, and its budget and file are not this persist's: the entry and its memory budget
-     * now, a spool file afterwards on a virtual thread, never on the caller's.
+     * now, a spool file — {@code s}'s own — afterwards on a virtual thread, never on the caller's.
      */
     private void release(BlobKey key, Stored s) {
         if (!objects.remove(key, s)) return;
@@ -288,13 +321,34 @@ public final class TieredBlobStore implements BlobStore {
             released(key);
             return;
         }
+        unlinkLater(key, s.file(), "the persisted body", () -> released(key));
+    }
+
+    /**
+     * Puts a write's entry in the index. A spool entry it replaces leaves with its own file, unlinked on a virtual thread
+     * (FIX-35: the file is that write's alone, no other write's name). Nothing else is freed here: a replaced memory entry's
+     * budget stays reserved (FIX-36), and a replaced S3 entry's object stays under the key's object key, which only a
+     * rewrite that spills to S3 overwrites.
+     */
+    private void index(BlobKey key, Stored s) {
+        Stored replaced = objects.put(key, s);
+        if (replaced != null && replaced.location() == Location.SPOOL) unlinkLater(key, replaced.file(), "a replaced copy of", () -> {});
+    }
+
+    /**
+     * Unlinks the spool {@code file} of one entry on a virtual thread, never the caller's, then runs {@code then}; an unlink
+     * that fails is a WARNING — a stale spool file costs disk until the next start clears the spool. An entry without a file
+     * (memory, S3) is refused on the caller's thread.
+     */
+    private void unlinkLater(BlobKey key, Path file, String whose, Runnable then) {
+        Objects.requireNonNull(file, "only a spool entry has a file to unlink");
         Thread.ofVirtual().name("flottila-blob-unlink").start(() -> {
             try {
-                Files.deleteIfExists(s.file());
-            } catch (IOException left) {   // the bytes are durable: a stale spool file costs disk until the next start clears the spool
-                LOG.log(System.Logger.Level.WARNING, "the spool file of the persisted body " + key + " was not unlinked: " + s.file(), left);
+                Files.deleteIfExists(file);
+            } catch (IOException left) {
+                LOG.log(System.Logger.Level.WARNING, "the spool file of " + whose + " " + key + " was not unlinked: " + file, left);
             }
-            released(key);
+            then.run();
         });
     }
 
@@ -304,15 +358,21 @@ public final class TieredBlobStore implements BlobStore {
     }
 
     /**
-     * A spool body's bytes, on the stream's virtual thread; a file a persist unlinked after this stream was opened means the
-     * bytes are in Postgres now (a store without a durable tier fails as before).
+     * A spool body's bytes, on the stream's virtual thread. A file unlinked after this stream was opened is read from the
+     * durable tier only for an entry proven durable — a persist found the key's row holding this entry's bytes before it
+     * released the entry (FIX-35). Any other missing file — an evict, a write of the key that replaced the entry, a persist
+     * not (yet) proven — fails the stream before it yields a byte, never with the row's bytes, which may be another write's:
+     * a store without a durable tier fails with the missing file, as before; one with a tier with an
+     * {@link IllegalStateException} naming the key, which is also how a persist that reads such an entry fails.
      */
     private InputStream spooled(BlobKey key, Stored s) throws IOException {
         try {
             return cipher.decrypting(s.file());
         } catch (NoSuchFileException gone) {
             if (bodies == null) throw gone;
-            return durable(key);
+            if (s.durable()) return durable(key);
+            throw new IllegalStateException("the spool copy of " + key + " is gone (its file was unlinked before it was read) and was never"
+                    + " proven durable: its bytes cannot be read, and the key's durable row is no witness of them (FIX-35)", gone);
         }
     }
 
@@ -365,12 +425,13 @@ public final class TieredBlobStore implements BlobStore {
 
     private boolean spillsToS3() { return config.preferS3(); }   // Config guarantees an S3 target when preferred
 
-    private Sink newSink(BlobKey key) throws IOException {
-        return spillsToS3() ? new S3Sink(config.s3(), objectKey(key)) : new SpoolSink(cipher, spoolFile(key));
+    /** The sink of one spilled write: S3 under the key's object key, or the spool {@code file} that write owns. */
+    private Sink newSink(BlobKey key, Path file) throws IOException {
+        return spillsToS3() ? new S3Sink(config.s3(), objectKey(key)) : new SpoolSink(cipher, file);
     }
 
-    private Stored stored(BlobKey key, long size) {
-        return spillsToS3() ? new Stored(Location.S3, null, null, objectKey(key), size) : new Stored(Location.SPOOL, null, spoolFile(key), null, size);
+    private Stored stored(BlobKey key, Path file, long size) {
+        return spillsToS3() ? new Stored(Location.S3, null, null, objectKey(key), size) : new Stored(Location.SPOOL, null, file, null, size);
     }
 
     /** One streamed write: memory first; after the spill a virtual thread opens the sink and feeds it from a bounded queue. */
@@ -524,7 +585,7 @@ public final class TieredBlobStore implements BlobStore {
         private void end() {
             if (over()) return;
             if (!spilled) {
-                objects.put(key, new Stored(Location.MEMORY, collected, null, null, seen));
+                index(key, new Stored(Location.MEMORY, collected, null, null, seen));
                 result.complete(Body.of(TieredBlobStore.this, key, hash.finish(), seen));
                 return;
             }
@@ -552,7 +613,8 @@ public final class TieredBlobStore implements BlobStore {
         private void drain() {
             Throwable problem;
             try {
-                sink = newSink(key);
+                Path file = spoolFile(key);
+                sink = newSink(key, file);
                 while (true) {
                     Buffer next;
                     boolean resumeSource = false;
@@ -585,7 +647,7 @@ public final class TieredBlobStore implements BlobStore {
                     }
                     if (next == null) {
                         sink.finish();
-                        objects.put(key, stored(key, seen));
+                        index(key, stored(key, file, seen));
                         result.complete(Body.of(TieredBlobStore.this, key, hash.finish(), seen));
                         return;
                     }

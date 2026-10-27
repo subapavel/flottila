@@ -13,7 +13,6 @@ import io.vertx.core.streams.ReadStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -29,7 +28,7 @@ public final class InMemoryBlobStore implements BlobStore {
     private final Hasher hasher;
     private final long treeLimit;
     private final Map<BlobKey, Buffer> objects = new ConcurrentHashMap<>();
-    private final Set<BlobKey> persisted = ConcurrentHashMap.newKeySet();
+    private final Map<BlobKey, Buffer> durable = new ConcurrentHashMap<>();   // the first bytes persisted under each key
 
     public InMemoryBlobStore(Hasher hasher, long treeLimit) {
         this.hasher = Objects.requireNonNull(hasher, "hasher");
@@ -84,16 +83,24 @@ public final class InMemoryBlobStore implements BlobStore {
 
     /**
      * The heap is this store's durable tier: a stored key is durable at once — {@link #persisted(BlobKey)} says so from then
-     * on, and persisting it again succeeds; a key with nothing stored is refused with an {@link IllegalArgumentException}.
+     * on — with a copy of the bytes stored under it now. A key's durable bytes never change (D-061 amended by FIX-35):
+     * persisting the same bytes again succeeds; other bytes under a durable key fail with an {@link IllegalStateException},
+     * the durable copy stays the first and the key reads what was written last. A key with nothing stored is refused with an
+     * {@link IllegalArgumentException}.
      */
     @Override public Future<Void> persist(BlobKey key) {
-        if (!objects.containsKey(key)) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
-        persisted.add(key);
+        Buffer stored = objects.get(key);
+        if (stored == null) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+        Buffer first = durable.putIfAbsent(key, stored.copy());
+        if (first != null && !first.equals(stored)) {
+            return Future.failedFuture(new IllegalStateException("the durable body under " + key + " holds other bytes than these " + stored.length()
+                    + ": a key's durable bytes never change (D-061, FIX-35); nothing was persisted and the body stays local"));
+        }
         return Future.succeededFuture();
     }
 
     /** Whether {@link #persist(BlobKey)} made {@code key} durable. */
-    public boolean persisted(BlobKey key) { return persisted.contains(key); }
+    public boolean persisted(BlobKey key) { return durable.containsKey(key); }
 
     /** Whether an object is stored under {@code key}. */
     public boolean contains(BlobKey key) { return objects.containsKey(key); }

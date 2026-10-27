@@ -73,7 +73,9 @@ class TieredBlobStoreTest {
         assertEquals(Optional.empty(), s.location(BlobKey.body("nobody", 0)));
         assertEquals(1024, s.memoryInUse());
         assertEquals(1, spoolFiles(dir).size(), "one spool file for the large body");
-        assertEquals(dir.resolve("m-2").resolve("0-body.blob"), spoolFiles(dir).get(0), "spool path = <messageId>/<step>-<part>.blob: keyed by id and step");
+        Path spooled = spoolFiles(dir).get(0);
+        assertEquals(dir.resolve("m-2"), spooled.getParent(), "spool path = <messageId>/<step>-<part>-<n>.blob: keyed by id and step");
+        assertTrue(spooled.getFileName().toString().matches("0-body-[0-9]+\\.blob"), "a name of the write's own (FIX-35): " + spooled);
     }
 
     @Test

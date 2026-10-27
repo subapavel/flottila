@@ -639,3 +639,11 @@ Raised FIX-43 (late start outside the lock), FIX-45 [C] (Delivery.stop throw-saf
 D-054 data: class C (test-author, implementer, reviewer opus/xhigh; designer after 2nd FAIL); architect turns ~25; review rounds 3.
 Next: FIX-35 [C].
 
+## 2026-10-27 — FIX-35 persist compares bytes on conflict (amends D-061) — done, review PASS
+Test first: DurableBlobStoreContract +3 (InMemory, PgTierContractIT memory/spool), DurableBlobStoreContractSelfTest 8, PgBodiesIT 2 new, PgBodiesReleaseIT 4 new, FlowWorkerTest 1, DlqBodiesIT 1 — observed red (target/FIX-35-red.log, -r2-red.log, -r2-red-swapped.log). Wrong expectations changed per amended D-061: PgBodiesIT ...FirstBytesWin (renamed, now ISE), PgBodiesReleaseIT :168-171, TieredBlobStoreTest:76-78 (per-write spool names).
+Change: PgBodies.insert → Future<Boolean> (ON CONFLICT DO NOTHING, byte compare only on conflict); persist of other bytes → ISE, body stays local; InMemoryBlobStore same rule. Found in scope: key-named spool files + async unlink lost a rewrite's file → per-write spool names, each unlinker removes only its own entry's file, index() unlinks a replaced spool entry; the durable-row fallback for a missing spool file only for an entry proven durable.
+Checks: whole reactor -Pit VERIFIED_PASS 1314, ArchUnit green (target/FIX-35-r2-verify-all.log); coverage no decrease, baseline written; mutants 23/23 killed (target/FIX-35-r2-mutants.log); spool race loop 0/300 x2 unloaded and loaded (key-only name: ~160/300).
+Review: FAIL r1 (missing-file fallback let persist compare the row with itself); PASS r2.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns ~12; review rounds 2.
+Next: P1-09k [C] (designer first; decide non-deterministic reruns vs immutable keys — row note).
+

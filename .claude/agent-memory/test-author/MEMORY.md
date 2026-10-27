@@ -76,20 +76,21 @@
 - jqwik in a Jupiter class: @BeforeEach/@AfterEach do not run for @Property and instances may be shared — build all state inside the
   property method; a class-level @Timeout only draws a jqwik warning. `frequencyOf(Tuple.of(n, Arbitraries.just(new R())))` infers R: declare each as `Arbitrary<Iface>` first.
 - FakeTimer runs due tasks on the thread calling `advance`: after an advance wait `until(renews == k && timer.pending() == 1)` (spin, no sleep).
-- Docker works: a Testcontainers IT runs in scratch (runtime cp as above; `mvn -o` may fail on import BOMs: drop -o); an extra `db/migration`
-  dir on the cp adds a scratch migration. Ryuk/port-mapping "failed to set up container networking" (500) is a docker flake: rerun.
+- Docker: Testcontainers ITs run in scratch (drop -o on import-BOM failures); extra `db/migration` dir on the cp = scratch migration; Ryuk 500 = flake, rerun.
 - Stop/cancel fixtures (P1-08c): core flow test tree `HeldPipeline` (pipeline/step holding each run in `Future.await()` until
   `Run.reply/fail`; `awaiting()`, `awaitingThenThrowing(..)`, `stubborn(replies)` keeps the interrupt flag); testkit src/test `ConsumerDrain`
   (draining stop for fixture components). A draining `stop()` hangs any contract case that leaves a pending answer: complete it in `finally`.
 - Never name a test fixture after a production class (core `dlq.Parking` exists). Scratch: copied files only, fresh out dir; the scratchpad is shared (unique backup names).
   `-fn` (or `-Dmaven.compiler.failOnError=false`) with `-am` reaches a downstream test compile past a red upstream test tree (exit 0: read ERROR lines).
-- Pg lock-order (deadlock) staging without sleeps (P1-09a, PgMessageStoreIT): a holder tx keeps an uncommitted payloads row (plug batch
-  waits → BatchingWriter's first save with inFlight 0 goes alone, so the next `batchSize` saves form one batch) and one middle key row;
-  poll `pg_stat_activity where wait_event_type='Lock'` for 1/2/3 waiters, then roll back. Unsorted inserts → 40P01, observed in scratch.
+- Pg lock staging without sleeps (P1-09a PgMessageStoreIT, FIX-35 PgBodiesIT): a holder tx keeps uncommitted rows (P1-09a: a payloads plug → BatchingWriter's
+  first save goes alone, the next `batchSize` form one batch); poll `pg_stat_activity where wait_event_type='Lock'` for n waiters, then roll back or commit. Unsorted inserts → 40P01.
 - Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`). Rare hang (FIX-21): watchdog `jcmd <pid> Thread.dump_to_file` (virtual threads); late-listening reply pin: http `HttpComponentTest.LateListeningStore`.
 - P1-09h: core flow test `HoldingBlobStore` (persist hold/release/fail/answer(key,ok)/throwNext/refuse(cause), `persists()`, `persisted(k)`;
-  `ParkingTest.rewrite(store)` step writes its output there, FlowWorkerTest `World.stepBodies` + `REWRITE`); runtime blob
-  `PgBodiesIT.neverDeleted(pool)` (statement trigger: any DELETE on bodies fails); NodeIT `synchronousCommit(v)` = ALTER DATABASE (new sessions).
+  `ParkingTest.rewrite(store)` writes there; FlowWorkerTest `World.stepBodies`, `REWRITE`, `STAMP` (FIX-35: not deterministic, `World.stamped`));
+  runtime `PgBodiesIT.neverDeleted(pool)` (any DELETE on bodies fails); NodeIT `synchronousCommit(v)` = ALTER DATABASE (new sessions).
+- FIX-35: testkit test `DurableBlobStoreContractSelfTest` (broken persist `Rule`s over InMemoryBlobStore + a rows map, `failing(rule)` = exact set).
+  Spool files are per write (`<id>/<step>-<part>-<n>.blob`), a replaced/persisted copy's unlink is async: count files after `until(!exists(old))`/`afterRelease`.
+  SpoolCipher.decrypting opens the file before the key (a GatedKey cannot delay a read's open). ReleaseIT `spoolFile(spool,key)`, `row`, `drain`; replaced memory copy keeps its budget (FIX-36).
 - P1-09b: testkit test `ConsumerDrain.deliver` (track, then handler on own virtual thread); runtime test `node/OnVirtualThread`, `node/PlainComponent`; ArchUnit DoNotIncludeTests treats a scratch out dir as production.
 - Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic. P1-09d1b runtime test `deploy/`: `Doors` (scheme rec: held/failed start, failStop, onStop, drained stop), `TracingTimer`, `CountingQueue`, `PackageDraft` (zip a package). Red past an upstream test that does not compile: `-Dmaven.compiler.failOnError=false`; a stub compile check = javac against scratch stubs + `dependency:build-classpath`.
 - Process tests (P1-09d3 `MainProcessIT`): child cp `surefire.test.class.path`, JaCoCo agent from the test JVM's `-javaagent` arg, env cleared
@@ -103,8 +104,8 @@
 - FIX-30: core flow test `ClosingPartner` (scheme mock over RecordingComponent: every producer an `Out` counting closes, `onClose` hook,
   `failClose(nth, FAILED_FUTURE|THROWN, text)`, `holdClose(nth)` → Promise, `open()`; an Out refuses sends after its close); runtime `Doors.Out`
   (openProducers(), `unansweredAtClose` = closed-after-stop witness; opt-in `doors.closeFailsSends()` fails in-flight + later sends), `CountingQueue.size()`.
-- Scratch mutants: `-DargLine` never reaches the surefire fork (JaCoCo or not): toggle by a file (`Files.readString(<scratch>/mutant.txt)`).
-  Pre-existing 1/30 flakes: DeploymentsTest.closeStops...503 (answer not within 10 s), AdminServerDeployTest.getFlows... DecodeException.
+- Scratch mutants: `-DargLine` never reaches the fork: toggle by a file (static `mutant()` reading `<scratch>/mutant.txt`). Pre-existing 1/30 flakes:
+  DeploymentsTest.closeStops...503, AdminServerDeployTest.getFlows... DecodeException.
 - P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant (own data dir, Doors, `new SaxonXml().steps()` + XsdValidate),
   `changed(base, variant)` = moved hashes; `node(steps, xml)` + `Shared` = one compile cache over two nodes. `SaxonXml.steps()` builds a NEW
   XsltStepFactory per call (share the list). Cache-hit witness: `compiledStylesheets()`/`compiledSchemas()` = entries kept (FIX-17). Static `unparsed-text-available()` / `uri-collection('dir')` report an absent path / a directory.
@@ -116,4 +117,3 @@
   r3: `tickSchedulesThrow` (one-shot AtomicBoolean), `deadlineSchedulesThrow` (a Delivery STOP_DEADLINE schedule throws ISE: needs a flight), `producerOf(Envelope)`,
   `queuedAndSync()`, `liveTicks()`, `doorsOf(flow)`, `closeNode()`; a throwing schedule in Delivery.stop leaves deadlineTimer null: the last flight's land() NPEs. Vert.x 5.1.10 SWALLOWS a Throwable from a context-less future's listener (onSuccess/
   onComplete, completed or not: FutureBase.signalComplete → reportException, dropped unless `FutureBase.exceptionHandler(thread,h)`) — an Error there never reaches the caller.
-
