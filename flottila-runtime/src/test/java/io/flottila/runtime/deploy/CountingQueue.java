@@ -52,4 +52,6 @@ public final class CountingQueue implements WorkQueue {
     @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return inner.renew(seq, attempts, lease); }
 
     @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
+
+    @Override public Future<Boolean> hasItems(String flow) { return inner.hasItems(flow); }
 }

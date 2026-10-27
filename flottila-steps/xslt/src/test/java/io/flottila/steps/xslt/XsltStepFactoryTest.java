@@ -20,7 +20,11 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 
@@ -453,5 +457,37 @@ class XsltStepFactoryTest {
                 "the build error names the step and Saxon's reason (no default collection): " + m);
         assertFalse(m.contains("NullPointerException"), "the default collection's null URI is not reported as a null pointer: " + m);
         assertEquals(0, factory.compiledStylesheets(), "a stylesheet that does not compile is not cached");
+    }
+
+    // --- P1-09d2a (D-063): every file the compile read reaches the StepResources reads sink (the flow's effective hash)
+
+    @Test
+    void anIncludedFileIsReported(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.createDirectories(flow.resolve("sub"));
+        Files.createDirectories(flow.resolve("data"));
+        Files.writeString(flow.resolve("lib.xsl"), XSL + "<xsl:template name=\"lib\">lib:<xsl:value-of select=\"/Invoice/Id\"/></xsl:template></xsl:stylesheet>");
+        Files.writeString(flow.resolve("sub/base.xsl"), XSL + "<xsl:include href=\"../common.xsl\"/>"
+                + "<xsl:template name=\"base\">base:<xsl:value-of select=\"/Invoice/Currency\"/>|<xsl:call-template name=\"common\"/></xsl:template></xsl:stylesheet>");
+        Files.writeString(flow.resolve("common.xsl"), XSL + "<xsl:template name=\"common\">common:<xsl:value-of select=\"count(//Line)\"/></xsl:template></xsl:stylesheet>");
+        Files.writeString(flow.resolve("data/codes.txt"), "A,B");
+        Files.writeString(flow.resolve("unused.xsl"), XSL + "<xsl:template name=\"unused\">unused</xsl:template></xsl:stylesheet>");
+        Files.writeString(flow.resolve("main.xsl"), XSL + "<xsl:import href=\"sub/base.xsl\"/><xsl:include href=\"lib.xsl\"/><xsl:output method=\"text\"/>"
+                + "<xsl:variable name=\"codes\" static=\"yes\" select=\"unparsed-text('data/codes.txt')\"/>"
+                + "<xsl:template match=\"/\"><xsl:call-template name=\"lib\"/>|<xsl:call-template name=\"base\"/>|codes:<xsl:value-of select=\"$codes\"/></xsl:template></xsl:stylesheet>");
+        List<Path> reads = new ArrayList<>();
+        StepResources resources = new StepResources(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), 65536, flow, reads::add);
+
+        Stage stage = factory.create(step("main.xsl"), resources);
+
+        Envelope out = stage.apply(rt.ingress("f", Headers.empty(), Buffer.buffer(INVOICE)), e -> e);
+        assertEquals("lib:4711|base:CZK|common:2|codes:A,B", out.body().whole().toString(),
+                "fixture: the include, the import, the import's own include and the static text all took part in the compile");
+        Path root = flow.toAbsolutePath().normalize();
+        Set<Path> expected = Set.of(root.resolve("main.xsl"), root.resolve("lib.xsl"), root.resolve("sub/base.xsl"), root.resolve("common.xsl"),
+                root.resolve("data/codes.txt"));
+        assertEquals(expected, new HashSet<>(reads),
+                "the stylesheet the flow names, its xsl:include, its xsl:import, that module's own include and the static unparsed-text() are"
+                        + " reported, as absolute paths in the flow's directory; the unused module beside them is not: " + reads);
     }
 }

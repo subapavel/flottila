@@ -26,29 +26,24 @@ import io.vertx.core.json.JsonObject;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.security.DigestInputStream;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -68,8 +63,9 @@ import java.util.stream.Stream;
  * {@code dependencies}, a component for every scheme, every endpoint's config (its environment's keys laid over it) against
  * its component's {@code configSchema()}, no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
  * no flow from an out endpoint, every flow definition, no at-least-once flow above {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058) — and every flow built, its
- * delivery, its worker (at-least-once) and its consumer; every problem is one line of one {@link Kind#INVALID}, and nothing
- * starts before every check passed. Then the consumers start one after the other (an at-least-once flow's worker right after
+ * delivery, its worker (at-least-once), its effective hash ({@link DeployedFlow#hash()}, D-063) and its consumer; every problem
+ * is one line of one {@link Kind#INVALID}, and nothing starts before every check passed (a file the hash cannot read is the
+ * node's {@link IOException}). Then the consumers start one after the other (an at-least-once flow's worker right after
  * its consumer, as worker {@code nodeId}); one that does not start is {@link Kind#FAILED}. Whatever refuses the deploy after
  * the unpack began stops every flow it built (zero deadline), then closes their deliveries' producers and asks their workers to
  * close theirs, a worker's once the items it still runs finished (FIX-30) — a flow that failed half way does the same for
@@ -225,7 +221,7 @@ public final class Deployments {
 
     /** Unpacks, checks, builds and starts; whatever refuses it stops what it built and deletes what it wrote, unchecked failures included. */
     private DeployedPackage install(String name, Optional<String> revision, Path archive) throws DeployRefusedException, IOException {
-        String sha256 = sha256(archive);
+        String sha256 = FlowHash.sha256(archive);
         Path incoming = incomingDir();
         Path dir = config.dataDir().resolve("packages").resolve(name).resolve(sha256);
         Files.createDirectories(incoming);
@@ -350,7 +346,8 @@ public final class Deployments {
      * Every flow built — delivery, worker, consumer — over one builder that carries the package's versions, each added to
      * {@code flows} as soon as it is built; every failure as one problem.
      */
-    private void build(String name, Optional<String> revision, String version, Package pkg, Path dir, Checked checked, List<Flow> flows) throws DeployRefusedException {
+    private void build(String name, Optional<String> revision, String version, Package pkg, Path dir, Checked checked, List<Flow> flows)
+            throws DeployRefusedException, IOException {
         Map<String, String> versions = new HashMap<>();
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
@@ -358,35 +355,47 @@ public final class Deployments {
         checked.configs().forEach((id, cfg) -> endpoints.put(id, endpoint(id, checked.schemes().get(id), cfg)));
         FlowBuilder builder = new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).versions(versions);
         List<String> problems = new ArrayList<>();
-        checked.flows().forEach((id, def) -> {
+        for (Map.Entry<String, FlowDefinition> each : checked.flows().entrySet()) {
+            String id = each.getKey();
             try {
-                flows.add(flow(builder, name, version, revision, def, pkg.flowFile(id).getParent(), endpoints.get(def.fromEndpoint())));
+                flows.add(flow(builder, name, version, revision, each.getValue(), dir, pkg.flowFile(id), endpoints));
             } catch (RuntimeException refused) {
                 // a step's failure may name a package file by its absolute path: a problem line names it from the package root
                 problems.add("flow '" + id + "' does not build: " + reason(refused).replace(dir + File.separator, ""));
             }
-        });
+        }
         if (!problems.isEmpty()) throw invalid(name, problems);
     }
 
     /**
-     * One flow built: its delivery, its worker (at-least-once), its consumer. A flow that fails after its delivery was built
-     * stops and closes what it built of itself before the failure leaves (FIX-30), unchecked ones included — its worker has
+     * One flow built: its delivery, its worker (at-least-once), its effective hash ({@link FlowHash}: the files those two builds
+     * read, its endpoints as its consumer and its producers get them), its consumer. A flow that fails after its delivery was
+     * built stops and closes what it built of itself before the failure leaves (FIX-30), unchecked ones included — its worker has
      * run nothing yet, so its close runs at once; a worker that does not build has closed its own producers.
+     *
+     * @throws IOException a file the build read cannot be hashed: the node's failure
      */
-    private Flow flow(FlowBuilder builder, String name, String version, Optional<String> revision, FlowDefinition def, Path baseDir, EndpointConfig from) {
+    private Flow flow(FlowBuilder builder, String name, String version, Optional<String> revision, FlowDefinition def, Path dir, Path flowFile,
+                      Map<String, EndpointConfig> endpoints) throws IOException {
+        Set<Path> reads = ConcurrentHashMap.newKeySet();   // the stages keep the sink: thread-safe, each path once
+        builder.reads(reads::add);
+        Path baseDir = flowFile.getParent();
         Delivery delivery = builder.delivery(def, baseDir);
         FlowWorker worker = null;
         boolean built = false;
         try {
             worker = AT_LEAST_ONCE.equals(def.deliveryMode()) ? builder.worker(def, baseDir, config.nodeId()) : null;
             Function<Envelope, Future<Ack>> handler = worker == null ? delivery : worker.pollingAfterAccept(delivery);
+            EndpointConfig from = endpoints.get(def.fromEndpoint());
             Map<String, Object> options = new HashMap<>(from.options());
             options.put("flow", def.id());
             options.put("maxBodyBytes", def.maxBodyBytes());
-            Consumer consumer = components.get(from.scheme()).consumer(new EndpointConfig(from.name(), from.uri(), options), handler);
+            EndpointConfig consumed = new EndpointConfig(from.name(), from.uri(), options);
+            String hash = FlowHash.of(dir, flowFile, reads, consumed, def.referencedEndpoints().stream().map(endpoints::get).toList());
+            Consumer consumer = components.get(from.scheme()).consumer(consumed, handler);
             built = true;
-            return new Flow(new DeployedFlow(def.id(), name, version, revision, def.version(), def.deliveryMode()), delivery, worker, consumer);
+            return new Flow(new DeployedFlow(def.id(), name, version, revision, def.version(), def.deliveryMode(), hash, DeployedFlow.State.RUNNING),
+                    delivery, worker, consumer);
         } finally {
             if (!built) {
                 delivery.stop(Duration.ZERO);   // nothing was delivered yet: the stop completes at once, and the close after it
@@ -485,24 +494,10 @@ public final class Deployments {
         List<DeployedPackage.PackageFile> files = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(dir)) {
             for (Path p : walk.filter(Files::isRegularFile).sorted().toList()) {
-                files.add(new DeployedPackage.PackageFile(dir.relativize(p).toString().replace(File.separatorChar, '/'), sha256(p)));
+                files.add(new DeployedPackage.PackageFile(dir.relativize(p).toString().replace(File.separatorChar, '/'), FlowHash.sha256(p)));
             }
         }
         return files;
-    }
-
-    /** The SHA-256 of the file's bytes, lower-case hex. */
-    private static String sha256(Path file) throws IOException {
-        MessageDigest digest;
-        try {
-            digest = MessageDigest.getInstance("SHA-256");
-        } catch (NoSuchAlgorithmException mandatory) {
-            throw new IllegalStateException("SHA-256 is mandatory in every JDK", mandatory);
-        }
-        try (InputStream in = new DigestInputStream(Files.newInputStream(file), digest)) {
-            in.transferTo(OutputStream.nullOutputStream());
-        }
-        return HexFormat.of().formatHex(digest.digest());
     }
 
     /** Deletes the directory {@code dir} when nothing is in it. */

@@ -20,6 +20,7 @@
 | 2026-10-26 | 3.4 | §9: a package folder is structure only (ids unique per package, `folder.yaml` keeps the namespace); a flow is addressed `<package>/<flow>`; a redeploy will swap only flows whose effective hash changed (lands with P1-09d2) (D-060) | — |
 | 2026-10-27 | 3.4 | §6 Retry per step: a DLQ row is written only after its body is persisted (`BlobStore.persist`, D-061); a park whose body cannot be persisted fails and the item reruns, past its attempts bound parking the already durable ingress; sync flows never park, they return the error (D-045, D-062) | F-7 (major) |
 | 2026-10-27 | 3.4 | §6 replay from step n: noted only — a replay from step n ≥ 2 after a restart reads node-local snapshot bodies; P1-09c answers 409, the text changes with P1-09c if that becomes the documented behaviour | F-8 (major) |
+| 2026-10-27 | 3.4 | §9: a flow's effective hash (D-063) covers the files its build reads; XSLT run-time `doc()` / `unparsed-text()` reads are neither confined nor hashed until FIX-40 | F-9 (major) |
 
 ## Amendments (Part A, 2026-10-17)
 

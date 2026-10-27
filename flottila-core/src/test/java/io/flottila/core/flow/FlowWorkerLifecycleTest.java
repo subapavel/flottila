@@ -76,6 +76,7 @@ class FlowWorkerLifecycleTest {
         @Override public Future<Void> complete(long seq) { return delegate.complete(seq); }
         @Override public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) { return delegate.completeAndTakeNext(seq, workerId, lease); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
+        @Override public Future<Boolean> hasItems(String flow) { return delegate.hasItems(flow); }
 
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
             Promise<Boolean> answer = Promise.promise();

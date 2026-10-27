@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The proto-m1 WorkQueue claim SQL on the Vert.x 5 client: SKIP LOCKED, per-key order, lease expiry, the same-key fast path, two real workers. */
@@ -246,5 +247,53 @@ class PgWorkQueueIT {
         List<Integer> expected = new ArrayList<>();
         for (int i = 0; i < perKey; i++) expected.add(i);
         for (String k : keys) assertEquals(expected, processed.get(k), "key " + k + " processed in enqueue order, exactly once");
+    }
+
+    /**
+     * P1-09d2a (D-063): {@code hasItems(flow)} is true while any row of the flow exists — queued, leased, left to a lease that ran
+     * out (backing off until the next claim) or held — and false once only completed rows were the flow's; another flow's rows,
+     * one whose id starts with this flow's included, never count. Each true is asserted with only that kind of row present.
+     */
+    @Test
+    void hasItemsSeesQueuedLeasedHeldNotCompletedNorOtherFlows() {
+        String flow = "shop/audit";
+        String other = "shop/audit-eu";
+        assertFalse(queue.hasItems(flow).await(), "an empty queue");
+        queue.enqueue("o1", other, 1, null).await();
+        assertFalse(queue.hasItems(flow).await(), "only another flow's row, whose id starts with this flow's");
+        assertTrue(queue.hasItems(other).await(), "witness: that flow sees its own row");
+
+        queue.enqueue("q1", flow, 1, "K").await();
+        assertTrue(queue.hasItems(flow).await(), "a queued row, due");
+        WorkQueue.Item first = queue.claim("w1", flow, 1, LEASE).await().get(0);
+        assertEquals("q1", first.messageId(), "fixture");
+        assertTrue(queue.hasItems(flow).await(), "a leased row");
+        expire(first.seq());
+        assertTrue(queue.hasItems(flow).await(), "a row left to its lease that ran out (backing off)");
+        WorkQueue.Item again = queue.claim("w2", flow, 1, LEASE).await().get(0);
+        assertEquals(first.seq(), again.seq(), "fixture: the expired lease handed the row out again");
+        assertTrue(queue.hold(again.seq(), again.attempts()).await(), "fixture: held");
+        expire(again.seq());
+        assertTrue(queue.claim("w3", flow, 10, LEASE).await().isEmpty(), "fixture: a held row is never claimed again");
+        assertTrue(queue.hasItems(flow).await(), "a held row");
+
+        queue.complete(again.seq()).await();
+        assertFalse(queue.hasItems(flow).await(), "only completed rows: no items");
+        queue.enqueue("q2", flow, 1, null).await();
+        queue.enqueue("q3", flow, 1, "K").await();
+        WorkQueue.Item q2 = queue.claim("w1", flow, 1, LEASE).await().get(0);
+        queue.completeAndTakeNext(q2.seq(), "w1", LEASE).await();
+        assertTrue(queue.hasItems(flow).await(), "one row completed, one still queued");
+        for (WorkQueue.Item left : queue.claim("w1", flow, 10, LEASE).await()) queue.complete(left.seq()).await();
+        assertFalse(queue.hasItems(flow).await(), "every row completed");
+        assertTrue(queue.hasItems(other).await(), "the other flow's row stays its own");
+    }
+
+    /** P1-09d2a review (D-063): both implementations refuse a null flow at the call, as the interface says. */
+    @Test
+    void hasItemsOfANullFlowThrows() {
+        queue.enqueue("n1", "shop/audit", 1, null).await();
+        assertThrows(NullPointerException.class, () -> queue.hasItems(null), "a null flow is a NullPointerException at the call, never false");
+        assertTrue(queue.hasItems("shop/audit").await(), "witness: the queue answers for a flow");
     }
 }

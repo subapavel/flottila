@@ -602,3 +602,12 @@ Review: FAIL round 1 (worker producers closed under running items → parked; se
 Raised: FIX-38 (two runtime flakes), FIX-39 (build()/replay() producers). Redeploy producer close noted on P1-09d2.
 D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 14; review rounds 2.
 Next: P1-09d2 [C] (designer first).
+
+## 2026-10-27 — P1-09d2a redeploy building blocks — done, review PASS — Deviation: F-9
+Test first: api StepResourcesTest; Xslt/XsdStepFactoryTest.anIncludedFileIsReported; FlowBuilderTest.theReadsSinkGetsEveryFileOfDeliveryAndWorker; InMemoryWorkQueueTest + PgWorkQueueIT hasItems…; DeploymentsHashTest 7 (incl. aProbedMissingFileOrListedDirectoryStillDeploys) — observed red (target/P1-09d2a-red*.log). Implementer-written FlowHashTest (line format, dir sort, outside path) and hasItemsOfANullFlowThrows approved by the architect.
+Change: api `StepResources` `reads` sink (8th component); `FlowBuilder.reads`; `WorkQueue.hasItems` (in-memory, Pg); runtime `FlowHash` effective hash (yaml, files read, absent/dir, endpoints with overlay, key-sorted; outside paths refused → 422); `/admin/flows` shows `hash` and `state`.
+Decided: D-063 (redeploy, split d2a/b/c), F-9 (XSLT run-time reads unhashed/unconfined → FIX-40, overlaps FIX-16); FIX-17 now precedes d2b (a cache hit must replay its reads).
+Checks: whole reactor -Pit VERIFIED_PASS 1172 (target/P1-09d2a-verify-all.log); round 2 core+runtime -am -Pit 1101 (target/P1-09d2a-r2-verify.log); coverage no decrease, baseline written; PIT StepResources 15/15; mutants 34/34 killed.
+Review: FAIL round 1 (dir-entry sort unpinned; F-9 major without changelog line); PASS round 2.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns 16; review rounds 2 (test-author hit the turn cap once).
+Next: FIX-17 [B].

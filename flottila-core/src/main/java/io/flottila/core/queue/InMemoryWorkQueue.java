@@ -86,6 +86,11 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture(true);
     }
 
+    @Override public synchronized Future<Boolean> hasItems(String flow) {
+        Objects.requireNonNull(flow, "flow");
+        return Future.succeededFuture(rows.values().stream().anyMatch(r -> r.item.flow().equals(flow)));
+    }
+
     /** Rows currently queued (leased, held or neither). */
     public synchronized int size() { return rows.size(); }
 

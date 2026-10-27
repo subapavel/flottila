@@ -261,4 +261,52 @@ class FlowBuilderTest {
         assertThrows(IllegalArgumentException.class, () -> b.versions(Map.of("package", "shop@2.3.0", "flow", "other@9.9.9")),
                 "refused beside other keys too");
     }
+
+    // --- P1-09d2a (D-063): every file a build reads reaches the builder's reads sink, for the flow's effective hash
+
+    /** A step that reads, at build time, the file its {@code file} option names and, relative to that file, its {@code include}. */
+    static final StepFactory READS = new StepFactory() {
+        @Override public String type() { return "reads"; }
+        @Override public String configSchema() { return "{}"; }
+        @Override public Stage create(StepConfig step, StepResources res) {
+            Path named = res.file((String) step.config().get("file"));
+            res.resolve(named.toUri().toString(), (String) step.config().get("include"));
+            return Stage.of(e -> e);
+        }
+    };
+
+    static FlowDefinition reading(String mode) {
+        Map<String, Object> doc = new java.util.HashMap<>(flow(List.of(Map.of("type", "reads", "name", "r", "file", "main.xsl", "include", "sub/lib.xsl"))));
+        doc.put("delivery", Map.of("mode", mode));
+        return FlowDefinition.from(doc);
+    }
+
+    /**
+     * The sink {@code reads(...)} names gets each path the steps' {@link StepResources} returned while the flow was built — a sync or
+     * at-most-once delivery builds the steps, an at-least-once flow's worker does — and a later {@code reads(...)} replaces it, so a
+     * deploy can tell the files of one flow from the next one's.
+     */
+    @Test
+    void theReadsSinkGetsEveryFileOfDeliveryAndWorker() {
+        FlowBuilder b = new FlowBuilder(rt.runtime(), List.of(READS), List.of(), Map.of())
+                .recording(new InMemoryMessageStore(), () -> 0).dlq(new InMemoryDlq()).queue(new InMemoryWorkQueue(rt.clock()));
+        Path a = Path.of("flows-a").toAbsolutePath().normalize();
+        Path c = Path.of("flows-c").toAbsolutePath().normalize();
+        Path w = Path.of("flows-w").toAbsolutePath().normalize();
+
+        List<Path> sync = new ArrayList<>();
+        b.reads(sync::add).delivery(reading("sync"), a);
+        assertEquals(List.of(a.resolve("main.xsl"), a.resolve("sub/lib.xsl")), sync, "a sync delivery's build: the named file and its include");
+
+        List<Path> atMostOnce = new ArrayList<>();
+        b.reads(atMostOnce::add).delivery(reading("at-most-once"), c);
+        assertEquals(List.of(c.resolve("main.xsl"), c.resolve("sub/lib.xsl")), atMostOnce, "an at-most-once delivery's build");
+
+        List<Path> worker = new ArrayList<>();
+        b.reads(worker::add).worker(reading("at-least-once"), w, "w1");
+        assertEquals(List.of(w.resolve("main.xsl"), w.resolve("sub/lib.xsl")), worker, "an at-least-once worker's build");
+
+        assertEquals(2, sync.size(), "a sink replaced by a later reads(...) gets nothing more: " + sync);
+        assertEquals(2, atMostOnce.size(), "a sink replaced by a later reads(...) gets nothing more: " + atMostOnce);
+    }
 }

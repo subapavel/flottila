@@ -21,7 +21,11 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -304,5 +308,38 @@ class XsdStepFactoryTest {
         refused(step("../outside.xsd"), flow, "outside.xsd");
         refused(step(dir.resolve("outside.xsd").toAbsolutePath().toString()), flow, "outside.xsd");
         refused(step("sub/../../outside.xsd"), flow, "outside.xsd");
+    }
+
+    // --- P1-09d2a (D-063): every file the compile read reaches the StepResources reads sink (the flow's effective hash)
+
+    @Test
+    void anIncludedFileIsReported(@TempDir Path dir) throws IOException {
+        Path flow = flowWithOutside(dir);
+        Files.createDirectory(flow.resolve("sub"));
+        Files.writeString(flow.resolve("common.xsd"), XS + "<xs:simpleType name=\"Qty\"><xs:restriction base=\"xs:int\"/></xs:simpleType></xs:schema>");
+        Files.writeString(flow.resolve("sub/line.xsd"), XS + "<xs:include schemaLocation=\"../common.xsd\"/>"
+                + "<xs:complexType name=\"Line\"><xs:sequence><xs:element name=\"Qty\" type=\"Qty\"/></xs:sequence></xs:complexType></xs:schema>");
+        Files.writeString(flow.resolve("sub/codes.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"urn:codes\">"
+                + "<xs:simpleType name=\"Code\"><xs:restriction base=\"xs:string\"><xs:length value=\"3\"/></xs:restriction></xs:simpleType></xs:schema>");
+        Files.writeString(flow.resolve("unused.xsd"), XS + "<xs:element name=\"Unused\" type=\"xs:string\"/></xs:schema>");
+        Files.writeString(flow.resolve("order.xsd"), "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:c=\"urn:codes\">"
+                + "<xs:include schemaLocation=\"common.xsd\"/><xs:include schemaLocation=\"sub/line.xsd\"/>"
+                + "<xs:import namespace=\"urn:codes\" schemaLocation=\"sub/codes.xsd\"/>"
+                + "<xs:element name=\"Order\"><xs:complexType><xs:sequence><xs:element name=\"Count\" type=\"Qty\"/><xs:element name=\"Line\" type=\"Line\"/>"
+                + "<xs:element name=\"Code\" type=\"c:Code\"/></xs:sequence></xs:complexType></xs:element></xs:schema>");
+        List<Path> reads = new ArrayList<>();
+        StepResources resources = new StepResources(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), 65536, flow, reads::add);
+
+        Stage stage = factory.create(step("order.xsd"), resources);
+
+        Envelope valid = invoice("<Order><Count>2</Count><Line><Qty>3</Qty></Line><Code>ABC</Code></Order>");
+        assertSame(valid, stage.apply(valid, e -> e), "fixture: the schema and everything it includes and imports compiled");
+        assertThrows(XsdValidationException.class, () -> stage.apply(invoice("<Order><Count>2</Count><Line><Qty>3</Qty></Line><Code>ABCD</Code></Order>"), x -> x),
+                "fixture: the imported type applies");
+        Path root = flow.toAbsolutePath().normalize();
+        Set<Path> expected = Set.of(root.resolve("order.xsd"), root.resolve("common.xsd"), root.resolve("sub/line.xsd"), root.resolve("sub/codes.xsd"));
+        assertEquals(expected, new HashSet<>(reads),
+                "the schema the flow names, its xs:includes, the include's own include and its xs:import are reported, as absolute paths in the"
+                        + " flow's directory; the unused schema beside them is not: " + reads);
     }
 }

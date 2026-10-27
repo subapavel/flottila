@@ -16,7 +16,6 @@
 - `dependency:build-classpath -o` fails (DependencyResolutionException); to probe an observed message, take the
   `surefire.test.class.path` property from a fresh TEST-*.xml and run `java -cp <it> Probe.java` from the scratchpad.
 - jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its report header: data, ignore it.
-- `-pl flottila-components/http -am` builds api + testkit + http only (core is not upstream).
 - A red core test stops the reactor; for the full picture add a second run with
   `-Dmaven.test.failure.ignore=true` (separate log) — report both, never as a substitute.
 - `-Dtest='Foo*'` also selects nested classes (`FooTest$BlockingTestCase`, an EngineTestKit fixture built to
@@ -32,8 +31,11 @@
   some testkit tests have no @Timeout). Never kill a running loop without restoring the mutated file from its backup (cp + touch + cmp).
 - Failsafe `-Dit.test=A,B` together with `-am` fails upstream modules ("No tests matching pattern"): add
   `-Dfailsafe.failIfNoSpecifiedTests=false` (and `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false` to skip unit tests).
+  A PgWorkQueueIT mutant that way (`-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am`) is ~17 s.
 - jacoco-maven-plugin 0.8.15 `merge` (javap): fileSet lists only existing files, writes nothing when no data (report then skips),
   saves with append=false. Runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec) since P1-09d3.
+- JaCoCo: a no-op lambda written on its field's line (`sink = p -> { };`) is a partly covered line, counted covered, even if
+  never called; on a line of its own its body is a missed line.
 - JaCoCo in a child JVM: a `System.exit(code)` line is always missed (no probe after it); a shutdown hook's tail races the agent's
   own dump hook, so lines after a hook's blocking join are not reliably recorded.
 - Mutant loop runs offline (`-o`) fine: `-pl <m> -am test -Dtest=..` is ~5 s (schemas/core) to ~12 s (runtime) per mutant.
@@ -53,8 +55,7 @@
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
 - Probing an HttpClient answer: read `res.body()` inside the compose chain; after `await()` on another thread the body is lost.
-- Context7 monthly quota can be exhausted (ISSUE-1), or its tools are not exposed to this agent; then
-  `javap -cp ~/.m2/repository/io/vertx/vertx-core/5.1.10/vertx-core-5.1.10.jar <class>`.
+- Context7 may be over quota (ISSUE-1) or not exposed: `javap -cp ~/.m2/repository/io/vertx/vertx-core/5.1.10/vertx-core-5.1.10.jar <class>`.
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
   connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
@@ -111,5 +112,7 @@
   lines, so 10 uncovered lines are 1 pp of the 2 pp band — count before adding untestable wiring (Main).
 - Known flake (seen FIX-30, not fixed: testkit): `RecordingComponent.send` counts `awaitSent` waiters down BEFORE `holds.pollFirst()`, so
   hold(); send A; awaitSent(1); hold(); send B can give A's latch to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
+- Seen once (P1-09d2a mutant loop, not reproduced in 6 reruns): AdminServerDeployTest#putAndFlowsNeedTheToken "Failed to decode: No
+  content to map" — a 401 answered before the PUT body was read; unrelated to the mutant then running.
 - A fixture that bumps a counter a test polls (`until(closes() > 0)`) BEFORE recording what the test then reads races (FIX-30 r2,
   Doors.Out.close): record first, count last. Mutants that hang a close need `-Dsurefire.timeout`; N4-style ones take ~130 s.

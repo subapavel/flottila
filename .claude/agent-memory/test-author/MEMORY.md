@@ -26,8 +26,7 @@
   `flow/HoldingMessageStore` (test tree) holds / releases / fails `record` futures, `throwNext`, `failReads`/`readsOk`,
   `recorded(stepName)`; `flow/FailingDlq` refuses parks (`failParks`/`parksOk`).
 - `System.Logger` in core tests resolves to JUL: a `java.util.logging.Handler` on `Logger.getLogger(X.class.getName())`
-  sees the records. Acting inside `publish` (it runs on the logging thread, synchronously) pins "X happened before
-  the log line" without a race.
+  sees the records. Acting inside `publish` (it runs on the logging thread, synchronously) pins "X happened before the log line" without a race.
 - ScriptedStream records "resume" before its hooks run, so the call order is not the effective state: a pause issued in
   `beforeResume` is undone by that resume. Assert the end state through the private `paused` field (enclosing class sees it).
   A script chunk delivered inside handler() starts the sink before the attach: whether the handover resume is issued races.
@@ -52,8 +51,7 @@
   `holdBeforeChunk(n)` (heldBeforeChunk/chunkMayGo, before the paused check), `failNow`, `isPaused`, `delivered`, `stalled` (first paused wait
   or loop exit — a sync point valid whether or not the source stayed paused), `close()` (paused → leaves; unreleased chunk hold → leaves;
   unpaused → runs to its end, so "delivered after" stays deterministic). Test's `sources` list: closed + `latches()` opened in @AfterEach.
-  `Attach` and `settled` are package-private (FailureTest D7 reuses them). The sink drains concurrently: a peak assertion needs the key gate
-  shut until the source has stalled.
+  `Attach` and `settled` are package-private (FailureTest D7 reuses them). The sink drains concurrently: a peak assertion needs the key gate shut until the source has stalled.
 - A pause a synchronous source issues inside a resume (same thread, nested) is NOT undone by that resume: a "pause during hand-over"
   mark must exclude the hand-over thread, else R1/R2/R4/D7 see an extra pause (checked on a scratch reference, FIX-10 r4).
 - `afterSinkDecision` runs once per polled chunk (not on empty waits): with the Backpressure store (spill at chunk 1, empty
@@ -85,8 +83,7 @@
 - Scratch reference (P1-09h): no rsync on the VM; `tar --exclude=./target --exclude='*/target' --exclude=./.git -cf - . | (cd $S/repo && tar -xf -)`,
   edit production there, `mvn -o test`/`verify -Pit` there (Docker ok; `-Dit.test='Outer*'` runs @Nested classes). One class: javac to m/out ahead on the cp.
 - jqwik in a Jupiter class: @BeforeEach/@AfterEach do not run for @Property and instances may be shared — build all state inside the
-  property method; a class-level @Timeout only draws a jqwik warning. `frequencyOf(Tuple.of(n, Arbitraries.just(new R())))` infers R:
-  declare each as `Arbitrary<Iface>` first.
+  property method; a class-level @Timeout only draws a jqwik warning. `frequencyOf(Tuple.of(n, Arbitraries.just(new R())))` infers R: declare each as `Arbitrary<Iface>` first.
 - FakeTimer runs due tasks on the thread calling `advance`: after an advance wait `until(renews == k && timer.pending() == 1)` (spin, no sleep).
 - Docker works: a Testcontainers IT runs in scratch (runtime cp as above; `mvn -o` may fail on import BOMs: drop -o); an extra `db/migration`
   dir on the cp adds a scratch migration. Ryuk/port-mapping "failed to set up container networking" (500) is a docker flake: rerun.
@@ -116,5 +113,8 @@
 - FIX-30: core flow test `ClosingPartner` (scheme mock over RecordingComponent: every producer an `Out` counting closes, `onClose` hook,
   `failClose(nth, FAILED_FUTURE|THROWN, text)`, `holdClose(nth)` → Promise, `open()`; an Out refuses sends after its close); runtime `Doors.Out`
   (openProducers(), `unansweredAtClose` = closed-after-stop witness; opt-in `doors.closeFailsSends()` fails in-flight + later sends), `CountingQueue.size()`.
-- `-DargLine` is overwritten by JaCoCo in a `test` run: hardcode scratch mutants (`-o surefire:test -pl X` takes siblings from ~/.m2).
+- Scratch mutants: `-DargLine` never reaches the surefire fork (JaCoCo or not): toggle by a file (`Files.readString(<scratch>/mutant.txt)`).
   Pre-existing 1/30 flakes: DeploymentsTest.closeStops...503 (answer not within 10 s), AdminServerDeployTest.getFlows... DecodeException.
+- P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant (own data dir, Doors, `new SaxonXml().steps()` + XsdValidate),
+  `changed(base, variant)` = exact set of moved hashes. Compile caches are per factory, keyed by main-file content (FIX-17): a cache hit reads no
+  include, so never compare hashes on one node. Static `unparsed-text-available()` / `uri-collection('dir')` report an absent path / a directory.

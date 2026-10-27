@@ -496,7 +496,13 @@ class AdminServerDeployTest {
                         .put("flowVersion", "1.0.0").put("delivery", "at-least-once"))
                 .add(new JsonObject().put("id", "zeta/beta").put("package", "zeta").put("packageVersion", "3.0.0").putNull("revision")
                         .put("flowVersion", "1.0.0").put("delivery", "sync")));
-        assertEquals(expected, a.json(), "every flow by qualified id, sorted by id, revision null without one, not paged");
+        JsonObject listed = a.json();
+        for (Object o : listed.getJsonArray("items")) {   // P1-09d2a (D-063): each item also shows its flow's effective hash and its state
+            JsonObject item = (JsonObject) o;
+            assertTrue(String.valueOf(item.remove("hash")).matches("sha256:[0-9a-f]{64}"), "the item's effective hash: " + a.json());
+            assertEquals("RUNNING", item.remove("state"), "the item's state: " + a.json());
+        }
+        assertEquals(expected, listed, "every flow by qualified id, sorted by id, revision null without one, not paged");
     }
 
     @Test

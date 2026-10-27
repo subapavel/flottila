@@ -69,7 +69,8 @@ import java.util.function.Supplier;
  * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows}}, or a
  * refusal by its kind — 400, 403, 409, 422 {@code {error, problems}}, 500, 503. An answer given before the request's body was read
  * to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and {@code GET /admin/packages}
- * list what runs, sorted, not paged. Without one these routes do not exist (404).
+ * list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state} (D-063). Without one these routes
+ * do not exist (404).
  *
  * @since 0.1
  */
@@ -400,7 +401,7 @@ public final class AdminServer {
         JsonArray items = new JsonArray();
         for (DeployedFlow f : deployments.flows()) {
             items.add(new JsonObject().put("id", f.id()).put("package", f.pkg()).put("packageVersion", f.packageVersion()).put("revision", f.revision().orElse(null))
-                    .put("flowVersion", f.flowVersion()).put("delivery", f.delivery()));
+                    .put("flowVersion", f.flowVersion()).put("delivery", f.delivery()).put("hash", f.hash()).put("state", f.state().name()));
         }
         return Json.of(200, new JsonObject().put("items", items));
     }

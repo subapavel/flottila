@@ -172,6 +172,12 @@ final class RecordingWorkQueue implements WorkQueue {
 
     // --- WorkQueue
 
+    /** The delegate's answer (P1-09d2a): this fixture records nothing about it. */
+    @Override
+    public Future<Boolean> hasItems(String flow) {
+        return delegate.hasItems(flow);
+    }
+
     @Override
     public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
         return delegate.enqueue(messageId, flow, step, partitionKey);

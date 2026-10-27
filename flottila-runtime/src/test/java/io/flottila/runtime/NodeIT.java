@@ -411,8 +411,12 @@ class NodeIT {
 
             HttpResponse<String> flows = get(admin, "/admin/flows");
             assertEquals(200, flows.statusCode(), flows.body());
+            JsonObject listed = new JsonObject(flows.body());
+            JsonObject flowItem = listed.getJsonArray("items").getJsonObject(0);   // P1-09d2a (D-063): the effective hash and the state
+            assertTrue(String.valueOf(flowItem.remove("hash")).matches("sha256:[0-9a-f]{64}"), "the flow's effective hash: " + flows.body());
+            assertEquals("RUNNING", flowItem.remove("state"), "the flow's state: " + flows.body());
             assertEquals(new JsonObject().put("items", new io.vertx.core.json.JsonArray().add(new JsonObject().put("id", "demo/invoice-sync").put("package", "demo")
-                    .put("packageVersion", "0.1.0").put("revision", "9df3f78").put("flowVersion", "0.1.0").put("delivery", "sync"))), new JsonObject(flows.body()));
+                    .put("packageVersion", "0.1.0").put("revision", "9df3f78").put("flowVersion", "0.1.0").put("delivery", "sync"))), listed);
 
             HttpResponse<String> packages = get(admin, "/admin/packages");
             assertEquals(200, packages.statusCode(), packages.body());

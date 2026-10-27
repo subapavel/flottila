@@ -60,4 +60,12 @@ public interface WorkQueue {
      * until a human deals with it. {@code true} when held by this call.
      */
     Future<Boolean> hold(long seq, int attempts);
+
+    /**
+     * {@code true} while any row of {@code flow} exists — due, backing off after a lease ran out, leased or held; a completed row
+     * is gone and never counts, nor does another flow's row (D-063: a redeploy that removes an at-least-once flow checks it).
+     *
+     * @throws NullPointerException {@code flow} is null, thrown at the call, not as a failed future
+     */
+    Future<Boolean> hasItems(String flow);
 }

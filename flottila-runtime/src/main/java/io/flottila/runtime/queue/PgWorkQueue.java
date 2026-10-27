@@ -62,6 +62,9 @@ public final class PgWorkQueue implements WorkQueue {
 
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
 
+    /** Any row of the flow, held or not: a completed row is deleted ({@link #COMPLETE}). On the index {@code work_flow_seq}. */
+    private static final String HAS_ITEMS = "select exists(select 1 from work where flow = $1)";
+
     private final Pool pool;
 
     public PgWorkQueue(Pool pool) {
@@ -98,6 +101,11 @@ public final class PgWorkQueue implements WorkQueue {
 
     @Override public Future<Boolean> hold(long seq, int attempts) {
         return pool.preparedQuery(HOLD).execute(Tuple.of(seq, attempts)).map(rows -> rows.rowCount() == 1);
+    }
+
+    @Override public Future<Boolean> hasItems(String flow) {
+        Objects.requireNonNull(flow, "flow");
+        return pool.preparedQuery(HAS_ITEMS).execute(Tuple.of(flow)).map(rows -> rows.iterator().next().getBoolean(0));
     }
 
     private static Future<Optional<Item>> next(SqlClient conn, String workerId, String flow, String key, Duration lease) {

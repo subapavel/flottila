@@ -39,6 +39,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
@@ -88,6 +89,7 @@ public final class FlowBuilder {
     private Dlq dlq;
     private WorkQueue queue;
     private Map<String, String> extraVersions = Map.of();
+    private Consumer<Path> reads = path -> { };
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -128,6 +130,16 @@ public final class FlowBuilder {
         Map<String, String> copy = Map.copyOf(extra);
         if (copy.containsKey("flow")) throw new IllegalArgumentException("the 'flow' version is the flow's own id@version, written by the builder; extra versions may not set it: " + copy);
         this.extraVersions = copy;
+        return this;
+    }
+
+    /**
+     * Tells {@code sink} every path the steps of the flows built from now on read through their {@link StepResources} ({@code file},
+     * {@code resolve}) while they are built — by {@link #delivery} (sync, at-most-once), {@link #worker}, {@link #build} and
+     * {@link #replay} — for a flow's effective hash (D-063); it replaces the sink of an earlier call. Without a call nobody is told.
+     */
+    public FlowBuilder reads(Consumer<Path> sink) {
+        this.reads = Objects.requireNonNull(sink, "sink");
         return this;
     }
 
@@ -274,7 +286,7 @@ public final class FlowBuilder {
         boolean parks = "at-least-once".equals(flow.deliveryMode());
         if (parks) requireDlq(flow);
         Parking parking = parks ? new Parking(dlq, runtime.clock(), versions) : null;
-        StepResources resources = new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir);
+        StepResources resources = new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir, reads);
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
         UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
         List<Stage> stages = new ArrayList<>(flow.steps().size());

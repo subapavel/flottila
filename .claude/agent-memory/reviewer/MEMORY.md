@@ -96,3 +96,4 @@
 - A `compose` after a store future runs the next store call on the thread that completes it (the event loop for Pg). Check the callee does not block (P1-09j, Parking:65).
 - Closing a worker's producers while items run makes Parking park them: DLQ row plus completed item, not 'left to lease' (FIX-30, FlowWorker.close).
 - A deferred close decided under the lock is single-shot only if no new claim can start after stop; check every place that sets `claiming`/`running` against `stopped` (FIX-30 r2, FlowWorker.closeDue).
+- Hash or listing sorts: a fixture whose creation order equals the sorted order (or its reverse) pins nothing on newest-first or creation-order filesystems; require ≥4 shuffled entries (P1-09d2a, FlowHash:97).

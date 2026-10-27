@@ -9,8 +9,11 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,6 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * that leaves the directory after normalisation — {@code ..}, an absolute path, a {@code file:} URI elsewhere — or is
  * not a file at all is refused with a message naming the reference and the directory. Paths are compared, not real
  * paths; the files need not exist.
+ *
+ * <p>P1-09d2a (D-063): the 8th component {@code reads}, a {@code Consumer<Path>}, receives every confined path {@link
+ * StepResources#file} and {@link StepResources#resolve} return — the effective hash of a flow is taken over the files its build
+ * read — and never a path either refuses; the 7-argument constructor reports to a no-op.
  */
 class StepResourcesTest {
 
@@ -28,6 +35,11 @@ class StepResourcesTest {
     StepResources resources(Path baseDir) {
         return new StepResources(Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), (delay, task) -> () -> false, () -> "id",
                 new InMemoryBlobStore(1024), Hasher.sha256(), 1024, baseDir);
+    }
+
+    StepResources reporting(Path baseDir, List<Path> reads) {
+        return new StepResources(Clock.fixed(Instant.EPOCH, ZoneOffset.UTC), (delay, task) -> () -> false, () -> "id",
+                new InMemoryBlobStore(1024), Hasher.sha256(), 1024, baseDir, reads::add);
     }
 
     Path flow() { return tmp.resolve("flow").toAbsolutePath().normalize(); }
@@ -108,5 +120,47 @@ class StepResourcesTest {
         refused(flow(), "http://example.com/x.xsd", () -> r.resolve(null, "http://example.com/x.xsd"));
         refused(flow(), "a b.xsd", () -> r.resolve(including, "a b.xsd"));   // not a URI at all: refused, not a URISyntaxException
         refused(flow(), "a b.xsd", () -> r.resolve(null, "a b.xsd"));
+    }
+
+    // --- P1-09d2a (D-063): the reads sink
+
+    @Test
+    void fileAndResolveReportEveryConfinedPath() {
+        List<Path> reads = new ArrayList<>();
+        StepResources r = reporting(flow(), reads);
+        String including = flow().resolve("sub/a.xsd").toUri().toString();
+        List<Path> returned = new ArrayList<>();
+        returned.add(r.file("sub/a.xsd"));
+        returned.add(r.file("x/../b.xsd"));
+        returned.add(r.resolve(including, "../c.xsd"));
+        returned.add(r.resolve(null, "d.xsd"));
+        returned.add(r.resolve(including, flow().resolve("e.xsd").toUri().toString()));
+        returned.add(r.file("sub/a.xsd"));
+        assertEquals(List.of(flow().resolve("sub/a.xsd"), flow().resolve("b.xsd"), flow().resolve("c.xsd"), flow().resolve("d.xsd"),
+                flow().resolve("e.xsd"), flow().resolve("sub/a.xsd")), returned, "fixture: each call answers the confined, normalised path");
+        assertEquals(returned, reads, "every path file() and resolve() return reaches the sink, as returned (absolute, normalised), once per call, in call order");
+
+        StepResources silent = resources(flow());
+        assertNotNull(silent.reads(), "the 7-argument constructor reports to a no-op, not to null");
+        assertEquals(flow().resolve("a.xsd"), silent.file("a.xsd"), "and still confines and resolves");
+        silent.reads().accept(flow().resolve("a.xsd"));   // the no-op takes a path without failing
+    }
+
+    @Test
+    void aRefusedPathIsNotReported() {
+        List<Path> reads = new ArrayList<>();
+        StepResources r = reporting(flow(), reads);
+        String including = flow().resolve("sub/a.xsd").toUri().toString();
+        refused(flow(), "../x", () -> r.file("../x"));
+        refused(flow(), "/etc/x", () -> r.file("/etc/x"));
+        refused(flow(), "../../x", () -> r.resolve(including, "../../x"));
+        String outside = tmp.resolve("outside.xsd").toUri().toString();
+        refused(flow(), outside, () -> r.resolve(including, outside));
+        refused(flow(), "http://example.com/x.xsd", () -> r.resolve(including, "http://example.com/x.xsd"));
+        refused(flow(), "a b.xsd", () -> r.resolve(including, "a b.xsd"));
+        assertEquals(List.of(), reads, "a path that leaves the directory, is not a file or is no URI is refused and never reported");
+
+        Path inside = r.resolve(including, "ok.xsd");
+        assertEquals(List.of(inside), reads, "witness: the same resources report the next confined path");
     }
 }
