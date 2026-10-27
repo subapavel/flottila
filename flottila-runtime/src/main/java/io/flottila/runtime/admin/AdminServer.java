@@ -9,6 +9,7 @@ import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.deploy.DeployRefusedException;
+import io.flottila.runtime.deploy.DeployResult;
 import io.flottila.runtime.deploy.DeployedFlow;
 import io.flottila.runtime.deploy.DeployedPackage;
 import io.flottila.runtime.deploy.Deployments;
@@ -66,11 +67,12 @@ import java.util.function.Supplier;
  * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
  * {@code 100 Continue} and the body is streamed with back-pressure into a
  * temp file in {@code incomingDir()} and counted, 413 at byte max+1; the deploy runs on the route's virtual thread and the temp
- * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows}}, or a
- * refusal by its kind — 400, 403, 409, 422 {@code {error, problems}}, 500, 503. An answer given before the request's body was read
- * to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and {@code GET /admin/packages}
- * list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state} (D-063). Without one these routes
- * do not exist (404).
+ * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows, added,
+ * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed, D-063), or a refusal
+ * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500, 503. An answer given before
+ * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
+ * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
+ * (D-063). Without one these routes do not exist (404).
  *
  * @since 0.1
  */
@@ -245,9 +247,11 @@ public final class AdminServer {
                 long received = Future.<Long>future(done -> context.runOnContext(v -> vertx.fileSystem().open(upload.toString(), new OpenOptions().setRead(false).setCreate(false))
                         .compose(body::into).onComplete(done))).await();
                 if (received > max) return tooLarge(max);
-                DeployedPackage p = deployments.deploy(ctx.pathParam("name"), Optional.ofNullable(ctx.request().getParam("revision")), upload);
+                DeployResult r = deployments.deploy(ctx.pathParam("name"), Optional.ofNullable(ctx.request().getParam("revision")), upload);
+                DeployedPackage p = r.pkg();
                 return Json.of(200, new JsonObject().put("package", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
-                        .put("archive", "sha256:" + p.archiveSha256()).put("flows", new JsonArray(p.flows())));
+                        .put("archive", "sha256:" + p.archiveSha256()).put("flows", new JsonArray(p.flows()))
+                        .put("added", new JsonArray(r.added())).put("swapped", new JsonArray(r.swapped())).put("removed", new JsonArray(r.removed())));
             } catch (DeployRefusedException refused) {
                 return refusal(refused);
             } finally {

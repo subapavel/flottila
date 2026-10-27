@@ -11,10 +11,8 @@
 - Every new schema rule needs a negative fixture under `flottila-schemas/src/test/resources/invalid/<kind>/`; every ArchUnit rule a
   fixture. Jackson YAML reads `off`/`yes`/`no` as booleans: quote them in fixtures.
 - Two fresh id generators both mint `m-1`: an id-equality assertion can pass by accident — assert the id the component recorded.
-- A timing assertion observed against wall time passes for the wrong reason (P0-04 round 1):
-  drive the window from the fake clock, assert the probe saw the threshold.
-- `mvn -pl <module>` alone fails to resolve sibling 0.1.0-SNAPSHOTs (not installed in ~/.m2): add `-am`
-  with `-Dsurefire.failIfNoSpecifiedTests=false`. `-q` hides the counts: read target/surefire-reports/*.txt.
+- Wall-time timing assertions pass for the wrong reason (P0-04): drive the window from the fake clock, assert the probe saw the threshold.
+- `mvn -pl <module>` needs `-am` (sibling SNAPSHOTs not in ~/.m2) + `-Dsurefire.failIfNoSpecifiedTests=false`; `-q` hides counts: read the XML.
 - TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose
   getEncoded() waits on a latch) holds the sink thread at its open; a WatchService on the spool message dir
   observes the sink storing bytes. Every handed-over stream not paused by the store gets one handover resume().
@@ -117,3 +115,5 @@
 - P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant (own data dir, Doors, `new SaxonXml().steps()` + XsdValidate),
   `changed(base, variant)` = moved hashes; `node(steps, xml)` + `Shared` = one compile cache over two nodes. `SaxonXml.steps()` builds a NEW
   XsltStepFactory per call (share the list). Cache-hit witness: `compiledStylesheets()`/`compiledSchemas()` = entries kept (FIX-17). Static `unparsed-text-available()` / `uri-collection('dir')` report an absent path / a directory.
+- P1-09d2b redeploy fixtures: `Doors.trace(sink)` (start/stop/"stopped <flow>"/"close <ep> #n" into one log), `Doors.onConsumer(hook)`, `TracingTimer.trace`
+  (schedule/cancel), `CountingQueue` claimedIds/renews/hasItemsCalls/afterFirstHasItems/failHasItems; a root-proof failing recursive delete = a dir chain > PATH_MAX (move-built).

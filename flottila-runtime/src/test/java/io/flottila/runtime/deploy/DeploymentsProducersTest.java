@@ -105,7 +105,7 @@ class DeploymentsProducersTest {
     // --- fixture
 
     DeployedPackage deploy(PackageDraft p) throws Exception {
-        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), p.zipTo(archives)));
+        return OnVirtualThread.call(() -> deployments.deploy(p.manifest().getString("name"), Optional.empty(), p.zipTo(archives))).pkg();
     }
 
     DeployRefusedException refused(PackageDraft p) {
@@ -317,7 +317,7 @@ class DeploymentsProducersTest {
         modes.put("zz", "sync");
         Path archive = flows("shop", modes).zipTo(archives);
         Doors.Gate second = doors.holdStart(2);
-        OnVirtualThread.Call<DeployedPackage> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
+        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
         if (!second.reached().await(10, TimeUnit.SECONDS)) {
             fail("the second consumer start was not reached within 10 s; the deploy is at " + List.of(deploying.thread().getStackTrace()));
         }

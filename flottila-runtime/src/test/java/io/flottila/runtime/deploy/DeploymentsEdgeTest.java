@@ -79,7 +79,7 @@ class DeploymentsEdgeTest {
 
     DeployedPackage deploy(Deployments d, PackageDraft p) throws Exception {
         Path archive = p.zipTo(tmp.resolve("archives"));
-        return OnVirtualThread.call(() -> d.deploy("shop", Optional.empty(), archive));
+        return OnVirtualThread.call(() -> d.deploy("shop", Optional.empty(), archive)).pkg();
     }
 
     DeployRefusedException refused(Deployments d, PackageDraft p) {

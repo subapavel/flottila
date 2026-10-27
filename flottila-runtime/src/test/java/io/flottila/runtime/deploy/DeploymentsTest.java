@@ -68,8 +68,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * worker ticks and stop deadlines — so nothing here waits on wall time.
  *
  * <p>The shape these tests assume (P1-09d1b test-author): in {@code io.flottila.runtime.deploy}, {@code Deployments(NodeConfig,
- * Runtime, Map<String, Component>, Clock, List<StepFactory>, List<Expressions>, MessageStore, Dlq, WorkQueue, Meter)} with {@code DeployedPackage deploy(String
- * name, Optional<String> revision, Path archive)}, {@code List<DeployedFlow> flows()}, {@code List<DeployedPackage> packages()},
+ * Runtime, Map<String, Component>, Clock, List<StepFactory>, List<Expressions>, MessageStore, Dlq, WorkQueue, Meter)} with {@code deploy(String
+ * name, Optional<String> revision, Path archive)} (its {@code DeployResult.pkg()} the {@code DeployedPackage} deployed since P1-09d2b, which made
+ * a deploy of a running package a redeploy: {@code DeploymentsRedeployTest}), {@code List<DeployedFlow> flows()}, {@code List<DeployedPackage> packages()},
  * {@code long maxPackageBytes()}, {@code Path incomingDir()}, {@code void close()}; {@code DeployRefusedException} with
  * {@code kind()}, {@code error()}, {@code problems()} and the nested enum {@code Kind}; record accessors {@code DeployedPackage}
  * {@code name(), version(), revision(), archiveSha256()} (lower-case hex, no prefix){@code , deployedAt(), flows(), files()} with
@@ -157,8 +158,9 @@ class DeploymentsTest {
         return p;
     }
 
+    /** The package a deploy answers (P1-09d2b: {@code DeployResult.pkg()}). */
     DeployedPackage deploy(String name, Optional<String> revision, Path archive) throws Exception {
-        return OnVirtualThread.call(() -> deployments.deploy(name, revision, archive));
+        return OnVirtualThread.call(() -> deployments.deploy(name, revision, archive)).pkg();
     }
 
     DeployedPackage deploy(PackageDraft p) throws Exception {
@@ -550,7 +552,7 @@ class DeploymentsTest {
     void aDeployWhileOneRunsIs409() throws Exception {
         Doors.Gate gate = doors.holdStart(1);
         Path first = shop("shop").zipTo(archives);
-        OnVirtualThread.Call<DeployedPackage> running = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), first));
+        OnVirtualThread.Call<DeployResult> running = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), first));
         reached(gate.reached(), "the first deploy starts its first consumer", running);
 
         Path second = shop("store").zipTo(archives);
@@ -562,32 +564,8 @@ class DeploymentsTest {
         assertFalse(running.isDone(), "the first deploy still waits on its consumer's start");
         assertFalse(Files.exists(data.resolve("packages").resolve("store")), "the refused package was never unpacked");
         gate.release();
-        assertEquals("shop", OnVirtualThread.join(running).name(), "the first deploy completes");
+        assertEquals("shop", OnVirtualThread.join(running).pkg().name(), "the first deploy completes");
         assertEquals("store", deploy(shop("store")).name(), "the lock is free again once the first deploy is done");
-    }
-
-    @Test
-    void anAlreadyDeployedPackageIs409() throws Exception {
-        PackageDraft v1 = shop("shop");
-        byte[] zip1 = v1.zip();
-        DeployedPackage p = deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1));
-        Path dir = data.resolve("packages").resolve("shop").resolve(p.archiveSha256());
-        Path marker = Files.writeString(dir.resolve("marker.txt"), "written by the test after the first deploy");
-        List<String> before = doors.events();
-        Set<String> listed = rows(deployments.flows());
-        PackageDraft v2 = shop("shop");
-        v2.manifest().put("version", "1.0.1");
-        byte[] zip2 = v2.zip();
-
-        DeployRefusedException other = refused("shop", Optional.empty(), PackageDraft.write(archives, zip2));
-        DeployRefusedException same = refused("shop", Optional.empty(), PackageDraft.write(archives, zip1));
-
-        assertEquals(Kind.CONFLICT, other.kind(), "another version of a deployed package is 409 until redeploy exists: " + other.error());
-        assertEquals(Kind.CONFLICT, same.kind(), "the same archive again too: " + same.error());
-        assertFalse(Files.exists(data.resolve("packages").resolve("shop").resolve(PackageDraft.sha256(zip2))), "the other archive was never unpacked");
-        assertTrue(Files.exists(marker), "the deployed directory was not replaced: the conflict comes before the unpack");
-        assertEquals(before, doors.events(), "the running flows were not touched: no consumer built, started or stopped");
-        assertEquals(listed, rows(deployments.flows()), "the first version is still the one listed");
     }
 
     /** Deploy order 4: a directory an earlier node left at {@code <name>/<sha256>} (nothing deployed here) is replaced by the unpack, not merged. */
@@ -672,7 +650,7 @@ class DeploymentsTest {
         PackageDraft shop = flows("shop", modes);
         Path archive = shop.zipTo(archives);
         Doors.Gate fourth = doors.holdStart(4);
-        OnVirtualThread.Call<DeployedPackage> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
+        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
         reached(fourth.reached(), "the package's fourth consumer start", deploying);
 
         List<Doors.Door> shopDoors = doors.doors().stream().filter(d -> d.flow().startsWith("shop/")).toList();
@@ -804,7 +782,7 @@ class DeploymentsTest {
     void closeWaitsForARunningDeployThenStopsItsFlows() throws Exception {
         Doors.Gate gate = doors.holdStart(1);
         Path archive = shop("shop").zipTo(archives);
-        OnVirtualThread.Call<DeployedPackage> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
+        OnVirtualThread.Call<DeployResult> deploying = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(), archive));
         reached(gate.reached(), "the deploy starts its first consumer", deploying);
 
         OnVirtualThread.Call<Void> closing = OnVirtualThread.start(deployments::close);
@@ -822,7 +800,7 @@ class DeploymentsTest {
         assertFalse(doors.doors().stream().anyMatch(Doors.Door::stopped), "nothing is stopped while the deploy runs: " + doors.events());
 
         gate.release();
-        assertEquals("shop", OnVirtualThread.join(deploying).name(), "the running deploy completes");
+        assertEquals("shop", OnVirtualThread.join(deploying).pkg().name(), "the running deploy completes");
         OnVirtualThread.join(closing);
         for (String flow : List.of("shop/orders", "shop/audit", "shop/ping")) {
             assertTrue(doors.door(flow).stopped(), "close then stops the flows that deploy started: " + flow + " " + doors.events());

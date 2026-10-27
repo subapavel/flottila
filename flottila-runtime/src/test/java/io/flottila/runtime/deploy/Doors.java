@@ -37,6 +37,11 @@ import java.util.function.Function;
  * producer close ({@link #onProducerClose}); the close of the {@code nth} producer built can fail ({@link #failProducerClose}).
  * After {@link #closeFailsSends()} a producer's close fails each of its sends still unanswered and every later send, as a
  * real client closed under its requests does.
+ *
+ * <p>P1-09d2b: {@link #trace} hands every event, in the order made, to one sink — the redeploy tests' single log at the SPI
+ * boundary — together with two kinds {@link #events()} leaves out: {@code "stopped <flow>"} when a door's stop() future
+ * completes (before whoever awaits it sees it), and {@code "close <endpoint> #<ordinal>"} at each producer close call.
+ * {@link #onConsumer} runs a hook at the top of every consumer() call.
  */
 public final class Doors implements Component {
 
@@ -59,7 +64,24 @@ public final class Doors implements Component {
     private final Map<Integer, String> closeFailures = new ConcurrentHashMap<>();
     private volatile java.util.function.Consumer<Out> onProducerClose = o -> {};
     private volatile boolean closeFailsSends;
+    private volatile java.util.function.Consumer<String> trace = e -> {};
+    private volatile java.util.function.Consumer<EndpointConfig> onConsumer = c -> {};
     private int starts;   // guarded by this: start() calls so far
+
+    /**
+     * From now on every event of {@link #events()} also goes to {@code sink}, on the thread that made it, and so do
+     * {@code "stopped <flow>"} (a door's stop() future completed; logged before that future completes for its caller) and
+     * {@code "close <endpoint> #<ordinal>"} (a producer's close() was called).
+     */
+    public void trace(java.util.function.Consumer<String> sink) { this.trace = Objects.requireNonNull(sink, "sink"); }
+
+    /** Runs at the top of every consumer() call, on the building thread, before an endpoint's {@code refuse} option is looked at. */
+    public void onConsumer(java.util.function.Consumer<EndpointConfig> hook) { this.onConsumer = Objects.requireNonNull(hook, "hook"); }
+
+    private void event(String e) {
+        events.add(e);
+        trace.accept(e);
+    }
 
     /** The producers' side: what was sent to each out endpoint, holds and failures of sends. */
     public RecordingComponent partner() { return partner; }
@@ -124,10 +146,11 @@ public final class Doors implements Component {
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
         Objects.requireNonNull(cfg, "cfg");
         Objects.requireNonNull(handler, "handler");
+        onConsumer.accept(cfg);
         if (cfg.options().get("refuse") instanceof String why) throw new IllegalArgumentException(why);
         Door d = new Door(cfg, handler);
         doors.add(d);
-        events.add("consumer " + d.flow());
+        event("consumer " + d.flow());
         return d;
     }
 
@@ -209,6 +232,7 @@ public final class Doors implements Component {
 
         @Override
         public Future<Void> close() {
+            trace.accept("close " + endpoint + " #" + ordinal);
             unansweredAtClose.add(unanswered.get());   // before the count: a test that waits for closes() > 0 then reads it
             closes.incrementAndGet();
             if (closeFailsSends) {
@@ -300,7 +324,7 @@ public final class Doors implements Component {
 
         @Override
         public Future<Void> start() {
-            events.add("start " + flow());
+            event("start " + flow());
             Gate g = gateFor();
             Future<Void> result;
             if (g == null) {
@@ -317,11 +341,12 @@ public final class Doors implements Component {
         @Override
         public Future<Void> stop() {
             stopped = true;
-            events.add("stop " + flow());
+            event("stop " + flow());
             onStop.accept(this);
             stopping.tryComplete();
             String failure = stopFailures.get(flow());
-            return failure == null ? drained.future() : drained.future().compose(v -> Future.failedFuture(new IllegalStateException(failure)));
+            Future<Void> stop = failure == null ? drained.future() : drained.future().compose(v -> Future.failedFuture(new IllegalStateException(failure)));
+            return stop.andThen(done -> trace.accept("stopped " + flow()));
         }
 
         @Override

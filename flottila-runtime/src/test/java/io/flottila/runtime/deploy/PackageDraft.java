@@ -90,6 +90,12 @@ public final class PackageDraft {
         return file(path, text.getBytes(StandardCharsets.UTF_8));
     }
 
+    /** Drops the document or file at {@code path} (P1-09d2b: a flow or an endpoint a redeploy removes); fails the case when there is none. */
+    public PackageDraft without(String path) {
+        if (docs.remove(path) == null && raw.remove(path) == null) throw new AssertionError("fixture: no file " + path + " to remove");
+        return this;
+    }
+
     /** Every file of the package by its path in the archive, in path order. */
     public Map<String, byte[]> files() {
         Map<String, byte[]> all = new TreeMap<>();

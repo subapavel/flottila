@@ -620,3 +620,11 @@ Checks: whole reactor -Pit VERIFIED_PASS 1205 (target/FIX-17-r2-verify-all.log);
 Review: FAIL round 1 (climbing `..` lost in the key; null-base reads served across flows; main-name clause untested); PASS round 2. Raised FIX-41 (SHA-256 keys), FIX-42 (eviction); run-time base URI on FIX-40.
 D-054 data: class B (test-author, implementer, reviewer opus/high); architect turns 12; review rounds 2.
 Next: P1-09d2b [C].
+
+## 2026-10-27 — P1-09d2b redeploy swap — done, review PASS — Deviation: F-5
+Test first: DeploymentsRedeployTest (23 incl. round 2), AdminServerDeployTest.redeploy200…, NodeIT 2 — observed red (target/P1-09d2b-red.log, -scratch-red.log, -it-red.log, -r2-red.log). Deleted DeploymentsTest#anAlreadyDeployedPackageIs409 (old rule) and changed expectations for the new rule in AdminServerDeployTest and NodeIT — architect-approved. Implementer-written DeploymentsRedeployEdgeTest (13) approved.
+Change: `Deployments.deploy` → `DeployResult(pkg, added, swapped, removed)`; classify by effective hash; unchanged flows untouched; phase A stops changed+removed at once, phase B starts changed+added at once after A; 422 for removed/mode-changed at-least-once flows with items; drain recheck WARNING; kept dir reused only if its files match its record; prune keeps current, previous, in use; 409 = deploy running. FIX-32 folded in; P1-09e covered. F-5 amended, §9 changelog.
+Checks: whole reactor -Pit VERIFIED_PASS surefire 1118 + failsafe 135 (target/P1-09d2b-r2-verify-all.log); coverage no decrease (Deployments 0 missed), baseline written; mutants M01–M44 killed.
+Review: FAIL round 1 (phase A and phase B parallelism unpinned); PASS round 2. Notes for d2c, FIX-38, FIX-40 on their rows.
+D-054 data: class C (test-author, implementer, reviewer opus/xhigh); architect turns 12; review rounds 2.
+Next: P1-09d2c [C].

@@ -17,11 +17,11 @@ public final class DeployRefusedException extends Exception {
         BAD_REQUEST,
         /** The package does not pass validation: every problem in {@link #problems()} (422). */
         INVALID,
-        /** Another deploy runs, or the package is deployed already (409). */
+        /** Another deploy runs on this node: one at a time per node, whatever the package (409). */
         CONFLICT,
         /** The node is closing (503). */
         STOPPING,
-        /** A flow did not start; every flow of the package was stopped again (500). */
+        /** A flow did not start; every flow the deploy built was stopped again, the flows it replaced or removed stay stopped (500). */
         FAILED,
         /** A deployed environment: manual deploy is non-production only (403). */
         FORBIDDEN
@@ -31,8 +31,9 @@ public final class DeployRefusedException extends Exception {
     private final String error;
     private final List<String> problems;
 
+    /** No stack trace is kept; suppression is on: a cleanup that fails after the refusal is added to it, never in its place (FIX-32). */
     public DeployRefusedException(Kind kind, String error, List<String> problems) {
-        super(kind + ": " + error + (problems.isEmpty() ? "" : " " + problems), null, false, false);
+        super(kind + ": " + error + (problems.isEmpty() ? "" : " " + problems), null, true, false);
         this.kind = Objects.requireNonNull(kind, "kind");
         this.error = Objects.requireNonNull(error, "error");
         this.problems = List.copyOf(problems);

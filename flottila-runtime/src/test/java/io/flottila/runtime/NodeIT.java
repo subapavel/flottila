@@ -401,7 +401,8 @@ class NodeIT {
 
             assertEquals(200, put.statusCode(), put.body());
             assertEquals(new JsonObject().put("package", "demo").put("version", "0.1.0").put("revision", "9df3f78").put("archive", "sha256:" + sha256(zip))
-                    .put("flows", new io.vertx.core.json.JsonArray().add("demo/invoice-sync")), new JsonObject(put.body()), "the deploy's answer");
+                    .put("flows", new io.vertx.core.json.JsonArray().add("demo/invoice-sync")).put("added", new io.vertx.core.json.JsonArray().add("demo/invoice-sync"))
+                    .put("swapped", new io.vertx.core.json.JsonArray()).put("removed", new io.vertx.core.json.JsonArray()), new JsonObject(put.body()), "the deploy's answer");
 
             HttpResponse<String> invoice = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
             assertEquals(200, invoice.statusCode(), invoice.body());
@@ -444,6 +445,114 @@ class NodeIT {
                 assertEquals(new JsonObject().put("flow", "demo/invoice-sync@0.1.0").put("package", "demo@0.1.0").put("revision", "9df3f78"),
                         ((JsonObject) s).getJsonObject("versions"), "every snapshot carries flow, package and revision: " + s);
             }
+        } finally {
+            partner.close().await();
+        }
+    }
+
+    // --- P1-09d2b (D-063): redeploy over the admin API
+
+    static final String V1_ROOT = "<PartnerInvoice number=";
+    static final String V2_ROOT = "<PartnerInvoiceV2 number=";
+
+    /** The demo's files with its stylesheet's root element renamed: the only file v2 changes. */
+    static Map<String, byte[]> withRenamedRoot(Map<String, byte[]> files) {
+        Map<String, byte[]> v2 = new java.util.TreeMap<>(files);
+        v2.put("flows/invoice-to-partner.xsl", replaced(files.get("flows/invoice-to-partner.xsl"), Map.of("<PartnerInvoice ", "<PartnerInvoiceV2 ", "</PartnerInvoice>", "</PartnerInvoiceV2>")));
+        return v2;
+    }
+
+    /** The demo flow's listed {@code /admin/flows} item. */
+    static JsonObject flowItem(int admin) throws Exception {
+        HttpResponse<String> flows = get(admin, "/admin/flows");
+        assertEquals(200, flows.statusCode(), flows.body());
+        return new JsonObject(flows.body()).getJsonArray("items").getJsonObject(0);
+    }
+
+    /**
+     * The demo runs; v2 changes only its stylesheet. The PUT answers 200 with the flow swapped, its listed hash moves, and the next
+     * invoice — on the same in port, which v2's consumer took over — reaches the partner mapped by v2's stylesheet.
+     */
+    @Test
+    void aChangedXsltRedeploySwapsAndTheNextInvoiceUsesIt() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> v1 = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            startDemoNode(env("ci"));
+            int admin = node.adminPort();
+            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo?revision=r1", zip(v1), "application/zip").statusCode(), "fixture: v1 deploys");
+            assertEquals(200, send(client, "POST", inPort, "/in", invoice, "application/xml").statusCode(), "fixture: v1 serves");
+            assertTrue(partnerSaw.get(0).contains(V1_ROOT), "fixture: v1 maps to PartnerInvoice: " + partnerSaw);
+            String v1Hash = flowItem(admin).getString("hash");
+            byte[] v2Zip = zip(withRenamedRoot(v1));
+
+            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo?revision=r2", v2Zip, "application/zip");
+
+            assertEquals(200, put.statusCode(), put.body());
+            JsonObject body = new JsonObject(put.body());
+            assertEquals(new io.vertx.core.json.JsonArray().add("demo/invoice-sync"), body.getJsonArray("swapped"), "the flow reading the stylesheet swaps: " + body);
+            assertEquals(new io.vertx.core.json.JsonArray(), body.getJsonArray("added"), body.encode());
+            assertEquals(new io.vertx.core.json.JsonArray(), body.getJsonArray("removed"), body.encode());
+            assertEquals("sha256:" + sha256(v2Zip), body.getString("archive"));
+            JsonObject listed = flowItem(admin);
+            assertNotEquals(v1Hash, listed.getString("hash"), "the listed hash moved with the stylesheet: " + listed);
+            assertEquals("r2", listed.getString("revision"), "the swapped flow carries v2's revision: " + listed);
+
+            HttpResponse<String> next = send(client, "POST", inPort, "/in", invoice, "application/xml");
+
+            assertEquals(200, next.statusCode(), next.body());
+            assertEquals(ack.toString(), next.body(), "the partner's reply comes back");
+            assertEquals(2, partnerSaw.size(), "the partner saw the second invoice once: " + partnerSaw);
+            assertTrue(partnerSaw.get(1).contains(V2_ROOT) && !partnerSaw.get(1).contains(V1_ROOT),
+                    "the next invoice is mapped by v2's stylesheet: " + partnerSaw.get(1));
+        } finally {
+            partner.close().await();
+        }
+    }
+
+    /**
+     * The demo runs; v2's stylesheet does not compile. The PUT is 422 naming the flow and the file; the flow and package are
+     * listed as v1 (same hash, same archive) and the next invoice is still mapped by v1's stylesheet.
+     */
+    @Test
+    void anInvalidRedeployLeavesV1Serving() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> v1 = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            byte[] v1Zip = zip(v1);
+            startDemoNode(env("ci"));
+            int admin = node.adminPort();
+            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", v1Zip, "application/zip").statusCode(), "fixture: v1 deploys");
+            JsonObject v1Flow = flowItem(admin);
+            Map<String, byte[]> broken = withRenamedRoot(v1);
+            broken.put("flows/invoice-to-partner.xsl", "<xsl:stylesheet xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" version=\"3.0\"><xsl:template match=\"/\">"
+                    .getBytes(StandardCharsets.UTF_8));   // not well-formed
+
+            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/demo", zip(broken), "application/zip");
+
+            assertEquals(422, put.statusCode(), put.body());
+            JsonObject body = new JsonObject(put.body());
+            assertEquals(Set.of("error", "problems"), body.fieldNames(), body.encode());
+            assertTrue(body.getJsonArray("problems").stream().map(String::valueOf).anyMatch(l -> l.contains("invoice-sync") && l.contains("invoice-to-partner.xsl")),
+                    "a problem names the flow and its stylesheet: " + body);
+            assertEquals(v1Flow, flowItem(admin), "the flow is listed as v1: same hash, revision and state");
+            HttpResponse<String> packages = get(admin, "/admin/packages");
+            assertEquals("sha256:" + sha256(v1Zip), new JsonObject(packages.body()).getJsonArray("items").getJsonObject(0).getString("archive"), "the package is v1's");
+
+            HttpResponse<String> next = send(client, "POST", inPort, "/in", invoice, "application/xml");
+
+            assertEquals(200, next.statusCode(), next.body());
+            assertEquals(ack.toString(), next.body());
+            assertEquals(1, partnerSaw.size(), partnerSaw.toString());
+            assertTrue(partnerSaw.get(0).contains(V1_ROOT), "v1 keeps serving with its stylesheet: " + partnerSaw);
         } finally {
             partner.close().await();
         }

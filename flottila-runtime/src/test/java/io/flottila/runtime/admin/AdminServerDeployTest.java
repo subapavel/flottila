@@ -161,13 +161,30 @@ class AdminServerDeployTest {
     }
 
     Answer request(int at, HttpMethod method, String path, String authorization, byte[] body) throws Exception {
+        return requesting(at, method, path, authorization, body).await(20, TimeUnit.SECONDS);
+    }
+
+    /** The request sent; its answer not awaited. */
+    Future<Answer> requesting(int at, HttpMethod method, String path, String authorization, byte[] body) {
         return client.request(new RequestOptions().setMethod(method).setAbsoluteURI("http://127.0.0.1:" + at + path))
                 .compose(req -> {
                     if (authorization != null) req.putHeader("Authorization", authorization);
                     return body == null ? req.send() : req.send(Buffer.buffer(body));
                 })
-                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b)))
-                .await(20, TimeUnit.SECONDS);
+                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b)));
+    }
+
+    /**
+     * A deploy of {@code store} whose first consumer start is held (P1-09d2b: it holds the node's deploy lock), sent and not awaited;
+     * returns once that start was reached. Release the gate, then await the answer.
+     */
+    record Running(Doors.Gate gate, Future<Answer> answer) {}
+
+    Running aDeployHoldingTheLock() throws Exception {
+        Doors.Gate gate = doors.holdStart(1);
+        Future<Answer> answer = requesting(port, HttpMethod.PUT, "/admin/packages/store", AUTH, pkg("store", "1.0.0", Map.of("ping", "sync")).zip());
+        if (!gate.reached().await(20, TimeUnit.SECONDS)) fail("fixture: the deploy holding the lock did not reach its consumer start within 20 s");
+        return new Running(gate, answer);
     }
 
     Answer put(int at, String path, byte[] zip) throws Exception {
@@ -295,12 +312,15 @@ class AdminServerDeployTest {
 
         assertJson(200, a, "a deploy");
         JsonObject body = a.json();
-        assertEquals(Set.of("package", "version", "revision", "archive", "flows"), body.fieldNames(), "the 200 body: " + body);
+        assertEquals(Set.of("package", "version", "revision", "archive", "flows", "added", "swapped", "removed"), body.fieldNames(), "the 200 body: " + body);
         assertEquals("shop", body.getString("package"));
         assertEquals("1.2.3", body.getString("version"));
         assertEquals("9df3f78", body.getString("revision"));
         assertEquals("sha256:" + PackageDraft.sha256(zip), body.getString("archive"), "the archive is the SHA-256 of the bytes uploaded");
         assertEquals(Set.of("shop/audit", "shop/orders"), set(body.getJsonArray("flows")), "the flows by their qualified ids");
+        assertEquals(new JsonArray().add("shop/audit").add("shop/orders"), body.getJsonArray("added"), "a first deploy adds every flow, sorted (P1-09d2b)");
+        assertEquals(new JsonArray(), body.getJsonArray("swapped"));
+        assertEquals(new JsonArray(), body.getJsonArray("removed"));
         assertTrue(doors.door("shop/orders").started(), "the flows were started");
 
         Answer none = put("/admin/packages/store", pkg("store", "1.0.0", Map.of("ping", "at-most-once")).zip());
@@ -400,7 +420,11 @@ class AdminServerDeployTest {
                 "the 500 names the flow and the cause: " + failed.json());
 
         assertJson(200, put("/admin/packages/shop", shop().zip()), "fixture: shop deploys");
-        assertError(409, put("/admin/packages/shop", shop().zip()), "CONFLICT: already deployed");
+        assertJson(200, put("/admin/packages/shop", shop().zip()), "the running package again is a redeploy, not a conflict (P1-09d2b)");
+        Running running = aDeployHoldingTheLock();
+        assertError(409, put("/admin/packages/shop", shop().zip()), "CONFLICT: another deploy holds the node's lock");
+        running.gate().release();
+        assertJson(200, running.answer().await(20, TimeUnit.SECONDS), "fixture: the deploy that held the lock completes");
 
         Deployments closed = deployments("dev");
         OnVirtualThread.call(() -> { closed.close(); return null; });
@@ -411,7 +435,7 @@ class AdminServerDeployTest {
         assertEquals(FORBIDDEN, forbidden.json().getString("error"));
     }
 
-    /** The body streamed to a temp file in incomingDir() is gone once the answer is out, whatever the deploy answered. */
+    /** The body streamed to a temp file in incomingDir() is gone once the answer is out, whatever the deploy answered (409: another deploy runs). */
     @ParameterizedTest(name = "{0}")
     @ValueSource(ints = {200, 400, 409, 422})
     void theUploadedTempFileIsDeletedWhateverTheOutcome(int status) throws Exception {
@@ -425,13 +449,59 @@ class AdminServerDeployTest {
             }
             default -> throw new IllegalArgumentException("no fixture for " + status);
         };
-        if (status == 409) assertJson(200, put("/admin/packages/shop", body), "fixture: shop is deployed first");
-        assertEquals(List.of(), entries(deployments.incomingDir()), "fixture: nothing in incomingDir() before the upload");
+        Running running = status == 409 ? aDeployHoldingTheLock() : null;   // its own upload stays in incomingDir() until it answers
+        List<Path> before = entries(deployments.incomingDir());
+        if (running == null) assertEquals(List.of(), before, "fixture: nothing in incomingDir() before the upload");
 
         Answer a = put("/admin/packages/shop", body);
 
         assertJson(status, a, "the deploy answered " + status);
-        assertEquals(List.of(), entries(deployments.incomingDir()), "no upload temp file (nor unpack directory) is left after a " + status);
+        assertEquals(before, entries(deployments.incomingDir()), "no upload temp file (nor unpack directory) of this request is left after a " + status);
+        if (running != null) {
+            running.gate().release();
+            assertJson(200, running.answer().await(20, TimeUnit.SECONDS), "fixture: the deploy that held the lock completes");
+            assertEquals(List.of(), entries(deployments.incomingDir()), "nor of the deploy that held the lock");
+        }
+    }
+
+    /**
+     * P1-09d2b (D-063): a redeploy answers 200 with what it did — {@code added}, {@code swapped} and {@code removed}, sorted
+     * qualified ids — beside the package's version, revision, archive and every flow it now runs; a first deploy adds every flow.
+     */
+    @Test
+    void redeploy200ListsAddedSwappedRemoved() throws Exception {
+        Map<String, String> v1Flows = new java.util.LinkedHashMap<>();
+        v1Flows.put("orders", "sync");
+        v1Flows.put("audit", "at-least-once");
+        v1Flows.put("ping", "at-most-once");
+        Answer first = put("/admin/packages/shop?revision=r1", pkg("shop", "1.0.0", v1Flows).zip());
+        assertJson(200, first, "fixture: v1");
+        assertEquals(new JsonArray().add("shop/audit").add("shop/orders").add("shop/ping"), first.json().getJsonArray("added"), "v1 adds every flow: " + first.json());
+        assertEquals(new JsonArray(), first.json().getJsonArray("swapped"));
+        assertEquals(new JsonArray(), first.json().getJsonArray("removed"));
+        Map<String, String> v2Flows = new java.util.LinkedHashMap<>();
+        v2Flows.put("orders", "sync");
+        v2Flows.put("ping", "at-most-once");
+        v2Flows.put("refunds", "sync");
+        PackageDraft v2 = pkg("shop", "1.1.0", v2Flows);
+        v2.flowDoc("orders").put("description", "changed in 1.1.0");
+        byte[] zip = v2.zip();
+
+        Answer a = put("/admin/packages/shop?revision=r2", zip);
+
+        assertJson(200, a, "the redeploy");
+        JsonObject body = a.json();
+        assertEquals(Set.of("package", "version", "revision", "archive", "flows", "added", "swapped", "removed"), body.fieldNames(), "the 200 body: " + body);
+        assertEquals("shop", body.getString("package"));
+        assertEquals("1.1.0", body.getString("version"));
+        assertEquals("r2", body.getString("revision"));
+        assertEquals("sha256:" + PackageDraft.sha256(zip), body.getString("archive"));
+        assertEquals(Set.of("shop/orders", "shop/ping", "shop/refunds"), set(body.getJsonArray("flows")), "every flow it runs now");
+        assertEquals(new JsonArray().add("shop/refunds"), body.getJsonArray("added"), "the new flow: " + body);
+        assertEquals(new JsonArray().add("shop/orders"), body.getJsonArray("swapped"), "the changed flow; ping is unchanged: " + body);
+        assertEquals(new JsonArray().add("shop/audit"), body.getJsonArray("removed"), "the flow v2 no longer has: " + body);
+        assertEquals(List.of("shop/orders", "shop/ping", "shop/refunds"),
+                get("/admin/flows").json().getJsonArray("items").stream().map(i -> ((JsonObject) i).getString("id")).toList(), "GET /admin/flows lists v2's flows");
     }
 
     @Test

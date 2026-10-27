@@ -98,3 +98,4 @@
 - A deferred close decided under the lock is single-shot only if no new claim can start after stop; check every place that sets `claiming`/`running` against `stopped` (FIX-30 r2, FlowWorker.closeDue).
 - Hash or listing sorts: a fixture whose creation order equals the sorted order (or its reverse) pins nothing on newest-first or creation-order filesystems; require ≥4 shuffled entries (P1-09d2a, FlowHash:97).
 - Cache keys built by relativizing normalised paths lose `..` that climbs above the base directory and comes back down by name; replay the reference in the requesting flow's directory instead (FIX-17).
+- A test's 'in parallel' claim holds only if the held flow comes first in the iteration order; check the list order against a sequential mutant (P1-09d2b, Deployments.retire).

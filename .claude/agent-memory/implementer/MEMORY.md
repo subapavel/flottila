@@ -1,13 +1,13 @@
 # implementer — durable facts (seeded from agent/HANDOFF.md at the role split; prune when you add)
 
 ## Build
-- NEVER `mvn clean` at the reactor root: it deletes the root `target/`, where the architect keeps packets,
-  specs, red logs and diffs (gitignored, unrecoverable; P1-08 r2 lost them). Clean per module only:
-  `mvn -q clean -pl <module>`.
-- Reactor order: api → testkit → core → schemas → steps → runtime (test-depends on schemas and
-  step-xslt) → components → cli → archtest → bench. `-pl <module> -am` for one module.
+- NEVER `mvn clean` at the reactor root: it deletes the root `target/` (packets, specs, red logs, diffs; gitignored,
+  unrecoverable; P1-08 r2 lost them). Clean per module only: `mvn -q clean -pl <module>`.
+- Reactor order (observed P1-09d2b): api → testkit → core → schemas → step-xslt → step-validate → component-http → runtime →
+  component-mock → cli → archtest → bench. `-pl <module> -am` for one module.
 - Full check per task: `mvn -B -ntp -q verify -Pit > target/<task>-verify.log 2>&1`; the `-Pit`
-  profile needs Docker (`sudo dockerd &`) and native Postgres (`sudo pg_ctlcluster 16 main start`).
+  profile needs Docker (`sudo dockerd &`) and native Postgres (`sudo pg_ctlcluster 16 main start`); both are often up already
+  (`docker info`, `pg_lsclusters`).
 - Coverage: `python3 ci/coverage_check.py` (no-decrease band 2 pp, D-029); new code must reach the
   module's own level (FIX-3). Scoped PIT: `mvn -pl flottila-api,flottila-core -am test-compile
   org.pitest:pitest-maven:mutationCoverage` (floor 80 %).
@@ -20,7 +20,6 @@
   `-Dmaven.test.failure.ignore=true` (separate log) — report both, never as a substitute.
 - `-Dtest='Foo*'` also selects nested classes (`FooTest$BlockingTestCase`, an EngineTestKit fixture built to
   fail) — default `**/*$*` excludes are dropped; use `-Dtest=FooTest,FooConfigTest` and delete the stale XML.
-- dockerd/pg often already up: `setsid dockerd` exits 1, `pg_ctlcluster` says "already running"; check `docker info`.
 - flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
 - A new Flyway migration bumps the schema version asserted in THREE ITs: runtime MigrationsIT, runtime
@@ -34,10 +33,8 @@
   A PgWorkQueueIT mutant that way (`-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am`) is ~17 s.
 - jacoco-maven-plugin 0.8.15 `merge` (javap): fileSet lists only existing files, writes nothing when no data (report then skips),
   saves with append=false. Runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec) since P1-09d3.
-- JaCoCo: a no-op lambda written on its field's line (`sink = p -> { };`) is a partly covered line, counted covered, even if
-  never called; on a line of its own its body is a missed line.
-- JaCoCo in a child JVM: a `System.exit(code)` line is always missed (no probe after it); a shutdown hook's tail races the agent's
-  own dump hook, so lines after a hook's blocking join are not reliably recorded.
+- JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
+  always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutant loop runs offline (`-o`) fine: `-pl <m> -am test -Dtest=..` is ~5 s (schemas/core) to ~12 s (runtime) per mutant.
   No rsync on the box: scratch copy = `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`; then mutants
   can run there while the main tree builds (cmp the restored file against the main tree).
@@ -59,8 +56,7 @@
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
   connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
-- runtime tests: System.Logger goes to JUL (slf4j-simple is on the classpath, no platform-logging bridge): capture a WARNING with a
-  JUL Handler on `Logger.getLogger(<class name>)`.
+- runtime tests: System.Logger goes to JUL (slf4j-simple, no platform-logging bridge): capture with a JUL Handler on `Logger.getLogger(<class>)`.
 - Vert.x 5.1.10 (javap): `Promise.tryComplete(T)`, `Future.all(List)` → CompositeFuture, `map(V)`,
   `onComplete(Handler<AsyncResult>)` and `onComplete(Completable)` (a Promise is a Completable).
 - Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
@@ -114,7 +110,10 @@
   after `send` returned race (MockComponentTest, RecordingComponentTest D-056 cases) — grep the component's own tests first.
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)` in a refusal test); runtime has ~980 measured
   lines, so 10 uncovered lines are 1 pp of the 2 pp band — count before adding untestable wiring (Main).
-- Known flake (seen FIX-30, not fixed: testkit): `RecordingComponent.send` counts `awaitSent` waiters down BEFORE `holds.pollFirst()`, so
-  hold(); send A; awaitSent(1); hold(); send B can give A's latch to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
+- Deploy tests (DeploymentsRedeployTest) count Doors `stop <flow>` events: a consumer built but never started must not be stopped
+  (HttpConsumer creates its server only in start()); keep consumer-less Flow builds until phase B (P1-09d2b).
+- Known flake (FIX-30; P1-09d2b with a mutant loop running: never verify beside one; testkit, not fixed): `RecordingComponent.send`
+  counts `awaitSent` waiters down BEFORE `holds.pollFirst()`: hold(); send A; awaitSent(1); hold(); send B can give A's latch
+  to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
 - A fixture that bumps a counter a test polls (`until(closes() > 0)`) BEFORE recording what the test then reads races (FIX-30 r2,
   Doors.Out.close): record first, count last. Mutants that hang a close need `-Dsurefire.timeout`; N4-style ones take ~130 s.
