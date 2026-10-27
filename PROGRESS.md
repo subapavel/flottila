@@ -647,3 +647,11 @@ Review: FAIL r1 (missing-file fallback let persist compare the row with itself);
 D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns ~12; review rounds 2.
 Next: P1-09k [C] (designer first; decide non-deterministic reruns vs immutable keys — row note).
 
+## 2026-10-27 — P1-09k1 run-scoped body keys (D-066) — done, review PASS
+Test first: EnvelopeTest 6 (compile-red), ComponentContract.aReplyOfASecondAttemptIsKeyedByItsAttempt (http, mock, Loopback, Recording, Ephemeral) + 3 self-test variants, FakeRuntimeTest, FlowWorkerTest, ReplayTest 2, XsltStepFactoryTest, SplitStepTest, MockComponentTest — observed red (target/P1-09k1-red.log).
+Change: api `Envelope.ATTEMPT` + `nextKey()`/`nextKey(part)` (part `~<attempt>` from attempt 2; `~` in a part → IAE; null → NPE); FlowWorker sets ATTEMPT on reruns; Replay.from/retry drop it; writers xslt, xpath split, http, mock, FakeRuntime use nextKey. First-attempt keys, BlobKey and schema unchanged.
+Checks: whole reactor -Pit VERIFIED_PASS 1335, archtest 35 green (target/P1-09k1-r2-verify-all.log); coverage no decrease, baseline written — testkit branch 96.4 → 95.2 inside the D-029 band, no new testkit branch (target/P1-09k1-coverage.log, -coverage-resample.log); hand mutants 17/17 killed; PIT api 25/25, core 90/91 (survivor FlowWorker:245 pre-existing → FIX-48).
+Review: FAIL r1 (reply props unpinned; 0/negative/null untested); PASS r2. Raised FIX-47 (reserved prop names), FIX-48; FIX-46 note.
+D-054 data: class C (designer, test-author, implementer, reviewer opus/xhigh); architect turns ~12; review rounds 2.
+Next: P1-09k2 [C] (run trail; F-10 §8 edit at its commit).
+

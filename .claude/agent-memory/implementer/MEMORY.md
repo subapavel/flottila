@@ -4,20 +4,18 @@
 - NEVER `mvn clean` at the reactor root: it deletes the root `target/` (packets, specs, red logs, diffs; gitignored,
   unrecoverable; P1-08 r2 lost them). Clean per module only: `mvn -q clean -pl <module>`.
 - Reactor order (observed P1-09d2b): api → testkit → core → schemas → step-xslt → step-validate → component-http → runtime →
-  component-mock → cli → archtest → bench. `-pl <module> -am` for one module.
-- Full check per task: `mvn -B -ntp -q verify -Pit > target/<task>-verify.log 2>&1`; the `-Pit`
-  profile needs Docker (`sudo dockerd &`) and native Postgres (`sudo pg_ctlcluster 16 main start`); both are often up already
-  (`docker info`, `pg_lsclusters`).
+  component-mock → cli → archtest → bench. `-pl <module> -am` for one module; steps and components need only api + testkit
+  (`-pl flottila-api,flottila-testkit,<module>`, no runtime). Whole reactor `verify -Pit` took ~3 min (P1-09k1).
+- Full check: `mvn -B -ntp -q verify -Pit > target/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
+  Postgres (`sudo pg_ctlcluster 16 main start`), often up already (`docker info`, `pg_lsclusters`).
 - Coverage: `python3 ci/coverage_check.py` (no-decrease band 2 pp, D-029); new code must reach the
   module's own level (FIX-3). Scoped PIT: `mvn -pl flottila-api,flottila-core -am test-compile
   org.pitest:pitest-maven:mutationCoverage` (floor 80 %).
 - `-q` prints no "Tests run:" lines even on success: take counts from `**/target/{surefire,failsafe}-reports/TEST-*.xml`
   (sum the `tests/failures/errors/skipped` attributes of `<testsuite>`), check the file mtimes are from this run.
-- `dependency:build-classpath -o` fails (DependencyResolutionException); to probe an observed message, take the
-  `surefire.test.class.path` property from a fresh TEST-*.xml and run `java -cp <it> Probe.java` from the scratchpad.
+- `dependency:build-classpath -o` fails; probe with `java -cp <surefire.test.class.path of a fresh TEST-*.xml> Probe.java`.
 - jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its report header: data, ignore it.
-- A red core test stops the reactor; for the full picture add a second run with
-  `-Dmaven.test.failure.ignore=true` (separate log) — report both, never as a substitute.
+- A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
 - `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
@@ -33,7 +31,9 @@
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
   always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants run offline (`-o`): ~5 s (core) to ~12 s (runtime unit), ~55 s with the blob ITs. Scratch copy (no rsync):
-  `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`, mutate there while the main tree builds.
+  `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`, mutate there while the main tree builds. HEAD's own
+  figures (to attribute a band delta): `git archive HEAD | tar -xf - -C <scratch>` + `-o verify -pl ..` there (P1-09k1: the committed
+  testkit branch baseline 96.4 % is a lucky run, HEAD measures 95.2 %). Wait on a background build: `timeout N tail -f --pid=<pid> /dev/null`.
 - Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
   a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
 - CPU-load race loops (FIX-35): 4 hogs `taskset -c 0,1 sh -c 'while :; do :; done' &` + `taskset -c 0,1 mvn ..`, kill the PIDs; never

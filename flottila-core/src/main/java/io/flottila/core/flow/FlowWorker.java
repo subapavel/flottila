@@ -28,8 +28,9 @@ import java.util.function.Function;
  * Runs what an at-least-once {@link Delivery} accepted (ARCHITECTURE §4 lifecycle table, D-049 c, D-055). A round claims the
  * flow's due items from the {@link WorkQueue} — at most one claim in flight per worker, asking for the in-flight limit less
  * the items it still runs — rebuilds each message's ingress envelope from its {@code ingress} snapshot and the blob store
- * (same id, step 0, headers, props, keys, the body by its recorded key) and runs the pipeline without stage 0 — the save
- * recorded it — on one virtual thread per item. While an item runs its lease is renewed every third of the
+ * (same id, step 0, headers, props, keys, the body by its recorded key; from the item's second claim on the claim's attempts
+ * as {@link Envelope#ATTEMPT}, so the rerun's step bodies get keys of their own, D-066) and runs the pipeline without stage
+ * 0 — the save recorded it — on one virtual thread per item. While an item runs its lease is renewed every third of the
  * {@link WorkerPolicy#lease()} on the timer, fenced by the claim's attempts: a slow healthy message is never claimed twice at
  * once; a renewal that fails is tried again a third of the lease later; a lease found lost is logged and no longer renewed.
  *
@@ -247,6 +248,7 @@ public final class FlowWorker {
                 return Verdict.COMPLETE;
             }
             Envelope ingress = Replay.rebuild(in.get(), id, flow, in.get().props(), blobs);
+            if (item.attempts() > 1) ingress = ingress.with(Envelope.ATTEMPT, item.attempts());   // a rerun's step bodies under keys of its own (D-066)
             if (exhausted) {
                 parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), policy.maxAttempts())).await();
             } else {

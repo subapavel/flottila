@@ -32,6 +32,16 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
     /** Prop carrying the original message id when this envelope is a replay. */
     public static final Key<String> REPLAY_OF = new Key<>("replayOf");
 
+    /**
+     * Prop carrying the attempt of the run this envelope belongs to: set from a message's second run on (the worker's second
+     * claim of its item onwards), absent on a first run, dropped by a replay. It scopes the keys of {@link #nextKey(String)}
+     * to the run (D-066).
+     */
+    public static final Key<Integer> ATTEMPT = new Key<>("attempt");
+
+    /** Between a part's name and the attempt that wrote it, in a key of {@link #nextKey(String)}; never in a part's own name. */
+    private static final char ATTEMPT_SEPARATOR = '~';
+
     public Envelope {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(flow, "flow");
@@ -62,6 +72,27 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
      */
     public Envelope advance() {
         return new Envelope(id, flow, step + 1, headers, props, keys, body, attachments, views);
+    }
+
+    /** The key of the next step's main payload: {@code nextKey(BlobKey.BODY)}. */
+    public BlobKey nextKey() {
+        return nextKey(BlobKey.BODY);
+    }
+
+    /**
+     * The key a step writes {@code part} of the body it hands on under: (id, step + 1, part) on a first run, the part suffixed
+     * {@code ~<attempt>} on a run whose {@link #ATTEMPT} is 2 or more — so each key is written by one run only and a rerun
+     * never writes over the bytes an earlier run left (D-066). An attempt that is absent, 1, 0 or negative adds no suffix.
+     *
+     * @throws NullPointerException if {@code part} is null
+     * @throws IllegalArgumentException if {@code part} contains {@code ~}, the attempt separator, whatever the attempt
+     */
+    public BlobKey nextKey(String part) {
+        if (part.indexOf(ATTEMPT_SEPARATOR) >= 0) {
+            throw new IllegalArgumentException("part '" + part + "' contains '" + ATTEMPT_SEPARATOR + "', which separates a part from its attempt");
+        }
+        int attempt = props.get(ATTEMPT).orElse(1);
+        return new BlobKey(id, step + 1, attempt >= 2 ? part + ATTEMPT_SEPARATOR + attempt : part);
     }
 
     public Envelope withHeader(String name, String value) {

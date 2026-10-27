@@ -59,7 +59,8 @@ import java.util.function.Function;
  * <p><b>Producer</b> (options {@code url}, {@code maxBodyBytes} for the reply, optional {@code timeoutMs}, {@code poolSize}):
  * one client per endpoint with its connection pool; POSTs the envelope's body — streamed from {@link Body#open()}, so a retry
  * re-opens it — with the envelope's headers (hop-by-hop ones aside); a 2xx response is the reply envelope (its body the next
- * step's, {@link #STATUS} prop, the response headers), 503 and 429 fail with a retryable {@link NackException}, any other
+ * step's, stored under {@link Envelope#nextKey()} of the envelope sent — the run's own key from its second attempt on, D-066 —
+ * {@link #STATUS} prop, the response headers), 503 and 429 fail with a retryable {@link NackException}, any other
  * non-2xx with {@link HttpStatusException} carrying the first {@value #ERROR_BODY_BYTES} bytes of the response (the rest drained). Limits are never defaulted: both {@code maxBodyBytes} are required.
  *
  * @since 0.1
@@ -306,7 +307,7 @@ public final class HttpComponent implements Component {
             int status = res.statusCode();
             if (status / 100 == 2) {
                 Headers headers = headers(res.headers());
-                return blobs.write(BlobKey.body(e.id(), e.step() + 1), res, maxReplyBytes)
+                return blobs.write(e.nextKey(), res, maxReplyBytes)
                         .map(body -> new Envelope(e.id(), e.flow(), e.step() + 1, headers, e.props().with(STATUS, status), e.keys(), body, e.attachments(), new io.flottila.api.Views()));
             }
             return head(res).compose(reason -> {

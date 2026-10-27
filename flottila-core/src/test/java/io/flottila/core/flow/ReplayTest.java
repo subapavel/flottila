@@ -1,5 +1,6 @@
 package io.flottila.core.flow;
 
+import io.flottila.api.BlobKey;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
@@ -191,5 +192,41 @@ class ReplayTest {
         Envelope retried = replay.retry(left.get(0).messageId());
         assertEquals("yes", retried.header("sent").orElseThrow());
         assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "the failed retry's own row is retried and removed too");
+    }
+
+    /**
+     * D-066: a replay is a new message's first run. The snapshot it starts from may carry the attempt of the run that recorded
+     * it (a worker's second claim); the replay drops it, so its steps write their bodies under the plain keys.
+     */
+    @Test
+    void aReplayDropsTheAttempt() {
+        FlowDefinition def = FlowDefinition.from(flow("at-least-once", null));
+        Envelope in = in();
+        Envelope original = builder().build(def, Path.of("")).apply(in.with(Envelope.ATTEMPT, 2));   // the run of a second attempt, as the worker starts it
+        Snapshot input = store.timeline(in.id()).await().stream().filter(s -> s.step() == 1).findFirst().orElseThrow();
+        assertEquals(Optional.of(2), input.props().get(Envelope.ATTEMPT), "fixture: the step-1 row of the second attempt carries it");
+        Envelope again = builder().replay(def, Path.of("")).from(in.id(), 2);
+        assertEquals(Optional.empty(), again.get(Envelope.ATTEMPT), "the replay is no attempt of the original's");
+        assertEquals(Optional.of(in.id()), again.get(Envelope.REPLAY_OF), "and still a replay of it");
+        List<Snapshot> t = store.timeline(again.id()).await();
+        assertEquals(Optional.empty(), t.get(0).props().get(Envelope.ATTEMPT), "its input row carries no attempt: " + t.get(0).props());
+        assertEquals(new BlobKey(in.id(), 2, "body~2"), original.body().key(), "fixture: the original's step b wrote under its attempt");
+        assertEquals(BlobKey.body(again.id(), 2), again.body().key(), "the replay's step b writes under the plain key");
+    }
+
+    /** D-066: a DLQ retry is a new message's first run too: the attempt the parked run carried is dropped. */
+    @Test
+    void aDlqRetryDropsTheAttempt() {
+        FlowDefinition def = FlowDefinition.from(flow("at-least-once", null));
+        Envelope in = in();
+        partnerDown.set(true);
+        ParkedException parked = assertThrows(ParkedException.class, () -> builder().build(def, Path.of("")).apply(in.with(Envelope.ATTEMPT, 2)));
+        assertEquals(Optional.of(2), parked.parked().props().get(Envelope.ATTEMPT), "fixture: the second attempt parked with its attempt");
+        partnerDown.set(false);
+        Envelope delivered = builder().replay(def, Path.of("")).retry(in.id());
+        assertEquals(Optional.empty(), delivered.get(Envelope.ATTEMPT), "the retry is no attempt of the parked run's");
+        assertEquals(Optional.of(in.id()), delivered.get(Envelope.REPLAY_OF), "and still a replay of it");
+        List<Snapshot> t = store.timeline(delivered.id()).await();
+        assertEquals(Optional.empty(), t.get(0).props().get(Envelope.ATTEMPT), "its input row carries no attempt: " + t.get(0).props());
     }
 }

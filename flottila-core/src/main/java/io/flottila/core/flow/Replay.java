@@ -12,6 +12,7 @@ import io.flottila.core.dlq.Parked;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Snapshot;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -21,8 +22,9 @@ import java.util.function.IntFunction;
  * Replay from any recorded step (ARCHITECTURE §6 recording, GATE check 7): steps {@code n..end} of the flow run as a
  * <em>new</em> message marked {@link Envelope#REPLAY_OF} on the envelope step {@code n−1} handed on — taken from its
  * snapshot ({@link #from}), or from the DLQ row of the failed step ({@link #retry}), which carries that envelope by
- * reference so a retry needs no snapshot. The new message leaves its own snapshots, the first one its input
- * ({@value #REPLAY_INPUT}). Built by {@link FlowBuilder#replay}.
+ * reference so a retry needs no snapshot. The new message is a first run: the {@link Envelope#ATTEMPT} of the run that left
+ * that envelope is dropped (D-066). It leaves its own snapshots, the first one its input ({@value #REPLAY_INPUT}). Built by
+ * {@link FlowBuilder#replay}.
  *
  * @since 0.1
  */
@@ -56,7 +58,7 @@ public final class Replay {
         Snapshot input = timeline.stream().filter(s -> s.step() == step - 1 && s.outcome() == Snapshot.Outcome.OK).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("step " + (step - 1) + " of message " + messageId + " was not recorded (recording level); replay from step " + step + " needs it"));
         if (input.bodyKey().isEmpty()) throw new IllegalArgumentException("step " + (step - 1) + " of message " + messageId + " was recorded metadata-only: no reachable body to replay");
-        Envelope start = rebuild(input, ids.next(), flow.id(), input.props().with(Envelope.REPLAY_OF, messageId), blobs);
+        Envelope start = rebuild(input, ids.next(), flow.id(), replayOf(input.props(), messageId), blobs);
         return tail.apply(step).apply(start);
     }
 
@@ -65,7 +67,7 @@ public final class Replay {
         Objects.requireNonNull(messageId, "messageId");
         if (dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' has no DLQ to retry from");
         Parked parked = dlq.get(messageId).await().orElseThrow(() -> new IllegalArgumentException("no DLQ row for message '" + messageId + "'"));
-        Envelope start = new Envelope(ids.next(), flow.id(), parked.step() - 1, parked.headers(), parked.props().with(Envelope.REPLAY_OF, messageId), parked.keys(),
+        Envelope start = new Envelope(ids.next(), flow.id(), parked.step() - 1, parked.headers(), replayOf(parked.props(), messageId), parked.keys(),
                 Body.of(blobs, parked.bodyKey(), parked.bodyHash(), parked.bodySize()), Map.of(), new Views());
         Envelope out = tail.apply(parked.step()).apply(start);
         dlq.remove(messageId).await();
@@ -80,6 +82,16 @@ public final class Replay {
     static Envelope rebuild(Snapshot input, String id, String flow, Props props, BlobStore blobs) {
         return new Envelope(id, flow, input.step(), input.headers(), props, input.keys(),
                 Body.of(blobs, input.bodyKey().orElseThrow(), input.bodyHash(), input.bodySize()), Map.of(), new Views());
+    }
+
+    /**
+     * The props a replay of {@code messageId} starts with: those it was given, marked {@link Envelope#REPLAY_OF}, without the
+     * {@link Envelope#ATTEMPT} of the run that left them — a replay is a new message's first run (D-066).
+     */
+    private static Props replayOf(Props props, String messageId) {
+        Map<String, Object> carried = new HashMap<>(props.asMap());
+        carried.remove(Envelope.ATTEMPT.name());
+        return new Props(carried).with(Envelope.REPLAY_OF, messageId);
     }
 
     private void checkStep(int step) {

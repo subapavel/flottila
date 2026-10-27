@@ -72,6 +72,22 @@ class XsltStepFactoryTest {
         assertSame(xml.document(in), xml.document(in), "the document view is parsed once per body");
     }
 
+    /**
+     * D-066: the transform's output is stored under the envelope's next key — the plain key on a first attempt, the part
+     * suffixed with the attempt from the second on — so a rerun of the step never writes over the first run's key.
+     */
+    @Test
+    void anOutputOfASecondAttemptIsKeyedByItsAttempt() {
+        Stage stage = factory.create(step("invoice-to-partner.xsl"), resources(DEMO_FLOWS, 65536));
+        Envelope first = rt.ingress("invoice-sync", Headers.empty(), Buffer.buffer(INVOICE)).advance();
+        Envelope one = stage.apply(first, e -> e);
+        Envelope two = stage.apply(first.with(Envelope.ATTEMPT, 2), e -> e);
+        assertEquals(BlobKey.body(first.id(), 2), one.body().key(), "a first attempt: the step's plain body key, as before");
+        assertEquals(new BlobKey(first.id(), 2, "body~2"), two.body().key(), "the second attempt: its own key");
+        assertTrue(rt.blobs().contains(one.body().key()) && rt.blobs().contains(two.body().key()), "both outputs stored");
+        assertEquals(one.body().hash(), two.body().hash(), "the same transform: only the key tells the runs apart");
+    }
+
     @Test
     void theSameStylesheetContentCompilesOnceAndADifferentOneAgain(@TempDir Path dir) throws IOException {
         Files.copy(DEMO_FLOWS.resolve("invoice-to-partner.xsl"), dir.resolve("copy.xsl"));

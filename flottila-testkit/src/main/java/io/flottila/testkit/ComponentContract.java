@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Timeout;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -48,7 +49,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@link Consumer#stop()} accepts nothing new, waits for the delivery in flight and lets its answer reach the sender — a
  * cancel reaches the component as a retryable {@link Ack.Nack} the sender sees as a retryable {@link NackException} — and
  * each delivery calling the handler on a virtual thread of its own, never the sender's (D-057); a handler that throws or
- * answers null fails the send, and a stop after it completes.
+ * answers null fails the send, and a stop after it completes; a reply to a second attempt is keyed by that attempt, carries
+ * it on and leaves the first attempt's reply bytes in place (D-066).
  *
  * @since 0.1
  */
@@ -284,6 +286,44 @@ public abstract class ComponentContract {
                 assertEquals("retry-me", e.body().whole().toString());
             }
             assertEquals("retry-me", sent.body().whole().toString(), "and the original is still readable");
+        } finally {
+            producer.close().await();
+            consumer.stop().await();
+        }
+    }
+
+    /**
+     * D-066: a reply is the next step's body of the envelope sent, keyed by that envelope's run — a first attempt's under the
+     * plain part as before, the second attempt's under the part suffixed {@code ~2} — so a rerun's reply never overwrites the
+     * bytes the first run's reply left. The handler answers each delivery with bytes of its own, written the way a step
+     * writes the body it hands on ({@link FakeRuntime#store}): a component that re-stores the reply on the sender's side keys
+     * it by the attempt itself; one that returns the handler's answer as it is relies on the handler having seen the attempt.
+     * Either way the reply carries the sender's props on, the attempt with them, so the steps after it key by it too.
+     */
+    @Test
+    public void aReplyOfASecondAttemptIsKeyedByItsAttempt() {
+        Component component = component();
+        FakeRuntime receiver = FakeRuntime.create();
+        AtomicInteger delivered = new AtomicInteger();
+        Consumer consumer = component.consumer(endpoint(), e -> {
+            Buffer bytes = Buffer.buffer("reply-" + delivered.incrementAndGet());
+            return Future.succeededFuture(new Ack.Reply(e.next(receiver.store(e, bytes))));
+        });
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        try {
+            Envelope first = FakeRuntime.create().ingress("contract", Headers.empty(), Buffer.buffer("send-me")).advance();
+            Future<Envelope> one = settled(producer.send(first));
+            assertTrue(one.succeeded(), "the first attempt's send is answered: " + one.cause());
+            Future<Envelope> two = settled(producer.send(first.with(Envelope.ATTEMPT, 2)));
+            assertTrue(two.succeeded(), "the second attempt's send is answered: " + two.cause());
+            assertEquals(BlobKey.BODY, one.result().body().key().part(), "a first attempt's reply under the plain part, as before D-066: " + one.result().body());
+            assertEquals(BlobKey.BODY + "~2", two.result().body().key().part(), "the second attempt's reply under its attempt: " + two.result().body());
+            assertEquals("reply-1", one.result().body().whole().toString(), "the second attempt's reply left the first's bytes in place");
+            assertEquals("reply-2", two.result().body().whole().toString());
+            assertEquals(Optional.empty(), one.result().get(Envelope.ATTEMPT), "the first attempt's reply runs on as no attempt in particular");
+            assertEquals(Optional.of(2), two.result().get(Envelope.ATTEMPT),
+                    "the second attempt's reply carries the sender's props on, the attempt with them: the steps after it key by it too");
         } finally {
             producer.close().await();
             consumer.stop().await();

@@ -1,7 +1,6 @@
 package io.flottila.components.mock;
 
 import io.flottila.api.Ack;
-import io.flottila.api.BlobKey;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Component;
@@ -178,7 +177,7 @@ public final class MockComponent implements Component {
         });
     }
 
-    /** The fixture as the next step's body; the content type from the file's extension. */
+    /** The fixture as the next step's body, under {@link Envelope#nextKey()} (the run's own from its second attempt on, D-066); the content type from the file's extension. */
     private Future<Envelope> reply(Envelope e, Path fixture) {
         byte[] bytes;
         try {
@@ -186,7 +185,7 @@ public final class MockComponent implements Component {
         } catch (IOException x) {
             return Future.failedFuture(new IllegalStateException("mock reply fixture cannot be read: " + fixture, x));
         }
-        return blobs.write(BlobKey.body(e.id(), e.step() + 1), Buffer.buffer(bytes), bytes.length)
+        return blobs.write(e.nextKey(), Buffer.buffer(bytes), bytes.length)
                 .map(body -> e.next(body).withHeader(Envelope.H_CONTENT_TYPE, contentType(fixture)));
     }
 

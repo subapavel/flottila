@@ -1,6 +1,7 @@
 package io.flottila.testkit;
 
 import io.flottila.api.Ack;
+import io.flottila.api.BlobKey;
 import io.flottila.api.Body;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
@@ -10,6 +11,8 @@ import io.flottila.api.Hash;
 import io.flottila.api.Health;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
+import io.flottila.api.Props;
+import io.flottila.api.Views;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import org.junit.jupiter.api.Test;
@@ -66,6 +69,14 @@ class ComponentContractSelfTest {
         boolean handlerOnTheSendersThread;
         /** Broken: a handler that throws or answers null leaves the answer pending (its own thread dies with the exception). */
         boolean handlerFailureLost;
+        /**
+         * Broken (D-066): the sender's side re-stores each reply here — under the plain next-step key, (id, step + 1, body),
+         * whatever the attempt (the reply writer before run-scoped keys), or under the envelope's next key but without the
+         * sender's props ({@link #restoredWithoutProps}); {@code null} (the correct variant) returns the reply as is.
+         */
+        InMemoryBlobStore restoredReplies;
+        /** With {@link #restoredReplies}: keyed by {@link Envelope#nextKey()}, the attempt kept, but the sender's props dropped. */
+        boolean restoredWithoutProps;
         private final Set<Promise<Envelope>> waiting = ConcurrentHashMap.newKeySet();
 
         Variant(String scheme, String schema, boolean handlerSurvivesStop, boolean healthAlwaysUp, boolean ackBeforeHandler, boolean nackIsSuccess,
@@ -90,6 +101,26 @@ class ComponentContractSelfTest {
 
         /** The handler runs on a virtual thread of its own, but what it throws — a null answer included — never reaches the answer. */
         static Variant handlerFailureLost() { Variant v = correct(); v.handlerFailureLost = true; return v; }
+
+        /** Every reply re-stored under the plain next-step key of the envelope sent, the reply's headers kept. */
+        static Variant replyStoredUnderThePlainKey() { Variant v = correct(); v.restoredReplies = new InMemoryBlobStore(io.flottila.api.Hasher.sha256(), 1 << 20); return v; }
+
+        /** Every reply re-stored under the next key of the envelope sent — its attempt's — but carrying none of the sender's props. */
+        static Variant replyStoredWithoutTheProps() { Variant v = replyStoredUnderThePlainKey(); v.restoredWithoutProps = true; return v; }
+
+        /** The handler sees the envelope without its props — the attempt included — and its reply comes back as it keyed it. */
+        static Variant propsLost() {
+            return new Variant("loopback", "{\"type\":\"object\"}", false, false, false, false,
+                    e -> new Envelope(e.id(), e.flow(), e.step(), e.headers(), Props.empty(), e.keys(), e.body(), e.attachments(), e.views()), e -> e);
+        }
+
+        /** The reply's bytes stored for {@code sent}'s next step, the reply's headers kept: what the sender gets back. */
+        private Future<Envelope> restored(Envelope sent, Envelope reply) {
+            BlobKey key = restoredWithoutProps ? sent.nextKey() : BlobKey.body(sent.id(), sent.step() + 1);
+            Props props = restoredWithoutProps ? Props.empty() : sent.props();
+            return restoredReplies.write(key, reply.body().whole(), 1 << 20)
+                    .map(body -> new Envelope(sent.id(), sent.flow(), sent.step() + 1, reply.headers(), props, sent.keys(), body, Map.of(), new Views()));
+        }
 
         /** Calls the handler the way the variant does; the drain counts the answer before the handler runs. */
         private Future<Ack> dispatch(Running at, Envelope e) {
@@ -138,7 +169,8 @@ class ComponentContractSelfTest {
                     waiting.add(answer);
                     answer.future().onComplete(done -> waiting.remove(answer));
                     ack.<Envelope>compose(a -> switch (a) {
-                        case Ack.Reply r -> Future.succeededFuture(repliedAs.apply(r.reply()));
+                        case Ack.Reply r -> restoredReplies == null ? Future.succeededFuture(repliedAs.apply(r.reply()))
+                                : restored(e, repliedAs.apply(r.reply()));
                         case Ack.Accepted ok -> Future.succeededFuture(e);
                         case Ack.Nack n -> nackIsSuccess ? Future.succeededFuture(e) : Future.failedFuture(nackAs.apply(n));
                     }).onComplete(done -> { if (done.succeeded()) answer.tryComplete(done.result()); else answer.tryFail(done.cause()); });
@@ -220,8 +252,8 @@ class ComponentContractSelfTest {
                 failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e,
                         e -> e.withHeader("x-seen", "dropped").withHeader("x-acked", "dropped").withHeader("x-answer", "dropped"))), "reply dropped (headers replaced)");
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged", "aNackFromTheHandlerFailsTheSendWithItsReason",
-                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER),
-                failing(new Variant("loopback", ok.schema, false, false, true, false, e -> e, e -> e)), "acknowledged before the handler answered");
+                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY),
+                failing(new Variant("loopback", ok.schema, false, false, true, false, e -> e, e -> e)), "acknowledged before the handler answered (the envelope sent comes back)");
         assertEquals(Set.of(), failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e.withId("receiver-minted"), e -> e)),
                 "a receiver that mints its own id (every real transport does) passes: the id is not what crosses");
         assertEquals(Set.of("aNackFromTheHandlerFailsTheSendWithItsReason", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable"),
@@ -254,6 +286,28 @@ class ComponentContractSelfTest {
     static final String OWN_THREAD = "theHandlerRunsOnAVirtualThreadOfItsOwnPerDelivery";
     static final String THROWS = "aHandlerThatThrowsFailsTheSendAndStopStillCompletes";
     static final String NULL_ANSWER = "aHandlerThatAnswersNullFailsTheSendAndStopStillCompletes";
+    static final String ATTEMPT_REPLY = "aReplyOfASecondAttemptIsKeyedByItsAttempt";
+
+    @Test
+    void aReplyStoredUnderThePlainKeyWhateverTheAttemptFailsOnlyTheAttemptCase() {
+        assertEquals(Set.of(ATTEMPT_REPLY), failing(Variant.replyStoredUnderThePlainKey()),
+                "every attempt's reply under (id, step + 1, body): the second is not keyed by its attempt and overwrites the first's bytes");
+        current = Variant.correct();
+    }
+
+    @Test
+    void aReplyKeyedByItsAttemptThatDropsTheSendersPropsFailsOnlyTheAttemptCase() {
+        assertEquals(Set.of(ATTEMPT_REPLY), failing(Variant.replyStoredWithoutTheProps()),
+                "the keys and the bytes are right, but the reply does not carry the attempt on: the steps after it would write under plain keys");
+        current = Variant.correct();
+    }
+
+    @Test
+    void aDeliveryThatLosesThePropsOfAReplyReturnedAsItIsFailsOnlyTheAttemptCase() {
+        assertEquals(Set.of(ATTEMPT_REPLY), failing(Variant.propsLost()),
+                "the handler never sees the attempt and the reply comes back as the handler keyed it: the plain key for both attempts");
+        current = Variant.correct();
+    }
 
     @Test
     void aHandlerCalledOnTheSendersThreadFailsOnlyTheOwnThreadCase() {
@@ -290,7 +344,7 @@ class ComponentContractSelfTest {
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged",
                         "aNackFromTheHandlerFailsTheSendWithItsReason", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain",
                         "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", OWN_THREAD,
-                        THROWS, NULL_ANSWER),
+                        THROWS, NULL_ANSWER, ATTEMPT_REPLY),
                 failing(EphemeralWithoutOverrideContractTest.class),
                 "without producerEndpoint the producer has no address: every case that needs a delivery fails, the component delivers only to the address named");
     }

@@ -28,7 +28,8 @@ import java.util.function.Predicate;
  * {@link IllegalArgumentException} there); a condition is the effective boolean value, a value is the string value
  * of the first selected item, empty when nothing is selected; the parts of a split are the selected nodes, each
  * serialized (no XML declaration) and stored as an attachment of the parent under the child's step —
- * {@code split-<i>} — within the flow's body limit. An atomic item cannot be a part: the message fails.
+ * {@code split-<i>}, through {@link Envelope#nextKey(String)}, so suffixed with the run's attempt from the
+ * second on (D-066) — within the flow's body limit. An atomic item cannot be a part: the message fails.
  *
  * @since 0.1
  */
@@ -81,7 +82,7 @@ public final class XPathExpressions implements Expressions {
                     Serializer serializer = xml.processor().newSerializer(out);
                     serializer.setOutputProperty(Serializer.Property.OMIT_XML_DECLARATION, "yes");
                     serializer.serializeNode(node);
-                    BlobKey key = BlobKey.attachment(e.id(), e.step() + 1, "split-" + i++);
+                    BlobKey key = e.nextKey("split-" + i++);
                     parts.add(resources.blobs().write(key, Buffer.buffer(out.toByteArray()), maxBodyBytes).await());
                 }
             } catch (SaxonApiException x) {

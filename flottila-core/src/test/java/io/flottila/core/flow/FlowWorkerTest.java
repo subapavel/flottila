@@ -2,6 +2,7 @@ package io.flottila.core.flow;
 
 import io.flottila.api.Ack;
 import io.flottila.api.BlobKey;
+import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
@@ -18,6 +19,7 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Page;
+import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.InMemoryBlobStore;
 import io.flottila.testkit.RecordingComponent;
@@ -90,6 +92,12 @@ class FlowWorkerTest {
     static final Map<String, Object> REWRITE = Map.of("type", "rewrite", "name", "rewrite");
     /** A step that is not deterministic: each run hands on a body of its own bytes ({@code <run n='k'/>}), written into {@link World#stepBodies} (FIX-35). */
     static final Map<String, Object> STAMP = Map.of("type", "stamp", "name", "stamp");
+    /**
+     * A step that is not deterministic and hands on a body stored by the testkit's {@code FakeRuntime.store} — under the key the
+     * envelope it is given names for the next step (D-066) — each run with bytes of its own ({@code <store n='k'/>}); the key of
+     * every body it wrote in {@link World#storedKeys}, the attempt prop each run saw in {@link World#seenAttempts} (P1-09k1).
+     */
+    static final Map<String, Object> STORE = Map.of("type", "store", "name", "store");
 
     World w;
     Logs logs;
@@ -172,6 +180,16 @@ class FlowWorkerTest {
             stamped.add(bytes);
             return e.next(stepBodies.write(BlobKey.body(e.id(), e.step() + 1), bytes, ParkingTest.MAX).await());
         }));
+        /** The key of each body a {@code store} run wrote into the runtime's store, in run order. */
+        final List<BlobKey> storedKeys = new CopyOnWriteArrayList<>();
+        /** The run's attempt prop ({@link Envelope#ATTEMPT}) each {@code store} run saw, in run order. */
+        final List<Optional<Integer>> seenAttempts = new CopyOnWriteArrayList<>();
+        final StepFactory storing = ParkingTest.factory("store", s -> Stage.of(e -> {
+            seenAttempts.add(e.get(Envelope.ATTEMPT));
+            Body body = rt.store(e, Buffer.buffer("<store n='" + (storedKeys.size() + 1) + "'/>"));
+            storedKeys.add(body.key());
+            return e.next(body);
+        }));
         final Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", URI.create("mock://partner"), Map.of()));
         final List<FlowWorker> workers = new CopyOnWriteArrayList<>();
 
@@ -184,7 +202,7 @@ class FlowWorkerTest {
         }
 
         FlowBuilder builder(Runtime runtime) {
-            return new FlowBuilder(runtime, List.of(gate, crash, rewrite, stamp), List.of(BuiltInStepsTest.HEADERS), endpoints)
+            return new FlowBuilder(runtime, List.of(gate, crash, rewrite, stamp, storing), List.of(BuiltInStepsTest.HEADERS), endpoints)
                     .recording(store, Meter.system()).queue(queue).dlq(dlq);
         }
 
@@ -1046,6 +1064,43 @@ class FlowWorkerTest {
         assertEquals(0, w.rows.size(), "parked: the item is completed");
         assertEquals(List.of(), w.queue.holds());
         assertEquals(List.of(), logs.at(Level.SEVERE, in.id()), "no alert: the park succeeded");
+    }
+
+    /**
+     * P1-09k1 (D-066): the worker runs the n-th claim of an item as attempt n. A step that writes the body it hands on under the
+     * envelope's next key writes the first attempt's under the plain key, as before, and each later attempt's under a key of
+     * its own ({@code body~n}), so a step that is not deterministic leaves every run's bytes where that run put them: the
+     * step's recorded row (the first run's, one row per step) still reads the bytes it describes after two reruns.
+     */
+    @Test
+    void aSecondAttemptWritesItsStepBodiesUnderItsAttempt() throws Exception {
+        int maxAttempts = 3;
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(STORE, CRASH)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt);
+            until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+            assertEquals(attempt, w.storedKeys.size(), "attempt " + attempt + " ran the store step");
+            assertEquals(1, w.rows.size(), "attempt " + attempt + ": the crash leaves the item to its lease");
+            w.rt.clock().advance(LEASE);
+        }
+        assertEquals(List.of(1, 2, 3), w.claimedAttempts(), "fixture: the item's three claims are attempts 1, 2 and 3");
+        assertEquals(List.of(Optional.empty(), Optional.of(2), Optional.of(3)), w.seenAttempts,
+                "the first claim runs as no attempt in particular, every later one carries the claim's attempt");
+        List<Snapshot> rows = w.store.timeline(in.id()).await().stream().filter(s -> "store".equals(s.stepName())).toList();
+        assertEquals(1, rows.size(), "fixture: one row per step and message, the first run's: " + rows);
+        BlobKey rowKey = rows.get(0).bodyKey().orElseThrow();
+        assertEquals(BlobKey.body(in.id(), 1), rowKey, "the first attempt's row refers to the step's plain key, as before D-066");
+
+        assertEquals(List.of(BlobKey.body(in.id(), 1), new BlobKey(in.id(), 1, "body~2"), new BlobKey(in.id(), 1, "body~3")), w.storedKeys,
+                "attempts 2 and 3 write the step's body under keys of their own");
+        for (int run = 1; run <= maxAttempts; run++) {
+            assertEquals("<store n='" + run + "'/>", w.rt.blobs().read(w.storedKeys.get(run - 1)).await().toString(), "run " + run + "'s bytes stay under its key");
+        }
+        assertEquals(rows.get(0).bodyHash(), w.rt.hasher().hashOf(w.rt.blobs().read(rowKey).await()), "the row still reads the bytes it describes");
     }
 
     // --- the policy

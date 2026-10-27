@@ -1,6 +1,5 @@
 package io.flottila.steps.xslt;
 
-import io.flottila.api.BlobKey;
 import io.flottila.api.Body;
 import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
@@ -32,7 +31,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * every flow whose stylesheet has the same content and whose files it reads while compiling are the same
  * ({@link CompiledFiles}: the same bytes, absences and directory entries at the same places relative to the
  * stylesheet), each other flow compiling its own — and applied to the body's document view; the
- * result is the next step's body, written to the blob store under the flow's body limit, with
+ * result is the next step's body, written to the blob store under the envelope's {@link Envelope#nextKey() next key} (the
+ * run's own from its second attempt on, D-066) and the flow's body limit, with
  * {@code content-type} from the stylesheet's output method. The stylesheet and every file it reads while it compiles —
  * a module it includes or imports (relative to the including module), an external entity, a static {@code doc()},
  * {@code unparsed-text()} or {@code collection()} — lie inside the flow's directory (D-052, {@link CompileConfinement}):
@@ -91,7 +91,7 @@ public final class XsltStepFactory implements StepFactory {
             } catch (SaxonApiException x) {
                 throw new XmlException(e.id(), io.flottila.api.Fault.Kind.INTERNAL, step + " failed", x);
             }
-            Body body = resources.blobs().write(BlobKey.body(e.id(), e.step() + 1), Buffer.buffer(out), maxBodyBytes).await();
+            Body body = resources.blobs().write(e.nextKey(), Buffer.buffer(out), maxBodyBytes).await();
             return e.next(body).withHeader(Envelope.H_CONTENT_TYPE, contentType);
         });
     }

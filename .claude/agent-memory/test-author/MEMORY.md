@@ -1,13 +1,10 @@
 # test-author — durable facts (seeded at the role split; prune when you add)
 - Testkit helpers: FakeRuntime, FakeClock, FakeTimer (`nextDelay()` drives backoffs — never a sleep), FakeIds, InMemoryBlobStore, InMemoryMessageStore (unbounded, tests only),
-  BlobStoreContract, ComponentContract (9 cases + exact-set self-test; `producerEndpoint(started)` hook for
+  BlobStoreContract, ComponentContract (15 cases + exact-set self-test; `producerEndpoint(started)` hook for
   addresses assigned at start — testkit test `EphemeralAddressComponent(stopKeepsTheAddressRegistered)`, http contract on
-  port 0; the self-test runs `failing(Class)` on two ephemeral configurations too), RecordingComponent,
-  GeneratedReadStream, BlockedPlatformThreadDetector / `NoBlockedPlatformThreads`.
-- End-to-end reference: flottila-runtime `flow/InvoiceSyncFlowTest` (demo package → FlowDefinition
-  → FlowBuilder → FakeRuntime). Reference package: `packages/demo` (flows, fixtures, `*.test.yaml`).
-- Every new schema rule needs a negative fixture under `flottila-schemas/src/test/resources/invalid/<kind>/`; every ArchUnit rule a
-  fixture. Jackson YAML reads `off`/`yes`/`no` as booleans: quote them in fixtures.
+  port 0; the self-test runs `failing(Class)` on two ephemeral configurations too), RecordingComponent, GeneratedReadStream, BlockedPlatformThreadDetector / `NoBlockedPlatformThreads`.
+- End-to-end reference: flottila-runtime `flow/InvoiceSyncFlowTest` (demo package → FlowDefinition → FlowBuilder → FakeRuntime). Reference package: `packages/demo`.
+- Every new schema rule needs a negative fixture under `flottila-schemas/src/test/resources/invalid/<kind>/`; every ArchUnit rule a fixture. YAML `off`/`yes`/`no` = booleans: quote.
 - Two fresh id generators both mint `m-1`. Surefire `-Dtest=A+B` selects NO class: `-Dtest=A,B` (`A#m1*+m2` selects methods). Wall-time timing asserts pass wrongly (P0-04): fake clock.
   `mvn -pl <module>` needs `-am` (sibling SNAPSHOTs not in ~/.m2) + `-Dsurefire.failIfNoSpecifiedTests=false`; `-q` hides counts: read the XML.
 - TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose
@@ -105,7 +102,7 @@
   `failClose(nth, FAILED_FUTURE|THROWN, text)`, `holdClose(nth)` → Promise, `open()`; an Out refuses sends after its close); runtime `Doors.Out`
   (openProducers(), `unansweredAtClose` = closed-after-stop witness; opt-in `doors.closeFailsSends()` fails in-flight + later sends), `CountingQueue.size()`.
 - Scratch mutants: `-DargLine` never reaches the fork: toggle by a file (static `mutant()` reading `<scratch>/mutant.txt`). Pre-existing 1/30 flakes:
-  DeploymentsTest.closeStops...503, AdminServerDeployTest.getFlows... DecodeException.
+  DeploymentsTest.closeStops...503, AdminServerDeployTest.getFlows... / AdminServerTest.dlqWithoutLimit... DecodeException.
 - P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant (own data dir, Doors, `new SaxonXml().steps()` + XsdValidate),
   `changed(base, variant)` = moved hashes; `node(steps, xml)` + `Shared` = one compile cache over two nodes. `SaxonXml.steps()` builds a NEW
   XsltStepFactory per call (share the list). Cache-hit witness: `compiledStylesheets()`/`compiledSchemas()` = entries kept (FIX-17). Static `unparsed-text-available()` / `uri-collection('dir')` report an absent path / a directory.
@@ -117,3 +114,6 @@
   r3: `tickSchedulesThrow` (one-shot AtomicBoolean), `deadlineSchedulesThrow` (a Delivery STOP_DEADLINE schedule throws ISE: needs a flight), `producerOf(Envelope)`,
   `queuedAndSync()`, `liveTicks()`, `doorsOf(flow)`, `closeNode()`; a throwing schedule in Delivery.stop leaves deadlineTimer null: the last flight's land() NPEs. Vert.x 5.1.10 SWALLOWS a Throwable from a context-less future's listener (onSuccess/
   onComplete, completed or not: FutureBase.signalComplete → reportException, dropped unless `FutureBase.exceptionHandler(thread,h)`) — an Error there never reaches the caller.
+- P1-09k1: InMemoryMessageStore keeps the FIRST row per (id, step) (putIfAbsent: a rerun's row is dropped). Mock/loopbacks hand the handler the sender's
+  envelope (id, step, props) and return Ack.Reply as is; mock writes only fixture replies (no consumer). `pgrep -f`/`pkill -f <path>` match the calling
+  shell (pkill = exit 144). Runtime `-Dtest='io.flottila.runtime.**'` gives 14 false failures (*HeapTest outside heap-bounded, nested TieredBlobStoreTest$Reader).

@@ -83,8 +83,11 @@ public final class FakeRuntime {
         return Envelope.ingress(id, flow, headers, body);
     }
 
-    /** Stores {@code bytes} as the body of the step after {@code e}; pass the result to {@link Envelope#next(Body)}. */
+    /**
+     * Stores {@code bytes} as the body of the step after {@code e}, under {@link Envelope#nextKey()} — keyed by the run's attempt
+     * from the second on (D-066); pass the result to {@link Envelope#next(Body)}.
+     */
     public Body store(Envelope e, Buffer bytes) {
-        return blobs.write(BlobKey.body(e.id(), e.step() + 1), bytes, blobs.treeLimit()).await();
+        return blobs.write(e.nextKey(), bytes, blobs.treeLimit()).await();
     }
 }

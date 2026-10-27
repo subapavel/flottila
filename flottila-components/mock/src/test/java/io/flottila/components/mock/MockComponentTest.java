@@ -1,6 +1,7 @@
 package io.flottila.components.mock;
 
 import io.flottila.api.Ack;
+import io.flottila.api.BlobKey;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
@@ -150,6 +151,23 @@ class MockComponentTest {
         Future<Envelope> missing = http.producer(domestic).send(invoice());
         missing.otherwiseEmpty().await();
         assertTrue(missing.cause().getMessage().contains("nowhere.xml"), "a missing fixture fails the send, named");
+    }
+
+    /**
+     * D-066: the fixture reply is the next step's body of the envelope sent, under that envelope's next key — the plain key on
+     * a first attempt, the part suffixed with the attempt from the second on — so each run's reply has a key of its own.
+     */
+    @Test
+    void aFixtureReplyOfASecondAttemptIsKeyedByItsAttempt() {
+        http.bind("partner-domestic", Behaviour.from(Map.of("reply", "../fixtures/partner-ack.xml"), DEMO_FLOWS));
+        Producer p = http.producer(domestic);
+        Envelope first = invoice().advance();
+        Envelope one = p.send(first).await();
+        Envelope two = p.send(first.with(Envelope.ATTEMPT, 2)).await();
+        assertEquals(BlobKey.body(first.id(), 2), one.body().key(), "a first attempt: the next step's plain body key, as before");
+        assertEquals(new BlobKey(first.id(), 2, "body~2"), two.body().key(), "the second attempt: its own key");
+        assertTrue(rt.blobs().contains(one.body().key()) && rt.blobs().contains(two.body().key()), "both replies stored");
+        assertEquals(one.body().hash(), two.body().hash(), "the same fixture: only the key tells the runs apart");
     }
 
     // --- stop (D-056: the mock's stop unregisters the handler and completes once every outstanding handler future has completed)

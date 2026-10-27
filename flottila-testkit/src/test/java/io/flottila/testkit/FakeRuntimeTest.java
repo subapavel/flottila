@@ -1,8 +1,13 @@
 package io.flottila.testkit;
 
+import io.flottila.api.BlobKey;
+import io.flottila.api.Body;
 import io.flottila.api.Component;
+import io.flottila.api.Envelope;
 import io.flottila.api.Hasher;
+import io.flottila.api.Headers;
 import io.flottila.api.Runtime;
+import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -37,6 +42,23 @@ class FakeRuntimeTest {
         assertSame(fake.blobs(), rt.blobs());
         assertSame(mock, rt.component(mock.scheme()));
         assertThrows(IllegalArgumentException.class, () -> rt.component("sftp"));
+    }
+
+    /**
+     * D-066: {@link FakeRuntime#store} writes what a step hands on under the key the envelope names for its next step: the
+     * plain key on a first attempt, the part suffixed with the attempt from the second on, so a rerun leaves the first run's
+     * bytes where they were.
+     */
+    @Test
+    void storeWritesUnderTheNextKeyOfTheEnvelopesRun() {
+        FakeRuntime rt = FakeRuntime.create();
+        Envelope atOne = rt.ingress("f", Headers.empty(), Buffer.buffer("<in/>")).advance();
+        Body first = rt.store(atOne, Buffer.buffer("<first/>"));
+        Body second = rt.store(atOne.with(Envelope.ATTEMPT, 2), Buffer.buffer("<second/>"));
+        assertEquals(BlobKey.body(atOne.id(), 2), first.key(), "a first attempt: the next step's plain body key");
+        assertEquals(new BlobKey(atOne.id(), 2, "body~2"), second.key(), "the second attempt: its own key");
+        assertEquals("<first/>", rt.blobs().read(first.key()).await().toString(), "the first run's bytes stay under its key");
+        assertEquals("<second/>", rt.blobs().read(second.key()).await().toString());
     }
 
     @Test

@@ -52,6 +52,25 @@ class SplitStepTest {
         assertSame(xml.document(parent), xml.document(parent), "the parent's document view is parsed once");
     }
 
+    /**
+     * D-066: every part is stored under the parent's next key for its {@code split-<i>} part — suffixed with the attempt from
+     * the second attempt on — so a rerun's parts never write over the first run's.
+     */
+    @Test
+    void thePartsOfASecondAttemptAreKeyedByItsAttempt() {
+        Envelope parent = invoice();
+        List<Body> one = xpath.parts("/Invoice/Lines/Line", resources(4096)).apply(parent);
+        List<Body> two = xpath.parts("/Invoice/Lines/Line", resources(4096)).apply(parent.with(Envelope.ATTEMPT, 2));
+        assertEquals(List.of(BlobKey.attachment(parent.id(), 2, "split-0"), BlobKey.attachment(parent.id(), 2, "split-1")),
+                one.stream().map(Body::key).toList(), "a first attempt: the keys of before");
+        assertEquals(List.of(BlobKey.attachment(parent.id(), 2, "split-0~2"), BlobKey.attachment(parent.id(), 2, "split-1~2")),
+                two.stream().map(Body::key).toList(), "the second attempt: each part's name suffixed with it");
+        for (int i = 0; i < 2; i++) {
+            assertTrue(rt.blobs().contains(one.get(i).key()) && rt.blobs().contains(two.get(i).key()), "part " + i + " stored for both runs");
+            assertEquals(one.get(i).hash(), two.get(i).hash(), "part " + i + ": the same bytes, only the key tells the runs apart");
+        }
+    }
+
     @Test
     void anEmptySelectionIsNoPartsAndATextNodeIsAPartOfItsOwn() {
         assertEquals(List.of(), xpath.parts("/Invoice/Nothing", resources(4096)).apply(invoice()));
