@@ -5,7 +5,8 @@
   unrecoverable; P1-08 r2 lost them). Clean per module only: `mvn -q clean -pl <module>`.
 - Reactor order (observed P1-09d2b): api → testkit → core → schemas → step-xslt → step-validate → component-http → runtime →
   component-mock → cli → archtest → bench. `-pl <module> -am` for one module; steps and components need only api + testkit
-  (`-pl flottila-api,flottila-testkit,<module>`, no runtime). Whole reactor `verify -Pit` took ~3 min (P1-09k1).
+  (`-pl flottila-api,flottila-testkit,<module>`, no runtime). Whole reactor `verify -Pit` took ~3 min (P1-09k1). `-pl flottila-runtime`
+  WITHOUT `-am` resolves a stale core jar from ~/.m2 after a core change (NoClassDefFoundError, P1-09c2): always `-am`.
 - Full check: `mvn -B -ntp -q verify -Pit > target/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
   Postgres (`sudo pg_ctlcluster 16 main start`), often up already (`docker info`, `pg_lsclusters`).
 - Coverage: `python3 ci/coverage_check.py` (no-decrease band 2 pp, D-029); new code must reach the
@@ -78,7 +79,6 @@
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and
   never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;
   the full one-resume-per-pause rule is in agent/NOTES.md "FIX-10").
-- `Throwable.addSuppressed(this)` throws IllegalArgumentException: guard `t != failure` in a catch that merges causes.
 - Testkit: FakeRuntime, FakeTimer (`nextDelay()` drives backoffs), FakeIds, InMemoryBlobStore, BlobStoreContract, ComponentContract (9 cases),
   RecordingComponent (`sentTo`, `replyWith`, `failNext`), GeneratedReadStream, BlockedPlatformThreadDetector.
 - Vert.x 5.1.10 source: `Future.future(h)` fails its promise with what `h` throws (null answer included); `compose` with a

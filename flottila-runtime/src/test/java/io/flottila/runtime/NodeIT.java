@@ -21,6 +21,7 @@ import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -71,6 +72,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
@@ -640,6 +642,180 @@ class NodeIT {
             assertEquals(1, partnerSaw.size(), "the probes never reached the partner: " + partnerSaw);
         } finally {
             release.tryComplete();
+            partner.close().await();
+        }
+    }
+
+    // --- P1-09c2 (D-067, GATE check 7): replay and DLQ retry over the admin API
+
+    /** The demo flow's {@code retry.attempts}: retries after the first try (RetryPolicy). */
+    static final int DEMO_RETRIES = 3;
+
+    /** {@code POST path} on the admin port with an empty body, as the CLI sends it: no Origin, and this node has no token. */
+    static HttpResponse<String> post(HttpClient client, int admin, String path) throws IOException, InterruptedException {
+        return send(client, "POST", admin, path, new byte[0], "application/json");
+    }
+
+    /** The {@code steps} of {@code GET /admin/messages/{id}}; empty while nothing of it is recorded (404). */
+    static JsonArray stepsOf(int admin, String id) {
+        try {
+            HttpResponse<String> r = get(admin, "/admin/messages/" + id);
+            if (r.statusCode() == 404) return new JsonArray();
+            assertEquals(200, r.statusCode(), r.body());
+            return new JsonObject(r.body()).getJsonArray("steps");
+        } catch (IOException | InterruptedException e) {
+            throw new AssertionError("the admin API did not answer", e);
+        }
+    }
+
+    /** The rows {@code GET /admin/dlq} lists. */
+    static JsonArray dlqItems(int admin) {
+        try {
+            HttpResponse<String> r = get(admin, "/admin/dlq");
+            assertEquals(200, r.statusCode(), r.body());
+            return new JsonObject(r.body()).getJsonArray("items");
+        } catch (IOException | InterruptedException e) {
+            throw new AssertionError("the admin API did not answer", e);
+        }
+    }
+
+    /** Each row as {@code "<step> <name>"}. */
+    static List<String> stepNames(JsonArray steps) {
+        return steps.stream().map(JsonObject.class::cast).map(s -> s.getInteger("step") + " " + s.getString("name")).toList();
+    }
+
+    /** The one message found by {@code invoiceId:4711}, once its six rows (ingress and five steps) are recorded. */
+    static String invoiceByKey(int admin) {
+        List<String> found = new CopyOnWriteArrayList<>();
+        until(() -> {
+            try {
+                found.clear();
+                new JsonObject(get(admin, "/admin/messages?key=invoiceId:4711").body()).getJsonArray("items").forEach(id -> found.add((String) id));
+                return found.size() == 1 && stepsOf(admin, found.get(0)).size() == 6;
+            } catch (IOException | InterruptedException e) {
+                throw new AssertionError("the admin API did not answer", e);
+            }
+        }, "the invoice is found by its key and its six rows are recorded");
+        return found.get(0);
+    }
+
+    /**
+     * GATE check 7, replay: the demo (sync) has sent an invoice to the partner. {@code POST /admin/messages/{id}/replay?from=3}
+     * answers 200 with exactly {@code {id, replayOf, from, outcome}}: a new id, the original's, 3, COMPLETE. The new message ran
+     * steps 3..5 (route, toPartner, partner) and nothing before: its timeline starts with its input at step 2 — the original's
+     * recorded step-2 output, by hash — and every row of it is marked {@code replayOf} the original. The partner got the same
+     * mapped invoice a second time; the original's timeline is as it was, unmarked.
+     */
+    @Test
+    void replayFromStep3IsANewMessageMarkedReplayOf() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            startDemoNode(env("ci"));
+            int admin = node.adminPort();
+            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip, "application/zip").statusCode(), "fixture: the demo deploys");
+            HttpResponse<String> invoice = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            assertEquals(200, invoice.statusCode(), "fixture: the invoice went through: " + invoice.body());
+            String original = invoiceByKey(admin);
+            JsonArray originalSteps = stepsOf(admin, original);
+            assertEquals(1, partnerSaw.size(), "fixture: the partner saw the invoice once: " + partnerSaw);
+
+            HttpResponse<String> replayed = post(client, admin, "/admin/messages/" + original + "/replay?from=3");
+
+            assertEquals(200, replayed.statusCode(), replayed.body());
+            JsonObject answer = new JsonObject(replayed.body());
+            String id = answer.getString("id");
+            assertTrue(id != null && !id.equals(original), "the replay is a new message: " + answer);
+            assertEquals(new JsonObject().put("id", id).put("replayOf", original).put("from", 3).put("outcome", "COMPLETE"), answer, "the replay's answer");
+            assertEquals(2, partnerSaw.size(), "the replay reached the partner, once: " + partnerSaw);
+            assertEquals(partnerSaw.get(0), partnerSaw.get(1), "the same mapped invoice: steps 3..5 ran on the recorded step-2 output");
+            until(() -> stepsOf(admin, id).size() == 4, "the replay's rows are recorded: its input and steps 3..5");
+            JsonArray steps = stepsOf(admin, id);
+            assertEquals(List.of("2 replay", "3 route", "4 toPartner", "5 partner"), stepNames(steps), "steps 3..n ran, nothing before: " + steps.encode());
+            for (Object each : steps) {
+                JsonObject row = (JsonObject) each;
+                assertEquals("OK", row.getString("outcome"), row.encode());
+                assertEquals(original, row.getJsonObject("props").getString("replayOf"), "every row of the new message is marked replayOf: " + row.encode());
+            }
+            JsonObject recordedStep2 = originalSteps.stream().map(JsonObject.class::cast).filter(s -> s.getInteger("step") == 2).findFirst().orElseThrow();
+            assertEquals(recordedStep2.getJsonObject("body").getString("hash"), steps.getJsonObject(0).getJsonObject("body").getString("hash"),
+                    "the replay's input is the original's recorded step-2 output: " + recordedStep2.encode());
+            assertEquals(originalSteps, stepsOf(admin, original), "the original's timeline is as it was");
+            assertTrue(originalSteps.stream().map(JsonObject.class::cast).noneMatch(s -> s.getJsonObject("props").containsKey("replayOf")),
+                    "the original is not marked: " + originalSteps.encode());
+        } finally {
+            partner.close().await();
+        }
+    }
+
+    /**
+     * GATE check 7, DLQ: the demo switched to at-least-once, its partner down (503). The worker tries the partner step once and
+     * retries it per the flow's policy ({@value #DEMO_RETRIES} retries), then parks the message: {@code GET /admin/dlq} lists its
+     * row at step 5 (partner) naming the 503. The partner comes back; {@code POST /admin/dlq/{id}/retry} answers 200 with exactly
+     * {@code {id, replayOf, from, outcome}} — a new id, the parked one, 5, COMPLETE — the partner gets the mapped invoice once
+     * more and answers it, the row is gone from {@code GET /admin/dlq}, and the new message's rows are the parked input at step 4
+     * and the partner step, marked {@code replayOf}.
+     */
+    @Test
+    void partnerDownParksAndRetryDeliversOncePartnerIsBack() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        AtomicBoolean down = new AtomicBoolean(true);
+        io.vertx.core.http.HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
+            boolean isDown = down.get();
+            partnerSaw.add((isDown ? "503 " : "200 ") + req.path() + " " + b);
+            if (isDown) req.response().setStatusCode(503).end("partner down");
+            else req.response().putHeader("content-type", "application/xml").end(ack);
+        })).listen(0, "127.0.0.1").await();
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+            assertTrue(new String(files.get("flows/invoice-sync.yaml"), StandardCharsets.UTF_8).contains("attempts: " + DEMO_RETRIES),
+                    "fixture: the demo flow retries its partner step " + DEMO_RETRIES + " times");
+            startDemoNode(env("ci"));
+            int admin = node.adminPort();
+            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
+            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            assertEquals(202, accepted.statusCode(), accepted.body());
+            String parked = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
+
+            until(() -> !dlqItems(admin).isEmpty(), "the message is parked once the partner step's retries are spent");
+            JsonArray rows = dlqItems(admin);
+            assertEquals(1, rows.size(), "one DLQ row: " + rows.encode());
+            JsonObject row = rows.getJsonObject(0);
+            assertEquals(parked, row.getString("id"), row.encode());
+            assertEquals("demo/invoice-sync", row.getString("flow"), row.encode());
+            assertEquals(5, row.getInteger("step"), "parked at the partner step: " + row.encode());
+            assertEquals("partner", row.getString("name"), row.encode());
+            assertTrue(row.getString("error").contains("503"), "the row names the partner's 503: " + row.encode());
+            assertEquals(1 + DEMO_RETRIES, partnerSaw.size(), "the first try and " + DEMO_RETRIES + " retries, no more: " + partnerSaw);
+            assertTrue(partnerSaw.stream().allMatch(s -> s.startsWith("503 /echo ")), "each answered 503: " + partnerSaw);
+
+            down.set(false);
+            HttpResponse<String> retried = post(client, admin, "/admin/dlq/" + parked + "/retry");
+
+            assertEquals(200, retried.statusCode(), retried.body());
+            JsonObject answer = new JsonObject(retried.body());
+            String id = answer.getString("id");
+            assertTrue(id != null && !id.equals(parked), "the retry is a new message: " + answer);
+            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 5).put("outcome", "COMPLETE"), answer, "the retry's answer");
+            assertEquals(2 + DEMO_RETRIES, partnerSaw.size(), "delivered once the partner is back, once: " + partnerSaw);
+            String delivered = partnerSaw.getLast();
+            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
+            assertEquals(new JsonArray(), dlqItems(admin), "the row is gone");
+            until(() -> stepsOf(admin, id).size() == 2, "the retry's rows are recorded: its input and the partner step");
+            JsonArray steps = stepsOf(admin, id);
+            assertEquals(List.of("4 replay", "5 partner"), stepNames(steps), "only the parked step ran, on the parked input: " + steps.encode());
+            for (Object each : steps) {
+                JsonObject step = (JsonObject) each;
+                assertEquals("OK", step.getString("outcome"), step.encode());
+                assertEquals(parked, step.getJsonObject("props").getString("replayOf"), "marked replayOf the parked message: " + step.encode());
+            }
+        } finally {
             partner.close().await();
         }
     }

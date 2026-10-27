@@ -130,6 +130,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         this.mode = mode;
     }
 
+    /** The flow's admission this delivery admits by: a {@link Replay} built beside it shares it ({@link FlowBuilder#replay}). */
+    Admission admission() {
+        return admission;
+    }
+
     /** {@link #sync(Admission, Pipeline, Producers, Timer)} over a pipeline that owns no producer. */
     static Delivery sync(Admission admission, Pipeline pipeline, Timer timer) {
         return sync(admission, pipeline, Producers.NONE, timer);

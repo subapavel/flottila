@@ -23,6 +23,7 @@
 | 2026-10-27 | 3.4 | §9: a flow's effective hash (D-063) covers the files its build reads; XSLT run-time `doc()` / `unparsed-text()` reads are neither confined nor hashed until FIX-40 | F-9 (major) |
 | 2026-10-27 | 3.4 | §9 item 3: a redeploy swaps only flows whose effective hash changed (D-063); all changed and removed flows stop before any changed or added flow starts, so the refusal window is up to the slowest stop; removing an at-least-once flow with queued or held items is refused (422); 409 means a deploy is already running | F-5 (major) |
 | 2026-10-27 | 3.4 | §8: snapshot rows of a run are buffered in a per-run trail and written at run end (or when more than 256 are buffered) after their bodies persisted; a trail row keeps `body_key` only for a durable body, else it is metadata-only and counted (the at-least-once ingress row stays as D-058: saved beside its persist); only the step whose snapshot crosses 256 buffered rows waits (for that flush); item completion, the sync permit, the at-most-once landing and a replay or retry wait for the run's last flush (persists, then row writes) (D-064, D-066) | F-10 |
+| 2026-10-27 | 3.4 | §6 Recording: replay and DLQ retry run the flow version deployed now and pin the versions they ran with; replay from any recorded step works after a restart (D-064, D-066) — F-8 closed; admin replay/retry status order 400 → 404 → 409 (flow not RUNNING here, retry already running) → 422 (step unrecorded or metadata-only, step beyond the flow, too large) → 429 (D-067) | F-11 (major) |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -210,7 +211,7 @@ Headers always cross; the body is shared by reference. Never through the event b
 
 **Dispatcher flows**: one endpoint (e.g. `/xi`) reads the routing key, looks up a versioned routing table in Postgres (cached per node), and forwards — a sync target is called directly on the same thread, an async target is enqueued with `target_flow`. Unknown route → error or DLQ "no route", never dropped. During a PO migration the dispatcher passes unmigrated interfaces through to the old PO, interface by interface.
 
-**Recording** per flow, overridable per step: level `all | ends | errors | off`, payload `keep | metadata-only`. Replay from step N needs step N's snapshot; the at-least-once durable save at ingress is independent of recording. Every message pins the flow, partner-directory and routing-table versions it ran with, so monitoring tells the truth and replay uses the same configuration.
+**Recording** per flow, overridable per step: level `all | ends | errors | off`, payload `keep | metadata-only`. Replay from step N needs the recorded output of step N−1 (the input step N saw); the at-least-once durable save at ingress is independent of recording. Every message pins the flow, partner-directory and routing-table versions it ran with, so monitoring tells the truth. A replay or a DLQ retry runs the flow version deployed now (a retry exists to rerun a parked message after a fix) and pins the versions it ran with, so each run's configuration stays visible (F-11). Replay from any recorded step works after a restart, because every kept step body is durable (D-064, D-066); 409 is reserved for a body removed by retention (P2-07).
 
 ## 7. Components, queues, persistence
 

@@ -346,7 +346,7 @@ class DeploymentsRollbackTest {
         List<String> files1 = regularFiles(packageDir(sha1));
         List<String> files2 = regularFiles(packageDir(sha2));
         List<Doors.Out> running = doors.openProducers();
-        assertEquals(3, running.size(), "fixture: one producer per running flow: " + doors.producers());
+        assertEquals(6, running.size(), "fixture: one producer per running flow and one per its replay (D-067): " + doors.producers());
         PackageDraft v3 = changed(changed(removed(shop(), "ping"), "orders", "v3"), "audit", "v3")
                 .endpoint("extra-in", "in", new JsonObject().put("path", "/extra")).flow("extra", "1.0.0", "sync", "extra-in", 1024, to("partner"));
         v3.manifest().put("version", "2.0.0");
@@ -401,7 +401,7 @@ class DeploymentsRollbackTest {
         until(() -> v3Producers.stream().allMatch(o -> o.closes() == 1), "every producer v3 built is closed: " + v3Producers);
         long v3Settled = 0;
         for (Doors.Door v : v3Doors) v3Settled = Math.max(v3Settled, v.first("stopped"));
-        for (Doors.Out o : v3Producers) if (o.endpoint().equals("partner")) v3Settled = Math.max(v3Settled, o.closedAt());   // the deliveries' producers: awaited
+        for (Doors.Out o : List.of(producerOf(toOrders.sent()), producerOf(toExtra.sent()))) v3Settled = Math.max(v3Settled, o.closedAt());   // the deliveries' producers: awaited (not v3's replays', D-067)
         long rollbackStarts = rollback.stream().mapToLong(r -> r.first("start")).min().orElseThrow();
         assertTrue(v3Settled > 0 && v3Settled < rollbackStarts,
                 "the rebuilt flows start only once every v3 flow stopped and its delivery's producers closed (seq " + v3Settled + " < " + rollbackStarts + "): "
@@ -445,7 +445,7 @@ class DeploymentsRollbackTest {
         assertEquals(polls + 1, claimsOf("shop/audit"), "one worker polls audit per tick, the rebuilt one: " + queue.claims());
         assertRefusesRetryable(extraV3, within(extraV3.deliver(envelope("shop/extra")), "a message on v3's extra"));
         for (Doors.Out o : running) assertEquals(1, o.closes(), "the producers running before v3 are closed once: " + o);
-        assertEquals(3, doors.openProducers().size(), "open: one producer per rebuilt flow: " + doors.producers());
+        assertEquals(6, doors.openProducers().size(), "open: one producer per rebuilt flow and one per its replay (D-067): " + doors.producers());
         assertTrue(doors.openProducers().stream().allMatch(o -> o.ordinal() > producersBefore + v3Producers.size()), "each built by the rollback: " + doors.producers());
         assertNothingClosedTwice();
     }
@@ -535,8 +535,9 @@ class DeploymentsRollbackTest {
             Doors.Door last = doors.door(flow);
             assertRefusesRetryable(last, within(last.deliver(envelope(flow)), "a message on " + flow + "'s last consumer"));
         }
-        until(() -> doors.openProducers().size() == 1, "only the rolled-back orders keeps a producer open: " + doors.producers());
-        assertEquals("partner", doors.openProducers().get(0).endpoint(), "orders' delivery producer; no producer of audit (archive) is open");
+        until(() -> doors.openProducers().size() == 2, "only the rolled-back orders keeps producers open, its delivery's and its replay's (D-067): " + doors.producers());
+        assertEquals(List.of("partner", "partner"), doors.openProducers().stream().map(Doors.Out::endpoint).toList(),
+                "orders' delivery and replay producers; no producer of audit (archive) is open");
         long polls = claimsOf("shop/audit");
         rt.clock().advance(TICK.multipliedBy(3));
         assertEquals(polls, claimsOf("shop/audit"), "no worker of the FAILED audit polls: " + queue.claims());
@@ -993,7 +994,7 @@ class DeploymentsRollbackTest {
                 OnVirtualThread.Call<DeployResult> d = deploying(changed(changed(shop(), "audit", "v2"), "orders", "v2"), "r2");
                 reachedWhile(d, ordersStart.reached(), "phase B calls v2 orders' start");
                 List<Doors.Out> v2Partner = doors.producers().subList(producersBefore, doors.producers().size()).stream()
-                        .filter(o -> o.endpoint().equals("partner")).toList();   // v2's build is done: orders' delivery producer, ping's spare
+                        .filter(o -> o.endpoint().equals("partner")).toList();   // v2's build is done: orders' delivery and replay producers, ping's spare two
                 Doors.Door ordersV2 = ordersStart.door();
                 Doors.Door auditV2 = doors.door("shop/audit");
                 untilWhile(d, () -> auditV2.started() && liveTasks(TICK) == 1, "v2's audit and its worker started: " + timer.all());
@@ -1002,7 +1003,7 @@ class DeploymentsRollbackTest {
                 DeployRefusedException refused = joinRefused(d, "v2, whose orders does not start");
                 tickCancelsThrow = false;
                 assertTrue(ordersV2.stopped(), "v2's orders is stopped all the same: " + ordersV2.history());
-                assertEquals(2, v2Partner.size(), "fixture: v2's build opened orders' and ping's partner producers: " + doors.producers());
+                assertEquals(4, v2Partner.size(), "fixture: v2's build opened orders' and ping's partner producers, two each with their replays' (D-067): " + doors.producers());
                 until(() -> v2Partner.stream().allMatch(o -> o.closes() == 1), "every partner producer v2's build opened is closed all the same, orders' among them: "
                         + doors.producers());
                 assertEquals(Kind.FAILED, refused.kind(), refused.error());

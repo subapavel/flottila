@@ -54,7 +54,7 @@ import java.util.stream.Stream;
  * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
  * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — before it touches Postgres. It then refuses a
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
- * refused node leaves its database untouched, migrates the database, opens the stores, builds the {@link Deployments} (D-059) over them and starts the admin server with the deploy routes; when any
+ * refused node leaves its database untouched, migrates the database, opens the stores, builds the {@link Deployments} (D-059) over them and starts the admin server with the deploy, work, replay and retry routes; when any
  * of this fails, what was opened — the store, the pool — closes again, so nothing is left listening or pooled. {@code close} first closes the deployments
  * — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, while the admin port still
  * answers — then stops the admin server, then flushes and closes the message store, then closes the pool, each step even when
@@ -132,7 +132,7 @@ public final class Node implements AutoCloseable {
                     Meter.system());
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed),
-                    Optional.of(deployments), work);
+                    Optional.of(deployments), work, ids);
             Node node = new Node(deployments, admin, admin.start(vertx).await(), messages, pool);
             started = true;
             return node;

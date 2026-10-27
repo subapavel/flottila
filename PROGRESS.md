@@ -683,3 +683,12 @@ Checks: whole reactor -Pit VERIFIED_PASS, archtest 35 (target/P1-09c1-verify-all
 Review: PASS r1. Raised FIX-55 (failed release → 500; held() throws at the call); P1-09c2 note: decide a header/Origin check for token-less POST before replay/retry.
 D-054 data: class B (test-author, implementer, verifier, reviewer opus/high; designer opus/xhigh for the split); architect turns ~20; review rounds 1.
 Next: P1-09c2 [C] (replay/retry routes; packet §c2; F-11 at its commit).
+
+## 2026-10-27 — P1-09c2 replay and DLQ retry routes + admin browser guard (D-067, D-069) — done, review PASS — Deviation: F-11
+Test first: ReplayTest +5, FlowBuilderTest +2, AdminServerReplayTest 14, AdminServerBrowserGuardTest 4, DeploymentsProducersTest +2, NodeIT +2 (GATE check 7) — observed red (target/P1-09c2-red-all.log, 90 missing-API errors). Producer counts in 5 Deployments test classes doubled (one replay per flow, D-067: wrong expectations, numbers only; reviewer: none weakened). Test-author fixture fixes: Probe.flaky holds the retry's run; paused response before body().
+Change: core Replay given-id overloads, a flow Admission permit held until the trail closed (429 + retry-after), ReplayRefusedException.Reason, RowNotRemovedException, close(); FlowBuilder.replay shares the delivery's Admission; Deployments keeps a replay per RUNNING flow and closes it with the flow; AdminServer replay/retry routes (400→404→409→422→429, 502 PARKED/FAILED, 500 row not removed) on virtual threads; browser guard (Origin / Sec-Fetch-Site → 403) before the token. Implementer tests ReplayEdgeTest, DeploymentsReplayCloseTest, AdminServerReplayRaceTest (approved).
+Docs: F-11 (replay runs the version deployed now), §6 Recording + changelog, F-8 closed, D-057 (c) amended (409 → 422 for unrecorded/metadata-only).
+Checks: whole reactor -Pit VERIFIED_PASS, archtest 35 (target/P1-09c2-verify-all.log); coverage no decrease, baseline written; 37 hand mutants killed; PIT core 744/751 (FlowBuilder :281/:295 equivalent capacity hints).
+Review: FAIL r1 (F-11 and the §6/D-057 docs missing — architect's miss); PASS r2. Raised FIX-56 (older AdminServer tests' body race); FIX-45 and FIX-55 widened.
+D-054 data: class C (test-author ×3, implementer, reviewer opus/xhigh); architect turns ~25; review rounds 2; 3 turn-cap resumes.
+Next: P1-09c3 [C] — designer rewrites packet §c3 for the S3 archive (owner option A) first.

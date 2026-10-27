@@ -5,6 +5,8 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.api.Runtime;
 import io.flottila.core.dlq.InMemoryDlq;
+import io.flottila.core.flow.Replay;
+import io.flottila.core.flow.ReplayRefusedException;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.runtime.deploy.DeployRefusedException.Kind;
 import io.flottila.runtime.node.NodeConfig;
@@ -43,6 +45,7 @@ import static io.flottila.runtime.deploy.DeploymentsTest.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -54,6 +57,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * every producer built for that attempt and no other; {@link Deployments#close} closes every producer, each only after its
  * flow's delivery stopped (no send of it unanswered when it is closed). A producer whose close fails is logged at WARNING
  * and the others close all the same. The producers are {@link Doors.Out}s, which count their closes.
+ *
+ * <p>P1-09c2 (D-067): every flow also has a {@link Replay} built with it, whose producers are a set of their own — one more
+ * per flow, at-most-once included. A swap closes the replaced replay without waiting for it: its producers close once the run
+ * in flight on them ended; {@link Deployments#close} closes every replay's producers, each only after its runs ended.
  */
 class DeploymentsProducersTest {
 
@@ -151,15 +158,15 @@ class DeploymentsProducersTest {
             case "a flow that does not build beside three that do" -> {
                 p.endpoint("zz-in", "in", new JsonObject().put("path", "/zz"))
                         .flow("zz", "1.0.0", "sync", "zz-in", 1024, PackageDraft.toPartner().add(new JsonObject().put("type", "frobnicate").put("name", "f")));
-                built = 4;
+                built = 7;   // D-067: audit's, orders' and ping's two each (delivery or worker, and replay), zz's one before it failed
             }
             case "a sync flow whose consumer is refused" -> {
                 p.endpointDoc("orders-in").getJsonObject("config").put("refuse", "no door today");
-                built = 3;
+                built = 6;   // D-067: each flow's delivery or worker producer, and its replay's
             }
             case "an at-least-once flow whose worker does not build" -> {
                 p.flowDoc("audit").put("steps", PackageDraft.toPartner().add(new JsonObject().put("type", "stamp").put("name", "s")));
-                built = 3;
+                built = 5;   // D-067: orders' and ping's two each (delivery and replay), audit's one before it failed
             }
             default -> throw new IllegalArgumentException(why);
         }
@@ -180,15 +187,15 @@ class DeploymentsProducersTest {
     @Test
     void aFailedStartClosesEveryProducerOfTheAttemptAndNoOther() throws Exception {
         deploy(flows("store", Map.of("orders", "sync")));
-        assertEquals(1, doors.producers().size(), "fixture: store built one producer");
-        Doors.Out store = doors.producers().get(0);
+        assertEquals(2, doors.producers().size(), "fixture: store built two producers, its delivery's and its replay's (D-067)");
+        List<Doors.Out> store = doors.producers();
         doors.failStart(2, "address in use");
 
         DeployRefusedException refused = refused(shop("shop"));
 
         assertEquals(Kind.FAILED, refused.kind(), refused.error());
-        assertEquals(4, doors.producers().size(), "fixture: shop built three producers: " + doors.producers());
-        assertEquals(List.of(store), doors.openProducers(), "every producer of the failed deploy is closed, the running package's is not: " + doors.producers());
+        assertEquals(8, doors.producers().size(), "fixture: shop built six producers, three flows' and their replays': " + doors.producers());
+        assertEquals(store, doors.openProducers(), "every producer of the failed deploy is closed, the running package's is not: " + doors.producers());
         assertNothingClosedTwice();
         Ack still = within(doors.door("store/orders").deliver(envelope("store/orders")), "store's answer after shop's failed start");
         assertInstanceOf(Ack.Reply.class, still, "store's flow still sends through its open producer: " + still);
@@ -201,7 +208,7 @@ class DeploymentsProducersTest {
     // --- close
 
     /**
-     * Two packages run (four producers); a sync message is held at the partner. Close stops every flow; while that message
+     * Two packages run (eight producers, D-067: each flow's and its replay's); a sync message is held at the partner. Close stops every flow; while that message
      * drains, the producer it was sent through is not closed. Once it answered, close returns with every producer closed once,
      * and none was closed with a send of its own unanswered: each after its flow's delivery stopped.
      */
@@ -209,7 +216,7 @@ class DeploymentsProducersTest {
     void closeClosesEveryProducerOnceEachAfterItsDeliveryStopped() throws Exception {
         deploy(shop("shop"));
         deploy(flows("store", Map.of("orders", "sync")));
-        assertEquals(4, doors.producers().size(), "fixture: shop's three producers and store's one: " + doors.producers());
+        assertEquals(8, doors.producers().size(), "fixture: shop's six producers and store's two, each flow's and its replay's: " + doors.producers());
         CountDownLatch release = doors.partner().holdNext(1);
         holds.add(release);
         Envelope held = envelope("shop/orders");
@@ -238,15 +245,15 @@ class DeploymentsProducersTest {
     @Test
     void aProducerCloseFailureIsLoggedAndTheOthersStillClose() throws Exception {
         deploy(shop("shop"));
-        assertEquals(3, doors.producers().size(), "fixture: shop's three producers");
-        for (int n = 1; n <= 3; n++) doors.failProducerClose(n, "lid stuck #" + n);
+        assertEquals(6, doors.producers().size(), "fixture: shop's six producers, each flow's and its replay's");
+        for (int n = 1; n <= 6; n++) doors.failProducerClose(n, "lid stuck #" + n);
 
         OnVirtualThread.Call<Void> closing = OnVirtualThread.start(deployments::close);
         until(closing::isDone, "close returns, whatever its outcome (FIX-30 pins the log and the other closes, not the outcome)");
 
         assertEquals(List.of(), doors.openProducers(), "one failed close stops no other: " + doors.producers());
         assertNothingClosedTwice();
-        for (int n = 1; n <= 3; n++) {
+        for (int n = 1; n <= 6; n++) {
             String text = "lid stuck #" + n;
             assertTrue(logged.stream().anyMatch(r -> r.getLevel() == Level.WARNING && texts(r).stream().anyMatch(t -> t.contains(text))),
                     "the failed close of producer #" + n + " is logged at WARNING with its cause (" + text + "): "
@@ -292,7 +299,7 @@ class DeploymentsProducersTest {
     @Test
     void closeLeavesARunningWorkerItemItsProducerUntilTheItemFinishes() throws Exception {
         deploy(shop("shop"));
-        assertEquals(3, doors.producers().size(), "fixture: shop's three producers: " + doors.producers());
+        assertEquals(6, doors.producers().size(), "fixture: shop's six producers, each flow's and its replay's: " + doors.producers());
         Held held = acceptAndHoldAtThePartner(doors.door("shop/audit"), envelope("shop/audit"));
         Doors.Out heldBy = held.by();
 
@@ -335,5 +342,105 @@ class DeploymentsProducersTest {
         assertEquals(0, dlq.size(), "no DLQ row while the item runs");
         assertEquals(List.of(heldBy), doors.openProducers(), "the sync flow's producer is closed by the refusal, as before: " + doors.producers());
         assertTheItemFinishesThenItsProducerCloses(heldBy, held.release());
+    }
+
+    // --- P1-09c2 (D-067): a flow's replay and its producers
+
+    /** A sync message of {@code shop/orders} delivered and answered; its rows (ingress and send) written: what a replay starts from. */
+    Envelope recordedOrder() throws Exception {
+        Envelope e = envelope("shop/orders");
+        assertInstanceOf(Ack.Reply.class, within(doors.door("shop/orders").deliver(e), "orders' answer"), "fixture: orders answers");
+        until(() -> messages.timeline(e.id()).result().size() == 2, "fixture: the rows of " + e.id());
+        return e;
+    }
+
+    /** The producer {@code messageId} was sent through. */
+    Doors.Out sentThrough(String messageId) {
+        return doors.producers().stream().filter(o -> o.sentIds().contains(messageId)).findFirst()
+                .orElseThrow(() -> new AssertionError("fixture: " + messageId + " was sent through a producer: " + doors.producers()));
+    }
+
+    /** The step names of {@code messageId}'s rows as the store holds them now (the in-memory store answers at once). */
+    List<String> rowsOf(String messageId) {
+        return messages.timeline(messageId).result().stream().map(io.flottila.core.record.Snapshot::stepName).toList();
+    }
+
+    /**
+     * {@code shop} runs; a replay of {@code orders} (v1's) is held at the partner. A redeploy that changes orders returns while
+     * that run is held — the swap never waits for the replaced replay — and from then on v1's replay refuses a new run (CLOSED)
+     * while {@code replay(flowId)} answers the new version's; the producer under the held run is not closed. Released, the run
+     * ends through its open producer, and only then is that producer closed, once, with no send of its own unanswered.
+     */
+    @Test
+    void aSwapClosesTheReplacedReplayOnceItsRunEnded() throws Exception {
+        deploy(shop("shop"));
+        assertEquals(6, doors.producers().size(), "fixture: shop's three flows, each with its delivery's or worker's producer and its replay's: " + doors.producers());
+        Envelope original = recordedOrder();
+        Doors.Out deliveryV1 = sentThrough(original.id());
+        Replay v1 = deployments.replay("shop/orders").orElseThrow(() -> new AssertionError("a RUNNING flow has its replay"));
+        CountDownLatch release = doors.partner().holdNext(1);
+        holds.add(release);
+        OnVirtualThread.Call<Envelope> replaying = OnVirtualThread.start(() -> v1.from(original.id(), 1, "replay-1"));
+        doors.partner().awaitSent(2);
+        Doors.Out replayOut = sentThrough("replay-1");
+        assertNotSame(deliveryV1, replayOut, "fixture: the replay sends through producers of its own");
+
+        OnVirtualThread.Call<DeployResult> swapping = OnVirtualThread.start(() -> deployments.deploy("shop", Optional.empty(),
+                DeploymentsRedeployTest.changed(shop("shop"), "orders", "v2").zipTo(archives)));
+        until(swapping::isDone, "the redeploy returns while v1's replay run is held at the partner: the swap never waits for it");
+
+        assertEquals(List.of("shop/orders"), OnVirtualThread.join(swapping).swapped(), "fixture: orders swapped");
+        assertEquals(1, deliveryV1.closes(), "fixture: the swap closed v1 orders' delivery producer");
+        assertFalse(replaying.isDone(), "fixture: the replay run is still held");
+        assertEquals(0, replayOut.closes(), "the replaced replay's producer is not closed under its run in flight: " + doors.producers());
+        ReplayRefusedException refused = assertThrows(ReplayRefusedException.class, () -> OnVirtualThread.call(() -> v1.from(original.id(), 1, "replay-2")),
+                "the replaced replay takes no new run");
+        assertEquals(ReplayRefusedException.Reason.CLOSED, refused.reason(), refused.getMessage());
+        assertEquals(List.of(), rowsOf("replay-2"), "the refused run left no row");
+        assertNotSame(v1, deployments.replay("shop/orders").orElseThrow(), "replay(flowId) answers the version deployed now");
+
+        release.countDown();
+        assertEquals("replay-1", OnVirtualThread.join(replaying).id(), "the held run ends through its open producer");
+        until(() -> replayOut.closes() > 0, "the replaced replay's producer is closed once its run ended");
+        assertEquals(1, replayOut.closes(), "once");
+        assertEquals(List.of(0), replayOut.unansweredAtClose(), replayOut + " was closed with no send of its own unanswered");
+        assertNothingClosedTwice();
+    }
+
+    /**
+     * {@code shop} runs; a replay of {@code orders} is held at the partner. Close stops every consumer and does not return while
+     * the run is held; the producer under it is closed only once that run ended — when it closes, the run's rows (its input and
+     * its send) are written — and close then returns with every producer of every flow and every replay closed, once.
+     */
+    @Test
+    void closeClosesEveryReplaysProducers() throws Exception {
+        deploy(shop("shop"));
+        assertEquals(6, doors.producers().size(), "fixture: shop's three flows, each with its delivery's or worker's producer and its replay's: " + doors.producers());
+        Envelope original = recordedOrder();
+        Replay replay = deployments.replay("shop/orders").orElseThrow(() -> new AssertionError("a RUNNING flow has its replay"));
+        CountDownLatch release = doors.partner().holdNext(1);
+        holds.add(release);
+        OnVirtualThread.Call<Envelope> replaying = OnVirtualThread.start(() -> replay.from(original.id(), 1, "replay-1"));
+        doors.partner().awaitSent(2);
+        Doors.Out replayOut = sentThrough("replay-1");
+        List<List<String>> rowsAtClose = new CopyOnWriteArrayList<>();
+        doors.onProducerClose(o -> {
+            if (o == replayOut) rowsAtClose.add(rowsOf("replay-1"));
+        });
+
+        OnVirtualThread.Call<Void> closing = OnVirtualThread.start(deployments::close);
+
+        until(() -> doors.doors().stream().allMatch(Doors.Door::stopped), "close stops every consumer");
+        assertEquals(0, replayOut.closes(), "the replay's producer is not closed under its held run: " + doors.producers());
+        assertFalse(closing.isDone(), "close waits for the replay's run in flight (up to the stop deadline, which the fake clock never reaches)");
+        release.countDown();
+        assertEquals("replay-1", OnVirtualThread.join(replaying).id(), "the held run ends through its open producer");
+        OnVirtualThread.join(closing);
+
+        assertEquals(List.of(List.of(Replay.REPLAY_INPUT, "send")), rowsAtClose,
+                "the replay's producer was closed once, after its run ended: its input's and its send's rows were written by then");
+        assertEquals(List.of(0), replayOut.unansweredAtClose(), replayOut + " was closed with no send of its own unanswered");
+        assertEquals(List.of(), doors.openProducers(), "close leaves no producer open, every replay's included: " + doors.producers());
+        assertNothingClosedTwice();
     }
 }

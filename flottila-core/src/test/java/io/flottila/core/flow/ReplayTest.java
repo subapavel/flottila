@@ -335,4 +335,383 @@ class ReplayTest {
         assertEquals(List.of(BlobKey.body(again.id(), 2)), held.persists().subList(before, held.persists().size()),
                 "step b's body once; the parked input (the retry's seed) never again");
     }
+
+    // --- P1-09c2 (D-067): a given id, the flow's permit until the trail closed, refusals by reason, close
+
+    static final Path NO_FILES = Path.of("");
+
+    /** Holds every run at its entry until the test releases that run (core flow test fixture). */
+    final RunGate gate = new RunGate();
+    final AtomicInteger rejects = new AtomicInteger();
+
+    /** a, b, c — plus {@code gate} (RunGate) and {@code reject} (throws its own IllegalArgumentException: a run's failure, never a refusal). */
+    List<StepFactory> withGate() {
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(gate);
+        all.add(factory("reject", s -> Stage.of(e -> {
+            rejects.incrementAndGet();
+            throw new IllegalArgumentException("rejected by the step itself");
+        })));
+        return all;
+    }
+
+    FlowBuilder gated() {
+        return new FlowBuilder(rt.runtime(), withGate(), List.of(), Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+    }
+
+    static Map<String, Object> step(String type, String name) {
+        return Map.of("type", type, "name", name);
+    }
+
+    /** {@code doc} with these steps and limits ({@code maxInFlightBytes} omitted when null). */
+    static Map<String, Object> shaped(Map<String, Object> doc, List<Map<String, Object>> steps, long maxBodyBytes, long maxInFlight, Long maxInFlightBytes) {
+        Map<String, Object> shaped = new java.util.HashMap<>(doc);
+        shaped.put("steps", steps);
+        Map<String, Object> limits = new java.util.HashMap<>(Map.of("maxBodyBytes", maxBodyBytes, "maxInFlight", maxInFlight));
+        if (maxInFlightBytes != null) limits.put("maxInFlightBytes", maxInFlightBytes);
+        shaped.put("limits", limits);
+        return shaped;
+    }
+
+    Envelope in(String body) { return rt.ingress("f", Headers.empty().with("x", "1"), Buffer.buffer(body)); }
+
+    /** The original run of {@code in} through a, b, c (sync, recorded): its step-2 body is {@code <b>} + the ingress body + {@code </b>}. */
+    Envelope recorded(Envelope in) {
+        return builder().build(FlowDefinition.from(flow("sync", null)), NO_FILES).apply(in);
+    }
+
+    /** The message parked at step 3 (c) of an at-least-once a, b, c run: its parked input is step b's output. */
+    Envelope parkedAtC(Envelope in) {
+        partnerDown.set(true);
+        try {
+            assertEquals(3, assertThrows(ParkedException.class, () -> builder().build(FlowDefinition.from(flow("at-least-once", null)), NO_FILES).apply(in))
+                    .parked().step(), "fixture: parked at c");
+        } finally {
+            partnerDown.set(false);
+        }
+        return in;
+    }
+
+    /** Runs {@code call} on a virtual thread of its own (a replay blocks); its result or failure lands in the returned future. */
+    static java.util.concurrent.CompletableFuture<Envelope> onVirtualThread(java.util.concurrent.Callable<Envelope> call) {
+        java.util.concurrent.CompletableFuture<Envelope> out = new java.util.concurrent.CompletableFuture<>();
+        Thread.ofVirtual().name("replay-caller").start(() -> {
+            try {
+                out.complete(call.call());
+            } catch (Throwable failed) {
+                out.completeExceptionally(failed);
+            }
+        });
+        return out;
+    }
+
+    /** The outcome of {@code f} within 5 s; a refusal or failure is rethrown unwrapped. */
+    static Envelope joined(java.util.concurrent.CompletableFuture<Envelope> f) throws Exception {
+        try {
+            return f.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (java.util.concurrent.ExecutionException e) {
+            if (e.getCause() instanceof Exception x) throw x;
+            throw e;
+        }
+    }
+
+    /** The one run of {@code messageId} at the gate, once it entered. */
+    RunGate.Run atGate(String messageId) {
+        DeliveryTest.until(() -> gate.runsOf(messageId).size() == 1, () -> "the run of " + messageId + " reached the gate: " + gate.runs());
+        return gate.runsOf(messageId).get(0);
+    }
+
+    static ReplayRefusedException refusal(org.junit.jupiter.api.function.Executable call) {
+        return assertThrows(ReplayRefusedException.class, call);
+    }
+
+    List<Integer> stepsOf(String messageId) {
+        return store.timeline(messageId).await().stream().map(Snapshot::step).toList();
+    }
+
+    /**
+     * The overloads with a given id: {@code from(id, n, replayId)} and {@code retry(id, replayId)} run as {@code replayId} — the
+     * envelope, its rows, and a retry that parks again parks under it (the id a 502 names) — and mint nothing; the old forms take
+     * exactly one id from the runtime's generator.
+     */
+    @Test
+    void fromWithAGivenIdRunsAsThatId() {
+        FlowDefinition def = FlowDefinition.from(flow("sync", null));
+        Envelope in = in();
+        recorded(in);
+        Replay replay = builder().replay(def, NO_FILES);
+        long issued = rt.ids().issued();
+
+        Envelope given = replay.from(in.id(), 3, "given-1");
+
+        assertEquals("given-1", given.id(), "the run is the given id");
+        assertEquals(Optional.of(in.id()), given.get(Envelope.REPLAY_OF));
+        assertEquals(List.of(2, 3), stepsOf("given-1"), "its rows are written under the given id");
+        assertEquals(issued, rt.ids().issued(), "a run that was given its id mints none");
+        Envelope minted = replay.from(in.id(), 3);
+        assertEquals(issued + 1, rt.ids().issued(), "the old form takes one id from the generator");
+        assertEquals("m-" + (issued + 1), minted.id(), "and runs as that id");
+
+        FlowDefinition atLeastOnce = FlowDefinition.from(flow("at-least-once", null));
+        Envelope parked = parkedAtC(in());
+        Replay retries = builder().replay(atLeastOnce, NO_FILES);
+        partnerDown.set(true);
+        ParkedException again = assertThrows(ParkedException.class, () -> retries.retry(parked.id(), "given-2"));
+        assertEquals("given-2", again.parked().messageId(), "a retry that parks again parks under the given id");
+        assertTrue(dlq.get("given-2").await().isPresent(), "its row is the given id's");
+        assertTrue(dlq.get(parked.id()).await().isPresent(), "the original row stays");
+        partnerDown.set(false);
+        long before = rt.ids().issued();
+
+        Envelope delivered = retries.retry(parked.id(), "given-3");
+
+        assertEquals("given-3", delivered.id());
+        assertEquals(Optional.of(parked.id()), delivered.get(Envelope.REPLAY_OF));
+        assertEquals(List.of(Replay.REPLAY_INPUT, "c"), store.timeline("given-3").await().stream().map(Snapshot::stepName).toList());
+        assertEquals(Optional.empty(), dlq.get(parked.id()).await(), "the original row is removed once the given id went through");
+        assertEquals(before, rt.ids().issued(), "a retry that was given its id mints none");
+        Envelope parkedAgain = parkedAtC(in());
+        Envelope oldForm = retries.retry(parkedAgain.id());
+        assertEquals("m-" + (before + 2), oldForm.id(), "the old retry form takes one id from the generator (the fixture's ingress took the one before)");
+    }
+
+    /**
+     * Every pre-run refusal is a {@link ReplayRefusedException} — an {@link IllegalArgumentException}, so the asserts above still
+     * hold — naming its {@link ReplayRefusedException.Reason}; every reason has a case here (exact set). The order of the checks is
+     * the admin API's status order: a step out of range beats an unknown message (400 before 404), and while the replay's only
+     * permit is taken the refusals that are no capacity question — unknown, no DLQ row, not recorded, metadata only, beyond the
+     * flow, too large — still name their own reason, never BUSY (404/422 before 429). Nothing runs for a refusal: no step, no row
+     * under the given id. What the run itself throws — an IllegalArgumentException of a step included — is its outcome, never a
+     * refusal. After close, CLOSED.
+     */
+    @Test
+    void everyPreRunRefusalNamesItsReason() throws Exception {
+        Envelope in = in("<in/>");                       // step 2 body: <b><in/></b>, 12 bytes
+        recorded(in);
+        Envelope big = in("<in-big/>");                  // step 2 body: <b><in-big/></b>, 16 bytes
+        recorded(big);
+        Envelope ends = in();
+        builder().build(FlowDefinition.from(flow("sync", Map.of("level", "ends"))), NO_FILES).apply(ends);
+        Envelope meta = in();
+        builder().build(FlowDefinition.from(flow("sync", Map.of("payload", "metadata-only"))), NO_FILES).apply(meta);
+        Envelope parked = parkedAtC(in("<in/>"));        // parked input: 12 bytes, at step 3
+        Envelope parkedBig = parkedAtC(in("<in-big/>")); // parked input: 16 bytes, at step 3
+        Map<String, Object> five = new java.util.HashMap<>(flow("at-least-once", null));
+        five.put("steps", List.of(step("a", "a"), step("a", "a2"), step("a", "a3"), step("a", "a4"), step("c", "c")));   // the body stays the 5-byte ingress
+        Envelope parkedAtFive = in();
+        partnerDown.set(true);
+        assertEquals(5, assertThrows(ParkedException.class, () -> builder().build(FlowDefinition.from(five), NO_FILES).apply(parkedAtFive)).parked().step(),
+                "fixture: parked at step 5");
+        partnerDown.set(false);
+        Envelope rejected = in();
+        recorded(rejected);
+
+        // the replay: a, b, gate, c — one request and 12 bytes in flight at most
+        FlowDefinition def = FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), step("b", "b"), RunGate.STEP, step("c", "c")), 12, 1, 12L));
+        Replay replay = gated().replay(def, NO_FILES);
+        Map<ReplayRefusedException.Reason, ReplayRefusedException> seen = new java.util.EnumMap<>(ReplayRefusedException.Reason.class);
+        List<Integer> callsBefore = List.of(aCalls.get(), bCalls.get(), cCalls.get());
+
+        seen.put(ReplayRefusedException.Reason.STEP_OUT_OF_RANGE, refusal(() -> replay.from(in.id(), 0, "refused-0")));
+        assertEquals(ReplayRefusedException.Reason.STEP_OUT_OF_RANGE, refusal(() -> replay.from(in.id(), 5, "refused-5")).reason(), "the flow has 4 steps");
+        assertEquals(ReplayRefusedException.Reason.STEP_OUT_OF_RANGE, refusal(() -> replay.from("nobody", 0, "refused-nobody-0")).reason(),
+                "a step out of range is refused before the message is looked up (400 before 404)");
+
+        java.util.concurrent.CompletableFuture<Envelope> holding = onVirtualThread(() -> replay.from(in.id(), 3, "holding"));
+        RunGate.Run held = atGate("holding");             // the only permit: 1 request, 12 bytes
+        try {
+            seen.put(ReplayRefusedException.Reason.UNKNOWN_MESSAGE, refusal(() -> replay.from("nobody", 2, "refused-unknown")));
+            seen.put(ReplayRefusedException.Reason.NOT_RECORDED, refusal(() -> replay.from(ends.id(), 3, "refused-ends")));
+            seen.put(ReplayRefusedException.Reason.METADATA_ONLY, refusal(() -> replay.from(meta.id(), 2, "refused-meta")));
+            seen.put(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> replay.from(big.id(), 3, "refused-big")));
+            seen.put(ReplayRefusedException.Reason.NO_DLQ_ROW, refusal(() -> replay.retry("nobody", "refused-no-row")));
+            seen.put(ReplayRefusedException.Reason.STEP_BEYOND_FLOW, refusal(() -> replay.retry(parkedAtFive.id(), "refused-beyond")));
+            assertEquals(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> replay.retry(parkedBig.id(), "refused-big-retry")).reason(),
+                    "a parked body above the byte budget");
+            seen.put(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.from(big.id(), 1, "refused-busy")));   // 9 bytes: it fits, no permit is free
+            assertEquals(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.retry(parked.id(), "refused-busy-retry")).reason(), "a retry takes a permit too");
+        } finally {
+            held.release();
+        }
+        assertEquals("holding", joined(holding).id(), "fixture: the holding run went through");
+
+        Replay rejecting = gated().replay(FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), step("b", "b"), step("reject", "r")), 4096, 1, null)), NO_FILES);
+        IllegalArgumentException runFailure = assertThrows(IllegalArgumentException.class, () -> rejecting.from(rejected.id(), 3, "rejected-run"));
+        assertFalse(runFailure instanceof ReplayRefusedException, "a step's own IllegalArgumentException is the run's outcome, never a refusal: " + runFailure);
+        assertEquals("rejected by the step itself", runFailure.getMessage());
+        assertEquals(1, rejects.get(), "the run ran");
+
+        replay.close().await(5, java.util.concurrent.TimeUnit.SECONDS);
+        seen.put(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.from(in.id(), 3, "refused-closed")));
+        assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.retry(parked.id(), "refused-closed-retry")).reason(), "a closed replay retries nothing");
+
+        seen.forEach((reason, refused) -> {
+            assertEquals(reason, refused.reason(), "refused for " + reason + ": " + refused.getMessage());
+            IllegalArgumentException asIae = refused;   // the existing IllegalArgumentException asserts hold
+            assertTrue(asIae.getMessage() != null && !asIae.getMessage().isBlank(), reason + " says why: " + asIae);
+        });
+        assertEquals(java.util.EnumSet.allOf(ReplayRefusedException.Reason.class), seen.keySet(), "every reason has its case");
+        assertEquals(List.of(callsBefore.get(0), callsBefore.get(1), callsBefore.get(2) + 1), List.of(aCalls.get(), bCalls.get(), cCalls.get()),
+                "no step ran for a refusal: only the holding run's step c");
+        assertEquals(List.of("holding"), gate.runs().stream().map(r -> r.messageId).toList(), "only the holding run reached the gate");
+        for (String id : List.of("refused-0", "refused-5", "refused-nobody-0", "refused-unknown", "refused-ends", "refused-meta", "refused-big", "refused-no-row",
+                "refused-beyond", "refused-big-retry", "refused-busy", "refused-busy-retry", "refused-closed", "refused-closed-retry")) {
+            assertEquals(List.of(), stepsOf(id), id + ": no row for a refused run");
+            assertEquals(Optional.empty(), dlq.get(id).await(), id + ": no DLQ row for a refused run");
+        }
+        assertTrue(dlq.get(parked.id()).await().isPresent() && dlq.get(parkedBig.id()).await().isPresent() && dlq.get(parkedAtFive.id()).await().isPresent(),
+                "a refused retry keeps its row");
+    }
+
+    /**
+     * A replay takes a permit of the flow's admission after its pre-checks and gives it back only once its trail closed — not when
+     * its pipeline returned: while the run's step body persist is held (the pipeline has ended, step c ran) a second replay of a
+     * one-permit flow is BUSY; once the persist is released the first returns and the next is admitted. A run that throws holds its
+     * permit until its trail closed too, then gives it back.
+     */
+    @Test
+    void aReplayHoldsAFlowPermitUntilItsTrailClosed() throws Exception {
+        HoldingBlobStore held = new HoldingBlobStore(new io.flottila.testkit.InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT));
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("bh", s -> Stage.of(e -> { bCalls.incrementAndGet(); return e.next(held.write(e.nextKey(), Buffer.buffer("<bh>" + e.body().whole() + "</bh>"), 4096).await()); })));
+        FlowDefinition def = FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), step("bh", "b"), step("c", "c")), 4096, 1, null));
+        io.flottila.api.Runtime fake = rt.runtime();
+        FlowBuilder b = new FlowBuilder(new io.flottila.api.Runtime(fake.clock(), fake.timer(), fake.ids(), held, fake.hasher(), fake.components()), all, List.of(),
+                Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+        String id = rt.ids().next();
+        Envelope in = Envelope.ingress(id, "f", Headers.empty(), held.write(BlobKey.body(id, 0), Buffer.buffer("<in/>"), 4096).await());
+        b.build(def, NO_FILES).apply(in);
+        DeliveryTest.until(() -> store.timeline(id).await().size() == 4, () -> "fixture: the original run's rows");
+        Replay replay = b.replay(def, NO_FILES);
+        int cBefore = cCalls.get();
+        held.hold();
+
+        java.util.concurrent.CompletableFuture<Envelope> first = onVirtualThread(() -> replay.from(id, 2, "first"));
+        DeliveryTest.until(() -> held.held() == 1 && cCalls.get() == cBefore + 1, () -> "the first run's pipeline ended and its trail waits for its persist: held " + held.held());
+
+        assertFalse(first.isDone(), "the first replay returns only once its trail closed");
+        assertEquals(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.from(id, 3, "second")).reason(),
+                "the pipeline returned, the trail did not close: the permit is still taken");
+        assertEquals(List.of(), stepsOf("second"));
+
+        held.release();
+        assertEquals("first", joined(first).id());
+        assertEquals("third", replay.from(id, 3, "third").id(), "the trail closed: the permit is back");
+
+        partnerDown.set(true);
+        held.hold();
+        java.util.concurrent.CompletableFuture<Envelope> failing = onVirtualThread(() -> replay.from(id, 2, "failing"));
+        DeliveryTest.until(() -> held.held() == 1, () -> "the failed run's trail waits for its step body's persist");
+        partnerDown.set(false);
+        assertEquals(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.from(id, 3, "behind-the-failure")).reason(),
+                "a failed run holds its permit until its trail closed too");
+        held.release();
+        IllegalStateException down = assertThrows(IllegalStateException.class, () -> joined(failing));
+        assertEquals("partner down", down.getMessage(), "the run's own failure is its outcome");
+        assertEquals("after-the-failure", replay.from(id, 3, "after-the-failure").id(), "the failed run gave its permit back");
+    }
+
+    /**
+     * No room: a replay whose permit the flow's admission cannot give now is BUSY and runs nothing — no step, no row under its id —
+     * counted in requests and in bytes, the input body's size: with 12 of 20 bytes taken by a held run, a second 12-byte input is
+     * BUSY with a request still free, a 5-byte one fits; with both requests taken, a 1-byte input is BUSY. Once the held runs
+     * end, the refused replay runs.
+     */
+    @Test
+    void noRoomIsBusyAndRunsNothing() throws Exception {
+        Envelope in = in("<in/>");     // ingress 5 bytes; step-2 body <b><in/></b>, 12 bytes
+        recorded(in);
+        Envelope tiny = in("x");       // ingress 1 byte
+        recorded(tiny);
+        FlowDefinition def = FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), step("b", "b"), RunGate.STEP, step("c", "c")), 16, 2, 20L));
+        Replay replay = gated().replay(def, NO_FILES);
+
+        java.util.concurrent.CompletableFuture<Envelope> twelve = onVirtualThread(() -> replay.from(in.id(), 3, "twelve"));
+        RunGate.Run first = atGate("twelve");
+        List<Integer> calls = List.of(aCalls.get(), bCalls.get(), cCalls.get());
+
+        assertEquals(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.from(in.id(), 3, "bytes")).reason(),
+                "12 + 12 bytes exceed the 20-byte budget though a request is free");
+        assertEquals(List.of(aCalls.get(), bCalls.get(), cCalls.get()), calls, "the refused replay ran no step");
+        assertEquals(List.of(), stepsOf("bytes"), "and wrote no row");
+
+        java.util.concurrent.CompletableFuture<Envelope> five = onVirtualThread(() -> replay.from(in.id(), 1, "five"));
+        RunGate.Run second = atGate("five");   // 12 + 5 bytes, both requests
+        List<Integer> callsTwo = List.of(aCalls.get(), bCalls.get(), cCalls.get());
+
+        assertEquals(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.from(tiny.id(), 1, "requests")).reason(),
+                "12 + 5 + 1 bytes fit, but both requests are taken");
+        assertEquals(List.of(aCalls.get(), bCalls.get(), cCalls.get()), callsTwo, "the refused replay ran no step");
+        assertEquals(List.of(), stepsOf("requests"));
+        assertEquals(2, gate.entered(), "only the admitted runs reached the gate");
+
+        first.release();
+        second.release();
+        assertEquals("twelve", joined(twelve).id());
+        assertEquals("five", joined(five).id());
+        gate.open();
+        assertEquals("bytes", replay.from(in.id(), 3, "bytes").id(), "the permits are back: the refused replay runs");
+        assertEquals(List.of(2, 3, 4), stepsOf("bytes"));
+    }
+
+    /**
+     * {@code close()} refuses new runs at once (from and retry: CLOSED) and closes the replay's own producers once the runs in
+     * flight ended — after the last of them, never under one (a closed producer refuses the send behind the gate) — each once; a
+     * producer of another build (a delivery of the same builder) stays open. A second close closes nothing again; an idle replay
+     * closes its producers at once.
+     */
+    @Test
+    void closeRefusesNewRunsAndClosesProducersAfterTheLastRun() throws Exception {
+        ClosingPartner partner = new ClosingPartner();
+        rt.withComponent(partner);
+        Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", java.net.URI.create("mock://partner"), Map.of()));
+        FlowBuilder b = new FlowBuilder(rt.runtime(), withGate(), List.of(), endpoints).recording(store, () -> 0).dlq(dlq);
+        Envelope in = in();
+        recorded(in);
+        Envelope parked = parkedAtC(in());
+        FlowDefinition def = FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), RunGate.STEP, Map.of("type", "to", "name", "send", "endpoint", "partner")),
+                4096, 4, null));
+        Replay replay = b.replay(def, NO_FILES);
+        assertEquals(1, partner.built().size(), "fixture: the replay's own producer");
+        ClosingPartner.Out own = partner.built().get(0);
+        b.delivery(def, NO_FILES);
+        assertEquals(2, partner.built().size(), "fixture: the delivery's producer");
+        ClosingPartner.Out other = partner.built().get(1);
+
+        java.util.concurrent.CompletableFuture<Envelope> one = onVirtualThread(() -> replay.from(in.id(), 2, "one"));
+        java.util.concurrent.CompletableFuture<Envelope> two = onVirtualThread(() -> replay.from(in.id(), 2, "two"));
+        RunGate.Run runOne = atGate("one");
+        RunGate.Run runTwo = atGate("two");
+
+        io.vertx.core.Future<Void> closed = replay.close();
+
+        assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.from(in.id(), 2, "late")).reason(), "no new run once close was called");
+        assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.retry(parked.id(), "late-retry")).reason(), "no new retry either");
+        assertEquals(2, gate.entered(), "the refused runs never started");
+        assertEquals(List.of(), stepsOf("late"));
+        assertFalse(closed.isComplete(), "two runs are in flight");
+        assertEquals(0, own.closes(), "the producer stays open under the runs in flight");
+
+        runOne.release();
+        assertEquals("one", joined(one).id(), "the first run sent through the open producer");
+        assertFalse(closed.isComplete(), "one run is still in flight");
+        assertEquals(0, own.closes(), "not closed after the first run: the second is still in flight");
+
+        runTwo.release();
+        assertEquals("two", joined(two).id(), "the last run sent through the open producer");
+        closed.await(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals(1, own.closes(), "closed once the last run ended");
+        assertEquals(List.of("one", "two"), partner.partner().sent().stream().map(Envelope::id).toList(), "both runs reached the partner");
+        assertEquals(0, other.closes(), "the delivery's producer is not the replay's to close");
+
+        replay.close().await(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals(1, own.closes(), "a second close closes nothing again");
+        assertEquals(List.of(), partner.closedTwice());
+
+        Replay idle = b.replay(def, NO_FILES);
+        ClosingPartner.Out idleOwn = partner.built().get(2);
+        idle.close().await(5, java.util.concurrent.TimeUnit.SECONDS);
+        assertEquals(1, idleOwn.closes(), "an idle replay closes its producers at once");
+        assertEquals(0, other.closes());
+    }
 }

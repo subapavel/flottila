@@ -67,7 +67,7 @@ class DeploymentsProducersEdgeTest {
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
         assertTrue(refused.problems().stream().anyMatch(s -> s.contains("no door today")), "fixture: audit's consumer was refused: " + refused.problems());
-        assertEquals(3, doors.producers().size(), "fixture: orders', audit's worker's and ping's producer: " + doors.producers());
+        assertEquals(6, doors.producers().size(), "fixture: orders', audit's worker's and ping's producer, and each flow's replay's (D-067): " + doors.producers());
         assertEquals(List.of(), doors.openProducers(), "the refused flow's worker producer is closed too: " + doors.producers());
         assertEquals(List.of(), doors.producersClosedTwice(), "each once: " + doors.producers());
     }
@@ -78,7 +78,7 @@ class DeploymentsProducersEdgeTest {
         modes.put("audit", "at-least-once");
         modes.put("orders", "sync");
         OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), flows("shop", modes).zipTo(archives)));
-        assertEquals(2, doors.producers().size(), "fixture: two producers: " + doors.producers());
+        assertEquals(4, doors.producers().size(), "fixture: four producers, each flow's and its replay's (D-067): " + doors.producers());
         doors.failStop("shop/orders", "socket stuck");
 
         OnVirtualThread.Call<Void> closing = OnVirtualThread.start(deployments::close);

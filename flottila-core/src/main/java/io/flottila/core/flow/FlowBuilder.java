@@ -71,7 +71,7 @@ import java.util.function.UnaryOperator;
  * scheme, language or expression is a build error naming the step; nothing is deferred to the first message. So is a
  * step that needs the whole body ({@link BodyKind#WHOLE}) on a flow whose max body exceeds the store's tree limit
  * without a {@code split} before it (ARCHITECTURE §5). A build that fails closes the producers it created before the failure
- * leaves; those of a {@link Delivery} or {@link FlowWorker} built are theirs to close ({@code close()}, FIX-30).
+ * leaves; those of a {@link Delivery}, {@link FlowWorker} or {@link Replay} built are theirs to close ({@code close()}, FIX-30).
  *
  * @since 0.1
  */
@@ -158,8 +158,7 @@ public final class FlowBuilder {
      */
     public Delivery delivery(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
-        long requests = inFlightRequests(flow);
-        Admission admission = new Admission(requests, flow.maxInFlightBytes().orElseGet(() -> defaultInFlightBytes(flow, requests)));
+        Admission admission = admission(flow);
         return switch (flow.deliveryMode()) {
             case "sync" -> {
                 Built built = built(flow, baseDir);
@@ -219,6 +218,12 @@ public final class FlowBuilder {
         return Map.copyOf(all);
     }
 
+    /** A new {@link Admission} from the flow's limits (see {@link #delivery}); never unlimited. */
+    private static Admission admission(FlowDefinition flow) {
+        long requests = inFlightRequests(flow);
+        return new Admission(requests, flow.maxInFlightBytes().orElseGet(() -> defaultInFlightBytes(flow, requests)));
+    }
+
     /** The default byte budget: {@code requests} bodies of {@code maxBodyBytes}; one that does not fit a {@code long} is a configuration error. */
     private static long defaultInFlightBytes(FlowDefinition flow, long requests) {
         try {
@@ -247,11 +252,26 @@ public final class FlowBuilder {
     }
 
     /**
-     * The flow's replay; needs the recorded snapshots ({@link #recording}) and, for DLQ retries, the {@link #dlq}. Built once,
-     * here: a replay slices the stages built now and holds nothing of this builder or the {@link Runtime}.
+     * The flow's replay with an {@link Admission} of its own, built from the flow's limits as a {@link #delivery}'s is — no
+     * unbounded path; see {@link #replay(FlowDefinition, Path, Delivery)}.
      */
     public Replay replay(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
+        return replay(flow, baseDir, admission(flow));
+    }
+
+    /**
+     * The flow's replay, its runs admitted by {@code delivery}'s {@link Admission}: a replay in flight holds one of the permits
+     * the consumer's deliveries take, and the other way round (D-067). Needs the recorded snapshots ({@link #recording}) and, for
+     * DLQ retries, the {@link #dlq}. Built once, here: a replay slices the stages built now and holds nothing of this builder or
+     * the {@link Runtime}; the producers its steps send through are its own, closed by {@link Replay#close()}.
+     */
+    public Replay replay(FlowDefinition flow, Path baseDir, Delivery delivery) {
+        Objects.requireNonNull(flow, "flow");
+        return replay(flow, baseDir, delivery.admission());
+    }
+
+    private Replay replay(FlowDefinition flow, Path baseDir, Admission admission) {
         if (store == null) throw new IllegalStateException("replay needs the recorded snapshots: call recording(store, meter) first");
         Built built = built(flow, baseDir);
         List<Stage> steps = built.steps();
@@ -262,7 +282,7 @@ public final class FlowBuilder {
             tail.add(recorder.start(policy, Replay.REPLAY_INPUT));
             tail.addAll(steps.subList(from - 1, steps.size()));
             return Pipeline.of(tail);
-        }, store, dlq, runtime.blobs(), runtime.ids());
+        }, store, dlq, runtime.blobs(), runtime.ids(), admission, built.producers());
     }
 
     /**

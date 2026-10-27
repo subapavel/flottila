@@ -1,10 +1,16 @@
 package io.flottila.runtime.admin;
 
 import io.flottila.api.BlobStore;
+import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
 import io.flottila.api.Health;
+import io.flottila.api.IdGenerator;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
+import io.flottila.core.dlq.ParkedException;
+import io.flottila.core.flow.Replay;
+import io.flottila.core.flow.ReplayRefusedException;
+import io.flottila.core.flow.RowNotRemovedException;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Page;
@@ -45,7 +51,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -80,6 +88,19 @@ import java.util.function.Supplier;
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
  * {@code POST /admin/work/{seq}/release} answers 200 {@code {seq}}, 404 for a seq unknown or not held, 400 for a seq that is
  * not a long. Without one these routes do not exist (404).
+ *
+ * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays and retries:
+ * {@code POST /admin/messages/{id}/replay?from=n} runs steps {@code n..end} of the message's flow as deployed now, and
+ * {@code POST /admin/dlq/{id}/retry} the parked step, each as a new message whose id the generator mints, through the flow's
+ * {@link Replay} on the route's virtual thread. 200 {@code {id, replayOf, from, outcome:"COMPLETE"}}; a run that failed is 502
+ * with the same fields, {@code outcome} PARKED or FAILED, and {@code error}. Refusals, nothing run: 400 ({@code from} missing, not
+ * an int, outside 1..steps) → 404 (no timeline, no DLQ row) → 409 (the flow does not run here; a retry of the id already runs on
+ * this node) → 422 (step n−1 unrecorded or metadata-only, the parked step beyond the flow, a body above the flow's byte budget) →
+ * 429 with {@code retry-after: 1} (no permit of the flow's admission now). A retry that went through but whose row could not be
+ * removed is 500 naming the new message.
+ *
+ * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
+ * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
  *
  * @since 0.1
  */
@@ -147,6 +168,9 @@ public final class AdminServer {
     private final HealthProbe health;
     private final Optional<Deployments> deployments;
     private final Optional<WorkQueue> work;
+    private final Optional<IdGenerator> ids;
+    /** The ids whose DLQ retry runs on this node now: a second retry of one is 409 (node-local, D-067). */
+    private final Set<String> retrying = ConcurrentHashMap.newKeySet();
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
 
     /** The read API only: no deploy routes. */
@@ -156,17 +180,26 @@ public final class AdminServer {
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.empty());
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty());
     }
 
-    /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}. */
+    /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}; no replay routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work));
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty());
+    }
+
+    /**
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes and the replay and
+     * retry routes, whose new messages take their ids from {@code ids}.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, IdGenerator ids) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids));
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                        Optional<WorkQueue> work) {
+                        Optional<WorkQueue> work, Optional<IdGenerator> ids) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -174,6 +207,7 @@ public final class AdminServer {
         this.health = Objects.requireNonNull(health, "health");
         this.deployments = Objects.requireNonNull(deployments, "deployments");
         this.work = work;
+        this.ids = ids;
     }
 
     /** Deploys the listening verticle; completes with the bound port (the actual one when configured 0). */
@@ -201,6 +235,7 @@ public final class AdminServer {
         public Future<?> start() {
             Router router = Router.router(vertx);
             router.get("/health").handler(offload(AdminServer.this::health));
+            router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check (D-069)
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
             router.get("/admin/messages/:id").handler(offload(AdminServer.this::timeline));
@@ -210,6 +245,10 @@ public final class AdminServer {
                 router.put("/admin/packages/:name").handler(upload(d));
                 router.get("/admin/flows").handler(offload(c -> flows(d)));
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
+                ids.ifPresent(minted -> {
+                    router.post("/admin/messages/:id/replay").handler(offload(c -> replay(c, d, minted)));
+                    router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, minted)));
+                });
             });
             work.ifPresent(q -> {
                 router.get("/admin/work/held").handler(offload(c -> held(c, q)));
@@ -345,6 +384,20 @@ public final class AdminServer {
         };
     }
 
+    /**
+     * Lets the request on unless a browser sent it (D-069): an {@code Origin} header, whatever its value, or a {@code Sec-Fetch-Site}
+     * other than {@code none} (a typed URL) is 403 {@code {error}}. The CLI and curl send neither.
+     */
+    private static void browserGuard(RoutingContext ctx) {
+        HttpServerRequest req = ctx.request();
+        String site = req.getHeader("Sec-Fetch-Site");
+        if (req.getHeader(HttpHeaders.ORIGIN) == null && (site == null || site.equals("none"))) {
+            ctx.next();
+        } else {
+            answer(ctx.response(), Json.of(403, error("the admin API does not answer a browser: a request with Origin or Sec-Fetch-Site other than none is refused")));
+        }
+    }
+
     /** A request the API refuses: a 400 naming the reason. Only a bad parameter becomes one, never a store's other failure. */
     private static final class Refused extends RuntimeException {
         Refused(String reason) {
@@ -422,6 +475,93 @@ public final class AdminServer {
         long seq = refusable(() -> Long.parseLong(ctx.pathParam("seq")));
         if (!work.release(seq).await()) return Json.of(404, error("no held work item " + seq));
         return Json.of(200, new JsonObject().put("seq", seq));
+    }
+
+    /**
+     * {@code POST /admin/messages/{id}/replay?from=n}: a {@code from} that is not an int of at least 1 is 400 before the message is
+     * looked up; then 404 without a timeline, 409 when the message's flow does not run here; then the run ({@link #ran}).
+     */
+    private Reply replay(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
+        String id = ctx.pathParam("id");
+        int from = from(ctx);
+        List<Snapshot> timeline = messages.timeline(id).await();
+        if (timeline.isEmpty()) return Json.of(404, error("no message " + id + " recorded"));
+        String flow = timeline.getFirst().flow();
+        Optional<Replay> replay = deployments.replay(flow);
+        if (replay.isEmpty()) return notRunning(flow);
+        String replayId = ids.next();
+        return ran(replayId, id, from, () -> replay.get().from(id, from, replayId));
+    }
+
+    /**
+     * {@code POST /admin/dlq/{id}/retry}: 404 without a DLQ row, 409 when its flow does not run here or a retry of the id runs on
+     * this node already; then the run of the parked step ({@link #ran}). A retry that went through but whose row stays is 500.
+     */
+    private Reply retry(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
+        String id = ctx.pathParam("id");
+        Optional<Parked> row = dlq.get(id).await();
+        if (row.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
+        Optional<Replay> replay = deployments.replay(row.get().flow());
+        if (replay.isEmpty()) return notRunning(row.get().flow());
+        if (!retrying.add(id)) return Json.of(409, error("a retry of message " + id + " runs on this node already"));
+        try {
+            String replayId = ids.next();
+            return ran(replayId, id, row.get().step(), () -> replay.get().retry(id, replayId));
+        } finally {
+            retrying.remove(id);
+        }
+    }
+
+    /** The {@code from} parameter: an int of at least 1, else (missing, not an int) a 400. */
+    private static int from(RoutingContext ctx) {
+        String raw = ctx.request().getParam("from");
+        int from;
+        try {
+            from = Integer.parseInt(raw);
+        } catch (NumberFormatException notAnInt) {   // missing (null) or not an int
+            from = 0;
+        }
+        if (from < 1) throw new Refused("from must be a step number of at least 1, was " + (raw == null ? "missing" : "'" + raw + "'"));
+        return from;
+    }
+
+    /**
+     * The run {@code replayId} of {@code replayOf} from step {@code from}, on this virtual thread: 200 COMPLETE; a refusal by its
+     * reason; a retry that went through but whose row stays, 500 naming {@code replayId}; else 502 PARKED (the run parked again)
+     * or FAILED with the run's error — a checked one thrown sneakily by a step's await included. An Error is the caller's (500).
+     */
+    private static Reply ran(String replayId, String replayOf, int from, Supplier<Envelope> run) {
+        JsonObject answer = new JsonObject().put("id", replayId).put("replayOf", replayOf).put("from", from);
+        try {
+            run.get();
+            return Json.of(200, answer.put("outcome", "COMPLETE"));
+        } catch (ReplayRefusedException refused) {
+            return refusal(refused);
+        } catch (RowNotRemovedException kept) {
+            return Json.of(500, error(kept.getMessage()));
+        } catch (Exception failed) {
+            String outcome = failed instanceof ParkedException ? "PARKED" : "FAILED";
+            return Json.of(502, answer.put("outcome", outcome).put("error", Objects.toString(failed.getMessage(), failed.toString())));
+        }
+    }
+
+    /** A replay refusal by its reason: 400, 404, 409, 422, or 429 with {@code retry-after: 1}. */
+    private static Reply refusal(ReplayRefusedException refused) {
+        String why = refused.getMessage();
+        return switch (refused.reason()) {
+            case STEP_OUT_OF_RANGE -> Json.of(400, error("bad request: " + why));
+            case UNKNOWN_MESSAGE, NO_DLQ_ROW -> Json.of(404, error(why));
+            case CLOSED -> Json.of(409, error(why));
+            case NOT_RECORDED, METADATA_ONLY, STEP_BEYOND_FLOW, TOO_LARGE -> Json.of(422, error(why));
+            case BUSY -> {
+                Json busy = Json.of(429, error(why));
+                yield res -> busy.send(res.putHeader("retry-after", "1"));
+            }
+        };
+    }
+
+    private static Reply notRunning(String flow) {
+        return Json.of(409, error("flow " + flow + " does not run on this node"));
     }
 
     private static Optional<String> after(RoutingContext ctx) {

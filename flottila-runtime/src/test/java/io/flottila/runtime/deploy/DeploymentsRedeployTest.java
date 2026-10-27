@@ -378,7 +378,7 @@ class DeploymentsRedeployTest {
         List<DeployedFlow> flowsBefore = deployments.flows();
         List<DeployedPackage> packagesBefore = deployments.packages();
         List<Doors.Out> v1Producers = doors.producers();
-        assertEquals(3, v1Producers.size(), "fixture: v1 opened a producer per flow: " + v1Producers);
+        assertEquals(6, v1Producers.size(), "fixture: v1 opened a producer per flow and one per its replay (D-067): " + v1Producers);
         PackageDraft v2 = changed(shop(), "audit", "v2");
         v2.manifest().put("version", "2.0.0");
         List<String> words = switch (why) {
@@ -491,8 +491,11 @@ class DeploymentsRedeployTest {
         Doors.Out ordersV2 = producerOf("shop/orders");
         Doors.Out auditV2 = producerOf("shop/audit");
         assertTrue(ordersV2.ordinal() > built && auditV2.ordinal() > built, "the swapped flows send through v2's producers: " + doors.producers());
-        assertEquals(Set.of(pingV1, ordersV2, auditV2), Set.copyOf(doors.openProducers()),
-                "open: ping's v1 producer and the swapped flows' v2 ones; v2's build of the unchanged ping was closed: " + doors.producers());
+        List<Doors.Out> open = doors.openProducers();
+        assertTrue(open.containsAll(Set.of(pingV1, ordersV2, auditV2)), "open: ping's v1 producer and the swapped flows' v2 ones: " + doors.producers());
+        assertEquals(List.of(2L, 4L), List.of(open.stream().filter(o -> o.ordinal() <= built).count(), open.stream().filter(o -> o.ordinal() > built).count()),
+                "open: ping's v1 producers and the swapped flows' v2 ones, each flow's with its replay's (D-067); v2's build of the unchanged ping was closed: "
+                        + doors.producers());
         assertNothingClosedTwice();
     }
 
@@ -619,6 +622,7 @@ class DeploymentsRedeployTest {
         Doors.Out auditV1 = producerOf("shop/audit");
         Doors.Out pingV1 = producerOf("shop/ping");
         until(() -> queue.size() == 0, "fixture: audit's message completed");
+        int v1Built = doors.producers().size();
         Doors.Door pingDoor = doors.door("shop/ping");
         Doors.Door auditDoor = doors.door("shop/audit");
         Map<String, DeployedFlow> before = byId(deployments.flows());
@@ -657,8 +661,11 @@ class DeploymentsRedeployTest {
         assertInstanceOf(Ack.Accepted.class, within(alo.answer(), "audit's answer"));
         assertEquals(auditV1, producerOf(alo), "audit's v1 worker runs it");
         until(() -> queue.size() == 0, "audit's message completed");
-        assertEquals(Set.of(pingV1, auditV1, ordersV2), Set.copyOf(doors.openProducers()),
-                "open: the unchanged flows' v1 producers and orders' v2 one; v2's build of the unchanged flows was closed: " + doors.producers());
+        List<Doors.Out> open = doors.openProducers();
+        assertTrue(open.containsAll(Set.of(pingV1, auditV1, ordersV2)), "open: the unchanged flows' v1 producers and orders' v2 one: " + doors.producers());
+        assertEquals(List.of(4L, 2L), List.of(open.stream().filter(o -> o.ordinal() <= v1Built).count(), open.stream().filter(o -> o.ordinal() > v1Built).count()),
+                "open: the unchanged flows' v1 producers and orders' v2 one, each flow's with its replay's (D-067); v2's build of the unchanged flows was closed: "
+                        + doors.producers());
         assertEquals(1, ordersV1.closes());
         assertNothingClosedTwice();
 

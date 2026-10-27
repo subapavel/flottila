@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -308,5 +309,128 @@ class FlowBuilderTest {
 
         assertEquals(2, sync.size(), "a sink replaced by a later reads(...) gets nothing more: " + sync);
         assertEquals(2, atMostOnce.size(), "a sink replaced by a later reads(...) gets nothing more: " + atMostOnce);
+    }
+
+    // --- P1-09c2 (D-067): a replay takes its permit from the flow's admission
+
+    /** {@code mark a} (keeps the body), then the {@link RunGate}: a sync flow with {@code maxInFlight} requests and {@code maxInFlightBytes}. */
+    static FlowDefinition gatedFlow(long maxInFlight, long maxInFlightBytes) {
+        Map<String, Object> doc = new java.util.HashMap<>(flow(List.of(Map.of("type", "mark", "name", "a"), RunGate.STEP)));
+        doc.put("limits", Map.of("maxBodyBytes", Math.min(4096, maxInFlightBytes), "maxInFlight", maxInFlight, "maxInFlightBytes", maxInFlightBytes));
+        return FlowDefinition.from(doc);
+    }
+
+    /** The originals run through {@code mark a, mark b} without a gate: their step-1 row is what a replay from step 2 starts on. */
+    static FlowDefinition plainFlow() {
+        return FlowDefinition.from(flow(List.of(Map.of("type", "mark", "name", "a"), Map.of("type", "mark", "name", "b"))));
+    }
+
+    static StepFactory mark() {
+        return factory("mark", s -> Stage.of(e -> e.withHeader("seen-" + s.name(), "yes")));
+    }
+
+    /** {@code d} applied on a virtual thread of its own, its answer within 5 s. */
+    static Ack answered(Delivery d, Envelope in) throws Exception {
+        return DeliveryTest.applyOnVirtualThread(d, in).get(5, TimeUnit.SECONDS).await(5, TimeUnit.SECONDS);
+    }
+
+    static RunGate.Run atGate(RunGate gate, String messageId) {
+        DeliveryTest.until(() -> gate.runsOf(messageId).size() == 1, () -> "the run of " + messageId + " reached the gate: " + gate.runs());
+        return gate.runsOf(messageId).get(0);
+    }
+
+    /**
+     * {@code replay(flow, baseDir, delivery)} shares the delivery's {@link io.flottila.core.admission.Admission}: with one request in
+     * flight allowed, a replay held at the gate makes the consumer's next delivery a retryable Nack before anything of it runs;
+     * once the replay returned, the next delivery is admitted. Both ways: a delivery held in flight makes the replay BUSY.
+     */
+    @Test
+    void aReplayInFlightMakesTheConsumersNextDeliveryARetryableNack() throws Exception {
+        RunGate gate = new RunGate();
+        FlowBuilder b = new FlowBuilder(rt.runtime(), List.of(mark(), gate), List.of(), Map.of()).recording(new InMemoryMessageStore(), () -> 0);
+        Envelope original = rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>"));
+        b.build(plainFlow(), NO_FILES).apply(original);
+        FlowDefinition def = gatedFlow(1, 4096);
+        Delivery delivery = b.delivery(def, NO_FILES);
+        Replay replay = b.replay(def, NO_FILES, delivery);
+
+        java.util.concurrent.CompletableFuture<Envelope> replaying = new java.util.concurrent.CompletableFuture<>();
+        Thread.ofVirtual().start(() -> {
+            try {
+                replaying.complete(replay.from(original.id(), 2, "r-1"));
+            } catch (Throwable t) {
+                replaying.completeExceptionally(t);
+            }
+        });
+        RunGate.Run held = atGate(gate, "r-1");
+
+        Envelope next = rt.ingress("f", Headers.empty(), Buffer.buffer("<y/>"));
+        Ack refused = answered(delivery, next);
+
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, refused, "the replay holds the flow's only permit: " + refused);
+        assertTrue(nack.retryable(), "no room is a reason to come back later: " + nack.reason());
+        assertEquals(List.of(), gate.runsOf(next.id()), "nothing of the refused delivery ran");
+
+        held.release();
+        assertEquals("r-1", replaying.get(5, TimeUnit.SECONDS).id());
+        Envelope after = rt.ingress("f", Headers.empty(), Buffer.buffer("<z/>"));
+        java.util.concurrent.CompletableFuture<Future<Ack>> admitted = DeliveryTest.applyOnVirtualThread(delivery, after);
+        RunGate.Run deliveryRun = atGate(gate, after.id());   // admitted: the permit came back with the replay
+
+        ReplayRefusedException busy = assertThrows(ReplayRefusedException.class, () -> replay.from(original.id(), 2, "r-2"),
+                "a delivery in flight holds the permit the replay shares");
+        assertEquals(ReplayRefusedException.Reason.BUSY, busy.reason());
+        deliveryRun.release();
+        assertInstanceOf(Ack.Reply.class, admitted.get(5, TimeUnit.SECONDS).await(5, TimeUnit.SECONDS));
+        assertEquals(List.of("r-1", after.id()), gate.runs().stream().map(r -> r.messageId).toList(), "r-2 never ran");
+    }
+
+    /**
+     * The two-argument {@code replay(flow, baseDir)} has an admission of its own, built from the flow's limits — no unbounded path:
+     * a delivery in flight does not refuse it, and its own runs are bounded in requests (2) and in bytes (16).
+     */
+    @Test
+    void aTwoArgReplayHasAnAdmissionOfItsOwnFromTheFlowsLimits() throws Exception {
+        RunGate gate = new RunGate();
+        FlowBuilder b = new FlowBuilder(rt.runtime(), List.of(mark(), gate), List.of(), Map.of()).recording(new InMemoryMessageStore(), () -> 0);
+        Envelope twelve = rt.ingress("f", Headers.empty(), Buffer.buffer("123456789012"));
+        Envelope one = rt.ingress("f", Headers.empty(), Buffer.buffer("x"));
+        b.build(plainFlow(), NO_FILES).apply(twelve);
+        b.build(plainFlow(), NO_FILES).apply(one);
+        FlowDefinition def = gatedFlow(2, 16);
+        Delivery delivery = b.delivery(def, NO_FILES);
+        Replay own = b.replay(def, NO_FILES);
+        java.util.concurrent.CompletableFuture<Future<Ack>> inFlight = DeliveryTest.applyOnVirtualThread(delivery, rt.ingress("f", Headers.empty(), Buffer.buffer("123456789012")));
+        java.util.concurrent.CompletableFuture<Future<Ack>> inFlight2 = DeliveryTest.applyOnVirtualThread(delivery, rt.ingress("f", Headers.empty(), Buffer.buffer("x")));
+        DeliveryTest.until(() -> gate.entered() == 2, () -> "fixture: both of the delivery's requests are taken: " + gate.runs());
+
+        List<java.util.concurrent.CompletableFuture<Envelope>> runs = new ArrayList<>();
+        for (String id : List.of("own-12", "own-1")) {
+            java.util.concurrent.CompletableFuture<Envelope> run = new java.util.concurrent.CompletableFuture<>();
+            Envelope from = id.equals("own-12") ? twelve : one;
+            Thread.ofVirtual().start(() -> {
+                try {
+                    run.complete(own.from(from.id(), 2, id));
+                } catch (Throwable t) {
+                    run.completeExceptionally(t);
+                }
+            });
+            runs.add(run);
+            atGate(gate, id);   // admitted by its own admission while the delivery's is full
+        }
+
+        assertEquals(ReplayRefusedException.Reason.BUSY, assertThrows(ReplayRefusedException.class, () -> own.from(one.id(), 2, "own-requests")).reason(),
+                "12 + 1 + 1 bytes fit its 16, but its 2 requests are taken: the flow's maxInFlight");
+        gate.runsOf("own-1").get(0).release();
+        assertEquals("own-1", runs.get(1).get(5, TimeUnit.SECONDS).id());
+        assertEquals(ReplayRefusedException.Reason.BUSY, assertThrows(ReplayRefusedException.class, () -> own.from(twelve.id(), 2, "own-bytes")).reason(),
+                "a request is free, but 12 + 12 bytes exceed its 16: the flow's maxInFlightBytes");
+        assertEquals(List.of(), gate.runsOf("own-requests"));
+        assertEquals(List.of(), gate.runsOf("own-bytes"));
+
+        gate.open();
+        assertEquals("own-12", runs.get(0).get(5, TimeUnit.SECONDS).id());
+        assertInstanceOf(Ack.Reply.class, inFlight.get(5, TimeUnit.SECONDS).await(5, TimeUnit.SECONDS));
+        assertInstanceOf(Ack.Reply.class, inFlight2.get(5, TimeUnit.SECONDS).await(5, TimeUnit.SECONDS));
     }
 }
