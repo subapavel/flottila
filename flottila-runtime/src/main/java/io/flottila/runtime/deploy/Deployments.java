@@ -8,6 +8,7 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Expressions;
 import io.flottila.api.Health;
 import io.flottila.api.Runtime;
+import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.Timer;
 import io.flottila.core.dlq.Dlq;
@@ -769,6 +770,7 @@ public final class Deployments {
                 return;
             }
             flows.put(id, def);
+            problems.addAll(optionProblems(id, flow.getJsonArray("steps"), def.steps()));
             feeds.computeIfAbsent(def.fromEndpoint(), endpoint -> new ArrayList<>()).add(id);
             if (outs.contains(def.fromEndpoint())) {
                 problems.add("flow '" + id + "' consumes from endpoint '" + def.fromEndpoint() + "', whose direction is out: a flow's from is an in endpoint");
@@ -803,6 +805,35 @@ public final class Deployments {
         if (!problems.isEmpty()) throw invalid(name, problems);
         if (unanswered != null) throw unanswered;
         return new Checked(schemes, configs, flows, Set.copyOf(leaving));
+    }
+
+    /**
+     * The options of each step whose type a step factory on the node builds — {@link StepConfig#config()} without {@code recording},
+     * i.e. the step without {@code type}, {@code name}, {@code retryable} and {@code recording}, read from {@code entries}, the flow's
+     * {@code steps} as written — judged by that factory's {@code configSchema()} (D-057): a line per problem, {@code flow '<flow>' step
+     * <n> '<name>' (type '<type>') option at '<path>': <message>}, and one line for the step when the schema cannot be used (not JSON,
+     * no object, not a schema).
+     * A type no factory builds is not judged: a built-in one is typed by the flow schema, an unknown one does not build.
+     */
+    private List<String> optionProblems(String flowId, JsonArray entries, List<StepConfig> defs) {
+        List<String> problems = new ArrayList<>();
+        for (StepConfig step : defs) {
+            Optional<StepFactory> factory = steps.stream().filter(f -> f.type().equals(step.type())).findFirst();
+            if (factory.isEmpty()) continue;
+            JsonObject entry = entries.getJsonObject(step.index() - 1);
+            JsonObject options = new JsonObject();
+            step.config().keySet().forEach(key -> options.put(key, entry.getValue(key)));
+            options.remove("recording");   // the platform's key (the recorder reads it), never the factory's option
+            String at = "flow '" + flowId + "' step " + step.index() + " '" + step.name() + "' (type '" + step.type() + "')";
+            try {
+                for (Schemas.Problem p : Schemas.check(factory.get().configSchema(), options).problems()) {
+                    problems.add(at + " option at '" + p.path() + "': " + p.message());
+                }
+            } catch (RuntimeException unusable) {
+                problems.add(at + ": the configSchema() of its step factory is not a usable JSON Schema: " + reason(unusable));
+            }
+        }
+        return problems;
     }
 
     /** The endpoint's {@code config} with {@code environments.<env>.config} laid over it: a key the environment names is replaced whole, never merged. */

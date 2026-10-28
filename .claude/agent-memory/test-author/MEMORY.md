@@ -6,8 +6,7 @@
 - TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose
   getEncoded() waits on a latch) holds the sink thread at its open; a WatchService on the spool message dir
   observes the sink storing bytes. Every handed-over stream not paused by the store gets one handover resume().
-- RecordingComponent.holdNext(n) → CountDownLatch (send recorded at once, answered after countDown, no caller thread
-  waits); awaitSent(n) waits on a latch (10 s bound), awaitSent(n, Duration) with its own bound. Count every hold down
+- RecordingComponent.holdNext(n) → CountDownLatch (recorded at once, answered after countDown, no caller waits); awaitSent(n) waits on a latch (10 s bound), awaitSent(n, Duration) with its own bound. Count every hold down
   in @AfterEach. Vert.x 5 `Future.await(long, TimeUnit)` works on any thread (latch), rethrows the cause.
 - core flow tests without XML: `BuiltInStepsTest.HEADERS` (header expression language, package-visible). Core's
   `flow/HoldingMessageStore` (test tree) holds / releases / fails `record` futures, `throwNext`, `failReads`/`readsOk`, `recorded(stepName)`; `flow/FailingDlq` refuses parks (`failParks`/`parksOk`).
@@ -38,8 +37,7 @@
   or loop exit — a sync point valid whether or not the source stayed paused), `close()` (paused → leaves; unreleased chunk hold → leaves;
   unpaused → runs to its end, so "delivered after" stays deterministic). Test's `sources` list: closed + `latches()` opened in @AfterEach.
   `Attach` and `settled` are package-private (FailureTest D7 reuses them). The sink drains concurrently: a peak assertion needs the key gate shut until the source has stalled.
-- A pause a synchronous source issues inside a resume (same thread, nested) is NOT undone by that resume: a "pause during hand-over"
-  mark must exclude the hand-over thread, else R1/R2/R4/D7 see an extra pause (checked on a scratch reference, FIX-10 r4).
+- A sync source's pause nested inside a resume is NOT undone by it: a "pause during hand-over" mark excludes the hand-over thread (FIX-10 r4).
 - `afterSinkDecision` runs once per polled chunk (not on empty waits): with the Backpressure store (spill at chunk 1, empty
   prefix, 60-byte chunks, mark 100) call n = chunk n polled; the sink decides only at queued < 50, i.e. at even chunks.
 - A "next hold" latch must be consumed before the hold signals `reached`: a test that observes `reached` of hold X and arms the latch afterwards expects the hold after X; signalling first leaves a window where X opens it (FIX-10 r9, R12 1/30 under load, `OwnThreadStream.block()`).
@@ -113,6 +111,8 @@
 - FIX-53: testkit test `ContractRun.failures(suite)` (case → Throwable), `caughtBy`/`caughtExactlyBy` pin the FIRST failing check (kills assertion-removal mutants a later check masks); `BlobStoreContractSelfTest.Defect`; Durable `Variant(rule, Local)` (row-preferring, cached read/open, part-blind); ContractRun also asserts every @Test case started; ComponentContractSelfTest `replyRefused`/`replyStoredUnder`/`replyStoredIn(PartBlindStore)`/`repliedAs`. PIT VoidMethodCall keeps the argument evaluation.
 - WorkQueue implementations in test trees (a new interface method needs each): core RecordingWorkQueue, FlowWorkerLifecycleTest.DeferredRenewals; runtime CountingQueue, DeploymentsRedeployEdgeTest.Faulty, AdminServerWorkTest.RecordingQueue. A scratch jqwik run with cwd flottila-core rewrites the tracked .jqwik-database: `git checkout` it after.
 - P1-09c3a NodeIT `aPutOnAnS3Node...`: a per-case LocalStack 4 (try-with-resources) + S3 client as S3TierIT; a `ci` node takes FLOTTILA_S3_ENDPOINT http + PATH_STYLE true; close the node before LocalStack stops. P1-10b: flottila-bench has testcontainers-localstack (test); bench ITs reuse NodeBenchMainIT's pattern (db name must contain "bench"). Process.exitValue after destroyForcibly on Linux = 137. A 202's id is header x-message-id. The node mints it: a re-sent POST is a new id.
+- P1-09f: runtime test `deploy/OptionSchemaSteps` (`Sheet` type sheet, option `template` only; `Garbled(schema)`); DeploymentsTest `STEPS`, `steps(p, flow, ...)`. flottila-schemas
+  `Package.crossCheck` reads `stylesheet`/`schema`/`endpoint(s)` on EVERY step type (string + file exists): never use them as a test option. `Schemas.check` THROWS on non-JSON/array/`{"required":"x"}`/bad `$ref`; `{"type":7}` just fails every instance.
 - P1-10c: step `type` has no dot; StreamHeapIT child live set ≈ 14.6 MiB under failsafe (12.2 native), passes at -Xmx56m (FIX-65); no built-in STREAM StepFactory; body_hash = sha256 hex[0..16). FIX-66: a fixture method for a not-yet-declared default interface method (no @Override) compiles today: right-reason red in scratch (revert new-API files via git show HEAD:).
   Fixtures: TrailTest/DeliveryTest `FullBacklog` (record → Overloaded, recordWaiting held), PgMessageStoreIT `held(hash, Executable)` plug; DeliveryModesIT plug on the body payloads hash.
 - FIX-67 bench: `NodeBenchMainSettleTest.World` fakes `NodeBenchMain.Probe(landed, snapshotWriteFailures, nanoTime, pause)` (pause advances the clock); Harness built with null vertx/pool/client. `NodeBenchMain.Options` is also constructed by LedgerMain/StreamHeapMain (a new component breaks them). NodeBenchMainIT ~25 s in scratch (`verify -Pit -Dit.test=NodeBenchMainIT -Dtest=none -Djacoco.skip=true`).

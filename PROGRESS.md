@@ -804,3 +804,11 @@ Met with evidence: milestone-1 flow (InvoiceSyncHttpTest, NodeIT), ledger 2000/2
 Deviation: §13 durable ACK — recorded in ISSUE-2 ("Gate review"); the owner's answer lands as a finding.
 Raised: FIX-72 (GATE check 9 wording), FIX-73 (ledger/ACK re-run on current main), FIX-74 (test-removal audit), CONSIDER-3 (bench band).
 Next: ready rows not behind P1-GATE — FIX rows, P1-09f, P1-09g; Phase 2 waits for the owner on ISSUE-2.
+
+## 2026-10-28 — P1-09f deploy validates step options against StepFactory.configSchema — done, review PASS
+Test first: DeploymentsTest invalidPackages [14]-[18], aStepFactoryWhoseConfigSchemaIsNotASchemaIsOneProblemLineNamingTheType ×4, AdminServerDeployTest.aStepOptionOutsideItsSchemaIs422WithItsLine (red: target/P1-09f-red.log); [A] aStepThatSetsRecordingIsNotJudgedByItsFactorysSchema (red: target/P1-09f-red2.log); controls aStepWhoseOptionsMatchItsSchemaDeploys, anUnknownStepTypeIsOnlyItsDoesNotBuildLine.
+Change: runtime Deployments.optionProblems — each step whose type has a factory is checked (options = StepConfig.config minus recording) with Schemas.check; one 422 line per problem `flow '<id>' step <n> '<name>' (type '<t>') option at '<path>': <msg>`; an unusable schema is one line per step.
+Checks: verify -pl flottila-runtime -am -Pit VERIFIED_PASS (target/P1-09f-verify2.log, 1301 surefire / 185 failsafe); ArchUnit green (target/P1-09f-archunit2.log); coverage no decrease (runtime 99.6/99.7); mutants A-F killed.
+Review: PASS r1. Raised FIX-75 (component configSchema unguarded at Deployments:749).
+D-054 data: class B (test-author ×2, implementer ×1 + follow-up, reviewer ×1); review rounds 1.
+Next: P1-09g.

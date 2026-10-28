@@ -12,6 +12,7 @@ import io.flottila.runtime.deploy.Deployments;
 import io.flottila.runtime.deploy.DirArchiveStore;
 import io.flottila.runtime.deploy.Doors;
 import io.flottila.runtime.deploy.InMemoryDeploymentStore;
+import io.flottila.runtime.deploy.OptionSchemaSteps;
 import io.flottila.runtime.deploy.PackageDraft;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
@@ -130,7 +131,8 @@ class AdminServerDeployTest {
         e.put("FLOTTILA_DATA_DIR", data.toString());
         e.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(MAX));
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
-        Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq, new InMemoryWorkQueue(rt.clock()), () -> 0L);
+        Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(new OptionSchemaSteps.Sheet()), List.of(), messages, dlq,
+                new InMemoryWorkQueue(rt.clock()), () -> 0L);
         made.add(d);
         return d;
     }
@@ -401,6 +403,27 @@ class AdminServerDeployTest {
             write(out, "0\r\n\r\n");
             assertRawError(400, read(s.getInputStream()), "a chunked body of exactly the limit is deployed (and refused as no zip)");
         }
+    }
+
+    /**
+     * P1-09f through HTTP: a step option outside its factory's {@code configSchema()} is a 422 {@code {error, problems}} whose line names
+     * the flow, the step's position and name, its type and the option's path; nothing is deployed.
+     */
+    @Test
+    void aStepOptionOutsideItsSchemaIs422WithItsLine() throws Exception {
+        PackageDraft p = shop();
+        p.flowDoc("orders").put("steps", new JsonArray().add(OptionSchemaSteps.Sheet.step("bad", 7)).addAll(PackageDraft.toPartner()));
+
+        Answer refused = put("/admin/packages/shop", p.zip());
+
+        assertJson(422, refused, "INVALID");
+        JsonObject body = refused.json();
+        assertEquals(Set.of("error", "problems"), body.fieldNames(), "a 422 is {error, problems}: " + body);
+        assertTrue(body.getJsonArray("problems").stream().map(String.class::cast)
+                        .anyMatch(l -> l.contains("orders'") && l.contains("step 1 'bad' (type 'sheet') option at '/template'")),
+                "a line names the flow, the step, its type and the option: " + body);
+        assertEquals(List.of(), doors.events(), "nothing was deployed");
+        assertEquals(List.of(), deployments.flows());
     }
 
     @Test

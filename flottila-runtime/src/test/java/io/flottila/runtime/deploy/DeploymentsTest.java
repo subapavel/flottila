@@ -4,6 +4,7 @@ import io.flottila.api.Ack;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.api.Runtime;
+import io.flottila.api.StepFactory;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.record.InMemoryMessageStore;
@@ -133,8 +134,18 @@ class DeploymentsTest {
         return new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
     }
 
+    /**
+     * The node's step factories (P1-09f): {@link OptionSchemaSteps.Sheet} and a {@link OptionSchemaSteps.Garbled} whose schema is not
+     * JSON. No baseline package uses either type: an unused factory, whatever its schema, refuses nothing.
+     */
+    static final List<StepFactory> STEPS = List.of(new OptionSchemaSteps.Sheet(), new OptionSchemaSteps.Garbled(OptionSchemaSteps.Garbled.NOT_JSON));
+
     Deployments deployments(NodeConfig c) {
-        return new Deployments(c, runtime(), Map.of(Doors.SCHEME, doors), rt.clock(), timer, List.of(), List.of(), messages, dlq, queue, () -> 0L);
+        return deployments(c, STEPS);
+    }
+
+    Deployments deployments(NodeConfig c, List<StepFactory> steps) {
+        return new Deployments(c, runtime(), Map.of(Doors.SCHEME, doors), rt.clock(), timer, steps, List.of(), messages, dlq, queue, () -> 0L);
     }
 
     /**
@@ -409,12 +420,49 @@ class DeploymentsTest {
 
         List<Arguments> rows = new ArrayList<>();
         Stream.of(one, build).forEach(rules -> rules.forEach((name, breaks) -> rows.add(rule(name, breaks, List.of(words.get(name))))));
+        rows.addAll(stepOptions());
         rows.add(rule("a file that does not parse (load stops at it)", p -> p.file("flows/broken.yaml", "id: [unclosed\n"), List.of(List.of("flows/broken.yaml"))));
         for (Map<String, Consumer<PackageDraft>> rules : List.of(one, build)) {
             List<List<String>> all = rules.keySet().stream().map(words::get).toList();
             rows.add(rule("all at once: " + rules.keySet(), p -> rules.values().forEach(b -> b.accept(p)), all));
         }
         return rows.stream();
+    }
+
+    /**
+     * P1-09f: a step's options (the step map without {@code type}, {@code name}, {@code retryable}) are judged by its factory's
+     * {@code configSchema()}; a problem is the line {@code flow '<flow>' step <n> '<name>' (type '<type>') option at '<path>': <message>},
+     * n the 1-based position in {@code steps}. Each row breaks only the steps it names, so rows never overwrite each other.
+     */
+    static List<Arguments> stepOptions() {
+        return List.of(
+                rule("a step option its factory's schema refuses (template: 7, the second step)",
+                        p -> steps(p, "orders", OptionSchemaSteps.Sheet.step("good", "maps/order.xsl"), OptionSchemaSteps.Sheet.step("bad", 7)),
+                        List.of(List.of("flow '", "orders'", "step 2 'bad' (type 'sheet') option at '/template'"))),
+                rule("a step option its factory's schema requires is missing",
+                        p -> steps(p, "audit", OptionSchemaSteps.Sheet.step("bare", null)),
+                        List.of(List.of("flow '", "audit'", "step 1 'bare' (type 'sheet') option at ''", "template"))),
+                rule("two bad steps in two flows are both reported",
+                        p -> {
+                            steps(p, "orders", OptionSchemaSteps.Sheet.step("bad", 7));
+                            steps(p, "audit", OptionSchemaSteps.Sheet.step("bare", null));
+                        },
+                        List.of(List.of("orders'", "step 1 'bad' (type 'sheet') option at '/template'"),
+                                List.of("audit'", "step 1 'bare' (type 'sheet') option at ''", "template"))),
+                rule("two bad steps in one flow are both reported",
+                        p -> steps(p, "ping", OptionSchemaSteps.Sheet.step("first", 7), OptionSchemaSteps.Sheet.step("second", "")),
+                        List.of(List.of("ping'", "step 1 'first' (type 'sheet') option at '/template'"),
+                                List.of("ping'", "step 2 'second' (type 'sheet') option at '/template'"))),
+                rule("a step factory whose configSchema is not a schema",
+                        p -> steps(p, "orders", new JsonObject().put("type", OptionSchemaSteps.Garbled.TYPE).put("name", "g")),
+                        List.of(List.of("orders'", "garbled"))));
+    }
+
+    /** Sets flow {@code flow}'s steps to {@code steps} followed by the send to {@code partner}. */
+    static void steps(PackageDraft p, String flow, JsonObject... steps) {
+        JsonArray all = new JsonArray();
+        for (JsonObject s : steps) all.add(s);
+        p.flowDoc(flow).put("steps", all.addAll(PackageDraft.toPartner()));
     }
 
     /**
@@ -445,6 +493,79 @@ class DeploymentsTest {
         assertEquals(List.of(), regularFiles(data), "the unpacked package is deleted");
         rt.clock().advance(Duration.ofHours(1));
         assertEquals(List.of(), queue.claims(), "no worker of the invalid package polls");
+    }
+
+    /**
+     * P1-09f positive control: a step whose options its factory's schema accepts deploys as before. The step also carries
+     * {@code retryable}, and the schema allows no key but {@code template}: the structural keys are not judged as options.
+     */
+    @Test
+    void aStepWhoseOptionsMatchItsSchemaDeploys() throws Exception {
+        PackageDraft p = shop("shop");
+        steps(p, "orders", OptionSchemaSteps.Sheet.step("good", "maps/order.xsl").put("retryable", true), OptionSchemaSteps.Sheet.step("again", "x.xsl"));
+        assertTrue(Schemas.check(OptionSchemaSteps.Sheet.SCHEMA, new JsonObject().put("template", "x.xsl")).valid(), "fixture: the options alone pass");
+        assertFalse(Schemas.check(OptionSchemaSteps.Sheet.SCHEMA, OptionSchemaSteps.Sheet.step("good", "x.xsl")).valid(),
+                "fixture: the whole step map (type, name) fails the schema");
+
+        DeployedPackage deployed = deploy(p);
+
+        assertEquals(List.of("shop/audit", "shop/orders", "shop/ping"), sorted(deployed.flows()), "the package deployed");
+        Sent sync = send("shop/orders");
+        assertEquals(sync.id(), assertInstanceOf(Ack.Reply.class, within(sync.answer(), "the sync answer"), "the flow runs its sheet steps").reply().id());
+    }
+
+    /**
+     * P1-09f [A]: a step's {@code recording} is the platform's key (FlowBuilder hands it to {@code RecordingPolicy.from}), not a
+     * factory option: a step type whose schema allows no key but {@code template} still deploys and runs with {@code recording} set.
+     */
+    @Test
+    void aStepThatSetsRecordingIsNotJudgedByItsFactorysSchema() throws Exception {
+        JsonObject recording = new JsonObject().put("level", "ends").put("payload", "metadata-only");
+        PackageDraft p = shop("shop");
+        steps(p, "orders", OptionSchemaSteps.Sheet.step("good", "maps/order.xsl").put("recording", recording));
+        assertFalse(Schemas.check(OptionSchemaSteps.Sheet.SCHEMA, new JsonObject().put("template", "x.xsl").put("recording", recording)).valid(),
+                "fixture: the factory's schema refuses recording as an option");
+
+        DeployedPackage deployed = deploy(p);
+
+        assertEquals(List.of("shop/audit", "shop/orders", "shop/ping"), sorted(deployed.flows()), "the package deployed");
+        Sent sync = send("shop/orders");
+        assertEquals(sync.id(), assertInstanceOf(Ack.Reply.class, within(sync.answer(), "the sync answer"), "the flow runs its sheet step").reply().id());
+    }
+
+    /**
+     * P1-09f: a factory whose {@code configSchema()} cannot be used as a schema — not JSON, JSON but no object, a keyword of the wrong
+     * shape, a {@code $ref} to nowhere (each throws out of {@code Schemas.check}) — is one 422 problem line naming the step type, never
+     * an exception out of the deploy; nothing starts.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {OptionSchemaSteps.Garbled.NOT_JSON, "[1]", "{\"required\":\"stylesheet\"}", "{\"$ref\":\"#/nowhere\"}"})
+    void aStepFactoryWhoseConfigSchemaIsNotASchemaIsOneProblemLineNamingTheType(String schema) throws Exception {
+        Deployments d = deployments(config, List.of(new OptionSchemaSteps.Garbled(schema)));
+        PackageDraft p = shop("shop");
+        steps(p, "orders", new JsonObject().put("type", OptionSchemaSteps.Garbled.TYPE).put("name", "g"));
+
+        DeployRefusedException refused = refused(d, "shop", Optional.empty(), p.zipTo(archives));
+
+        assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
+        assertEquals(1, refused.problems().size(), "one line for the step whose factory's schema is unusable: " + refused.problems());
+        assertTrue(refused.problems().getFirst().contains(OptionSchemaSteps.Garbled.TYPE), "the line names the step type: " + refused.problems());
+        assertEquals(List.of(), startEvents(), "nothing started: " + doors.events());
+        assertEquals(List.of(), d.flows(), "nothing is listed");
+    }
+
+    /** P1-09f: an unknown step type stays the one "does not build" problem; the option check adds no second line for it. */
+    @Test
+    void anUnknownStepTypeIsOnlyItsDoesNotBuildLine() throws Exception {
+        PackageDraft p = shop("shop");
+        steps(p, "orders", new JsonObject().put("type", "frobnicate").put("name", "f").put("template", 7));
+
+        DeployRefusedException refused = refused("shop", Optional.empty(), p.zipTo(archives));
+
+        assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
+        assertEquals(1, refused.problems().size(), "one line: " + refused.problems());
+        assertTrue(refused.problems().getFirst().contains("does not build") && refused.problems().getFirst().contains("frobnicate"),
+                "the line is the build problem naming the type: " + refused.problems());
     }
 
     /** A flow's {@code from} names the endpoint it consumes: one with direction {@code out} is a producer, and the package is refused. */
