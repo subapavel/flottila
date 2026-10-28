@@ -1,4 +1,4 @@
-package io.flottila.runtime.blob;
+package io.flottila.api;
 
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;

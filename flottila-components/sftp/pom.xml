@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila</groupId>
+    <artifactId>flottila-components</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>..</relativePath>
+  </parent>
+
+  <artifactId>flottila-component-sftp</artifactId>
+  <packaging>jar</packaging>
+  <name>Flottila :: component :: sftp</name>
+  <description>SFTP polling consumer on Apache MINA SSHD (D-076): durable save before the delete or move; no producer before Phase 4.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- the deploy's own check of endpoint options against configSchema() (optionsOutsideTheSchemaAreRefused) -->
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-schemas</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- the client; the tests' embedded SshServer comes from the same two jars -->
+      <groupId>org.apache.sshd</groupId>
+      <artifactId>sshd-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.sshd</groupId>
+      <artifactId>sshd-sftp</artifactId>
+    </dependency>
+  </dependencies>
+</project>

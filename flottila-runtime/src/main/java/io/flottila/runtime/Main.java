@@ -2,6 +2,7 @@ package io.flottila.runtime;
 
 import io.flottila.api.StepFactory;
 import io.flottila.components.http.HttpComponent;
+import io.flottila.components.sftp.SftpComponent;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.steps.validate.XsdValidate;
@@ -76,7 +77,8 @@ public final class Main {
         SaxonXml xml = new SaxonXml();
         List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
         try (ExecutorService starter = Executors.newVirtualThreadPerTaskExecutor()) {
-            Node node = starter.submit(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+            Node node = starter.submit(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids()),
+                    new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock())),
                     steps, xml.languages())).get();
             return new Started(0, Optional.of(node), Optional.of(vertx));
         } catch (ExecutionException | InterruptedException failed) {

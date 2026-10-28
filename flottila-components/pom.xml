@@ -18,6 +18,7 @@
   <modules>
     <module>http</module>
     <module>mock</module>
+    <module>sftp</module>
   </modules>
 
 </project>

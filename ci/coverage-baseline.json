@@ -1,7 +1,7 @@
 {
   "flottila-api": {
     "branch": 100.0,
-    "line": 99.0
+    "line": 99.2
   },
   "flottila-bench": {
     "branch": 95.4,
@@ -12,11 +12,15 @@
     "line": 99.3
   },
   "flottila-components/mock": {
-    "branch": 98.6,
+    "branch": 99.1,
+    "line": 100.0
+  },
+  "flottila-components/sftp": {
+    "branch": 98.9,
     "line": 100.0
   },
   "flottila-core": {
-    "branch": 99.3,
+    "branch": 99.5,
     "line": 99.8
   },
   "flottila-runtime": {
@@ -36,7 +40,7 @@
     "line": 100.0
   },
   "flottila-testkit": {
-    "branch": 98.0,
-    "line": 98.4
+    "branch": 97.3,
+    "line": 98.0
   }
 }

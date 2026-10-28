@@ -1,4 +1,4 @@
-package io.flottila.runtime.blob;
+package io.flottila.api;
 
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
@@ -9,12 +9,16 @@ import java.io.InputStream;
 import java.util.concurrent.Callable;
 
 /**
- * A blocking {@link InputStream} (spool file, S3 object) as a Vert.x {@link ReadStream}: a virtual thread
- * pumps 64 KiB chunks to the handlers and parks while the consumer is paused. The stream is opened lazily
- * on the first demand, so {@code open()} itself never blocks and a failure to open reaches the exception
- * handler like any other.
+ * A blocking {@link InputStream} (spool file, S3 object, a remote file a component downloads) as a Vert.x
+ * {@link ReadStream}: a virtual thread pumps 64 KiB chunks to the handlers and parks while the consumer is
+ * paused. The stream is opened lazily on the first demand, so creating it never blocks and a failure to open
+ * reaches the exception handler like any other; the input stream is closed once it ended or failed. A
+ * component hands it to {@link BlobStore#write(BlobKey, ReadStream, long)} (components may not import the
+ * runtime, D-076).
+ *
+ * @since 0.1
  */
-final class InputStreamReadStream implements ReadStream<Buffer> {
+public final class InputStreamReadStream implements ReadStream<Buffer> {
 
     static final int CHUNK = 64 * 1024;
 
@@ -27,7 +31,8 @@ final class InputStreamReadStream implements ReadStream<Buffer> {
     private boolean started;
     private boolean done;
 
-    InputStreamReadStream(Callable<InputStream> opener) { this.opener = opener; }
+    /** A stream over what {@code opener} opens on the first demand, on the pumping virtual thread. */
+    public InputStreamReadStream(Callable<InputStream> opener) { this.opener = java.util.Objects.requireNonNull(opener, "opener"); }
 
     @Override public synchronized InputStreamReadStream exceptionHandler(Handler<Throwable> handler) { this.exceptionHandler = handler; return this; }
 

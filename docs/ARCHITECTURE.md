@@ -30,6 +30,7 @@
 | 2026-10-28 | 3.4 | §7 Sizing and §13 Phase 1 gate: the durable ACK < 5 ms p99 is no longer a Phase 1 gate condition; the gate records it as measured (p99 8.8 / 27.4 / 135 ms at c=1/8/64, 4 vCPU, default Postgres 16) and < 5 ms becomes the Phase 2 tuning target (P2-08) — owner's answer to ISSUE-2, option 1+2 | F-14 (major) |
 | 2026-10-28 | 3.4 | §7 WorkQueue row: the attempts token fences completion, the same-key fast path and hold as well as renew, so a holder whose lease expired and whose row was claimed again cannot delete or take over the new holder's row; the stale outcome is reported to the caller, never retried (D-074, Q-1) | — |
 | 2026-10-28 | 3.4 | §7 Queues: the partition key is evaluated at the durable save from `partitionBy` (the flow's extractKey), the same-key fast path is bounded by `maxChain`, `queue: kafka` refused until the hand-over lands; §14 hot-partition item closed (D-075, P2-01) | — |
+| 2026-10-28 | 3.4 | §7: sftp consumer on Apache MINA SSHD in Phase 2, blocking SDKs on virtual threads the component starts (no `BlockingConsumer` yet), poller lease held by the node (P2-02L), duplicates dropped at the save (P2-02D); §13 Phase 4 sentence follows; §4 executors and pollers sentences say transport I/O threads are not executors (D-076, F-15, P2-02) | F-15 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -127,9 +128,9 @@ One message = one plain JDK virtual thread, bounded per flow; verticles exist on
 
 **Threading**
 
-- Endpoint verticles (HTTP, XI, pollers) accept input and hand each message to `Executors.newVirtualThreadPerTaskExecutor()`; they never run a pipeline themselves.
+- Endpoint verticles (HTTP, XI) and pollers (a timer firing a round on a virtual thread, D-076) accept input and hand each message to `Executors.newVirtualThreadPerTaskExecutor()`; they never run a pipeline themselves.
 - Admission per flow = a semaphore that counts **requests and bytes** (body size is known from the content hash record). Over the limit: HTTP 503 + Retry-After, SFTP poller pauses, Kafka consumer stops polling. Memory, not thread count, is what backpressure protects.
-- Two executors only: the virtual-thread executor (default for everything) and a small **platform-thread pool for JCo/JNI**, because JNI still pins carriers on JDK 25. CPU-bound steps need no pool; the per-flow cap (default cores × 2 for CPU-heavy flows, higher for I/O flows) is the limit.
+- Two executors only for work: the virtual-thread executor (default for everything) and a small **platform-thread pool for JCo/JNI**, because JNI still pins carriers on JDK 25; a client library's own transport I/O threads (Vert.x event loops, the Kafka network thread, MINA SSHD's NIO2 pool sized ≤ 2) are not executors and never run a pipeline (D-076). CPU-bound steps need no pool; the per-flow cap (default cores × 2 for CPU-heavy flows, higher for I/O flows) is the limit.
 - `ScopedValue` carries message id, tenant, trace id and deadline through every step without threading them through signatures. A thin `RequestScope` (fork / join / cancel on virtual threads) wraps each message so a timeout or cancel stops all of its children; swap in `StructuredTaskScope` when it leaves preview.
 - I/O goes through Vert.x clients with `Future.await()`; blocking SDKs run directly on the virtual thread (that is the point). The blocked-thread checker is not relied on: per-step wall and CPU time on the snapshot and a "slowest steps" view replace it.
 - One JVM per node. An out-of-process worker (same Step SPI, bodies by reference, HTTP/gRPC) is an installation option for untrusted mapping jars, not the default.
@@ -236,13 +237,13 @@ interface Component {
 
 A component whose consumer accepts connections answers `listensOn` with the local host:port it binds (from the config alone, no bind, no DNS; port 0 is never compared). A deploy refuses two `in` endpoints whose addresses overlap — same port and equal hosts or a wildcard host — within the package, against the node's admin listener, and against every running flow of every other package; Vert.x would share the port and round-robin it silently (D-072).
 
-The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a bare `ReadStream`: the handler returns the ack state the consumer needs to finish its own protocol (delete the file, commit the JMS session, send 202). Blocking SDKs implement `BlockingConsumer/BlockingProducer` and are wrapped onto virtual threads by the platform. One jar per component, wired explicitly by the node's `Main` (components need the node's `Vertx` and `BlobStore`, which `api` may not name — F-4); same classpath until a dependency conflict forces isolation. Steps (xslt, groovy, js, validate, map, ai) are wired the same way.
+The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a bare `ReadStream`: the handler returns the ack state the consumer needs to finish its own protocol (delete the file, commit the JMS session, send 202). Blocking SDKs run on virtual threads the component starts itself, as the http consumer does; no `BlockingConsumer` wrapper until a second blocking SDK needs one (D-076). One jar per component, wired explicitly by the node's `Main` (components need the node's `Vertx` and `BlobStore`, which `api` may not name — F-4); same classpath until a dependency conflict forces isolation. Steps (xslt, groovy, js, validate, map, ai) are wired the same way.
 
 | Component | Transport | Notes |
 | --- | --- | --- |
 | http | Vert.x HTTP client/server | sync request/reply and `/in-async` 202; API-management policies as ingress stages |
 | xi | XI 3.0 over SOAP, IDoc, RFC via JCo | normal component; JCo module `provided`, platform-thread pool; `/xi` door durable in Kafka so it never answers 503 during Postgres failover |
-| sftp / smb / file | Vert.x SFTP client / own | lease per endpoint in Valkey, durable save before delete/move |
+| sftp / smb / file | Apache MINA SSHD client (sftp, D-076) / own | consumer only until Phase 4; poller lease held by the node, not the component (P2-02L); durable save before delete/move; duplicates dropped at the save by the file key (P2-02D) |
 | jms / kafka | vendor client / Vert.x Kafka | ack after durable save |
 | mail | own | IMAP poll, SMTP send, attachments by reference |
 | as2 / as4 / edi | own | signing, MDN/receipts, EDIFACT and X12 tokenizers as stream steps |
@@ -453,7 +454,7 @@ Phases 0–2 build the runtime that everything else sits on; 3 turns it into the
 
 **Phase 3 — monitoring product.** Kafka → ClickHouse ingest, schema and TTL policies, pg\_clickhouse query surface with pushdown tests, control plane (Quarkus API, React UI) with the three screens, replay/resend from the UI, "save as test case", OTel spans, Micrometer, both alert layers including silence detection. Gate: "invoice 4711" by key in < 1 s over 100 M synthetic snapshots; XPath search over 10 M payloads in seconds; a dropped node leaves no gap in the timeline.
 
-**Phase 4 — components and SAP compatibility.** sftp/smb/file, jms, kafka consumer/producer, mail, as2/as4, edi (EDIFACT, X12), db datasources, JCo/IDoc on the platform-thread pool, PO and CPI mapping facades, XSD and WS-Security, the CLI (validate, test, deploy, package), migration converters (ICO, channel, XSLT). Gate: one real PO interface migrated end-to-end with golden tests from PO monitor payloads, both directions.
+**Phase 4 — components and SAP compatibility.** sftp producer, smb/file (the sftp consumer moved to Phase 2, D-076), jms, kafka consumer/producer, mail, as2/as4, edi (EDIFACT, X12), db datasources, JCo/IDoc on the platform-thread pool, PO and CPI mapping facades, XSD and WS-Security, the CLI (validate, test, deploy, package), migration converters (ICO, channel, XSLT). Gate: one real PO interface migrated end-to-end with golden tests from PO monitor payloads, both directions.
 
 **Phase 5 — extensions, API management, AI.** Extension SDK with isolated classloaders, bytecode scan and circuit breaker; sandboxed Groovy/GraalJS; API objects, developer portal, MCP server and gateway; `ai:` step; dry-run endpoint and agent tooling. Gate: an extension built in an external repo deploys through CI and shows on every span; gateway bench ≥ 20k req/s per 8-core node at p99 < 5 ms.
 

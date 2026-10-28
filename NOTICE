@@ -2,3 +2,9 @@ Flottila
 Copyright 2026 The Flottila Authors
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes Apache MINA SSHD (https://mina.apache.org/sshd-project/), the sftp component's
+SSH/SFTP client, licensed under the Apache License, Version 2.0:
+  Apache MINA SSHD
+  Copyright 2008-2026 The Apache Software Foundation
+  This product includes software developed at The Apache Software Foundation (http://www.apache.org/).

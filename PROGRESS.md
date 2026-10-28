@@ -847,3 +847,13 @@ Checks: whole reactor verify -Pit VERIFIED_PASS surefire 1531 + failsafe 216 (ta
 Review: FAIL r1 (§7/§14 maxChain off by one against FlowWorker:293), PASS r2. Raised FIX-78 (index), FIX-79 (maxChain bench), FIX-80 (late key evaluation), FIX-81 (XPath INTERNAL loops the sender); FIX-77 note extended.
 D-054 data: class C (designer ×1, test-author ×2 + resume, implementer ×1, verifier ×2, reviewer ×2); review rounds 2.
 Next: P2-02 [B] sftp component, then P2-04, P2-08.
+
+## 2026-10-28 — P2-02 sftp consumer on Apache MINA SSHD + mock + PollingConsumerContract (D-076) — done, review PASS
+Test first: testkit PollingConsumerContract (15) + self-test (20); SftpPollingContractTest, MockPollingContractTest, SftpComponentTest (20), MockPollingTest; api InputStreamReadStreamTest moved (red: target/P2-02-red.log, compile in repo, assertions on scratch stubs). [A] PublicTypesHaveSinceTest 39 → 40; InputStreamReadStreamDemandTest (PIT floor).
+Change: new module components/sftp (SftpComponent, Download; MINA 2.20.0, NIO2 pool 1, no ~/.ssh, SHA256 host key); mock drop/remaining/`files:`, 1 s rounds; InputStreamReadStream runtime → api; Main wires sftp; NOTICE. Row raised B → C; D-076, F-15; ARCHITECTURE §4/§7/§13 + changelog; new rows P2-02L (node lease), P2-02D (dedupe at save).
+Checks: whole reactor verify -Pit VERIFIED_PASS 1855 tests (target/P2-02-verify3.log); ArchUnit 35/35; coverage no decrease (sftp 100/98.9); scoped PIT InputStreamReadStream 38/39 (survivor equivalent); hand mutants 26/26 killed (target/P2-02-mutants.log).
+Review: FAIL r1 (idle-closed session reused; two fake cancelled-round tests; handle close and round 0 unpinned; no mutant log), PASS r2. Raised FIX-82 (missing moveTo/refused delete → health DOWN), FIX-83 (one SshClient per component).
+Process: the implementer again wrote its own tests (DownloadTest, SftpConsumerEdgeTest, MockPollingEdgeTest), approved after the fact; two were fake and were deleted.
+Owner (chat 2026-10-28): wants to send a message into the platform → new row P2-05a (local quickstart), taken next.
+D-054 data: class C (designer ×1, test-author ×1 + 2 fix packets, implementer ×1, verifier ×3, reviewer ×2); review rounds 2.
+Next: P2-05a [B] local quickstart.

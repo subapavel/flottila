@@ -137,6 +137,10 @@
       <groupId>io.flottila</groupId>
       <artifactId>flottila-component-http</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-component-sftp</artifactId>
+    </dependency>
     <!-- schema migrations at start (D-034): Flyway community + its Postgres module; Flyway needs JDBC, so the
          driver is a runtime dependency for this one purpose — everything else goes through the Vert.x client -->
     <dependency>

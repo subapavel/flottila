@@ -5,6 +5,7 @@ import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Hasher;
+import io.flottila.api.InputStreamReadStream;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
