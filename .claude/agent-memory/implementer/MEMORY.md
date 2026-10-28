@@ -20,8 +20,7 @@
 - `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
-- A new Flyway migration bumps the schema version asserted in THREE ITs: runtime MigrationsIT, runtime
-  PgMessageStoreIT (@BeforeAll, `start:53`) and bench BenchMainIT:36 — packets tend to name only MigrationsIT (P1-08b).
+- A new Flyway migration bumps the schema version in MigrationsIT, PgMessageStoreIT:69 (@BeforeAll) and BenchMainIT:36; packets miss PgMessageStoreIT (P1-08b, P1-09c3a).
 - Mutant loop: add `-Dsurefire.timeout=150` so a mutant that hangs a stop()/await is killed by "timeout in the fork" (mock and
   some testkit tests have no @Timeout). Never kill a running loop without restoring the mutated file from its backup (cp + touch + cmp).
 - Failsafe `-Dit.test=A,B` together with `-am` fails upstream modules ("No tests matching pattern"): add
@@ -67,7 +66,9 @@
 - An unreadable file even as root (a catch over `Files.readAllBytes`): symlink to `/proc/self/mem` (isRegularFile, read → EIO).
 - Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()
   .join()` waits uninterruptibly (no catch) — used to await a never-failing close in a finally (P1-09k2 Trail).
-- Vert.x 5.1.10: `andThen(Handler<AsyncResult>)` completes after the handler ran; `Future.await()` works on a plain virtual thread.
+- Vert.x 5.1.10: `andThen(Handler<AsyncResult>)` completes after the handler ran; `Future.await()` works on a virtual thread, sneaky-throws the cause.
+- AWS SDK 2.56.0 (javap): `RequestBody.fromFile(Path)` sizes the file at once (missing → UncheckedIOException); a client built without a credentialsProvider
+  resolves `DefaultCredentialsProvider.builder()..build()` (`create()` is a static singleton); `serviceClientConfiguration()` shows region/endpoint/credentials.
 - FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
   cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
 - Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (observed, P1-08c): stops accepting, keeps an HTTP/1.1 connection until its
@@ -75,7 +76,6 @@
 - Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
   loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
   `compose` can end unheard. `req.response().onSuccess(HttpClientResponse::pause)` registered BEFORE `send` runs inline in the head emit.
-- Core may use Future, Promise, CompositeFuture, Completable, AsyncResult, Handler (archtest Rules.java:39).
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and
   never resumes one it paused or failed itself (`resumeOwed` / `attached` / `pausing` in `StreamingWrite`;
   the full one-resume-per-pause rule is in agent/NOTES.md "FIX-10").

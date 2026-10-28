@@ -8,6 +8,7 @@ import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -25,6 +26,7 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -96,6 +98,86 @@ class NodeTest {
         String message = String.valueOf(refused.getMessage());
         assertTrue(message.contains(PlainComponent.class.getName()) && message.contains(HttpComponent.class.getName()),
                 "the refusal names both classes bound to http: " + message);
+        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
+    }
+
+    // --- P1-09c3a (D-070): a deployed node's archive store
+
+    /** A node's environment over a Postgres port nothing listens on: a node that gets as far as Postgres fails with a refused connection. */
+    static Map<String, String> closedPostgres(String env, Path data) throws IOException {
+        Map<String, String> m = new java.util.HashMap<>(Map.of(
+                "FLOTTILA_ENV", env, "FLOTTILA_NODE_ID", "node-1", "FLOTTILA_ADMIN_PORT", "0", "FLOTTILA_DATA_DIR", data.toString(),
+                "FLOTTILA_PG_HOST", "127.0.0.1", "FLOTTILA_PG_PORT", String.valueOf(closedPort())));
+        return m;
+    }
+
+    /** {@code env} with an s3 archive store at {@code endpoint}, keys given (the SDK's default chain is never asked). */
+    static Map<String, String> s3(Map<String, String> env, String endpoint) {
+        env.put("FLOTTILA_ARCHIVE_STORE", "s3");
+        env.put("FLOTTILA_S3_BUCKET", "flottila-archives");
+        env.put("FLOTTILA_S3_REGION", "eu-central-1");
+        env.put("FLOTTILA_S3_ENDPOINT", endpoint);
+        env.put("FLOTTILA_S3_ACCESS_KEY", "AKIAEXAMPLE");
+        env.put("FLOTTILA_S3_SECRET_KEY", "secret-example");
+        return env;
+    }
+
+    /** What {@code Node.start} throws with {@code env} and plain components; it must throw. */
+    Throwable startFails(Map<String, String> env, List<Component> components) {
+        NodeConfig config = NodeConfig.from(env);
+        return assertThrows(Throwable.class, () -> OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> components, List.of(), List.of())),
+                "the node does not start: " + env);
+    }
+
+    static boolean refusedConnection(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) if (c instanceof java.net.ConnectException) return true;
+        return false;
+    }
+
+    /** The node passed the archive checks and got as far as Postgres: its start failed on the refused connection, nothing else. */
+    static void reachedPostgres(Throwable failure, String what) {
+        assertTrue(refusedConnection(failure), what + ": the start got past the archive checks to Postgres (a refused connection), was " + failure);
+    }
+
+    /**
+     * A deployed node refuses the dir archive store — the default — with an IllegalStateException naming FLOTTILA_ARCHIVE_STORE,
+     * after the mock check (a mock is refused first) and before it touches Postgres, with nothing left listening; dev takes it.
+     */
+    @Test
+    void aDeployedNodeRefusesADirArchiveStoreBeforePostgres() throws Exception {
+        Set<String> before = Set.copyOf(vertx.deploymentIDs());
+        Map<String, String> byDefault = closedPostgres("test", data);
+        Map<String, String> explicit = closedPostgres("prod", data);
+        explicit.put("FLOTTILA_ARCHIVE_STORE", "dir");
+        for (Map<String, String> env : List.of(byDefault, explicit)) {
+            Throwable refused = startFails(env, List.of(new PlainComponent("jms")));
+            assertInstanceOf(IllegalStateException.class, refused, "a deployed node refuses the dir archive store: " + env);
+            assertTrue(String.valueOf(refused.getMessage()).contains("FLOTTILA_ARCHIVE_STORE"), "the refusal names the key: " + refused.getMessage());
+            assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
+        }
+        Throwable mockFirst = startFails(byDefault, List.of(new PlainComponent("jms"), new PlainComponent("mock")));
+        assertInstanceOf(IllegalStateException.class, mockFirst);
+        assertTrue(String.valueOf(mockFirst.getMessage()).contains("mock") && !String.valueOf(mockFirst.getMessage()).contains("FLOTTILA_ARCHIVE_STORE"),
+                "the mock check comes first: its refusal, not the archive store's: " + mockFirst.getMessage());
+        reachedPostgres(startFails(closedPostgres("dev", data), List.of(new PlainComponent("jms"))), "dev with the dir store");
+        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
+    }
+
+    /**
+     * A deployed node refuses an S3 endpoint over plain http with an IllegalStateException naming FLOTTILA_S3_ENDPOINT, before it
+     * touches Postgres; https passes the check, and so does http in dev (LocalStack).
+     */
+    @Test
+    void aDeployedNodeRefusesAPlainHttpS3Endpoint() throws Exception {
+        Set<String> before = Set.copyOf(vertx.deploymentIDs());
+        String http = "http://127.0.0.1:" + closedPort();
+        Throwable refused = startFails(s3(closedPostgres("test", data), http), List.of(new PlainComponent("jms")));
+        assertInstanceOf(IllegalStateException.class, refused, "a deployed node refuses a plain-http S3 endpoint");
+        assertTrue(String.valueOf(refused.getMessage()).contains("FLOTTILA_S3_ENDPOINT"), "the refusal names the key: " + refused.getMessage());
+        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
+        reachedPostgres(startFails(s3(closedPostgres("test", data), "https://127.0.0.1:" + closedPort()), List.of(new PlainComponent("jms"))),
+                "a deployed node with an https endpoint");
+        reachedPostgres(startFails(s3(closedPostgres("dev", data), http), List.of(new PlainComponent("jms"))), "dev with a plain-http endpoint");
         assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "nothing left listening");
     }
 }

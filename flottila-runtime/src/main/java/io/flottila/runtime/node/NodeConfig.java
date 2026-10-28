@@ -2,30 +2,54 @@ package io.flottila.runtime.node;
 
 import io.flottila.runtime.admin.AdminServer;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
  * A node's whole configuration, read from its environment (D-057 b). Every key has a default except {@code FLOTTILA_ENV};
  * every refusal is an {@link IllegalArgumentException} whose message names the key. No {@code toString} here carries a secret:
- * {@link Pg} and {@link AdminServer.Config} redact the password and the token, and this record's prints theirs.
+ * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, and this record's
+ * prints theirs.
  *
  * @param nodeId {@code FLOTTILA_NODE_ID}, else {@code $HOSTNAME}: a DNS label (lower-case letters, digits and inner dashes, at most 63)
  * @param env {@code FLOTTILA_ENV}, required
  * @param admin {@code FLOTTILA_ADMIN_HOST} (127.0.0.1), {@code FLOTTILA_ADMIN_PORT} (8081, 0 binds any free port), {@code FLOTTILA_ADMIN_TOKEN}
- * @param dataDir {@code FLOTTILA_DATA_DIR} (/var/lib/flottila): the spool lives under it
+ * @param dataDir {@code FLOTTILA_DATA_DIR} (/var/lib/flottila): the spool lives under it, and the dir archive store by default
  * @param stopDeadline {@code FLOTTILA_STOP_DEADLINE}, ISO-8601, not negative (PT10S)
  * @param maxPackageBytes {@code FLOTTILA_MAX_PACKAGE_BYTES}, 1 byte to 1 GiB (64 MiB)
  * @param pg the {@code FLOTTILA_PG_*} keys
  * @param blobs the {@code FLOTTILA_BLOB_*} keys
+ * @param archives {@code FLOTTILA_ARCHIVE_STORE} and {@code FLOTTILA_ARCHIVE_DIR}: where package archives are stored (D-070)
+ * @param s3 the {@code FLOTTILA_S3_*} keys: present exactly when the archive store is {@link Archives.Store#S3}
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
-                         long maxPackageBytes, Pg pg, Blobs blobs) {
+                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3) {
+
+    /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
+    public NodeConfig {
+        Objects.requireNonNull(archives, "archives");
+        Objects.requireNonNull(s3, "s3");
+        if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
+            throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
+                    + ": an s3 archive store has them, a dir store none");
+        }
+    }
+
+    /** A node whose archives are stored in {@code <dataDir>/archives} (the dir store), as {@link #from} reads it by default. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, new Archives(Archives.Store.DIR, dataDir.resolve("archives")),
+                Optional.empty());
+    }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
     public boolean deployed() {
@@ -64,9 +88,52 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      */
     public record Blobs(long treeLimit, long memoryTier, long memoryBudget, long durableMax) {}
 
+    /**
+     * Where package archives are stored, each once under its SHA-256 (D-070); a deployed node refuses {@link Store#DIR}.
+     *
+     * @param store {@code FLOTTILA_ARCHIVE_STORE}, {@code dir} or {@code s3} (dir)
+     * @param dir {@code FLOTTILA_ARCHIVE_DIR} ({@code <dataDir>/archives}): the dir store's directory
+     * @since 0.1
+     */
+    public record Archives(Store store, Path dir) {
+        /** The archive store a node uses. */
+        public enum Store {
+            /** Files in {@link Archives#dir()}: dev and ci only. */
+            DIR,
+            /** Objects in an S3 bucket ({@link S3}). */
+            S3
+        }
+    }
+
+    /**
+     * The S3 archive store's bucket and how to reach it (D-070). Without keys the client takes the AWS SDK's default credentials
+     * chain, which reads the process environment and the instance's role: the one place the node's credentials do not come from
+     * this record.
+     *
+     * @param bucket {@code FLOTTILA_S3_BUCKET}, required
+     * @param region {@code FLOTTILA_S3_REGION}, required
+     * @param endpoint {@code FLOTTILA_S3_ENDPOINT}, an absolute http or https URI (none: the SDK's endpoint for the region); a
+     *                 deployed node refuses http
+     * @param pathStyle {@code FLOTTILA_S3_PATH_STYLE}, true or false (false)
+     * @param prefix {@code FLOTTILA_S3_PREFIX} (flottila): archives are the objects {@code <prefix>/archives/<sha256>.zip}
+     * @param accessKey {@code FLOTTILA_S3_ACCESS_KEY}, given together with the secret key or not at all
+     * @param secretKey {@code FLOTTILA_S3_SECRET_KEY}, given together with the access key or not at all
+     * @since 0.1
+     */
+    public record S3(String bucket, String region, Optional<URI> endpoint, boolean pathStyle, String prefix, Optional<String> accessKey,
+                     Optional<String> secretKey) {
+        /** The secret key redacted: a log line never carries it. */
+        @Override
+        public String toString() {
+            return "S3[bucket=" + bucket + ", region=" + region + ", endpoint=" + endpoint + ", pathStyle=" + pathStyle + ", prefix=" + prefix
+                    + ", accessKey=" + accessKey + ", secretKey=" + secretKey.map(redacted -> "***") + "]";
+        }
+    }
+
     private static final long MIB = 1024L * 1024;
     private static final long GIB = 1024 * MIB;
     private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
+    private static final Set<String> HTTP = Set.of("http", "https");
 
     /** Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key. */
     public static NodeConfig from(Map<String, String> env) {
@@ -89,9 +156,68 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
         Blobs blobs = new Blobs(number(env, "FLOTTILA_BLOB_TREE_LIMIT", 8 * MIB, 1, Integer.MAX_VALUE), memoryTier, memoryBudget,
                 number(env, "FLOTTILA_BLOB_DURABLE_MAX", MIB, 1, 64 * MIB));
-        return new NodeConfig(nodeId, name, admin,
-                Path.of(env.getOrDefault("FLOTTILA_DATA_DIR", "/var/lib/flottila")), stopDeadline(env),
-                number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs);
+        Path dataDir = Path.of(env.getOrDefault("FLOTTILA_DATA_DIR", "/var/lib/flottila"));
+        Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
+        Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
+        return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
+                archives, s3);
+    }
+
+    private static Archives.Store archiveStore(Map<String, String> env) {
+        String raw = env.getOrDefault("FLOTTILA_ARCHIVE_STORE", "dir");
+        return switch (raw) {
+            case "dir" -> Archives.Store.DIR;
+            case "s3" -> Archives.Store.S3;
+            default -> throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE must be dir or s3, was '" + raw + "'");
+        };
+    }
+
+    /** The {@code FLOTTILA_S3_*} keys of an s3 archive store. */
+    private static S3 s3(Map<String, String> env) {
+        String bucket = required(env, "FLOTTILA_S3_BUCKET");
+        String region = required(env, "FLOTTILA_S3_REGION");
+        Optional<URI> endpoint = Optional.ofNullable(env.get("FLOTTILA_S3_ENDPOINT")).map(NodeConfig::endpoint);
+        boolean pathStyle = pathStyle(env.getOrDefault("FLOTTILA_S3_PATH_STYLE", "false"));
+        Optional<String> accessKey = Optional.ofNullable(env.get("FLOTTILA_S3_ACCESS_KEY"));
+        Optional<String> secretKey = Optional.ofNullable(env.get("FLOTTILA_S3_SECRET_KEY"));
+        if (accessKey.isPresent() != secretKey.isPresent()) {
+            throw new IllegalArgumentException((accessKey.isPresent() ? "FLOTTILA_S3_SECRET_KEY" : "FLOTTILA_S3_ACCESS_KEY") + " is missing: the S3 keys "
+                    + "are given both or neither (neither: the AWS SDK's default credentials chain)");
+        }
+        return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("FLOTTILA_S3_PREFIX", "flottila"), accessKey, secretKey);
+    }
+
+    /** {@code key}'s value, which must be there and not blank. */
+    private static String required(Map<String, String> env, String key) {
+        String raw = env.get(key);
+        if (raw == null || raw.isBlank()) throw new IllegalArgumentException(key + " must be set for FLOTTILA_ARCHIVE_STORE s3, was '" + raw + "'");
+        return raw;
+    }
+
+    /** {@code FLOTTILA_S3_ENDPOINT}: an absolute http or https URI with a host. */
+    private static URI endpoint(String raw) {
+        URI uri;
+        try {
+            uri = new URI(raw);
+        } catch (URISyntaxException notAUri) {
+            throw notAnEndpoint(raw);
+        }
+        // a URI without a scheme (a bare host, a path) has none: never in the set, and Set.contains takes no null
+        if (!HTTP.contains(Objects.toString(uri.getScheme(), "")) || uri.getHost() == null) throw notAnEndpoint(raw);
+        return uri;
+    }
+
+    private static IllegalArgumentException notAnEndpoint(String raw) {
+        return new IllegalArgumentException("FLOTTILA_S3_ENDPOINT must be an absolute http or https URI with a host, such as https://s3.example.net, was '"
+                + raw + "'");
+    }
+
+    private static boolean pathStyle(String raw) {
+        return switch (raw) {
+            case "true" -> true;
+            case "false" -> false;
+            default -> throw new IllegalArgumentException("FLOTTILA_S3_PATH_STYLE must be true or false, was '" + raw + "'");
+        };
     }
 
     /** {@code key}'s whole number within [{@code min}, {@code max}], {@code fallback} when the key is absent. */

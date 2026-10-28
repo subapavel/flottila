@@ -81,7 +81,10 @@ import java.util.stream.Stream;
  * untouched, with the stamps it was built with, and the new build is stopped with a zero deadline and closed), changed, or removed
  * (the package lists it, the new version has no such flow; a FAILED one has nothing to stop); a consumer is built for each added
  * and changed flow. Every problem is one line of one {@link Kind#INVALID}, and nothing running stops and nothing starts before
- * every check passed (a file the hash cannot read is the node's {@link IOException}).
+ * every check passed (a file the hash cannot read is the node's {@link IOException}). Then the archive is put in the
+ * {@link ArchiveStore} under its SHA-256 (D-070), before anything stops: a put that fails ({@link IOException}) is
+ * {@link Kind#FAILED} "archive sha256:&lt;hex&gt; not stored: &lt;cause&gt;", the cleanup below runs and the version running
+ * runs on. Nothing deletes an archive (Phase 1): the object of a deploy refused after its put stays.
  *
  * <p>Then the swap (D-063, F-5 amended). Phase A stops every changed and removed flow at once ({@link #stop(Flow, Duration)}: its
  * worker first, then its delivery within the node's stop deadline and its consumer together, that consumer's stop bounded by the
@@ -91,8 +94,11 @@ import java.util.stream.Stream;
  * once that start succeeded, its worker, as worker {@code nodeId} — only once
  * every flow of phase A has settled: a new flow on the in endpoint of an old one never meets the old consumer there. A removed
  * at-least-once flow, or one the new version runs otherwise, is asked for queue items again once its old worker drained: items
- * left are a WARNING naming it, never a delay of the answer. Then the package record is replaced, and {@code packages/<name>/} is
- * pruned to the current directory, the previous one (the last other archive the package ran: a deploy of the running archive
+ * left are a WARNING naming it, never a delay of the answer. Then the deploy saves its {@link DeploymentRecord} (name, version,
+ * revision, archive SHA-256 and the package's {@code deployedAt}) and waits for it: the commit point (D-070). A save that fails
+ * refuses a first deploy ({@link Kind#FAILED} "the deploy record was not written: &lt;cause&gt;", the cleanup below) and rolls a
+ * redeploy back as a failed start does (below), with that line as its first problem. Only once the record is written is the
+ * listing replaced, and {@code packages/<name>/} is pruned to the current directory, the previous one (the last other archive the package ran: a deploy of the running archive
  * keeps it) and every one a running flow was built from — the directories this node keeps; one that cannot be deleted is a
  * WARNING.
  *
@@ -108,8 +114,8 @@ import java.util.stream.Stream;
  * that start completes, maybe after the old flow started again: FIX-43); then every changed and removed flow is built again from
  * the directory it was built from, with its stamps, and started through the same phase B; one that does not build or start again is
  * {@link DeployedFlow.State#FAILED}: listed, with nothing of it running. The refusal (500) is "version X did not start; Y runs
- * again" ("; flows [..] FAILED" when the package lists FAILED flows) with a problem line per flow that did not start, build or
- * start again; the package record is unchanged. An Error a component or a step factory throws in the rollback breaks it off:
+ * again" ("was not recorded" for a failed save; "; flows [..] FAILED" when the package lists FAILED flows) with a problem line
+ * per flow that did not start, build or start again; the package's listing and record are unchanged. An Error a component or a step factory throws in the rollback breaks it off:
  * what it built is stopped as below, every flow phase A stopped is listed FAILED, and the Error is a problem line and is added to
  * the refusal as suppressed.
  *
@@ -159,6 +165,8 @@ public final class Deployments {
     private final Dlq dlq;
     private final WorkQueue queue;
     private final Meter meter;
+    private final DeploymentStore records;
+    private final ArchiveStore archives;
     /** One deploy at a time; {@link #close} takes it to wait for the one running. */
     private final ReentrantLock deploying = new ReentrantLock();
     /** By name, so {@link #packages()} is sorted; written under {@link #deploying} — by a deploy once, as it returns or throws — read by anyone. */
@@ -166,13 +174,26 @@ public final class Deployments {
     private volatile boolean closing;
 
     /**
+     * Deployments whose records live in memory and whose archives are stored in {@code FLOTTILA_ARCHIVE_DIR} (the dir store): dev
+     * and tests.
+     */
+    public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, new InMemoryDeploymentStore(),
+                new DirArchiveStore(config.archives().dir()));
+    }
+
+    /**
      * @param runtime handed to each deploy's {@code new FlowBuilder} and read nowhere else
      * @param components the node's components by scheme: the consumers, and the config schemas the endpoints are checked against
      * @param clock {@code deployedAt}
      * @param timer the node's (the one the runtime carries): it bounds a consumer's start and stop by the node's stop deadline
+     * @param records where a deploy writes its package's record, the deploy's commit point (D-070)
+     * @param archives where a deploy stores its archive before anything stops (D-070)
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
-                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter) {
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                       ArchiveStore archives) {
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
@@ -184,6 +205,8 @@ public final class Deployments {
         this.dlq = Objects.requireNonNull(dlq, "dlq");
         this.queue = Objects.requireNonNull(queue, "queue");
         this.meter = Objects.requireNonNull(meter, "meter");
+        this.records = Objects.requireNonNull(records, "records");
+        this.archives = Objects.requireNonNull(archives, "archives");
     }
 
     /**
@@ -334,8 +357,9 @@ public final class Deployments {
     // --- one deploy, under the lock
 
     /**
-     * Unpacks (or reuses a kept directory that holds what was unpacked into it), checks, builds, classifies, swaps, then replaces
-     * the package record and prunes — or, when phase B does not start every flow of a redeploy, rolls back; whatever refuses it
+     * Unpacks (or reuses a kept directory that holds what was unpacked into it), checks, builds, stores the archive, classifies,
+     * swaps, saves the record, then replaces the package's listing and prunes — or, when phase B does not start every flow of a
+     * redeploy or its record is not written, rolls back; whatever refuses it
      * stops what it built and did not close yet and deletes what it wrote, unchecked failures included. It writes {@code deployed}
      * once: the new version as it returns, or — thrown once phase A stopped flows — the version before with each of those listed
      * FAILED unless the rollback runs it again ({@link #afterFailure}); {@code deployed.get(name)} is {@code running} until then.
@@ -396,6 +420,7 @@ public final class Deployments {
             discard(List.of(), spare);
             List<Flow> starting = consumers(built, problems);   // added and changed, each with its consumer, none started
             if (!problems.isEmpty()) throw invalid(name, problems);
+            store(sha256, archive);   // before anything stops: a failed put refuses the deploy and the running version runs on
             now.addAll(starting);
             now.sort(Comparator.comparing(Flow::id));
             DeployedPackage deployedPackage = new DeployedPackage(name, version, revision, sha256, now.stream().map(Flow::id).toList(), clock.instant(), files(dir));
@@ -409,7 +434,16 @@ public final class Deployments {
             List<Start> failed = started.stream().filter(s -> s.failure() != null).toList();
             if (!failed.isEmpty()) {
                 if (running == null) throw refused(Kind.FAILED, problem(failed.getFirst(), "did not start"));   // a first deploy: the cleanup stops them all
-                throw rollBack(version, running, retiring, started, packageDir, built, again);
+                throw rollBack(version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
+            }
+            // the commit point (D-070): the package's record, written once every flow started; the listing and the pruning follow it
+            Future<Void> saved = Future.future(done -> records.save(new DeploymentRecord(name, version, revision, sha256, deployedPackage.deployedAt()))
+                    .onComplete(done));
+            saved.otherwiseEmpty().await();
+            if (saved.failed()) {
+                String unrecorded = "the deploy record was not written: " + reason(saved.cause());
+                if (running == null) throw refused(Kind.FAILED, unrecorded);   // a first deploy: the cleanup stops the flows that started
+                throw rollBack(version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
             }
             String previous = null;   // the directory of the last other archive the package ran: none on a first deploy
             if (running != null) previous = sha256.equals(running.pkg().archiveSha256()) ? running.previous() : running.pkg().archiveSha256();
@@ -436,7 +470,8 @@ public final class Deployments {
     }
 
     /**
-     * Rolls back a redeploy whose phase B did not start every flow (D-063) and returns the refusal to throw; it writes no listing:
+     * Rolls back a redeploy whose phase B did not start every flow (D-063), or whose record was not written once it did (D-070),
+     * and returns the refusal to throw; it writes no listing and no record:
      * {@code deployed} lists {@code running} throughout, and {@link #install} writes what the refusal leaves. First every flow of
      * the new version ({@code phaseB}) stops — one that started within the node's stop deadline, the others at once — and closes
      * (its delivery's producers awaited, FIX-30; a consumer whose start was still pending at the deadline stops only once that
@@ -447,15 +482,16 @@ public final class Deployments {
      * other retired flow {@link DeployedFlow.State#FAILED}. An unchecked failure that breaks the rollback off (an Error a component
      * or a step factory throws) leaves {@code again} empty — every retired flow FAILED — and what {@code built} holds to the
      * cleanup of {@link #install}, which stops it; it is a problem line and added as suppressed. The refusal is {@link Kind#FAILED}:
-     * "version {@code version} did not start; &lt;running version&gt; runs again", with "; flows [..] FAILED" naming every flow
-     * the package lists FAILED after it (a retired one {@link #afterFailure} lists FAILED, or one FAILED before the deploy), a
-     * problem line per flow that did not start, build or start again, and each stop failure added as suppressed. {@code built}
+     * "version {@code version} &lt;why&gt;; &lt;running version&gt; runs again", with "; flows [..] FAILED" naming every flow
+     * the package lists FAILED after it (a retired one {@link #afterFailure} lists FAILED, or one FAILED before the deploy), the
+     * {@code causes} first among its problems, then a problem line per flow that did not start, build or start again, and each
+     * stop failure added as suppressed. {@code built}
      * holds what a throw would leave to stop wherever one can happen: discard never throws, so a list it stopped is cleared before
      * anything that may throw runs.
      */
-    private DeployRefusedException rollBack(String version, Deployed running, List<Flow> retired, List<Start> phaseB, Path packageDir, List<Flow> built,
-                                            List<Flow> again) {
-        List<String> problems = new ArrayList<>();
+    private DeployRefusedException rollBack(String version, String why, List<String> causes, Deployed running, List<Flow> retired, List<Start> phaseB,
+                                            Path packageDir, List<Flow> built, List<Flow> again) {
+        List<String> problems = new ArrayList<>(causes);
         List<Flow> started = new ArrayList<>();
         List<Flow> unstarted = new ArrayList<>();
         for (Start s : phaseB) {
@@ -503,7 +539,7 @@ public final class Deployments {
             unstopped.add(broke);
         }
         List<String> failed = afterFailure(running, retired, again).flows().stream().filter(f -> !f.runs()).map(Flow::id).sorted().toList();
-        DeployRefusedException refusal = new DeployRefusedException(Kind.FAILED, "version " + version + " did not start; " + running.pkg().version() + " runs again"
+        DeployRefusedException refusal = new DeployRefusedException(Kind.FAILED, "version " + version + " " + why + "; " + running.pkg().version() + " runs again"
                 + (failed.isEmpty() ? "" : "; flows " + failed + " FAILED"), problems);
         unstopped.stream().filter(Objects::nonNull).forEach(refusal::addSuppressed);
         return refusal;
@@ -542,6 +578,15 @@ public final class Deployments {
         Map<String, Flow> byId = new HashMap<>();
         flows.forEach(f -> byId.put(f.id(), f));
         return new Deployed(d.pkg(), d.flows().stream().map(f -> byId.getOrDefault(f.id(), f)).toList(), d.kept(), d.previous());
+    }
+
+    /** Puts the archive in the archive store under its SHA-256; a put that fails is the deploy's {@link Kind#FAILED} naming both. */
+    private void store(String sha256, Path archive) throws DeployRefusedException {
+        try {
+            archives.put(sha256, archive);
+        } catch (IOException failed) {
+            throw refused(Kind.FAILED, "archive sha256:" + sha256 + " not stored: " + reason(failed));
+        }
     }
 
     private void unpack(Path archive, Path into) throws DeployRefusedException, IOException {

@@ -86,12 +86,12 @@ class MigrationsIT {
     @Test
     @Order(1)
     void freshDatabaseIsMigratedToV1AndASecondRunIsANoOp() {
-        Set<String> app = Set.of("bodies", "dlq", "message_keys", "messages", "payloads", "work");
+        Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "work");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(6, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h)");
-        assertEquals("6", first.schemaVersion());
-        assertEquals(Set.of("bodies", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "work"), tables());
+        assertEquals(7, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a)");
+        assertEquals("7", first.schemaVersion());
+        assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "work"), tables());
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
         assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "dlq_parked_at", "messages_pkey", "payloads_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
@@ -103,10 +103,10 @@ class MigrationsIT {
         assertTrue(String.valueOf(defs.get("work_held")).endsWith("(seq) WHERE (held_at IS NOT NULL)"), "V5: held work rows, partial: " + defs.get("work_held"));
         assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V6");
-        assertEquals("6", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V7");
+        assertEquals("7", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(6, applied);
+        assertEquals(7, applied);
     }
 
     /**
@@ -168,8 +168,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(2, r.migrationsExecuted(), "V5 and V6 on top of V4");
-        assertEquals("6", r.schemaVersion());
+        assertEquals(3, r.migrationsExecuted(), "V5, V6 and V7 on top of V4");
+        assertEquals("7", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));
@@ -185,5 +185,47 @@ class MigrationsIT {
             order.add(row.getString(0));
         }
         assertEquals(List.of("m-2", "m-1", "m-4"), order, "a row written after V5 is numbered after the migrated ones");
+    }
+
+    /**
+     * V7 (D-070, P1-09c3a): {@code deployments} holds one row per package — its name the primary key, shared by every node of the
+     * pool — with the version, the revision (nullable), the archive's SHA-256 (64 lower-case hex digits, checked by the database)
+     * and when it was deployed; and no bytes: the archive lives in the archive store, keyed by that SHA-256.
+     */
+    @Test
+    @Order(5)
+    void v7DeploymentsHoldsTheRecordAndNoBytes() {
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        assertEquals("7", r.schemaVersion());
+        java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
+        for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
+                + "where table_schema = 'public' and table_name = 'deployments' order by ordinal_position").execute().await()) {
+            columns.put(c.getString(0), c.getString(1) + (c.getString(2).equals("NO") ? " not null" : ""));
+        }
+        assertEquals(java.util.Map.of("package", "text not null", "version", "text not null", "revision", "text", "archive_sha256", "text not null",
+                "deployed_at", "timestamp with time zone not null"), columns, "V7: the deployments columns");
+        assertEquals(List.of("package", "version", "revision", "archive_sha256", "deployed_at"), List.copyOf(columns.keySet()), "in this order");
+        assertTrue(columns.values().stream().noneMatch(t -> t.startsWith("bytea")), "no bytes in the record: the archive is in the archive store");
+        String pk = pool.query("select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'p'")
+                .execute().await().iterator().next().getString(0);
+        assertEquals("PRIMARY KEY (package)", pk, "V7: one row per package");
+
+        String sha = "0123456789abcdef".repeat(4);
+        String insert = "insert into deployments(package, version, revision, archive_sha256, deployed_at) values ($1, $2, $3, $4, now())";
+        pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of("shop", "1.0.0", null, sha)).await();   // no revision: null
+        assertEquals("23505", sqlState(() -> pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of("shop", "2.0.0", "r2", sha)).await()),
+                "a second row for a package is a unique violation");
+        for (String bad : List.of(sha.toUpperCase(java.util.Locale.ROOT), sha.substring(1), sha + "0", sha.substring(0, 63) + "g", "sha256:" + sha.substring(7))) {
+            assertEquals("23514", sqlState(() -> pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of("other", "1.0.0", null, bad)).await()),
+                    "archive_sha256 '" + bad + "' is refused by the check: 64 lower-case hex digits only");
+        }
+        long rows = pool.query("select count(*) from deployments").execute().await().iterator().next().getLong(0);
+        assertEquals(1L, rows, "only the valid row was written");
+    }
+
+    /** The SQLSTATE of the Postgres error {@code call} fails with. */
+    private static String sqlState(org.junit.jupiter.api.function.Executable call) {
+        io.vertx.pgclient.PgException e = org.junit.jupiter.api.Assertions.assertThrows(io.vertx.pgclient.PgException.class, call);
+        return e.getSqlState();
     }
 }

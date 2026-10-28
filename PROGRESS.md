@@ -692,3 +692,14 @@ Checks: whole reactor -Pit VERIFIED_PASS, archtest 35 (target/P1-09c2-verify-all
 Review: FAIL r1 (F-11 and the §6/D-057 docs missing — architect's miss); PASS r2. Raised FIX-56 (older AdminServer tests' body race); FIX-45 and FIX-55 widened.
 D-054 data: class C (test-author ×3, implementer, reviewer opus/xhigh); architect turns ~25; review rounds 2; 3 turn-cap resumes.
 Next: P1-09c3 [C] — designer rewrites packet §c3 for the S3 archive (owner option A) first.
+
+## 2026-10-28 — P1-09c3a deployment record in Postgres V7 + archive store in S3 by sha256 (D-070, owner option A) — done, review PASS
+context compacted (re-verified with git status / git log before changing anything).
+Test first: MigrationsIT v7…, DeploymentStoreContract (Pg + InMemory), ArchiveStoreContract (S3 on LocalStack + dir), S3ArchiveStoreIT +3, NodeConfigTest +7, NodeTest +2, DeploymentsRecordTest 5 — observed red (target/P1-09c3a-red.log, missing types only).
+Change: V7__deployments.sql; runtime.deploy DeploymentRecord, DeploymentStore (Pg/InMemory), ArchiveStore (S3/Dir), ArchiveName; Deployments put → phase A → B → save (commit point) → listing → prune; NodeConfig Archives/S3; Node refuses dir and plain-http in a deployed env, one S3Client.
+Wrong expectations (D-070): MigrationsIT/BenchMainIT/PgMessageStoreIT schema 6→7; NodeIT prod node names an s3 store; DeploymentsTest refused-deploy excludes the kept archive orphan.
+Docs: D-070; CLAUDE.md content-hash rule scoped to message bodies (owner option A); packet §c3 split c3a/c3b.
+Checks: whole reactor -Pit VERIFIED_PASS, archtest 35 (target/P1-09c3a-verify2.log); coverage no decrease; PIT api 100 %, core 99 %; 22+2 hand mutants, 23 killed (M21 S3Client close unobservable).
+Review: FAIL r1 (Node store wiring and the done-when PUT path untested → NodeIT S3 case, mutants A/B killed); PASS r2. Raised FIX-57..59.
+D-054 data: class C (designer, test-author ×3, implementer, verifier, reviewer ×2); review rounds 2; 1 turn-cap resume.
+Next: P1-09c3b [C] — restore at node start (packet §c3b).

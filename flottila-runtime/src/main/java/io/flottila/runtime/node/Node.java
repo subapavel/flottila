@@ -15,7 +15,11 @@ import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.deploy.ArchiveStore;
 import io.flottila.runtime.deploy.Deployments;
+import io.flottila.runtime.deploy.DirArchiveStore;
+import io.flottila.runtime.deploy.PgDeploymentStore;
+import io.flottila.runtime.deploy.S3ArchiveStore;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
@@ -25,10 +29,17 @@ import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -52,13 +63,15 @@ import java.util.stream.Stream;
  * yet), the blob store over the spool with a fresh key and over the pool's {@code bodies} tier bounded by
  * {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), the timer, ids and clock, builds the components from them, refuses two components
  * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
- * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — before it touches Postgres. It then refuses a
+ * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — and, in a deployed environment, the dir archive
+ * store and an S3 endpoint over plain http (D-070) before it touches Postgres. It then refuses a
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
- * refused node leaves its database untouched, migrates the database, opens the stores, builds the {@link Deployments} (D-059) over them and starts the admin server with the deploy, work, replay and retry routes; when any
- * of this fails, what was opened — the store, the pool — closes again, so nothing is left listening or pooled. {@code close} first closes the deployments
+ * refused node leaves its database untouched, migrates the database, opens the stores and the archive store (an s3 store over
+ * one S3 client the node builds), builds the {@link Deployments} (D-059) over them and starts the admin server with the deploy, work, replay and retry routes; when any
+ * of this fails, what was opened — the store, the pool, the S3 client — closes again, so nothing is left listening or pooled. {@code close} first closes the deployments
  * — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, while the admin port still
- * answers — then stops the admin server, then flushes and closes the message store, then closes the pool, each step even when
- * the one before failed; Vert.x stays its caller's.
+ * answers — then stops the admin server, then flushes and closes the message store, then closes the pool, then the S3 client,
+ * each step even when the one before failed; Vert.x stays its caller's.
  *
  * @since 0.1
  */
@@ -78,13 +91,16 @@ public final class Node implements AutoCloseable {
     private final int adminPort;
     private final PgMessageStore messages;
     private final Pool pool;
+    /** Closes the S3 client of an s3 archive store; nothing for a dir store. */
+    private final Runnable closeS3;
 
-    private Node(Deployments deployments, AdminServer admin, int adminPort, PgMessageStore messages, Pool pool) {
+    private Node(Deployments deployments, AdminServer admin, int adminPort, PgMessageStore messages, Pool pool, Runnable closeS3) {
         this.deployments = deployments;
         this.admin = admin;
         this.adminPort = adminPort;
         this.messages = messages;
         this.pool = pool;
+        this.closeS3 = closeS3;
     }
 
     /**
@@ -92,7 +108,7 @@ public final class Node implements AutoCloseable {
      *
      * @param components builds the node's components, once, from the node's own context
      * @throws IllegalStateException two components for one scheme, a deployed environment and a mock binding among the components,
-     *                               or a {@code synchronous_commit} other than on, remote_write or remote_apply ({@code off} does
+     *                               the dir archive store or an S3 endpoint over plain http, or a {@code synchronous_commit} other than on, remote_write or remote_apply ({@code off} does
      *                               not wait for the WAL flush, {@code local} for a synchronous standby)
      * @throws IOException the spool a previous run left cannot be cleared
      */
@@ -114,13 +130,17 @@ public final class Node implements AutoCloseable {
                 .connectingTo(new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password()))
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
         PgMessageStore messages = null;
+        Runnable closeS3 = () -> {};   // the S3 client once built: closed last
         boolean started = false;
         try {
             TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
                     spool, spoolKey(), null, false), hasher, new PgBodies(pool, tiers.durableMax()));
             List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, blobs, ids, timer, clock)));
             Map<String, Component> byScheme = byScheme(built);
-            if (config.deployed()) refuseMocks(config.env(), built);
+            if (config.deployed()) {
+                refuseMocks(config.env(), built);
+                refuseArchiveStore(config);
+            }
 
             requireSynchronousCommit(pool);   // before the migration: a refused node leaves its database untouched
             Migrations.migrate("jdbc:postgresql://" + pg.host() + ":" + pg.port() + "/" + pg.database(), pg.user(), pg.password());
@@ -128,17 +148,54 @@ public final class Node implements AutoCloseable {
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
             PgWorkQueue work = new PgWorkQueue(pool);
+            ArchiveStore archives = new DirArchiveStore(config.archives().dir());
+            if (config.s3().isPresent()) {
+                NodeConfig.S3 settings = config.s3().get();
+                S3Client s3 = s3Client(settings);
+                closeS3 = s3::close;
+                archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix());
+            }
             Deployments deployments = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
-                    Meter.system());
+                    Meter.system(), new PgDeploymentStore(pool), archives);
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed),
                     Optional.of(deployments), work, ids);
-            Node node = new Node(deployments, admin, admin.start(vertx).await(), messages, pool);
+            Node node = new Node(deployments, admin, admin.start(vertx).await(), messages, pool, closeS3);
             started = true;
             return node;
         } finally {
             // refused, or nothing listens (a port in use, an address not bound; a checked failure arrives sneakily): close what was opened for it
-            if (!started) closeStores(messages, pool);
+            if (!started) closeStores(messages, pool, closeS3);
+        }
+    }
+
+    /**
+     * The one S3 client of a node with an s3 archive store, as the S3 tier's tests build theirs: the JDK's HttpURLConnection, the
+     * region, path-style when asked, the endpoint when one is given (else the SDK's for the region) and static keys when both are
+     * given (else the SDK's default credentials chain). Building it contacts nothing.
+     */
+    static S3Client s3Client(NodeConfig.S3 s3) {
+        S3ClientBuilder builder = S3Client.builder().region(Region.of(s3.region())).forcePathStyle(s3.pathStyle())
+                .httpClientBuilder(UrlConnectionHttpClient.builder());
+        s3.endpoint().ifPresent(builder::endpointOverride);
+        s3.accessKey().map(key -> StaticCredentialsProvider.create(AwsBasicCredentials.create(key, s3.secretKey().orElseThrow())))
+                .ifPresent(keys -> builder.credentialsProvider(keys));
+        return builder.build();
+    }
+
+    /**
+     * D-070: a deployed node stores package archives where every node of the pool restores them from — S3, never its own disk —
+     * and reaches S3 over https only.
+     */
+    private static void refuseArchiveStore(NodeConfig config) {
+        if (config.archives().store() == NodeConfig.Archives.Store.DIR) {
+            throw new IllegalStateException("the deployed environment " + config.env() + " refuses FLOTTILA_ARCHIVE_STORE dir: a deployed node stores "
+                    + "package archives in S3, where every node of the pool restores them from (D-070)");
+        }
+        Optional<URI> plain = config.s3().flatMap(NodeConfig.S3::endpoint).filter(endpoint -> "http".equals(endpoint.getScheme()));
+        if (plain.isPresent()) {
+            throw new IllegalStateException("the deployed environment " + config.env() + " refuses the FLOTTILA_S3_ENDPOINT " + plain.get()
+                    + ": a deployed node reaches S3 over https only (D-070)");
         }
     }
 
@@ -163,7 +220,7 @@ public final class Node implements AutoCloseable {
 
     /**
      * Closes the deployments (every flow stopped, deploys refused), then stops the admin server, then flushes and closes the message
-     * store, then closes the pool — each step even when the one before failed.
+     * store, then closes the pool, then the S3 client — each step even when the one before failed.
      */
     @Override
     public void close() {
@@ -173,17 +230,24 @@ public final class Node implements AutoCloseable {
             try {
                 admin.stop().await();
             } finally {
-                closeStores(messages, pool);
+                closeStores(messages, pool, closeS3);
             }
         }
     }
 
-    /** Flushes and closes the store (none yet: nothing to flush), then closes the pool — even when the flush failed. */
-    private static void closeStores(PgMessageStore messages, Pool pool) {
+    /**
+     * Flushes and closes the store (none yet: nothing to flush), then closes the pool, then the S3 client (none: nothing) — each
+     * even when the one before failed.
+     */
+    private static void closeStores(PgMessageStore messages, Pool pool, Runnable closeS3) {
         try {
             if (messages != null) messages.close();
         } finally {
-            pool.close().await();
+            try {
+                pool.close().await();
+            } finally {
+                closeS3.run();
+            }
         }
     }
 

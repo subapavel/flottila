@@ -10,7 +10,6 @@
 - Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id
   generators making an identity assertion vacuous (P1-06 round 5); a mock answering every
   endpoint from one handler (P1-06 round 1); `off`/`yes`/`no` read as YAML booleans (P1-03).
-- Rebuild per call where one build was meant (`FlowBuilder.replay` lambda, P1-05).
 - Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06).
   Since FIX-7 the order is the rule: the failure is recorded under the monitor before the pause
   and before the promise fails; check that order on every new catch in the store.
@@ -118,3 +117,4 @@
 - Not-chased contract assertions: try a stale per-key cache (read/open not invalidated on rewrite) and a part-blind local tier before accepting 'no variant reaches it' (FIX-53, Durable :116/:117/:158).
 - A new ORDER BY on an UPDATE…RETURNING is tested only by a fixture whose heap order differs from seq order; fresh inserts pin nothing (P1-09c1, D-068).
 - Packet 'docs at its commit' items: check the diff for the F-n file and the § edit; code that changes documented behaviour without them is a FAIL (P1-09c2).
+- BACKLOG done-when naming an end-to-end path (PUT over Pg + S3) needs a Node-level test; store contracts + Deployments unit tests leave Node wiring unpinned (P1-09c3a, Node:156/:159).

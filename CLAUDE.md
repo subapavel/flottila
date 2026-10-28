@@ -19,7 +19,8 @@ build; this file holds the rules that keep the code and the way of working align
   attachments stay separate fields. Body and parsed views are shared by reference across `with*`.
 - `Body` is one final class over a `BlobStore`: `hash()`, `size()`, `open()` returns a fresh cold
   stream any number of times, `whole()` only below the tree limit. Never a consumable stream, never
-  a byte array as the domain type. Objects are keyed by message id + step, never by content hash.
+  a byte array as the domain type. Message-body objects are keyed by message id + step, never by content hash (a deployment archive is
+  keyed by its sha256, D-070).
 - `Step` is `Envelope apply(Envelope)`; `Stage` is `Envelope apply(Envelope, Pipeline rest)`.
   Both run on the message's virtual thread and may block on I/O through Vert.x clients and
   `Future.await()`. No Mutiny, no reactive stream contract in the pipeline.

@@ -622,11 +622,12 @@ class DeploymentsTest {
         DeployRefusedException refused = refused("shop", Optional.empty(), archive);
 
         assertEquals(expected, refused.kind(), why + ": " + refused.error() + " " + refused.problems());
-        assertEquals(List.of(), regularFiles(data), "no file of the package is left under the data directory");
+        assertEquals(List.of(), regularFiles(data).stream().filter(f -> !f.startsWith("archives/")).toList(), "no file of the package is left under the data directory");
+        if (expected != Kind.FAILED) assertEquals(List.of(), regularFiles(data.resolve("archives")), "a refusal before the put stores no archive (D-070: only a later phase's refusal leaves an orphan)");
         assertFalse(Files.exists(data.resolve("packages").resolve("shop").resolve(PackageDraft.sha256(archive))), "no <name>/<sha256> directory");
         assertFalse(Files.exists(data.resolve("packages").resolve("shop")), "the refused first deploy of shop leaves no packages/shop/ directory either");
         assertEquals(List.of(), children(deployments.incomingDir()), "nothing is left in .incoming");
-        assertTrue(regularFiles(tmp).stream().allMatch(f -> f.startsWith("archives/")), "nothing was written outside the data directory either: " + regularFiles(tmp));
+        assertTrue(regularFiles(tmp).stream().allMatch(f -> f.startsWith("archives/") || f.startsWith("data/archives/")), "nothing was written outside the data directory either: " + regularFiles(tmp));
         assertEquals(List.of(), deployments.flows());
         assertEquals(List.of(), deployments.packages());
     }

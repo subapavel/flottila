@@ -38,7 +38,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.testcontainers.localstack.LocalStackContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -174,6 +183,14 @@ class NodeIT {
     void startMigratesAndServesHealth() throws Exception {
         Map<String, String> env = env("prod");
         env.put("FLOTTILA_BLOB_TREE_LIMIT", "65536");
+        // P1-09c3a (D-070): a deployed node refuses the dir archive store and a plain-http endpoint; it builds its S3 client at
+        // start and contacts S3 only to restore a recorded package (none here), so an https endpoint nothing listens on will do
+        env.put("FLOTTILA_ARCHIVE_STORE", "s3");
+        env.put("FLOTTILA_S3_BUCKET", "flottila-archives");
+        env.put("FLOTTILA_S3_REGION", "eu-central-1");
+        env.put("FLOTTILA_S3_ENDPOINT", "https://127.0.0.1:9");
+        env.put("FLOTTILA_S3_ACCESS_KEY", "AKIAEXAMPLE");
+        env.put("FLOTTILA_S3_SECRET_KEY", "secret-example");
         NodeConfig config = NodeConfig.from(env);
         assertTrue(config.deployed(), "a deployed node: it accepts the real component and a plain one");
         List<ComponentContext> asked = new CopyOnWriteArrayList<>();
@@ -484,6 +501,68 @@ class NodeIT {
             }
         } finally {
             partner.close().await();
+        }
+    }
+
+    /**
+     * P1-09c3a (D-070): a node with FLOTTILA_ARCHIVE_STORE s3 over Postgres and LocalStack. A PUT of the demo stores the archive's
+     * bytes as the object {@code <prefix>/archives/<sha256>.zip} in the configured bucket — the node's S3 archive store, not its
+     * disk — and writes the package's {@code deployments} row in the node's Postgres, naming that SHA-256.
+     */
+    @Test
+    void aPutOnAnS3NodeStoresTheArchiveBySha256AndRecordsTheRow() throws Exception {
+        String bucket = "flottila-node-it";
+        String prefix = "node-it-prefix";
+        try (LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3")) {
+            localstack.start();
+            try (S3Client s3 = S3Client.builder().endpointOverride(localstack.getEndpoint()).region(Region.of(localstack.getRegion()))
+                    .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
+                    .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build();
+                 HttpClient client = http()) {
+                s3.createBucket(CreateBucketRequest.builder().bucket(bucket).build());
+                Map<String, String> env = env("ci");   // ci is no deployed environment: a plain-http endpoint is allowed
+                env.put("FLOTTILA_ARCHIVE_STORE", "s3");
+                env.put("FLOTTILA_S3_BUCKET", bucket);
+                env.put("FLOTTILA_S3_REGION", localstack.getRegion());
+                env.put("FLOTTILA_S3_ENDPOINT", localstack.getEndpoint().toString());
+                env.put("FLOTTILA_S3_PATH_STYLE", "true");
+                env.put("FLOTTILA_S3_PREFIX", prefix);
+                env.put("FLOTTILA_S3_ACCESS_KEY", localstack.getAccessKey());
+                env.put("FLOTTILA_S3_SECRET_KEY", localstack.getSecretKey());
+                byte[] zip = zip(demoFiles(freePort(), "http://127.0.0.1:9"));
+                String sha = sha256(zip);
+                startDemoNode(env);
+
+                HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo?revision=9df3f78", zip, "application/zip");
+
+                assertEquals(200, put.statusCode(), put.body());
+                assertEquals("sha256:" + sha, new JsonObject(put.body()).getString("archive"), "the deploy's answer names the archive: " + put.body());
+                String key = prefix + "/archives/" + sha + ".zip";
+                byte[] stored;
+                try {
+                    stored = s3.getObjectAsBytes(GetObjectRequest.builder().bucket(bucket).key(key).build()).asByteArray();
+                } catch (NoSuchKeyException missing) {
+                    throw new AssertionError("no object s3://" + bucket + "/" + key + " after the PUT: the node did not store the archive in its S3 archive store", missing);
+                }
+                assertTrue(java.util.Arrays.equals(zip, stored), "the object holds the PUT's bytes: " + stored.length + " bytes stored, " + zip.length + " put");
+                try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword());
+                     Statement q = c.createStatement();
+                     java.sql.ResultSet rows = q.executeQuery("select package, version, revision, archive_sha256, deployed_at from deployments")) {
+                    assertTrue(rows.next(), "the PUT wrote the package's row in the node's Postgres");
+                    assertEquals("demo", rows.getString("package"));
+                    assertEquals("0.1.0", rows.getString("version"));
+                    assertEquals("9df3f78", rows.getString("revision"));
+                    assertEquals(sha, rows.getString("archive_sha256"), "the row names the stored archive's SHA-256");
+                    assertNotNull(rows.getTimestamp("deployed_at"), "the row carries its deploy time");
+                    assertFalse(rows.next(), "one row per package");
+                }
+            } finally {
+                if (node != null) {
+                    Node started = node;
+                    node = null;
+                    OnVirtualThread.call(() -> { started.close(); return null; });   // before LocalStack stops
+                }
+            }
         }
     }
 
