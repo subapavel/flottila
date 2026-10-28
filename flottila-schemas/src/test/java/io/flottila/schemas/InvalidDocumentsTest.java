@@ -24,7 +24,7 @@ class InvalidDocumentsTest {
         Path root = Path.of("src", "test", "resources", "invalid");
         List<Path> files;
         try (Stream<Path> s = Files.walk(root)) { files = s.filter(Files::isRegularFile).sorted().toList(); }
-        assertTrue(files.size() >= 39, "a lost fixture directory would show here; 39 fixtures on 2026-10-19, add, never drop: " + files.size());
+        assertTrue(files.size() >= 47, "a lost fixture directory would show here; 47 fixtures on 2026-10-28 (P2-02a: invalid/folder/), add, never drop: " + files.size());
         return files.stream().map(f -> DynamicTest.dynamicTest(root.relativize(f).toString(), () -> {
             String first = Files.readAllLines(f).get(0);
             assertTrue(first.startsWith("# expect: "), f + " must start with '# expect: <path>'");

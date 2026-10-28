@@ -1,21 +1,22 @@
 # Mock bindings and cases for invoice-sync (ARCHITECTURE §11: the flow file is byte-identical everywhere;
 # mocks live next to it in *.test.yaml). Validated by test.schema.json; run by `flottila test` in Phase 1.
+# Fixture paths are from the package root (D-078).
 schemaVersion: 1
 kind: test
 flow: invoice-sync
 mocks:
-  partner-domestic: { reply: ../fixtures/partner-ack.xml, delay: 20ms }
-  partner-foreign: { reply: ../fixtures/partner-ack.xml }
+  partner-domestic: { reply: fixtures/partner-ack.xml, delay: 20ms }
+  partner-foreign: { reply: fixtures/partner-ack.xml }
 cases:
   - name: domestic invoice
-    send: ../fixtures/sample-invoice.xml
+    send: fixtures/sample-invoice.xml
     expect:
       sent:
         partner-domestic: { xpath: /PartnerInvoice/@number, equals: "4711" }
       keys: { invoiceId: "4711" }
       steps: 6
   - name: partner down
-    send: ../fixtures/sample-invoice.xml
+    send: fixtures/sample-invoice.xml
     mocks:
       partner-domestic: { fail: 503 }
     expect: { dlq: 0, status: 503, retries: 3 }

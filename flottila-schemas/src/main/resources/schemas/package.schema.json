@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:flottila:schema:package:1",
   "title": "Flottila package.yaml, schemaVersion 1 (draft — review at hand-over, P0-12)",
-  "description": "The package is the namespace and authorization unit (ARCHITECTURE §7): name, version and the packages it depends on. Flows, endpoints and tests are the files next to it (flows/, endpoints/).",
+  "description": "The package is the namespace and authorization unit (ARCHITECTURE §7): name, version and the packages it depends on. Flows, endpoints and tests are the YAML files in any folder below it, each found by its kind (D-078); a folder may carry a folder.yaml.",
   "type": "object",
   "required": ["schemaVersion", "kind", "name", "version"],
   "additionalProperties": false,

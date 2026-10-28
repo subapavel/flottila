@@ -73,7 +73,7 @@ class PackageTest {
                         schemaVersion: 1
                         kind: test
                         flow: orders
-                        cases: [ { name: c, send: ../fixtures/in.xml, expect: { steps: many } } ]
+                        cases: [ { name: c, send: fixtures/in.xml, expect: { steps: many } } ]
                         """));
         write(dir, "endpoints/in.yaml", IN);
         write(dir, "endpoints/partner-copy.yaml", PARTNER);
@@ -223,8 +223,8 @@ class PackageTest {
                 schemaVersion: 1
                 kind: test
                 flow: orders
-                mocks: { partner: { reply: ../fixtures/gone.xml } }
-                cases: [ { name: c, send: ../fixtures/missing.xml, expect: { steps: 1 } } ]
+                mocks: { partner: { reply: fixtures/gone.xml } }
+                cases: [ { name: c, send: fixtures/missing.xml, expect: { steps: 1 } } ]
                 """);
 
         List<String> problems = Package.load(dir).problems();

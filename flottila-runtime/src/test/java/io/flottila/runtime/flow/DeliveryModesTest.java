@@ -74,11 +74,12 @@ import static org.junit.jupiter.api.Assertions.fail;
 @ExtendWith(NoBlockedPlatformThreads.class)
 class DeliveryModesTest {
 
-    static final Path FLOWS = Path.of("../packages/demo/flows");
+    /** The demo package's root: every step file reference is a path from it (D-078). */
+    static final Path DEMO = Path.of("../packages/demo");
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
     static final Map<String, Object> TO_PARTNER = Map.of("type", "to", "name", "partner", "endpoint", "partner");
-    static final Map<String, Object> VALIDATE = Map.of("type", "xsd", "name", "validate", "schema", "invoice.xsd");
-    static final Map<String, Object> MAP_FOR_PARTNER = Map.of("type", "xslt", "name", "toPartner", "stylesheet", "invoice-to-partner.xsl");
+    static final Map<String, Object> VALIDATE = Map.of("type", "xsd", "name", "validate", "schema", "flows/invoice.xsd");
+    static final Map<String, Object> MAP_FOR_PARTNER = Map.of("type", "xslt", "name", "toPartner", "stylesheet", "flows/invoice-to-partner.xsl");
 
     static Vertx vertx;
     static HttpClientAgent caller;
@@ -197,7 +198,7 @@ class DeliveryModesTest {
     /** Builds the flow's delivery handler and listens with it. */
     FlowDefinition listen(Map<String, Object> doc) {
         FlowDefinition def = FlowDefinition.from(doc);
-        listen(def, builder().delivery(def, FLOWS));
+        listen(def, builder().delivery(def, DEMO));
         return def;
     }
 
@@ -333,8 +334,8 @@ class DeliveryModesTest {
     void anAtLeastOnceMessageIsProcessedByTheWorkerAfterThe202() {
         FlowDefinition def = FlowDefinition.from(flow("at-least-once", List.of(TO_PARTNER)));
         FlowBuilder b = builder();
-        listen(def, b.delivery(def, FLOWS));
-        FlowWorker worker = b.worker(def, FLOWS, "w1");
+        listen(def, b.delivery(def, DEMO));
+        FlowWorker worker = b.worker(def, DEMO, "w1");
         Answer a = post(ORDER);
         assertEquals(202, a.status(), a.body());
         String id = a.headers().get(HttpComponent.H_MESSAGE_ID);
@@ -388,7 +389,7 @@ class DeliveryModesTest {
         Map<String, Object> doc = flow("sync", List.of(TO_PARTNER));
         doc.put("retry", Map.of("attempts", 1, "initial", "100ms", "max", "100ms"));   // one attempt: the cancel is not retried into a reply
         FlowDefinition def = FlowDefinition.from(doc);
-        Delivery delivery = builder().delivery(def, FLOWS);
+        Delivery delivery = builder().delivery(def, DEMO);
         listen(def, delivery);
         Consumer consumer = started.get(0);
         holdAtPartner();   // never released by the test: only the stop deadline ends this send
@@ -422,10 +423,10 @@ class DeliveryModesTest {
         FlowDefinition def = FlowDefinition.from(doc);
         HeldSave saves = new HeldSave(store);
         FlowBuilder b = builder(saves);
-        Delivery delivery = b.delivery(def, FLOWS);
+        Delivery delivery = b.delivery(def, DEMO);
         listen(def, delivery);
         Consumer consumer = started.get(0);
-        FlowWorker worker = b.worker(def, FLOWS, "w1");
+        FlowWorker worker = b.worker(def, DEMO, "w1");
 
         Answer before = post(ORDER);
         assertEquals(202, before.status(), before.body());

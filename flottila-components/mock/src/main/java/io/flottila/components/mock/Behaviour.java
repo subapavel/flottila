@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * @param after the first send (1-based) the failure applies to; 1 = from the start
  * @param every of the sends from {@code after} on, every n-th fails; 1 = every send
  * @param files the fixtures a consumer is fed at its start: a glob over file names (its last segment) in a directory,
- *              resolved against the test file's directory; empty = none
+ *              resolved against {@code baseDir} (the package root: a path from it, D-078); empty = none
  * @since 0.1
  */
 public record Behaviour(Optional<Path> reply, Duration delay, Optional<Failure> fail, int after, int every, Optional<Path> files) {
@@ -63,7 +63,7 @@ public record Behaviour(Optional<Path> reply, Duration delay, Optional<Failure> 
         this(reply, delay, fail, after, every, Optional.empty());
     }
 
-    /** The schema's {@code behaviour} object; {@code reply} resolves against {@code baseDir} (the test file's directory). */
+    /** The schema's {@code behaviour} object; {@code reply} and {@code files} resolve against {@code baseDir} (the package root, D-078). */
     public static Behaviour from(Map<String, Object> node, Path baseDir) {
         Objects.requireNonNull(node, "behaviour");
         Objects.requireNonNull(baseDir, "baseDir");

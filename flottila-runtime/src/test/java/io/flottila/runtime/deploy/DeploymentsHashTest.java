@@ -143,9 +143,9 @@ class DeploymentsHashTest {
                 .endpoint("archive", "out", new JsonObject().put("url", "rec://archive"))
                 .endpoint("spare", "out", new JsonObject().put("url", "rec://spare"))
                 .flow("orders", "2.1.0", "sync", "orders-in", 4096,
-                        new JsonArray().add(step("xslt", "map", "stylesheet", "main.xsl")).add(step("to", "send", "endpoint", "partner")))
+                        new JsonArray().add(step("xslt", "map", "stylesheet", "flows/main.xsl")).add(step("to", "send", "endpoint", "partner")))
                 .flow("audit", "1.0.3", "at-least-once", "audit-in", 1024,
-                        new JsonArray().add(step("xsd", "check", "schema", "order.xsd")).add(step("to", "keep", "endpoint", "archive")))
+                        new JsonArray().add(step("xsd", "check", "schema", "flows/order.xsd")).add(step("to", "keep", "endpoint", "archive")))
                 .flow("ping", "0.0.1", "at-most-once", "ping-in", 2048, new JsonArray().add(step("to", "send", "endpoint", "partner")))
                 .file("flows/main.xsl", mainXsl(""))
                 .file("flows/xsl/lib.xsl", template("lib", "lib v1"))

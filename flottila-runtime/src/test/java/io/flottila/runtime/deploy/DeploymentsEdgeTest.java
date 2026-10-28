@@ -201,7 +201,7 @@ class DeploymentsEdgeTest {
     void aStepFailureNamingAPackageFileNamesItFromThePackageRoot() throws Exception {
         Deployments d = deployments(Map.of(Doors.SCHEME, doors), List.of(new Reads()));
         PackageDraft p = shop("orders");
-        p.flowDoc("orders").put("steps", new JsonArray().add(new JsonObject().put("type", "reads").put("name", "r").put("file", "maps/order.xsl")));
+        p.flowDoc("orders").put("steps", new JsonArray().add(new JsonObject().put("type", "reads").put("name", "r").put("file", "flows/maps/order.xsl")));
 
         DeployRefusedException refused = refused(d, p);
 

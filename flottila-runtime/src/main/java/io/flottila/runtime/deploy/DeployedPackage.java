@@ -1,5 +1,7 @@
 package io.flottila.runtime.deploy;
 
+import io.flottila.schemas.Package;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -15,12 +17,16 @@ import java.util.Optional;
  * @param flows its flows by qualified id, sorted; none when it is {@link State#FAILED}
  * @param deployedAt the node's clock when the deploy unpacked it; a restored package's is its record's (D-070)
  * @param files every file of the archive (no directory), by path from the package root, sorted; none when it is {@link State#FAILED}
+ * @param folders every folder below the package root, with its {@code folder.yaml}'s namespace and description, sorted by path
+ *                (D-078); none when it is {@link State#FAILED}
+ * @param artifacts every endpoint, flow and test document, sorted by path (D-078); none when it is {@link State#FAILED}
  * @param state whether the node runs it
  * @param problems why it is {@link State#FAILED}, one line each; none when it runs
  * @since 0.1
  */
 public record DeployedPackage(String name, String version, Optional<String> revision, String archiveSha256, List<String> flows,
-                              Instant deployedAt, List<PackageFile> files, State state, List<String> problems) {
+                              Instant deployedAt, List<PackageFile> files, List<Package.Folder> folders, List<Package.Artifact> artifacts, State state,
+                              List<String> problems) {
 
     /**
      * {@link #RUNNING}: installed, its flows listed each with its own state; {@link #FAILED}: the restore at the node's start could
@@ -33,6 +39,8 @@ public record DeployedPackage(String name, String version, Optional<String> revi
         Objects.requireNonNull(state, "state");
         flows = List.copyOf(flows);
         files = List.copyOf(files);
+        folders = List.copyOf(folders);
+        artifacts = List.copyOf(artifacts);
         problems = List.copyOf(problems);
     }
 

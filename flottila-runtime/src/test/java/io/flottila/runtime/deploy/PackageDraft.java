@@ -90,6 +90,30 @@ public final class PackageDraft {
         return file(path, text.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * Moves the document or file at {@code from} to {@code to}, its bytes unchanged (P2-02a, D-078: artifacts in any folder, a file
+     * moved to another one); fails the case when there is none at {@code from} or one at {@code to}.
+     */
+    public PackageDraft move(String from, String to) {
+        if (docs.containsKey(to) || raw.containsKey(to)) throw new AssertionError("fixture: " + to + " exists already");
+        JsonObject doc = docs.remove(from);
+        if (doc != null) {
+            docs.put(to, doc);
+            return this;
+        }
+        byte[] bytes = raw.remove(from);
+        if (bytes == null) throw new AssertionError("fixture: no file " + from + " to move");
+        raw.put(to, bytes);
+        return this;
+    }
+
+    /** The document at {@code path}, wherever it lies (P2-02a: one {@link #move}d out of {@code flows/} or {@code endpoints/}). */
+    public JsonObject doc(String path) {
+        JsonObject d = docs.get(path);
+        if (d == null) throw new AssertionError("fixture: no document " + path);
+        return d;
+    }
+
     /** Drops the document or file at {@code path} (P1-09d2b: a flow or an endpoint a redeploy removes); fails the case when there is none. */
     public PackageDraft without(String path) {
         if (docs.remove(path) == null && raw.remove(path) == null) throw new AssertionError("fixture: no file " + path + " to remove");

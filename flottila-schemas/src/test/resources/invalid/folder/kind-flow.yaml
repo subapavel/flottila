@@ -1,0 +1,4 @@
+# expect: /kind
+schemaVersion: 1
+kind: flow
+namespace: urn:example:orders

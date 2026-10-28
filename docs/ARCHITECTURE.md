@@ -31,6 +31,7 @@
 | 2026-10-28 | 3.4 | §7 WorkQueue row: the attempts token fences completion, the same-key fast path and hold as well as renew, so a holder whose lease expired and whose row was claimed again cannot delete or take over the new holder's row; the stale outcome is reported to the caller, never retried (D-074, Q-1) | — |
 | 2026-10-28 | 3.4 | §7 Queues: the partition key is evaluated at the durable save from `partitionBy` (the flow's extractKey), the same-key fast path is bounded by `maxChain`, `queue: kafka` refused until the hand-over lands; §14 hot-partition item closed (D-075, P2-01) | — |
 | 2026-10-28 | 3.4 | §7: sftp consumer on Apache MINA SSHD in Phase 2, blocking SDKs on virtual threads the component starts (no `BlockingConsumer` yet), poller lease held by the node (P2-02L), duplicates dropped at the save (P2-02D); §13 Phase 4 sentence follows; §4 executors and pollers sentences say transport I/O threads are not executors (D-076, F-15, P2-02) | F-15 |
+| 2026-10-28 | 3.4 | §9 Flow configuration: artifacts found by `kind` in any folder (≤ 4 deep, slug names), file references are paths from the package root and stay inside it, a flow's hash no longer includes its file path (D-078, P2-02a) | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -290,7 +291,7 @@ Payload search by XPath/JSONPath = configured keys as columns + a JSON projectio
 
 Flows are code in git; partner details are data in Postgres; secrets are references. Keeping the three apart is what makes git-first deployment, per-environment mocking and audit possible.
 
-**Flow configuration**: JSON/YAML with a published JSON Schema (the first deliverable of the plan). Identity `tenant / package / kind:id @ version`; the package is the namespace and authorization unit (PO SWCV → package, ESR namespace → folder; artifact meta files carry the PO origin block). A folder is structure only: ids are unique per package and never contain the folder, an optional `folder.yaml` keeps the verbatim namespace, and a flow is addressed as `<package>/<flow>` (D-060). `package.yaml` declares dependencies, `package.lock` pins them, so shared collections like `common` scripts are versioned per package. Deploy = CLI from CI (`flottila validate`, `flottila deploy`), the runtime pins the commit hash on every message, rollback is a revert. A pre-commit hook validates the schema, compiles XSLT and dry-builds the pipeline without a runtime.
+**Flow configuration**: JSON/YAML with a published JSON Schema (the first deliverable of the plan). Identity `tenant / package / kind:id @ version`; the package is the namespace and authorization unit (PO SWCV → package, ESR namespace → folder; artifact meta files carry the PO origin block). A folder is structure only: ids are unique per package and never contain the folder, an optional `folder.yaml` keeps the verbatim namespace, and a flow is addressed as `<package>/<flow>` (D-060). Artifacts are found by their `kind` anywhere in the package, at most four folders deep, every folder name a slug; a file reference in a flow or test file is a path from the package root, an include or import inside an XML file is relative to the including file, and both stay inside the package (D-052, D-078). `package.yaml` declares dependencies, `package.lock` pins them, so shared collections like `common` scripts are versioned per package. Deploy = CLI from CI (`flottila validate`, `flottila deploy`), the runtime pins the commit hash on every message, rollback is a revert. A pre-commit hook validates the schema, compiles XSLT and dry-builds the pipeline without a runtime.
 
 **Partner directory**: keyed by partner and interface, resolved at processing time through `${partner.…}` placeholders, versioned and exportable; the interface registry keeps PO namespace + name verbatim as the routing key. Runtime consumer entitlements (PO sender agreements) are checked by the endpoint or dispatcher.
 
@@ -380,7 +381,7 @@ Every flow is testable in milliseconds without infrastructure because outside ac
 | --- | --- | --- |
 | Step / flow unit test | `new FlowBuilder(fakeRuntime).build(cfg)` with fake components and in-memory stores | ms, JUnit 5 |
 | Component contract suite | one suite every real and fake component must pass: backpressure, re-open on retry, ACK only after durable write, spill behaviour, cancel | seconds, Testcontainers where needed |
-| Flow tests in git | YAML next to the flow, `mock://` endpoints, a `test` partner-directory profile, run by `flottila test`; same runner the CI uses | seconds |
+| Flow tests in git | a `kind: test` YAML in the package (by convention next to the flow, D-078), `mock://` endpoints, a `test` partner-directory profile, run by `flottila test`; same runner the CI uses | seconds |
 | Golden tests from monitoring | "save as test case" on a monitored message → input = step 1 payload, expected output = last step, partner reply = recorded response; rerun hundreds after an XSLT change | seconds |
 | Integration / stack | Testcontainers for Postgres, Kafka, ClickHouse, Valkey, S3; nightly Compose; kill -9 ledger tests (sent = final-step rows, DLQ 0, work 0) | minutes |
 | Protocol doubles | embedded MINA SSHD, Artemis, GreenMail, WireMock, own XI/IDoc simulator | — |
@@ -393,7 +394,7 @@ AI-assisted development is a design constraint, not a tool choice: the repo carr
 
 Every component ships as a pair — real implementation and mock — with the same scheme, config schema and SPI, and both must pass the same contract suite. No component is merged without its mock. Mocks exist for development and CI only: a deployed environment (test or production) refuses to load any mock binding at deploy time.
 
-The flow file is byte-identical everywhere; mocks are bound in a `*.test.yaml` next to the flow, in the same package:
+The flow file is byte-identical everywhere; mocks are bound in a `kind: test` document of the same package (by convention a `*.test.yaml` next to the flow, D-078):
 
 ```yaml
 flow: invoice-to-partner

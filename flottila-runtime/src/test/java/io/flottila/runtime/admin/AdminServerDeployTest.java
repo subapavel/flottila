@@ -692,7 +692,9 @@ class AdminServerDeployTest {
             JsonObject item = items.getJsonObject(i);
             Expected e = expected.get(i);
             // P1-09c3b: every item also carries its state and its problems (packagesListStateAndProblems)
-            assertEquals(Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "state", "problems"), item.fieldNames(), "an item: " + item);
+            // P2-02a: and its folders and artifacts (packagesListsFoldersAndArtifacts)
+            assertEquals(Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "folders", "artifacts", "state", "problems"), item.fieldNames(),
+                    "an item: " + item);
             assertEquals(e.version(), item.getString("version"));
             assertTrue(item.containsKey("revision") && java.util.Objects.equals(e.revision(), item.getValue("revision")), "revision, null without one: " + item);
             assertEquals("sha256:" + PackageDraft.sha256(e.zip()), item.getString("archive"));
@@ -752,7 +754,7 @@ class AdminServerDeployTest {
         assertJson(200, a, "GET /admin/packages");
         JsonArray items = a.json().getJsonArray("items");
         assertEquals(List.of("alpha", "zeta"), items.stream().map(i -> ((JsonObject) i).getString("name")).toList(), "sorted by name: " + a.json());
-        Set<String> fields = Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "state", "problems");
+        Set<String> fields = Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "folders", "artifacts", "state", "problems");
         JsonObject running = items.getJsonObject(0);
         assertEquals(fields, running.fieldNames(), "an item: " + running);
         assertEquals("RUNNING", running.getString("state"), running.encode());
@@ -767,6 +769,8 @@ class AdminServerDeployTest {
         assertTrue(problems.stream().map(String.class::cast).anyMatch(l -> l.contains(zetaSha)), "a line names the missing archive: " + failed.encode());
         assertEquals(new JsonArray(), failed.getJsonArray("flows"), "a FAILED package has no flows: " + failed.encode());
         assertEquals(new JsonArray(), failed.getJsonArray("files"), "nor files: " + failed.encode());
+        assertEquals(new JsonArray(), failed.getJsonArray("folders"), "nor folders (P2-02a): " + failed.encode());
+        assertEquals(new JsonArray(), failed.getJsonArray("artifacts"), "nor artifacts (P2-02a): " + failed.encode());
         assertEquals("3.0.0", failed.getString("version"), failed.encode());
         assertTrue(failed.containsKey("revision") && failed.getValue("revision") == null, "revision null, as its row: " + failed.encode());
         assertEquals("sha256:" + zetaSha, failed.getString("archive"), failed.encode());
@@ -774,5 +778,69 @@ class AdminServerDeployTest {
 
         JsonArray flows = request(at, HttpMethod.GET, "/admin/flows", AUTH, null).json().getJsonArray("items");
         assertEquals(List.of("alpha/orders"), flows.stream().map(i -> ((JsonObject) i).getString("id")).toList(), "only alpha's flow runs: " + flows.encode());
+    }
+
+    // --- P2-02a (D-078): every item lists its folders and artifacts; a FAILED package lists none
+
+    /** One folder or artifact item as {@code <field>=<value>} pairs, null shown as {@code null}; its field set asserted first. */
+    static String item(JsonObject o, List<String> fields) {
+        assertEquals(Set.copyOf(fields), o.fieldNames(), "the item's fields, null included: " + o);
+        return String.join(" ", fields.stream().map(f -> f + "=" + o.getValue(f)).toList());
+    }
+
+    static final String FOLDER_ONLY = "schemaVersion: 1\nkind: folder\n";
+
+    /**
+     * GET /admin/packages: a package deployed with a flow in a namespace folder and a test two folders deep lists
+     * {@code folders:[{path,namespace,description}]} (every folder below the root, null where folder.yaml sets nothing or there is
+     * none, the namespace verbatim) and {@code artifacts:[{path,kind,id}]} (a test's id null), each sorted by path. A package restored
+     * FAILED — its archive loads with folders and a flow, but its test names a fixture next to itself that is not at that path from
+     * the package root (a package deployed before D-078) — lists {@code folders: []} and {@code artifacts: []}.
+     */
+    @Test
+    void packagesListsFoldersAndArtifacts() throws Exception {
+        PackageDraft shop = pkg("shop", "1.0.0", Map.of("orders", "sync")).move("flows/orders.yaml", "urn-a/orders.yaml")
+                .file("urn-a/folder.yaml", FOLDER_ONLY + "namespace: \" urn:Example:A\"\ndescription: namespace a\n")
+                .file("urn-b/v2/folder.yaml", FOLDER_ONLY)
+                .file("urn-b/v2/orders.test.yaml", "schemaVersion: 1\nkind: test\nflow: orders\ncases: [ { name: c, send: fixtures/in.xml, expect: { steps: 1 } } ]\n")
+                .file("fixtures/in.xml", "<in/>");
+        assertJson(200, put("/admin/packages/shop", shop.zip()), "fixture");
+
+        Answer a = get("/admin/packages");
+
+        assertJson(200, a, "GET /admin/packages");
+        JsonObject listed = a.json().getJsonArray("items").getJsonObject(0);
+        assertTrue(listed.getValue("folders") instanceof JsonArray && listed.getValue("artifacts") instanceof JsonArray, "folders and artifacts are arrays: " + listed.encode());
+        List<String> folderFields = List.of("path", "namespace", "description");
+        assertEquals(List.of("path=endpoints namespace=null description=null", "path=fixtures namespace=null description=null",
+                        "path=urn-a namespace= urn:Example:A description=namespace a", "path=urn-b namespace=null description=null",
+                        "path=urn-b/v2 namespace=null description=null"),
+                listed.getJsonArray("folders").stream().map(o -> item((JsonObject) o, folderFields)).toList(), listed.encode());
+        List<String> artifactFields = List.of("path", "kind", "id");
+        assertEquals(List.of("path=endpoints/orders-in.yaml kind=endpoint id=orders-in", "path=endpoints/partner.yaml kind=endpoint id=partner",
+                        "path=urn-a/orders.yaml kind=flow id=orders", "path=urn-b/v2/orders.test.yaml kind=test id=null"),
+                listed.getJsonArray("artifacts").stream().map(o -> item((JsonObject) o, artifactFields)).toList(), listed.encode());
+
+        InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
+        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
+        byte[] legacy = pkg("legacy", "1.0.0", Map.of("beta", "sync")).move("flows/beta.yaml", "urn-a/beta.yaml")
+                .file("urn-a/folder.yaml", FOLDER_ONLY + "namespace: urn:legacy\n")
+                .file("urn-a/beta.test.yaml", "schemaVersion: 1\nkind: test\nflow: beta\ncases: [ { name: c, send: in.xml, expect: { steps: 1 } } ]\n")
+                .file("urn-a/in.xml", "<in/>").zip();
+        String sha = PackageDraft.sha256(legacy);
+        Path upload = PackageDraft.write(tmp.resolve("uploads"), legacy);
+        OnVirtualThread.call(() -> { bucket.put(sha, upload); return null; });
+        rows.save(new DeploymentRecord("legacy", "1.0.0", Optional.empty(), sha, rt.clock().instant())).await(10, TimeUnit.SECONDS);
+        Deployments restoring = deployments(tmp.resolve("node-2"), rows, bucket);
+        OnVirtualThread.call(() -> { restoring.restore(); return null; });
+        int at = serve(Optional.of(restoring));
+
+        JsonObject failed = request(at, HttpMethod.GET, "/admin/packages", AUTH, null).json().getJsonArray("items").getJsonObject(0);
+
+        assertEquals("FAILED", failed.getString("state"), "send: in.xml is not a path from the package root: " + failed.encode());
+        assertTrue(failed.getJsonArray("problems").stream().map(String::valueOf).anyMatch(l -> l.contains("urn-a/beta.test.yaml") && l.contains("in.xml")),
+                "a problem names the test and its fixture: " + failed.encode());
+        assertEquals(new JsonArray(), failed.getJsonArray("folders"), "a FAILED package lists no folders: " + failed.encode());
+        assertEquals(new JsonArray(), failed.getJsonArray("artifacts"), "nor artifacts: " + failed.encode());
     }
 }

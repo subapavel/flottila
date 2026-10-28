@@ -101,7 +101,7 @@ class InvoiceSyncRecordingIT {
     io.flottila.api.Pipeline pipeline(JsonObject doc) {
         SaxonXml xml = new SaxonXml();
         return new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system())
-                .build(FlowDefinition.from(doc.getMap()), DEMO.resolve("flows"));
+                .build(FlowDefinition.from(doc.getMap()), DEMO);
     }
 
     @Test

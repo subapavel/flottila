@@ -86,7 +86,7 @@
       },
       "additionalProperties": true,
       "allOf": [
-        { "if": { "properties": { "type": { "const": "xslt" } } }, "then": { "required": ["stylesheet"], "properties": { "stylesheet": { "type": "string", "minLength": 1, "description": "Path of the XSLT file relative to this flow file." } } } },
+        { "if": { "properties": { "type": { "const": "xslt" } } }, "then": { "required": ["stylesheet"], "properties": { "stylesheet": { "type": "string", "minLength": 1, "description": "Path of the XSLT file from the package root (D-078); an include or import inside it is relative to the including file. Stays inside the package." } } } },
         { "if": { "properties": { "type": { "const": "route" } } },
           "then": { "required": ["prop", "routes"],
                     "properties": { "prop": { "$ref": "#/$defs/keyName" }, "otherwise": { "type": "string" },
@@ -96,7 +96,7 @@
                                { "required": ["byProp", "endpoints"], "properties": { "byProp": { "$ref": "#/$defs/keyName" }, "endpoints": { "type": "object", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/slug" } } } } ] } },
         { "if": { "properties": { "type": { "const": "extractKey" } } }, "then": { "required": ["key", "xpath"], "properties": { "key": { "$ref": "#/$defs/keyName" }, "xpath": { "type": "string" } } } },
         { "if": { "properties": { "type": { "const": "validate" } } }, "then": { "required": ["required"], "properties": { "required": { "type": "string" } } } },
-        { "if": { "properties": { "type": { "const": "xsd" } } }, "then": { "required": ["schema"], "properties": { "schema": { "type": "string", "minLength": 1, "description": "Path of the XSD file relative to this flow file." } } } },
+        { "if": { "properties": { "type": { "const": "xsd" } } }, "then": { "required": ["schema"], "properties": { "schema": { "type": "string", "minLength": 1, "description": "Path of the XSD file from the package root (D-078); an include or import inside it is relative to the including file. Stays inside the package." } } } },
         { "if": { "properties": { "type": { "const": "split" } } }, "then": { "required": ["xpath"], "properties": { "xpath": { "type": "string", "description": "Selects the parts; every selected node becomes a child message." } } } }
       ]
     }

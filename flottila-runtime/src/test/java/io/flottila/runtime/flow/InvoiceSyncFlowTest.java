@@ -83,7 +83,7 @@ class InvoiceSyncFlowTest {
         invoice = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")));
         ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         http.replyWith(e -> e.next(rt.store(e, ack)));   // the partner answers with the ack fixture (invoice-sync.test.yaml mocks)
-        pipeline = new FlowBuilder(rt.runtime(), steps(), xml.languages(), endpoints).build(def, DEMO.resolve("flows"));
+        pipeline = new FlowBuilder(rt.runtime(), steps(), xml.languages(), endpoints).build(def, DEMO);
         assertEquals(2, http.producersBuilt(), "both partner endpoints resolved at build time");
     }
 

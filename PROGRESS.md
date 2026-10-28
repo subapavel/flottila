@@ -866,3 +866,11 @@ Checks: whole reactor verify -Pit VERIFIED_PASS 1861 tests (target/P2-05a-verify
 Review: FAIL r1 (Postgres published on all interfaces; deploy.sh token branch and jar fallback untested), PASS r2.
 D-054 data: class B (scout ×1, test-author ×1 + fix, implementer ×1 + fix, verifier ×2, reviewer ×2); review rounds 2.
 Next: P2-02a [C] package folders, then P2-03 CLI.
+
+## 2026-10-28 — P2-02a package folders: artifacts by kind anywhere, package-root references, FlowHash v2 (D-078) — done, review PASS
+Test first: PackageFoldersTest (schemas, path rule exhaustive over 126 paths), invalid/folder fixtures, FlowHashTest v2, DeploymentsFoldersTest, AdminServerDeployTest tree; existing tests and the demo test file migrated to package-root references (red: target/P2-02a-red.log). [A] fix packets: survivors M29/M36/M37, messages glob; review r1 gaps (data dir form, folder schema strictness, flow references, layout order, M41/M45).
+Change: schemas Package walks the package, finds documents by kind, layout rules first, folder.schema.json, root references confined, Folder/Artifact records; runtime FlowHash v2 (no path), baseDir = package dir, fromRoot strips the normalised data dir, DeployedPackage/AdminServer `folders` + `artifacts`; demo, invoice-async resource, NodeBenchMain migrated.
+Checks: whole reactor verify -Pit VERIFIED_PASS 2044 tests (target/P2-02a-verify3.log); ArchUnit green; coverage no decrease (schemas 99.3/99.3); hand mutants 41+ killed incl. reviewer's M39–M45 (target/P2-02a-mutants.log, -r0-*, -r2-*).
+Review: FAIL r1 (absolute path with a relative data dir; folder schema strictness, flow references, layout order unpinned), PASS r2. Docs: D-078, §9 sentence, §11 test wording, forward pointers on D-040/47/52/63. Raised FIX-84 (wording), FIX-85 (self-test flake). CLI tree moved to P2-03.
+D-054 data: class C (designer ×1, test-author ×1 + resume + 2 fix packets, implementer ×1 + 2 fixes, reviewer ×2); review rounds 2.
+Next: P2-03 [B] CLI validate/deploy/test.

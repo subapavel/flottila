@@ -128,7 +128,7 @@ class InvoiceSyncReplayIT {
     @Test
     void partnerDownParksByReferenceAndTheRetryDeliversOnceThePartnerIsBack() {
         FlowDefinition def = FlowDefinition.from(flowDoc.getMap());
-        Pipeline p = builder().build(def, DEMO.resolve("flows"));
+        Pipeline p = builder().build(def, DEMO);
         http.failNext(4, () -> new IllegalStateException("503 from partner"));
         Envelope in = rt.ingress("invoice-sync", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), invoice);
         Object outcome = run(() -> p.apply(in));
@@ -146,7 +146,7 @@ class InvoiceSyncReplayIT {
         store.flush().await();
         List<Snapshot> original = store.timeline(in.id()).await();
         assertEquals(Snapshot.Outcome.FAILED, original.get(5).outcome());
-        Replay replay = builder().replay(def, DEMO.resolve("flows"));
+        Replay replay = builder().replay(def, DEMO);
         Object delivered = run(() -> replay.retry(in.id()));
         assertTrue(delivered instanceof Envelope, String.valueOf(delivered));
         Envelope out = (Envelope) delivered;
@@ -167,9 +167,9 @@ class InvoiceSyncReplayIT {
     void replayFromStepFourOfADeliveredMessageMapsAndSendsAgainAsANewMessage() {
         FlowDefinition def = FlowDefinition.from(flowDoc.getMap());
         Envelope in = rt.ingress("invoice-sync", Headers.empty(), invoice);
-        Envelope first = builder().build(def, DEMO.resolve("flows")).apply(in);
+        Envelope first = builder().build(def, DEMO).apply(in);
         store.flush().await();
-        Envelope again = builder().replay(def, DEMO.resolve("flows")).from(in.id(), 4);
+        Envelope again = builder().replay(def, DEMO).from(in.id(), 4);
         assertEquals(2, http.sentTo("partner-domestic").size());
         assertEquals(http.sentTo("partner-domestic").get(0).body().hash(), http.sentTo("partner-domestic").get(1).body().hash(), "the same mapping of the same step-3 body");
         assertEquals(Optional.of(in.id()), again.get(Envelope.REPLAY_OF));

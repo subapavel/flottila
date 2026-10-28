@@ -697,7 +697,7 @@ class DeploymentsRedeployTest {
         PackageDraft p = PackageDraft.of("shop", "1.0.0").endpoint("partner", "out", new JsonObject().put("url", "rec://partner"));
         for (String id : List.of("orders", "credits", "refunds")) {
             p.endpoint(id + "-in", "in", new JsonObject().put("path", "/" + id)).flow(id, "1.0.0", "sync", id + "-in", 4096,
-                    new JsonArray().add(new JsonObject().put("type", "xslt").put("name", "map").put("stylesheet", id + ".xsl")).addAll(to("partner")));
+                    new JsonArray().add(new JsonObject().put("type", "xslt").put("name", "map").put("stylesheet", "flows/" + id + ".xsl")).addAll(to("partner")));
         }
         return p.endpoint("ping-in", "in", new JsonObject().put("path", "/ping")).flow("ping", "1.0.0", "at-most-once", "ping-in", 4096, to("partner"))
                 .file("flows/orders.xsl", includingLib("orders")).file("flows/credits.xsl", includingLib("credits"))

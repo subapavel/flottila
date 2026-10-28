@@ -31,7 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** Behaviours from the demo's {@code invoice-sync.test.yaml}: fixture replies, delays on the fake timer, failures with the schema's shapes. */
 class MockComponentTest {
 
-    static final Path DEMO_FLOWS = Path.of("../../packages/demo/flows");
+    /** The demo package root: fixture references are paths from it (D-078). */
+    static final Path DEMO = Path.of("../../packages/demo");
     final FakeRuntime rt = FakeRuntime.create();
     final MockComponent http = new MockComponent("http", rt.blobs(), rt.timer());
     final EndpointConfig domestic = new EndpointConfig("partner-domestic", URI.create("http://localhost:8081/echo"), Map.of());
@@ -41,8 +42,8 @@ class MockComponentTest {
 
     @Test
     void repliesFromTheFixtureAfterTheDelayAndRecordsPerEndpoint() throws Exception {
-        http.bindAll(Map.of("partner-domestic", Map.of("reply", "../fixtures/partner-ack.xml", "delay", "20ms"),
-                "partner-foreign", Map.of("reply", "../fixtures/partner-ack.xml")), DEMO_FLOWS);
+        http.bindAll(Map.of("partner-domestic", Map.of("reply", "fixtures/partner-ack.xml", "delay", "20ms"),
+                "partner-foreign", Map.of("reply", "fixtures/partner-ack.xml")), DEMO);
         Producer p = http.producer(domestic);
         Envelope in = invoice();
         Future<Envelope> f = p.send(in);
@@ -50,7 +51,7 @@ class MockComponentTest {
         assertEquals(1, rt.timer().pending());
         rt.clock().advance(Duration.ofMillis(20));
         Envelope out = f.await();
-        assertEquals(Files.readString(DEMO_FLOWS.resolve("../fixtures/partner-ack.xml")), out.body().whole().toString(), "the fixture is the reply body");
+        assertEquals(Files.readString(DEMO.resolve("fixtures/partner-ack.xml")), out.body().whole().toString(), "the fixture is the reply body");
         assertEquals(1, out.step(), "the next step's body");
         assertEquals("application/xml", out.header(Envelope.H_CONTENT_TYPE).orElseThrow());
         assertEquals("r1", out.header("x-request-id").orElseThrow(), "headers carried over");
@@ -65,7 +66,7 @@ class MockComponentTest {
 
     @Test
     void aConsumerAnswersItsOwnEndpointOnlyTheOthersKeepTheirBehaviour() {
-        http.bind("partner-domestic", Behaviour.from(Map.of("reply", "../fixtures/partner-ack.xml"), DEMO_FLOWS));
+        http.bind("partner-domestic", Behaviour.from(Map.of("reply", "fixtures/partner-ack.xml"), DEMO));
         EndpointConfig in = new EndpointConfig("http-in", URI.create("http://0.0.0.0:8080/in"), Map.of());
         List<Envelope> ingress = new java.util.ArrayList<>();
         var consumer = http.consumer(in, e -> { ingress.add(e); return Future.succeededFuture(new io.flottila.api.Ack.Reply(e.withHeader("x-from", "ingress"))); });
@@ -82,20 +83,20 @@ class MockComponentTest {
     void anUnboundEndpointEchoesAndAFailureIsANackRetryableAsHttpWouldBe() {
         Envelope in = invoice();
         assertEquals(in, http.producer(domestic).send(in).await(), "no binding: the request comes back");
-        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 503), DEMO_FLOWS));
+        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 503), DEMO));
         Future<Envelope> f = http.producer(domestic).send(in);
         f.otherwiseEmpty().await();
         assertTrue(f.cause() instanceof NackException n && n.retryable() && n.reason().contains("503"), String.valueOf(f.cause()));
-        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 400), DEMO_FLOWS));
+        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 400), DEMO));
         Future<Envelope> bad = http.producer(domestic).send(in);
         bad.otherwiseEmpty().await();
         assertTrue(bad.cause() instanceof NackException n && !n.retryable(), "4xx is final");
-        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 429), DEMO_FLOWS));
+        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 429), DEMO));
         Future<Envelope> throttled = http.producer(domestic).send(in);
         throttled.otherwiseEmpty().await();
         assertTrue(((NackException) throttled.cause()).retryable(), "429 is retryable");
         for (String fault : List.of("timeout", "reset", "malformed")) {
-            http.bind("partner-domestic", Behaviour.from(Map.of("fail", fault), DEMO_FLOWS));
+            http.bind("partner-domestic", Behaviour.from(Map.of("fail", fault), DEMO));
             Future<Envelope> x = http.producer(domestic).send(in);
             x.otherwiseEmpty().await();
             NackException n = (NackException) x.cause();
@@ -106,18 +107,18 @@ class MockComponentTest {
 
     @Test
     void afterAndEveryCountTheSendsOfOneEndpoint() {
-        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 503, "after", 3), DEMO_FLOWS));
+        http.bind("partner-domestic", Behaviour.from(Map.of("fail", 503, "after", 3), DEMO));
         Producer p = http.producer(domestic);
         Envelope in = invoice();
         assertTrue(p.send(in).succeeded() && p.send(in).succeeded(), "sends 1 and 2 go through");
         assertTrue(p.send(in).failed() && p.send(in).failed(), "from the 3rd on, every send fails");
-        http.bind("partner-foreign", Behaviour.from(Map.of("fail", "reset", "every", 2), DEMO_FLOWS));
+        http.bind("partner-foreign", Behaviour.from(Map.of("fail", "reset", "every", 2), DEMO));
         Producer q = http.producer(foreign);
         assertEquals(List.of(true, false, true, false, true), List.of(q.send(in).succeeded(), q.send(in).succeeded(), q.send(in).succeeded(), q.send(in).succeeded(), q.send(in).succeeded()),
                 "every 2nd: 1 ok, 2 fails, 3 ok …");
         assertEquals(5, http.sentTo("partner-foreign").size(), "failed sends are recorded too");
         EndpointConfig third = new EndpointConfig("partner-third", URI.create("http://localhost:8081/third"), Map.of());
-        http.bind("partner-third", Behaviour.from(Map.of("fail", 500, "after", 2, "every", 3), DEMO_FLOWS));
+        http.bind("partner-third", Behaviour.from(Map.of("fail", 500, "after", 2, "every", 3), DEMO));
         Producer r = http.producer(third);
         assertEquals(List.of(true, true, true, false, true), List.of(r.send(in).succeeded(), r.send(in).succeeded(), r.send(in).succeeded(), r.send(in).succeeded(), r.send(in).succeeded()),
                 "after 2 every 3: of the sends from the 2nd on, every 3rd fails — the 4th");
@@ -128,8 +129,8 @@ class MockComponentTest {
 
     @Test
     void behaviourValidatesTheSchemaShapes() {
-        Behaviour b = Behaviour.from(Map.of("reply", "../fixtures/partner-ack.xml", "delay", "2s", "fail", "timeout", "after", 2, "every", 3), Path.of("/flows"));
-        assertEquals(Optional.of(Path.of("/fixtures/partner-ack.xml")), b.reply());
+        Behaviour b = Behaviour.from(Map.of("reply", "flows/../fixtures/partner-ack.xml", "delay", "2s", "fail", "timeout", "after", 2, "every", 3), Path.of("/pkg"));
+        assertEquals(Optional.of(Path.of("/pkg/fixtures/partner-ack.xml")), b.reply(), "from the package root, normalised");
         assertEquals(Duration.ofSeconds(2), b.delay());
         assertEquals(Optional.of(Behaviour.Fault.TIMEOUT), b.fail());
         assertEquals(Behaviour.ECHO, Behaviour.from(Map.of(), Path.of("")));
@@ -147,7 +148,7 @@ class MockComponentTest {
         assertEquals("application/json", MockComponent.contentType(Path.of("a.json")));
         assertEquals("text/plain", MockComponent.contentType(Path.of("a.txt")));
         assertEquals("application/octet-stream", MockComponent.contentType(Path.of("a.bin")));
-        http.bind("partner-domestic", Behaviour.from(Map.of("reply", "nowhere.xml"), DEMO_FLOWS));
+        http.bind("partner-domestic", Behaviour.from(Map.of("reply", "nowhere.xml"), DEMO));
         Future<Envelope> missing = http.producer(domestic).send(invoice());
         missing.otherwiseEmpty().await();
         assertTrue(missing.cause().getMessage().contains("nowhere.xml"), "a missing fixture fails the send, named");
@@ -159,7 +160,7 @@ class MockComponentTest {
      */
     @Test
     void aFixtureReplyOfASecondAttemptIsKeyedByItsAttempt() {
-        http.bind("partner-domestic", Behaviour.from(Map.of("reply", "../fixtures/partner-ack.xml"), DEMO_FLOWS));
+        http.bind("partner-domestic", Behaviour.from(Map.of("reply", "fixtures/partner-ack.xml"), DEMO));
         Producer p = http.producer(domestic);
         Envelope first = invoice().advance();
         Envelope one = p.send(first).await();

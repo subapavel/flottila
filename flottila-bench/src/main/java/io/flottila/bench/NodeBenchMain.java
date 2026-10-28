@@ -343,7 +343,7 @@ public final class NodeBenchMain {
                 .put("config", new JsonObject().put("url", "http://127.0.0.1:" + echo + "/echo").put("maxBodyBytes", MAX_BODY_BYTES)
                         .put("poolSize", o.concurrency()))));
         JsonArray steps = new JsonArray();
-        if (o.step() == Step.XSLT) steps.add(new JsonObject().put("type", "xslt").put("name", "transform").put("stylesheet", "transform.xsl"));
+        if (o.step() == Step.XSLT) steps.add(new JsonObject().put("type", "xslt").put("name", "transform").put("stylesheet", "flows/transform.xsl"));
         steps.add(new JsonObject().put("type", "to").put("name", "partner").put("endpoint", "partner"));
         files.put("flows/bench.yaml", yaml(doc("flow").put("id", "bench").put("version", "0.1.0").put("from", new JsonObject().put("endpoint", "in"))
                 .put("delivery", new JsonObject().put("mode", o.scenario() == Scenario.SYNC ? "sync" : "at-least-once"))

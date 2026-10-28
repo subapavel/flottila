@@ -1,0 +1,4 @@
+# expect: /namespace
+schemaVersion: 1
+kind: folder
+namespace: 42

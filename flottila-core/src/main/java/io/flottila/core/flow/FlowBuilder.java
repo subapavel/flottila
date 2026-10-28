@@ -144,7 +144,7 @@ public final class FlowBuilder {
         return this;
     }
 
-    /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the flow file's directory). */
+    /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory, D-078). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
         return built(flow, baseDir).pipeline(true);
     }

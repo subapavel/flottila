@@ -26,11 +26,11 @@
       "minProperties": 1,
       "additionalProperties": false,
       "properties": {
-        "reply": { "type": "string", "description": "Fixture file the mock replies with." },
+        "reply": { "type": "string", "description": "Fixture file the mock replies with: a path from the package root (D-078)." },
         "recorded": { "type": "string", "description": "Response captured in monitoring, by reference." },
         "script": { "type": "string", "description": "Groovy/JS request → response." },
-        "files": { "type": "string", "description": "Consumer side: fixture files to feed (glob)." },
-        "messages": { "type": "string", "description": "Consumer side: fixture messages to feed (glob)." },
+        "files": { "type": "string", "description": "Consumer side: fixture files to feed (glob from the package root, D-078)." },
+        "messages": { "type": "string", "description": "Consumer side: fixture messages to feed (glob from the package root, D-078)." },
         "fail": { "oneOf": [ { "type": "integer", "minimum": 400, "maximum": 599 }, { "enum": ["timeout", "reset", "malformed"] } ] },
         "after": { "type": "integer", "minimum": 1, "description": "the failure applies from the N-th send on (1 = from the first)." },
         "every": { "type": "integer", "minimum": 2, "description": "of the sends the failure applies to, every N-th fails." },
@@ -43,7 +43,7 @@
       "additionalProperties": false,
       "properties": {
         "name": { "type": "string", "minLength": 1 },
-        "send": { "type": "string", "minLength": 1, "description": "Fixture to send, relative to this file." },
+        "send": { "type": "string", "minLength": 1, "description": "Fixture to send: a path from the package root (D-078)." },
         "headers": { "type": "object", "additionalProperties": { "type": "string" } },
         "mocks": { "$ref": "#/$defs/mocks" },
         "expect": {

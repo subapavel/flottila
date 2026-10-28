@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flottila:schema:folder:1",
+  "title": "Flottila folder.yaml, schemaVersion 1 (draft — review at hand-over, P2-02a, D-078)",
+  "description": "Describes the folder it lies in, any folder below the package root (never the root itself): an optional namespace, kept verbatim (no trim, no case fold) and unique within the package, and an optional description. The folder's artifacts are found by their kind, not by this file.",
+  "type": "object",
+  "required": ["schemaVersion", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "folder" },
+    "namespace": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "e.g. the XML namespace of the messages the folder's flows handle; compared byte for byte." },
+    "description": { "type": "string" }
+  }
+}

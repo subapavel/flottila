@@ -1,0 +1,5 @@
+# expect: /owner
+schemaVersion: 1
+kind: folder
+namespace: urn:example:orders
+owner: team-a

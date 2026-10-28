@@ -15,12 +15,13 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P1-09d2a (D-063): the effective hash's exact text, which P1-09c may persist — {@code sha256:} over the versioned lines, the
- * flow file first, then every path the build read once, sorted by its package-relative path ({@code file}, {@code dir} with its
+ * flow file's bytes first (P2-02a, D-078: version 2, without the flow file's path), then every path the build read once, sorted by its package-relative path ({@code file}, {@code dir} with its
  * sorted entry names, {@code absent}), then the {@code from} endpoint and the endpoints sent to, by id, each with its options as
  * JSON whose keys are sorted at every level while lists keep their order. {@code DeploymentsHashTest} shows what changes it
  * through a deploy; a line no deploy could tell apart (a probe of a missing file sits in a file that is hashed too) is pinned here.
@@ -68,8 +69,8 @@ class FlowHashTest {
 
         String hash = FlowHash.of(relativeDir, pkg.resolve("flows/orders.yaml"), reads, from, List.of(partner, archive));
 
-        String text = "flottila-flow-hash 1\n"
-                + "yaml flows/orders.yaml " + sha256("id: orders\n") + "\n"
+        String text = "flottila-flow-hash 2\n"
+                + "yaml " + sha256("id: orders\n") + "\n"
                 + "absent flows/data/missing.txt\n"
                 + "dir flows/lookup [\"a.txt\",\"b.txt\",\"c.txt\",\"d\"]\n"
                 + "file flows/main.xsl " + sha256("main") + "\n"
@@ -79,8 +80,49 @@ class FlowHashTest {
                 + "endpoint archive rec {\"url\":\"rec://archive\"}\n"
                 + "endpoint partner rec {\"url\":\"rec://partner\"}\n";
         assertEquals("sha256:" + sha256(text), hash,
-                "the version line, the flow file, each read path once by path (a missing one absent, a directory with its sorted entries, the"
+                "the version line, the flow file's bytes (not its path), each read path once by path (a missing one absent, a directory with its sorted entries, the"
                         + " unread file nowhere), from, then the endpoints sent to by id, options with sorted keys at every level, lists in order");
+    }
+
+    /** P2-02a (D-078): the text starts with the version line {@code flottila-flow-hash 2}; the yaml line is {@code yaml <sha256>}. */
+    @Test
+    void theFirstLineIsVersion2() throws Exception {
+        Path pkg = tmp.resolve("pkg");
+        Files.createDirectories(pkg.resolve("urn-a"));
+        Files.writeString(pkg.resolve("urn-a/orders.yaml"), "id: orders\n");
+        EndpointConfig from = new EndpointConfig("orders-in", URI.create("doors://orders-in"), Map.of("flow", "shop/orders"));
+
+        String hash = FlowHash.of(pkg, pkg.resolve("urn-a/orders.yaml"), List.of(), from, List.of());
+
+        assertEquals("sha256:" + sha256("flottila-flow-hash 2\nyaml " + sha256("id: orders\n") + "\nendpoint orders-in doors {\"flow\":\"shop/orders\"}\n"), hash,
+                "version 2, the yaml's bytes without its path, the from endpoint");
+    }
+
+    /**
+     * P2-02a (D-078): the same flow yaml at another path in the package hashes the same — a flow file moved alone is no change —
+     * while a read file's path still counts, and the yaml's bytes do.
+     */
+    @Test
+    void theFlowFilesPathIsNotHashed() throws Exception {
+        Path pkg = tmp.resolve("pkg");
+        for (String file : List.of("flows/orders.yaml", "urn-a/sub/orders.yaml", "urn-b/orders.yaml", "shared/main.xsl", "flows/main.xsl")) {
+            Files.createDirectories(pkg.resolve(file).getParent());
+        }
+        Files.writeString(pkg.resolve("flows/orders.yaml"), "id: orders\n");
+        Files.writeString(pkg.resolve("urn-a/sub/orders.yaml"), "id: orders\n");
+        Files.writeString(pkg.resolve("urn-b/orders.yaml"), "id: orders # edited\n");
+        Files.writeString(pkg.resolve("flows/main.xsl"), "main");
+        Files.writeString(pkg.resolve("shared/main.xsl"), "main");
+        EndpointConfig from = new EndpointConfig("orders-in", URI.create("doors://orders-in"), Map.of("flow", "shop/orders"));
+        List<Path> reads = List.of(pkg.resolve("flows/main.xsl"));
+
+        String atFlows = FlowHash.of(pkg, pkg.resolve("flows/orders.yaml"), reads, from, List.of());
+        String moved = FlowHash.of(pkg, pkg.resolve("urn-a/sub/orders.yaml"), reads, from, List.of());
+
+        assertEquals(atFlows, moved, "the same yaml bytes in another folder: the same hash");
+        assertNotEquals(atFlows, FlowHash.of(pkg, pkg.resolve("urn-b/orders.yaml"), reads, from, List.of()), "witness: other yaml bytes, another hash");
+        assertNotEquals(atFlows, FlowHash.of(pkg, pkg.resolve("flows/orders.yaml"), List.of(pkg.resolve("shared/main.xsl")), from, List.of()),
+                "witness: the same bytes read from another path, another hash");
     }
 
     /** A path outside the package can never be part of a flow's hash: StepResources confines it already; the hash refuses it too. */

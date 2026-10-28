@@ -111,7 +111,7 @@ public final class MockComponent implements Component {
         return this;
     }
 
-    /** Binds every entry of a {@code mocks} section ({@code endpoint → behaviour}), fixture paths against {@code baseDir}. */
+    /** Binds every entry of a {@code mocks} section ({@code endpoint → behaviour}), fixture paths against {@code baseDir} (the package root, D-078). */
     public MockComponent bindAll(Map<String, Object> mocks, Path baseDir) {
         mocks.forEach((endpoint, node) -> {
             if (!(node instanceof Map<?, ?> m)) throw new IllegalArgumentException("mocks." + endpoint + " must be an object");

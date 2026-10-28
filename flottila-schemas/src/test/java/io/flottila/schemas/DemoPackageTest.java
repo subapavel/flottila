@@ -62,8 +62,8 @@ class DemoPackageTest {
                 schemaVersion: 1
                 kind: test
                 flow: g
-                mocks: { ghost: { reply: ../fixtures/no-ack.xml } }
-                cases: [ { name: c, send: ../fixtures/missing.xml, expect: { steps: 1 } } ]
+                mocks: { ghost: { reply: fixtures/no-ack.xml } }
+                cases: [ { name: c, send: fixtures/missing.xml, expect: { steps: 1 } } ]
                 """);
         Package pkg = Package.load(dir);
         assertEquals("package p at " + dir, pkg.toString());

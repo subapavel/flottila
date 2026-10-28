@@ -93,7 +93,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class DeliveryModesIT {
 
-    static final Path FLOWS = Path.of("../packages/demo/flows");
+    /** The demo package's root: every step file reference is a path from it (D-078). */
+    static final Path DEMO = Path.of("../packages/demo");
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
     static final long MIB = 1L << 20;
     static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
@@ -153,8 +154,8 @@ class DeliveryModesIT {
         def = FlowDefinition.from(doc);
         blobs = tiered(spool.resolve("node"), pool);
         FlowBuilder builder = builder(blobs, store, queue, dlq);
-        Function<Envelope, Future<Ack>> delivery = builder.delivery(def, FLOWS);
-        worker = builder.worker(def, FLOWS, "w1");
+        Function<Envelope, Future<Ack>> delivery = builder.delivery(def, DEMO);
+        worker = builder.worker(def, DEMO, "w1");
         HttpComponent http = new HttpComponent(vertx, blobs, ids);
         EndpointConfig in = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"),
                 Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes()));
@@ -316,7 +317,7 @@ class DeliveryModesIT {
         try {
             TieredBlobStore restarted = tiered(spool.resolve("after-restart"), fresh);
             assertEquals(Optional.empty(), restarted.location(io.flottila.api.BlobKey.body(id, 0)), "the fresh store holds nothing locally");
-            FlowWorker after = builder(restarted, restartedStore, new PgWorkQueue(fresh), new PgDlq(fresh)).worker(def, FLOWS, "w-restarted");
+            FlowWorker after = builder(restarted, restartedStore, new PgWorkQueue(fresh), new PgDlq(fresh)).worker(def, DEMO, "w-restarted");
             assertEquals(1, after.poll().await(), "the restarted worker processes the queued message");
             List<Envelope> got = partner.sentTo("partner");
             assertEquals(1, got.size());
@@ -367,7 +368,7 @@ class DeliveryModesIT {
         };
         TRAIL.addHandler(capture);
         try {
-            Delivery delivery = builder(blobs, small, queue, dlq).delivery(syncKeep(), FLOWS);
+            Delivery delivery = builder(blobs, small, queue, dlq).delivery(syncKeep(), DEMO);
             Body probe = blobs.write(BlobKey.body("sk-probe", 0), ORDER, MIB).await();   // every row of the run shows this body's hash
             Map<String, Future<Ack>> answers = new ConcurrentHashMap<>();
             List<Throwable> escaped = new CopyOnWriteArrayList<>();

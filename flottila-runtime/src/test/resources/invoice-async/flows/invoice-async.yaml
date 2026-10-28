@@ -29,7 +29,7 @@ retry:
 steps:
   - type: xsd
     name: validate
-    schema: invoice.xsd
+    schema: flows/invoice.xsd
   - type: extractKey
     name: extractKey
     key: invoiceId
@@ -43,7 +43,7 @@ steps:
     otherwise: foreign
   - type: xslt
     name: toPartner
-    stylesheet: invoice-to-partner.xsl
+    stylesheet: flows/invoice-to-partner.xsl
   - type: to
     name: partner
     retryable: true

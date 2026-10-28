@@ -160,7 +160,7 @@ class InvoiceSyncHttpTest {
                 "partner-foreign", new EndpointConfig("partner-foreign", URI.create(base + "/echo-foreign"), Map.of("url", base + "/echo-foreign", "maxBodyBytes", 1_048_576)));
         FlowDefinition def = FlowDefinition.from(flowDoc.getMap());
         SaxonXml xml = new SaxonXml();
-        Pipeline pipeline = new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).build(def, DEMO.resolve("flows"));
+        Pipeline pipeline = new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).build(def, DEMO);
         // the consumer's handler: the sync flow's reply is the ACK (ARCHITECTURE §4); the delivery-mode wrapper proper is P1-08
         EndpointConfig httpIn = new EndpointConfig("http-in", URI.create("http://127.0.0.1:0/in"), Map.of("host", "127.0.0.1", "port", 0, "path", "/in", "flow", def.id(), "maxBodyBytes", def.maxBodyBytes(), "shutdownTimeoutMs", 5_000));
         HttpComponent.HttpConsumer consumer = (HttpComponent.HttpConsumer) http.consumer(httpIn, e -> {

@@ -8,11 +8,12 @@ import java.util.Objects;
 /**
  * What a {@link StepFactory} or {@link Expressions} may hold on to at build time: the injected clock, timer,
  * ids, blob store and hasher, the flow's body limit, the directory its relative file references resolve
- * against (the flow file's) and the sink told each file read through {@link #file} and {@link #resolve}. Not the {@link Runtime}: that is used inside the flow builder and nowhere else
+ * against (the package's: a reference is a path from the package root, D-078) and the sink told each file read through {@link #file} and {@link #resolve}. Not the {@link Runtime}: that is used inside the flow builder and nowhere else
  * (CLAUDE.md); components are reached only through the builder's {@code to} step.
  *
  * @param baseDir where a step's relative file reference (a stylesheet, a schema) resolves, and the directory every
- *                file the step reads at build time lies inside ({@link #file}, {@link #resolve})
+ *                file the step reads at build time lies inside ({@link #file}, {@link #resolve}): the package directory (D-078);
+ *                "the flow's directory" below and in the refusals means this directory
  * @param reads   gets every path {@link #file} and {@link #resolve} return, once per call, as returned, and never one they
  *                refuse: the files a flow's build read, for its effective hash (D-063)
  * @since 0.1

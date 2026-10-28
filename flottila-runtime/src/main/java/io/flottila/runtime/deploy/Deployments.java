@@ -431,7 +431,7 @@ public final class Deployments {
             LOG.log(System.Logger.Level.ERROR, "package '" + row.name() + "' (archive sha256:" + row.archiveSha256() + ") could not be restored; it is listed "
                     + "FAILED until a deploy of it: " + problems);
             deployed.put(row.name(), new Deployed(new DeployedPackage(row.name(), row.version(), row.revision(), row.archiveSha256(), List.of(), row.deployedAt(),
-                    List.of(), DeployedPackage.State.FAILED, problems), List.of(), Map.of(), null));
+                    List.of(), List.of(), List.of(), DeployedPackage.State.FAILED, problems), List.of(), Map.of(), null));
         } finally {
             Files.deleteIfExists(fetched);   // fetched whole, half or not at all: nothing of it stays in .incoming
         }
@@ -533,7 +533,7 @@ public final class Deployments {
             now.sort(Comparator.comparing(Flow::id));
             Instant deployedAt = restoring == null ? clock.instant() : restoring.deployedAt();
             DeployedPackage deployedPackage = new DeployedPackage(name, version, revision, sha256, now.stream().map(Flow::id).toList(), deployedAt, files(dir),
-                    DeployedPackage.State.RUNNING, List.of());
+                    pkg.folders(), pkg.artifacts(), DeployedPackage.State.RUNNING, List.of());
             retire(retiring, checked.leaving());   // phase A, settled when it returns; it never throws
             stopped = retiring;
             built.clear();
@@ -938,8 +938,7 @@ public final class Deployments {
                 flows.add(flow(builder, name, version, revision, archive,
                         new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints), Optional.ofNullable(checked.listening().get(id))), dir));
             } catch (RuntimeException refused) {
-                // a step's failure may name a package file by its absolute path: a problem line names it from the package root
-                problems.add("flow '" + id + "' does not build: " + reason(refused).replace(dir + File.separator, ""));
+                problems.add("flow '" + id + "' does not build: " + fromRoot(reason(refused), dir));
             }
         }
         return problems;
@@ -968,7 +967,7 @@ public final class Deployments {
         Map<String, EndpointConfig> endpoints = recipe.endpoints();
         Set<Path> reads = ConcurrentHashMap.newKeySet();   // the stages keep the sink: thread-safe, each path once
         builder.reads(reads::add);
-        Path baseDir = recipe.flowFile().getParent();
+        Path baseDir = dir;   // a step's file reference is a path from the package root, wherever the flow file lies (D-078)
         Delivery delivery = builder.delivery(def, baseDir);
         FlowWorker worker = null;
         Replay replay = null;
@@ -1230,6 +1229,16 @@ public final class Deployments {
 
     private static String reason(Throwable failure) {
         return Objects.toString(failure.getMessage(), failure.toString());
+    }
+
+    /**
+     * {@code message} with every path below the package directory {@code dir} named from the package root, and {@code dir} itself
+     * as {@code .}: a step's failure may name a package file, or the directory a reference leaves (D-052, D-078), by its absolute
+     * path — absolute and normalised, as StepResources prints it, whatever form the data directory was given in; no problem line does.
+     */
+    private static String fromRoot(String message, Path dir) {
+        String root = dir.toAbsolutePath().normalize().toString();
+        return message.replace(root + File.separator, "").replace(root, ".");
     }
 
     /** An endpoint as a component gets it: {@code <scheme>://<id>}, its options as plain maps and lists; a null option is an absent one. */

@@ -1,0 +1,5 @@
+# expect: /description
+schemaVersion: 1
+kind: folder
+namespace: urn:example:orders
+description: 42

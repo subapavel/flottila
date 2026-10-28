@@ -1,0 +1,4 @@
+# expect: /schemaVersion
+schemaVersion: 2
+kind: folder
+namespace: urn:example:orders
