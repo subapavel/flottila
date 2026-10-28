@@ -26,6 +26,15 @@
       <artifactId>flottila-runtime</artifactId>
     </dependency>
     <dependency>
+      <!-- the node bench (NodeBenchMain) builds the node's components and steps itself, as Main does -->
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-component-http</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-step-xslt</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-simple</artifactId>
       <scope>runtime</scope>

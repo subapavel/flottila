@@ -9,11 +9,14 @@
 # BENCH_DB (flottila_bench — created if missing, via psql as PGUSER), BENCH_MESSAGES (20000),
 # BENCH_WARMUP (1000), BENCH_CONCURRENCY (64), BENCH_MACHINE (the machine label the run is judged
 # against in RESULTS.md, D-037; unset → "host:<hostname>", which no baseline matches: set it on purpose,
-# e.g. BENCH_MACHINE="cloud VM, 4 vCPU" on the coordinator's VM).
+# e.g. BENCH_MACHINE="cloud VM, 4 vCPU" on the coordinator's VM), BENCH_SCENARIOS (batched — what runs, space-separated:
+# `batched` the BatchingWriter pair, the CI regression job's; the node bench (NodeBenchMain, P1-10a): `sync` keep and
+# metadata-only against the raw echo, `ack` the at-least-once 202 at c=8 and c=64, `worker` passthrough and xslt, each keep
+# and metadata-only; BENCH_MESSAGES / BENCH_WARMUP / BENCH_CONCURRENCY apply to every run but ack's).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
-: "${BENCH_MESSAGES:=20000}" "${BENCH_WARMUP:=1000}" "${BENCH_CONCURRENCY:=64}"
+: "${BENCH_MESSAGES:=20000}" "${BENCH_WARMUP:=1000}" "${BENCH_CONCURRENCY:=64}" "${BENCH_SCENARIOS:=batched}"
 export PGPASSWORD
 commit="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
@@ -26,15 +29,43 @@ jar="$(ls flottila-bench/target/flottila-bench-*.jar | grep -v -E 'sources|javad
 cp="$jar:flottila-bench/target/lib/*"
 mkdir -p bench/out
 
+summary() { # name
+  echo "$1: $(python3 -c "import json,sys; j=json.load(open('bench/out/$1.json')); print(f\"{j['throughputPerSecond']:.0f} msg/s, p50 {j['p50Ms']:.2f} ms, p95 {j['p95Ms']:.2f} ms, p99 {j['p99Ms']:.2f} ms, max {j['maxMs']:.1f} ms\" + (f\", overhead p50 {j['overheadP50Ms']:.2f} ms\" if 'overheadP50Ms' in j else ''))")"
+}
+
 run() { # name sync-commit
   java -cp "$cp" io.flottila.bench.BenchMain --host "$PGHOST" --port "$PGPORT" --db "$BENCH_DB" --user "$PGUSER" --password "$PGPASSWORD" \
     --messages "$BENCH_MESSAGES" --warmup "$BENCH_WARMUP" --concurrency "$BENCH_CONCURRENCY" \
     --batch-size 100 --window-ms 10 --commit-concurrency 4 --sync-commit "$2" --name "$1" --out "bench/out/$1.json" --commit "$commit" \
     > "bench/out/$1.log"
-  echo "$1: $(python3 -c "import json,sys; j=json.load(open('bench/out/$1.json')); print(f\"{j['throughputPerSecond']:.0f} msg/s, p50 {j['p50Ms']:.2f} ms, p95 {j['p95Ms']:.2f} ms, p99 {j['p99Ms']:.2f} ms, max {j['maxMs']:.1f} ms\")")"
+  summary "$1"
 }
 
-run batched-persistence-sync on
-run batched-persistence-async off
+run_node() { # name, then NodeBenchMain's own arguments (--scenario ...); a later --concurrency overrides BENCH_CONCURRENCY
+  local name="$1"; shift
+  java -cp "$cp" io.flottila.bench.NodeBenchMain --host "$PGHOST" --port "$PGPORT" --db "$BENCH_DB" --user "$PGUSER" --password "$PGPASSWORD" \
+    --messages "$BENCH_MESSAGES" --warmup "$BENCH_WARMUP" --concurrency "$BENCH_CONCURRENCY" \
+    --name "$name" --out "bench/out/$name.json" --commit "$commit" "$@" > "bench/out/$name.log"
+  summary "$name"
+}
+
+for scenario in $BENCH_SCENARIOS; do
+  case "$scenario" in
+    batched)
+      run batched-persistence-sync on
+      run batched-persistence-async off ;;
+    sync)
+      for recording in keep metadata-only; do run_node "node-sync-$recording" --scenario sync --recording "$recording"; done ;;
+    ack)
+      for c in 8 64; do run_node "node-ack-c$c" --scenario ack --concurrency "$c"; done ;;
+    worker)
+      for step in passthrough xslt; do
+        for recording in keep metadata-only; do run_node "node-worker-$step-$recording" --scenario worker --step "$step" --recording "$recording"; done
+      done ;;
+    *)
+      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker)" >&2
+      exit 2 ;;
+  esac
+done
 
 python3 bench/check_regression.py --results bench/RESULTS.md --out bench/out

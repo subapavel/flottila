@@ -713,3 +713,12 @@ Checks: whole reactor -Pit VERIFIED_PASS 1525/0/0/0 (target/P1-09c3b-verify.log)
 Review: FAIL r1 (§9 said a flow failing to start fails its package; D-057 bracket misplaced — architect's wording); PASS r2. Raised FIX-60..62, FIX-58 widened (restore's list() unbounded).
 D-054 data: class C (test-author + 1 resume, implementer, verifier, reviewer ×2); review rounds 2.
 Next: P1-10 [B] — Phase 1 measurements on the cloud VM.
+
+## 2026-10-28 — P1-10a node bench harness NodeBenchMain (packet P1-10 §a) — done, review PASS
+Test first: NodeBenchMainIT 6 (+ worker xslt), NodeBenchMainTest 1 — observed red (target/P1-10a-red.log, missing type only).
+Change: flottila-bench NodeBenchMain — in-process Node over Postgres + raw Vert.x echo; scenarios sync (flow vs raw, overheadP50Ms), ack (202 after the durable save incl. bodies, synchronous_commit forced on), worker (passthrough/xslt, claim→complete via triggers, ingress + drainTail); WAL/bodies rates over the load's elapsedMs after the window settled; bench/run.sh BENCH_SCENARIOS (default unchanged).
+Checks: verify -Pit -pl flottila-bench -am VERIFIED_PASS (target/P1-10a-verify2.log, 1487/0/0/0); python unittests 35 OK; coverage no decrease (bench 96.2/93.3); mutants 32/32 killed (target/P1-10a-mutants2.log).
+Measured: nothing recorded (native PG rejected the role password; smoke on docker postgres:17 only, target/P1-10a-runsh.log) — numbers are P1-10d.
+Review: FAIL r1 (rates snapshot before the window's recording landed; worker rate could be the ingress rate; M20 parked items, renewal filter, W1/W2 unpinned); PASS r2. Raised FIX-63; notes for P1-10d in the packet.
+D-054 data: class B (scout, test-author + 1 resume, implementer + 1 fix round, reviewer ×2); review rounds 2.
+Next: P1-10b [B] — kill -9 ledger (packet §b).
