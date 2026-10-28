@@ -29,6 +29,39 @@
     </resources>
     <plugins>
       <plugin>
+        <!-- the runnable distribution (P2-05a): `java -jar target/flottila-runtime-<v>.jar` starts a node; the manifest names Main
+             and a lib/ class path, which copy-dependencies below fills; no shading. -SNAPSHOT names, as copy-dependencies writes them. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>io.flottila.runtime.Main</mainClass>
+              <addClasspath>true</addClasspath>
+              <classpathPrefix>lib/</classpathPrefix>
+              <useUniqueVersions>false</useUniqueVersions>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <!-- the jar's runtime class path next to it, in target/lib (deploy/quickstart/Dockerfile copies both); Apache-2.0 -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.8.1</version>
+        <executions>
+          <execution>
+            <id>copy-runtime-classpath</id>
+            <phase>package</phase>
+            <goals><goal>copy-dependencies</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/lib</outputDirectory>
+              <includeScope>runtime</includeScope>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
         <!-- *HeapTest / *HeapIT run in their own JVM with a heap far below the body they stream: a store that holds the
              body at once fails with OutOfMemoryError, deterministically, instead of a GC heuristic deciding (P1-01 review). -->
         <groupId>org.apache.maven.plugins</groupId>

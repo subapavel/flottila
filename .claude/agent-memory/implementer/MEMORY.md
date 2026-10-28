@@ -92,7 +92,8 @@
   NIO2 pools "-nio2" and "-nio2-resume" both sized by NIO_WORKERS; setUpDefaultClient reads ~/.ssh/config unless
   HostConfigEntryResolver.EMPTY; a client session can still be isOpen() after the server counted it closed (idle DISCONNECT race).
   loadKeyPairIdentities: garbage → null, PKCS8 with an unknown OID → NoSuchAlgorithmException (a GSE). rename never overwrites.
-- api tests pin the public type count (PublicTypesHaveSinceTest:105): a new public api type needs that number bumped (test-author).
+- Docker (P2-05a): native PG holds 127.0.0.1:5432 → compose with `FLOTTILA_PG_HOST_PORT=55432`; temurin images have bash, no curl;
+  `docker volume prune` is denied. A non-loopback FLOTTILA_ADMIN_HOST without FLOTTILA_ADMIN_TOKEN (blank = none) is refused.
 ## Findings that came back in review
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
 - Packet red tests can carry fixture bugs that no implementation fixes (P1-09k2: a step key off by one past a gate, a replay over a

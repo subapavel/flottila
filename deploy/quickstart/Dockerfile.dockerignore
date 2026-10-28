@@ -1,0 +1,7 @@
+# The build context of deploy/quickstart/Dockerfile is the repository root: send only what the image copies.
+*
+!flottila-runtime/target/lib/
+!flottila-runtime/target/flottila-runtime-*.jar
+flottila-runtime/target/flottila-runtime-*-sources.jar
+flottila-runtime/target/flottila-runtime-*-tests.jar
+flottila-runtime/target/flottila-runtime-*-javadoc.jar

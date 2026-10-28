@@ -1,3 +1,7 @@
+# The local quickstart (docs/QUICKSTART.md): Postgres, one Flottila node and the demo's partner echo. Build the runtime on the
+# host first: mvn -B -ntp -q package -DskipTests -pl flottila-runtime -am. The node migrates the schema itself (Flyway).
+# Postgres is also published on loopback (127.0.0.1:5432, or FLOTTILA_PG_HOST_PORT) for psql and local tools. The database and
+# the node's data directory (its deployment archives) live in named volumes: `docker compose down -v` removes both together.
 services:
   postgres:
     image: postgres:16
@@ -7,11 +11,55 @@ services:
       POSTGRES_USER: flottila
       POSTGRES_PASSWORD: flottila
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${FLOTTILA_PG_HOST_PORT:-5432}:5432"
     volumes:
-      - ./deploy/postgres/V1__m1_schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - flottila-pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
       interval: 2s
       timeout: 2s
       retries: 15
+
+  flottila:
+    build:
+      context: .
+      dockerfile: deploy/quickstart/Dockerfile
+    image: flottila-quickstart:local
+    environment:
+      FLOTTILA_ENV: dev
+      FLOTTILA_NODE_ID: quickstart
+      FLOTTILA_PG_HOST: postgres
+      FLOTTILA_PG_PASSWORD: flottila
+      FLOTTILA_ADMIN_HOST: 0.0.0.0
+      # an admin API off loopback needs a token: the node refuses to start without one (export it, docs/QUICKSTART.md)
+      FLOTTILA_ADMIN_TOKEN: ${FLOTTILA_ADMIN_TOKEN:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"   # the demo's http-in
+      - "127.0.0.1:8081:8081"   # admin API and /health
+    volumes:
+      - flottila-data:/var/lib/flottila   # a restart restores the deployed packages from the archives here
+    healthcheck:
+      # the image has no curl: one HTTP/1.0 request over bash's /dev/tcp, healthy on a 200
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  echo:
+    # the demo's partner on localhost:8090 of the node: the JDK echo in the node's network namespace (the source launcher needs
+    # the JDK image, not the JRE); the demo package is deployed unchanged
+    image: eclipse-temurin:25.0.4.1_1-jdk-noble
+    user: ubuntu
+    network_mode: "service:flottila"
+    volumes:
+      - ./deploy/quickstart/PartnerEcho.java:/opt/echo/PartnerEcho.java:ro
+    command: ["java", "/opt/echo/PartnerEcho.java", "8090"]
+    depends_on:
+      - flottila
+
+volumes:
+  flottila-pg:
+  flottila-data:

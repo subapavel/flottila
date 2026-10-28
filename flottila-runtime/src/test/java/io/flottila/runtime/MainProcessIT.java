@@ -39,9 +39,14 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -181,6 +186,34 @@ class MainProcessIT {
         assertFalse(unexpectedEofs().isEmpty(), "a node that never closed its pool leaves an unexpected EOF in the server log");
     }
 
+    /**
+     * P2-05a: the jar {@code package} builds is the distribution. Its manifest names {@code io.flottila.runtime.Main} and a
+     * class path of {@code lib/} entries, each a file in {@code target/lib}; {@code java -jar} on it — no {@code -cp} — starts a
+     * node that serves {@code /health} 200.
+     */
+    @Test
+    void javaDashJarOnThePackagedJarStartsANodeThatServesHealth() throws Exception {
+        Path jar = packagedJar();
+        Manifest manifest;
+        try (JarFile file = new JarFile(jar.toFile())) {
+            manifest = file.getManifest();
+        }
+        assertNotNull(manifest, "the packaged jar has a manifest: " + jar);
+        Attributes main = manifest.getMainAttributes();
+        assertEquals("io.flottila.runtime.Main", main.getValue(Attributes.Name.MAIN_CLASS), "the manifest names Main: " + main.entrySet());
+        String classPath = main.getValue(Attributes.Name.CLASS_PATH);
+        assertNotNull(classPath, "the manifest carries the runtime class path: " + main.entrySet());
+        List<String> entries = List.of(classPath.trim().split("\\s+"));
+        for (String entry : entries) {
+            assertTrue(entry.startsWith("lib/"), "every class path entry is under lib/: " + entry);
+            assertTrue(Files.isRegularFile(jar.resolveSibling(entry)), "every class path entry is a file beside the jar: " + jar.resolveSibling(entry));
+        }
+        int port = freePort();
+        launch(env(port), List.of("-jar", jar.toAbsolutePath().toString()));
+        untilServing(port);
+        assertEquals(200, health(port), "the node started from the jar serves /health");
+    }
+
     // --- the child
 
     /** A node's environment on the case database, data under the case's temporary directory; nothing inherited. */
@@ -200,17 +233,33 @@ class MainProcessIT {
     }
 
     void launch(Map<String, String> env) throws IOException {
+        launch(env, List.of("-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")), "io.flottila.runtime.Main"));
+    }
+
+    /** {@code java [jacoco agent] <how>}: the child, its stderr and stdout in the case's log directory. */
+    void launch(Map<String, String> env, List<String> how) throws IOException {
         List<String> command = new ArrayList<>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         jacocoAgent().ifPresent(command::add);
-        command.add("-cp");
-        command.add(System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")));
-        command.add("io.flottila.runtime.Main");
+        command.addAll(how);
         stderr = logs.resolve("stderr.txt");
         ProcessBuilder builder = new ProcessBuilder(command).redirectError(stderr.toFile()).redirectOutput(logs.resolve("stdout.txt").toFile());
         builder.environment().clear();
         builder.environment().putAll(env);
         child = builder.start();
+    }
+
+    /** The module's packaged jar, {@code target/flottila-runtime-<version>.jar} (not a sources, tests or javadoc jar): exactly one. */
+    static Path packagedJar() throws IOException {
+        try (Stream<Path> listed = Files.list(Path.of("target"))) {
+            List<Path> jars = listed.filter(p -> {
+                String name = p.getFileName().toString();
+                return name.startsWith("flottila-runtime-") && name.endsWith(".jar")
+                        && !name.endsWith("-sources.jar") && !name.endsWith("-tests.jar") && !name.endsWith("-javadoc.jar");
+            }).toList();
+            assertEquals(1, jars.size(), "one packaged jar in target/ (failsafe runs after package): " + jars);
+            return jars.get(0);
+        }
     }
 
     /**

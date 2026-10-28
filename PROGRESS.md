@@ -857,3 +857,12 @@ Process: the implementer again wrote its own tests (DownloadTest, SftpConsumerEd
 Owner (chat 2026-10-28): wants to send a message into the platform → new row P2-05a (local quickstart), taken next.
 D-054 data: class C (designer ×1, test-author ×1 + 2 fix packets, implementer ×1, verifier ×3, reviewer ×2); review rounds 2.
 Next: P2-05a [B] local quickstart.
+
+## 2026-10-28 — P2-05a local quickstart: node in compose, deploy the demo, send an invoice, read it back — done, review PASS
+Owner request (chat 2026-10-28): "chci testovat poslání zprávy do platformy".
+Test first: QuickstartIT (deploy.sh → demo, CZK and EUR invoices answered by the echo, timeline + step body; 422 refusal; 401 without/wrong token; no-zip jar fallback), MainProcessIT.javaDashJarOnThePackagedJarStartsANodeThatServesHealth (red: target/P2-05a-red.log).
+Change: runtime jar manifest + target/lib; deploy/quickstart Dockerfile (temurin 25.0.4.1_1-jre-noble, uid 10001), deploy.sh, PartnerEcho.java (jdk image, network_mode service:flottila); compose: V1 mount dropped (Flyway migrates), flottila + echo services, admin token from env, ports on 127.0.0.1, named volumes; docs/QUICKSTART.md, README link; D-077.
+Checks: whole reactor verify -Pit VERIFIED_PASS 1861 tests (target/P2-05a-verify2.log); ArchUnit 35/35; coverage no decrease; deploy.sh mutants M1–M6 killed; clean-checkout walkthrough by the verifier matched every step (target/P2-05a-verifier-walkthrough.log), its one doc finding fixed (wait on the node's /health).
+Review: FAIL r1 (Postgres published on all interfaces; deploy.sh token branch and jar fallback untested), PASS r2.
+D-054 data: class B (scout ×1, test-author ×1 + fix, implementer ×1 + fix, verifier ×2, reviewer ×2); review rounds 2.
+Next: P2-02a [C] package folders, then P2-03 CLI.

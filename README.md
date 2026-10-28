@@ -11,6 +11,8 @@ DLQ, replay and a Postgres work queue). The tree is being restructured in place 
 architecture by an autonomous engineering session; the first thing worth trying by hand arrives at
 the hand-over gate described in `docs/GATE.md`.
 
+To send a message through a local node now: `docs/QUICKSTART.md` (Docker Compose, the demo package, the admin API).
+
 Where to look:
 
 - `docs/ARCHITECTURE.md` — the binding design (amendments block at the top, then the v3.3 text)
