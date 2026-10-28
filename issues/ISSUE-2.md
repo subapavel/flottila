@@ -30,7 +30,9 @@ the gate review sees this issue (ARCHITECTURE §13 names "durable ACK < 5 ms p99
 so P1-GATE lists ISSUE-2). Option 2 becomes a Phase 2 CONSIDER row; no task is blocked.
 
 ## Owner's answer
-(left empty; the owner fills it in and the next session reads it)
+2026-10-28, in this session's chat: "ISSUE-2: varianta 1+2" — option 1 now (the durable ACK target is
+restated as measured, with the machine named; F-14) and option 2 as a Phase 2 row (P2-08: tune the durable
+path and re-measure). Status: answered.
 
 ## Gate review (2026-10-28)
 The P1-GATE review (gate commit 350f71d) returned NOT_MET on this threshold alone. The default above lets

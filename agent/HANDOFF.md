@@ -1,16 +1,16 @@
 # Handoff
 
-state: RUNNING — P1-GATE blocked on ISSUE-2 (gate NOT_MET on §13 durable ACK only, 350f71d); continuing with ready rows outside Phase 2
-last commit: `Task: P1-09g` (this commit); a68b52f `Task: P1-09f`; 88d3522 `Task: P1-GATE` (blocked); 350f71d gate commit
+state: RUNNING — Phase 1 gate MET (re-review after the owner's ISSUE-2 answer, D-073/F-14); Phase 2 starts
+last commit: `Task: P1-GATE` (this commit, gate MET); a880b61 `Task: P1-09g`; a68b52f `Task: P1-09f`; 350f71d gate commit
 branch: claude/stoic-cannon-2byixj, pushed to main as well (local refs/heads/main is stale; origin/main is the truth)
-next exact action: P1-GATE — owner answered ISSUE-2 (option 1+2, chat 2026-10-28): F-14, §13 + GATE check 9, Phase 2 tuning row, re-review
-then: on an ISSUE-2 answer — option 1/3: finding + §13/GATE changelog, P1-GATE done; option 2: tune and re-measure
+next exact action: P2-01 [C] Postgres WorkQueue wired to async flows — scout, designer draft, packet; then P2-02, P2-04, P2-08
+then: FIX-68, FIX-71, FIX-73..75 between Phase 2 rows; later (owner): FIX-72, FIX-76, CONSIDER-3; CONSIDER-4 is a Phase 2 row
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
-CI: 22da747 run 40336093434 green (P1-08c); bfa400c run 40315078572 green (P1-08b); 1a8bba8 run 40300828984 green (FIX-15)
+CI: a68b52f run 40670578779 green (P1-09f); 88d3522 run 40666734124 green; a880b61 run 40682726062 running at commit time
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
-open issues: ISSUE-1 (Context7 quota; javap fallback), ISSUE-2 (durable ACK p99 < 5 ms missed; blocks P1-GATE, owner-only)
+open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered by the owner 2026-10-28 (option 1+2)
 open fixes: FIX-16, FIX-18..20, FIX-22..29, FIX-31, FIX-33,34,36..43, FIX-45..52, FIX-54..64, FIX-68, FIX-71..75; CONSIDER-1..3 (owner)
-pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066/F-10, D-067..69, F-11, D-070/F-12, F-13 closed, D-071; D-072 approved; decided: D-064/65B/67A
+pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066/F-10, D-067..69, F-11, D-070/F-12, D-071; owner-decided: D-064/65B/67A/72/73
 roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort per call; designer Opus xhigh for C; gate-reviewer Fable 5.1 (AGENTS.md)
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
 VM: services detached (NOTES.md "Build and VM"); mutant restore with `cp`/`touch`, never `mv`; never `mvn clean` at the reactor root; no stress-ng (shell hogs)

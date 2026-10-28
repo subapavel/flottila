@@ -130,6 +130,9 @@ Gate verdict (gate-reviewer): NOT_MET only on the §13 durable ACK (table above,
 Phase 1 condition met. The ledger, durable-ACK and sync c=1/c=8 rows were measured on e129c77, before
 FIX-66 touched Trail/BatchingWriter; only sync c=64 was re-run after it (f7707a2).
 
+Owner's answer to ISSUE-2 (2026-10-28, option 1+2): the durable ACK is recorded as measured with the machine named,
+< 5 ms p99 is the Phase 2 tuning target (P2-08); F-14. Gate re-review on that record: **MET** (P1-GATE done).
+
 ## P1-02 — the message path: admit → context → scope, 10 000 messages at once — cloud VM, 4 vCPU
 
 Date: 2026-10-18. Commit: the P1-02 commit (hash in PROGRESS.md; `--commit eabaf5b` in the JSON names the base).

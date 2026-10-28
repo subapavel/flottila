@@ -821,3 +821,11 @@ Review: FAIL r1 (Deployments:761 `valid` unpinned — unserved-scheme in endpoin
 Owner 2026-10-28 (chat, this session): D-072 approved; CONSIDER-4 → Phase 2; FIX-72, FIX-76, CONSIDER-3 later.
 D-054 data: class C (designer ×1, test-author ×3, implementer ×1, verifier ×1, reviewer ×2); review rounds 2.
 Next: P1-GATE — record the owner's ISSUE-2 answer (option 1+2): F-14, §13/GATE check 9, Phase 2 tuning row, gate re-review.
+
+## 2026-10-28 — P1-GATE Phase 1 gate — done, gate: MET (re-review)
+Owner's answer to ISSUE-2 in the session chat: "ISSUE-2: varianta 1+2" → D-073; ISSUE-2 answered.
+Change (docs only): F-14 written; ARCHITECTURE §7 Sizing and §13 Phase 1 gate restated (durable ACK recorded as measured, < 5 ms p99 = Phase 2 target), changelog row; GATE.md check 9 restated; P2-08 durable ACK tuning added (class C, after P1-GATE); RESULTS "Gate commit 350f71d" carries the answer and verdict.
+Evidence unchanged from the first gate entry (350f71d: push 40661411394, dispatch 40661445376; PIT api 125/125, core 760/767).
+Gate review: NOT_MET r1 (durable ACK owner-only; CI numbers missing — fixed in 88d3522), MET r2 (Fable 5.1). Hand-over list from the reviewer: FIX-73, FIX-74 open; changelog "at the top" vs appended (WORKFLOW wording).
+Deviation: F-14
+Next: Phase 2 — P2-01 [C] Postgres WorkQueue wired to async flows; then P2-02, P2-04, P2-08.

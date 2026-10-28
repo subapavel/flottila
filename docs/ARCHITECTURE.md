@@ -27,6 +27,7 @@
 | 2026-10-28 | 3.4 | §9 Deployment mechanics: the deployment record is a Postgres row without bytes, the archive is stored once in S3 by sha256 before the record (the commit point), and a node restores every recorded package before its admin API opens; a package it cannot restore is FAILED and /health is DOWN (owner's option A, D-070) | F-12 (major) |
 | 2026-10-28 | 3.4 | §8 write path: trail rows wait FIFO for room in the node writer's backlog up to `maxWait` (10 s), keeping the run's permit, so overload shows as admission refusals; a row not written is logged at WARNING (message id, flow, step, cause) and counted; the at-least-once ingress row still fails fast; the backlog bounds tempo and is not sized against maxInFlight (D-071) — F-13 closed (FIX-67's c=64 rerun: no row lost) | F-13 (major) |
 | 2026-10-28 | 3.4 | §7 Component SPI gains `listensOn(EndpointConfig)` (default empty); a deploy (and a restore) refuses in endpoints that would share a host:port with each other, the admin API or another package's running flow — one listener per port on a node (D-072, P1-09g) | — |
+| 2026-10-28 | 3.4 | §7 Sizing and §13 Phase 1 gate: the durable ACK < 5 ms p99 is no longer a Phase 1 gate condition; the gate records it as measured (p99 8.8 / 27.4 / 135 ms at c=1/8/64, 4 vCPU, default Postgres 16) and < 5 ms becomes the Phase 2 tuning target (P2-08) — owner's answer to ISSUE-2, option 1+2 | F-14 (major) |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -258,7 +259,7 @@ The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a 
 
 **Persistence tables (Postgres)**: `messages(id, step, flow, headers, props, keys, body_ref, versions…)`, `payloads(hash PK, size, …)`, `message_keys(name, value, message_id, step)`, `work`, `dlq(… body_ref, no FK so a park never fails on ordering)`, `processed_ids`, `aggregates`, `routing_table`, `partner_directory`, `flows`, `wallet`, `audit`. Rule: bytes exist in the system once; everything else is a reference. Never a synchronous delete on the hot path; retention is a background job by partition.
 
-**Sizing**: one 8-core node is expected to carry tens of thousands of HTTP passthrough req/s, 5–20k msg/s with persistence, hundreds to low thousands/s with 100 KB XSLT. Targets to hold on native Linux: sync request/reply platform overhead < 2 ms p50 (met in the prototype), at-least-once durable ACK < 5 ms p99 (measured 7.4 ms p50 across the WSL2 boundary; unverified co-located).
+**Sizing**: one 8-core node is expected to carry tens of thousands of HTTP passthrough req/s, 5–20k msg/s with persistence, hundreds to low thousands/s with 100 KB XSLT. Targets to hold on native Linux: sync request/reply platform overhead < 2 ms p50 (met in the prototype), at-least-once durable ACK measured p99 8.8 ms at c=1 on a 4 vCPU cloud VM with default Postgres 16 (two commits in sequence; F-14) — < 5 ms p99 is the tuning target of Phase 2 (P2-08: one commit, group commit, faster storage).
 
 ## 8. Monitoring, tracing, alerting
 
@@ -444,7 +445,7 @@ Phases 0–2 build the runtime that everything else sits on; 3 turns it into the
 
 **Phase 0 — spikes and scaffolding.** Monorepo with the modules of section 12, ArchUnit boundary tests, CI (build, test, native bench job on a Linux runner), `CLAUDE.md`/`AGENTS.md`. Flow, package and endpoint JSON Schemas published. Two spikes with numbers: the prototype's batched persistence rerun on native Linux Postgres (closes the < 5 ms p99 question), and `RequestScope` + admission semaphore under 10k virtual threads. Gate: schemas merged, bench baseline recorded.
 
-**Phase 1 — core runtime.** `flottila-api`, `-core`, `-runtime` with Envelope/Body/BlobStore (memory, spool, S3 tiers, byte budget), RequestScope, per-flow admission, the batcher, Postgres MessageStore/DLQ, recording levels, replay, http and mock components, xslt/validate/extractKey/route steps, the three delivery modes. Gate: the milestone-1 flow (HTTP → validate → key → route → XSLT → HTTP) runs on the new core; kill -9 ledger 2000/2000; sync < 2 ms p50 and durable ACK < 5 ms p99 native; 50 MB body passes a stream step without heap growth.
+**Phase 1 — core runtime.** `flottila-api`, `-core`, `-runtime` with Envelope/Body/BlobStore (memory, spool, S3 tiers, byte budget), RequestScope, per-flow admission, the batcher, Postgres MessageStore/DLQ, recording levels, replay, http and mock components, xslt/validate/extractKey/route steps, the three delivery modes. Gate: the milestone-1 flow (HTTP → validate → key → route → XSLT → HTTP) runs on the new core; kill -9 ledger 2000/2000; sync < 2 ms p50 and the durable ACK measured and recorded native (F-14); 50 MB body passes a stream step without heap growth.
 
 **Phase 2 — durable messaging.** Kafka hand-over and the durable `/xi` door, Postgres WorkQueue with partition keys and the same-key fast path, XI QoS (EO, EOIO block-on-failure, `processed_ids`), dispatcher with versioned routing, partner directory, wallet, Valkey cache and leases, inter-flow `call` / `flow://` / `queue://`. Gate: XI simulator end-to-end with ordered queues; Postgres failover during load with no loss or duplicate; node join/leave under load.
 

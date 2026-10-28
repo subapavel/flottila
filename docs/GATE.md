@@ -30,7 +30,8 @@ covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
    path, partner 503 → DLQ, SFTP fixture files — in-process in seconds; CI runs the same command.
 9. **Evidence.** `bench/RESULTS.md` holds, measured on native Linux: kill -9 ledger 2000/2000
    (sent = final-step rows, DLQ 0, work 0); sync request/reply platform overhead < 2 ms p50;
-   at-least-once durable ACK p99 (target < 5 ms); a 50 MB body through a stream step without heap
+   at-least-once durable ACK p99 as measured, with the machine named (F-14: < 5 ms is the
+   Phase 2 tuning target, P2-08, not a Phase 1 condition); a 50 MB body through a stream step without heap
    growth; coverage and mutation numbers of the gate commit. `HANDOVER.md` exists.
 
 ## HANDOVER.md contents
