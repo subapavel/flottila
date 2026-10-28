@@ -144,7 +144,7 @@ The durable save is the consumer's responsibility, never a pipeline stage: only 
 
 **Event bus** carries only admin commands. The customer's message never travels on it, and after the §4 review neither does monitoring: the writer path is worker → local bounded batch queue → Kafka topic → ClickHouse Kafka engine, with the Postgres last-N-hours copy written by the same batcher. Vert.x clustering is not used; nodes share state only through Postgres, Kafka and Valkey.
 
-**Writer (persistence batcher)**: hand-rolled, not a Mutiny operator chain (which emits on timer regardless of demand and dies on backpressure). Adaptive flush — write immediately when idle, accumulate to batchSize/batchMs under load; up to N commits in flight with per-batch completion; fixed-shape `unnest` inserts with prepared-statement cache; a small bounded admission buffer whose overflow surfaces as ingress rejection, never as a dead stream. The prototype measured batching at ≈ 80 % of no-persistence throughput; the serialized-commit ceiling is gone.
+**Writer (persistence batcher)**: hand-rolled, not a Mutiny operator chain (which emits on timer regardless of demand and dies on backpressure). Adaptive flush — write immediately when idle, accumulate to batchSize/batchMs under load; up to N commits in flight with per-batch completion; fixed-shape `unnest` inserts with prepared-statement cache; a small bounded admission buffer whose overflow surfaces as ingress rejection, never as a dead stream (trail rows wait FIFO for room up to `maxWait` instead, §8, D-071). The prototype measured batching at ≈ 80 % of no-persistence throughput; the serialized-commit ceiling is gone.
 
 ## 5. Message model
 

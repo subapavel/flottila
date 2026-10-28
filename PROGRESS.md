@@ -769,3 +769,11 @@ Measured: c=64 sync rerun ×9 (keep 4096 / keep 128 / metadata-only 128): settle
 Review: FAIL r1 (RESULTS latency claim wrong — the columns include the 503s; probe counter wiring and worker split unpinned), PASS r2.
 D-054 data: class A (test-author ×3, implementer, verifier, reviewer ×2); review rounds 2.
 Next: P1-GATE [G] — gate-reviewer (Fable 5.1); ISSUE-2 open.
+
+## 2026-10-28 — FIX-70 follow-ups to FIX-66: §4 Writer pointer, test name, scoped PIT on BatchingWriter + Trail — done, review PASS
+Test first: none new (a rename: InMemoryMessageStoreTest.recordWaitingThroughTheInterfaceDefaultLandsEveryRowOfConcurrentCalls, assertions unchanged; 7/7 target/FIX-70-test.log).
+Change: ARCHITECTURE §4 Writer sentence points at §8 / D-071 (trail rows wait instead of overflowing).
+Checks: scoped PIT on main 43a3c29 — BatchingWriter 44 + Trail 27 mutants, 71/71 killed (63 killed, 8 timed out), test strength 100 % (target/FIX-70-pit2.log; the first invocation with -am failed on api "No mutations found", target/FIX-70-pit.log).
+Review: PASS r1.
+D-054 data: class A (verifier, test-author, reviewer); review rounds 1.
+Next: P1-GATE [G] — CI runs 40660524856 (push) and 40660546320 (dispatch: bench + mutation) on 43a3c29, then the gate-reviewer.

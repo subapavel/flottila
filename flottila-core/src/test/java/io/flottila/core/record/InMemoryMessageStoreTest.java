@@ -134,7 +134,7 @@ class InMemoryMessageStoreTest {
      * (the first row per (id, step) still wins).
      */
     @Test
-    void recordWaitingPastTheBacklogLandsEveryRow() throws Exception {
+    void recordWaitingThroughTheInterfaceDefaultLandsEveryRowOfConcurrentCalls() throws Exception {
         MessageStore rows = store;   // through the interface: the default method
         List<io.vertx.core.Future<Void>> saves = new CopyOnWriteArrayList<>();
         List<Thread> callers = new ArrayList<>();
