@@ -34,7 +34,8 @@
   testkit branch baseline 96.4 % is a lucky run, HEAD measures 95.2 %). Wait on a background build: `timeout N tail -f --pid=<pid> /dev/null`.
 - Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
   a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
-- Mutant killers from TEST-*.xml: keep files with mtime ≥ the run's own start, no margin (the previous run's last XMLs leak in).
+- Mutant killers from TEST-*.xml: only files with mtime ≥ the run's own start (the previous run's last XMLs leak in).
+- bench mutants: `install -DskipTests -Djacoco.skip=true -pl flottila-bench -am` once, then `-o -pl flottila-bench` (unit ~8 s, a LedgerIT case ~53 s, ~6 min if the drain stalls).
 - JaCoCo counts only a module's own tests: a new api/step method or testkit fixture untested in its own module trips the band.
 
 ## APIs
@@ -88,7 +89,6 @@
 - TieredBlobStore spool files are per write since FIX-35: `<id>/<step>-<part>-<n>.blob` (n per store); a write that replaces a
   spool entry unlinks its own file off-thread; a missing file reads the row only for a `Stored` persist flagged durable, else
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
-
 - Sync `Delivery` holds the admission permit until the run's trail closed, AFTER the reply (Delivery.sync): a client at concurrency c
   gets 503 "admission refused" at maxInFlight 2c (observed P1-10a); at-least-once releases at the 202, the worker counts its own max.
 - Native PG 16 refuses role flottila's password 'flottila' (P1-10a): smoke `bench/run.sh` against `docker run postgres:17` on

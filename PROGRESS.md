@@ -722,3 +722,12 @@ Measured: nothing recorded (native PG rejected the role password; smoke on docke
 Review: FAIL r1 (rates snapshot before the window's recording landed; worker rate could be the ingress rate; M20 parked items, renewal filter, W1/W2 unpinned); PASS r2. Raised FIX-63; notes for P1-10d in the packet.
 D-054 data: class B (scout, test-author + 1 resume, implementer + 1 fix round, reviewer ×2); review rounds 2.
 Next: P1-10b [B] — kill -9 ledger (packet §b).
+
+## 2026-10-28 — P1-10b kill -9 ledger LedgerMain (packet P1-10 §b, GATE 9) — done, review PASS
+Test first: LedgerIT 2, LedgerMainTest 4 (+4 exit-code terms after r1) — observed red (target/P1-10b-red.log, target/P1-10b-red2.log).
+Change: flottila-bench LedgerMain — node 1 a child JVM SIGKILLed after N ACKs with deterministic in-flight work (the partner holds calls), node 2 on an empty data dir restores (S3 in the IT, a shared archive dir natively) and finishes; every message re-sent until ACKed (30 s request timeout); exit 0 only for acked == messages, nothing missing, DLQ 0, work 0, exit 137, unfinished work at the kill.
+Checks: verify -Pit -pl flottila-bench -am VERIFIED_PASS 1505/0/0/0 (target/P1-10b-verify2.log); coverage no decrease (bench 96.7/94.6); mutants target/P1-10b-mutants2.log (I4/I13 reported-only, E3 equivalent, E4 timing-only — accepted by the reviewer).
+Measured: nothing recorded (numbers are P1-10d).
+Review: FAIL r1 (a cut 202 was never re-sent, so N/N could not be shown), PASS r2. Raised FIX-64.
+D-054 data: class B (test-author ×2, implementer + 1 fix round, reviewer ×2); review rounds 2.
+Next: P1-10c [B] — 50 MB through a stream step (packet §c).

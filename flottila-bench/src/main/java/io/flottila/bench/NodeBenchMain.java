@@ -278,7 +278,7 @@ public final class NodeBenchMain {
         return o.scenario() == Scenario.SYNC ? SYNC_PERMITS_PER_CLIENT * o.concurrency() : o.concurrency();
     }
 
-    private static Pool pool(Vertx vertx, Options o, int size) {
+    static Pool pool(Vertx vertx, Options o, int size) {
         return PgBuilder.pool().connectingTo(new PgConnectOptions().setHost(o.host()).setPort(o.port()).setDatabase(o.db()).setUser(o.user())
                 .setPassword(o.password())).with(new io.vertx.sqlclient.PoolOptions().setMaxSize(size)).using(vertx).build();
     }
@@ -342,20 +342,20 @@ public final class NodeBenchMain {
         return doc.encodePrettily().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static int freePort() throws IOException {
+    static int freePort() throws IOException {
         try (ServerSocket s = new ServerSocket(0)) {
             return s.getLocalPort();
         }
     }
 
-    private static void delete(Path dir) throws IOException {
+    static void delete(Path dir) throws IOException {
         try (Stream<Path> walk = Files.walk(dir)) {
             for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) Files.delete(p);
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static <T extends Throwable> T sneaky(Throwable failure) throws T {
+    static <T extends Throwable> T sneaky(Throwable failure) throws T {
         throw (T) failure;
     }
 

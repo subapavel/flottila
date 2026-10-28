@@ -49,6 +49,12 @@
       <artifactId>testcontainers-postgresql</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <!-- LedgerIT (P1-10b): node 2 restores the bench package from S3 — LocalStack (Apache-2.0 image), official module (MIT) -->
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-localstack</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
