@@ -352,7 +352,9 @@ public abstract class PollingConsumerContract {
             assertTrue(soon(() -> seen.count() == 1), "the dropped file was delivered: " + seen.files);
             drop("later.txt", text("later"));   // younger: the next round lists the refused file first
             fire();
-            assertTrue(soon(() -> seen.count() == 2), "the next round delivered the younger file: " + seen.files);
+            // At least two, not exactly two: a consumer that delivers the refused file again goes on to the younger one in the same
+            // round, and a spin on "two" may never catch the moment in between; the list check names that defect whatever the timing.
+            assertTrue(soon(() -> seen.count() >= 2), "the next round delivered the younger file: " + seen.files);
             assertEquals(List.of("refused", "later"), seen.files, "the oldest file of the next round was the refused one: it was not delivered again");
             assertTrue(soon(() -> !remaining().contains("later.txt")), "the younger file was accepted: removed: " + remaining());
             assertTrue(remaining().contains("refused.txt"), "without an error directory a finally refused file is left where it was: " + remaining());

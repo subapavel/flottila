@@ -206,8 +206,12 @@ class PollingConsumerContractSelfTest {
             private boolean take(File f, String key) {
                 String id = "v-" + ids.incrementAndGet();
                 Body body = blobs.write(BlobKey.body(id, 0), new ChunkedReadStream(List.of(delivered.apply(f.bytes()))), Long.MAX_VALUE).await();
-                Future<Ack> answer = deliver(Envelope.ingress(id, "contract", Headers.empty(), body));
-                answerInFlight = answer;
+                Promise<Ack> promised = Promise.promise();
+                // Published before the handler can run: a stop() issued once the case saw the handler called reads this answer,
+                // never null nor the previous file's (the handler's thread may record the call before this thread runs on).
+                answerInFlight = promised.future();
+                deliver(Envelope.ingress(id, "contract", Headers.empty(), body), promised);
+                Future<Ack> answer = promised.future();
                 if (removedBeforeTheAnswer) dir.remove(f.name());
                 Ack ack;
                 try {
@@ -242,9 +246,8 @@ class PollingConsumerContractSelfTest {
                 return true;
             }
 
-            /** The handler on a virtual thread of its own; a throw or a null answer fails the answer. */
-            private Future<Ack> deliver(Envelope e) {
-                Promise<Ack> answer = Promise.promise();
+            /** The handler on a virtual thread of its own, its answer completing {@code answer}; a throw or a null answer fails it. */
+            private void deliver(Envelope e, Promise<Ack> answer) {
                 Runnable call = () -> {
                     try {
                         Future<Ack> f = handler.apply(e);
@@ -256,7 +259,6 @@ class PollingConsumerContractSelfTest {
                 };
                 if (handlerOnTheRoundsThread) call.run();
                 else Thread.ofVirtual().name("variant-handler").start(call);
-                return answer.future();
             }
 
             @Override public Future<Void> stop() {
@@ -371,6 +373,8 @@ class PollingConsumerContractSelfTest {
         Map<String, Throwable> f = failures(Variant.broken(v -> v.refusedDeliveredAgain = true));
         assertEquals(Set.of(FINAL_NACK), f.keySet());
         ContractRun.caughtBy(f, FINAL_NACK, "it was not delivered again");
+        // the round may or may not have reached the younger file when the case looks: the second delivery is the refused one either way
+        ContractRun.caughtBy(f, FINAL_NACK, "expected: <[refused, later]> but was: <[refused, refused");
     }
 
     @Test

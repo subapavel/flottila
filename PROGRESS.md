@@ -874,3 +874,13 @@ Checks: whole reactor verify -Pit VERIFIED_PASS 2044 tests (target/P2-02a-verify
 Review: FAIL r1 (absolute path with a relative data dir; folder schema strictness, flow references, layout order unpinned), PASS r2. Docs: D-078, §9 sentence, §11 test wording, forward pointers on D-040/47/52/63. Raised FIX-84 (wording), FIX-85 (self-test flake). CLI tree moved to P2-03.
 D-054 data: class C (designer ×1, test-author ×1 + resume + 2 fix packets, implementer ×1 + 2 fixes, reviewer ×2); review rounds 2.
 Next: P2-03 [B] CLI validate/deploy/test.
+
+## 2026-10-28 — FIX-85 testkit self-test races (CI red on main, runs 125/126) — done, review PASS
+Context compacted (re-verified with git status / git log -3).
+Cause 1: PollingConsumerContract:357 waited for `seen.count() == 2`; a consumer delivering the refused file again goes 1 → 3 in one round, the spin missed 2 and failed at the wrong check (CI: "the next round delivered the younger file: [refused, refused, later]"). Now `>= 2`, then the list check on the COW snapshot; self-test pins the expected/actual prefix.
+Cause 2: SelfTest Variant.Poller.take published `answerInFlight` after the handler thread started; stop() could read null (NPE). Now published before deliver.
+Test first: repro 28/30 failing on one CPU before, 0/30 and 0/900 after (target/FIX-85-repro-*.log). Test code only (test-author).
+Checks: verify testkit+mock+sftp VERIFIED_PASS (target/FIX-85-verifier.log); 50/50 self-test runs green (target/FIX-85-runs.log); mutant `>= 2`→`== 2` EXECUTED_FAIL 5/5 (target/FIX-85-mutant-*.log); coverage no decrease.
+Review: PASS r1. Raised FIX-86 (pin a doubled `later` deterministically). CI 127 (536f058) green.
+D-054 data: class B (test-author ×1, verifier ×1, reviewer ×1); review rounds 1.
+Next: P2-03 [B] CLI validate/deploy/test.
