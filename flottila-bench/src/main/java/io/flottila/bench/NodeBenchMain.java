@@ -322,6 +322,11 @@ public final class NodeBenchMain {
                 .put("limits", new JsonObject().put("maxBodyBytes", MAX_BODY_BYTES).put("maxInFlight", inFlight(o)))
                 .put("steps", steps)));
         files.put("flows/transform.xsl", STYLESHEET.getBytes(StandardCharsets.UTF_8));
+        return zip(files);
+    }
+
+    /** {@code files} (path → content) as a zip. */
+    static byte[] zip(Map<String, byte[]> files) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
             for (Map.Entry<String, byte[]> f : files.entrySet()) {
@@ -333,12 +338,12 @@ public final class NodeBenchMain {
         return bytes.toByteArray();
     }
 
-    private static JsonObject doc(String kind) {
+    static JsonObject doc(String kind) {
         return new JsonObject().put("schemaVersion", 1).put("kind", kind);
     }
 
     /** A document as JSON, which every YAML reader reads. */
-    private static byte[] yaml(JsonObject doc) {
+    static byte[] yaml(JsonObject doc) {
         return doc.encodePrettily().getBytes(StandardCharsets.UTF_8);
     }
 

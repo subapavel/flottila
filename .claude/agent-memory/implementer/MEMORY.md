@@ -57,9 +57,6 @@
 - Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
   static `doc()`/`unparsed-text()`/`use-when` read via `Configuration.getResourceResolver()` (UseWhenFilter builds
   `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
-- Saxon 12.4 compile-time ResourceRequest (probe, FIX-17): include/import/doc() → `relativeUri` = the literal, `baseUri` = module;
-  static `unparsed-text*()` → `uri` already absolute, base and rel null; DTD entity → `uri` = literal, rel null, base set;
-  CollectionFinder gets only the absolute URI. Xerces LSResourceResolver: `systemId` literal, `baseURI` of the including schema.
 - Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()
   .join()` waits uninterruptibly (no catch) — used to await a never-failing close in a finally (P1-09k2 Trail).
 - Vert.x 5.1.10: `andThen(Handler<AsyncResult>)` completes after the handler ran; `Future.await()` works on a virtual thread, sneaky-throws the cause.
@@ -117,3 +114,6 @@
   `rt.timer().pending()`. FlowWorker polls once more after each item finishes: read claim counts only after that claim (P1-09d2c).
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
+- Child JVM over pipes (P1-10c, observed): HotSpot's own output (`-XX:+ExitOnOutOfMemoryError`'s "Terminating due to") goes to
+  STDOUT unless `-XX:+DisplayVMOutputToStderr`; closing `process.getOutputStream()` of an exited child throws "Stream closed" when a
+  failed write is still buffered — close the wrapping PrintStream (swallows it). A `throw sneaky(cause)` catch line is always JaCoCo-missed.

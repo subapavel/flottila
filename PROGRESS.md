@@ -731,3 +731,12 @@ Measured: nothing recorded (numbers are P1-10d).
 Review: FAIL r1 (a cut 202 was never re-sent, so N/N could not be shown), PASS r2. Raised FIX-64.
 D-054 data: class B (test-author ×2, implementer + 1 fix round, reviewer ×2); review rounds 2.
 Next: P1-10c [B] — 50 MB through a stream step (packet §c).
+
+## 2026-10-28 — P1-10c 50 MiB through a stream step at -Xmx64m (packet P1-10 §c, GATE 9) — done, review PASS
+Test first: StreamHeapIT 1, StreamHeapMainTest 7, StreamCopyTest 3 — observed red (target/P1-10c-red.log, missing types only).
+Change: flottila-bench StreamCopy (`stream-copy` step: open() → bounded streamed write under nextKey), StreamHeapNode (child JVM node, heap after GC on a stdin/stdout protocol), StreamHeapMain (sync flow copy → partner at -Xmx64m, ExitOnOutOfMemoryError; exit 0 only for equal sha256, no OOM, growth < 8 MiB).
+Checks: verify -Pit -pl flottila-bench -am VERIFIED_PASS 1530/0/0/0 (target/P1-10c-verify.log; IT growth 69 552 B at max 64 MiB); coverage no decrease (bench 96.6/95.2); mutants 19/20 killed (M20 partner-side backpressure, test JVM only).
+Measured: nothing recorded (numbers are P1-10d).
+Review: PASS r1 — one whole-body buffer would OOM today (live set 15.3 MiB + 50 MiB > 64 MiB) but the IT does not assert that margin: FIX-65.
+D-054 data: class B (test-author, implementer, reviewer); review rounds 1.
+Next: P1-10d [B] — the native run on the VM and bench/RESULTS.md §Phase 1 gate (fix the native PG role password first).
