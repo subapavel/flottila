@@ -777,3 +777,12 @@ Checks: scoped PIT on main 43a3c29 — BatchingWriter 44 + Trail 27 mutants, 71/
 Review: PASS r1.
 D-054 data: class A (verifier, test-author, reviewer); review rounds 1.
 Next: P1-GATE [G] — CI runs 40660524856 (push) and 40660546320 (dispatch: bench + mutation) on 43a3c29, then the gate-reviewer.
+
+## 2026-10-28 — FIX-65 StreamHeap: the margin shown at -Xmx56m, the reply in the IT and in exitCode — done, review PASS
+Test first: StreamHeapMainTest +3 exit-code cases (red: target/FIX-65-red.log); StreamHeapIT at --xmx 56m asserts heapBefore + body > maxHeap and reply 200 / body size (green before, test-only).
+Change: flottila-bench StreamHeapMain.exitCode fails unless replyStatus 200 and replyBytes == mb × MiB; Partner javadoc states only what the code does (M20 unpinned). Default --xmx stays 64m (architect).
+Checks: verify -Pit -pl flottila-bench -am VERIFIED_PASS 1567/0/0/0 (target/FIX-65-verify.log); coverage no decrease (bench 96.7/95.4); mutants 5/5 killed (target/FIX-65-mut.log).
+Measured: IT at 56m — before 14.6 MiB, 64.6 > 56, growth +0.05 MiB; RESULTS 50 MiB paragraph notes it.
+Review: PASS r1.
+D-054 data: class A (test-author, implementer, reviewer); review rounds 1.
+Next: P1-GATE [G] — dispatch run 40661445376 on 350f71d (bench + mutation), then the gate-reviewer.

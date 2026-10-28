@@ -39,8 +39,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code heapAfterBytes}, {@code heapGrowthBytes} (after − before), {@code sentSha256}, {@code partnerSha256} (hex),
  * {@code oom}, {@code elapsedMs}, {@code machine}, {@code commit}, {@code date}.
  *
- * <p>Not vacuous: the heap max the child reports is at most the 64 MiB asked for (a sample of this JVM's heap would not be),
- * two copies of the body do not fit into it, the flow's {@code copy} step recorded the whole body (its size and its content
+ * <p>Not vacuous: the heap max the child reports is at most the {@link #XMX} asked for (a sample of this JVM's heap would not
+ * be), the live set before the body plus one copy of the body do not fit into it (FIX-65), the sync reply is 200 with the whole
+ * body, the flow's {@code copy} step recorded the whole body (its size and its content
  * hash in the database are the sent body's), and the partner's sha256 is the sent one. Correctness only: no timing
  * thresholds (D-036).
  */
@@ -50,6 +51,12 @@ class StreamHeapIT {
     static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
     static final AtomicInteger cases = new AtomicInteger();
     static final long MIB = 1024L * 1024;
+    /**
+     * The child's -Xmx (FIX-65): at 64m the live set before the body (≈ 12–16 MiB) plus one 50 MiB copy still fit, so the run did
+     * not show that buffering would fail; at 56m it cannot.
+     */
+    static final String XMX = "56m";
+    static final long XMX_BYTES = 56 * MIB;
 
     @TempDir Path dir;
 
@@ -64,11 +71,11 @@ class StreamHeapIT {
     }
 
     @Test
-    void fiftyMegabytesPassAStreamStepAtXmx64mWithoutHeapGrowth() throws Exception {
+    void fiftyMegabytesPassAStreamStepAtAnXmxThatCannotHoldOneCopyBesideTheLiveSetWithoutHeapGrowth() throws Exception {
         String db = newDatabase();
         Path out = dir.resolve("nested/stream-heap.json");
         int code = StreamHeapMain.run(new String[] {"--host", pg.getHost(), "--port", String.valueOf(pg.getMappedPort(5432)), "--db", db,
-                "--user", pg.getUsername(), "--password", pg.getPassword(), "--mb", "50", "--xmx", "64m", "--out", out.toString(),
+                "--user", pg.getUsername(), "--password", pg.getPassword(), "--mb", "50", "--xmx", XMX, "--out", out.toString(),
                 "--commit", "test"});
         assertTrue(Files.exists(out), "the run wrote its JSON to --out (its directory created): " + out);
         JsonObject json = new JsonObject(Files.readString(out));
@@ -76,7 +83,7 @@ class StreamHeapIT {
 
         // the record
         assertEquals(50, json.getInteger("mb"), json.encode());
-        assertEquals("64m", json.getString("xmx"), json.encode());
+        assertEquals(XMX, json.getString("xmx"), "the child ran at the -Xmx this case passed: " + json.encode());
         assertFalse(json.getBoolean("oom"), "no OutOfMemoryError in the node: " + json.encode());
         String sent = json.getString("sentSha256");
         assertNotNull(sent, json.encode());
@@ -84,12 +91,17 @@ class StreamHeapIT {
         assertEquals(sent, json.getString("partnerSha256"), "the partner received the bytes sent: " + json.encode());
         long body = 50 * MIB;
 
-        // the heap: sampled in a child JVM whose -Xmx is really 64m, and too small for two copies of the body
+        // the reply: the sync flow answered 200 with the partner's echo of the whole body
+        assertEquals(200, json.getInteger("replyStatus"), "the sync reply's status: " + json.encode());
+        assertEquals(body, json.getLong("replyBytes"), "the sync reply carried the whole body back: " + json.encode());
+
+        // the heap: sampled in a child JVM whose -Xmx is really XMX, too small for one whole copy of the body beside the live set
         long max = json.getLong("maxHeapBytes");
-        assertTrue(max <= 64 * MIB, "the heap max is the child's -Xmx64m, not this JVM's: " + max);
-        assertTrue(max > 48 * MIB, "the heap max is the child's -Xmx64m, not a smaller one: " + max);
-        assertTrue(2 * body > max, "the heap cannot hold the body twice (in and copy): " + max);
+        assertTrue(max <= XMX_BYTES, "the heap max is the child's -Xmx" + XMX + ", not this JVM's: " + max);
+        assertTrue(max > XMX_BYTES - 8 * MIB, "the heap max is the child's -Xmx" + XMX + ", not a smaller one: " + max);
         long before = json.getLong("heapBeforeBytes");
+        assertTrue(before + body > max, "one whole-body copy cannot fit beside the live set (heapBeforeBytes + body > maxHeapBytes),"
+                + " so a buffering step would run out of memory: " + json.encode());
         long after = json.getLong("heapAfterBytes");
         long growth = json.getLong("heapGrowthBytes");
         assertTrue(before > 0 && before <= max, "heapBeforeBytes is a heap sample of the child: " + json.encode());

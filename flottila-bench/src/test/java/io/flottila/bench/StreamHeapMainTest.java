@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code --mb} (50; the body is {@code mb} MiB, at least 1), {@code --xmx} (64m, the child node's -Xmx), the node bench's
  * database options ({@code --db} must name a bench database: the run truncates it), {@code --out}, {@code --commit}. The exit
  * code is 0 only when the partner received the bytes sent ({@code partnerSha256 == sentSha256}), the node did not run out of
- * memory ({@code oom} false) and the heap after a forced GC grew less than 8 MiB ({@code heapGrowthBytes < 8 MiB}); one
- * non-zero case per term.
+ * memory ({@code oom} false), the heap after a forced GC grew less than 8 MiB ({@code heapGrowthBytes < 8 MiB}) and the sync
+ * reply came back whole ({@code replyStatus} 200, {@code replyBytes} the {@code mb} MiB body, FIX-65); one non-zero case per term.
  */
 class StreamHeapMainTest {
 
@@ -95,17 +95,47 @@ class StreamHeapMainTest {
         assertNotEquals(0, StreamHeapMain.exitCode(grown(50 * MIB)), "a retained body fails the run");
     }
 
-    /** A run that holds: the body arrived intact, no OOM, the heap after a forced GC 1 MiB above where it started. */
+    @Test
+    void theExitCodeIsNonZeroWhenTheReplyWasNot200() {
+        for (int status : new int[] {500, 503, 201, -1}) {
+            JsonObject other = clean().put("replyStatus", status);
+            assertNotEquals(0, StreamHeapMain.exitCode(other), "the sync reply's status " + status + " fails the run whatever the hashes: " + other.encode());
+        }
+        JsonObject failed = clean().put("replyStatus", -1).put("replyBytes", 0L);
+        assertNotEquals(0, StreamHeapMain.exitCode(failed), "a request that failed (status -1, nothing read) fails the run: " + failed.encode());
+    }
+
+    @Test
+    void theExitCodeIsNonZeroWhenTheReplyWasCutOrIsNotTheBodysSize() {
+        long body = 50 * MIB;
+        for (long bytes : new long[] {body - 1, body / 2, 0, body + 1}) {
+            JsonObject cut = clean().put("replyBytes", bytes);
+            assertNotEquals(0, StreamHeapMain.exitCode(cut), "a 200 reply of " + bytes + " bytes for a " + body + "-byte body fails the run: " + cut.encode());
+        }
+    }
+
+    @Test
+    void theReplysExpectedSizeIsTheRecordsBodyNotAFixedFiftyMegabytes() {
+        JsonObject twelve = clean().put("mb", 12).put("replyBytes", 12 * MIB);
+        assertEquals(0, StreamHeapMain.exitCode(twelve), "a 12 MiB run whose reply carried 12 MiB holds: " + twelve.encode());
+        JsonObject fifty = clean().put("mb", 12).put("replyBytes", 50 * MIB);
+        assertNotEquals(0, StreamHeapMain.exitCode(fifty), "a 12 MiB run whose reply carried 50 MiB does not hold: " + fifty.encode());
+    }
+
+    /**
+     * A run that holds: the body arrived intact, no OOM, the heap after a forced GC 1 MiB above where it started, the sync reply
+     * 200 with the whole 50 MiB body.
+     */
     static JsonObject clean() {
         return grown(MIB);
     }
 
-    /** The clean run with the heap after a forced GC {@code growth} bytes above the 20 MiB it started at. */
+    /** The clean run (reply 200, 50 MiB) with the heap after a forced GC {@code growth} bytes above the 20 MiB it started at. */
     static JsonObject grown(long growth) {
         long before = 20 * MIB;
         return new JsonObject().put("mb", 50).put("xmx", "64m").put("maxHeapBytes", 64 * MIB).put("heapBeforeBytes", before)
                 .put("heapAfterBytes", before + growth).put("heapGrowthBytes", growth).put("sentSha256", SHA).put("partnerSha256", SHA)
-                .put("oom", false).put("elapsedMs", 1234.5).put("commit", "test").put("date", "2026-10-28T00:00:00Z")
+                .put("replyStatus", 200).put("replyBytes", 50 * MIB).put("oom", false).put("elapsedMs", 1234.5).put("commit", "test").put("date", "2026-10-28T00:00:00Z")
                 .put("machine", BenchMain.machine());
     }
 }

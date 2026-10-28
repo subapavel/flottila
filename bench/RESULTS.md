@@ -68,7 +68,9 @@ heap before 12.2 MiB, after 12.3 / 12.2 / 12.3 MiB, growth +0.05 / −0.02 / +0.
 with 52 428 800 bytes, sha256 equal, no OOM. The verdict rests on the post-GC growth: at 64m one whole-body copy would
 still fit beside the live set (12.2 + 50 = 62.2 MiB < 64), so this run does not also prove that buffering would OOM — FIX-65
 moves the check to an -Xmx where before + 50 MiB > max. The node's default FLOTTILA_BLOB_MEMORY_BUDGET is 256 MiB against
-the 64m child heap; one body only is in flight here.
+the 64m child heap; one body only is in flight here. FIX-65: StreamHeapIT runs at -Xmx56m (failsafe live set
+14.6 + 50 = 64.6 MiB > 56; reply 200, 52 428 800 bytes, growth +0.05 MiB); the bench default and the recorded run above stay at
+64m and do not show that margin.
 
 **BatchingWriter pair (P0-10 harness, comparison):** sync 9733 msg/s, p50 5.89, p99 13.17 ms; async 12 404 msg/s, p50 4.58,
 p99 13.11 ms — in P0-10's range (p99 12–18 ms at c=64).

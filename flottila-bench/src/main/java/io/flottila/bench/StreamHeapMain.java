@@ -58,8 +58,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * the partner did not read a whole body), {@code oom} (the child's log names an {@code OutOfMemoryError}: it runs with
  * {@code -XX:+ExitOnOutOfMemoryError}, so its heap samples are -1 after one), {@code replyStatus} and {@code replyBytes} (the
  * sync reply; -1 and 0 when the request failed), {@code elapsedMs} (the body's request to its reply's end), {@code machine},
- * {@code commit}, {@code date}. Exit 0 only when the partner read the bytes sent, the node did not run out of memory and the
- * heap grew less than {@value #MAX_GROWTH_BYTES} bytes; else 3 ({@link #exitCode}).
+ * {@code commit}, {@code date}. Exit 0 only when the partner read the bytes sent, the node did not run out of memory, the
+ * heap grew less than {@value #MAX_GROWTH_BYTES} bytes and the sync reply was a 200 carrying {@code mb} MiB; else 3
+ * ({@link #exitCode}).
  *
  * <p>Arguments: {@code --mb} (50, at least 1), {@code --xmx} (64m), {@code --host --port --db --user --password} as the node
  * bench ({@code --db} must name a bench database: the run truncates every table in it), {@code --out}
@@ -122,8 +123,9 @@ public final class StreamHeapMain {
     }
 
     /**
-     * 0 when the partner read the bytes sent ({@code partnerSha256 == sentSha256}), the node did not run out of memory and the
-     * heap after a forced GC grew less than {@value #MAX_GROWTH_BYTES} bytes; else 3, each failed condition named on stderr.
+     * 0 when the partner read the bytes sent ({@code partnerSha256 == sentSha256}), the node did not run out of memory, the
+     * heap after a forced GC grew less than {@value #MAX_GROWTH_BYTES} bytes and the sync reply came back whole
+     * ({@code replyStatus} 200, {@code replyBytes} the record's {@code mb} MiB); else 3, each failed condition named on stderr.
      */
     static int exitCode(JsonObject record) {
         List<String> failed = new ArrayList<>();
@@ -133,6 +135,11 @@ public final class StreamHeapMain {
         if (record.getBoolean("oom")) failed.add("the node ran out of memory");
         long growth = record.getLong("heapGrowthBytes");
         if (growth >= MAX_GROWTH_BYTES) failed.add("the heap after a forced GC grew " + growth + " bytes, not below " + MAX_GROWTH_BYTES);
+        int status = record.getInteger("replyStatus");
+        if (status != 200) failed.add("the sync reply's status was " + status + ", not 200");
+        long body = record.getInteger("mb") * MIB;
+        long replied = record.getLong("replyBytes");
+        if (replied != body) failed.add("the sync reply carried " + replied + " bytes, not the body's " + body);
         if (failed.isEmpty()) return 0;
         System.err.println("the stream heap run does not hold: " + String.join("; ", failed));
         return 3;
@@ -324,8 +331,9 @@ public final class StreamHeapMain {
     }
 
     /**
-     * The partner: streams every request back as it reads it (paused while its answer's write queue is full) and hashes it;
-     * {@link #sha256} is the hex SHA-256 of the last request once it was read to its end, null while it is read.
+     * The partner: streams every request back as it reads it and hashes it; {@link #sha256} is the hex SHA-256 of the last
+     * request once it was read to its end, null while it is read. It pauses the request when its answer's write queue is full
+     * and resumes it on the answer's drain; no test pins that pause, and it runs in this JVM, not in the measured child node.
      */
     static final class Partner implements Handler<HttpServerRequest> {
         final AtomicReference<String> sha256 = new AtomicReference<>();

@@ -1,7 +1,7 @@
 # Handoff
 
-state: RUNNING — FIX-70 done; P1-GATE [G] in progress (CI on gate commit 43a3c29: push 40660524856, dispatch 40660546320)
-last commit: `Task: FIX-70` (this commit); 43a3c29 `Task: FIX-67`; f7707a2 `Task: FIX-66`
+state: RUNNING — FIX-65 done; P1-GATE [G] in progress (gate commit 350f71d: push 40661411394 green, dispatch 40661445376 running)
+last commit: `Task: FIX-65` (this commit); 350f71d `Task: FIX-70`; 43a3c29 `Task: FIX-67`
 branch: claude/stoic-cannon-2byixj (session branch set by the environment; main = 17c6fbf at start)
 next exact action: P1-GATE [G] — verifier collects gate evidence (CI on the gate commit, floors, PIT); gate-reviewer (Fable 5.1) judges; ISSUE-2 open
 then: Phase 2 rows; FIX-68..70 open
@@ -9,7 +9,7 @@ P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refu
 CI: 22da747 run 40336093434 green (P1-08c); bfa400c run 40315078572 green (P1-08b); 1a8bba8 run 40300828984 green (FIX-15)
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
 open issues: ISSUE-1 (Context7 quota; javap fallback), ISSUE-2 (durable ACK p99 < 5 ms missed; default: record as measured)
-open fixes: FIX-16, FIX-18..20, FIX-22..29, FIX-31, FIX-33,34,36..43, FIX-45..52, FIX-54..65, FIX-68,69; CONSIDER-1, CONSIDER-2 (owner)
+open fixes: FIX-16, FIX-18..20, FIX-22..29, FIX-31, FIX-33,34,36..43, FIX-45..52, FIX-54..64, FIX-68,69; CONSIDER-1, CONSIDER-2 (owner)
 pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066/F-10, D-067..69, F-11, D-070/F-12, F-13 closed, D-071; decided: D-064/65B/67A
 roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort per call; designer Opus xhigh for C; gate-reviewer Fable 5.1 (AGENTS.md)
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
