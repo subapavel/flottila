@@ -26,7 +26,7 @@
       "properties": {
         "mode": { "enum": ["sync", "at-least-once", "at-most-once"], "description": "ARCHITECTURE §4 message lifecycle per delivery mode." },
         "saveTimeout": { "$ref": "#/$defs/duration", "description": "at-least-once: the durable save deadline before NACK/503 (default 5s)." },
-        "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once: the work queue behind the durable save." }
+        "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once only: the work queue behind the durable save; absent or postgres = the node's Postgres work queue; kafka is refused at deploy until the Kafka hand-over lands (D-075)." }
       }
     },
     "recording": { "$ref": "#/$defs/recording" },
@@ -41,7 +41,7 @@
         "maxInFlightBytes": { "type": "integer", "minimum": 1, "description": "Admission budget: bytes in flight for this flow. Omitted = the runtime's finite default (per-flow byte budget, ARCHITECTURE §14), never unlimited." }
       }
     },
-    "partitionBy": { "$ref": "#/$defs/keyName", "description": "Business key that orders messages (same key, same order)." },
+    "partitionBy": { "$ref": "#/$defs/keyName", "description": "at-least-once: the key of the flow's one extractKey step (no split or to before it; earlier steps do not apply to the key), evaluated at the durable save on the received body; items of one key run one at a time in accept order; no value = unordered, over 256 characters = refused (400). No effect on sync and at-most-once flows (D-075)." },
     "forwardHeaders": {
       "type": "array",
       "uniqueItems": true,

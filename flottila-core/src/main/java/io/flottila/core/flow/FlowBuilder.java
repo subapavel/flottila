@@ -135,8 +135,9 @@ public final class FlowBuilder {
 
     /**
      * Tells {@code sink} every path the steps of the flows built from now on read through their {@link StepResources} ({@code file},
-     * {@code resolve}) while they are built — by {@link #delivery} (sync, at-most-once), {@link #worker}, {@link #build} and
-     * {@link #replay} — for a flow's effective hash (D-063); it replaces the sink of an earlier call. Without a call nobody is told.
+     * {@code resolve}) while they are built — by {@link #delivery} (sync, at-most-once; at-least-once: its partition key's
+     * expression), {@link #worker}, {@link #build} and {@link #replay} — for a flow's effective hash (D-063); it replaces the sink
+     * of an earlier call. Without a call nobody is told.
      */
     public FlowBuilder reads(Consumer<Path> sink) {
         this.reads = Objects.requireNonNull(sink, "sink");
@@ -154,7 +155,12 @@ public final class FlowBuilder {
      * bodies of {@code maxBodyBytes} — a product that overflows a {@code long} is an {@link IllegalArgumentException}; never
      * unlimited). An at-least-once flow needs the store ({@link #recording}), the {@link #queue} and the {@link #dlq}: without
      * one of them this is an {@link IllegalStateException} naming it. Its handler only saves, so only its recorder is built
-     * here — no step, no producer; the {@link #worker} builds the pipeline.
+     * here — no step, no producer; the {@link #worker} builds the pipeline. With {@code partitionBy: <key>} it also compiles the
+     * expression of the one {@code extractKey} step that sets that key, in the step's language, and enqueues each message under
+     * its value (D-075); the flow does not build — an {@link IllegalArgumentException} naming the key — when no such step or two
+     * of them exist, when a {@code split} or {@code to} step comes before it (the key is read from the body as it arrived), or
+     * when its language needs the whole body and the flow's {@code maxBodyBytes} exceeds the store's tree limit. On a sync or
+     * at-most-once flow {@code partitionBy} has no effect.
      */
     public Delivery delivery(FlowDefinition flow, Path baseDir) {
         Objects.requireNonNull(flow, "flow");
@@ -171,12 +177,40 @@ public final class FlowBuilder {
             case "at-least-once" -> {
                 requireStoreAndQueue(flow, "delivery");
                 requireDlq(flow);
+                Function<Envelope, Optional<String>> partitionKey = partitionKey(flow, baseDir);
                 Recorder recorder = new Recorder(store, runtime.clock(), meter, versionsOf(flow));
                 yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
-                        store, queue, runtime.timer(), flow.saveTimeout());
+                        partitionKey, store, queue, runtime.timer(), flow.saveTimeout());
             }
             default -> throw new IllegalArgumentException("flow '" + flow.id() + "': unknown delivery.mode '" + flow.deliveryMode() + "'");
         };
+    }
+
+    /**
+     * The value an at-least-once flow's work items are ordered by (D-075): none without {@code partitionBy}; else the expression
+     * of the one extractKey step that sets its key, compiled in the step's language — an {@link IllegalArgumentException} when
+     * the flow does not build so (see {@link #delivery}).
+     */
+    private Function<Envelope, Optional<String>> partitionKey(FlowDefinition flow, Path baseDir) {
+        if (flow.partitionBy().isEmpty()) return e -> Optional.empty();   // unordered
+        String key = flow.partitionBy().get();
+        String refused = "flow '" + flow.id() + "' has partitionBy '" + key + "'";
+        List<StepConfig> setters = flow.steps().stream().filter(s -> "extractKey".equals(s.type()) && key.equals(s.config().get("key"))).toList();
+        if (setters.isEmpty()) throw new IllegalArgumentException(refused + " but no extractKey step sets the key '" + key + "'");
+        if (setters.size() > 1) throw new IllegalArgumentException(refused + " but " + setters.size() + " extractKey steps set it, " + setters + ": one step sets the key");
+        StepConfig source = setters.get(0);
+        for (StepConfig before : flow.steps().subList(0, source.index() - 1)) {
+            if ("split".equals(before.type()) || "to".equals(before.type())) {
+                throw new IllegalArgumentException(refused + ": " + before + " comes before " + source + ", but the key is read from the body as it arrived");
+            }
+        }
+        Expressions language = language(source);
+        long treeLimit = runtime.blobs().treeLimit();
+        if (language.bodyKind() == BodyKind.WHOLE && flow.maxBodyBytes() > treeLimit) {
+            throw new IllegalArgumentException(refused + ": " + source + " needs the whole body (" + BodyKind.WHOLE + ") but the flow's maxBodyBytes "
+                    + flow.maxBodyBytes() + " exceeds the store's tree limit " + treeLimit + " (ARCHITECTURE §5)");
+        }
+        return language.value(source.requireString("xpath"), resources(flow, baseDir));
     }
 
     /** {@link #worker(FlowDefinition, Path, String, WorkerPolicy)} under {@link WorkerPolicy#DEFAULT}. */
@@ -306,7 +340,7 @@ public final class FlowBuilder {
         boolean parks = "at-least-once".equals(flow.deliveryMode());
         if (parks) requireDlq(flow);
         Parking parking = parks ? new Parking(dlq, runtime.clock(), versions) : null;
-        StepResources resources = new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir, reads);
+        StepResources resources = resources(flow, baseDir);
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
         UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
         List<Stage> stages = new ArrayList<>(flow.steps().size());
@@ -348,6 +382,11 @@ public final class FlowBuilder {
             if (!done) Producers.closeAll(flow.id(), opened);   // the flow does not build: nothing it created is left open
         }
         return new Built(flow, List.copyOf(stages), recorder, new Producers(flow.id(), opened));
+    }
+
+    /** What a step of {@code flow} is built with; the paths it reads go to the {@link #reads} sink. */
+    private StepResources resources(FlowDefinition flow, Path baseDir) {
+        return new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir, reads);
     }
 
     private StepFactory factoryFor(StepConfig step) {

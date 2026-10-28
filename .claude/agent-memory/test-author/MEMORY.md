@@ -81,9 +81,8 @@
 - Interleaving "send returned, handler thread not yet run": `HeldCarriers.hold()` (testkit + mock src/test) spins P virtual threads; 20/20 deterministic. P1-09d1b runtime test `deploy/`: `Doors` (scheme rec: held/failed start, failStop, onStop, drained stop), `TracingTimer`, `CountingQueue`, `PackageDraft` (zip a package). Red past an upstream test that does not compile: `-Dmaven.compiler.failOnError=false`; a stub compile check = javac against scratch stubs + `dependency:build-classpath`.
 - Process tests (P1-09d3 `MainProcessIT`): child cp `surefire.test.class.path`, JaCoCo agent from the test JVM's `-javaagent` arg, env cleared
   (JAVA_TOOL_OPTIONS = stderr line); SIGTERM exit 143; "main returned" = jcmd Thread.print has DestroyJavaVM, no "main"; closed-vs-died: pg debug1 "unexpected EOF" (no Terminate).
-- jqwik: test dep of core only (not runtime at P1-09d1a); it writes `.jqwik-database` into the cwd (core's is tracked). JDK 25 ZipFile
-  (probed): reads both entries of a byte-patched duplicate name, inflates actual size whatever the CEN says, keeps `/abs` and `..` names;
-  helpers `replaced`/`claimingUncompressedSize` in runtime `deploy/PackageArchiveTest`. json-schema Basic: one violation = several problems.
+- jqwik writes `.jqwik-database` into the cwd (core's is tracked). JDK 25 ZipFile: reads both entries of a byte-patched duplicate name, inflates actual size
+  whatever the CEN says, keeps `/abs`, `..` names; helpers `replaced`/`claimingUncompressedSize` in runtime `deploy/PackageArchiveTest`. json-schema Basic: one violation = several problems.
 - Pg IT event order (P1-09j DlqBodiesIT): "no DLQ row while the insert waits" let a Future.all mutant pass (its insert lags the lock-wait
   probe); a BEFORE INSERT audit trigger noting exists(committed bodies row) kills it. Lease expiry: `update work set locked_until = now() - 1s`;
   a second `worker.poll()` is a barrier (joins the in-flight follow-up claim). `verify -Pit -Dit.test=X` runs X twice (two failsafe executions).
@@ -117,3 +116,4 @@
   Fixtures: TrailTest/DeliveryTest `FullBacklog` (record → Overloaded, recordWaiting held), PgMessageStoreIT `held(hash, Executable)` plug; DeliveryModesIT plug on the body payloads hash.
 - FIX-67 bench: `NodeBenchMainSettleTest.World` fakes `NodeBenchMain.Probe(landed, snapshotWriteFailures, nanoTime, pause)` (pause advances the clock); Harness built with null vertx/pool/client. `NodeBenchMain.Options` is also constructed by LedgerMain/StreamHeapMain (a new component breaks them). NodeBenchMainIT ~25 s in scratch (`verify -Pit -Dit.test=NodeBenchMainIT -Dtest=none -Djacoco.skip=true`).
 - FIX-69: core batch test `BatchingWriterWindowRefusalTest.RefusingWindowTimer` (FakeTimer wrapper: `refuse` throws one `refusal` on the window delay only, `refused` count, task throws recorded in `escaped`, not thrown at advance). A throw in BatchingWriter.afterCommit (sink gate listener) is swallowed by Vert.x: the batch's futures stay unresolved.
+- P2-01 core flow `FlowWorkerFastPathTest.TakeQueue` (logs claim/complete/take in answer order): `holdNextTake()` → Promise (queue acts at once, answer held, `takesHeld()`); its completion on the test thread runs the worker's `taken()` there.

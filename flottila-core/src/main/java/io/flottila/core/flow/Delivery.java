@@ -2,6 +2,7 @@ package io.flottila.core.flow;
 
 import io.flottila.api.Ack;
 import io.flottila.api.Envelope;
+import io.flottila.api.Fault;
 import io.flottila.api.Pipeline;
 import io.flottila.api.Timer;
 import io.flottila.core.admission.Admission;
@@ -33,11 +34,15 @@ import java.util.function.Function;
  * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2): the ingress body is persisted in
  * its own store ({@link io.flottila.api.BlobStore#persist}, D-058) and, beside it, the ingress snapshot with its payload is
  * recorded — whatever the flow's recording level; once both succeeded the message is enqueued in the flow's
- * {@link WorkQueue}, and only when that is durable too is the answer {@link Ack.Accepted}. A save not done within the
+ * {@link WorkQueue} under its partition key, and only when that is durable too is the answer {@link Ack.Accepted}. The key
+ * (D-075, {@code partitionBy}) is evaluated first, inside the save's window, on the envelope as it arrived: no value or
+ * {@code ""} is no key; one over {@value #MAX_PARTITION_KEY_CHARS} characters is a final Nack; a {@link Fault} of kind
+ * MALFORMED or INVALID saves the message without a key (its run parks it); any other failure is a retryable Nack — and
+ * after either Nack nothing is saved. A save not done within the
  * flow's {@code saveTimeout} is a retryable {@link Ack.Nack}, and a save that completes after that enqueues nothing; a
  * failed persist or record is a retryable Nack at once (it does not wait for the other), whether its future fails or its
  * store throws, and so is a timer that refuses to bound the save (nothing is saved then). Nothing of the pipeline runs
- * here: a {@link FlowWorker} runs it. The permit is released when the answer is decided.</li>
+ * here but the key's expression: a {@link FlowWorker} runs it. The permit is released when the answer is decided.</li>
  * <li><b>at-most-once</b>: {@link Ack.Accepted} at once; the pipeline runs afterwards on a virtual thread of its own and a
  * failure is logged and dropped — not parked, not queued. The permit is released when the pipeline ended and its
  * {@link Trail} closed, before the failure is logged.</li>
@@ -57,6 +62,9 @@ import java.util.function.Function;
 public final class Delivery implements Function<Envelope, Future<Ack>> {
 
     private static final System.Logger LOG = System.getLogger(Delivery.class.getName());
+
+    /** The longest partition key an at-least-once delivery enqueues (D-075); a longer one is a final Nack. */
+    static final int MAX_PARTITION_KEY_CHARS = 256;
 
     /** What a mode does with an admitted message. */
     private interface Mode {
@@ -222,16 +230,24 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         });
     }
 
+    /** {@link #atLeastOnce(Admission, String, Function, Function, MessageStore, WorkQueue, Timer, Duration)} without a partition key. */
+    static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, MessageStore store, WorkQueue queue,
+                                Timer timer, Duration saveTimeout) {
+        return atLeastOnce(admission, flow, ingress, e -> Optional.empty(), store, queue, timer, saveTimeout);
+    }
+
     /**
      * At-least-once: the envelope's body is persisted in the body's own store, {@code ingress} gives the snapshot to save
      * (payload kept), {@code store} saves it, {@code queue} takes the item for {@code flow}; {@code timer} bounds the whole save
-     * by {@code saveTimeout} and runs the stop's deadline. The item
-     * has no partition key: business keys are set by steps, and none has run at the save (D-049 b).
+     * by {@code saveTimeout} and runs the stop's deadline. The item's partition key is what {@code partitionKey} gives the
+     * envelope as it arrived, on the caller's thread, once the save timeout was scheduled and before the persist and the record
+     * are asked (D-075, superseding D-049 b): the flow's {@code partitionBy} extractKey expression, compiled at build time.
      */
-    static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, MessageStore store, WorkQueue queue,
-                                Timer timer, Duration saveTimeout) {
+    static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
+                                MessageStore store, WorkQueue queue, Timer timer, Duration saveTimeout) {
         Objects.requireNonNull(flow, "flow");
         Objects.requireNonNull(ingress, "ingress");
+        Objects.requireNonNull(partitionKey, "partitionKey");
         Objects.requireNonNull(store, "store");
         Objects.requireNonNull(queue, "queue");
         Objects.requireNonNull(timer, "timer");
@@ -254,6 +270,24 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                     answer.tryComplete(retryable(refused));
                     return answer.future();
                 }
+                answer.future().onComplete(decided -> timeout.cancel());   // whatever decided it: the save, the key, the stop's deadline
+                // the partition key first, inside the save's window, on the envelope as it arrived (D-075)
+                String key;
+                try {
+                    key = partitionKey.apply(e).filter(k -> !k.isEmpty()).orElse(null);
+                } catch (Throwable failure) {   // an Error too: whatever the key's expression throws is an answer, never an exception out of apply
+                    if (!unreadable(failure)) {
+                        answer.tryComplete(retryable(failure));
+                        return answer.future();
+                    }
+                    key = null;   // the body cannot be read or breaks a rule: saved without a key, its run parks it
+                }
+                if (key != null && key.length() > MAX_PARTITION_KEY_CHARS) {
+                    answer.tryComplete(new Ack.Nack("partition key of " + key.length() + " characters is over the bound of " + MAX_PARTITION_KEY_CHARS
+                            + " characters (D-075)", false));
+                    return answer.future();
+                }
+                String partition = key;
                 // both saves are asked now, side by side (D-058): the body in its own store, the ingress snapshot in the message store
                 Future<Void> persist;
                 try {
@@ -269,9 +303,8 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 }
                 // the first failure decides at once, without waiting for the other save
                 Future.all(persist, record)
-                        .compose(saved -> answer.future().isComplete() ? Future.<Void>succeededFuture() : queue.enqueue(e.id(), flow, 1, null))
+                        .compose(saved -> answer.future().isComplete() ? Future.<Void>succeededFuture() : queue.enqueue(e.id(), flow, 1, partition))
                         .onComplete(saved -> {
-                            timeout.cancel();
                             if (saved.succeeded()) answer.tryComplete(new Ack.Accepted(e.id()));
                             else answer.tryComplete(retryable(saved.cause()));
                         });
@@ -368,6 +401,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
         }
         // outside the lock: completing an answer runs the consumer's callbacks, and the flight lands
         for (Flight f : inFlight) if (f.answer != null) f.answer.tryComplete(cancelled(f.flow, after));
+    }
+
+    /** The key's expression could not read the body or the body breaks a rule: the message is saved without a key (D-075). */
+    private static boolean unreadable(Throwable failure) {
+        return failure instanceof Fault f && (f.kind() == Fault.Kind.MALFORMED || f.kind() == Fault.Kind.INVALID);
     }
 
     /** A retryable Nack naming {@code failure}: its message, else (none) the failure itself. */

@@ -1,0 +1,53 @@
+# P2-01 (D-075): invoice-sync's twin, at-least-once — the invoice is saved and queued under its invoiceId, the sender gets
+# 202 at once and a worker sends it on through the Postgres work queue, one invoice of an id at a time, in accept order.
+# Test fixture: InvoiceAsyncIT and OrderedDeliveryIT lay this file over packages/demo in place of flows/invoice-sync.yaml
+# (its endpoints, invoice.xsd and invoice-to-partner.xsl are the demo's).
+schemaVersion: 1
+kind: flow
+id: invoice-async
+version: 0.1.0
+description: Validate an invoice, accept it, then route by currency, map it for the partner and send it on in invoice order.
+from:
+  endpoint: http-in
+delivery:
+  mode: at-least-once
+  saveTimeout: 5s
+  queue: postgres
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+partitionBy: invoiceId
+forwardHeaders: [Content-Type, X-Request-Id]
+retry:
+  attempts: 3
+  initial: 100ms
+  max: 2s
+steps:
+  - type: xsd
+    name: validate
+    schema: invoice.xsd
+  - type: extractKey
+    name: extractKey
+    key: invoiceId
+    xpath: /Invoice/Id
+  - type: route
+    name: route
+    prop: PARTNER
+    routes:
+      - when: "/Invoice/Currency = 'CZK'"
+        set: domestic
+    otherwise: foreign
+  - type: xslt
+    name: toPartner
+    stylesheet: invoice-to-partner.xsl
+  - type: to
+    name: partner
+    retryable: true
+    byProp: PARTNER
+    endpoints:
+      domestic: partner-domestic
+      foreign: partner-foreign

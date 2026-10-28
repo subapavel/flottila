@@ -838,3 +838,12 @@ Review: FAIL r1 (adoption-after-read window undocumented; tests outside the pack
 Process note: survivors left after the code go back to the test-author in a fix packet, not into implementer-written tests.
 D-054 data: class C (designer ×1, test-author ×1, implementer ×1 + fix, reviewer ×2); review rounds 2.
 Next: P2-01 [C] Postgres WorkQueue wired to async flows.
+
+## 2026-10-28 — P2-01 Postgres WorkQueue wired to async flows: partition key, same-key fast path (D-075) — done, review PASS
+Context compacted (once, mid-task; re-verified with git status / git log -3).
+Test first: DeliveryPartitionKeyTest (10), FlowBuilderPartitionTest (9), FlowWorkerFastPathTest (13), FlowWorkerOrderingPropertyTest, WorkerPolicyTest; runtime DeploymentsQueueTest (3), InvoiceAsyncIT (3), OrderedDeliveryIT (2) (red: target/P2-01-red.log, compile in repo, assertions in a scratch copy); [A] survivor tests W8/B7 by the test-author.
+Change: WorkerPolicy maxChain (default 32); Delivery evaluates the key at the durable save (256-char bound, MALFORMED/INVALID saved unkeyed, other failure retryable Nack); FlowBuilder partitionBy → extractKey with build refusals; FlowWorker same-key fast path via completeAndTakeNext; Deployments refuses queue: kafka; schema descriptions; ARCHITECTURE §7/§14 + changelog, D-075.
+Checks: whole reactor verify -Pit VERIFIED_PASS surefire 1531 + failsafe 216 (target/P2-01-verify.log); core final 746 (target/P2-01-core-final.log); ArchUnit green; coverage no decrease; scoped PIT 299/303 (survivors on untouched lines); hand mutants all killed, B6 equivalent, D9 killed.
+Review: FAIL r1 (§7/§14 maxChain off by one against FlowWorker:293), PASS r2. Raised FIX-78 (index), FIX-79 (maxChain bench), FIX-80 (late key evaluation), FIX-81 (XPath INTERNAL loops the sender); FIX-77 note extended.
+D-054 data: class C (designer ×1, test-author ×2 + resume, implementer ×1, verifier ×2, reviewer ×2); review rounds 2.
+Next: P2-02 [B] sftp component, then P2-04, P2-08.

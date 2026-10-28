@@ -60,9 +60,19 @@ import java.util.function.Function;
  * the flow, the work item, the attempt and the worker, and counted by {@link #staleSettles()}; the round succeeds and the
  * complete is never tried again. A hold that answers false is counted the same way and its ERROR says the item was not held.
  *
+ * <p>Same-key fast path (D-075): an item to complete that has a partition key is settled, while the worker is not stopped and
+ * its chain is shorter than {@link WorkerPolicy#maxChain()}, by {@link WorkQueue#completeAndTakeNext}; the next item of its key
+ * handed out with it runs at once in the same slot — its seq takes the finished one's place among the running items, so the
+ * room a claim asks for is unchanged — under a lease of its own, on a virtual thread of its own, one more in the chain (the
+ * claimed item is 0). A stale answer is counted and logged as a stale complete is and takes nothing; a failed one fails the
+ * round. Any other item — no key, left to its lease or held, the worker stopped, the chain at its bound — is settled as above
+ * and ends its chain, and the key goes back to the seq-ordered claim. A next item past {@link WorkerPolicy#maxAttempts()} is
+ * parked as a claimed one is, and its key goes on.
+ *
  * <p>What polls: {@link #poll()}; a {@linkplain #start() started} worker every {@link WorkerPolicy#pollInterval()} on the
- * timer; the handler of {@link #pollingAfterAccept} after each {@link Ack.Accepted}; and each finished item, once, so a
- * backlog drains without waiting for a tick. A poll nobody waits for logs its failure and never throws. {@link #stop()} ends
+ * timer; the handler of {@link #pollingAfterAccept} after each {@link Ack.Accepted}; and the end of each chain (an item no
+ * fast path followed), once, so a backlog drains without waiting for a tick. A poll nobody waits for logs its failure and
+ * never throws. {@link #stop()} ends
  * all of that; items already claimed run to their end and keep their lease renewed. A worker built later over the same store
  * and queue finishes what an earlier one accepted. {@link #close()} (FIX-30) closes the producers the builder created for its
  * pipeline once it was stopped and nothing it claimed still runs. Built by {@link FlowBuilder#worker}; it holds only what the builder handed it — the timer,
@@ -114,11 +124,12 @@ public final class FlowWorker {
 
     /**
      * One round: claims up to the flow's in-flight request limit less the items this worker still runs and processes them.
-     * Completes, once every item the round started is done with — completed, held or left to its lease — with the number
+     * Completes, once every item the round started — the items its fast paths took after them included — is done with —
+     * completed, held or left to its lease — with the number
      * of items the claim returned; 0 without a claim when the worker runs its limit or is stopped. Requested while a claim is
      * in flight, it returns the one round that starts once that claim returns, shared by every poll requested meanwhile.
-     * Fails when the claim fails or throws, or when a completion or hold in the queue fails; one that answers false (stale,
-     * {@link #staleSettles()}) is no failure.
+     * Fails when the claim fails or throws, or when a completion, fast path or hold in the queue fails; one that answers false
+     * or stale ({@link #staleSettles()}) is no failure.
      */
     public Future<Integer> poll() {
         int room;
@@ -150,8 +161,8 @@ public final class FlowWorker {
     }
 
     /**
-     * Cancels the tick; from now on no round starts. Items already claimed — those of a claim in flight included — run to their
-     * end and keep their lease renewed; a finished item polls no more.
+     * Cancels the tick; from now on no round starts. Items already claimed — those of a claim in flight and of a fast path in
+     * flight included — run to their end and keep their lease renewed; a finished item takes no next one and polls no more.
      */
     public void stop() {
         synchronized (lock) {
@@ -163,7 +174,7 @@ public final class FlowWorker {
     /**
      * Closes the producers the builder created for this worker's pipeline (FIX-30), each once, as soon as no item this worker
      * claimed still runs and no claim of its is in flight — the items of that claim run to their end too ({@link #stop()}):
-     * at once when the worker is idle, otherwise from whichever ends last: an item's end (its run settled in the queue) or a
+     * at once when the worker is idle, otherwise from whichever ends last: a chain's end (its last run settled in the queue) or a
      * claim's return that started no item (nothing new, or the claim failed). Until then the
      * close stays pending and closes nothing, so a running item sends through open producers. Every call returns the same
      * future. A producer whose close fails is logged at WARNING and the others close all the same; the future completes,
@@ -197,8 +208,8 @@ public final class FlowWorker {
     }
 
     /**
-     * Completions and holds this worker asked for that the queue answered false (Q-1, D-074): the item was claimed again, held
-     * or completed meanwhile and was left to its holder.
+     * Completions, fast paths and holds this worker asked for that the queue answered false or stale (Q-1, D-074): the item was
+     * claimed again, held or completed meanwhile and was left to its holder.
      */
     public long staleSettles() { return staleSettles.get(); }
 
@@ -241,14 +252,18 @@ public final class FlowWorker {
         }
         closeProducers(due);
         List<Future<Void>> done = new ArrayList<>(fresh.size());
-        for (Lease lease : fresh) done.add(process(lease));
+        for (Lease lease : fresh) done.add(process(lease, 0));
         if (next != null) poll().onComplete(next);
         if (claim.failed()) return Future.failedFuture(claim.cause());
         return Future.all(done).map(claim.result().size());
     }
 
-    /** Runs the item on a virtual thread of its own under its renewed lease, settles it in the queue, then polls once. */
-    private Future<Void> process(Lease lease) {
+    /**
+     * Runs the item — {@code chain} items after the one its chain claimed (D-075) — on a virtual thread of its own under its
+     * renewed lease and settles it in the queue; the item the fast path took next runs in its slot, else the chain ends and polls
+     * once. Completes when the chain's last item is done with.
+     */
+    private Future<Void> process(Lease lease, int chain) {
         WorkQueue.Item item = lease.item;
         lease.renewLater();
         Promise<Verdict> ran = Promise.promise();
@@ -261,7 +276,52 @@ public final class FlowWorker {
                 ran.complete(verdict);
             }
         });
-        return ran.future().compose(verdict -> settle(lease, verdict)).andThen(settled -> finished(item));
+        return ran.future().compose(verdict -> settleOrTake(lease, verdict, chain)).transform(settled -> {
+            if (settled.succeeded() && settled.result().isPresent()) return process(settled.result().get(), chain + 1);
+            finished(item);   // the chain's end
+            return settled.succeeded() ? Future.succeededFuture() : Future.failedFuture(settled.cause());
+        });
+    }
+
+    /**
+     * Settles the item; one to complete that has a key, while the worker is not stopped and its chain is shorter than
+     * {@link WorkerPolicy#maxChain()}, by the same-key fast path (D-075): the item the queue hands out with it, if any, is
+     * returned under a lease of its own, in the finished item's slot.
+     */
+    private Future<Optional<Lease>> settleOrTake(Lease lease, Verdict verdict, int chain) {
+        WorkQueue.Item item = lease.item;
+        if (!verdict.complete() || item.partitionKey() == null || chain >= policy.maxChain() || stopped()) {
+            return settle(lease, verdict).map(Optional.empty());
+        }
+        int token = lease.token();
+        return queue.completeAndTakeNext(item.seq(), token, workerId, policy.lease()).map(taken -> taken(item, token, taken));
+    }
+
+    /**
+     * What the fast path answered for {@code item}: stale (counted and logged, nothing taken), nothing left of its key, or the
+     * next item, which takes the finished one's slot — unless a claim of this worker answered after the take started it
+     * already, under a newer token: then that run goes on and this chain ends.
+     */
+    private Optional<Lease> taken(WorkQueue.Item item, int token, WorkQueue.Completion taken) {
+        if (!taken.completed()) {
+            stale(item, token);
+            return Optional.empty();
+        }
+        if (taken.next().isEmpty()) return Optional.empty();
+        WorkQueue.Item next = taken.next().get();
+        synchronized (lock) {
+            if (running.containsKey(next.seq())) return Optional.empty();
+            running.remove(item.seq());
+            Lease lease = new Lease(next);
+            running.put(next.seq(), lease);
+            return Optional.of(lease);
+        }
+    }
+
+    private boolean stopped() {
+        synchronized (lock) {
+            return stopped;
+        }
     }
 
     /** Runs the message from its ingress snapshot, or parks it there when it is past the bound; what to do with its item. */
@@ -305,11 +365,7 @@ public final class FlowWorker {
         WorkQueue.Item item = lease.item;
         int token = lease.token();
         if (verdict.complete()) return queue.complete(item.seq(), token).compose(removed -> {
-            if (!removed) {
-                staleSettles.incrementAndGet();
-                LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt " + token
-                        + ") finished at worker " + workerId + " but was claimed again, held or completed meanwhile; left to its holder, not completed");
-            }
+            if (!removed) stale(item, token);
             return Future.succeededFuture();
         });
         Throwable unparkable = verdict.unparkable();
@@ -332,6 +388,13 @@ public final class FlowWorker {
         });
     }
 
+    /** A complete or fast path the queue answered stale: counted, one WARNING, never tried again (D-074). */
+    private void stale(WorkQueue.Item item, int token) {
+        staleSettles.incrementAndGet();
+        LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt " + token
+                + ") finished at worker " + workerId + " but was claimed again, held or completed meanwhile; left to its holder, not completed");
+    }
+
     private void finished(WorkQueue.Item item) {
         Promise<Void> due;
         synchronized (lock) {
@@ -344,7 +407,8 @@ public final class FlowWorker {
 
     /**
      * The close to run now: the asked one, once nothing runs and no claim is in flight; else null. Under the lock. After the
-     * stop no claim starts, so that state is final: it is reached once — by the close, a claim's return or an item's end.
+     * stop no claim starts and a fast path keeps its item in the slot until the next one takes it, so that state is final: it
+     * is reached once — by the close, a claim's return or a chain's end.
      */
     private Promise<Void> closeDue() {
         return closed != null && !claiming && running.isEmpty() ? closed : null;
