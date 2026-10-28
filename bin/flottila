@@ -1,0 +1,19 @@
+#!/bin/sh
+# flottila: the command line (D-079): runs the packaged cli jar, flottila-cli/target/flottila-cli-<version>.jar, whose manifest
+# names io.flottila.cli.Cli and its class path in flottila-cli/target/lib. Build it first: mvn -B -ntp -q package -DskipTests -pl flottila-cli -am
+# Usage: bin/flottila help
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+jar=
+for candidate in "$root"/flottila-cli/target/flottila-cli-*.jar; do
+  case $candidate in
+    *-sources.jar|*-javadoc.jar|*-tests.jar) ;;
+    *) jar=$candidate ;;
+  esac
+done
+if [ -z "$jar" ] || [ ! -f "$jar" ]; then
+  echo "flottila: no cli jar in $root/flottila-cli/target; build it first: mvn -B -ntp -q package -DskipTests -pl flottila-cli -am" >&2
+  exit 2
+fi
+if [ -n "${JAVA_HOME:-}" ]; then java="$JAVA_HOME/bin/java"; else java=java; fi
+exec "$java" -jar "$jar" "$@"

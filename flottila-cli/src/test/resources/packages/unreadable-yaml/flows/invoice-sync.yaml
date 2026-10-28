@@ -1,0 +1,49 @@
+# The prototype's flows/invoice.json in the v1 file model (P0-12). Sync request/reply: the HTTP reply
+# is the ACK (ARCHITECTURE §4, delivery modes); every flow has a finite max body size (CLAUDE.md).
+schemaVersion: 1
+kind: flow
+id: invoice-sync
+version: 0.1.0
+description: Validate an invoice, route by currency, map it for the partner and send it on.
+from:
+  endpoint: http-in
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+partitionBy: invoiceId
+forwardHeaders: [Content-Type, X-Request-Id]
+retry:
+  attempts: 3
+  initial: 100ms
+  max: 2s
+steps:
+  - type: xsd
+    name: validate
+    schema: flows/invoice.xsd
+  - type: extractKey
+    name: extractKey
+    key: invoiceId
+    xpath: /Invoice/Id
+  - type: route
+    name: route
+    prop: PARTNER
+    routes:
+      - when: "/Invoice/Currency = 'CZK'"
+        set: domestic
+    otherwise: foreign
+  - type: xslt
+    name: toPartner
+    stylesheet: flows/invoice-to-partner.xsl
+  - type: to
+    name: partner
+    retryable: true
+    byProp: PARTNER
+    endpoints:
+      domestic: partner-domestic
+      foreign: partner-foreign

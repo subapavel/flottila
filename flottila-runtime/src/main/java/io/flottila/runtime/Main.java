@@ -1,8 +1,11 @@
 package io.flottila.runtime;
 
+import io.flottila.api.Component;
+import io.flottila.api.Expressions;
 import io.flottila.api.StepFactory;
 import io.flottila.components.http.HttpComponent;
 import io.flottila.components.sftp.SftpComponent;
+import io.flottila.runtime.node.ComponentContext;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.steps.validate.XsdValidate;
@@ -18,18 +21,42 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
 import java.util.stream.Stream;
 
 /**
- * The node's entry point and the one runtime class that names the shipped components and steps (F-4): the http component,
- * the xslt steps with the xpath language, the xsd step — explicitly, no ServiceLoader (components need {@code Vertx}, which
- * {@code api} may not name).
+ * The node's entry point and the one runtime class that names the shipped components and steps (F-4): the http and sftp
+ * components, the xslt steps with the xpath language, the xsd step — explicitly, no ServiceLoader (components need
+ * {@code Vertx}, which {@code api} may not name). {@link #shipped()} is the one wiring point, used by the node and the CLI (D-079).
  *
  * @since 0.1
  */
 public final class Main {
 
     private Main() {}
+
+    /**
+     * What a node ships: its components, built per node from a {@link ComponentContext}, its step factories and its expression
+     * languages.
+     *
+     * @param components builds the shipped components (http, sftp) over a node's context; never a mock
+     * @param steps the shipped step factories: the xslt steps, then the xsd step
+     * @param languages the shipped expression languages (xpath)
+     */
+    public record Shipped(Function<ComponentContext, List<Component>> components, List<StepFactory> steps, List<Expressions> languages) {
+        public Shipped {
+            steps = List.copyOf(steps);
+            languages = List.copyOf(languages);
+        }
+    }
+
+    /** The shipped components, steps and languages: the one place that names them, for the node ({@link #start}) and the CLI (D-079). */
+    public static Shipped shipped() {
+        SaxonXml xml = new SaxonXml();
+        return new Shipped(ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids()),
+                new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock())),
+                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages());
+    }
 
     /** Starts a node from the process environment; it runs on Vert.x's non-daemon threads until the JVM is told to stop. */
     public static void main(String[] args) {
@@ -74,12 +101,9 @@ public final class Main {
             return new Started(2, Optional.empty(), Optional.empty());
         }
         Vertx vertx = Vertx.vertx(new VertxOptions().setUseDaemonThread(false));
-        SaxonXml xml = new SaxonXml();
-        List<StepFactory> steps = Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList();
+        Shipped shipped = shipped();
         try (ExecutorService starter = Executors.newVirtualThreadPerTaskExecutor()) {
-            Node node = starter.submit(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids()),
-                    new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock())),
-                    steps, xml.languages())).get();
+            Node node = starter.submit(() -> Node.start(config, vertx, shipped.components(), shipped.steps(), shipped.languages())).get();
             return new Started(0, Optional.of(node), Optional.of(vertx));
         } catch (ExecutionException | InterruptedException failed) {
             err.println("flottila: the node did not start: " + oneLine(failed));

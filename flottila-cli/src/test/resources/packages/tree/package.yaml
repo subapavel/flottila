@@ -1,0 +1,8 @@
+# P2-03a fixture: the tree `flottila validate` prints — a root artifact, a folder.yaml with both fields, one with a description
+# only, a nested folder without one.
+schemaVersion: 1
+kind: package
+name: tree
+version: 2.3.4
+description: Folders, namespaces and a root endpoint.
+dependencies: []

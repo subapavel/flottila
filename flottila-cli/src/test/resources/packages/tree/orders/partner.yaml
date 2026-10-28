@@ -1,0 +1,8 @@
+schemaVersion: 1
+kind: endpoint
+id: partner
+scheme: http
+direction: out
+config:
+  url: http://localhost:8090/orders
+  maxBodyBytes: 1048576

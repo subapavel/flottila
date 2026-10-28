@@ -1,5 +1,5 @@
 # Mock bindings and cases for invoice-sync (ARCHITECTURE §11: the flow file is byte-identical everywhere;
-# mocks live next to it in *.test.yaml). Validated by test.schema.json; run by `flottila test` in Phase 1.
+# mocks live next to it in *.test.yaml). Validated by test.schema.json; run in-process by `flottila test` (P2-03b).
 # Fixture paths are from the package root (D-078).
 schemaVersion: 1
 kind: test

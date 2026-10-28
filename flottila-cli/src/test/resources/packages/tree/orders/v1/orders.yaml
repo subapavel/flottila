@@ -1,0 +1,14 @@
+schemaVersion: 1
+kind: flow
+id: orders
+version: 1.0.0
+from:
+  endpoint: in
+delivery:
+  mode: sync
+limits:
+  maxBodyBytes: 1048576
+steps:
+  - type: to
+    name: send
+    endpoint: partner

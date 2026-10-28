@@ -57,7 +57,19 @@ class ModuleBoundaryViolationTest {
         assertFalse(e.getMessage().contains("RuntimeFixture"), () -> "runtime may use the client, but the report says:\n" + e.getMessage());
     }
     @Test void testkitDependingOnRuntimeIsCaught() { assertFails(Rules.TESTKIT_DEPENDS_ON_CORE_AND_API, "TestkitDependsOnRuntime"); }
-    @Test void cliDependingOnRuntimeIsCaught() { assertFails(Rules.CLI_DEPENDS_ON_API_AND_TESTKIT, "CliDependsOnRuntime"); }
+    // --- cli is the outermost module (F-16, D-079): it may depend on everything, nothing depends on it
+    @Test void nothingDependsOnCliCatchesARuntimeClassNamingTheCli() { assertFails(Rules.NOTHING_DEPENDS_ON_CLI, "RuntimeDependsOnTheCli"); }
+    @Test void nothingDependsOnCliCatchesAClassOfAModuleNoOtherRuleNames() { assertFails(Rules.NOTHING_DEPENDS_ON_CLI, "SchemasDependsOnTheCli"); }
+    @Test void nothingDependsOnCliLetsTheCliDependOnRuntimeAndOnItself() {
+        JavaClasses cliOnly = new ClassFileImporter()
+                .withImportOption(new ImportOption.OnlyIncludeTests())
+                .importClasses(io.flottila.cli.violation.CliDependsOnRuntime.class, io.flottila.cli.violation.CliFixture.class,
+                        io.flottila.runtime.violation.RuntimeFixture.class);
+        assertDoesNotThrow(() -> Rules.NOTHING_DEPENDS_ON_CLI.check(cliOnly), "cli -> runtime and cli -> cli are allowed");
+    }
+    @Test void cliTouchingAPostgresClientIsStillCaughtByTheClientRule() {
+        assertFails(Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS, "CliUsesAPostgresClient");
+    }
     @Test void packageCycleIsCaught() { assertFails(Rules.NO_CYCLES, "cyclea"); }
 
     @Test void runtimeDependingOnAComponentIsCaught() { assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "RuntimeDependsOnAComponent"); }

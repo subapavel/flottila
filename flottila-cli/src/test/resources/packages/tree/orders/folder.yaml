@@ -1,0 +1,4 @@
+schemaVersion: 1
+kind: folder
+namespace: "urn:example:orders"
+description: Orders as the shop sends them

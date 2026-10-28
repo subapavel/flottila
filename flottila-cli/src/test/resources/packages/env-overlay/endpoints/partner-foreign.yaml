@@ -1,0 +1,12 @@
+schemaVersion: 1
+kind: endpoint
+id: partner-foreign
+scheme: http
+direction: out
+config:
+  url: http://localhost:8090/echo-foreign
+  maxBodyBytes: 1048576
+environments:
+  prod:
+    config:
+      poolSize: 0   # P2-03a fixture: refused by the http configSchema in prod only

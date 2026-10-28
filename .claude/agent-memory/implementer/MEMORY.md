@@ -93,7 +93,7 @@
 - Docker (P2-05a): native PG holds 127.0.0.1:5432 → compose with `FLOTTILA_PG_HOST_PORT=55432`; temurin images have bash, no curl;
   `docker volume prune` is denied. A non-loopback FLOTTILA_ADMIN_HOST without FLOTTILA_ADMIN_TOKEN (blank = none) is refused.
 - StepResources refusals end with the bare absolute root (no trailing separator): strip `dir` too, not only `dir + sep` (P2-02a).
-- Flake (P2-02a): testkit PollingConsumerContractSelfTest.aStopThatCompletesBeforeTheRemoval… NPE `answerInFlight`; passed on rerun.
+- P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch (source); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
 ## Findings that came back in review
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
 - Packet red tests can carry fixture bugs that no implementation fixes (P1-09k2: a step key off by one past a gate, a replay over a

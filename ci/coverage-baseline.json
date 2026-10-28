@@ -7,6 +7,10 @@
     "branch": 95.4,
     "line": 96.7
   },
+  "flottila-cli": {
+    "branch": 100.0,
+    "line": 95.8
+  },
   "flottila-components/http": {
     "branch": 90.4,
     "line": 99.3

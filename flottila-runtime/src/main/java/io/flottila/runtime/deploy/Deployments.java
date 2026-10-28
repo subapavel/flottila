@@ -359,6 +359,50 @@ public final class Deployments {
     }
 
     /**
+     * The dry run of a deploy of the package directory {@code dir} as {@code name} (D-079): the document checks
+     * ({@code Package.problems()} and the package-level ones), each endpoint's config in this node's environment against its
+     * component's schema, and the dry build of every flow with this node's steps — against the flows the node runs — then stop
+     * and close whatever was built. Nothing is unpacked, locked, stored, recorded, enqueued or started, no consumer is built, and the
+     * listing stays as it was. Blocking: on a virtual thread.
+     *
+     * <p>It reports what the load, the check and the build refuse. It does not reach what only {@link #deploy} and its install
+     * check: the package name's pattern, the non-production-only rule, the archive's unpack and its size against
+     * {@link #maxPackageBytes}, the consumer of each flow (its component may still refuse it), the store of the archive, the start
+     * of each flow and the write of its record. An empty list is no promise that a deploy succeeds.
+     *
+     * @return the problems the load, the check and the build find, each path in it from the package root; empty when they find none
+     * @throws IOException a file the build read cannot be hashed, or the work queue could not answer: the node's failure
+     */
+    public List<String> validate(String name, Path dir) throws IOException {
+        Deployed listed = deployed.get(name);
+        List<Flow> before = listed == null ? List.of() : listed.flows();   // a package listed FAILED lists no flows (restore)
+        List<Flow> built = new ArrayList<>();
+        try {
+            Package pkg = load(name, dir);
+            Checked checked = check(name, pkg, before);
+            return build(name, Optional.empty(), pkg.manifest().getString("version"), "validate", pkg, dir, checked, built);
+        } catch (DeployRefusedException refused) {
+            return refused.problems();
+        } finally {
+            Future.join(built.stream().map(Deployments::dropBuilt).toList()).await();   // each never fails
+        }
+    }
+
+    /**
+     * Stops at once and closes a flow {@link #validate} built — never started, no consumer — as {@link #flow} stops its own when
+     * its build fails: its worker's stop, its delivery's zero-deadline stop, then its close ({@link Flow#close}). Unlike
+     * {@link #discard} it schedules nothing on the node's timer: there is no consumer stop to bound. Never fails: a flow that
+     * does not stop cleanly is a WARNING.
+     */
+    private static Future<Void> dropBuilt(Flow f) {
+        return Future.<Void>future(done -> {
+            if (f.worker() != null) f.worker().stop();
+            f.delivery().stop(Duration.ZERO).eventually(f::close).onComplete(done);
+        }).onFailure(failed -> LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "', built by a validate, did not stop cleanly: " + failed, failed))
+                .otherwiseEmpty();
+    }
+
+    /**
      * Refuses deploys from now on, waits for a running one, then stops every flow at once and closes their producers (see the
      * class comment) and returns once all have stopped and every delivery's producers closed — a worker's close is not awaited;
      * every replay refuses new runs at once and its producers' close, once its runs in flight ended, is awaited up to the stop

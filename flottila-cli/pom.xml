@@ -13,7 +13,45 @@
   <artifactId>flottila-cli</artifactId>
   <packaging>jar</packaging>
   <name>Flottila :: cli</name>
-  <description>flottila validate | test | deploy.</description>
+  <description>flottila validate | test | deploy: the outermost module, nothing depends on it (D-079).</description>
+
+  <build>
+    <plugins>
+      <plugin>
+        <!-- the runnable cli (D-079): `java -jar target/flottila-cli-<v>.jar` (bin/flottila) runs Cli; the manifest names it and a
+             lib/ class path, which copy-dependencies below fills, as flottila-runtime's jar does; no shading -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>io.flottila.cli.Cli</mainClass>
+              <addClasspath>true</addClasspath>
+              <classpathPrefix>lib/</classpathPrefix>
+              <useUniqueVersions>false</useUniqueVersions>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <!-- the jar's runtime class path next to it, in target/lib; Apache-2.0 -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.8.1</version>
+        <executions>
+          <execution>
+            <id>copy-runtime-classpath</id>
+            <phase>package</phase>
+            <goals><goal>copy-dependencies</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/lib</outputDirectory>
+              <includeScope>runtime</includeScope>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 
   <dependencies>
     <dependency>
@@ -23,6 +61,31 @@
     <dependency>
       <groupId>io.flottila</groupId>
       <artifactId>flottila-testkit</artifactId>
+    </dependency>
+    <!-- cli is the outermost module (F-16, D-079): the node's Deployments and what Main.shipped() wires (components, steps) -->
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-runtime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-schemas</artifactId>
+    </dependency>
+    <!-- the mock component, for the flow-test runner (P2-03b); a node never loads it (runtime does not depend on it) -->
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-component-mock</artifactId>
+    </dependency>
+    <!-- DeployCommandIT: a node in this JVM on a Testcontainers Postgres (-Pit) -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>

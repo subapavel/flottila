@@ -94,9 +94,10 @@ final class Rules {
             .should().dependOnClassesThat().resideInAnyPackage(RUNTIME, COMPONENTS, STEPS, CLI)
             .because("testkit depends on core (and api) only (ARCHITECTURE §12)");
 
-    static final ArchRule CLI_DEPENDS_ON_API_AND_TESTKIT = noClasses().that().resideInAPackage(CLI)
-            .should().dependOnClassesThat().resideInAnyPackage(RUNTIME, COMPONENTS, STEPS)
-            .because("cli depends on api and testkit only (ARCHITECTURE §12; core is reachable through testkit, D-021)");
+    static final ArchRule NOTHING_DEPENDS_ON_CLI = noClasses().that().resideInAPackage("io.flottila..")
+            .and().resideOutsideOfPackage(CLI)
+            .should().dependOnClassesThat().resideInAPackage(CLI)
+            .because("cli is the outermost module: it may depend on every module and nothing depends on it (F-16, D-079)");
 
     static final ArchRule ONLY_RUNTIME_TOUCHES_STORE_CLIENTS = noClasses().that().resideInAPackage("io.flottila..")
             .and().resideOutsideOfPackage(RUNTIME)

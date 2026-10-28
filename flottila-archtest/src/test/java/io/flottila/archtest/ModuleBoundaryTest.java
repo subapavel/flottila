@@ -32,7 +32,7 @@ class ModuleBoundaryTest {
     @Test void componentsDependOnApiOnly() { Rules.COMPONENTS_DEPEND_ON_API_ONLY.check(tree); }
     @Test void stepsDependOnApiOnly() { Rules.STEPS_DEPEND_ON_API_ONLY.check(tree); }
     @Test void testkitDoesNotDependOnRuntimeComponentsStepsOrCli() { Rules.TESTKIT_DEPENDS_ON_CORE_AND_API.check(tree); }
-    @Test void cliDependsOnApiAndTestkitOnly() { Rules.CLI_DEPENDS_ON_API_AND_TESTKIT.check(tree); }
+    @Test void nothingDependsOnCli() { Rules.NOTHING_DEPENDS_ON_CLI.check(tree); }
     @Test void onlyRuntimeTouchesStoreClients() { Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS.check(tree); }
     @Test void flottilaPackagesAreFreeOfCycles() { Rules.NO_CYCLES.check(tree); }
     @Test void onlyMainWiresComponentsAndStepsInRuntime() { Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS.check(tree); }

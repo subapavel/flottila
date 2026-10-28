@@ -32,6 +32,7 @@
 | 2026-10-28 | 3.4 | §7 Queues: the partition key is evaluated at the durable save from `partitionBy` (the flow's extractKey), the same-key fast path is bounded by `maxChain`, `queue: kafka` refused until the hand-over lands; §14 hot-partition item closed (D-075, P2-01) | — |
 | 2026-10-28 | 3.4 | §7: sftp consumer on Apache MINA SSHD in Phase 2, blocking SDKs on virtual threads the component starts (no `BlockingConsumer` yet), poller lease held by the node (P2-02L), duplicates dropped at the save (P2-02D); §13 Phase 4 sentence follows; §4 executors and pollers sentences say transport I/O threads are not executors (D-076, F-15, P2-02) | F-15 |
 | 2026-10-28 | 3.4 | §9 Flow configuration: artifacts found by `kind` in any folder (≤ 4 deep, slug names), file references are paths from the package root and stay inside it, a flow's hash no longer includes its file path (D-078, P2-02a) | — |
+| 2026-10-28 | 3.4 | §11 capture is the mocks' always-on record, no behaviour key; §12 `flottila-cli` depends on every module and nothing depends on it (ArchUnit NOTHING_DEPENDS_ON_CLI), the flow-test runner lives there; §8 the Component SPI socket rule binds the node, not the CLI's admin client; §13 `validate`, `test`, `deploy` move to Phase 2, `package`/`migrate` stay in Phase 4 (D-079, F-16, P2-03a) | F-16 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -223,7 +224,7 @@ Headers always cross; the body is shared by reference. Never through the event b
 
 ## 7. Components, queues, persistence
 
-All contact with the outside world goes through the Component SPI; nothing else in the platform opens a socket. That is the rule that makes mocking first-class.
+All contact with the outside world goes through the Component SPI; nothing else in the platform opens a socket. That is the rule that makes mocking first-class. The rule binds the node; the `flottila` CLI is a tool outside the node, and its admin client (`flottila deploy`, JDK `java.net.http`) talks to a node's admin API, not to a partner (F-16).
 
 ```java
 interface Component {
@@ -415,7 +416,7 @@ cases:
     expect: { dlq: 1, retries: 3 }
 ```
 
-Behaviours, same vocabulary for every component: `reply` (fixture), `recorded` (response captured in monitoring), `script` (Groovy/JS request → response), `files` / `messages` (consumer side, feed fixtures), `fail` (503, timeout, reset, malformed; after N, every Nth), `delay`, and `capture` always on for assertions.
+Behaviours, same vocabulary for every component: `reply` (fixture), `recorded` (response captured in monitoring), `script` (Groovy/JS request → response), `files` / `messages` (consumer side, feed fixtures), `fail` (503, timeout, reset, malformed; after N, every Nth), `delay`; capture is no behaviour key: every mock always records what it was sent, and a test's `expect.sent` reads that record (F-16).
 
 Two execution layers run the same YAML: in-process mocks with in-memory stores (milliseconds, on save and as the CI merge gate) and protocol doubles with Testcontainers (embedded SSHD, GreenMail, Artemis, WireMock, XI/IDoc simulator, real Postgres/Kafka/ClickHouse) as the release gate. Fixtures come from hand-writing, from "save as test case" in monitoring (masked by the flow's PII policy), or generated from the schema registry.
 
@@ -431,8 +432,8 @@ One Maven monorepo (`~/flottila/`, Apache 2.0), dependency direction strictly do
 | `flottila-components/*` | one module per scheme: http, xi (JCo `provided`), sftp, jms, kafka, mail, as2, as4, edi, db, mock | api |
 | `flottila-steps/*` | xslt, validate, groovy, js, map, ai, split/aggregate formats | api |
 | `flottila-sap` | PO/CPI mapping facades, XI/IDoc simulator, migration converters | api, steps |
-| `flottila-testkit` | fake Runtime, contract suites, protocol doubles, fake clock and timer, in-memory BlobStore (golden-test runner: `flottila-cli` or a later module — F-1) | api (F-1, 2026-10-18; was core) |
-| `flottila-cli` | validate, test, deploy, package, migrate | api, testkit |
+| `flottila-testkit` | fake Runtime, contract suites, protocol doubles, fake clock and timer, in-memory BlobStore (the flow-test runner lives in `flottila-cli`, F-16) | api (F-1, 2026-10-18; was core) |
+| `flottila-cli` | validate, test, deploy, package, migrate | every module (runtime, components incl. the mock, steps); nothing depends on it (F-16) |
 | `flottila-control` | Quarkus admin API, React UI, MCP server, developer portal | talks to runtime over HTTP only; no Java dependency on runtime |
 | `flottila-schemas` | JSON Schemas for flow, package, partner, endpoint configs; published | — |
 | `bench/`, `docs/`, `deploy/` | benchmarks, architecture and ADRs, Compose/Helm/systemd | — |
@@ -451,11 +452,11 @@ Phases 0–2 build the runtime that everything else sits on; 3 turns it into the
 
 **Phase 1 — core runtime.** `flottila-api`, `-core`, `-runtime` with Envelope/Body/BlobStore (memory, spool, S3 tiers, byte budget), RequestScope, per-flow admission, the batcher, Postgres MessageStore/DLQ, recording levels, replay, http and mock components, xslt/validate/extractKey/route steps, the three delivery modes. Gate: the milestone-1 flow (HTTP → validate → key → route → XSLT → HTTP) runs on the new core; kill -9 ledger 2000/2000; sync < 2 ms p50 and the durable ACK measured and recorded native (F-14); 50 MB body passes a stream step without heap growth.
 
-**Phase 2 — durable messaging.** Kafka hand-over and the durable `/xi` door, Postgres WorkQueue with partition keys and the same-key fast path, XI QoS (EO, EOIO block-on-failure, `processed_ids`), dispatcher with versioned routing, partner directory, wallet, Valkey cache and leases, inter-flow `call` / `flow://` / `queue://`. Gate: XI simulator end-to-end with ordered queues; Postgres failover during load with no loss or duplicate; node join/leave under load.
+**Phase 2 — durable messaging.** Kafka hand-over and the durable `/xi` door, Postgres WorkQueue with partition keys and the same-key fast path, XI QoS (EO, EOIO block-on-failure, `processed_ids`), dispatcher with versioned routing, partner directory, wallet, Valkey cache and leases, inter-flow `call` / `flow://` / `queue://`, and the CLI `validate`, `test` (in-process, mocks, virtual time) and `deploy` (F-16). Gate: XI simulator end-to-end with ordered queues; Postgres failover during load with no loss or duplicate; node join/leave under load.
 
 **Phase 3 — monitoring product.** Kafka → ClickHouse ingest, schema and TTL policies, pg\_clickhouse query surface with pushdown tests, control plane (Quarkus API, React UI) with the three screens, replay/resend from the UI, "save as test case", OTel spans, Micrometer, both alert layers including silence detection. Gate: "invoice 4711" by key in < 1 s over 100 M synthetic snapshots; XPath search over 10 M payloads in seconds; a dropped node leaves no gap in the timeline.
 
-**Phase 4 — components and SAP compatibility.** sftp producer, smb/file (the sftp consumer moved to Phase 2, D-076), jms, kafka consumer/producer, mail, as2/as4, edi (EDIFACT, X12), db datasources, JCo/IDoc on the platform-thread pool, PO and CPI mapping facades, XSD and WS-Security, the CLI (validate, test, deploy, package), migration converters (ICO, channel, XSLT). Gate: one real PO interface migrated end-to-end with golden tests from PO monitor payloads, both directions.
+**Phase 4 — components and SAP compatibility.** sftp producer, smb/file (the sftp consumer moved to Phase 2, D-076), jms, kafka consumer/producer, mail, as2/as4, edi (EDIFACT, X12), db datasources, JCo/IDoc on the platform-thread pool, PO and CPI mapping facades, XSD and WS-Security, the CLI `package` and `migrate` commands (validate, test and deploy moved to Phase 2, F-16), migration converters (ICO, channel, XSLT). Gate: one real PO interface migrated end-to-end with golden tests from PO monitor payloads, both directions.
 
 **Phase 5 — extensions, API management, AI.** Extension SDK with isolated classloaders, bytecode scan and circuit breaker; sandboxed Groovy/GraalJS; API objects, developer portal, MCP server and gateway; `ai:` step; dry-run endpoint and agent tooling. Gate: an extension built in an external repo deploys through CI and shows on every span; gateway bench ≥ 20k req/s per 8-core node at p99 < 5 ms.
 

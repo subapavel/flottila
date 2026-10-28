@@ -884,3 +884,12 @@ Checks: verify testkit+mock+sftp VERIFIED_PASS (target/FIX-85-verifier.log); 50/
 Review: PASS r1. Raised FIX-86 (pin a doubled `later` deterministically). CI 127 (536f058) green.
 D-054 data: class B (test-author ×1, verifier ×1, reviewer ×1); review rounds 1.
 Next: P2-03 [B] CLI validate/deploy/test.
+
+## 2026-10-28 — P2-03a CLI `flottila validate` and `flottila deploy`, cli as the outermost module (D-079, F-16) — done, review PASS
+Deviation: F-16 (cli depends on every module; validate/test/deploy move to Phase 2). Context restarted mid-task (container restart), re-verified with git status / git log -3.
+Test first: archtest nothingDependsOnCli + violators; runtime DeploymentsValidateTest, MainShippedTest; cli ValidateCommandTest, PackageZipTest, DeployCommandTest, DeployCommandIT, LauncherIT (red: target/P2-03a-red.log). [A] fix packets: M08 (validate against running flows), M14 (name guard), r1 zip mtime pin.
+Change: ArchUnit NOTHING_DEPENDS_ON_CLI; runtime Main.shipped() (one wiring point), Deployments.validate (load + check + dry build, nothing started or stored); cli Cli/Validate/Deploy (tree, deterministic zip, token from env only), jar manifest + lib, bin/flottila; CI runs `bin/flottila validate packages/demo`; P2-03 split into P2-03a/b.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS 2240 tests (target/P2-03a-verifier2.log); r1 re-verify testkit+runtime+cli VERIFIED_PASS (target/P2-03a-r1-verify.log); coverage no decrease (cli 95.8/100); hand mutants 38 + M08/M14/mtime killed.
+Review: FAIL r1 (zip mtime unpinned; testkit package-info wrong; launcher build hint; validate javadoc overclaimed; §8 socket rule silent on the CLI), PASS r2. Implementer-authored CliEdgeCasesTest approved after the fact (judged real). Raised FIX-87..89.
+D-054 data: class B raised to C (scout ×1, designer ×1, test-author ×1 + 3 fix packets, implementer ×1 + fix, verifier ×2, reviewer ×2); review rounds 2.
+Next: P2-03b [C] `flottila test` runner.

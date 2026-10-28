@@ -57,6 +57,8 @@ jobs:
           cache: maven
       - name: Verify (unit + Testcontainers ITs, ArchUnit, JaCoCo floors incl. the ITs)
         run: mvn -B -ntp verify -Pit
+      - name: The demo package validates through the launcher (D-079)
+        run: bin/flottila validate packages/demo
       - name: Coverage gate self-test
         run: python3 -m unittest ci.test_coverage_check
       - name: Coverage no-decrease against the previous main commit

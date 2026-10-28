@@ -1,0 +1,12 @@
+schemaVersion: 1
+kind: endpoint
+id: partner-domestic
+scheme: http
+direction: out
+config:
+  url: http://localhost:8090/echo
+  maxBodyBytes: 1048576
+environments:
+  prod:
+    config:
+      url: https://partner.example/invoices   # secrets stay out: ${secret://partner-token} would be a reference
