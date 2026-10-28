@@ -10,9 +10,8 @@
 - Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id
   generators making an identity assertion vacuous (P1-06 round 5); a mock answering every
   endpoint from one handler (P1-06 round 1); `off`/`yes`/`no` read as YAML booleans (P1-03).
-- Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06).
-  Since FIX-7 the order is the rule: the failure is recorded under the monitor before the pause
-  and before the promise fails; check that order on every new catch in the store.
+- Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06). Since FIX-7: failure
+  recorded under the monitor before the pause and before the promise fails; check that order on every new catch.
 - A test that "covers" a branch is not a test that fails when the branch is wrong: name the
   mutants (`sed -i '<line>d'`-style edits of the production file) and have the verifier run them
   with the file restored by `cp`/`touch` (an `mv` restore leaves the mutant class compiled —
@@ -118,3 +117,4 @@
 - A new ORDER BY on an UPDATE…RETURNING is tested only by a fixture whose heap order differs from seq order; fresh inserts pin nothing (P1-09c1, D-068).
 - Packet 'docs at its commit' items: check the diff for the F-n file and the § edit; code that changes documented behaviour without them is a FAIL (P1-09c2).
 - BACKLOG done-when naming an end-to-end path (PUT over Pg + S3) needs a Node-level test; store contracts + Deployments unit tests leave Node wiring unpinned (P1-09c3a, Node:156/:159).
+- Docs summarising restore/redeploy failure: check which level the code marks FAILED (package vs flow, P1-09c3b §9), and that a bracketed D-row amendment sits right after the clause it amends (D-057 c).

@@ -10,6 +10,8 @@ import io.flottila.components.mock.DisguisedMock;
 import io.flottila.components.mock.nested.NestedMock;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.deploy.Doors;
+import io.flottila.runtime.deploy.PackageDraft;
 import io.flottila.runtime.node.ComponentContext;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
@@ -563,6 +565,225 @@ class NodeIT {
                     OnVirtualThread.call(() -> { started.close(); return null; });   // before LocalStack stops
                 }
             }
+        }
+    }
+
+    // --- P1-09c3b (D-070): restore at node start, before the admin port opens
+    //
+    // The packet names these three cases NodeTest; NodeTest's node has no Postgres (a closed port) and the restore runs after the
+    // migration, so they run here, against the case database, under the packet's method names. Each node of a case runs the
+    // Doors component (scheme rec) of the deploy tests: a start held or failed by flow, a hook inside every stop. The ci node
+    // stores archives in its dir store, <dataDir>/archives; a restart on the same data dir and database is the next node of
+    // the pool.
+
+    /** {@code name} 1.0.0 on the Doors component: a sync flow per id from its own in endpoint {@code <id>-in} to {@code partner}. */
+    static PackageDraft doorsPackage(String name, String... flows) {
+        PackageDraft p = PackageDraft.of(name, "1.0.0")
+                .endpoint("partner", "out", new JsonObject().put("url", "rec://partner"));
+        for (String id : flows) {
+            p.endpoint(id + "-in", "in", new JsonObject().put("path", "/" + id)).flow(id, "1.0.0", "sync", id + "-in", 1024, PackageDraft.toPartner());
+        }
+        return p;
+    }
+
+    /** A node on the case database with {@code doors} as its only component. */
+    Node startWith(Map<String, String> env, Doors doors) throws Exception {
+        NodeConfig config = NodeConfig.from(env);
+        return OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(doors), List.of(), List.of()));
+    }
+
+    static void closeNode(Node n) throws Exception {
+        OnVirtualThread.call(() -> { n.close(); return null; });
+    }
+
+    static void putOk(int admin, String name, byte[] zip) throws Exception {
+        try (HttpClient client = http()) {
+            HttpResponse<String> put = send(client, "PUT", admin, "/admin/packages/" + name, zip, "application/zip");
+            assertEquals(200, put.statusCode(), "fixture: " + name + " deploys: " + put.body());
+        }
+    }
+
+    /** {@code GET /health}, its status asserted, its body. */
+    static JsonObject health(int admin, int status) throws Exception {
+        HttpResponse<String> h = get(admin, "/health");
+        assertEquals(status, h.statusCode(), h.body());
+        return new JsonObject(h.body());
+    }
+
+    /** The items of {@code GET /admin/<what>} by their {@code key} field. */
+    static Map<String, JsonObject> listed(int admin, String what, String key) throws Exception {
+        HttpResponse<String> r = get(admin, "/admin/" + what);
+        assertEquals(200, r.statusCode(), r.body());
+        Map<String, JsonObject> byKey = new java.util.TreeMap<>();
+        new JsonObject(r.body()).getJsonArray("items").forEach(i -> byKey.put(((JsonObject) i).getString(key), (JsonObject) i));
+        return byKey;
+    }
+
+    /** The item {@code key} of a listing; fails the case naming {@code what} when it is not listed. */
+    static JsonObject itemOf(Map<String, JsonObject> listing, String key, String what) {
+        JsonObject item = listing.get(key);
+        assertNotNull(item, what + ": " + key + " is listed: " + listing);
+        return item;
+    }
+
+    /** A node 1 on {@code data} that deployed {@code packages} (name → zip) over its admin API, then closed. */
+    void deployedAndClosed(Map<String, byte[]> packages) throws Exception {
+        Node first = startWith(env("ci"), new Doors());
+        try {
+            for (Map.Entry<String, byte[]> p : packages.entrySet()) putOk(first.adminPort(), p.getKey(), p.getValue());
+        } finally {
+            closeNode(first);
+        }
+    }
+
+    /**
+     * The restore runs inside {@code Node.start}, before the admin server: while the restore holds shop/a's start (a held consumer
+     * start), the configured admin port refuses connections and the start has not returned; released, the start returns and
+     * the port serves both flows, RUNNING.
+     */
+    @Test
+    void restoreRunsBeforeTheAdminPortOpens() throws Exception {
+        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        int admin = freePort();
+        Map<String, String> env = env("ci");
+        env.put("FLOTTILA_ADMIN_PORT", String.valueOf(admin));
+        NodeConfig config = NodeConfig.from(env);
+        Doors second = new Doors();
+        Doors.Gate held = second.holdStartOf("shop/a");
+        OnVirtualThread.Call<Node> starting = OnVirtualThread.start(() -> Node.start(config, vertx, ctx -> List.of(second), List.of(), List.of()));
+        AssertionError whileHeld = null;
+        try {
+            until(() -> held.reached().getCount() == 0 || starting.isDone(), "the restore calls shop/a's start");
+            assertEquals(0, held.reached().getCount(), "the start ended without restoring shop/a: " + starting.outcome());
+            assertTrue(refuses(admin), "while the restore runs, the admin port is not open");
+            assertFalse(starting.isDone(), "Node.start waits for its restore");
+        } catch (AssertionError e) {
+            whileHeld = e;
+        }
+        held.release();
+        try {
+            node = OnVirtualThread.join(starting);   // a node that started is closed after the case, whatever the case found
+        } catch (Exception startFailed) {
+            if (whileHeld == null) throw startFailed;
+            whileHeld.addSuppressed(startFailed);
+        }
+        if (whileHeld != null) throw whileHeld;
+        assertEquals(admin, node.adminPort());
+        assertFalse(refuses(admin), "witness: once the restore returned, the admin port listens");
+        Map<String, JsonObject> flows = listed(admin, "flows", "id");
+        assertEquals(Set.of("shop/a", "shop/b"), flows.keySet(), "both restored flows are listed: " + flows);
+        for (JsonObject f : flows.values()) assertEquals("RUNNING", f.getString("state"), f.encode());
+    }
+
+    /**
+     * The {@code deployments} health check: UP while every package and flow runs; DOWN — /health 503, the other checks UP, the
+     * wire showing the status only, never a name (D-057 a) — while a restored flow did not start, and while a package could not be
+     * restored (its archive gone); UP again once a PUT of that package ran it.
+     */
+    @Test
+    void healthIsDownWhileAFlowOrPackageIsFailed() throws Exception {
+        byte[] shop = doorsPackage("shop", "a", "b").zip();
+        byte[] store = doorsPackage("store", "c").zip();
+        node = startWith(env("ci"), new Doors());
+        putOk(node.adminPort(), "shop", shop);
+        putOk(node.adminPort(), "store", store);
+        JsonObject up = health(node.adminPort(), 200);
+        assertEquals("UP", up.getJsonObject("checks").getString("deployments"), "the node reports a deployments check, UP while everything runs: " + up.encode());
+        closeNode(node);
+        node = null;
+
+        Doors second = new Doors();
+        second.failStartOf("shop/b", "address in use");
+        node = startWith(env("ci"), second);
+        assertEquals("FAILED", itemOf(listed(node.adminPort(), "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b did not start on restore");
+        JsonObject flowDown = health(node.adminPort(), 503);
+        assertEquals("DOWN", flowDown.getString("status"), flowDown.encode());
+        assertEquals("DOWN", flowDown.getJsonObject("checks").getString("deployments"), "a FAILED flow: " + flowDown.encode());
+        assertEquals("UP", flowDown.getJsonObject("checks").getString("postgres"), "the other checks are UP: " + flowDown.encode());
+        assertFalse(flowDown.encode().contains("shop"), "the wire shows the status only, never which flow: " + flowDown.encode());
+        closeNode(node);
+        node = null;
+
+        Files.delete(data.resolve("archives").resolve(sha256(store) + ".zip"));
+        node = startWith(env("ci"), new Doors());
+        Map<String, JsonObject> packages = listed(node.adminPort(), "packages", "name");
+        assertEquals("FAILED", itemOf(packages, "store", "restored without store's archive").getString("state"), "fixture: store's archive is gone: " + packages);
+        assertEquals("RUNNING", itemOf(packages, "shop", "restored").getString("state"), "fixture: shop restored: " + packages);
+        assertEquals(Set.of("RUNNING"), listed(node.adminPort(), "flows", "id").values().stream().map(f -> f.getString("state")).collect(java.util.stream.Collectors.toSet()),
+                "fixture: every flow listed runs, shop/b included");
+        JsonObject packageDown = health(node.adminPort(), 503);
+        assertEquals("DOWN", packageDown.getJsonObject("checks").getString("deployments"), "a FAILED package: " + packageDown.encode());
+        assertFalse(packageDown.encode().contains("store"), "the wire shows the status only, never which package: " + packageDown.encode());
+
+        putOk(node.adminPort(), "store", store);
+        JsonObject again = health(node.adminPort(), 200);
+        assertEquals("UP", again.getJsonObject("checks").getString("deployments"), "recovered by a PUT: " + again.encode());
+    }
+
+    /**
+     * The admin port is taken: {@code Node.start} restores shop, then fails on the admin server's bind — and stops the restored
+     * flows (each door started, then stopped), closes their producers, and closes Deployments before the pool: when each door
+     * stops, the node's pool still holds its connections to the case database; afterwards none is left and no verticle stays.
+     */
+    @Test
+    void anAdminStartFailureStopsTheRestoredFlows() throws Exception {
+        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        Doors second = new Doors();
+        List<String> atStop = new CopyOnWriteArrayList<>();
+        second.onStop(door -> atStop.add(door.flow() + (Thread.currentThread().isVirtual()
+                ? " connections=" + connections() : " stopped on a platform thread, connections not read")));
+        try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
+            Set<String> before = Set.copyOf(vertx.deploymentIDs());
+            Exception failed = null;
+            try {
+                node = startWith(env, second);
+            } catch (Exception expected) {
+                failed = expected;
+            }
+            assertNotNull(failed, "start fails while another socket holds the admin port");
+            assertTrue(isBindError(failed), "the failure is the admin port's bind error: " + causes(failed));
+            List<Doors.Door> restored = second.doors();
+            assertEquals(Set.of("shop/a", "shop/b"), restored.stream().map(Doors.Door::flow).collect(java.util.stream.Collectors.toSet()),
+                    "the restore built a door per flow before the admin server started: " + second.events());
+            for (Doors.Door d : restored) {
+                assertTrue(d.history().contains("started") && d.stopped(), d + " was restored, then stopped by the failed start: " + d.history());
+            }
+            until(() -> second.openProducers().isEmpty(), "every producer of the restored flows is closed: " + second.producers());
+            assertEquals(2, atStop.size(), "each door stopped once: " + atStop);
+            for (String s : atStop) {
+                assertTrue(s.matches(".* connections=[1-9][0-9]*"), "Deployments closes before the pool: at each stop the pool's connections are open: " + atStop);
+            }
+            until(() -> connections() == 0, "then the pool closed: no connection to the case database is left");
+            assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "no verticle stays deployed");
+        }
+    }
+
+    /**
+     * (implementer, P1-09c3b) The admin port is taken and a restored flow's consumer does not stop: {@code Node.start} throws the
+     * bind error, not the stop's failure — that one is added to it as suppressed — and closes the pool all the same.
+     */
+    @Test
+    void aRestoredFlowThatDoesNotStopIsSuppressedUnderTheAdminStartFailure() throws Exception {
+        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a").zip()));
+        Doors second = new Doors();
+        second.failStop("shop/a", "the restored consumer did not stop");
+        try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.ofLiteral("127.0.0.1"))) {
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_ADMIN_PORT", String.valueOf(taken.getLocalPort()));
+            Exception failed = null;
+            try {
+                node = startWith(env, second);
+            } catch (Exception expected) {
+                failed = expected;
+            }
+            assertNotNull(failed, "start fails while another socket holds the admin port");
+            assertTrue(isBindError(failed), "the start's failure is the bind error, not the stop's: " + causes(failed));
+            List<String> suppressed = java.util.Arrays.stream(failed.getSuppressed()).map(s -> String.valueOf(s.getMessage())).toList();
+            assertTrue(suppressed.stream().anyMatch(m -> m.contains("the restored consumer did not stop")), "the failed stop is suppressed: " + suppressed);
+            assertTrue(second.door("shop/a").stopped(), "the restored flow was stopped: " + second.events());
+            until(() -> connections() == 0, "the pool closed all the same");
         }
     }
 

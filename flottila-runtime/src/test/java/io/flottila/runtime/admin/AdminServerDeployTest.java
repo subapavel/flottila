@@ -5,8 +5,13 @@ import io.flottila.api.Runtime;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.runtime.deploy.ArchiveStore;
+import io.flottila.runtime.deploy.DeploymentRecord;
+import io.flottila.runtime.deploy.DeploymentStore;
 import io.flottila.runtime.deploy.Deployments;
+import io.flottila.runtime.deploy.DirArchiveStore;
 import io.flottila.runtime.deploy.Doors;
+import io.flottila.runtime.deploy.InMemoryDeploymentStore;
 import io.flottila.runtime.deploy.PackageDraft;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
@@ -663,7 +668,8 @@ class AdminServerDeployTest {
         for (int i = 0; i < 2; i++) {
             JsonObject item = items.getJsonObject(i);
             Expected e = expected.get(i);
-            assertEquals(Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files"), item.fieldNames(), "an item: " + item);
+            // P1-09c3b: every item also carries its state and its problems (packagesListStateAndProblems)
+            assertEquals(Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "state", "problems"), item.fieldNames(), "an item: " + item);
             assertEquals(e.version(), item.getString("version"));
             assertTrue(item.containsKey("revision") && java.util.Objects.equals(e.revision(), item.getValue("revision")), "revision, null without one: " + item);
             assertEquals("sha256:" + PackageDraft.sha256(e.zip()), item.getString("archive"));
@@ -673,5 +679,77 @@ class AdminServerDeployTest {
             e.p().files().forEach((path, bytes) -> files.add(new JsonObject().put("path", path).put("sha256", PackageDraft.sha256(bytes))));
             assertEquals(files, set(item.getJsonArray("files")), "every file, /-separated path and SHA-256: " + item);
         }
+    }
+
+    // --- P1-09c3b (D-070): restore lists a package it could not install FAILED, with its problems
+
+    /** A Deployments on {@code dir} over the pool's {@code rows} and {@code archives} (the 13-arg constructor). */
+    Deployments deployments(Path dir, DeploymentStore rows, ArchiveStore archives) {
+        Map<String, String> e = new HashMap<>();
+        e.put("FLOTTILA_ENV", "dev");
+        e.put("FLOTTILA_NODE_ID", "node-1");
+        e.put("FLOTTILA_DATA_DIR", dir.toString());
+        e.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(MAX));
+        Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
+        Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
+                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, archives);
+        made.add(d);
+        return d;
+    }
+
+    /**
+     * GET /admin/packages after a restore: every item gains {@code state} and {@code problems}. alpha restored is RUNNING with
+     * {@code problems: []}; zeta, whose archive is gone from the archive store, is FAILED — its version, revision (null), archive
+     * and deployedAt from its row, {@code flows: []}, {@code files: []}, and problem lines (strings), one naming its archive —
+     * and GET /admin/flows lists alpha's flow only.
+     */
+    @Test
+    void packagesListStateAndProblems() throws Exception {
+        InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
+        Path bucket = tmp.resolve("bucket");
+        DirArchiveStore archives = new DirArchiveStore(bucket);
+        Deployments first = deployments(tmp.resolve("node-1"), rows, archives);
+        byte[] alpha = pkg("alpha", "2.0.0", Map.of("orders", "sync")).zip();
+        byte[] zeta = pkg("zeta", "3.0.0", Map.of("beta", "sync")).zip();
+        Path uploads = tmp.resolve("uploads");
+        OnVirtualThread.call(() -> first.deploy("alpha", Optional.of("r9"), PackageDraft.write(uploads, alpha)));
+        rt.clock().advance(Duration.ofHours(1));
+        OnVirtualThread.call(() -> first.deploy("zeta", Optional.empty(), PackageDraft.write(uploads, zeta)));
+        OnVirtualThread.call(() -> { first.close(); return null; });
+        String zetaSha = PackageDraft.sha256(zeta);
+        Files.delete(bucket.resolve(zetaSha + ".zip"));
+        DeploymentRecord zetaRow = rows.list().await().get(1);
+        assertEquals("zeta", zetaRow.name(), "fixture: zeta's row");
+        Deployments second = deployments(tmp.resolve("node-2"), rows, archives);
+        OnVirtualThread.call(() -> { second.restore(); return null; });
+        int at = serve(Optional.of(second));
+
+        Answer a = request(at, HttpMethod.GET, "/admin/packages", AUTH, null);
+
+        assertJson(200, a, "GET /admin/packages");
+        JsonArray items = a.json().getJsonArray("items");
+        assertEquals(List.of("alpha", "zeta"), items.stream().map(i -> ((JsonObject) i).getString("name")).toList(), "sorted by name: " + a.json());
+        Set<String> fields = Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "state", "problems");
+        JsonObject running = items.getJsonObject(0);
+        assertEquals(fields, running.fieldNames(), "an item: " + running);
+        assertEquals("RUNNING", running.getString("state"), running.encode());
+        assertEquals(new JsonArray(), running.getJsonArray("problems"), "a RUNNING package lists no problems: " + running.encode());
+        assertEquals(new JsonArray().add("alpha/orders"), running.getJsonArray("flows"), running.encode());
+
+        JsonObject failed = items.getJsonObject(1);
+        assertEquals(fields, failed.fieldNames(), "a FAILED item has the same fields: " + failed);
+        assertEquals("FAILED", failed.getString("state"), failed.encode());
+        JsonArray problems = failed.getJsonArray("problems");
+        assertTrue(!problems.isEmpty() && problems.stream().allMatch(String.class::isInstance), "problems are lines: " + failed.encode());
+        assertTrue(problems.stream().map(String.class::cast).anyMatch(l -> l.contains(zetaSha)), "a line names the missing archive: " + failed.encode());
+        assertEquals(new JsonArray(), failed.getJsonArray("flows"), "a FAILED package has no flows: " + failed.encode());
+        assertEquals(new JsonArray(), failed.getJsonArray("files"), "nor files: " + failed.encode());
+        assertEquals("3.0.0", failed.getString("version"), failed.encode());
+        assertTrue(failed.containsKey("revision") && failed.getValue("revision") == null, "revision null, as its row: " + failed.encode());
+        assertEquals("sha256:" + zetaSha, failed.getString("archive"), failed.encode());
+        assertEquals(zetaRow.deployedAt(), Instant.parse(failed.getString("deployedAt")), "deployedAt from its row: " + failed.encode());
+
+        JsonArray flows = request(at, HttpMethod.GET, "/admin/flows", AUTH, null).json().getJsonArray("items");
+        assertEquals(List.of("alpha/orders"), flows.stream().map(i -> ((JsonObject) i).getString("id")).toList(), "only alpha's flow runs: " + flows.encode());
     }
 }

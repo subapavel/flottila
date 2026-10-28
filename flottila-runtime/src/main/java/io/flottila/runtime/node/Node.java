@@ -24,6 +24,7 @@ import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -67,8 +68,13 @@ import java.util.stream.Stream;
  * store and an S3 endpoint over plain http (D-070) before it touches Postgres. It then refuses a
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
  * refused node leaves its database untouched, migrates the database, opens the stores and the archive store (an s3 store over
- * one S3 client the node builds), builds the {@link Deployments} (D-059) over them and starts the admin server with the deploy, work, replay and retry routes; when any
- * of this fails, what was opened — the store, the pool, the S3 client — closes again, so nothing is left listening or pooled. {@code close} first closes the deployments
+ * one S3 client the node builds), builds the {@link Deployments} (D-059) over them, restores what the pool's records name
+ * ({@link Deployments#restore}, D-070: rows that cannot be read or a data directory that cannot be written fail the start; a
+ * package or a flow that cannot be restored is listed FAILED and the node starts) and only then starts the admin server with the
+ * deploy, work, replay and retry routes and the health checks {@code postgres} and {@code deployments} (DOWN while anything is
+ * listed FAILED, {@link Deployments#health}); when any of this fails, what was opened closes again — the deployments first (the
+ * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the store,
+ * the pool, the S3 client — so nothing is left running, listening or pooled. {@code close} first closes the deployments
  * — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, while the admin port still
  * answers — then stops the admin server, then flushes and closes the message store, then closes the pool, then the S3 client,
  * each step even when the one before failed; Vert.x stays its caller's.
@@ -110,7 +116,7 @@ public final class Node implements AutoCloseable {
      * @throws IllegalStateException two components for one scheme, a deployed environment and a mock binding among the components,
      *                               the dir archive store or an S3 endpoint over plain http, or a {@code synchronous_commit} other than on, remote_write or remote_apply ({@code off} does
      *                               not wait for the WAL flush, {@code local} for a synchronous standby)
-     * @throws IOException the spool a previous run left cannot be cleared
+     * @throws IOException the spool a previous run left cannot be cleared, or the restore's data directory cannot be written
      */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
                              List<Expressions> languages) throws IOException {
@@ -131,7 +137,7 @@ public final class Node implements AutoCloseable {
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
         PgMessageStore messages = null;
         Runnable closeS3 = () -> {};   // the S3 client once built: closed last
-        boolean started = false;
+        Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
         try {
             TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
                     spool, spoolKey(), null, false), hasher, new PgBodies(pool, tiers.durableMax()));
@@ -155,17 +161,27 @@ public final class Node implements AutoCloseable {
                 closeS3 = s3::close;
                 archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix());
             }
-            Deployments deployments = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
+            Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives);
+            deployments = restored;
+            restored.restore();   // before the admin port opens: what the pool recorded runs before a deploy can be taken (D-070)
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
-                    new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up())), messages::failed),
-                    Optional.of(deployments), work, ids);
-            Node node = new Node(deployments, admin, admin.start(vertx).await(), messages, pool, closeS3);
-            started = true;
-            return node;
-        } finally {
-            // refused, or nothing listens (a port in use, an address not bound; a checked failure arrives sneakily): close what was opened for it
-            if (!started) closeStores(messages, pool, closeS3);
+                    new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
+                            "deployments", () -> Future.succeededFuture(restored.health())), messages::failed),
+                    Optional.of(restored), work, ids);
+            return new Node(restored, admin, admin.start(vertx).await(), messages, pool, closeS3);
+        } catch (Throwable failure) {
+            // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
+            // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
+            // and throw the start's failure, a failed stop added to it
+            try {
+                if (deployments != null) deployments.close();
+            } catch (Throwable unstopped) {
+                failure.addSuppressed(unstopped);
+            } finally {
+                closeStores(messages, pool, closeS3);
+            }
+            throw failure;
         }
     }
 

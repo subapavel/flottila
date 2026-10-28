@@ -6,6 +6,7 @@ import io.flottila.api.Consumer;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Expressions;
+import io.flottila.api.Health;
 import io.flottila.api.Runtime;
 import io.flottila.api.StepFactory;
 import io.flottila.api.Timer;
@@ -32,10 +33,12 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -56,8 +59,10 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * The packages deployed on this node and their running flows (D-059, D-060 a/b, D-063). The deployed state lives in memory until
- * P1-09c (F-5). A deploy of a package that runs already is a redeploy: it swaps only the flows whose effective hash changed.
+ * The packages deployed on this node and their running flows (D-059, D-060 a/b, D-063). The listing lives in memory; each deploy
+ * writes its package's {@link DeploymentRecord} and stores its archive (D-070), and {@link #restore} installs what those name at
+ * the node's start. A deploy of a package that runs already is a redeploy: it swaps only the flows whose effective hash changed;
+ * a deploy of a package listed {@link DeployedPackage.State#FAILED} (the restore could not install it) is a first deploy.
  *
  * <p>{@link #deploy} blocks: call it on a virtual thread. Its order: a bad name or revision ({@link Kind#BAD_REQUEST}); a
  * deployed environment ({@link Kind#FORBIDDEN}: manual deploy is non-production only, ARCHITECTURE §9); a closing node
@@ -125,6 +130,11 @@ import java.util.stream.Stream;
  * wrote, {@code packages/<name>/} too when nothing else is in it: nothing of it is started again, is listed or stays on disk, and
  * no producer stays open past the last item that sends. Every flow is stopped whatever another's stop does; a cleanup step that
  * fails does not replace the refusal: its failure is added to it as suppressed (FIX-32), and the steps after it run all the same.
+ *
+ * <p>{@link #restore} runs at the node's start, before the node's admin port opens, under the deploy lock: each record's archive
+ * is fetched into {@code .incoming} and installed in restore mode — the record's SHA-256, revision and {@code deployedAt}; no
+ * put, no record, no deployed-environment refusal; a flow that does not start is FAILED and the others run — and a package refused
+ * whole is listed FAILED with its problems. {@link #health} is DOWN while anything is listed FAILED.
  *
  * <p>A flow runs as {@code <package>/<flow>} (D-060 a): its snapshots, DLQ rows and queue items carry that id, and so does
  * the consumer option {@code flow}; the deploy also sets {@code maxBodyBytes}, the flow's limit. Every message carries the
@@ -326,7 +336,7 @@ public final class Deployments {
         if (!deploying.tryLock()) throw closing ? stopping() : refused(Kind.CONFLICT, "another deploy is running: try again once it is done");
         try {
             if (closing) throw stopping();
-            return install(name, revision, archive);
+            return install(name, revision, archive, null);
         } finally {
             deploying.unlock();
         }
@@ -354,6 +364,77 @@ public final class Deployments {
         }
     }
 
+    /**
+     * Installs, at the node's start, every package the pool's records name (D-070), one at a time in name order, under the deploy
+     * lock — a deploy meanwhile is {@link Kind#CONFLICT} — and returns once each one is installed or listed FAILED. Each record's
+     * archive is fetched from the {@link ArchiveStore} into a temporary file in {@link #incomingDir()}, deleted whatever comes of
+     * it, and installed in restore mode ({@link #install}): its SHA-256 must be the record's; no deployed-environment refusal, no
+     * put and no record written; {@code revision} and {@code deployedAt} are the record's; a flow that does not start is listed
+     * {@link DeployedFlow.State#FAILED} and the others run. A package refused whole — its fetch failed (the archive store down
+     * included: no retry, recovery is a restart or a deploy), its SHA-256 differs, its unpack is refused, it has problems — is
+     * listed {@link DeployedPackage.State#FAILED} with its record's version, revision, archive and {@code deployedAt}, its problems
+     * and no flows or files, with an ERROR log naming it; the next one is restored all the same. Blocking: on a virtual thread.
+     *
+     * @throws IOException the data directory cannot be written or an archive fetched into it read: the node's failure, not a
+     *                     package's (the packages restored so far run on until {@link #close})
+     * @throws IllegalStateException the node lists a package already (a deploy or a restore installed one) or {@link #close} began:
+     *                               a restore runs at the node's start, before anything else
+     */
+    public void restore() throws IOException {
+        deploying.lock();
+        try {
+            if (closing || !deployed.isEmpty()) throw new IllegalStateException("a restore runs at the node's start, before anything is deployed and before close");
+            List<DeploymentRecord> rows = records.list().await();   // rows that cannot be read: the node does not start
+            Path incoming = incomingDir();
+            Files.createDirectories(incoming);
+            for (DeploymentRecord row : rows) restore(row, incoming);
+        } finally {
+            deploying.unlock();
+        }
+    }
+
+    /**
+     * The {@code deployments} check of the node's {@code /health} (D-070): DOWN while a package or a flow is listed FAILED, its
+     * detail naming each (the wire shows the status only, D-057 a); UP otherwise.
+     */
+    public Health health() {
+        List<String> failed = new ArrayList<>();
+        packages().stream().filter(p -> p.state() == DeployedPackage.State.FAILED).forEach(p -> failed.add("package " + p.name()));
+        flows().stream().filter(f -> f.state() == DeployedFlow.State.FAILED).forEach(f -> failed.add("flow " + f.id()));
+        return failed.isEmpty() ? Health.up() : Health.down("FAILED: " + String.join(", ", failed));
+    }
+
+    /** One record of {@link #restore()}: installed, or listed FAILED when refused; only an IOException of the data directory throws. */
+    private void restore(DeploymentRecord row, Path incoming) throws IOException {
+        Path fetched = Files.createTempFile(incoming, "restore-", ".zip");
+        try {
+            fetch(row, fetched);
+            install(row.name(), row.revision(), fetched, row);
+        } catch (DeployRefusedException refused) {
+            List<String> problems = Stream.concat(Stream.of(refused.error()), refused.problems().stream()).toList();
+            LOG.log(System.Logger.Level.ERROR, "package '" + row.name() + "' (archive sha256:" + row.archiveSha256() + ") could not be restored; it is listed "
+                    + "FAILED until a deploy of it: " + problems);
+            deployed.put(row.name(), new Deployed(new DeployedPackage(row.name(), row.version(), row.revision(), row.archiveSha256(), List.of(), row.deployedAt(),
+                    List.of(), DeployedPackage.State.FAILED, problems), List.of(), Map.of(), null));
+        } finally {
+            Files.deleteIfExists(fetched);   // fetched whole, half or not at all: nothing of it stays in .incoming
+        }
+    }
+
+    /**
+     * Fetches the archive of {@code row} into {@code target}; a fetch that fails refuses the package ({@link Kind#FAILED}, naming the
+     * archive): "not in the archive store" when nothing is stored under its key, else "could not be fetched" with the cause.
+     */
+    private void fetch(DeploymentRecord row, Path target) throws DeployRefusedException {
+        try {
+            archives.fetch(row.archiveSha256(), target);
+        } catch (NoSuchFileException missing) {
+            throw refused(Kind.FAILED, "archive sha256:" + row.archiveSha256() + " is not in the archive store: " + reason(missing));
+        } catch (IOException failed) {
+            throw refused(Kind.FAILED, "archive sha256:" + row.archiveSha256() + " could not be fetched: " + reason(failed));
+        }
+    }
+
     // --- one deploy, under the lock
 
     /**
@@ -363,10 +444,21 @@ public final class Deployments {
      * stops what it built and did not close yet and deletes what it wrote, unchecked failures included. It writes {@code deployed}
      * once: the new version as it returns, or — thrown once phase A stopped flows — the version before with each of those listed
      * FAILED unless the rollback runs it again ({@link #afterFailure}); {@code deployed.get(name)} is {@code running} until then.
+     * A package listed {@link DeployedPackage.State#FAILED} runs nothing: a deploy over it is a first deploy.
+     *
+     * <p>{@code restoring} is null for a deploy; for a restore ({@link #restore}) it is the package's record, and the install runs in
+     * restore mode: the archive must have the record's SHA-256 (else {@link Kind#FAILED} naming both), nothing is put and no record
+     * is written, {@code deployedAt} is the record's, and a flow that does not start is stopped, closed and listed
+     * {@link DeployedFlow.State#FAILED} while the others run — the package is installed all the same.
      */
-    private DeployResult install(String name, Optional<String> revision, Path archive) throws DeployRefusedException, IOException {
+    private DeployResult install(String name, Optional<String> revision, Path archive, DeploymentRecord restoring) throws DeployRefusedException, IOException {
         String sha256 = FlowHash.sha256(archive);
-        Deployed running = deployed.get(name);
+        if (restoring != null && !sha256.equals(restoring.archiveSha256())) {   // other bytes under the record's key: nothing of them runs
+            throw refused(Kind.FAILED, "archive sha256:" + restoring.archiveSha256() + " differs from what the archive store holds under its key, whose "
+                    + "SHA-256 is " + sha256);
+        }
+        Deployed listed = deployed.get(name);
+        Deployed running = listed == null || listed.pkg().state() == DeployedPackage.State.FAILED ? null : listed;   // a FAILED package runs nothing
         List<Flow> before = running == null ? List.of() : running.flows();
         List<DeployedPackage.PackageFile> unpackedInto = running == null ? null : running.kept().get(sha256);   // null: no kept directory
         Path incoming = incomingDir();
@@ -420,10 +512,12 @@ public final class Deployments {
             discard(List.of(), spare);
             List<Flow> starting = consumers(built, problems);   // added and changed, each with its consumer, none started
             if (!problems.isEmpty()) throw invalid(name, problems);
-            store(sha256, archive);   // before anything stops: a failed put refuses the deploy and the running version runs on
+            if (restoring == null) store(sha256, archive);   // before anything stops: a failed put refuses the deploy and the running version runs on
             now.addAll(starting);
             now.sort(Comparator.comparing(Flow::id));
-            DeployedPackage deployedPackage = new DeployedPackage(name, version, revision, sha256, now.stream().map(Flow::id).toList(), clock.instant(), files(dir));
+            Instant deployedAt = restoring == null ? clock.instant() : restoring.deployedAt();
+            DeployedPackage deployedPackage = new DeployedPackage(name, version, revision, sha256, now.stream().map(Flow::id).toList(), deployedAt, files(dir),
+                    DeployedPackage.State.RUNNING, List.of());
             retire(retiring, checked.leaving());   // phase A, settled when it returns; it never throws
             stopped = retiring;
             built.clear();
@@ -433,17 +527,19 @@ public final class Deployments {
             started.forEach(s -> built.add(s.flow()));   // as each is to be stopped: one whose start is pending stops on its own
             List<Start> failed = started.stream().filter(s -> s.failure() != null).toList();
             if (!failed.isEmpty()) {
-                if (running == null) throw refused(Kind.FAILED, problem(failed.getFirst(), "did not start"));   // a first deploy: the cleanup stops them all
-                throw rollBack(version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
+                if (restoring == null && running == null) throw refused(Kind.FAILED, problem(failed.getFirst(), "did not start"));   // a first deploy: the cleanup stops them all
+                if (restoring == null) throw rollBack(version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
+                unstarted(name, failed, now);   // a restore: those are listed FAILED, the others run
             }
-            // the commit point (D-070): the package's record, written once every flow started; the listing and the pruning follow it
-            Future<Void> saved = Future.future(done -> records.save(new DeploymentRecord(name, version, revision, sha256, deployedPackage.deployedAt()))
-                    .onComplete(done));
-            saved.otherwiseEmpty().await();
-            if (saved.failed()) {
-                String unrecorded = "the deploy record was not written: " + reason(saved.cause());
-                if (running == null) throw refused(Kind.FAILED, unrecorded);   // a first deploy: the cleanup stops the flows that started
-                throw rollBack(version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
+            if (restoring == null) {   // a restore writes no record: it installs the one it read
+                // the commit point (D-070): the package's record, written once every flow started; the listing and the pruning follow it
+                Future<Void> saved = Future.future(done -> records.save(new DeploymentRecord(name, version, revision, sha256, deployedAt)).onComplete(done));
+                saved.otherwiseEmpty().await();
+                if (saved.failed()) {
+                    String unrecorded = "the deploy record was not written: " + reason(saved.cause());
+                    if (running == null) throw refused(Kind.FAILED, unrecorded);   // a first deploy: the cleanup stops the flows that started
+                    throw rollBack(version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
+                }
             }
             String previous = null;   // the directory of the last other archive the package ran: none on a first deploy
             if (running != null) previous = sha256.equals(running.pkg().archiveSha256()) ? running.previous() : running.pkg().archiveSha256();
@@ -467,6 +563,21 @@ public final class Deployments {
         deployed.put(name, next);
         prune(name, packageDir, next.kept().keySet());
         return result;
+    }
+
+    /**
+     * The flows of a restore that did not start ({@code failed}): each is stopped at once and closed ({@link #discard}) and replaced
+     * in {@code now} by itself {@link DeployedFlow.State#FAILED} ({@link Flow#failed}: nothing of it runs), with an ERROR log naming it.
+     */
+    private void unstarted(String name, List<Start> failed, List<Flow> now) {
+        Set<String> ids = new HashSet<>();
+        for (Start s : failed) {
+            ids.add(s.flow().id());
+            LOG.log(System.Logger.Level.ERROR, "package '" + name + "' is restored, but " + problem(s, "did not start") + "; it is listed FAILED until a "
+                    + "deploy of the package starts it");
+        }
+        discard(List.of(), failed.stream().map(Start::flow).toList());   // never throws; a flow that does not stop cleanly is a WARNING
+        now.replaceAll(f -> ids.contains(f.id()) ? f.failed() : f);
     }
 
     /**

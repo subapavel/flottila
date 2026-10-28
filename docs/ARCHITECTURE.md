@@ -24,6 +24,7 @@
 | 2026-10-27 | 3.4 | §9 item 3: a redeploy swaps only flows whose effective hash changed (D-063); all changed and removed flows stop before any changed or added flow starts, so the refusal window is up to the slowest stop; removing an at-least-once flow with queued or held items is refused (422); 409 means a deploy is already running | F-5 (major) |
 | 2026-10-27 | 3.4 | §8: snapshot rows of a run are buffered in a per-run trail and written at run end (or when more than 256 are buffered) after their bodies persisted; a trail row keeps `body_key` only for a durable body, else it is metadata-only and counted (the at-least-once ingress row stays as D-058: saved beside its persist); only the step whose snapshot crosses 256 buffered rows waits (for that flush); item completion, the sync permit, the at-most-once landing and a replay or retry wait for the run's last flush (persists, then row writes) (D-064, D-066) | F-10 |
 | 2026-10-27 | 3.4 | §6 Recording: replay and DLQ retry run the flow version deployed now and pin the versions they ran with; replay from any recorded step works after a restart (D-064, D-066) — F-8 closed; admin replay/retry status order 400 → 404 → 409 (flow not RUNNING here, retry already running) → 422 (step unrecorded or metadata-only, step beyond the flow, too large) → 429 (D-067) | F-11 (major) |
+| 2026-10-28 | 3.4 | §9 Deployment mechanics: the deployment record is a Postgres row without bytes, the archive is stored once in S3 by sha256 before the record (the commit point), and a node restores every recorded package before its admin API opens; a package it cannot restore is FAILED and /health is DOWN (owner's option A, D-070) | F-12 (major) |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -307,9 +308,12 @@ The control plane watches a git branch (or tag) per environment and pushes to th
 
 1. Commit → `flottila validate` (schema, XSLT compile, dry build of the pipeline) → in-process tests → merge.
 2. Control plane detects the new revision for the environment, records the package version in Postgres, notifies nodes through Valkey.
+   The archive is stored once in S3 at `<prefix>/archives/<sha256>.zip` before the record is written; the record (package, version, git revision, archive sha256, deployed_at; no bytes) is one row per package, shared by the pool, and its write is the deploy's commit point. In Phase 1 the node's admin PUT stores and records; the control plane must likewise upload before it records. Archives are never deleted in Phase 1 (superseded ones serve an emergency rollback).
 3. Each node loads the new flow version beside the old one; new messages go to the new version, the old one drains in-flight work and unloads. No node restart. A failed load leaves the old version running.
 4. Every message pins the flow, partner-directory and routing-table versions it ran with.
 5. Rollback = revert in git; emergency rollback = CLI pin to a previous recorded version, audited.
+
+At start a node restores before its admin API opens: per recorded package it fetches the archive, checks its sha256 and starts it; a package it cannot fetch, verify, unpack or build is listed FAILED with its problems; a flow that does not start is listed FAILED and the others run; and the `deployments` health check is DOWN while any package or flow is FAILED. S3 is thereby a start dependency of a deployed node, never of the hot path (F-12).
 
 Secrets and partner data never travel through git; the flow carries only `secret://` and `${partner.…}` references resolved per environment.
 

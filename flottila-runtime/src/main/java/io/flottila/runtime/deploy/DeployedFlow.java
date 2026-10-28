@@ -21,7 +21,10 @@ import java.util.Optional;
 public record DeployedFlow(String id, String pkg, String packageVersion, Optional<String> revision, String flowVersion, String delivery,
                            String hash, State state) {
 
-    /** {@link #RUNNING}: started and serving; {@link #FAILED}: a redeploy could not start it again (D-063, P1-09d2c). */
+    /**
+     * {@link #RUNNING}: started and serving; {@link #FAILED}: a redeploy could not start it again (D-063, P1-09d2c), or the restore
+     * at the node's start could not start it (D-070).
+     */
     public enum State { RUNNING, FAILED }
 
     public DeployedFlow {

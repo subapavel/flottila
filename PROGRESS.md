@@ -703,3 +703,13 @@ Checks: whole reactor -Pit VERIFIED_PASS, archtest 35 (target/P1-09c3a-verify2.l
 Review: FAIL r1 (Node store wiring and the done-when PUT path untested → NodeIT S3 case, mutants A/B killed); PASS r2. Raised FIX-57..59.
 D-054 data: class C (designer, test-author ×3, implementer, verifier, reviewer ×2); review rounds 2; 1 turn-cap resume.
 Next: P1-09c3b [C] — restore at node start (packet §c3b).
+
+## 2026-10-28 — P1-09c3b restore at node start from the Postgres record and the S3 archive (D-070) — done, review PASS — Deviation: F-12
+Test first: DeploymentsRestoreTest 11, AdminServerDeployTest packagesListStateAndProblems, NodeIT +3 (restore before the admin port, /health DOWN, admin start failure), RestoreIT 2 (Postgres + LocalStack) — observed red (target/P1-09c3b-red.log).
+Change: Deployments.restore() under the deploy lock (fetch → sha256 → install in restore mode: no put, no row, deployedAt/revision from the row); FAILED packages (DeployedPackage state/problems) and FAILED flows; `deployments` health check; Node restores before AdminServer and closes Deployments first on a failed start.
+Wrong expectation (packet §c3b): AdminServerDeployTest.getPackagesListsVersionAndFileHashes field set gains state/problems. NodeTest cases live in NodeIT (restore needs Postgres).
+Docs: §9 Deployment mechanics + changelog 3.4; F-12 (S3 a start dependency of a deployed node); D-057 c and D-063 Listing amended.
+Checks: whole reactor -Pit VERIFIED_PASS 1525/0/0/0 (target/P1-09c3b-verify.log); archtest 35; coverage no decrease; PIT api 100 %, core 99 %; 33 hand mutants killed.
+Review: FAIL r1 (§9 said a flow failing to start fails its package; D-057 bracket misplaced — architect's wording); PASS r2. Raised FIX-60..62, FIX-58 widened (restore's list() unbounded).
+D-054 data: class C (test-author + 1 resume, implementer, verifier, reviewer ×2); review rounds 2.
+Next: P1-10 [B] — Phase 1 measurements on the cloud VM.

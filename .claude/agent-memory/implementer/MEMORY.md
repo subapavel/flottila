@@ -30,7 +30,7 @@
   saves with append=false. Runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec) since P1-09d3.
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
   always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
-- Mutants run offline (`-o`): ~5 s (core) to ~12 s (runtime unit), ~55 s with the blob ITs. Scratch copy (no rsync):
+- Mutants run offline (`-o`): ~5 s (core) to ~12 s (runtime unit), ~55 s with the blob ITs, ~26 s per NodeIT#method (`-Dit.test=NodeIT#m`; scratch `install -DskipTests -pl flottila-runtime -am` once, then `-pl flottila-runtime`). Scratch copy (no rsync):
   `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`, mutate there while the main tree builds. HEAD's own
   figures (to attribute a band delta): `git archive HEAD | tar -xf - -C <scratch>` + `-o verify -pl ..` there (P1-09k1: the committed
   testkit branch baseline 96.4 % is a lucky run, HEAD measures 95.2 %). Wait on a background build: `timeout N tail -f --pid=<pid> /dev/null`.

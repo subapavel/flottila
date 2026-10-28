@@ -82,7 +82,8 @@ import java.util.function.Supplier;
  * whose start failed and rolled back: {@code {error, problems}}, D-063), 503. An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
- * (D-063). Without one these routes do not exist (404).
+ * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
+ * flows and no files). Without one these routes do not exist (404).
  *
  * <p>With a {@link WorkQueue} (D-067) it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
@@ -591,7 +592,8 @@ public final class AdminServer {
             JsonArray files = new JsonArray();
             for (DeployedPackage.PackageFile f : p.files()) files.add(new JsonObject().put("path", f.path()).put("sha256", f.sha256()));
             items.add(new JsonObject().put("name", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
-                    .put("archive", "sha256:" + p.archiveSha256()).put("deployedAt", p.deployedAt().toString()).put("flows", new JsonArray(p.flows())).put("files", files));
+                    .put("archive", "sha256:" + p.archiveSha256()).put("deployedAt", p.deployedAt().toString()).put("flows", new JsonArray(p.flows())).put("files", files)
+                    .put("state", p.state().name()).put("problems", new JsonArray(p.problems())));
         }
         return Json.of(200, new JsonObject().put("items", items));
     }
