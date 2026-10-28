@@ -786,3 +786,11 @@ Measured: IT at 56m — before 14.6 MiB, 64.6 > 56, growth +0.05 MiB; RESULTS 50
 Review: PASS r1.
 D-054 data: class A (test-author, implementer, reviewer); review rounds 1.
 Next: P1-GATE [G] — dispatch run 40661445376 on 350f71d (bench + mutation), then the gate-reviewer.
+
+## 2026-10-28 — FIX-69 a refused window schedule never strands a batch or throws at the caller — done, review PASS
+Test first: BatchingWriterWindowRefusalTest 4 (red: target/FIX-69-red.log) + 2 aftermath cases (later flush after a refusal; an Error from the timer) killing two survivors (target/FIX-69-aftermath.log).
+Change: core BatchingWriter — drainLocked catches the window schedule's RuntimeException or Error, fails the batches it just took with that cause (released from inFlight/flying, never sent), re-drains; dispatch() completes and commits outside the lock; save/saveWaiting javadoc name the new failure.
+Checks: verify -pl flottila-core -am VERIFIED_PASS (target/FIX-69-verify2.log); ArchUnit green (target/FIX-69-arch.log); coverage no decrease (core 99.8/99.4; BatchingWriter 56/56 branches); mutants target/FIX-69-mut.log (M4b equivalent).
+Review: FAIL r1 (saveWaiting javadoc did not name the window refusal), PASS r2. Raised FIX-71 (deadline Error path, the fail-whole-backlog policy, dispatch order).
+D-054 data: class A (test-author ×2, implementer ×2, reviewer ×2); review rounds 2.
+Next: P1-GATE [G] — gate-reviewer on 350f71d running.

@@ -64,6 +64,12 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     private record Pending<T>(T item, Promise<Void> done) {}
 
+    /** A batch a drain took and then failed: the window for what stayed behind it could not be scheduled. */
+    private record Refused<T>(List<Pending<T>> batch, Throwable cause) {}
+
+    /** What a drain hands out once the lock is released: batches to commit, refused batches to fail. */
+    private record Drained<T>(List<List<Pending<T>>> commit, List<Refused<T>> refused) {}
+
     /** A {@link #saveWaiting} item waiting for room; its deadline is cancelled when it enters the backlog. */
     private static final class Waiter<T> {
         final Pending<T> pending;
@@ -89,7 +95,11 @@ public final class BatchingWriter<T> implements AutoCloseable {
         this.options = Objects.requireNonNull(options, "options");
     }
 
-    /** Queues the item; completes when the batch containing it is committed, fails when that commit fails or the backlog is full. */
+    /**
+     * Queues the item; completes when the batch containing it is committed, fails when that commit fails or the backlog is
+     * full, and with the timer's exception when its batch was taken but the window for the items behind it could not be
+     * scheduled (FIX-69: the batch is then never handed to the sink).
+     */
     public Future<Void> save(T item) {
         return enqueue(item, false);
     }
@@ -99,7 +109,9 @@ public final class BatchingWriter<T> implements AutoCloseable {
      * waiter, and enters the moment a slot frees. Completes when the batch containing it is committed; fails when that
      * commit fails, with {@link OverloadedException} when it still waits {@code maxWait} after the call (it is then never
      * handed to the sink), with {@link IllegalStateException} when the writer is closed, and with the timer's exception
-     * when its deadline cannot be scheduled.
+     * when its deadline cannot be scheduled. Once queued (directly or moved in from the waiters) it also fails, as with
+     * {@link #save}, with the timer's exception when its batch was taken but the window for the items behind it could not
+     * be scheduled (FIX-69: the batch is then never handed to the sink).
      */
     public Future<Void> saveWaiting(T item) {
         return enqueue(item, true);
@@ -114,16 +126,16 @@ public final class BatchingWriter<T> implements AutoCloseable {
     private Future<Void> enqueue(T item, boolean wait) {
         Objects.requireNonNull(item, "item");
         Pending<T> p = new Pending<>(item, Promise.promise());
-        List<List<Pending<T>>> toCommit;
+        Drained<T> drained;
         synchronized (lock) {
             if (closed) return Future.failedFuture(new IllegalStateException("writer closed"));
             if (queue.size() >= options.maxBacklog()) {   // full; a waiter already there implies full, so no save overtakes it
                 return wait ? waitLocked(p) : Future.failedFuture(new OverloadedException(options.maxBacklog()));
             }
             queue.add(p);
-            toCommit = drainLocked(false);
+            drained = drainLocked(false);
         }
-        toCommit.forEach(this::commit);
+        dispatch(drained);
         return p.done().future();
     }
 
@@ -154,16 +166,16 @@ public final class BatchingWriter<T> implements AutoCloseable {
      * free) and completes when every item waiting, queued or in flight at this moment is committed or failed.
      */
     public Future<Void> flush() {
-        List<List<Pending<T>>> toCommit;
+        Drained<T> drained;
         List<Future<Void>> waiting = new ArrayList<>();
         synchronized (lock) {
             for (List<Pending<T>> batch : flying) for (Pending<T> p : batch) waiting.add(p.done().future());
             for (Pending<T> p : queue) waiting.add(p.done().future());
             for (Waiter<T> w : waiters) waiting.add(w.pending.done().future());
             if (armed != null) { armed.cancel(); armed = null; }
-            toCommit = drainLocked(true);
+            drained = drainLocked(true);
         }
-        toCommit.forEach(this::commit);
+        dispatch(drained);
         return Future.join(waiting).mapEmpty();
     }
 
@@ -173,10 +185,37 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     /**
-     * Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees, and arms
-     * the window timer for what stays.
+     * Under the lock: takes every batch that may go now and arms the window timer for what stays. A timer that refuses the
+     * window is never thrown at the caller (FIX-69): the batches just taken are released from flight and refused with its
+     * exception, and the drain runs again on the freed slots, so nothing stays queued with no commit in flight and no window.
      */
-    private List<List<Pending<T>>> drainLocked(boolean windowElapsed) {
+    private Drained<T> drainLocked(boolean windowElapsed) {
+        Drained<T> out = new Drained<>(new ArrayList<>(), new ArrayList<>());
+        while (true) {
+            List<List<Pending<T>>> batches = takeLocked(windowElapsed);
+            if (queue.isEmpty() || armed != null || options.window().isZero()) {
+                out.commit().addAll(batches);
+                return out;
+            }
+            try {
+                armed = timer.schedule(options.window(), this::onWindow);
+            } catch (RuntimeException | Error e) {
+                // nothing taken: the queue is non-empty, so a commit is in flight and its completion drains again
+                if (batches.isEmpty()) return out;
+                for (List<Pending<T>> batch : batches) {
+                    inFlight--;
+                    flying.remove(batch);
+                    out.refused().add(new Refused<>(batch, e));
+                }
+                continue;
+            }
+            out.commit().addAll(batches);
+            return out;
+        }
+    }
+
+    /** Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees. */
+    private List<List<Pending<T>>> takeLocked(boolean windowElapsed) {
         List<List<Pending<T>>> batches = new ArrayList<>();
         while (!queue.isEmpty() && inFlight < options.commitConcurrency()
                 && (inFlight == 0 || queue.size() >= options.batchSize() || windowElapsed)) {
@@ -192,10 +231,15 @@ public final class BatchingWriter<T> implements AutoCloseable {
                 queue.add(w.pending);
             }
         }
-        if (!queue.isEmpty() && armed == null && !options.window().isZero()) {
-            armed = timer.schedule(options.window(), this::onWindow);
-        }
         return batches;
+    }
+
+    /** Outside the lock: fails the refused batches, oldest first, then hands the taken ones to the sink. */
+    private void dispatch(Drained<T> drained) {
+        for (Refused<T> r : drained.refused()) {
+            for (Pending<T> p : r.batch()) p.done().tryFail(r.cause());
+        }
+        drained.commit().forEach(this::commit);
     }
 
     /** {@code w}'s deadline: if it still waits it leaves the line and fails; one that entered meanwhile is left alone. */
@@ -207,12 +251,12 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     private void onWindow() {
-        List<List<Pending<T>>> toCommit;
+        Drained<T> drained;
         synchronized (lock) {
             armed = null;
-            toCommit = drainLocked(true);
+            drained = drainLocked(true);
         }
-        toCommit.forEach(this::commit);
+        dispatch(drained);
     }
 
     private void commit(List<Pending<T>> batch) {
@@ -228,13 +272,13 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     private void afterCommit(List<Pending<T>> batch, Throwable failure) {
-        List<List<Pending<T>>> toCommit;
+        Drained<T> drained;
         synchronized (lock) {           // release the slot first: a throwing completion listener must not leak it
             inFlight--;
             flying.remove(batch);
-            toCommit = drainLocked(false);
+            drained = drainLocked(false);
         }
-        toCommit.forEach(this::commit);
+        dispatch(drained);
         for (Pending<T> p : batch) {    // listeners run inline here; Vert.x contains their exceptions
             if (failure == null) p.done().tryComplete(); else p.done().tryFail(failure);
         }
