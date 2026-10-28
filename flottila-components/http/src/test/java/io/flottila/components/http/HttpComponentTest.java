@@ -23,6 +23,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -195,6 +199,64 @@ class HttpComponentTest {
                 .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.headers(), b)));
         after.otherwiseEmpty().await();
         assertTrue(after.failed(), "connection refused: the port is free again");
+    }
+
+    // --- P1-09g (D-072): where a consumer would listen, answered from the config alone
+
+    /** A loopback port free right now: bound once and released. */
+    static int freePort() throws IOException {
+        try (ServerSocket s = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+            return s.getLocalPort();
+        }
+    }
+
+    static Optional<InetSocketAddress> where(String host, int port) {
+        return Optional.of(InetSocketAddress.createUnresolved(host, port));
+    }
+
+    static EndpointConfig in(String uri, Map<String, Object> options) {
+        return new EndpointConfig("http-in", URI.create(uri), options);
+    }
+
+    /**
+     * For a port set by option and one set by the endpoint's URI, listensOn answers loopback on that port, unresolved, and the
+     * consumer built from the same config, started, listens there: a POST to that address reaches it.
+     */
+    @Test
+    void listensOnIsWhereTheStartedConsumerBinds() throws IOException {
+        for (boolean byOption : List.of(true, false)) {
+            int free = freePort();
+            EndpointConfig cfg = byOption
+                    ? in("http://http-in/in", Map.of("host", "127.0.0.1", "port", free, "path", "/in", "flow", "f", "maxBodyBytes", 4096L))
+                    : in("http://127.0.0.1:" + free + "/in", Map.of("path", "/in", "flow", "f", "maxBodyBytes", 4096L));
+            String how = byOption ? "the port option" : "the URI's port";
+
+            Optional<InetSocketAddress> where = http.listensOn(cfg);
+
+            assertEquals(where("127.0.0.1", free), where, how);
+            assertTrue(where.get().isUnresolved(), how + ": unresolved, no DNS");
+            HttpComponent.HttpConsumer c = (HttpComponent.HttpConsumer) http.consumer(cfg, e -> Future.succeededFuture(new Ack.Accepted(e.id())));
+            c.start().await();
+            started.add(c);
+            assertEquals(where.get().getPort(), c.port(), how + ": the started consumer listens on the port listensOn answered");
+            assertEquals(202, post(where.get().getPort(), "/in", Buffer.buffer("x"), Map.of()).status(), how + ": and is reached at " + where.get());
+        }
+    }
+
+    @Test
+    void listensOnDefaultsToLoopbackAndUriPortElseZero() throws IOException {
+        assertEquals(where("127.0.0.1", 9000), http.listensOn(in("http://http-in/in", Map.of("port", 9000))), "no host option: loopback");
+        assertEquals(where("0.0.0.0", 9000), http.listensOn(in("http://http-in/in", Map.of("host", "0.0.0.0", "port", 9000))), "the host as configured");
+        assertEquals(where("127.0.0.1", 7000), http.listensOn(in("http://orders.example:7000/in", Map.of())),
+                "no port option: the URI's port; the URI's host is not where a consumer binds");
+        assertEquals(where("127.0.0.1", 9000), http.listensOn(in("http://http-in:7000/in", Map.of("port", 9000))), "the port option wins over the URI's");
+        assertEquals(where("127.0.0.1", 0), http.listensOn(in("http://http-in:7000/in", Map.of("port", 0))), "port 0 as configured wins too: any free port");
+        assertEquals(where("127.0.0.1", 0), http.listensOn(in("http://http-in", Map.of())), "neither: 0 (the URI a deploy builds has no port)");
+        try (ServerSocket held = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+            assertEquals(where("127.0.0.1", held.getLocalPort()), http.listensOn(in("http://http-in/in", Map.of("port", held.getLocalPort()))),
+                    "answered from the config alone: nothing is bound, so a port another socket holds is answered as it is");
+        }
+        assertEquals(Health.Status.DOWN, http.health().await().status(), "no consumer was started");
     }
 
     HttpServer partner(Function<io.vertx.core.http.HttpServerRequest, Void> handler) {

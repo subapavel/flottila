@@ -1,6 +1,9 @@
 package io.flottila.api;
 
 import io.vertx.core.Future;
+
+import java.net.InetSocketAddress;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -25,4 +28,17 @@ public interface Component {
     Producer producer(EndpointConfig cfg);
 
     Future<Health> health();
+
+    /**
+     * The local host and port a consumer of {@code cfg} binds, if it accepts connections; empty if it polls, subscribes or
+     * connects out. Answered from {@code cfg} alone — already valid against {@link #configSchema()} — as an unresolved address
+     * ({@link InetSocketAddress#createUnresolved}, the host as configured): nothing is bound and no name is resolved. Port 0
+     * (any free port) is never compared. The node calls it at deploy and at restore, on a virtual thread, to refuse two
+     * listeners on one host:port (D-072); a throw is a problem line of that deploy.
+     *
+     * @since 0.1
+     */
+    default Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
+        return Optional.empty();
+    }
 }

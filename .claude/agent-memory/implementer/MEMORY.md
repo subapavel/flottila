@@ -24,14 +24,15 @@
 - Failsafe `-Dit.test=A,B` together with `-am` fails upstream modules ("No tests matching pattern"): add
   `-Dfailsafe.failIfNoSpecifiedTests=false` (and `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false` to skip unit tests).
   A PgWorkQueueIT mutant that way (`-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am`) is ~17 s.
-- jacoco-maven-plugin 0.8.15 `merge` (javap): fileSet lists only existing files, writes nothing when no data (report then skips),
-  saves with append=false. Runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec) since P1-09d3.
+- JaCoCo 0.8.15 `merge` writes nothing without data; runtime report/floors read `target/jacoco-merged.exec` (+ MainProcessIT's child exec).
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
   always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants run offline (`-o`): ~5 s (core) to ~12 s (runtime unit), ~55 s with the blob ITs, ~26 s per NodeIT#method (`-Dit.test=NodeIT#m`; scratch `install -DskipTests -pl flottila-runtime -am` once, then `-pl flottila-runtime`). Scratch copy (no rsync):
   `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`, mutate there while the main tree builds. HEAD's own
   figures (to attribute a band delta): `git archive HEAD | tar -xf - -C <scratch>` + `-o verify -pl ..` there (P1-09k1: the committed
   testkit branch baseline 96.4 % is a lucky run, HEAD measures 95.2 %). Wait on a background build: `timeout N tail -f --pid=<pid> /dev/null`.
+- PIT default mutators make 0 mutants of an api `default` method returning `Optional.empty()` (add `-Dmutators=ALL`). ArchUnit alone:
+  `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
 - Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
   a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
 - Mutant killers: grep the `-q` log's `[ERROR]   Class.method` summary lines (TEST-*.xml only with mtime ≥ the run's start). The build log
@@ -40,7 +41,8 @@
 - JaCoCo counts only a module's own tests: a new api/step method or testkit fixture untested in its own module trips the band.
 
 ## APIs
-- `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`.
+- `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
+  `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
 - vertx-web 5.1.10 (javap, P1-09a; fetch with `mvn dependency:get -Dartifact=io.vertx:vertx-web:5.1.10` if ~/.m2 lacks it):
   `Router.router(Vertx)`, `get(String)`/`route(String)` → `Route.handler(Handler<RoutingContext>)`, `Router.errorHandler(int, Handler)`
   answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`.
@@ -87,8 +89,7 @@
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
 - Sync `Delivery` holds the admission permit until the run's trail closed, AFTER the reply (Delivery.sync): a client at concurrency c
   gets 503 "admission refused" at maxInFlight 2c (observed P1-10a); at-least-once releases at the 202, the worker counts its own max.
-- Native PG 16 refuses role flottila's password 'flottila' (P1-10a): smoke `bench/run.sh` against `docker run postgres:17` on
-  127.0.0.1:55432 (PGHOST/PGPORT); numbers from it are never recorded.
+- Native PG 16 refuses role flottila's password (P1-10a): smoke `bench/run.sh` on `docker run postgres:17` 127.0.0.1:55432; never recorded.
 
 ## Findings that came back in review
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.

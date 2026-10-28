@@ -812,3 +812,12 @@ Checks: verify -pl flottila-runtime -am -Pit VERIFIED_PASS (target/P1-09f-verify
 Review: PASS r1. Raised FIX-75 (component configSchema unguarded at Deployments:749).
 D-054 data: class B (test-author ×2, implementer ×1 + follow-up, reviewer ×1); review rounds 1.
 Next: P1-09g.
+
+## 2026-10-28 — P1-09g one listener per host:port on a node (D-072) — done, review PASS
+Test first: DeploymentsListenerTest 13, ListenersTest (table + jqwik), ComponentTest.listensOnIsEmptyByDefault, HttpComponentTest ×2, NodeIT.aSecondPackageOnTheFirstsHttpPortIs422AndTheFirstServesOn (red: target/P1-09g-red.log; NodeIT showed 8 POSTs alternating); DeploymentsListenerEdgeTest 4 (approved after the code, pinning survivors bracket-once, null answer, id order, unserved scheme).
+Change: api Component.listensOn (default empty, @since 0.1); http listensOn/bindsTo shared with HttpConsumer; runtime deploy Listeners.overlap/shown, Deployments.listeners() — own pairs, admin API, running flows of other packages; own version and FAILED excluded; same check at restore.
+Checks: whole reactor verify -Pit VERIFIED_PASS 1687 tests (target/P1-09g-verify-r2.log); ArchUnit green (target/P1-09g-archunit-r2.log); coverage no decrease; PIT Component 1/1 (ALL); 31 mutants killed (target/P1-09g-mutant-*.log, edge-m*).
+Review: FAIL r1 (Deployments:761 `valid` unpinned — unserved-scheme in endpoint), PASS r2. Raised B→C (public SPI); designer draft approved with [A] marks.
+Owner 2026-10-28 (chat, this session): D-072 approved; CONSIDER-4 → Phase 2; FIX-72, FIX-76, CONSIDER-3 later.
+D-054 data: class C (designer ×1, test-author ×3, implementer ×1, verifier ×1, reviewer ×2); review rounds 2.
+Next: P1-GATE — record the owner's ISSUE-2 answer (option 1+2): F-14, §13/GATE check 9, Phase 2 tuning row, gate re-review.

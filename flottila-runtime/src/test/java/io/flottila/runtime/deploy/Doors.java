@@ -11,10 +11,12 @@ import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -50,18 +52,29 @@ import java.util.function.Function;
  * {@code start} (called), {@code started} (its future succeeded), {@code start failed}, {@code stop} (called) and {@code stopped}
  * (its future completed) — and every producer the sequence number of its first close ({@link Out#closedAt()}), so a test orders
  * the events of one door against another's even when both serve the same flow.
+ *
+ * <p>P1-09g (D-072): {@link #listensOn} answers where a consumer of an endpoint would listen — from its options alone, nothing is
+ * bound: absent unless the endpoint sets {@code port} (0..65535), then {@code host} (default {@code 127.0.0.1}) and that port,
+ * unresolved and as configured. An endpoint whose options carry {@code listenRefuse} makes it throw with that text. Every call is
+ * recorded by the endpoint's name ({@link #listensOnAsked()}). {@link #Doors(String)} serves another scheme than {@value #SCHEME}.
  */
 public final class Doors implements Component {
 
     public static final String SCHEME = "rec";
 
-    /** The options this component takes: a key outside them, or {@code level} outside low/high, fails its configSchema. */
+    /**
+     * The options this component takes: a key outside them, {@code level} outside low/high or {@code port} outside 0..65535 fails
+     * its configSchema.
+     */
     public static final String CONFIG_SCHEMA = """
             {"type":"object","additionalProperties":false,"properties":{
               "path":{"type":"string"},"url":{"type":"string"},"level":{"enum":["low","high"]},"tags":{"type":"object"},
-              "refuse":{"type":"string"},"flow":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1}}}""";
+              "refuse":{"type":"string"},"flow":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1},
+              "host":{"type":"string"},"port":{"type":"integer","minimum":0,"maximum":65535},"listenRefuse":{"type":"string"}}}""";
 
-    private final RecordingComponent partner = new RecordingComponent(SCHEME);
+    private final String scheme;
+    private final RecordingComponent partner;
+    private final List<String> listensOnAsked = new CopyOnWriteArrayList<>();
     private final List<String> events = new CopyOnWriteArrayList<>();
     private final List<Door> doors = new CopyOnWriteArrayList<>();
     private final List<EndpointConfig> producerConfigs = new CopyOnWriteArrayList<>();
@@ -79,6 +92,17 @@ public final class Doors implements Component {
     private final Map<String, java.util.Queue<Gate>> stopGates = new ConcurrentHashMap<>();
     /** One sequence for every door's history and every producer's close: a later event has a higher number. */
     private final java.util.concurrent.atomic.AtomicLong seq = new java.util.concurrent.atomic.AtomicLong();
+
+    /** The component of the scheme {@value #SCHEME}. */
+    public Doors() {
+        this(SCHEME);
+    }
+
+    /** The same component serving {@code scheme} (P1-09g: two schemes on one node). */
+    public Doors(String scheme) {
+        this.scheme = Objects.requireNonNull(scheme, "scheme");
+        this.partner = new RecordingComponent(scheme);
+    }
 
     /**
      * From now on every event of {@link #events()} also goes to {@code sink}, on the thread that made it, and so do
@@ -189,9 +213,28 @@ public final class Doors implements Component {
         return null;
     }
 
-    @Override public String scheme() { return SCHEME; }
+    @Override public String scheme() { return scheme; }
 
     @Override public String configSchema() { return CONFIG_SCHEMA; }
+
+    /**
+     * Where a consumer of {@code cfg} would listen (P1-09g, {@code Component.listensOn}): empty without a {@code port} option, else
+     * {@code host} (default {@code 127.0.0.1}) and {@code port}, unresolved, the host as configured. {@code listenRefuse} makes it
+     * throw an {@link IllegalStateException} with that text; a {@code port} that is no number (a config its schema refuses) an
+     * {@link IllegalArgumentException}. Every call is recorded first ({@link #listensOnAsked()}).
+     */
+    public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
+        listensOnAsked.add(cfg.name());
+        if (cfg.options().get("listenRefuse") instanceof String why) throw new IllegalStateException(why);
+        Object port = cfg.options().get("port");
+        if (port == null) return Optional.empty();
+        if (!(port instanceof Number n)) throw new IllegalArgumentException("endpoint '" + cfg.name() + "': port " + port + " is no number");
+        Object host = cfg.options().get("host");
+        return Optional.of(InetSocketAddress.createUnresolved(host == null ? "127.0.0.1" : String.valueOf(host), n.intValue()));
+    }
+
+    /** The name of the endpoint of every {@link #listensOn} call, in order. */
+    public List<String> listensOnAsked() { return List.copyOf(listensOnAsked); }
 
     @Override
     public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {

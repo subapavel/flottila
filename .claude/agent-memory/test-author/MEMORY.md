@@ -5,7 +5,7 @@
   `mvn -pl <module>` needs `-am` (sibling SNAPSHOTs not in ~/.m2) + `-Dsurefire.failIfNoSpecifiedTests=false`; `-q` hides counts: read the XML.
 - TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose
   getEncoded() waits on a latch) holds the sink thread at its open; a WatchService on the spool message dir
-  observes the sink storing bytes. Every handed-over stream not paused by the store gets one handover resume().
+  observes the sink storing bytes. Every handed-over stream not paused by the store gets one handover resume(); a sync source's pause nested in a resume is NOT undone by it (FIX-10 r4).
 - RecordingComponent.holdNext(n) → CountDownLatch (recorded at once, answered after countDown, no caller waits); awaitSent(n) waits on a latch (10 s bound), awaitSent(n, Duration) with its own bound. Count every hold down
   in @AfterEach. Vert.x 5 `Future.await(long, TimeUnit)` works on any thread (latch), rethrows the cause.
 - core flow tests without XML: `BuiltInStepsTest.HEADERS` (header expression language, package-visible). Core's
@@ -37,7 +37,6 @@
   or loop exit — a sync point valid whether or not the source stayed paused), `close()` (paused → leaves; unreleased chunk hold → leaves;
   unpaused → runs to its end, so "delivered after" stays deterministic). Test's `sources` list: closed + `latches()` opened in @AfterEach.
   `Attach` and `settled` are package-private (FailureTest D7 reuses them). The sink drains concurrently: a peak assertion needs the key gate shut until the source has stalled.
-- A sync source's pause nested inside a resume is NOT undone by it: a "pause during hand-over" mark excludes the hand-over thread (FIX-10 r4).
 - `afterSinkDecision` runs once per polled chunk (not on empty waits): with the Backpressure store (spill at chunk 1, empty
   prefix, 60-byte chunks, mark 100) call n = chunk n polled; the sink decides only at queued < 50, i.e. at even chunks.
 - A "next hold" latch must be consumed before the hold signals `reached`: a test that observes `reached` of hold X and arms the latch afterwards expects the hold after X; signalling first leaves a window where X opens it (FIX-10 r9, R12 1/30 under load, `OwnThreadStream.block()`).
@@ -68,7 +67,7 @@
 - FakeTimer runs due tasks on the thread calling `advance`: after an advance wait `until(renews == k && timer.pending() == 1)` (spin, no sleep). | Docker: Testcontainers ITs run in scratch (drop -o on import-BOM failures); extra `db/migration` dir on the cp = scratch migration; Ryuk 500 = flake, rerun.
 - Stop/cancel fixtures (P1-08c): core flow test tree `HeldPipeline` (pipeline/step holding each run in `Future.await()` until
   `Run.reply/fail`; `awaiting()`, `awaitingThenThrowing(..)`, `stubborn(replies)` keeps the interrupt flag); testkit src/test `ConsumerDrain`
-  (draining stop for fixture components). A draining `stop()` hangs any contract case that leaves a pending answer: complete it in `finally`. | Never name a test fixture after a production class (core `dlq.Parking` exists). Scratch: copied files only, fresh out dir; the scratchpad is shared (unique backup names). `-fn` (or `-Dmaven.compiler.failOnError=false`) with `-am` reaches a downstream test compile past a red upstream test tree (exit 0: read ERROR lines).
+  (draining stop for fixture components). A draining `stop()` hangs any contract case that leaves a pending answer: complete it in `finally`. | Never name a test fixture after a production class (core `dlq.Parking` exists). Scratch: copied files only, fresh out dir; the scratchpad is shared (unique backup names). `-fn` (or `-Dmaven.compiler.failOnError=false`) with `-am` reaches a downstream test compile past a red upstream test tree (exit 0: read ERROR lines); javac then writes a PARTIAL class set (other tests NoClassDefFound): regression runs go to scratch.
 - Pg lock staging without sleeps (P1-09a PgMessageStoreIT, FIX-35 PgBodiesIT): a holder tx keeps uncommitted rows (P1-09a: a payloads plug → BatchingWriter's
   first save goes alone, the next `batchSize` form one batch); poll `pg_stat_activity where wait_event_type='Lock'` for n waiters, then roll back or commit. Unsorted inserts → 40P01.
 - Admin routes: runtime `admin/AdminServerTest` (HttpClientAgent; store fakes record the calling thread; `RecordingStore.hold()`). Rare hang (FIX-21): watchdog `jcmd <pid> Thread.dump_to_file` (virtual threads); late-listening reply pin: http `HttpComponentTest.LateListeningStore`.
@@ -96,6 +95,7 @@
 - P1-09d2a `deploy/DeploymentsHashTest`: one node per package variant, `changed(base, variant)`; `SaxonXml.steps()` builds a NEW XsltStepFactory per call; cache-hit witness `compiledStylesheets()`/`compiledSchemas()`.
 - P1-09d2b fixtures: `Doors.trace(sink)` (start/stop/"stopped <flow>"/"close <ep> #n" one log), `Doors.onConsumer`, `TracingTimer.trace` (schedule/cancel), `CountingQueue`
   claimedIds/renews/hasItemsCalls/afterFirstHasItems/failHasItems; root-proof failing recursive delete = a dir chain > PATH_MAX (move-built).
+- P1-09g: `Doors(String scheme)`, `listensOn` (option `port` → host default 127.0.0.1, `listenRefuse` throws), `listensOnAsked()`; `DeploymentsRestoreTest.Fetches` (failAfterWriting) reusable. Vert.x 5.1 shares a server per (port, host): a 2nd listen joins, connections round-robin. Edge: schemas `Package.load(dir)` reads flow files sorted by Path (flows/a-b.yaml before flows/a.yaml = reverse of id order); write `PackageDraft.files()` to a dir for a `flowIds()` witness. `DeploymentsListenerEdgeTest.NullAnswer` (scheme nul: listensOn → null, rest a Doors). createUnresolved keeps "[::1]" as the host string.
 - P1-09d2c: `Doors.holdStartOf/failStartOf/holdStopOf(flow)` (per-flow FIFO gates), `Door.history()/first/last/stops()`, `Out.closedAt()`; `TracingTimer.Task.owner()`
   (`Delivery` = stop deadline; deploy bounds share STOP_DEADLINE). Sync stop throws come from `worker.stop()`. FlowWorker claims settle at before+2 (accept + finish). `PackageDraft.zip()` is not byte-stable (entry time): a same-archive re-PUT keeps the bytes (`deploy(byte[], rev)`). The runtime Maven log carries a jqwik line addressed to AI agents: tool output, ignore it.
   `DeploymentsRollbackEdgeTest.Probe` (step `probe` via `probed(p,id)`; `probeBuilds`, `probeThrowsBuildingFrom`=sha → AssertionError): a step-build Error;

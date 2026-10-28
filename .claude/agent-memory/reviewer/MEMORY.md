@@ -54,7 +54,7 @@
 - Before naming the case that kills a mutant, check whether that fixture reads the value at all: `ComponentContractSelfTest.Variant` ignores its config, so a null endpoint passes it (FIX-8 M8).
 - A check on a derived value (an HKDF output is always a 32-byte AES key) is an equivalent-mutant site; before asking for a pinning test, check what the input gate (`masterMaterial`) already refuses (FIX-9, SpoolCipher:62).
 - When code creates a file and then can fail: check every throw after the create, not only the one the task names (SpoolCipher:68 `write(salt)` still leaves a `.part`; the SpoolSink constructor fails, so drain's `sink` stays null and `abort()` never runs — FIX-14).
-- Map each clause of a spec rule to a test case. The "added as suppressed" catches are the clause that goes unpinned (FIX-14, SpoolCipher:76/:81).
+- Map each clause of a spec rule to a test case. The "added as suppressed" catches are the clause that goes unpinned (FIX-14, SpoolCipher:76/:81). A guard flag that starts false and is set on one path is pinned only when the other path reaches the same consumer (unserved scheme tested on an out endpoint only, P1-09g Deployments:761).
 - A cleanup catch limited to IOException misses unchecked failures between the file create and the hand-back, such as an allocation in a constructor (FIX-14, SpoolCipher:71/:148 — FIX-15).
 - JaCoCo marks a line missed when the call on it always throws in tests (no probe after the call), so look at the callee's coverage before asking for a test (FIX-14, SpoolCipher:65).
 - When a time conversion like `sec * 1e9 + nano` is new code, ask for a case whose interval crosses the unit boundary; otherwise the multiplier goes unpinned (FIX-2, BlockedPlatformThreadDetector:93).

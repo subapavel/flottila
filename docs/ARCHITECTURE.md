@@ -26,6 +26,7 @@
 | 2026-10-27 | 3.4 | §6 Recording: replay and DLQ retry run the flow version deployed now and pin the versions they ran with; replay from any recorded step works after a restart (D-064, D-066) — F-8 closed; admin replay/retry status order 400 → 404 → 409 (flow not RUNNING here, retry already running) → 422 (step unrecorded or metadata-only, step beyond the flow, too large) → 429 (D-067) | F-11 (major) |
 | 2026-10-28 | 3.4 | §9 Deployment mechanics: the deployment record is a Postgres row without bytes, the archive is stored once in S3 by sha256 before the record (the commit point), and a node restores every recorded package before its admin API opens; a package it cannot restore is FAILED and /health is DOWN (owner's option A, D-070) | F-12 (major) |
 | 2026-10-28 | 3.4 | §8 write path: trail rows wait FIFO for room in the node writer's backlog up to `maxWait` (10 s), keeping the run's permit, so overload shows as admission refusals; a row not written is logged at WARNING (message id, flow, step, cause) and counted; the at-least-once ingress row still fails fast; the backlog bounds tempo and is not sized against maxInFlight (D-071) — F-13 closed (FIX-67's c=64 rerun: no row lost) | F-13 (major) |
+| 2026-10-28 | 3.4 | §7 Component SPI gains `listensOn(EndpointConfig)` (default empty); a deploy (and a restore) refuses in endpoints that would share a host:port with each other, the admin API or another package's running flow — one listener per port on a node (D-072, P1-09g) | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -226,8 +227,11 @@ interface Component {
     Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler);
     Producer producer(EndpointConfig cfg);             // Future<Envelope> send(Envelope e)
     Future<Health> health();
+    default Optional<InetSocketAddress> listensOn(EndpointConfig cfg) { return Optional.empty(); } // D-072
 }
 ```
+
+A component whose consumer accepts connections answers `listensOn` with the local host:port it binds (from the config alone, no bind, no DNS; port 0 is never compared). A deploy refuses two `in` endpoints whose addresses overlap — same port and equal hosts or a wildcard host — within the package, against the node's admin listener, and against every running flow of every other package; Vert.x would share the port and round-robin it silently (D-072).
 
 The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a bare `ReadStream`: the handler returns the ack state the consumer needs to finish its own protocol (delete the file, commit the JMS session, send 202). Blocking SDKs implement `BlockingConsumer/BlockingProducer` and are wrapped onto virtual threads by the platform. One jar per component, wired explicitly by the node's `Main` (components need the node's `Vertx` and `BlobStore`, which `api` may not name — F-4); same classpath until a dependency conflict forces isolation. Steps (xslt, groovy, js, validate, map, ai) are wired the same way.
 

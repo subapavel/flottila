@@ -31,11 +31,13 @@ import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.PoolOptions;
 import io.vertx.core.http.RequestOptions;
 
+import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -117,7 +119,21 @@ public final class HttpComponent implements Component {
         return Future.succeededFuture(running.isEmpty() ? Health.down("no consumer listening") : Health.up());
     }
 
+    /** Where a consumer of {@code cfg} binds ({@link #bindsTo}): every http consumer accepts connections (D-072). */
+    @Override
+    public Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
+        return Optional.of(bindsTo(cfg));
+    }
+
     // --- options
+
+    /**
+     * The address a consumer of {@code cfg} binds, unresolved: the {@code host} option (127.0.0.1 when absent) and the {@code port}
+     * option, else the URI's port, else 0 (any free port). {@link HttpConsumer} binds exactly this, so {@link #listensOn} answers it.
+     */
+    private static InetSocketAddress bindsTo(EndpointConfig cfg) {
+        return InetSocketAddress.createUnresolved(string(cfg, "host", "127.0.0.1"), intOption(cfg, "port", Math.max(cfg.uri().getPort(), 0)));
+    }
 
     static long requiredLong(EndpointConfig cfg, String key) {
         Object v = cfg.options().get(key);
@@ -166,8 +182,9 @@ public final class HttpComponent implements Component {
         HttpConsumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) {
             this.cfg = Objects.requireNonNull(cfg, "cfg");
             this.handler = Objects.requireNonNull(handler, "handler");
-            this.host = string(cfg, "host", "127.0.0.1");
-            this.configuredPort = intOption(cfg, "port", cfg.uri().getPort() < 0 ? 0 : cfg.uri().getPort());
+            InetSocketAddress at = bindsTo(cfg);
+            this.host = at.getHostString();
+            this.configuredPort = at.getPort();
             this.path = string(cfg, "path", cfg.uri().getPath() == null || cfg.uri().getPath().isEmpty() ? "/" : cfg.uri().getPath());
             this.flow = string(cfg, "flow", cfg.name());
             this.maxBodyBytes = requiredLong(cfg, "maxBodyBytes");

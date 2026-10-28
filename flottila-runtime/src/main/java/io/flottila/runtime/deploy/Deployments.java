@@ -31,6 +31,7 @@ import io.vertx.core.json.JsonObject;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -51,6 +52,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeoutException;
@@ -77,7 +79,9 @@ import java.util.stream.Stream;
  * manifest's name, no
  * {@code dependencies}, a component for every scheme, every endpoint's config (its environment's keys laid over it) against
  * its component's {@code configSchema()}, no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
- * no flow from an out endpoint, every flow definition, no at-least-once flow above {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), and
+ * no flow from an out endpoint, every flow definition, no at-least-once flow above {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), no
+ * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API or a running flow of
+ * another package listens (D-072: one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), and
  * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
  * items of it (queued, leased or held: they would never run; a flow whose new yaml does not read is not asked, its own problems
  * are listed; a queue that cannot answer is the node's failure, unless the package has problems: then it is their 422) — and
@@ -135,7 +139,8 @@ import java.util.stream.Stream;
  * <p>{@link #restore} runs at the node's start, before the node's admin port opens, under the deploy lock: each record's archive
  * is fetched into {@code .incoming} and installed in restore mode — the record's SHA-256, revision and {@code deployedAt}; no
  * put, no record, no deployed-environment refusal; a flow that does not start is FAILED and the others run — and a package refused
- * whole is listed FAILED with its problems. {@link #health} is DOWN while anything is listed FAILED.
+ * whole is listed FAILED with its problems (one whose consumer would listen where a package restored before it does, D-072,
+ * included). {@link #health} is DOWN while anything is listed FAILED.
  *
  * <p>A flow runs as {@code <package>/<flow>} (D-060 a): its snapshots, DLQ rows and queue items carry that id, and so does
  * the consumer option {@code flow}; the deploy also sets {@code maxBodyBytes}, the flow's limit. Every message carries the
@@ -261,8 +266,12 @@ public final class Deployments {
         }
     }
 
-    /** What a flow's build took besides the builder's stamps: its definition, its yaml, and the package's endpoints as built. */
-    private record Recipe(FlowDefinition def, Path flowFile, Map<String, EndpointConfig> endpoints) {}
+    /**
+     * What a flow's build took besides the builder's stamps: its definition, its yaml, the package's endpoints as built, and where
+     * its consumer listens as its check asked the component ({@link #listeners}; empty when it accepts no connections): the
+     * address it holds against another package's deploy while it runs (D-072).
+     */
+    private record Recipe(FlowDefinition def, Path flowFile, Map<String, EndpointConfig> endpoints, Optional<InetSocketAddress> listensOn) {}
 
     /**
      * A package deployed: its record, its flows, the directories this node keeps for it (D-063) — current, previous and in use —
@@ -276,9 +285,14 @@ public final class Deployments {
 
     /**
      * What the checks hand the build: each valid endpoint's scheme and config (environment laid over), each valid flow's
-     * definition, and the qualified ids of the at-least-once flows running that the new version does not run at-least-once.
+     * definition, the qualified ids of the at-least-once flows running that the new version does not run at-least-once, and
+     * where each flow's consumer listens, by the flow's local id (a flow whose consumer accepts no connections is not in it).
      */
-    private record Checked(Map<String, String> schemes, Map<String, JsonObject> configs, Map<String, FlowDefinition> flows, Set<String> leaving) {}
+    private record Checked(Map<String, String> schemes, Map<String, JsonObject> configs, Map<String, FlowDefinition> flows, Set<String> leaving,
+                           Map<String, InetSocketAddress> listening) {}
+
+    /** Where {@code holder} — a flow and its in endpoint, or the node's admin API — listens (D-072). */
+    private record Listener(String holder, InetSocketAddress at) {}
 
     /** A cleanup or housekeeping step that may fail. */
     @FunctionalInterface
@@ -736,6 +750,7 @@ public final class Deployments {
         Map<String, String> schemes = new LinkedHashMap<>();
         Map<String, JsonObject> configs = new LinkedHashMap<>();
         Set<String> outs = new HashSet<>();
+        Set<String> ins = new HashSet<>();   // the in endpoints whose component takes their config: the ones asked where they listen (D-072)
         pkg.endpoints().forEach((id, endpoint) -> {
             if (!Schemas.ENDPOINT.validate(endpoint).valid()) return;   // what its schema says is listed already; nothing here relies on its shape
             String scheme = endpoint.getString("scheme");
@@ -743,17 +758,21 @@ public final class Deployments {
             schemes.put(id, scheme);
             configs.put(id, cfg);
             Component component = components.get(scheme);
+            boolean valid = false;
             if (component == null) {
                 problems.add("endpoint '" + id + "': no component on this node serves the scheme '" + scheme + "'");
             } else {
-                for (Schemas.Problem p : Schemas.check(component.configSchema(), cfg).problems()) {
+                List<Schemas.Problem> refused = Schemas.check(component.configSchema(), cfg).problems();
+                for (Schemas.Problem p : refused) {
                     problems.add("endpoint '" + id + "' config (environment " + config.env() + ") at '" + p.path() + "': " + p.message());
                 }
+                valid = refused.isEmpty();
             }
             if ("in".equals(endpoint.getString("direction"))) {
                 for (String key : RESERVED) {
                     if (cfg.containsKey(key)) problems.add("endpoint '" + id + "' sets '" + key + "': the deploy sets it on every in endpoint (the flow's qualified id, its maxBodyBytes)");
                 }
+                if (valid) ins.add(id);
             } else {
                 outs.add(id);   // the schema allows in and out only
             }
@@ -780,9 +799,12 @@ public final class Deployments {
                 problems.add("flow '" + id + "' is at-least-once with limits.maxBodyBytes " + def.maxBodyBytes() + " above FLOTTILA_BLOB_DURABLE_MAX " + durableMax + " (D-058)");
             }
         });
+        Map<String, EndpointConfig> asked = new TreeMap<>();   // by the local id of the flow each feeds: a pair's line goes on the later one
         feeds.forEach((endpoint, fed) -> {
             if (fed.size() > 1) problems.add("endpoint '" + endpoint + "' is the from endpoint of the flows " + fed + ": an in endpoint feeds one flow");
+            if (ins.contains(endpoint)) asked.put(fed.getFirst(), endpoint(endpoint, schemes.get(endpoint), configs.get(endpoint)));
         });
+        Map<String, InetSocketAddress> listening = listeners(name, asked, problems);
         Set<String> stayQueued = new HashSet<>();   // the qualified ids the new version runs at-least-once
         flows.values().forEach(def -> {
             if (AT_LEAST_ONCE.equals(def.deliveryMode())) stayQueued.add(def.id());
@@ -804,7 +826,55 @@ public final class Deployments {
         }
         if (!problems.isEmpty()) throw invalid(name, problems);
         if (unanswered != null) throw unanswered;
-        return new Checked(schemes, configs, flows, Set.copyOf(leaving));
+        return new Checked(schemes, configs, flows, Set.copyOf(leaving), Map.copyOf(listening));
+    }
+
+    /**
+     * One listener per host:port on a node (D-072). Asks the component of each of {@code asked} — an in endpoint whose config its
+     * schema takes, this node's environment laid over it, by the local id of the flow it feeds — where its consumer would listen,
+     * and adds a line to {@code problems} for every address that overlaps ({@link Listeners#overlap}) the address of a flow before
+     * it in id order (once per pair, on the later flow), the node's admin API ({@code FLOTTILA_ADMIN_HOST/PORT}), or a running
+     * flow of another package, as that flow's check answered it. A FAILED flow holds no port, nor does a FAILED package (it
+     * lists no flows), nor the version of {@code name} this deploy replaces. A component that throws is one line naming the
+     * endpoint and its scheme. Called under the deploy lock: the flows it compares with change only when a deploy returns.
+     *
+     * @return the address each flow's consumer listens on, by its local id
+     */
+    private Map<String, InetSocketAddress> listeners(String name, Map<String, EndpointConfig> asked, List<String> problems) {
+        List<Listener> taken = new ArrayList<>();   // the new version's flows asked so far
+        List<Listener> held = new ArrayList<>();    // the admin API, then every other package's running flows
+        held.add(new Listener("the node's admin API (FLOTTILA_ADMIN_HOST/PORT)", InetSocketAddress.createUnresolved(config.admin().host(), config.admin().port())));
+        for (Deployed d : deployed.values()) {
+            if (d.pkg().name().equals(name)) continue;   // the version this deploy replaces
+            for (Flow f : d.flows()) {
+                if (f.runs()) f.recipe().listensOn().ifPresent(at -> held.add(new Listener(listener(f.id(), f.from().name()), at)));
+            }
+        }
+        Map<String, InetSocketAddress> listening = new LinkedHashMap<>();
+        for (Map.Entry<String, EndpointConfig> each : asked.entrySet()) {
+            EndpointConfig endpoint = each.getValue();
+            Optional<InetSocketAddress> answer;
+            try {
+                answer = Objects.requireNonNull(components.get(endpoint.scheme()).listensOn(endpoint), "listensOn answered null");
+            } catch (RuntimeException thrown) {
+                problems.add("endpoint '" + endpoint.name() + "' (scheme '" + endpoint.scheme() + "'): its component cannot say where its consumer listens: "
+                        + reason(thrown));
+                continue;
+            }
+            if (answer.isEmpty()) continue;
+            Listener at = new Listener(listener(each.getKey(), endpoint.name()), answer.get());
+            Stream.concat(taken.stream(), held.stream()).filter(other -> Listeners.overlap(at.at(), other.at())).forEach(other -> problems.add(at.holder()
+                    + " listens on " + Listeners.shown(at.at()) + ", which overlaps " + Listeners.shown(other.at()) + " of " + other.holder()
+                    + ": one listener per port on a node (D-072)"));
+            taken.add(at);
+            listening.put(each.getKey(), at.at());
+        }
+        return listening;
+    }
+
+    /** A flow as a listener line names it: {@code flow '<id>' (endpoint '<endpoint>')}. */
+    private static String listener(String flow, String endpoint) {
+        return "flow '" + flow + "' (endpoint '" + endpoint + "')";
     }
 
     /**
@@ -858,7 +928,8 @@ public final class Deployments {
         for (Map.Entry<String, FlowDefinition> each : checked.flows().entrySet()) {
             String id = each.getKey();
             try {
-                flows.add(flow(builder, name, version, revision, archive, new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints)), dir));
+                flows.add(flow(builder, name, version, revision, archive,
+                        new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints), Optional.ofNullable(checked.listening().get(id))), dir));
             } catch (RuntimeException refused) {
                 // a step's failure may name a package file by its absolute path: a problem line names it from the package root
                 problems.add("flow '" + id + "' does not build: " + reason(refused).replace(dir + File.separator, ""));

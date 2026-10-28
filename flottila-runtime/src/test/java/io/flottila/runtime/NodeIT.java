@@ -895,6 +895,54 @@ class NodeIT {
         }
     }
 
+    /** {@code name} 1.0.0 on http: the sync flow {@code relay} from {@code in} (127.0.0.1:{@code inPort}, /in) to {@code partnerUrl}. */
+    static PackageDraft relay(String name, int inPort, String partnerUrl) {
+        return PackageDraft.of(name, "1.0.0")
+                .endpoint("in", "http", "in", new JsonObject().put("host", "127.0.0.1").put("port", inPort).put("path", "/in"))
+                .endpoint("partner", "http", "out", new JsonObject().put("url", partnerUrl).put("maxBodyBytes", 4096))
+                .flow("relay", "1.0.0", "sync", "in", 4096, PackageDraft.toPartner());
+    }
+
+    /**
+     * P1-09g (D-072): Vert.x 5.1 shares one server between the servers that listen on one host:port in a Vert.x instance (the
+     * second joins the first's and connections are balanced between them, no bind error), so a second package on the first's
+     * http port would take part of its traffic. The PUT of package two is 422 naming both flows and endpoints; package one alone
+     * is listed, and N POSTs, each on a connection of its own, all reach package one's partner path.
+     */
+    @Test
+    void aSecondPackageOnTheFirstsHttpPortIs422AndTheFirstServesOn() throws Exception {
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), Buffer.buffer("<ok/>"));
+        try {
+            int inPort = freePort();
+            String partnerBase = "http://127.0.0.1:" + partner.actualPort();
+            start(env("ci"), ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())));
+            int admin = node.adminPort();
+            putOk(admin, "one", relay("one", inPort, partnerBase + "/one").zip());
+
+            HttpResponse<String> put;
+            try (HttpClient client = http()) {
+                put = send(client, "PUT", admin, "/admin/packages/two", relay("two", inPort, partnerBase + "/two").zip(), "application/zip");
+            }
+
+            assertEquals(422, put.statusCode(), "the second package on the first's port is refused: " + put.body());
+            assertEquals(new JsonArray().add("flow 'relay' (endpoint 'in') listens on 127.0.0.1:" + inPort + ", which overlaps 127.0.0.1:" + inPort
+                    + " of flow 'one/relay' (endpoint 'in'): one listener per port on a node (D-072)"), new JsonObject(put.body()).getJsonArray("problems"), put.body());
+            assertEquals(Set.of("one"), listed(admin, "packages", "name").keySet(), "only the first package is deployed");
+            int n = 8;
+            for (int i = 0; i < n; i++) {
+                try (HttpClient fresh = http()) {   // a connection of its own: a shared server balances connections, not requests
+                    HttpResponse<String> r = send(fresh, "POST", inPort, "/in", ("<n>" + i + "</n>").getBytes(StandardCharsets.UTF_8), "application/xml");
+                    assertEquals(200, r.statusCode(), "request " + i + ": " + r.body());
+                }
+            }
+            assertEquals(n, partnerSaw.size(), "the partner saw every request once: " + partnerSaw);
+            assertTrue(partnerSaw.stream().allMatch(s -> s.startsWith("/one ")), "every request reached package one: " + partnerSaw);
+        } finally {
+            partner.close().await();
+        }
+    }
+
     @Test
     void closeDrainsAHeldSyncRequestBeforeTheAdminPortRefuses() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
