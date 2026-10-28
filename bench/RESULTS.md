@@ -1,4 +1,93 @@
-# Bench results — Phase 1 (P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
+# Bench results — Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
+
+## Phase 1 gate (P1-10) — cloud VM, 4 vCPU
+
+Date: 2026-10-28. Commit: e129c77 (harness as of P1-10c). Machine: 4 vCPU, 15 GiB, no swap, Java 25.0.5 HotSpot, native
+PostgreSQL 16.15 (default config, `synchronous_commit` on), Linux 6.18; load 0.2–0.7 before each batch, nothing else running
+(the bench itself raises the load to 6–10 on 4 vCPU: client, node, partner and Postgres share the box). Harness:
+`flottila-bench` `NodeBenchMain` (in-process Node, generated bench package, raw Vert.x echo partner), `LedgerMain`,
+`StreamHeapMain`; 20 000 messages after 1 000 warm-up; every cell is the median [min–max] of 3 runs; raw JSON in the session's
+target/P1-10d/. Spread is given where the harness reports per-run values; raw p50, WAL/bodies rates and the
+worker latency, ingress and drain columns are medians only; the BatchingWriter pair is one run. Sync runs use maxInFlight
+64 × concurrency (4096 at c=64): the sync permit is held until the run's trail closes (F-10), so a tight limit would refuse
+what the trail still holds. Database `flottila_bench`, role created locally for the run (no secret in the repo).
+
+**Gate verdict (GATE.md check 9, ARCHITECTURE §7/§13):**
+
+| threshold | measured | verdict |
+|---|---|---|
+| kill -9 ledger 2000/2000 (sent = final-step rows, DLQ 0, work 0) | 2000/2000/2000, DLQ 0, work 0 in 3 of 3 runs; node 1 exit 137 | **met** |
+| sync platform overhead < 2 ms p50 | c=1 (the prototype's definition): 0.74 ms metadata-only, 0.92 ms keep; c=8: 1.34 metadata-only, 3.77 keep; c=64 metadata-only 9.81 | **met at c=1**; not under load on 4 vCPU |
+| durable ACK p99 < 5 ms (target) | 8.82 ms at c=1, 27.4 ms at c=8, 135 ms at c=64 | **missed** → ISSUE-2 |
+| 50 MB body through a stream step without heap growth | growth +0.05 / −0.02 / +0.04 MiB at -Xmx64m, sha256 equal, no OOM | **met** |
+
+**Sync request/reply (HTTP → passthrough → HTTP partner; overhead = p50(flow) − p50(raw), same client):**
+
+| run | p50 ms | p99 ms | max ms | msg/s | overhead p50 ms | raw p50 ms | WAL MB/s | bodies MB/s | bodies GB/h |
+|---|---|---|---|---|---|---|---|---|---|
+| metadata-only c=1 | 0.89 [0.88–0.98] | 2.81 [2.81–3.03] | 16.6 [12.0–113] | 1027 [918–1036] | 0.74 [0.72–0.81] | 0.17 | 1.16 | 0 | 0 |
+| metadata-only c=8 | 2.43 [2.36–2.46] | 10.48 [9.92–11.33] | 26.5 [20.0–29.0] | 2650 [2637–2658] | 1.34 [1.24–1.44] | 1.09 | 2.89 | 0 | 0 |
+| metadata-only c=64 | 17.26 [16.69–19.81] | 51.99 [49.24–56.10] | 89.7 [72.8–101.6] | 3278 [2880–3419] | 9.81 [8.92–10.75] | 8.34 | 3.57 | 0 | 0 |
+| keep c=1 | 1.10 [0.95–1.14] | 3.59 [3.59–3.80] | 65.7 [20.4–132] | 823 [793–927] | 0.92 [0.84–0.98] | 0.16 | 1.85 | 0.56 | 2.01 |
+| keep c=8 | 4.81 [4.80–5.13] | 16.59 [15.62–18.76] | 115 [27–141] | 1438 [1349–1471] | 3.77 [3.74–4.17] | 1.04 | 3.17 | 0.96 | 3.46 |
+| keep c=64 | failed 3/3 at settle — see below and F-13 | | | | | | | | |
+
+**Durable ACK (at-least-once HTTP ingress → 202 after the durable save incl. the `bodies` insert, D-061; the worker runs beside):**
+
+| run | p50 ms | p99 ms | max ms | msg/s | WAL MB/s | bodies MB/s | bodies GB/h |
+|---|---|---|---|---|---|---|---|
+| c=1 | 4.24 [4.23–4.25] | 8.82 [8.78–9.30] | 175 [39–286] | 223 [220–225] | 0.69 | 0.15 | 0.54 |
+| c=8 | 11.89 [11.74–12.56] | 27.44 [27.13–27.94] | 53.1 [45.8–54.9] | 628 [605–635] | 1.83 | 0.42 | 1.52 |
+| c=64 | 60.88 [60.09–62.88] | 135.2 [130.3–148.1] | 194 [169–221] | 955 [912–966] | 2.77 | 0.64 | 2.32 |
+
+**Worker (items queued through the at-least-once ingress at c=64, claim → complete; numbers include the bench's claim/complete
+triggers and the ingest):**
+
+| run | claim→complete p50 / p99 ms | msg/s | ingress p50 / p99 ms, msg/s | drain tail ms | WAL MB/s | bodies GB/h |
+|---|---|---|---|---|---|---|
+| passthrough keep | 67.3 / 229.9 | 597 [583–615] | 59.8 / 129.0, 963 | 12 920 | 1.71 | 1.45 |
+| passthrough metadata-only | 58.6 / 203.2 | 660 [656–668] | 61.3 / 142.1, 936 | 8 938 | 1.51 | 0.80 |
+| 100 KB XSLT keep | 265.6 / 1209.6 | 180 [165–185] | 177.4 / 809.0, 331 | 51 588 | 41.85 | 143.8 |
+| 100 KB XSLT metadata-only | 337.3 / 992.8 | 158 [152–158] | 235.8 / 688.9, 246 | 44 932 | 17.60 | 60.1 |
+
+Metadata-only still grows `bodies`: the at-least-once ingress body is always durable (D-058), 100 KB per XSLT item.
+
+**Kill -9 ledger** (`LedgerMain --messages 2000`, node 1 a child JVM SIGKILLed after ~1000 ACKs, node 2 on an empty data dir
+restores from the deployment row and a shared archive directory — the P1-09c3b path; S3 is covered by LedgerIT):
+
+| run | sent / acked / final rows | missing | DLQ | work | duplicates | re-sent | saved unACKed | held → kill ms |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 2000 / 2000 / 2000 | 0 | 0 | 0 | 8 | 5 | 0 | 475 |
+| 2 | 2000 / 2000 / 2000 | 0 | 0 | 0 | 10 | 7 | 2 | 377 |
+| 3 | 2000 / 2000 / 2000 | 0 | 0 | 0 | 8 | 7 | 0 | 404 |
+
+Held → kill stayed far below the 30 s producer timeout. Duplicates are at-least-once redeliveries, not losses.
+
+**50 MiB through a stream step** (`StreamHeapMain --mb 50 --xmx 64m`, sync flow `stream-copy` → partner, heap after a forced GC):
+heap before 12.2 MiB, after 12.3 / 12.2 / 12.3 MiB, growth +0.05 / −0.02 / +0.04 MiB, max heap 64.0 MiB, 4.9–5.2 s, HTTP 200
+with 52 428 800 bytes, sha256 equal, no OOM. The verdict rests on the post-GC growth: at 64m one whole-body copy would
+still fit beside the live set (12.2 + 50 = 62.2 MiB < 64), so this run does not also prove that buffering would OOM — FIX-65
+moves the check to an -Xmx where before + 50 MiB > max. The node's default FLOTTILA_BLOB_MEMORY_BUDGET is 256 MiB against
+the 64m child heap; one body only is in flight here.
+
+**BatchingWriter pair (P0-10 harness, comparison):** sync 9733 msg/s, p50 5.89, p99 13.17 ms; async 12 404 msg/s, p50 4.58,
+p99 13.11 ms — in P0-10's range (p99 12–18 ms at c=64).
+
+- **The durable ACK misses its target at every concurrency.** Even unloaded (c=1) the p99 is 8.8 ms: two fsync'd commits per
+  message (the ingress row with its body and the work item) on default Postgres. P0-10 measured the batcher alone at p99 8 ms
+  at c=8; the bodies insert adds the rest. The document's own fallback for a sub-5 ms ACK is the non-durable reply mode (§4).
+  ISSUE-2 puts the choice to the owner.
+- **Sync overhead is CPU contention above c=1.** At c=1 the platform adds 0.74–0.92 ms; at c=64 the client, node, partner and
+  Postgres share 4 vCPU and raw itself is 8 ms. `keep` costs ~0.2 ms unloaded and ~2.4 ms at c=8 (trail persists and rows).
+- **c=64 sync keep fails** (F-13, FIX-66): settle targets 7915 / 7178 / 6942, so ≥ 13 085 of the 20 000-request window per run were
+  not answered 200 (503, timeout or error — the harness does not split them, FIX-67). A diagnostic run recorded 5 720 messages,
+  3 800 snapshot write failures and 3 800 more bodies than rows: rows whose bodies persisted were dropped with no log line. Not a GATE.md number, but monitoring is the product: FIX-66 precedes
+  P1-GATE. The harness waited 10 min instead of failing fast (FIX-67).
+- **Bodies growth** at sustained load: 1.5–3.5 GB/h for small messages, up to 144 GB/h for 100 KB XSLT with keep — retention
+  (P2-07) is what bounds it.
+- Not measured: sync at maxInFlight 2c (packet note; the option does not exist yet — FIX-67 adds it and records the run here).
+
+---
 
 ## P1-02 — the message path: admit → context → scope, 10 000 messages at once — cloud VM, 4 vCPU
 

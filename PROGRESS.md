@@ -740,3 +740,14 @@ Measured: nothing recorded (numbers are P1-10d).
 Review: PASS r1 — one whole-body buffer would OOM today (live set 15.3 MiB + 50 MiB > 64 MiB) but the IT does not assert that margin: FIX-65.
 D-054 data: class B (test-author, implementer, reviewer); review rounds 1.
 Next: P1-10d [B] — the native run on the VM and bench/RESULTS.md §Phase 1 gate (fix the native PG role password first).
+
+## 2026-10-28 — P1-10d native Phase 1 measurements, bench/RESULTS.md §Phase 1 gate (packet P1-10 §d) — done, review PASS. Deviation: F-13
+context compacted (re-verified git status / log -3 before the write-up).
+Test first: none (measurement row; harness tests are P1-10a..c).
+Change: bench/RESULTS.md §Phase 1 gate (e129c77, 4 vCPU, native PG 16.15, medians of 3 with spread); issues/ISSUE-2.md; docs/findings/F-13.md.
+Measured: sync overhead p50 0.74 ms (c=1 metadata-only), 0.92 ms keep; durable ACK p99 8.82 / 27.4 / 135 ms at c=1/8/64; ledger 2000/2000 ×3; 50 MiB growth ≤ 0.05 MiB at 64m.
+Verdicts: ledger met; sync < 2 ms met at c=1 (keep c=8 3.77 ms); durable ACK p99 < 5 ms missed → ISSUE-2; 50 MB met.
+Found: c=64 sync keep fails 3/3 (≥ 13 085 / 21 000 not 200; 3 800 rows dropped with no log, target/P1-10d-f13-*.log) — F-13 major, §8 known-gap note + changelog → FIX-66 [C], dependency of P1-GATE; FIX-67 harness fail-fast.
+Env: verifier created the local role/db flottila_bench on the VM only (nothing in the repo).
+D-054 data: class B (verifier ×2 batches, reviewer); review rounds 2.
+Next: FIX-66 [C] — designer first (F-13: backpressure or retry, a log line per given-up row, sizing).
