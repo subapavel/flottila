@@ -760,3 +760,12 @@ Checks: verify -Pit core+runtime VERIFIED_PASS (api 71, testkit 220, core 323, r
 Review: PASS r1. Raised FIX-68 (store closes before trails at node stop — RestoreIT now logs it), FIX-69 (window schedule throw strands batches), FIX-70 (§4 pointer, test name, scoped PIT).
 D-054 data: class C (designer, test-author ×2, implementer, reviewer); review rounds 1.
 Next: FIX-67 [A] — harness fail-fast, status split, maxInFlight option and the c=64 rerun that closes F-13.
+
+## 2026-10-28 — FIX-67 bench harness: 503s apart from errors, settle fail-fast on snapshotWriteFailures, --max-in-flight; c=64 rerun closes F-13 — done, review PASS
+Test first: NodeBenchMainSettleTest 7 (+1 landed-and-rose case), HarnessTest +3 (+1 probe wiring r2), NodeBenchMainTest 3, NodeBenchMainIT 2, WarmupIT +1 worker split (r2) — observed red (target/FIX-67-red.log).
+Change: flottila-bench NodeBenchMain — Window refused/errors (503 = refused), Probe + settle(recorded, failuresAtStart, within, probe) failing a sync settle on any counter rise (also in the landed poll), baselines from /health before each load; --max-in-flight (64×c sync, c otherwise); JSON refused, errors, warmupFailed, maxInFlight. LedgerMain/StreamHeapMain keep their limits.
+Checks: verify -Pit -pl flottila-bench -am VERIFIED_PASS (target/FIX-67-verify.log; bench r2 97/0/0/0 target/FIX-67-r2-all.log); coverage no decrease (bench 96.7/95.3); mutants target/FIX-67-mut.log, -m6.log, -r2-m12.log, -r2-m13.log (M3b equivalent on a fresh node, M9 tolerated).
+Measured: c=64 sync rerun ×9 (keep 4096 / keep 128 / metadata-only 128): settle with the counter flat, 0 "was not recorded" → F-13 closed; ≈ 70 % (keep) / 26 % (metadata-only) 503 refusals, ~1000 answered msg/s with keep (bench/RESULTS.md).
+Review: FAIL r1 (RESULTS latency claim wrong — the columns include the 503s; probe counter wiring and worker split unpinned), PASS r2.
+D-054 data: class A (test-author ×3, implementer, verifier, reviewer ×2); review rounds 2.
+Next: P1-GATE [G] — gate-reviewer (Fable 5.1); ISSUE-2 open.

@@ -145,6 +145,51 @@ class NodeBenchMainWarmupIT {
         }
     }
 
+    @Test
+    void aWorkerWindowKeepsTheIngressRefusalsApartFromItsErrors() throws Exception {
+        // the worker window against a stub ingress (no node): its n-th request is 503, 500, then 202 in turn; a 202 first logs
+        // a claim and a complete for its item in bench_work_log, as the triggers would, so the window has a distribution
+        Migrations.migrate(jdbcUrl(), pg.getUsername(), pg.getPassword());
+        sql("delete from work");
+        Vertx vertx = Vertx.vertx();
+        try {
+            Pool pool = pool(vertx);
+            pool.query(NodeBenchMain.PREPARE).execute().await();
+            java.util.concurrent.atomic.AtomicInteger n = new java.util.concurrent.atomic.AtomicInteger();
+            io.vertx.core.http.HttpServer stub = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(bytes -> {
+                if (req.path().equals("/health")) {
+                    req.response().end(new JsonObject().put("status", "UP").put("snapshotWriteFailures", 0).encode());
+                    return;
+                }
+                int i = n.getAndIncrement();
+                switch (i % 3) {
+                    case 0 -> req.response().setStatusCode(503).end("busy");
+                    case 1 -> req.response().setStatusCode(500).end("nope");
+                    default -> pool.query("insert into bench_work_log(seq, event, at) values (" + i + ", 'update', clock_timestamp()), (" + i
+                            + ", 'delete', clock_timestamp() + interval '1 millisecond')").execute()
+                            .onSuccess(logged -> req.response().setStatusCode(202).end())
+                            .onFailure(failed -> req.response().setStatusCode(599).end(String.valueOf(failed)));
+                }
+            })).listen(0, "127.0.0.1").await();
+            NodeBenchMain.Options o = NodeBenchMain.options(new String[] {"--scenario", "worker", "--messages", "6", "--concurrency", "2"});
+            NodeBenchMain.Harness h = new NodeBenchMain.Harness(o, vertx, pool,
+                    vertx.createHttpClient(new io.vertx.core.http.HttpClientOptions(), new io.vertx.core.http.PoolOptions().setHttp1MaxSize(2)),
+                    io.vertx.core.buffer.Buffer.buffer("<Invoice/>"), stub.actualPort(), 0);
+
+            // the 2 accepted items were never recorded by a node: recorded -2 makes the landed target 0 (the queue is empty)
+            JsonObject json = h.measure(-2, stub.actualPort());
+
+            JsonObject ingress = json.getJsonObject("ingress");
+            assertEquals(2, ingress.getInteger("refused"), "the ingress' two 503s: " + ingress.encode());
+            assertEquals(2, ingress.getInteger("errors"), "the ingress' two 500s: " + ingress.encode());
+            assertEquals(2, json.getInteger("refused"), "the worker window keeps the ingress' refusals as refusals: " + json.encode());
+            assertEquals(2, json.getInteger("errors"), "its errors are the ingress' errors and the items parked (none): " + json.encode());
+            assertEquals(4, json.getInteger("failed"), json.encode());
+        } finally {
+            vertx.close().await();
+        }
+    }
+
     // --- fixtures
 
     static String[] args(String scenario, int warmup, Path out, String... extra) {

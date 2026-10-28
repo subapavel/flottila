@@ -209,7 +209,8 @@ public final class LedgerMain {
     /** The node bench's options for the ledger: the at-least-once (ack) package, passthrough, every payload kept. */
     static NodeBenchMain.Options bench(Options o) {
         return new NodeBenchMain.Options(NodeBenchMain.Scenario.ACK, NodeBenchMain.Recording.KEEP, NodeBenchMain.Step.PASSTHROUGH, o.messages(), 0,
-                CONCURRENCY, "ledger", o.out(), true, o.host(), o.port(), o.db(), o.user(), o.password(), o.commit());
+                CONCURRENCY, NodeBenchMain.defaultInFlight(NodeBenchMain.Scenario.ACK, CONCURRENCY), "ledger", o.out(), true, o.host(), o.port(),
+                o.db(), o.user(), o.password(), o.commit());
     }
 
     static int measure(Options o) throws Exception {

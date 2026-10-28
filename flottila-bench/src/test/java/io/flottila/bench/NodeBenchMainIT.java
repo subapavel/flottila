@@ -67,6 +67,10 @@ class NodeBenchMainIT {
         assertEquals(0, json.getInteger("warmup"));
         assertEquals(4, json.getInteger("concurrency"));
         assertEquals(0, json.getInteger("failed"), "no message failed: " + json.encode());
+        assertEquals(0, json.getInteger("refused"), "the record counts the 503 refusals (FIX-67): " + json.encode());
+        assertEquals(0, json.getInteger("errors"), "the record counts the other failures apart (FIX-67): " + json.encode());
+        assertEquals(0, json.getInteger("warmupFailed"), "the record counts the warm-up's failures (FIX-67/FIX-63): " + json.encode());
+        assertEquals(scenario.equals("sync") ? 64 * 4 : 4, json.getInteger("maxInFlight"), "the default flow limit: " + json.encode());
         assertEquals(true, json.getBoolean("syncCommit"), "observed on the server: " + json.encode());
         assertEquals("test", json.getString("commit"));
         assertNotNull(json.getString("date"), "the record carries its date");
@@ -120,6 +124,20 @@ class NodeBenchMainIT {
 
         assertEquals(MESSAGES, count(db, "select count(distinct id) from messages"),
                 "the flow's requests went through the node, the raw baseline's went straight to the echo (else " + 2 * MESSAGES + ")");
+    }
+
+    @Test
+    void aSyncRunWithAnExplicitMaxInFlightRecordsItAndTheRawBaselinesCounts() throws Exception {
+        String db = database();
+        Path out = dir.resolve("sync-limited.json");
+        // 100 is not the default (64 x 2 = 128): the record shows the option, not the default
+        assertEquals(0, NodeBenchMain.run(args(db, "sync", "metadata-only", 2, out, "--max-in-flight", "100")));
+        JsonObject json = new JsonObject(Files.readString(out));
+        assertEquals(100, json.getInteger("maxInFlight"), "the record carries the run's --max-in-flight: " + json.encode());
+        JsonObject raw = json.getJsonObject("raw");
+        assertEquals(0, raw.getInteger("refused"), "the raw baseline counts refusals too: " + raw.encode());
+        assertEquals(0, raw.getInteger("errors"), raw.encode());
+        assertEquals(MESSAGES, count(db, "select count(distinct id) from messages"), "the run went through the node");
     }
 
     @Test

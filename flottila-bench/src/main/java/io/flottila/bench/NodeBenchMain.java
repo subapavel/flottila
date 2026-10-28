@@ -41,6 +41,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongPredicate;
+import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -60,11 +62,14 @@ import java.util.zip.ZipOutputStream;
  *       {@code drainTailMs} (the last 202 → the queue empty).</li>
  * </ul>
  * The flow is {@code [xslt?, to partner]} ({@code --step}; xslt sends a ~100 KB generated invoice, passthrough a one-line one)
- * under {@code --recording}. Its {@code maxInFlight} is {@code --concurrency} for at-least-once (the ingress permit is back when
- * the 202 is decided, and the worker runs at most that many items) and {@value #SYNC_PERMITS_PER_CLIENT} times it for sync: a
- * sync message holds its permit until its recording closed, after the reply (D-064), so a client's next request comes while
- * earlier ones still hold theirs; a refusal counts as failed. The partner's pool has {@code --concurrency} connections. Every
- * record carries
+ * under {@code --recording}. Its {@code maxInFlight} is {@code --max-in-flight}, by default {@code --concurrency} for
+ * at-least-once (the ingress permit is back when the 202 is decided, and the worker runs at most that many items) and
+ * {@value #SYNC_PERMITS_PER_CLIENT} times it for sync: a sync message holds its permit until its recording closed, after the
+ * reply (D-064), so a client's next request comes while earlier ones still hold theirs. A window counts its 503s
+ * ({@code refused}, the flow's admission) apart from its {@code errors} (any other status, a failed request); {@code failed} is
+ * both, and the record adds the warm-up's ({@code warmupFailed}). A sync window's wait for its rows fails at once when the
+ * node's /health {@code snapshotWriteFailures} rises above its value before the load. The partner's pool has
+ * {@code --concurrency} connections. Every record carries
  * {@code walBytesPerSecond} ({@code pg_current_wal_lsn} delta), {@code bodiesBytesPerSecond} ({@code pg_total_relation_size('bodies')}
  * delta) — both taken once what the window accepted landed (recorded, the work queue empty) and divided by the window's
  * {@code elapsedMs} — and {@code bodiesGrowthPerHour} (the latter × 3600).
@@ -74,7 +79,7 @@ import java.util.zip.ZipOutputStream;
  * Flyway's history and, for {@code worker} only, installs the two triggers (any other run drops them). Arguments: BenchMain's
  * {@code --host --port --db --user --password --messages --warmup --concurrency --name --out --sync-commit --commit} plus
  * {@code --scenario sync|ack|worker} (required), {@code --recording keep|metadata-only} (keep), {@code --step passthrough|xslt}
- * (passthrough). {@code --sync-commit} is on or off, and off is refused by the run; a {@code --db} whose name lacks "bench" is
+ * (passthrough), {@code --max-in-flight} (a positive number). {@code --sync-commit} is on or off, and off is refused by the run; a {@code --db} whose name lacks "bench" is
  * refused before anything connects.
  *
  * @since 0.1
@@ -91,8 +96,9 @@ public final class NodeBenchMain {
     public enum Step { PASSTHROUGH, XSLT }
 
     /** One run's command line. */
-    public record Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, String name,
-                          Path out, boolean syncCommit, String host, int port, String db, String user, String password, String commit) {}
+    public record Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
+                          String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
+                          String commit) {}
 
     /** The flow's and the partner's max body. */
     static final long MAX_BODY_BYTES = 1024 * 1024;
@@ -181,12 +187,32 @@ public final class NodeBenchMain {
         if (!db.contains("bench")) {
             throw new IllegalArgumentException("--db '" + db + "' does not name a bench database (its name contains 'bench'): the run truncates every table in it");
         }
+        int concurrency = Integer.parseInt(a.getOrDefault("concurrency", "64"));
+        String limit = a.get("max-in-flight");
+        int maxInFlight = limit == null ? defaultInFlight(scenario, concurrency) : positive("max-in-flight", limit);
         return new Options(scenario, recording, step, Integer.parseInt(a.getOrDefault("messages", "20000")),
-                Integer.parseInt(a.getOrDefault("warmup", "1000")), Integer.parseInt(a.getOrDefault("concurrency", "64")), name,
+                Integer.parseInt(a.getOrDefault("warmup", "1000")), concurrency, maxInFlight, name,
                 Path.of(a.getOrDefault("out", "bench/out/" + name + ".json")), syncCommit.equals("on"),
                 a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")), db,
                 a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
                 a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")));
+    }
+
+    /** The flow's in-flight limit when {@code --max-in-flight} is not given (see the class comment). */
+    static int defaultInFlight(Scenario scenario, int concurrency) {
+        return scenario == Scenario.SYNC ? SYNC_PERMITS_PER_CLIENT * concurrency : concurrency;
+    }
+
+    /** {@code raw} as a positive int; anything else is refused naming {@code --key} and the value. */
+    private static int positive(String key, String raw) {
+        int value;
+        try {
+            value = Integer.parseInt(raw);
+        } catch (NumberFormatException notANumber) {
+            value = 0;
+        }
+        if (value < 1) throw new IllegalArgumentException("--" + key + " must be a positive number, was '" + raw + "'");
+        return value;
     }
 
     /** {@code value}'s CLI name: lower case, dashes for underscores. */
@@ -242,10 +268,13 @@ public final class NodeBenchMain {
         Node node = Node.start(nodeConfig(o, data), vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(),
                 xml.languages());
         try {
-            h.deploy(node.adminPort(), benchPackage(o, in, echo.actualPort()));
-            int warmedUp = o.warmup() - h.load(in, "/in", o.warmup()).failed();
-            h.settle(warmedUp, DRAIN);
-            measured = h.measure(warmedUp);   // settled too: the node stops with nothing in flight
+            int admin = node.adminPort();
+            h.deploy(admin, benchPackage(o, in, echo.actualPort()));
+            long failuresAtStart = h.snapshotWriteFailures(admin);
+            int warmupFailed = h.load(in, "/in", o.warmup()).failed();
+            int warmedUp = o.warmup() - warmupFailed;
+            h.settle(warmedUp, failuresAtStart, DRAIN, h.probe(admin));
+            measured = h.measure(warmedUp, admin).put("warmupFailed", warmupFailed);   // settled too: the node stops with nothing in flight
         } finally {
             node.close();   // flushes the message store: its rows are in before the record is written
         }
@@ -273,9 +302,9 @@ public final class NodeBenchMain {
         return 0;
     }
 
-    /** The flow's in-flight limit (see the class comment). */
+    /** The flow's in-flight limit: {@code --max-in-flight}, else {@link #defaultInFlight}. */
     static int inFlight(Options o) {
-        return o.scenario() == Scenario.SYNC ? SYNC_PERMITS_PER_CLIENT * o.concurrency() : o.concurrency();
+        return o.maxInFlight();
     }
 
     static Pool pool(Vertx vertx, Options o, int size) {
@@ -364,11 +393,20 @@ public final class NodeBenchMain {
         throw (T) failure;
     }
 
-    /** One measured window: the latency samples, the failures and the window's length. */
-    record Window(LatencyStats latency, int failed, long elapsedNanos, String firstFailure) {
+    /**
+     * One measured window: the latency samples, the failures — {@code refused} (503, the flow's admission) apart from
+     * {@code errors} (any other status, a request that failed), {@code firstFailure} the first error's text — and its length.
+     */
+    record Window(LatencyStats latency, int refused, int errors, long elapsedNanos, String firstFailure) {
+        /** What was not answered as expected: the refusals and the errors. */
+        int failed() {
+            return refused + errors;
+        }
+
         JsonObject toJson(int messages) {
-            return new JsonObject().put("messages", messages).put("failed", failed).put("elapsedMs", elapsedNanos / 1_000_000.0)
-                    .put("throughputPerSecond", (messages - failed) / (elapsedNanos / 1_000_000_000.0))
+            return new JsonObject().put("messages", messages).put("failed", failed()).put("refused", refused).put("errors", errors)
+                    .put("elapsedMs", elapsedNanos / 1_000_000.0)
+                    .put("throughputPerSecond", (messages - failed()) / (elapsedNanos / 1_000_000_000.0))
                     .put("p50Ms", latency.percentileMillis(50)).put("p95Ms", latency.percentileMillis(95)).put("p99Ms", latency.percentileMillis(99))
                     .put("maxMs", latency.maxMillis()).put("meanMs", latency.meanMillis()).put("firstFailure", firstFailure);
         }
@@ -380,6 +418,12 @@ public final class NodeBenchMain {
     /** A status and a body. */
     record Answer(int status, Buffer body) {}
 
+    /**
+     * What a settle reads and waits on: whether {@code recorded} messages landed (and the work queue is empty), the node's
+     * /health {@code snapshotWriteFailures}, the clock that bounds the wait and the pause between polls.
+     */
+    record Probe(LongPredicate landed, LongSupplier snapshotWriteFailures, LongSupplier nanoTime, Runnable pause) {}
+
     /** What a run drives: the client, the bench's own pool, the ports and the body. */
     record Harness(Options o, Vertx vertx, Pool pool, HttpClientAgent client, Buffer body, int in, int echo) {
 
@@ -388,16 +432,19 @@ public final class NodeBenchMain {
             return o.scenario() == Scenario.SYNC ? 200 : 202;
         }
 
-        /** The scenario's window, {@code recorded} messages of the node recorded before it (the warmup's). */
-        JsonObject measure(int recorded) {
+        /**
+         * The scenario's window, {@code recorded} messages of the node recorded before it (the warmup's); the node's admin API
+         * on {@code admin} answers /health.
+         */
+        JsonObject measure(int recorded, int admin) {
             return switch (o.scenario()) {
                 case SYNC -> {
                     JsonObject raw = load(echo, "/echo", o.messages(), 200).toJson(o.messages());
-                    JsonObject flow = window(recorded);
+                    JsonObject flow = window(recorded, admin);
                     yield flow.put("raw", raw).put("overheadP50Ms", flow.getDouble("p50Ms") - raw.getDouble("p50Ms"));
                 }
-                case ACK -> window(recorded);
-                case WORKER -> worker(recorded);
+                case ACK -> window(recorded, admin);
+                case WORKER -> worker(recorded, admin);
             };
         }
 
@@ -406,10 +453,11 @@ public final class NodeBenchMain {
          * accepted landed — a sync message's recording closes after its reply, an ack's later steps are the worker's — so the
          * rates hold the window's bytes, divided by the load's duration.
          */
-        private JsonObject window(int recorded) {
+        private JsonObject window(int recorded, int admin) {
+            long failuresAtStart = snapshotWriteFailures(admin);
             Snapshot before = snapshot();
             Window w = load(in, "/in", o.messages(), accepted());
-            settle(recorded + o.messages() - w.failed(), DRAIN);
+            settle(recorded + o.messages() - w.failed(), failuresAtStart, DRAIN, probe(admin));
             Snapshot after = snapshot();
             return w.toJson(o.messages()).mergeIn(rates(before, after, w.elapsedNanos()));
         }
@@ -419,18 +467,21 @@ public final class NodeBenchMain {
          * complete. The record also carries the ingress' own window ({@code ingress}) and {@code drainTailMs}, from the last
          * ingress answer until the queue was empty: which side set the rate.
          */
-        private JsonObject worker(int recorded) {
+        private JsonObject worker(int recorded, int admin) {
             pool.query("truncate bench_work_log").execute().await();
+            long failuresAtStart = snapshotWriteFailures(admin);
             Snapshot before = snapshot();
             long started = System.nanoTime();
             Window queued = load(in, "/in", o.messages(), accepted());
             long answered = System.nanoTime();
-            settle(recorded + o.messages() - queued.failed(), DRAIN);
+            settle(recorded + o.messages() - queued.failed(), failuresAtStart, DRAIN, probe(admin));
             long drained = System.nanoTime();
             Snapshot after = snapshot();
             LatencyStats claimToComplete = new LatencyStats(o.messages());
             for (Row r : pool.query(CLAIM_TO_COMPLETE).execute().await()) claimToComplete.record(r.getLong(0));
-            return new Window(claimToComplete, failed(queued, before, after), drained - started, queued.firstFailure()).toJson(o.messages())
+            // the ingress' refusals stay refusals; an item parked in the window is an error
+            return new Window(claimToComplete, queued.refused(), failed(queued, before, after) - queued.refused(), drained - started,
+                    queued.firstFailure()).toJson(o.messages())
                     .mergeIn(rates(before, after, drained - started)).put("ingress", queued.toJson(o.messages()))
                     .put("drainTailMs", (drained - answered) / 1_000_000.0);
         }
@@ -455,17 +506,56 @@ public final class NodeBenchMain {
 
         /**
          * Waits until {@code messages} holds at least {@code recorded} messages and the work queue is empty, at most
-         * {@code within} (a run waits {@link #DRAIN}).
+         * {@code within}; the node's counter is not read.
          */
         void settle(long recorded, Duration within) {
-            long deadline = System.nanoTime() + within.toNanos();
-            String landed = "select (select count(distinct id) from messages) >= " + recorded + " and not exists (select 1 from work)";
-            while (!pool.query(landed).execute().await().iterator().next().getBoolean(0)) {
-                if (System.nanoTime() - deadline > 0) {
+            settle(recorded, 0, within, new Probe(this::landed, () -> 0, System::nanoTime, this::pause));
+        }
+
+        /**
+         * Waits until {@code recorded} messages landed and the work queue is empty, at most {@code within} on the probe's clock
+         * (a run waits {@link #DRAIN}). A sync run fails at the first poll whose {@code snapshotWriteFailures} is above
+         * {@code failuresAtStart} (read before the load), landed or not: a sync message's rows are written after its reply, so
+         * a write failure is a lost row and the window would never land. An at-least-once run never fails on the counter: it
+         * also counts the ingress' refusals, which are not losses.
+         */
+        void settle(long recorded, long failuresAtStart, Duration within, Probe probe) {
+            long deadline = probe.nanoTime().getAsLong() + within.toNanos();
+            while (true) {
+                boolean landed = probe.landed().test(recorded);
+                if (o.scenario() == Scenario.SYNC) {
+                    long failures = probe.snapshotWriteFailures().getAsLong();
+                    if (failures > failuresAtStart) {
+                        throw new IllegalStateException("the node's snapshotWriteFailures rose from " + failuresAtStart + " to " + failures
+                                + " while " + recorded + " recorded messages were awaited: the window lost rows");
+                    }
+                }
+                if (landed) return;
+                if (probe.nanoTime().getAsLong() - deadline > 0) {
                     throw new IllegalStateException(recorded + " recorded messages and an empty work queue did not land within " + within);
                 }
-                vertx.timer(5).await();
+                probe.pause().run();
             }
+        }
+
+        /** The run's probe: the database, the node's /health on {@code admin}, the system clock, a 5 ms timer. */
+        Probe probe(int admin) {
+            return new Probe(this::landed, () -> snapshotWriteFailures(admin), System::nanoTime, this::pause);
+        }
+
+        /** Whether {@code messages} holds at least {@code recorded} messages and the work queue is empty. */
+        private boolean landed(long recorded) {
+            String landed = "select (select count(distinct id) from messages) >= " + recorded + " and not exists (select 1 from work)";
+            return pool.query(landed).execute().await().iterator().next().getBoolean(0);
+        }
+
+        private void pause() {
+            vertx.timer(5).await();
+        }
+
+        /** The node's /health {@code snapshotWriteFailures} (its body carries the counter whether the node is up or down). */
+        long snapshotWriteFailures(int admin) {
+            return new JsonObject(exchange(HttpMethod.GET, admin, "/health", "text/plain", Buffer.buffer()).body()).getLong("snapshotWriteFailures");
         }
 
         void deploy(int admin, byte[] zip) {
@@ -480,13 +570,15 @@ public final class NodeBenchMain {
 
         /**
          * {@code count} POSTs of the body to 127.0.0.1:{@code port}{@code path} from {@code concurrency} virtual threads, each
-         * sending its share one after the other; latency = request to the answer's last byte, a failure any other status or a
-         * request that failed.
+         * sending its share one after the other; latency = request to the answer's last byte. An answer other than
+         * {@code status} is a refusal when it is 503 (the flow's admission), else an error, as is a request that failed; the
+         * first error's text is kept.
          */
         Window load(int port, String path, int count, int status) {
             LatencyStats latency = new LatencyStats(Math.max(1, count));
             AtomicInteger next = new AtomicInteger();
-            AtomicInteger failed = new AtomicInteger();
+            AtomicInteger refused = new AtomicInteger();
+            AtomicInteger errors = new AtomicInteger();
             AtomicReference<String> first = new AtomicReference<>();
             long started = System.nanoTime();
             try (ExecutorService senders = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -494,26 +586,31 @@ public final class NodeBenchMain {
                     senders.execute(() -> {
                         for (int i = next.getAndIncrement(); i < count; i = next.getAndIncrement()) {
                             long t0 = System.nanoTime();
-                            String failure = send(port, path, status);
+                            Outcome outcome = send(port, path);
                             latency.record(System.nanoTime() - t0);
-                            if (failure != null) {
-                                failed.incrementAndGet();
-                                first.compareAndSet(null, failure);
+                            if (outcome.status() == status) continue;
+                            if (outcome.status() == 503) {
+                                refused.incrementAndGet();
+                            } else {
+                                errors.incrementAndGet();
+                                first.compareAndSet(null, outcome.text());
                             }
                         }
                     });
                 }
             }
-            return new Window(latency, failed.get(), System.nanoTime() - started, first.get());
+            return new Window(latency, refused.get(), errors.get(), System.nanoTime() - started, first.get());
         }
 
-        /** Null when the answer has {@code status}, else what went wrong. */
-        private String send(int port, String path, int status) {
+        /** One request's status and its text; status 0 for a request that failed. */
+        private record Outcome(int status, String text) {}
+
+        private Outcome send(int port, String path) {
             try {
                 Answer a = exchange(HttpMethod.POST, port, path, "application/xml", body);
-                return a.status() == status ? null : "HTTP " + a.status() + ": " + a.body();
+                return new Outcome(a.status(), "HTTP " + a.status() + ": " + a.body());
             } catch (Exception failure) {   // await rethrows a checked cause (a refused connection) sneakily
-                return String.valueOf(failure);
+                return new Outcome(0, String.valueOf(failure));
             }
         }
 

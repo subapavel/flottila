@@ -141,6 +141,7 @@ public final class StreamHeapMain {
     /** The node bench's options for this run's database: its pool and its harness (health, deploy). */
     static NodeBenchMain.Options bench(Options o) {
         return new NodeBenchMain.Options(NodeBenchMain.Scenario.SYNC, NodeBenchMain.Recording.KEEP, NodeBenchMain.Step.PASSTHROUGH, 1, 1, 1,
+                NodeBenchMain.defaultInFlight(NodeBenchMain.Scenario.SYNC, 1),
                 "stream-heap", o.out(), true, o.host(), o.port(), o.db(), o.user(), o.password(), o.commit());
     }
 

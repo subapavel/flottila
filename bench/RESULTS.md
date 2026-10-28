@@ -85,7 +85,21 @@ p99 13.11 ms — in P0-10's range (p99 12–18 ms at c=64).
   P1-GATE. The harness waited 10 min instead of failing fast (FIX-67).
 - **Bodies growth** at sustained load: 1.5–3.5 GB/h for small messages, up to 144 GB/h for 100 KB XSLT with keep — retention
   (P2-07) is what bounds it.
-- Not measured: sync at maxInFlight 2c (packet note; the option does not exist yet — FIX-67 adds it and records the run here).
+- **c=64 sync rerun after FIX-66/FIX-67** (2026-10-28, f7707a2 + the FIX-67 harness, same machine and arguments, 3 runs each;
+  JSON target/FIX-67/, exits target/FIX-67-exits.log). The harness now splits 503 refusals from errors and fails the settle
+  the moment `snapshotWriteFailures` rises. Every run settled with the counter flat and no "was not recorded" WARNING, so
+  every answered message has its rows: **F-13 closed**. The runs exit 3 because requests were refused (≈ 70 % with keep, 26 % metadata-only) — the closed-loop
+  client re-sends at once after a 503, so the refusals measure the overload signal working (F-10), not a fault:
+
+  | case | refused / 20 000 | errors | warm-up refused | p50 ms | p99 ms | answered msg/s | overhead p50 ms |
+  |---|---|---|---|---|---|---|---|
+  | keep, maxInFlight 4096 (64c) | 14 242 [13 482–14 260] | 0 | 0 | 13.97 [13.01–16.69] | 70.1 [60.5–72.0] | 982 [981–1074] | 6.82 [6.02–8.97] |
+  | keep, maxInFlight 128 (2c) | 14 085 [13 757–14 377] | 0 | 402 [188–415] | 16.08 [14.75–17.26] | 70.7 [63.7–85.8] | 909 [888–968] | 7.96 [7.44–8.84] |
+  | metadata-only, maxInFlight 128 | 5 249 [4 596–6 440] | 0 | 359 [253–424] | 18.56 [18.33–19.18] | 57.1 [50.9–61.5] | 2301 [2013–2474] | 10.68 [9.81–11.83] |
+
+  With `keep`, sync at c=64 on 4 vCPU is bounded by the trail's persists and row writes (~1000 answered msg/s), and the permit
+  limit (64c or 2c) hardly changes it. The p50, p99 and overhead columns count every request, the fast 503s included
+  (NodeBenchMain:590), so they are not the latency of admitted requests and are not comparable with the clean runs above.
 
 ---
 
