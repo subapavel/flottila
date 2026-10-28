@@ -7,6 +7,7 @@ import io.flottila.api.Key;
 import io.flottila.api.Keys;
 import io.flottila.api.Props;
 import io.flottila.core.batch.BatchingWriter;
+import io.flottila.core.batch.OverloadedException;
 import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.db.Migrations;
@@ -38,10 +39,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -287,6 +290,92 @@ class PgMessageStoreIT {
         assertEquals(List.of(1), steps, "one key row, at the lowest step of the batch");
         assertEquals(List.of(1, 3), store.timeline("m-1").await().stream().map(Snapshot::step).toList());
         assertEquals(List.of("m-1"), page("4711", Optional.empty(), Page.MAX_LIMIT).items());
+    }
+
+    /**
+     * FIX-66 (F-13, D-071): a writer of one commit in flight and a backlog of two, its first commit held on a payloads row
+     * another session keeps uncommitted. 50 concurrent {@code recordWaiting} calls overflow the backlog: none fails while the
+     * commit is held, and once it is let go every row lands and nothing is counted failed. {@code record} past the full backlog
+     * still fails at once with {@link OverloadedException} and is counted; a waiting row whose commit fails is counted as well.
+     */
+    @Test
+    void recordWaitingPastTheBacklogLandsEveryRow() throws Throwable {
+        store.close();
+        store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(2, Duration.ZERO, 1, 2, Duration.ofMinutes(1)));
+        List<Future<Void>> waited = new CopyOnWriteArrayList<>();
+        Future<Void> plugged = held(997L, () -> {
+            List<Thread> callers = new ArrayList<>();
+            for (int i = 1; i <= 50; i++) {
+                Snapshot s = snap(String.format("w-%03d", i), 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty());
+                callers.add(Thread.ofVirtual().start(() -> waited.add(store.recordWaiting(s))));
+            }
+            for (Thread t : callers) {
+                if (!t.join(Duration.ofSeconds(20))) fail("recordWaiting did not return: " + List.of(t.getStackTrace()));
+            }
+            assertEquals(50, waited.size());
+            assertEquals(List.of(), waited.stream().filter(Future::failed).map(f -> String.valueOf(f.cause())).toList(),
+                    "48 rows find the backlog full while the commit is held: they wait, none fails");
+            assertEquals(0, store.failed(), "nothing counted failed while they wait");
+            assertTrue(waited.stream().noneMatch(Future::isComplete), "nothing can commit while the only commit is held");
+        });
+        plugged.await(20, TimeUnit.SECONDS);
+        Future.join(new ArrayList<>(waited)).otherwiseEmpty().await(60, TimeUnit.SECONDS);
+        assertEquals(List.of(), waited.stream().filter(f -> !f.succeeded()).map(String::valueOf).toList(), "every waiting row landed");
+        assertEquals(51, count("messages"), "the plug and the 50 rows");
+        for (int i = 1; i <= 50; i++) assertEquals(1, store.timeline(String.format("w-%03d", i)).await().size(), "w-" + i);
+        assertEquals(0, store.failed(), "no row was given up");
+
+        List<Future<Void>> queued = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicReference<Future<Void>> overflow = new java.util.concurrent.atomic.AtomicReference<>();
+        Future<Void> plugged2 = held(996L, () -> {
+            queued.add(store.record(snap("r-1", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty())));
+            queued.add(store.record(snap("r-2", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty())));
+            assertTrue(queued.stream().noneMatch(Future::isComplete), "fixture: the backlog of two is full");
+            overflow.set(store.record(snap("r-3", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty())));
+            assertTrue(overflow.get().isComplete(), "record past the full backlog never waits");
+            assertInstanceOf(OverloadedException.class, overflow.get().cause(), "it fails Overloaded at once: " + overflow.get().cause());
+            assertEquals(1, store.failed(), "and is counted");
+        });
+        plugged2.await(20, TimeUnit.SECONDS);
+        Future.all(queued).await(20, TimeUnit.SECONDS);
+        assertEquals(List.of(), store.timeline("r-3").await(), "the refused row was never written");
+        assertEquals(1, store.failed());
+
+        pool.query("alter table messages add constraint no_w_bad check (id <> 'w-bad')").execute().await();
+        try {
+            Future<Void> bad = store.recordWaiting(snap("w-bad", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty()));
+            store.flush().otherwiseEmpty().await(20, TimeUnit.SECONDS);
+            assertTrue(bad.failed(), "fixture: its commit failed: " + bad);
+            assertEquals(2, store.failed(), "a waiting row whose commit failed is counted too");
+        } finally {
+            pool.query("alter table messages drop constraint no_w_bad").execute().await();
+        }
+    }
+
+    /**
+     * Runs {@code staged} while another session holds an uncommitted payloads row of hash {@code plugHash} and a plug snapshot
+     * carrying it is this store's only commit, waiting on that row; then rolls the holder back. Returns the plug's save.
+     */
+    Future<Void> held(long plugHash, org.junit.jupiter.api.function.Executable staged) throws Throwable {
+        SqlConnection holder = pool.getConnection().await();
+        Transaction tx = holder.begin().await();
+        try {
+            holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, 1, 'sha256-64')")
+                    .execute(Tuple.of(Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(plugHash).array()))).await();
+            Future<Void> plug = store.record(new Snapshot("plug-" + plugHash, "invoice-sync", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Instant.EPOCH, 0, 0,
+                    Headers.empty(), Props.empty(), Keys.empty(), new Hash("sha256-64", plugHash), 1, Optional.empty(), Map.of()));
+            until(() -> lockWaiters() == 1, "the plug commit waits on the held payload");
+            assertFalse(plug.isComplete(), "fixture: the plug holds the only commit slot");
+            staged.execute();
+            return plug;
+        } finally {
+            tx.rollback().await();
+            holder.close().await();
+        }
+    }
+
+    static long count(String table) {
+        return pool.query("select count(*) from " + table).execute().await().iterator().next().getLong(0);
     }
 
     static String id(int i) { return String.format("m-%03d", i); }

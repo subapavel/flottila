@@ -92,14 +92,14 @@
   127.0.0.1:55432 (PGHOST/PGPORT); numbers from it are never recorded.
 
 ## Findings that came back in review
+- Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
 - Packet red tests can carry fixture bugs that no implementation fixes (P1-09k2: a step key off by one past a gate, a replay over a
   store the runtime cannot read, a replay rerunning a crash-first step): check the fixture first, fix with a one-line reason.
 - Core mutant loop over `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true` is ~20 s per mutant (P1-09k2);
   a double guard (two never-fail transforms) makes each single-drop mutant equivalent: drop the redundant one instead.
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
-- Buffering an error-path body without a bound (http producer non-2xx, P1-06): keep a head, drain.
-- Parsing untrusted headers on the event loop without a guard (`Long.parseLong`, P1-06).
+- Unbounded error-path body buffering (keep a head, drain) and unguarded `Long.parseLong` of headers on the loop (P1-06).
 - A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05).
 - Before changing who resumes in `StreamingWrite`, grep the blob tests' fixtures for latches that wait on a
   sink resume (`TieredBlobStoreFailureTest.LatePauseStream` waits for one inside `pause()`): they pin the ordering.

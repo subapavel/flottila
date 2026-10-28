@@ -14,6 +14,7 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.core.batch.OverloadedException;
 import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.HoldingBlobStore;
@@ -36,6 +37,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -477,5 +480,170 @@ class TrailTest {
         assertEquals(List.of(), store.of(bound.id()), "the bound run's rows still wait for its trail's close");
         settled(trail.close());
         assertEquals(2, store.of(bound.id()).size());
+    }
+
+    // --- FIX-66 (F-13, D-071): a trail's rows wait for room in the writer (recordWaiting); a row not written is logged
+
+    /**
+     * A message store whose writer backlog is full: {@code record} fails at once with {@link OverloadedException}, as the
+     * Postgres store's does, and is counted; {@code recordWaiting} answers as {@link #answer} says (by default it holds each
+     * write until the test releases it, then writes the row). {@code recordWaiting} carries no {@code @Override} so that the
+     * fixture also compiles against a {@link MessageStore} without it (the red run); once the interface has it, this overrides it.
+     */
+    static final class FullBacklog implements MessageStore {
+        final InMemoryMessageStore rows = new InMemoryMessageStore();
+        final AtomicInteger records = new AtomicInteger();
+        final List<Snapshot> waitingCalls = new CopyOnWriteArrayList<>();
+        private final List<Promise<Void>> held = new ArrayList<>();   // guarded by this
+        private int released;                                          // guarded by this
+        volatile Function<Snapshot, Future<Void>> answer = this::held;
+
+        @Override public Future<Void> record(Snapshot s) {
+            records.incrementAndGet();
+            return Future.failedFuture(new OverloadedException(2));
+        }
+
+        public Future<Void> recordWaiting(Snapshot s) {
+            waitingCalls.add(s);
+            return answer.apply(s);
+        }
+
+        /** Waits until the test releases it, then writes the row. */
+        private Future<Void> held(Snapshot s) {
+            Promise<Void> room = Promise.promise();
+            synchronized (this) {
+                held.add(room);
+            }
+            return room.future().compose(v -> rows.record(s));
+        }
+
+        synchronized int heldCount() { return held.size(); }
+
+        /** Lets the oldest waiting write in. */
+        void releaseNext() {
+            Promise<Void> next;
+            synchronized (this) {
+                next = held.get(released++);
+            }
+            next.complete();
+        }
+
+        void releaseAll() {
+            List<Promise<Void>> rest;
+            synchronized (this) {
+                rest = List.copyOf(held.subList(released, held.size()));
+                released = held.size();
+            }
+            rest.forEach(Promise::tryComplete);
+        }
+
+        /** Row writes asked for so far, through either call. */
+        int calls() { return records.get() + waitingCalls.size(); }
+
+        @Override public Future<List<Snapshot>> timeline(String messageId) { return rows.timeline(messageId); }
+
+        @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
+            return rows.findByKey(name, value, after, limit);
+        }
+    }
+
+    final FullBacklog full = new FullBacklog();
+
+    @AfterEach
+    void releaseFull() {
+        full.releaseAll();
+    }
+
+    /** The Trail WARNING records naming {@code messageId}. */
+    List<LogRecord> trailWarningsOf(String messageId) {
+        return logged.stream().filter(r -> r.getLevel() == Level.WARNING && Trail.class.getName().equals(r.getLoggerName()))
+                .filter(r -> r.getMessage() != null && r.getMessage().contains("message " + messageId + " ")).toList();
+    }
+
+    @Test
+    void closeWritesEveryRowThroughRecordWaitingAndWaitsForIt() {
+        Body b = body(bodies, "m-wait", 1, "<w/>");
+        Trail trail = new Trail(Set.of());
+        trail.add(full, kept("m-wait", 1, b), b);
+        trail.add(full, kept("m-wait", 2, b), b);
+
+        Future<Void> closed = trail.close();
+        until(() -> full.calls() == 2, () -> "both rows asked for: record " + full.records.get() + ", recordWaiting " + full.waitingCalls.size());
+        assertEquals(0, full.records.get(), "a trail row never goes through record(), which fails at once on a full backlog");
+        assertEquals(List.of(1, 2), full.waitingCalls.stream().map(Snapshot::step).sorted().toList(), "every row goes through recordWaiting");
+        assertFalse(closed.isComplete(), "the close waits while its rows wait for room: " + closed);
+
+        full.releaseNext();
+        assertFalse(closed.isComplete(), "and for every one of them, not only the first: " + closed);
+
+        full.releaseNext();
+        settled(closed);
+        assertTrue(closed.succeeded(), closed.toString());
+        assertEquals(List.of(1, 2), full.rows.timeline("m-wait").await().stream().map(Snapshot::step).toList(), "both rows landed");
+        assertTrue(full.rows.timeline("m-wait").await().stream().allMatch(s -> s.bodyKey().equals(Optional.of(b.key()))), "with their durable key");
+        assertEquals(List.of(), trailWarnings(), "rows that waited and landed log nothing");
+    }
+
+    @Test
+    void aRowNotWrittenLogsOneWarningNamingMessageFlowStepAndCause() {
+        OverloadedException ranOut = new OverloadedException(6_400);
+        IllegalStateException commitFailed = new IllegalStateException("commit failed: no_m_bad");
+        IllegalStateException threw = new IllegalStateException("writer closed");
+        IllegalStateException metaFailed = new IllegalStateException("commit failed: metadata row");
+        full.answer = s -> switch (s.step()) {
+            case 1 -> Future.failedFuture(ranOut);         // still waiting at maxWait
+            case 2 -> Future.failedFuture(commitFailed);   // its batch's commit failed
+            case 3 -> throw threw;                         // a store that throws instead of failing its future
+            default -> Future.failedFuture(metaFailed);    // a metadata-only row (no key) whose commit failed
+        };
+        Body b = body(bodies, "m-nw", 1, "<nw/>");
+        Trail trail = new Trail(Set.of());
+        for (int step = 1; step <= 3; step++) trail.add(full, kept("m-nw", step, b), b);
+        trail.add(full, snapshot("m-nw", 4, b, Optional.empty()), b);
+
+        Future<Void> closed = trail.close();
+        settled(closed);
+        assertTrue(closed.succeeded(), "a close never fails, whatever its rows did: " + closed);
+        assertEquals(0, full.records.get(), "the rows went through recordWaiting, not record()");
+        assertEquals(List.of(1, 2, 3, 4), full.waitingCalls.stream().map(Snapshot::step).sorted().toList(), "each row asked for once: a failed write is not retried");
+
+        List<LogRecord> warned = trailWarningsOf("m-nw");
+        assertEquals(4, warned.size(), "one WARNING per row not recorded: " + warned.stream().map(LogRecord::getMessage).toList());
+        Map<Integer, Throwable> causes = Map.of(1, ranOut, 2, commitFailed, 3, threw, 4, metaFailed);
+        for (int step = 1; step <= 4; step++) {
+            String head = "message m-nw of flow f: the snapshot of step " + step + " (s" + step + ") was not recorded (";
+            List<LogRecord> mine = new ArrayList<>();
+            for (LogRecord r : warned) if (r.getMessage().startsWith(head)) mine.add(r);
+            assertEquals(1, mine.size(), "exactly one WARNING names step " + step + " as '" + head + "...': " + warned.stream().map(LogRecord::getMessage).toList());
+            LogRecord r = mine.getFirst();
+            Throwable cause = causes.get(step);
+            assertTrue(r.getMessage().contains(cause.getMessage()), "it names the cause: " + r.getMessage());
+            assertSame(cause, r.getThrown(), "and carries it: " + r.getThrown());
+            if (step <= 3) {
+                assertTrue(r.getMessage().contains("; its body " + b.key() + " stays durable without a row"), "a kept row names its durable body: " + r.getMessage());
+            } else {
+                assertFalse(r.getMessage().contains("its body"), "a row that kept no body names none: " + r.getMessage());
+            }
+        }
+        assertEquals(4, trailWarnings().size(), "nothing else was logged at WARNING by the trail: " + trailWarnings());
+    }
+
+    @Test
+    void aWrittenRowLogsNoWarning() {
+        full.answer = s -> s.messageId().equals("m-bad") ? Future.failedFuture(new IllegalStateException("commit failed")) : full.rows.record(s);
+        Body ok = body(bodies, "m-ok", 1, "<ok/>");
+        Body bad = body(bodies, "m-bad", 1, "<bad/>");   // the witness: this case's capture does see a row WARNING
+        Trail trail = new Trail(Set.of());
+        trail.add(full, kept("m-ok", 1, ok), ok);
+        trail.add(full, kept("m-ok", 2, ok), ok);
+        trail.add(full, kept("m-bad", 1, bad), bad);
+
+        settled(trail.close());
+        assertEquals(List.of(1, 2), full.rows.timeline("m-ok").await().stream().map(Snapshot::step).toList(), "fixture: m-ok's rows were written");
+        assertEquals(0, full.records.get(), "fixture: through recordWaiting");
+        assertEquals(List.of(), trailWarningsOf("m-ok"), "a row written logs no WARNING");
+        List<String> warned = trailWarnings();
+        assertEquals(1, warned.size(), "the capture sees the witness row's WARNING, and only it: " + warned);
+        assertTrue(warned.getFirst().contains("message m-bad "), warned.toString());
     }
 }

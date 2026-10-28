@@ -9,10 +9,13 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -123,5 +126,30 @@ class InMemoryMessageStoreTest {
                 ok.headers(), ok.props(), ok.keys(), ok.bodyHash(), -1, ok.bodyKey(), ok.versions()), "a negative size is no size");
         assertEquals(0L, new Snapshot(ok.messageId(), ok.flow(), 0, ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(), 0, Snapshot.CPU_UNKNOWN,
                 ok.headers(), ok.props(), ok.keys(), ok.bodyHash(), 0, ok.bodyKey(), ok.versions()).bodySize(), "an empty body is legal");
+    }
+
+    /**
+     * FIX-66 (D-071), the same case as PgMessageStoreIT's: rows written through {@code recordWaiting} from many threads at once
+     * all land. The in-memory store has no backlog to wait for: the interface's default hands each row to {@code record}
+     * (the first row per (id, step) still wins).
+     */
+    @Test
+    void recordWaitingPastTheBacklogLandsEveryRow() throws Exception {
+        MessageStore rows = store;   // through the interface: the default method
+        List<io.vertx.core.Future<Void>> saves = new CopyOnWriteArrayList<>();
+        List<Thread> callers = new ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            String id = "m-" + i;
+            callers.add(Thread.ofVirtual().start(() -> saves.add(rows.recordWaiting(snap(id, 0, "ingress", Keys.empty().with("invoiceId", "4711"))))));
+        }
+        for (Thread t : callers) assertTrue(t.join(java.time.Duration.ofSeconds(10)), "the call returned: " + t);
+        assertEquals(50, saves.size());
+        io.vertx.core.Future.join(new ArrayList<>(saves)).otherwiseEmpty().await(10, TimeUnit.SECONDS);
+        assertTrue(saves.stream().allMatch(io.vertx.core.Future::succeeded), saves.toString());
+        for (int i = 0; i < 50; i++) assertEquals(List.of("ingress"), store.timeline("m-" + i).await().stream().map(Snapshot::stepName).toList(), "m-" + i + " landed");
+        assertEquals(50, store.size());
+        assertEquals(50, store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items().size());
+        rows.recordWaiting(snap("m-0", 0, "ingress-again", Keys.empty())).await();
+        assertEquals("ingress", store.timeline("m-0").await().getFirst().stepName(), "the first row per (id, step) wins, as with record");
     }
 }

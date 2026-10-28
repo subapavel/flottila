@@ -80,6 +80,12 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
         return writer.save(Objects.requireNonNull(snapshot, "snapshot")).onFailure(t -> failed.incrementAndGet());
     }
 
+    /** As {@link #record}, waiting for room in a full backlog up to the writer's {@code maxWait}; a failure counts in {@link #failed()} too. */
+    @Override
+    public Future<Void> recordWaiting(Snapshot snapshot) {
+        return writer.saveWaiting(Objects.requireNonNull(snapshot, "snapshot")).onFailure(t -> failed.incrementAndGet());
+    }
+
     @Override
     public Future<List<Snapshot>> timeline(String messageId) {
         return pool.preparedQuery(TIMELINE).execute(Tuple.of(messageId)).map(rows -> {
@@ -115,7 +121,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     /** Commits what is queued now; completes when it is committed. */
     public Future<Void> flush() { return writer.flush(); }
 
-    /** Snapshots whose write failed (a failed commit or a full backlog) since the store was opened — what monitoring shows until P1-09 exposes it. */
+    /** Snapshots whose write failed (a failed commit, a full backlog, a waiter's maxWait) since the store was opened — what monitoring shows until P1-09 exposes it. */
     public long failed() { return failed.get(); }
 
     /** Refuses further snapshots and drains what is queued. */

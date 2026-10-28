@@ -17,6 +17,15 @@ public interface MessageStore {
     /** Completes when the snapshot is durable; the message path does not wait for it. */
     Future<Void> record(Snapshot snapshot);
 
+    /**
+     * As {@link #record}, but a store whose write backlog is full lets the snapshot wait for room instead of failing it at
+     * once (D-071) — what a run's trail uses, holding the run's admission permit meanwhile. The default is {@link #record}:
+     * a store without a bounded backlog has nothing to wait for.
+     */
+    default Future<Void> recordWaiting(Snapshot snapshot) {
+        return record(snapshot);
+    }
+
     /** The message's snapshots in step order; empty for an unknown message. */
     Future<List<Snapshot>> timeline(String messageId);
 

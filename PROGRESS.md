@@ -751,3 +751,12 @@ Found: c=64 sync keep fails 3/3 (≥ 13 085 / 21 000 not 200; 3 800 rows dropped
 Env: verifier created the local role/db flottila_bench on the VM only (nothing in the repo).
 D-054 data: class B (verifier ×2 batches, reviewer); review rounds 2.
 Next: FIX-66 [C] — designer first (F-13: backpressure or retry, a log line per given-up row, sizing).
+
+## 2026-10-28 — FIX-66 trail rows wait for room in the writer instead of being dropped (F-13, D-071) — done, review PASS
+Test first: BatchingWriterTest 8 (+1 guard case approved after the implementer showed the expire guard unkilled), BatchingWriterPropertyTest 1, TrailTest 3, DeliveryTest 2, InMemoryMessageStoreTest 1, PgMessageStoreIT 1, DeliveryModesIT 1 — observed red (target/FIX-66-red.log).
+Change: core BatchingWriter.saveWaiting (FIFO waiters topped up in drainLocked, one deadline each, Options.maxWait PT10S), MessageStore.recordWaiting default, Trail.write via recordWaiting with a WARNING per row not written; runtime PgMessageStore override counts failures. Ingress stays fail-fast.
+Docs: ARCHITECTURE §8 waiting rule + changelog (replaces the P1-10d known-gap note); D-071; F-13 mitigated (closed by FIX-67's c=64 rerun).
+Checks: verify -Pit core+runtime VERIFIED_PASS (api 71, testkit 220, core 323, runtime 478 + 185 IT; target/FIX-66-verify.log); ArchUnit 35 green; coverage no decrease (core 99.8/99.3); mutants: packet list + ±1 ms all killed (target/FIX-66-mut-*.log), guard target/FIX-66-guard.log; IT stability 8/8.
+Review: PASS r1. Raised FIX-68 (store closes before trails at node stop — RestoreIT now logs it), FIX-69 (window schedule throw strands batches), FIX-70 (§4 pointer, test name, scoped PIT).
+D-054 data: class C (designer, test-author ×2, implementer, reviewer); review rounds 1.
+Next: FIX-67 [A] — harness fail-fast, status split, maxInFlight option and the c=64 rerun that closes F-13.

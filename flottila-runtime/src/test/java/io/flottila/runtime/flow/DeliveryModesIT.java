@@ -1,17 +1,24 @@
 package io.flottila.runtime.flow;
 
 import io.flottila.api.Ack;
+import io.flottila.api.BlobKey;
+import io.flottila.api.Body;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
+import io.flottila.api.Headers;
+import io.flottila.api.Keys;
+import io.flottila.api.Props;
 import io.flottila.api.Runtime;
 import io.flottila.components.http.HttpComponent;
 import io.flottila.core.batch.BatchingWriter;
+import io.flottila.core.flow.Delivery;
 import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Snapshot;
+import io.flottila.core.record.Trail;
 import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
@@ -50,14 +57,26 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import java.net.URI;
 import java.nio.file.Path;
+import java.nio.ByteBuffer;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -307,6 +326,124 @@ class DeliveryModesIT {
         } finally {
             restartedStore.close();
             fresh.close().await();
+        }
+    }
+
+    // --- FIX-66 (F-13, D-071): a sync keep flow past the node writer's backlog loses no row of an answered message
+
+    /** A strong reference: JUL holds loggers weakly. */
+    static final Logger TRAIL = Logger.getLogger(Trail.class.getName());
+
+    /** A sync flow {@code orders} with the one partner step, recorded at the default level (every step, payload kept), 32 in flight. */
+    static FlowDefinition syncKeep() {
+        Map<String, Object> doc = new HashMap<>();
+        doc.put("schemaVersion", 1);
+        doc.put("kind", "flow");
+        doc.put("id", "orders");
+        doc.put("version", "0.1.0");
+        doc.put("from", Map.of("endpoint", "http-in"));
+        doc.put("delivery", Map.of("mode", "sync"));
+        doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", 32));
+        doc.put("recording", Map.of("level", "all", "payload", "keep"));
+        doc.put("steps", List.of(Map.of("type", "to", "name", "partner", "endpoint", "partner")));
+        return FlowDefinition.from(doc);
+    }
+
+    /**
+     * The node's message store with a writer backlog of two (one commit in flight, the default maxWait), its first commit held
+     * on the rows' payloads hash another session keeps uncommitted while 16 virtual threads send 200 requests: the runs' rows
+     * overflow the backlog at once. A thread that is refused waits until the holder rolled back, then goes on. Every request
+     * answered with a Reply has its ingress and partner rows; every other answer is a retryable Nack and left no row; no row
+     * write failed and the trail logged no WARNING (the capture's witness: a row to a closed store does log one).
+     */
+    @Test
+    void aSyncKeepFlowPastTheWriterBacklogLosesNoRowOfAnAnsweredMessage() throws Exception {
+        PgMessageStore small = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(2, Duration.ZERO, 1, 2));
+        List<LogRecord> warnings = new CopyOnWriteArrayList<>();
+        Handler capture = new Handler() {
+            @Override public void publish(LogRecord r) { if (r.getLevel().intValue() >= Level.WARNING.intValue()) warnings.add(r); }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        TRAIL.addHandler(capture);
+        try {
+            Delivery delivery = builder(blobs, small, queue, dlq).delivery(syncKeep(), FLOWS);
+            Body probe = blobs.write(BlobKey.body("sk-probe", 0), ORDER, MIB).await();   // every row of the run shows this body's hash
+            Map<String, Future<Ack>> answers = new ConcurrentHashMap<>();
+            List<Throwable> escaped = new CopyOnWriteArrayList<>();
+            AtomicInteger issued = new AtomicInteger();
+            AtomicInteger nacks = new AtomicInteger();
+            CountDownLatch unplugged = new CountDownLatch(1);
+            List<Thread> senders = new ArrayList<>();
+            PgConnection holder = PgConnection.connect(vertx, connectOptions()).await();
+            try {
+                Transaction held = holder.begin().await();
+                holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, $2, 'sha256-64')")
+                        .execute(Tuple.of(Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(probe.hash().value()).array()), probe.size())).await();
+                for (int t = 0; t < 16; t++) {
+                    senders.add(Thread.ofVirtual().name("sender-" + t).start(() -> {
+                        try {
+                            for (int n = issued.getAndIncrement(); n < 200; n = issued.getAndIncrement()) {
+                                String id = String.format("sk-%03d", n);
+                                Body body = blobs.write(BlobKey.body(id, 0), ORDER, MIB).await();
+                                Future<Ack> ack = delivery.apply(Envelope.ingress(id, "orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), body));
+                                answers.put(id, ack);
+                                if (ack.isComplete() && ack.result() instanceof Ack.Nack) {
+                                    nacks.incrementAndGet();
+                                    unplugged.await();   // refused while the writer is held: wait for the holder to let go, then go on
+                                }
+                            }
+                        } catch (Throwable t2) {
+                            escaped.add(t2);
+                        }
+                    }));
+                }
+                until(() -> nacks.get() > 0 || issued.get() >= 200 || !escaped.isEmpty(),
+                        "a request refused while the runs' rows wait (lock waiters " + lockWaiters() + ")");
+                held.rollback().await();
+            } finally {
+                unplugged.countDown();
+                holder.close().await();
+            }
+            for (Thread t : senders) {
+                if (!t.join(Duration.ofSeconds(60))) fail(t.getName() + " did not end; it sits at " + List.of(t.getStackTrace()));
+            }
+            assertEquals(List.of(), escaped, "no sender failed");
+            delivery.stop(Duration.ofHours(1)).await(60, TimeUnit.SECONDS);   // every flight landed: every trail closed, its row writes settled
+
+            Map<String, String> rows = new HashMap<>();
+            for (Row r : pool.query("select id, string_agg(step_name, ',' order by step) from messages group by id").execute().await()) {
+                rows.put(r.getString(0), r.getString(1));
+            }
+            List<String> replied = new ArrayList<>();
+            List<String> refused = new ArrayList<>();
+            List<String> other = new ArrayList<>();
+            answers.forEach((id, ack) -> {
+                if (ack.succeeded() && ack.result() instanceof Ack.Reply) replied.add(id);
+                else if (ack.succeeded() && ack.result() instanceof Ack.Nack nack && nack.retryable()) refused.add(id);
+                else other.add(id + ": " + ack);
+            });
+            assertEquals(200, answers.size(), "every request answered");
+            assertEquals(List.of(), other, "every answer is a Reply or a retryable Nack");
+            List<String> repliedWithoutTimeline = replied.stream().filter(id -> !"ingress,partner".equals(rows.get(id))).sorted()
+                    .map(id -> id + "=" + rows.get(id)).toList();
+            assertEquals(List.of(), repliedWithoutTimeline, "every answered message has its ingress and partner rows (" + replied.size() + " replied)");
+            assertEquals(0, small.failed(), "no row write failed");
+            assertEquals(List.of(), refused.stream().filter(rows::containsKey).toList(), "a refused request left no row");
+            assertTrue(nacks.get() > 0, "fixture: admission refused while the rows waited for room, the permits held: replies " + replied.size());
+            assertEquals(List.of(), warnings.stream().map(LogRecord::getMessage).toList(), "no row was given up: the trail logged no WARNING");
+
+            PgMessageStore closed = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(2, Duration.ZERO, 1, 2));
+            closed.close();
+            Trail witness = new Trail(List.of());
+            witness.add(closed, new Snapshot("sk-witness", "orders", 1, "partner", Snapshot.Outcome.OK, Optional.empty(), Instant.EPOCH, 0, 0, Headers.empty(),
+                    Props.empty(), Keys.empty(), probe.hash(), probe.size(), Optional.empty(), Map.of()), probe);
+            witness.close().await(20, TimeUnit.SECONDS);
+            assertEquals(1, warnings.size(), "the capture sees a trail row WARNING: " + warnings.stream().map(LogRecord::getMessage).toList());
+            assertTrue(warnings.getFirst().getMessage().contains("message sk-witness "), warnings.getFirst().getMessage());
+        } finally {
+            TRAIL.removeHandler(capture);
+            small.close();
         }
     }
 }

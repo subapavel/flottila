@@ -117,4 +117,4 @@
 - Packet 'docs at its commit' items: check the diff for the F-n file and the § edit; code that changes documented behaviour without them is a FAIL (P1-09c2).
 - BACKLOG done-when naming an end-to-end path (PUT over Pg + S3) needs a Node-level test; store contracts + Deployments unit tests leave Node wiring unpinned (P1-09c3a, Node:156/:159).
 - Docs summarising restore/redeploy failure: check which level the code marks FAILED (package vs flow, P1-09c3b §9), and that a bracketed D-row amendment sits right after the clause it amends (D-057 c).
-- Measurement rows: recompute every derived inequality in RESULTS from the raw JSON; read settle/failed counts in the logs of failed runs (P1-10d: 12.2 + 50 < 64; ≥ 65 % non-200 unreported).
+- Measurement rows: recompute every derived inequality in RESULTS from the raw JSON; read settle/failed counts in the logs of failed runs (P1-10d: 12.2 + 50 < 64; ≥ 65 % non-200 unreported). BatchingWriter (FIX-66): every drainLocked state change placed before the window schedule (:195) is lost if schedule throws — check new code there.

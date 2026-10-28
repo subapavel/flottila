@@ -15,8 +15,11 @@ import java.util.Objects;
  * Adaptive flush — a save commits immediately when no commit is in flight, accumulates to
  * {@code batchSize} or the {@code window} under load; up to {@code commitConcurrency} commits in
  * flight, each completed per batch; a bounded backlog whose overflow fails the save at once with
- * {@link OverloadedException}. Ported from the milestone-1 prototype onto Vert.x {@code Future}
- * and an injected {@link Timer}; thread-safe, callers are the messages' virtual threads.
+ * {@link OverloadedException}. {@link #saveWaiting} instead waits for room, in arrival order, at most
+ * {@code maxWait} (D-071): a slot that frees is handed to the oldest waiter under the same lock that freed it, so
+ * {@code waiting() > 0} implies {@code backlog() == maxBacklog} and a {@link #save} never overtakes a waiter.
+ * Ported from the milestone-1 prototype onto Vert.x {@code Future} and an injected {@link Timer}; thread-safe,
+ * callers are the messages' virtual threads.
  *
  * @param <T> the item type
  * @since 0.1
@@ -30,19 +33,30 @@ public final class BatchingWriter<T> implements AutoCloseable {
      * @param window how long a partial batch may wait while a commit is in flight; zero = only on completion
      * @param commitConcurrency commits in flight at most
      * @param maxBacklog items queued (not yet handed to the sink) at most; at least one batch
+     * @param maxWait how long a {@link #saveWaiting} item may wait for room in the backlog before it fails; positive
      * @since 0.1
      */
-    public record Options(int batchSize, Duration window, int commitConcurrency, int maxBacklog) {
+    public record Options(int batchSize, Duration window, int commitConcurrency, int maxBacklog, Duration maxWait) {
+
+        /** The default {@code maxWait}: the default stop deadline, so a stopping flow is not held past it (D-071). */
+        public static final Duration DEFAULT_MAX_WAIT = Duration.ofSeconds(10);
 
         public Options {
             Objects.requireNonNull(window, "window");
+            Objects.requireNonNull(maxWait, "maxWait");
             if (batchSize < 1) throw new IllegalArgumentException("batchSize < 1");
             if (window.isNegative()) throw new IllegalArgumentException("negative window");
             if (commitConcurrency < 1) throw new IllegalArgumentException("commitConcurrency < 1");
             if (maxBacklog < batchSize) throw new IllegalArgumentException("maxBacklog " + maxBacklog + " < batchSize " + batchSize);
+            if (maxWait.isNegative() || maxWait.isZero()) throw new IllegalArgumentException("maxWait " + maxWait + " not positive");
         }
 
-        /** The prototype's measured defaults: 100 / 10 ms / 4 in flight / 64 batches of backlog. */
+        /** The limits with the {@link #DEFAULT_MAX_WAIT}. */
+        public Options(int batchSize, Duration window, int commitConcurrency, int maxBacklog) {
+            this(batchSize, window, commitConcurrency, maxBacklog, DEFAULT_MAX_WAIT);
+        }
+
+        /** The prototype's measured defaults: 100 / 10 ms / 4 in flight / 64 batches of backlog; waiters wait 10 s at most. */
         public static Options defaults() {
             return new Options(100, Duration.ofMillis(10), 4, 6_400);
         }
@@ -50,10 +64,19 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     private record Pending<T>(T item, Promise<Void> done) {}
 
+    /** A {@link #saveWaiting} item waiting for room; its deadline is cancelled when it enters the backlog. */
+    private static final class Waiter<T> {
+        final Pending<T> pending;
+        Timer.Cancellable deadline;   // set under the lock before the waiter is visible
+
+        Waiter(Pending<T> pending) { this.pending = pending; }
+    }
+
     private final BatchSink<T> sink;
     private final Timer timer;
     private final Options options;
     private final ArrayDeque<Pending<T>> queue = new ArrayDeque<>();
+    private final ArrayDeque<Waiter<T>> waiters = new ArrayDeque<>();   // arrival order; non-empty only while the queue is full
     private final List<List<Pending<T>>> flying = new ArrayList<>();   // batches handed to the sink and not yet completed
     private final Object lock = new Object();
     private int inFlight;
@@ -68,16 +91,51 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /** Queues the item; completes when the batch containing it is committed, fails when that commit fails or the backlog is full. */
     public Future<Void> save(T item) {
+        return enqueue(item, false);
+    }
+
+    /**
+     * Queues the item as {@link #save} does when the backlog has room; when it is full the item waits, behind every earlier
+     * waiter, and enters the moment a slot frees. Completes when the batch containing it is committed; fails when that
+     * commit fails, with {@link OverloadedException} when it still waits {@code maxWait} after the call (it is then never
+     * handed to the sink), with {@link IllegalStateException} when the writer is closed, and with the timer's exception
+     * when its deadline cannot be scheduled.
+     */
+    public Future<Void> saveWaiting(T item) {
+        return enqueue(item, true);
+    }
+
+    /** Items waiting for room in a full backlog ({@link #saveWaiting}). */
+    public int waiting() {
+        synchronized (lock) { return waiters.size(); }
+    }
+
+    /** {@code item} into the backlog; a full one fails it at once or, if {@code wait}, lines it up behind the waiters. */
+    private Future<Void> enqueue(T item, boolean wait) {
         Objects.requireNonNull(item, "item");
         Pending<T> p = new Pending<>(item, Promise.promise());
         List<List<Pending<T>>> toCommit;
         synchronized (lock) {
             if (closed) return Future.failedFuture(new IllegalStateException("writer closed"));
-            if (queue.size() >= options.maxBacklog()) return Future.failedFuture(new OverloadedException(options.maxBacklog()));
+            if (queue.size() >= options.maxBacklog()) {   // full; a waiter already there implies full, so no save overtakes it
+                return wait ? waitLocked(p) : Future.failedFuture(new OverloadedException(options.maxBacklog()));
+            }
             queue.add(p);
             toCommit = drainLocked(false);
         }
         toCommit.forEach(this::commit);
+        return p.done().future();
+    }
+
+    /** Under the lock: {@code p} waits with a deadline of {@code maxWait}; a timer that refuses it fails {@code p} at once. */
+    private Future<Void> waitLocked(Pending<T> p) {
+        Waiter<T> w = new Waiter<>(p);
+        try {
+            w.deadline = timer.schedule(options.maxWait(), () -> expire(w));
+        } catch (RuntimeException e) {
+            return Future.failedFuture(e);
+        }
+        waiters.add(w);
         return p.done().future();
     }
 
@@ -93,7 +151,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
 
     /**
      * Commits what is queued now without waiting for the window (a free commit slot permitting; the rest follows as slots
-     * free) and completes when every item queued or in flight at this moment is committed or failed.
+     * free) and completes when every item waiting, queued or in flight at this moment is committed or failed.
      */
     public Future<Void> flush() {
         List<List<Pending<T>>> toCommit;
@@ -101,6 +159,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
         synchronized (lock) {
             for (List<Pending<T>> batch : flying) for (Pending<T> p : batch) waiting.add(p.done().future());
             for (Pending<T> p : queue) waiting.add(p.done().future());
+            for (Waiter<T> w : waiters) waiting.add(w.pending.done().future());
             if (armed != null) { armed.cancel(); armed = null; }
             toCommit = drainLocked(true);
         }
@@ -108,12 +167,15 @@ public final class BatchingWriter<T> implements AutoCloseable {
         return Future.join(waiting).mapEmpty();
     }
 
-    /** Refuses further saves; what is queued or in flight still commits (window and completions keep draining). */
+    /** Refuses further saves; what waits, is queued or in flight still commits (window and completions keep draining). */
     @Override public void close() {
         synchronized (lock) { closed = true; }
     }
 
-    /** Under the lock: takes every batch that may go now and arms the window timer for what stays. */
+    /**
+     * Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees, and arms
+     * the window timer for what stays.
+     */
     private List<List<Pending<T>>> drainLocked(boolean windowElapsed) {
         List<List<Pending<T>>> batches = new ArrayList<>();
         while (!queue.isEmpty() && inFlight < options.commitConcurrency()
@@ -124,11 +186,24 @@ public final class BatchingWriter<T> implements AutoCloseable {
             inFlight++;
             flying.add(batch);
             batches.add(batch);
+            while (!waiters.isEmpty() && queue.size() < options.maxBacklog()) {   // the freed room goes to the waiters first
+                Waiter<T> w = waiters.poll();
+                w.deadline.cancel();
+                queue.add(w.pending);
+            }
         }
         if (!queue.isEmpty() && armed == null && !options.window().isZero()) {
             armed = timer.schedule(options.window(), this::onWindow);
         }
         return batches;
+    }
+
+    /** {@code w}'s deadline: if it still waits it leaves the line and fails; one that entered meanwhile is left alone. */
+    private void expire(Waiter<T> w) {
+        synchronized (lock) {
+            if (!waiters.remove(w)) return;
+        }
+        w.pending.done().tryFail(new OverloadedException(options.maxBacklog()));
     }
 
     private void onWindow() {

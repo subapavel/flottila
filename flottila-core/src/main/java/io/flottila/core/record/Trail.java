@@ -26,7 +26,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * step (a sync reply behind it); every other step hands on without waiting. At each flush each distinct kept body key not
  * asked for yet is persisted once, in the body's own store, all of them in parallel; once every key the flushed snapshots
  * keep settled, each snapshot goes to its message store, keeping its key only if that key is durable: a row's body key
- * always names a durable body. A persist that fails or throws (above the store's durable bound, or any other cause) leaves
+ * always names a durable body. Rows go through {@link MessageStore#recordWaiting}: a full writer backlog makes them wait
+ * for room while the run keeps its permit (D-071, F-13); a row still not written — the store's wait ran out, its commit
+ * failed, the store is closed or threw — is logged at WARNING with its message id, flow, step and cause, never retried.
+ * A persist that fails or throws (above the store's durable bound, or any other cause) leaves
  * its rows metadata-only — counted by {@link #metadataOnly()} and logged at WARNING with the message id. Keys that are
  * durable already are not persisted again: the run's seed (what it started from: the ingress, D-058; a replay's input; a
  * retry's parked body, D-062) and those a park made durable during the run ({@link #durable}).
@@ -150,11 +153,17 @@ public final class Trail {
         return flushed;
     }
 
-    /** {@code row} to its store: with its key if {@code durable}, else metadata-only (counted). */
+    /**
+     * {@code row} to its store, waiting for room: with its key if {@code durable}, else metadata-only (counted). A row not
+     * written is logged at WARNING; a logger that throws is contained by the listener and holds nothing back.
+     */
     private Future<Void> write(Entry row, boolean durable) {
         Snapshot s = durable ? row.snapshot() : withoutBody(row.snapshot());
         if (!durable) metadataOnly.incrementAndGet();
-        return Future.future(done -> row.store().record(s).onComplete(done));   // a store that throws: the same failed write
+        return Future.<Void>future(done -> row.store().recordWaiting(s).onComplete(done))   // a store that throws: the same failed write
+                .onFailure(cause -> LOG.log(System.Logger.Level.WARNING, "message " + s.messageId() + " of flow " + s.flow() + ": the snapshot of step "
+                        + s.step() + " (" + s.stepName() + ") was not recorded (" + cause + ")"
+                        + s.bodyKey().map(key -> "; its body " + key + " stays durable without a row").orElse(""), cause));
     }
 
     /**

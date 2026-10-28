@@ -14,11 +14,13 @@ import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
 import io.flottila.api.Timer;
 import io.flottila.core.admission.Admission;
+import io.flottila.core.batch.OverloadedException;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Page;
 import io.flottila.core.record.Recorder;
@@ -28,6 +30,7 @@ import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.InMemoryBlobStore;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -1349,5 +1353,110 @@ class DeliveryTest {
         assertTrue(settled(stopped).succeeded(), "the flight landed once the trail closed");
         assertTrue(own.persisted(in.body().key()), "the trail closed normally: the ingress body is durable");
         assertEquals(List.of("ingress", "partner"), rowNames(in.id()), "and the run's rows were written");
+    }
+
+    // --- FIX-66 (F-13, D-071): a sync run's rows wait for room holding its permit; the at-least-once ingress row does not wait
+
+    /**
+     * A message store whose writer backlog is full: {@code record} fails at once with {@link OverloadedException}, as the
+     * Postgres store's does, and is counted; {@code recordWaiting} holds each write until {@link #releaseAll()}, then writes the
+     * row. No {@code @Override} on {@code recordWaiting}: the fixture compiles against a {@link MessageStore} without it (the
+     * red run); once the interface declares it, this overrides it.
+     */
+    static final class FullBacklog implements MessageStore {
+        final InMemoryMessageStore rows = new InMemoryMessageStore();
+        final AtomicInteger records = new AtomicInteger();
+        final List<Snapshot> waitingCalls = new CopyOnWriteArrayList<>();
+        private final List<Promise<Void>> held = new ArrayList<>();   // guarded by this
+
+        @Override public Future<Void> record(Snapshot s) {
+            records.incrementAndGet();
+            return Future.failedFuture(new OverloadedException(2));
+        }
+
+        public Future<Void> recordWaiting(Snapshot s) {
+            waitingCalls.add(s);
+            Promise<Void> room = Promise.promise();
+            synchronized (this) {
+                held.add(room);
+            }
+            return room.future().compose(v -> rows.record(s));
+        }
+
+        /** Row writes asked for so far, through either call. */
+        int calls() { return records.get() + waitingCalls.size(); }
+
+        /** Lets every waiting write in. */
+        void releaseAll() {
+            List<Promise<Void>> all;
+            synchronized (this) {
+                all = List.copyOf(held);
+            }
+            all.forEach(Promise::tryComplete);
+        }
+
+        List<String> rowNames(String messageId) {
+            return rows.timeline(messageId).await().stream().map(Snapshot::stepName).toList();
+        }
+
+        @Override public Future<List<Snapshot>> timeline(String messageId) { return rows.timeline(messageId); }
+
+        @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) {
+            return rows.findByKey(name, value, after, limit);
+        }
+    }
+
+    final List<FullBacklog> fullBacklogs = new CopyOnWriteArrayList<>();
+
+    FullBacklog fullBacklog() {
+        FullBacklog f = new FullBacklog();
+        fullBacklogs.add(f);
+        return f;
+    }
+
+    @AfterEach
+    void releaseFullBacklogs() {
+        fullBacklogs.forEach(FullBacklog::releaseAll);
+    }
+
+    @Test
+    void aSyncPermitIsHeldWhileItsRowsWaitSoTheNextRequestIsARetryableNack() {
+        FullBacklog rows = fullBacklog();
+        Delivery delivery = bare().recording(rows, Meter.system()).delivery(FlowDefinition.from(onePermit("sync")), NO_FILES);
+        Envelope in = ingress(ORDER);
+
+        Ack reply = applied(applyOn(delivery, in)).ack().result();
+        assertInstanceOf(Ack.Reply.class, reply, "the reply does not wait for the run's rows: " + reply);
+        until(() -> rows.calls() == 2, () -> "the run's two rows asked for: record " + rows.records.get() + ", recordWaiting " + rows.waitingCalls.size());
+        assertEquals(0, rows.records.get(), "a run's rows go through recordWaiting, never record(), which fails at once on the full backlog");
+        assertEquals(List.of(), rows.rowNames(in.id()), "fixture: the rows wait for room");
+
+        Envelope probe = ingress(ORDER);
+        retryableNack(applied(applyOn(delivery, probe)).ack());
+        assertEquals(1, partner.sent().size(), "the refused request ran nothing: the permit is held while the run's rows wait");
+        assertEquals(List.of(), rows.rowNames(probe.id()));
+
+        rows.releaseAll();
+        until(() -> delivery.admission().inFlightRequests() == 0, () -> "the permit back once the rows landed: " + delivery.admission().inFlightRequests());
+        assertEquals(List.of("ingress", "partner"), rows.rowNames(in.id()), "every row of the answered message landed");
+        assertInstanceOf(Ack.Reply.class, applied(applyOn(delivery, ingress(ORDER))).ack().result(), "the next request is admitted");
+    }
+
+    @Test
+    void anOverloadedAtLeastOnceIngressRecordIsARetryableNackAtOnce() {
+        FullBacklog rows = fullBacklog();
+        Delivery delivery = bare().recording(rows, Meter.system()).queue(queue).dlq(dlq)
+                .delivery(FlowDefinition.from(flow("at-least-once", List.of(TO_PARTNER))), NO_FILES);
+        Envelope in = ingress(ORDER);
+
+        Future<Ack> ack = delivery.apply(in);
+        assertTrue(ack.isComplete(), "answered at once, before any timer advance: " + ack);
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, ack.result(), "a full backlog is no Accepted: " + ack.result());
+        assertTrue(nack.retryable(), "the sender comes back later: " + nack.reason());
+        assertTrue(nack.reason().contains("backlog full"), "it names the overload: " + nack.reason());
+        assertEquals(1, rows.records.get(), "the ingress row goes through record(), which fails at once");
+        assertEquals(List.of(), rows.waitingCalls, "the ingress row never waits for room");
+        assertEquals(0, queue.size(), "nothing enqueued");
+        assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the Nack");
     }
 }
