@@ -105,6 +105,31 @@ p99 13.11 ms — in P0-10's range (p99 12–18 ms at c=64).
 
 ---
 
+### Gate commit 350f71d — CI evidence (P1-GATE, 2026-10-28)
+
+Gate commit: `350f71d` (FIX-70, the last commit before the gate review). Numbers measured by CI on it:
+push run 40661411394 (success) and dispatched run 40661445376 (jobs: build 122725196614, mutation
+122727572021, bench 122727572184, dco 122725195857, all success). PIT figures from the mutation job
+log (target/P1-GATE-pit-job.txt); coverage from `ci/coverage-baseline.json` at 350f71d, which the
+build job's "baseline describes this commit" step checked (±2 pp).
+
+| module | line % | branch % | floor | PIT killed / generated | PIT floor |
+|---|---|---|---|---|---|
+| flottila-api | 99.0 | 100.0 | 90 | 125 / 125 (100 %) | 80 |
+| flottila-core | 99.8 | 99.4 | 90 | 760 / 767 (99 %) | 80 |
+| flottila-runtime | 99.6 | 99.7 | 75 (ITs counted) | — | — |
+| flottila-components/http | 99.3 | 89.4 | 75 | — | — |
+| flottila-components/mock | 100.0 | 98.6 | 75 | — | — |
+| flottila-steps/validate | 100.0 | 100.0 | 75 | — | — |
+| flottila-steps/xslt | 100.0 | 100.0 | 75 | — | — |
+| flottila-testkit | 98.4 | 98.0 | 75 | 403 / 491 (82 %, informational) | — |
+| flottila-schemas | 98.8 | 97.8 | 75 | — | — |
+| flottila-bench | 96.7 | 95.3 | 75 | — | — |
+
+Gate verdict (gate-reviewer): NOT_MET only on the §13 durable ACK (table above, ISSUE-2); every other
+Phase 1 condition met. The ledger, durable-ACK and sync c=1/c=8 rows were measured on e129c77, before
+FIX-66 touched Trail/BatchingWriter; only sync c=64 was re-run after it (f7707a2).
+
 ## P1-02 — the message path: admit → context → scope, 10 000 messages at once — cloud VM, 4 vCPU
 
 Date: 2026-10-18. Commit: the P1-02 commit (hash in PROGRESS.md; `--commit eabaf5b` in the JSON names the base).

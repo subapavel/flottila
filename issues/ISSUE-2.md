@@ -31,3 +31,10 @@ so P1-GATE lists ISSUE-2). Option 2 becomes a Phase 2 CONSIDER row; no task is b
 
 ## Owner's answer
 (left empty; the owner fills it in and the next session reads it)
+
+## Gate review (2026-10-28)
+The P1-GATE review (gate commit 350f71d) returned NOT_MET on this threshold alone. The default above lets
+work continue; it does not make the threshold met, and the gate reviewer cannot relax a §13 number. Two
+honest attempts are on record (P0-10 spike, P1-10d), so per WORKFLOW §6 P1-GATE is `blocked` on this
+issue. Option 1 or 3 → the gate is MET at once, with a finding and a changelog line on §13 and GATE.md
+check 9. Option 2 → tune and re-measure. Phase 2 rows that depend on P1-GATE wait for the answer.

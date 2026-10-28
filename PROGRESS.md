@@ -794,3 +794,13 @@ Checks: verify -pl flottila-core -am VERIFIED_PASS (target/FIX-69-verify2.log); 
 Review: FAIL r1 (saveWaiting javadoc did not name the window refusal), PASS r2. Raised FIX-71 (deadline Error path, the fail-whole-backlog policy, dispatch order).
 D-054 data: class A (test-author ×2, implementer ×2, reviewer ×2); review rounds 2.
 Next: P1-GATE [G] — gate-reviewer on 350f71d running.
+
+## 2026-10-28 — P1-GATE Phase 1 gate — blocked (ISSUE-2), gate review NOT_MET
+Gate commit 350f71d: push run 40661411394 and dispatch run 40661445376 (build, mutation, bench, dco) VERIFIED_PASS (observed via GitHub jobs API).
+PIT (mutation job log target/P1-GATE-pit-job.txt): api 125/125 (100 %), core 760/767 (99 %), testkit 403/491 (informational). Coverage at 350f71d above every floor; table in RESULTS "Gate commit 350f71d".
+Test history 7f3e4e3..350f71d (verifier, target/P1-GATE-testhist-summary.txt): no @Disabled/@Ignore/assume/sleep/assertTrue(true) added; 12 commits remove assertion lines without a stated reason → FIX-74 audit.
+Gate reviewer (Fable 5.1): NOT_MET — (1) §13 durable ACK < 5 ms p99 missed (8.82/27.4/135 ms), owner-only after two attempts (WORKFLOW §6); (2) CI numbers for the gate commit and this entry were missing — now written.
+Met with evidence: milestone-1 flow (InvoiceSyncHttpTest, NodeIT), ledger 2000/2000, 50 MiB stream, sync c=1 overhead, reviews PASS, drift justified (F-1..F-13).
+Deviation: §13 durable ACK — recorded in ISSUE-2 ("Gate review"); the owner's answer lands as a finding.
+Raised: FIX-72 (GATE check 9 wording), FIX-73 (ledger/ACK re-run on current main), FIX-74 (test-removal audit), CONSIDER-3 (bench band).
+Next: ready rows not behind P1-GATE — FIX rows, P1-09f, P1-09g; Phase 2 waits for the owner on ISSUE-2.
