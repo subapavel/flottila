@@ -28,6 +28,7 @@
 | 2026-10-28 | 3.4 | §8 write path: trail rows wait FIFO for room in the node writer's backlog up to `maxWait` (10 s), keeping the run's permit, so overload shows as admission refusals; a row not written is logged at WARNING (message id, flow, step, cause) and counted; the at-least-once ingress row still fails fast; the backlog bounds tempo and is not sized against maxInFlight (D-071) — F-13 closed (FIX-67's c=64 rerun: no row lost) | F-13 (major) |
 | 2026-10-28 | 3.4 | §7 Component SPI gains `listensOn(EndpointConfig)` (default empty); a deploy (and a restore) refuses in endpoints that would share a host:port with each other, the admin API or another package's running flow — one listener per port on a node (D-072, P1-09g) | — |
 | 2026-10-28 | 3.4 | §7 Sizing and §13 Phase 1 gate: the durable ACK < 5 ms p99 is no longer a Phase 1 gate condition; the gate records it as measured (p99 8.8 / 27.4 / 135 ms at c=1/8/64, 4 vCPU, default Postgres 16) and < 5 ms becomes the Phase 2 tuning target (P2-08) — owner's answer to ISSUE-2, option 1+2 | F-14 (major) |
+| 2026-10-28 | 3.4 | §7 WorkQueue row: the attempts token fences completion, the same-key fast path and hold as well as renew, so a holder whose lease expired and whose row was claimed again cannot delete or take over the new holder's row; the stale outcome is reported to the caller, never retried (D-074, Q-1) | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -251,7 +252,7 @@ The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a 
 
 | Queue | Backing | Used for |
 | --- | --- | --- |
-| WorkQueue | Postgres `work` table, `SELECT … FOR UPDATE SKIP LOCKED`, one row per message, `partition_key`, lease with expiry renewed while the item runs, an attempts count that fences the lease and bounds the retries, a held state that blocks its key | async at-least-once flows on small installs; all XI ordered (EOIO) queues with block-on-failure |
+| WorkQueue | Postgres `work` table, `SELECT … FOR UPDATE SKIP LOCKED`, one row per message, `partition_key`, lease with expiry renewed while the item runs, an attempts count that fences the lease, the completion and the hold and bounds the retries, a held state that blocks its key | async at-least-once flows on small installs; all XI ordered (EOIO) queues with block-on-failure |
 | Kafka topics | one topic per flow or pool, key = partition key | async hand-over at scale, ingest buffer for monitoring, replay source, the durable `/xi` door |
 | Poller leases | Valkey (moved off Postgres) | which node polls which SFTP/mail/DB endpoint |
 

@@ -867,7 +867,7 @@ class DeploymentsRedeployTest {
         assertInstanceOf(Ack.Reply.class, within(send(orders).answer(), "v1's sync answer"), "v1 keeps serving");
         assertEquals(1, queue.rows().size(), "the row is still there");
 
-        queue.complete(seq).await();
+        queue.drop(seq);
         assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", Optional.empty(), archive));
     }
 
@@ -892,7 +892,7 @@ class DeploymentsRedeployTest {
         assertFalse(audit.stopped());
         assertEquals(flowsBefore, deployments.flows());
 
-        queue.complete(seq).await();
+        queue.drop(seq);
         assertResult(List.of(), List.of("shop/audit"), List.of(), deploy("shop", Optional.empty(), archive));
         assertEquals(mode, byId(deployments.flows()).get("shop/audit").delivery());
     }
@@ -911,7 +911,7 @@ class DeploymentsRedeployTest {
         Path archive = v2.zipTo(archives);
 
         DeployRefusedException withRow = refused("shop", archive);
-        queue.complete(seq).await();
+        queue.drop(seq);
         DeployRefusedException withoutRow = refused("shop", archive);
 
         assertEquals(Kind.INVALID, withoutRow.kind(), "fixture: " + withoutRow.error() + " " + withoutRow.problems());

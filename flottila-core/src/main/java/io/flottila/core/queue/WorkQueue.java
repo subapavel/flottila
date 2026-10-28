@@ -6,6 +6,7 @@ import io.vertx.core.Future;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -15,10 +16,12 @@ import java.util.Optional;
  * in-memory one here for tests and the flow builder's unit tests.
  *
  * <p>Every hand-out of a row ({@link #claim}, {@link #completeAndTakeNext}) counts one attempt; the
- * {@link Item#attempts()} it was handed out with is the holder's fencing token (D-055): {@link #renew}
- * and {@link #hold} act only for the current holder. A held row is never handed out again and stays
- * the oldest row of its key, so it blocks the rows behind it until a human deals with it: {@link #held} lists the held rows
- * and {@link #release} hands one back to the claim (D-067).
+ * {@link Item#attempts()} it was handed out with is the holder's fencing token (D-055):
+ * renew, hold, complete and the fast path act only for the current holder (Q-1, D-074) — the row exists, is not held and
+ * was last handed out with that token, which is at least 1 (a token of 0, a row never handed out, matches no row). A held
+ * row is never handed out again, never completed and stays the oldest row of its key, so it blocks the rows behind it until
+ * a human deals with it: {@link #held} lists the held rows and {@link #release} hands one back to the claim (D-067), whose
+ * holder then completes it.
  *
  * @since 0.1
  */
@@ -41,6 +44,33 @@ public interface WorkQueue {
      */
     record Held(Item item, Instant heldAt) {}
 
+    /**
+     * What a same-key fast path did (Q-1, D-074): {@link #STALE} — the caller no longer held the row, nothing was completed and
+     * nothing taken — or {@link #done done(next)}: the row was completed and {@code next} is the row of its key handed out to the
+     * caller, if any.
+     *
+     * @param completed the row was removed by this call
+     * @param next the next row of the key now leased to the caller; never null, and empty when nothing was completed
+     * @throws NullPointerException {@code next} is null
+     * @throws IllegalArgumentException a next row without a completion
+     * @since 0.1
+     */
+    record Completion(boolean completed, Optional<Item> next) {
+
+        /** Nothing completed, nothing taken: the row was claimed again, held, completed or unknown. */
+        public static final Completion STALE = new Completion(false, Optional.empty());
+
+        public Completion {
+            Objects.requireNonNull(next, "next");
+            if (!completed && next.isPresent()) throw new IllegalArgumentException("a next row without a completion: " + next.get());
+        }
+
+        /** The row was completed; {@code next} is the row of its key handed out with it, if any. */
+        public static Completion done(Optional<Item> next) {
+            return new Completion(true, next);
+        }
+    }
+
     /** Appends a row; {@code partitionKey} null = no ordering. */
     Future<Void> enqueue(String messageId, String flow, int step, String partitionKey);
 
@@ -51,19 +81,23 @@ public interface WorkQueue {
      */
     Future<List<Item>> claim(String workerId, String flow, int max, Duration lease);
 
-    /** Removes a finished row, held or not, whoever holds it; unknown {@code seq} is a no-op. */
-    Future<Void> complete(long seq);
+    /**
+     * Removes a finished row for its current holder: {@code true} when this call removed it; {@code false} when the caller no
+     * longer holds it (claimed again, held, completed or unknown) — the row is left to its holder, as it was.
+     */
+    Future<Boolean> complete(long seq, int attempts);
 
     /**
-     * Same-key fast path: completes {@code seq} and, if it had a key, leases the next row of that key
-     * to the same worker in the same round-trip — a hot partition never waits for a new claim round.
+     * Same-key fast path, under the same condition as {@link #complete}: completes {@code seq} and, if it had a key, leases the
+     * next row of that key to the same worker in the same round-trip — a hot partition never waits for a new claim round.
+     * {@link Completion#STALE} when the caller no longer holds {@code seq}: nothing is completed and nothing taken.
      */
-    Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease);
+    Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease);
 
     /**
      * Extends the lease of {@code seq} to {@code lease} from now, while the row exists, is not held and was last
-     * handed out with {@code attempts} — a lease that ran out and was not claimed again is revived. {@code true} when
-     * extended; {@code false} when the caller no longer holds the row (completed, held, or claimed again).
+     * handed out with {@code attempts}, at least 1 — a lease that ran out and was not claimed again is revived. {@code true} when
+     * extended; {@code false} when the caller no longer holds the row (claimed again, held, completed or unknown).
      */
     Future<Boolean> renew(long seq, int attempts, Duration lease);
 

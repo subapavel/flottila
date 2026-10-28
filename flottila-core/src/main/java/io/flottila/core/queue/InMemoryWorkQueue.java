@@ -14,7 +14,7 @@ import java.util.TreeMap;
 
 /**
  * In-memory {@link WorkQueue} with the exact eligibility rule of the Postgres claim (not held, oldest
- * row of its key, no live lease on the key), the same attempts and fencing (D-055), leases on an
+ * row of its key, no live lease on the key), the same attempts and fencing (D-055, D-074), leases on an
  * injected {@link Clock}. Single process only; state whose loss loses messages belongs to Postgres
  * (CLAUDE.md) — this is for tests.
  *
@@ -57,20 +57,23 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture(taken);
     }
 
-    @Override public synchronized Future<Void> complete(long seq) {
+    @Override public synchronized Future<Boolean> complete(long seq, int attempts) {
+        if (!current(rows.get(seq), attempts)) return Future.succeededFuture(false);
         rows.remove(seq);
-        return Future.succeededFuture();
+        return Future.succeededFuture(true);
     }
 
-    @Override public synchronized Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) {
-        Row done = rows.remove(seq);
-        if (done == null || done.item.partitionKey() == null) return Future.succeededFuture(Optional.empty());
+    @Override public synchronized Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
+        Row done = rows.get(seq);
+        if (!current(done, attempts)) return Future.succeededFuture(Completion.STALE);
+        rows.remove(seq);
+        if (done.item.partitionKey() == null) return Future.succeededFuture(Completion.done(Optional.empty()));
         Instant now = clock.instant();
         for (Row r : rows.values()) {   // seq order: the first row of the key is its oldest, and only the oldest is ever leased
             if (!r.item.flow().equals(done.item.flow()) || !done.item.partitionKey().equals(r.item.partitionKey())) continue;
-            return Future.succeededFuture(Optional.of(take(r, workerId, now, lease)));
+            return Future.succeededFuture(Completion.done(Optional.of(take(r, workerId, now, lease))));
         }
-        return Future.succeededFuture(Optional.empty());
+        return Future.succeededFuture(Completion.done(Optional.empty()));
     }
 
     @Override public synchronized Future<Boolean> renew(long seq, int attempts, Duration lease) {
@@ -134,10 +137,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
     /**
      * Oldest row of its key (null key: always). Only the oldest row of a key is ever leased, so a key
      * with a live lease has its oldest row live and {@link #claim} already skips it: the SQL's second
-     * condition ("no live lease on the key") is implied here. The one divergence from the SQL is on
-     * misuse: a fast path on a seq that was never handed out would lease the key's oldest row even
-     * while it is live or held; the contract (complete only what you were handed; Q-1) excludes that —
-     * a row handed out had no older row of its key, held or not, so the row after it is never held.
+     * condition ("no live lease on the key") is implied here.
      */
     private boolean eligible(Row candidate) {
         String key = candidate.item.partitionKey();
@@ -149,9 +149,12 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return true;
     }
 
-    /** The caller's claim is the row's current one: the row exists, is not held and was last handed out with {@code attempts}. */
+    /**
+     * The caller's claim is the row's current one (Q-1, D-074): the row exists, is not held and was last handed out with
+     * {@code attempts}, at least 1 — a row never handed out matches no token.
+     */
     private static boolean current(Row r, int attempts) {
-        return r != null && r.heldAt == null && r.item.attempts() == attempts;
+        return r != null && r.heldAt == null && attempts > 0 && r.item.attempts() == attempts;
     }
 
     /** The cursor after {@code last}: its seq. */

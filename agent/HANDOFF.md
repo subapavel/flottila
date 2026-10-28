@@ -1,16 +1,16 @@
 # Handoff
 
-state: RUNNING — Phase 1 gate MET (re-review after the owner's ISSUE-2 answer, D-073/F-14); Phase 2 starts
-last commit: `Task: P1-GATE` (this commit, gate MET); a880b61 `Task: P1-09g`; a68b52f `Task: P1-09f`; 350f71d gate commit
+state: RUNNING — Phase 2; Q-1 done (WorkQueue fenced by the attempts token, D-074); P2-01 next
+last commit: `Task: Q-1` (this commit); 8dcc4f8 `Task: P1-GATE` (gate MET); a880b61 `Task: P1-09g`
 branch: claude/stoic-cannon-2byixj, pushed to main as well (local refs/heads/main is stale; origin/main is the truth)
-next exact action: P2-01 [C] Postgres WorkQueue wired to async flows — scout, designer draft, packet; then P2-02, P2-04, P2-08
+next exact action: P2-01 [C] — designer draft from the scout facts (queue: key unread, no fast path in FlowWorker, ingress key null, no invoice-async)
 then: FIX-68, FIX-71, FIX-73..75 between Phase 2 rows; later (owner): FIX-72, FIX-76, CONSIDER-3; CONSIDER-4 is a Phase 2 row
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: a68b52f run 40670578779 green (P1-09f); 88d3522 run 40666734124 green; a880b61 run 40682726062 running at commit time
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
 open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered by the owner 2026-10-28 (option 1+2)
-open fixes: FIX-16, FIX-18..20, FIX-22..29, FIX-31, FIX-33,34,36..43, FIX-45..52, FIX-54..64, FIX-68, FIX-71..75; CONSIDER-1..3 (owner)
-pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066/F-10, D-067..69, F-11, D-070/F-12, D-071; owner-decided: D-064/65B/67A/72/73
+open fixes: FIX-16, FIX-18..20, FIX-22..29, FIX-31, FIX-33,34,36..43, FIX-45..52, FIX-54..64, FIX-68, FIX-71..75, FIX-77; CONSIDER-1..3 (owner)
+pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066/F-10, D-067..69, F-11, D-070/F-12, D-071, D-074; owner-decided: D-064/65B/67A/72/73
 roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort per call; designer Opus xhigh for C; gate-reviewer Fable 5.1 (AGENTS.md)
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
 VM: services detached (NOTES.md "Build and VM"); mutant restore with `cp`/`touch`, never `mv`; never `mvn clean` at the reactor root; no stress-ng (shell hogs)

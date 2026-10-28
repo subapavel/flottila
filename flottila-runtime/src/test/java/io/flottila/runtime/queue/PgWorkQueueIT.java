@@ -76,8 +76,8 @@ class PgWorkQueueIT {
         List<WorkQueue.Item> w1 = claim("w1", 10, LEASE);
         assertEquals(Set.of("a1", "b1", "n1"), ids(w1), "only the oldest row per key plus the unordered null-key row");
         assertTrue(claim("w2", 10, LEASE).isEmpty(), "keys A and B are locked");
-        long a1 = w1.stream().filter(i -> i.messageId().equals("a1")).findFirst().orElseThrow().seq();
-        queue.complete(a1).await();
+        WorkQueue.Item a1 = w1.stream().filter(i -> i.messageId().equals("a1")).findFirst().orElseThrow();
+        assertTrue(queue.complete(a1.seq(), a1.attempts()).await(), "completed by its holder");
         assertEquals(List.of("a2"), claim("w2", 10, LEASE).stream().map(WorkQueue.Item::messageId).toList());
         assertTrue(claim("w1", 10, LEASE).isEmpty(), "b2 still behind b1");
     }
@@ -99,7 +99,7 @@ class PgWorkQueueIT {
     void completeRemovesTheRow() {
         enqueue("c1", null);
         List<WorkQueue.Item> got = claim("w1", 1, LEASE);
-        queue.complete(got.get(0).seq()).await();
+        assertTrue(queue.complete(got.get(0).seq(), got.get(0).attempts()).await(), "true: removed");
         int left = pool.preparedQuery("select count(*)::int as n from work where id = $1").execute(Tuple.of("c1")).await().iterator().next().getInteger("n");
         assertEquals(0, left);
     }
@@ -110,25 +110,28 @@ class PgWorkQueueIT {
         enqueue("a1", "A"); enqueue("n0", null); enqueue("a2", "A"); enqueue("a3", "A"); enqueue("b1", "B");
         WorkQueue.Item a1 = claim("w1", 1, LEASE).get(0);
         assertEquals("a1", a1.messageId());
-        Optional<WorkQueue.Item> a2 = queue.completeAndTakeNext(a1.seq(), "w1", LEASE).await();
+        WorkQueue.Completion done = queue.completeAndTakeNext(a1.seq(), a1.attempts(), "w1", LEASE).await();
+        assertTrue(done.completed(), "a1 completed by its holder");
+        Optional<WorkQueue.Item> a2 = done.next();
         assertEquals("a2", a2.orElseThrow().messageId(), "the fast path stays on key A and skips the older free row n0");
         String holder = pool.preparedQuery("select locked_by from work where seq = $1").execute(Tuple.of(a2.get().seq())).await().iterator().next().getString("locked_by");
         assertEquals("w1", holder, "the fast path leases the next row to the finishing worker");
         assertEquals(null, pool.query("select locked_by from work where id = 'n0'").execute().await().iterator().next().getString("locked_by"), "n0 was not touched");
         assertEquals(Set.of("n0", "b1"), ids(claim("w2", 10, LEASE)), "key A stays with w1; everything else is w2's");
-        assertEquals("a3", queue.completeAndTakeNext(a2.get().seq(), "w1", LEASE).await().orElseThrow().messageId());
-        long a3 = pool.query("select seq from work where id = 'a3'").execute().await().iterator().next().getLong("seq");
-        assertTrue(queue.completeAndTakeNext(a3, "w1", LEASE).await().isEmpty(), "key A drained");
-        assertTrue(queue.completeAndTakeNext(-1, "w1", LEASE).await().isEmpty(), "completing an unknown seq is a no-op");
+        WorkQueue.Item a3 = queue.completeAndTakeNext(a2.get().seq(), a2.get().attempts(), "w1", LEASE).await().next().orElseThrow();
+        assertEquals("a3", a3.messageId());
+        assertEquals(WorkQueue.Completion.done(Optional.empty()), queue.completeAndTakeNext(a3.seq(), a3.attempts(), "w1", LEASE).await(), "a3 completed; key A drained");
+        assertEquals(WorkQueue.Completion.STALE, queue.completeAndTakeNext(-1, 1, "w1", LEASE).await(), "completing an unknown seq is a no-op");
         assertTrue(queue.claim("w1", "t", 1, Duration.ofSeconds(-1)).failed(), "a negative lease fails the future, it does not throw");
-        assertTrue(queue.completeAndTakeNext(a1.seq(), "w1", Duration.ofSeconds(-1)).failed());
+        assertTrue(queue.completeAndTakeNext(a1.seq(), a1.attempts(), "w1", Duration.ofSeconds(-1)).failed());
     }
 
     @Test
     void fastPathOnANullKeyRowJustCompletes() {
         enqueue("n1", null); enqueue("n2", null);
         WorkQueue.Item n1 = claim("w1", 1, LEASE).get(0);
-        assertTrue(queue.completeAndTakeNext(n1.seq(), "w1", LEASE).await().isEmpty(), "no key, no ordering, no fast path");
+        assertEquals(WorkQueue.Completion.done(Optional.empty()), queue.completeAndTakeNext(n1.seq(), n1.attempts(), "w1", LEASE).await(),
+                "completed; no key, no ordering, no fast path");
         assertEquals(1, pool.query("select count(*) from work").execute().await().iterator().next().getLong(0));
     }
 
@@ -153,7 +156,7 @@ class PgWorkQueueIT {
         WorkQueue.Item again = claim("w2", 10, LEASE).get(0);
         assertEquals(first.seq(), again.seq());
         assertEquals(2, again.attempts(), "a re-claim after the lease ran out is the second attempt");
-        WorkQueue.Item next = queue.completeAndTakeNext(again.seq(), "w2", LEASE).await().orElseThrow();
+        WorkQueue.Item next = queue.completeAndTakeNext(again.seq(), again.attempts(), "w2", LEASE).await().next().orElseThrow();
         assertEquals("x2", next.messageId());
         assertEquals(1, next.attempts(), "the fast path's claim counts as well");
         assertEquals(1, row(next.seq()).getInteger("attempts"));
@@ -186,8 +189,11 @@ class PgWorkQueueIT {
 
         assertTrue(queue.hold(taken.seq(), taken.attempts()).await());
         assertFalse(queue.renew(taken.seq(), taken.attempts(), LEASE).await(), "a held row is not renewed");
-        queue.complete(taken.seq()).await();
-        assertFalse(queue.renew(taken.seq(), taken.attempts(), LEASE).await(), "a completed row is not renewed");
+        assertTrue(queue.release(taken.seq()).await(), "D-074: a held row leaves only through release, claim, complete");
+        WorkQueue.Item last = claim("w3", 1, LEASE).get(0);
+        assertEquals(3, last.attempts(), "fixture");
+        assertTrue(queue.complete(last.seq(), last.attempts()).await(), "fixture: completed by its holder");
+        assertFalse(queue.renew(last.seq(), last.attempts(), LEASE).await(), "a completed row is not renewed");
     }
 
     @Test
@@ -208,7 +214,7 @@ class PgWorkQueueIT {
         List<WorkQueue.Item> rest = claim("w3", 10, LEASE);
         assertEquals(List.of("n1"), rest.stream().map(WorkQueue.Item::messageId).toList(),
                 "a1 is held and a2 waits behind it; the null-key row is claimable");
-        queue.complete(rest.get(0).seq()).await();
+        assertTrue(queue.complete(rest.get(0).seq(), rest.get(0).attempts()).await(), "fixture");
         pool.query("update work set locked_until = now() - interval '1 second'").execute().await();
         assertTrue(claim("w3", 10, LEASE).isEmpty(), "never claimed again, its lease long gone");
         assertEquals(2L, pool.query("select count(*) from work").execute().await().iterator().next().getLong(0), "the held row and the row behind it stay");
@@ -240,7 +246,9 @@ class PgWorkQueueIT {
                         processed.computeIfAbsent(c.partitionKey(), k -> new java.util.concurrent.CopyOnWriteArrayList<>())
                                 .add(Integer.parseInt(c.messageId().substring(c.messageId().indexOf('-') + 1)));
                         active.remove(c.partitionKey());
-                        cur = queue.completeAndTakeNext(c.seq(), me, LEASE).await();
+                        WorkQueue.Completion done = queue.completeAndTakeNext(c.seq(), c.attempts(), me, LEASE).await();
+                        if (!done.completed()) overlaps.add(c + " not completed by its holder " + me);
+                        cur = done.next();
                     }
                 }
             }
@@ -285,14 +293,18 @@ class PgWorkQueueIT {
         assertTrue(queue.claim("w3", flow, 10, LEASE).await().isEmpty(), "fixture: a held row is never claimed again");
         assertTrue(queue.hasItems(flow).await(), "a held row");
 
-        queue.complete(again.seq()).await();
+        assertFalse(queue.complete(again.seq(), again.attempts()).await(), "D-074: a held row is not completed, not even by its holder");
+        assertTrue(queue.hasItems(flow).await(), "still a held row");
+        assertTrue(queue.release(again.seq()).await(), "fixture: a held row leaves through release, claim, complete");
+        WorkQueue.Item last = queue.claim("w3", flow, 1, LEASE).await().get(0);
+        assertTrue(queue.complete(last.seq(), last.attempts()).await(), "fixture");
         assertFalse(queue.hasItems(flow).await(), "only completed rows: no items");
         queue.enqueue("q2", flow, 1, null).await();
         queue.enqueue("q3", flow, 1, "K").await();
         WorkQueue.Item q2 = queue.claim("w1", flow, 1, LEASE).await().get(0);
-        queue.completeAndTakeNext(q2.seq(), "w1", LEASE).await();
+        assertTrue(queue.completeAndTakeNext(q2.seq(), q2.attempts(), "w1", LEASE).await().completed(), "fixture");
         assertTrue(queue.hasItems(flow).await(), "one row completed, one still queued");
-        for (WorkQueue.Item left : queue.claim("w1", flow, 10, LEASE).await()) queue.complete(left.seq()).await();
+        for (WorkQueue.Item left : queue.claim("w1", flow, 10, LEASE).await()) assertTrue(queue.complete(left.seq(), left.attempts()).await(), "fixture");
         assertFalse(queue.hasItems(flow).await(), "every row completed");
         assertTrue(queue.hasItems(other).await(), "the other flow's row stays its own");
     }
@@ -436,7 +448,8 @@ class PgWorkQueueIT {
         assertTrue(queue.hold(h1.seq(), h1.attempts()).await(), "fixture");
         assertTrue(queue.release(h1.seq()).await(), "witness: a held row is released");
         assertFalse(queue.release(h1.seq()).await(), "released already: no longer held");
-        queue.complete(h1.seq()).await();
+        assertTrue(queue.complete(h1.seq(), h1.attempts()).await(),
+                "D-074: a released row keeps its attempts, so its last holder's token stays current until the next claim");
         assertFalse(queue.release(h1.seq()).await(), "completed: unknown");
     }
 
@@ -448,15 +461,141 @@ class PgWorkQueueIT {
         assertEquals(List.of("a1", "b1"), first.stream().map(WorkQueue.Item::messageId).toList(), "fixture");
         WorkQueue.Item a1 = one(first, "a1");
         assertTrue(queue.hold(a1.seq(), a1.attempts()).await(), "fixture");
-        queue.complete(one(first, "b1").seq()).await();
+        assertTrue(queue.complete(one(first, "b1").seq(), one(first, "b1").attempts()).await(), "fixture");
         expire(a1.seq());
         assertTrue(claim("w2", 10, LEASE).isEmpty(), "held: a1 is never claimed and a2 waits behind it");
 
         assertTrue(queue.release(a1.seq()).await());
         assertEquals(List.of(new WorkQueue.Item(a1.seq(), "a1", "t", 1, "A", 2)), claim("w2", 10, LEASE), "the released row comes first; a2 stays behind it");
         assertTrue(claim("w3", 10, LEASE).isEmpty(), "a1 leased again: key A blocked by its live lease");
-        WorkQueue.Item a2 = queue.completeAndTakeNext(a1.seq(), "w2", LEASE).await().orElseThrow();
+        WorkQueue.Item a2 = queue.completeAndTakeNext(a1.seq(), 2, "w2", LEASE).await().next().orElseThrow();
         assertEquals("a2", a2.messageId(), "a2 once a1 completed");
         assertEquals(1, a2.attempts());
+    }
+
+    // --- Q-1 (D-074): complete and the fast path are fenced by the attempts token, as renew and hold are — the same cases as InMemoryWorkQueueTest
+
+    /** Every row of the table in seq order, lease, attempts and hold included: what a refused call must leave as it was. */
+    private List<String> state() {
+        List<String> rows = new ArrayList<>();
+        for (io.vertx.sqlclient.Row r : pool.query("select seq, id, partition_key, attempts, locked_by, locked_until, held_at from work order by seq").execute().await()) {
+            rows.add(r.getLong("seq") + " " + r.getString("id") + " key " + r.getString("partition_key") + " attempts " + r.getInteger("attempts")
+                    + " locked by " + r.getString("locked_by") + " until " + r.getValue("locked_until") + " held " + r.getValue("held_at"));
+        }
+        return rows;
+    }
+
+    private List<String> ids() {
+        List<String> ids = new ArrayList<>();
+        for (io.vertx.sqlclient.Row r : pool.query("select id from work order by seq").execute().await()) ids.add(r.getString("id"));
+        return ids;
+    }
+
+    @Test
+    void completeIsFencedByAttempts() {
+        enqueue("x1", "K"); enqueue("x2", "K");
+        WorkQueue.Item mine = claim("w1", 10, LEASE).get(0);
+        expire(mine.seq());
+        WorkQueue.Item theirs = claim("w2", 10, LEASE).get(0);
+        assertEquals(mine.seq(), theirs.seq(), "fixture: claimed again");
+        assertEquals(2, theirs.attempts(), "fixture");
+        List<String> before = state();
+
+        assertFalse(queue.complete(mine.seq(), mine.attempts()).await(), "the old holder's complete is stale: false");
+        assertEquals(before, state(), "and deletes nothing: x1 stays w2's, at attempt 2, x2 behind it");
+        assertTrue(claim("w3", 10, LEASE).isEmpty(), "x1 still leased to w2, x2 still behind it");
+        assertFalse(queue.complete(theirs.seq(), theirs.attempts() + 1).await(), "attempts ahead of the row's: false");
+        assertEquals(before, state());
+
+        assertTrue(queue.complete(theirs.seq(), theirs.attempts()).await(), "the current holder's complete deletes the row: true");
+        assertEquals(List.of("x2"), ids());
+        assertFalse(queue.complete(theirs.seq(), theirs.attempts()).await(), "completed already: false");
+        assertFalse(queue.complete(-1L, 1).await(), "an unknown seq: false");
+        assertEquals(List.of("x2"), claim("w3", 10, LEASE).stream().map(WorkQueue.Item::messageId).toList(), "x2 once x1 is gone");
+    }
+
+    /** The guarded delete matches nothing, so the next-of-key claim never runs: x2 is not taken, nothing changes. */
+    @Test
+    void aStaleFastPathCompletesNothingAndTakesNothing() {
+        enqueue("x1", "K"); enqueue("x2", "K");
+        WorkQueue.Item mine = claim("w1", 10, LEASE).get(0);
+        expire(mine.seq());
+        WorkQueue.Item theirs = claim("w2", 10, LEASE).get(0);
+        assertEquals(mine.seq(), theirs.seq(), "fixture: claimed again");
+        List<String> before = state();
+
+        assertEquals(WorkQueue.Completion.STALE, queue.completeAndTakeNext(mine.seq(), mine.attempts(), "w1", LEASE).await(),
+                "the old holder's fast path is stale");
+        assertEquals(before, state(), "x1 not completed, x2 not taken: still at attempt 0, leased to nobody");
+
+        WorkQueue.Completion done = queue.completeAndTakeNext(theirs.seq(), theirs.attempts(), "w2", LEASE).await();
+        long x2 = pool.query("select seq from work where id = 'x2'").execute().await().iterator().next().getLong("seq");
+        assertEquals(WorkQueue.Completion.done(Optional.of(new WorkQueue.Item(x2, "x2", "t", 1, "K", 1))), done,
+                "the current holder's fast path completes x1 and takes x2");
+        assertEquals("w2", row(x2).getString("locked_by"));
+        List<String> after = state();
+        assertEquals(WorkQueue.Completion.STALE, queue.completeAndTakeNext(theirs.seq(), theirs.attempts(), "w2", LEASE).await(),
+                "completed already: stale");
+        assertEquals(after, state());
+    }
+
+    @Test
+    void holdIsFencedByAttempts() {
+        enqueue("x1", "K"); enqueue("x2", "K");
+        WorkQueue.Item mine = claim("w1", 10, LEASE).get(0);
+        expire(mine.seq());
+        WorkQueue.Item theirs = claim("w2", 10, LEASE).get(0);
+        assertEquals(mine.seq(), theirs.seq(), "fixture: claimed again");
+        List<String> before = state();
+
+        assertFalse(queue.hold(mine.seq(), mine.attempts()).await(), "the old holder's hold is stale: false");
+        assertFalse(queue.hold(theirs.seq(), theirs.attempts() + 1).await(), "attempts ahead of the row's: false");
+        assertEquals(List.of(), queue.held(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing held");
+        assertEquals(before, state());
+        assertTrue(queue.complete(theirs.seq(), theirs.attempts()).await(), "not held: the current holder completes it");
+        assertFalse(queue.hold(theirs.seq(), theirs.attempts()).await(), "a completed row is not held");
+        assertEquals(List.of(), queue.held(Optional.empty(), Page.MAX_LIMIT).await().items());
+    }
+
+    @Test
+    void aHeldRowIsNotCompletedByItsHolder() {
+        enqueue("x1", "K"); enqueue("x2", "K");
+        WorkQueue.Item x1 = claim("w1", 10, LEASE).get(0);
+        assertTrue(queue.hold(x1.seq(), x1.attempts()).await(), "fixture: held by its holder");
+        List<String> before = state();
+
+        assertFalse(queue.complete(x1.seq(), x1.attempts()).await(), "a held row is not completed, not even by its holder");
+        assertEquals(WorkQueue.Completion.STALE, queue.completeAndTakeNext(x1.seq(), x1.attempts(), "w1", LEASE).await(),
+                "nor through the fast path, which takes nothing");
+        assertEquals(before, state(), "x1 and x2 as they were");
+        assertEquals(List.of(x1), queue.held(Optional.empty(), Page.MAX_LIMIT).await().items().stream().map(WorkQueue.Held::item).toList(),
+                "x1 still held");
+
+        assertTrue(queue.release(x1.seq()).await(), "fixture");
+        WorkQueue.Item again = claim("w2", 10, LEASE).get(0);
+        assertEquals(new WorkQueue.Item(x1.seq(), "x1", "t", 1, "K", 2), again, "fixture: the released row comes first");
+        assertFalse(queue.complete(x1.seq(), x1.attempts()).await(), "after the claim the old token is stale");
+        assertTrue(queue.complete(again.seq(), again.attempts()).await(), "the new holder completes it");
+        assertEquals(List.of("x2"), ids());
+    }
+
+    /** {@code attempts > 0}: a row never handed out has attempts 0 (V4's default), and token 0 matches it for nothing. */
+    @Test
+    void aTokenOfZeroMatchesNoRow() {
+        enqueue("q1", "K"); enqueue("q2", "K");
+        long q1 = pool.query("select seq from work where id = 'q1'").execute().await().iterator().next().getLong("seq");
+        assertEquals(0, row(q1).getInteger("attempts"), "fixture: never handed out");
+        List<String> before = state();
+
+        assertFalse(queue.renew(q1, 0, LEASE).await(), "renew with token 0");
+        assertFalse(queue.hold(q1, 0).await(), "hold with token 0");
+        assertFalse(queue.complete(q1, 0).await(), "complete with token 0");
+        assertEquals(WorkQueue.Completion.STALE, queue.completeAndTakeNext(q1, 0, "w1", LEASE).await(), "fast path with token 0");
+        assertEquals(before, state(), "nothing renewed, held, completed or taken");
+
+        WorkQueue.Item first = claim("w1", 10, LEASE).get(0);
+        assertEquals(new WorkQueue.Item(q1, "q1", "t", 1, "K", 1), first, "witness: q1 untouched, handed out at attempt 1");
+        assertTrue(queue.renew(q1, 1, LEASE).await(), "witness: its token renews");
+        assertTrue(queue.complete(q1, 1).await(), "and completes");
     }
 }

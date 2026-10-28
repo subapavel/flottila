@@ -829,3 +829,12 @@ Evidence unchanged from the first gate entry (350f71d: push 40661411394, dispatc
 Gate review: NOT_MET r1 (durable ACK owner-only; CI numbers missing — fixed in 88d3522), MET r2 (Fable 5.1). Hand-over list from the reviewer: FIX-73, FIX-74 open; changelog "at the top" vs appended (WORKFLOW wording).
 Deviation: F-14
 Next: Phase 2 — P2-01 [C] Postgres WorkQueue wired to async flows; then P2-02, P2-04, P2-08.
+
+## 2026-10-28 — Q-1 WorkQueue completion fenced by the attempts token (D-074) — done, review PASS
+Test first: InMemoryWorkQueueTest + PgWorkQueueIT completeIsFencedByAttempts, aStaleFastPathCompletesNothingAndTakesNothing, holdIsFencedByAttempts, aHeldRowIsNotCompletedByItsHolder, aTokenOfZeroMatchesNoRow; jqwik perKeyOrderHoldsUnderAnyClaimInterleaving with stale completes; FlowWorkerTest/LifecycleTest stale and adoption cases (red: target/Q-1-red.log, compile in repo, assertions on a shim); [A] FlowWorkerTest:917/:970 implementer-authored (red: mutants F03/F13).
+Change: core WorkQueue complete(seq, attempts) → Boolean, completeAndTakeNext → Completion (STALE/done); InMemoryWorkQueue and runtime PgWorkQueue guarded by `attempts = token > 0 and not held`; FlowWorker lease token, adopt, Renewal enum, staleSettles().
+Checks: whole reactor verify -Pit VERIFIED_PASS 1706 tests (target/Q-1-verify.log); r2 core+runtime 1547 (target/Q-1-verify2.log); ArchUnit green; coverage no decrease; scoped PIT 159/161 (survivors on untouched lines); 32 mutants killed.
+Review: FAIL r1 (adoption-after-read window undocumented; tests outside the packet), PASS r2. Raised FIX-77 (complete again under the adopted token).
+Process note: survivors left after the code go back to the test-author in a fix packet, not into implementer-written tests.
+D-054 data: class C (designer ×1, test-author ×1, implementer ×1 + fix, reviewer ×2); review rounds 2.
+Next: P2-01 [C] Postgres WorkQueue wired to async flows.

@@ -324,7 +324,7 @@ The kept `@Order` (fresh database → misconfiguration → classpath) is the one
 packages/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
 invoice.xsd, fixtures/); validated by flottila-schemas tests. Add a negative fixture under
 flottila-schemas/src/test/resources/invalid/<kind>/ for every new schema rule. ArchUnit rules in
-flottila-archtest/Rules.java; every rule has a fixture. FIX-2, Q-1 pending in the Fixes section.
+flottila-archtest/Rules.java; every rule has a fixture. FIX-2, Q-1 done (D-074: complete/fast path/hold fenced by the attempts token) in the Fixes section.
 
 Tag `proto-m1` points at fc6eb56; the milestone-1 state the backlog means is 3f81834; the last
 tree with the m1 module is dc85964.

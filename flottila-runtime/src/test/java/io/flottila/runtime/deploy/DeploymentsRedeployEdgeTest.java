@@ -97,8 +97,10 @@ class DeploymentsRedeployEdgeTest {
     final class Faulty implements WorkQueue {
         @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) { return counting.enqueue(messageId, flow, step, partitionKey); }
         @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) { return counting.claim(workerId, flow, max, lease); }
-        @Override public Future<Void> complete(long seq) { return counting.complete(seq); }
-        @Override public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) { return counting.completeAndTakeNext(seq, workerId, lease); }
+        @Override public Future<Boolean> complete(long seq, int attempts) { return counting.complete(seq, attempts); }
+        @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
+            return counting.completeAndTakeNext(seq, attempts, workerId, lease);
+        }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return counting.renew(seq, attempts, lease); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return counting.hold(seq, attempts); }
         @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return counting.held(after, limit); }
@@ -243,7 +245,7 @@ class DeploymentsRedeployEdgeTest {
         assertEquals(packagesBefore, deployments.packages());
         assertEquals(List.of(), children(deployments.incomingDir()));
 
-        counting.complete(counting.rows().get(0).seq()).await();
+        counting.drop(counting.rows().get(0).seq());
         DeployResult again = OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), PackageDraft.write(archives, zip1)));
         assertEquals(List.of("shop/relay"), again.removed(), "witness: without the item v1 deploys again: " + again);
         assertEquals(key1, fileKey(dir1), "from the same directory");

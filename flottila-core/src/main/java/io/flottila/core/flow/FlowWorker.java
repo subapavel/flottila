@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 /**
@@ -49,7 +50,15 @@ import java.util.function.Function;
  * {@link AttemptsExhaustedException} and the item completed; if the timeline cannot be read, the envelope cannot be rebuilt or
  * the park fails, the item is held — never claimed again, blocking its key — and one ERROR line names the message, the flow,
  * the attempts and the cause, whatever the hold answers; a hold that fails is named in it too and leaves the item to its
- * lease (a ghost is completed as above). A claim that returns an item this worker still runs starts no second run.
+ * lease (a ghost is completed as above). A claim that returns an item this worker still runs starts no second run: the run
+ * adopts that claim — its attempts become the token the lease is renewed and the item settled by, and a renewal stopped as
+ * lost resumes (Q-1, D-074); an adoption after the settle read its token is not seen: complete answers false, the row stays
+ * leased to this worker unrenewed and runs once more after its lease.
+ *
+ * <p>The queue completes or holds an item only for its current holder (D-074). A complete that answers false — the item was
+ * claimed again, held or completed meanwhile — leaves the row to its holder as it is, logged once at WARNING with the message,
+ * the flow, the work item, the attempt and the worker, and counted by {@link #staleSettles()}; the round succeeds and the
+ * complete is never tried again. A hold that answers false is counted the same way and its ERROR says the item was not held.
  *
  * <p>What polls: {@link #poll()}; a {@linkplain #start() started} worker every {@link WorkerPolicy#pollInterval()} on the
  * timer; the handler of {@link #pollingAfterAccept} after each {@link Ack.Accepted}; and each finished item, once, so a
@@ -85,6 +94,7 @@ public final class FlowWorker {
     private Timer.Cancellable tick;                              // guarded by lock
     private boolean stopped;                                     // guarded by lock
     private Promise<Void> closed;                                // guarded by lock: null until close(); then the close every call returns
+    private final AtomicLong staleSettles = new AtomicLong();
 
     FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, WorkQueue queue, MessageStore store, BlobStore blobs,
                Pipeline pipeline, Parking parking, StepConfig firstStep, Timer timer, Producers producers) {
@@ -107,7 +117,8 @@ public final class FlowWorker {
      * Completes, once every item the round started is done with — completed, held or left to its lease — with the number
      * of items the claim returned; 0 without a claim when the worker runs its limit or is stopped. Requested while a claim is
      * in flight, it returns the one round that starts once that claim returns, shared by every poll requested meanwhile.
-     * Fails when the claim fails or throws, or when a completion or hold in the queue fails.
+     * Fails when the claim fails or throws, or when a completion or hold in the queue fails; one that answers false (stale,
+     * {@link #staleSettles()}) is no failure.
      */
     public Future<Integer> poll() {
         int room;
@@ -185,6 +196,12 @@ public final class FlowWorker {
         };
     }
 
+    /**
+     * Completions and holds this worker asked for that the queue answered false (Q-1, D-074): the item was claimed again, held
+     * or completed meanwhile and was left to its holder.
+     */
+    public long staleSettles() { return staleSettles.get(); }
+
     private void tick() {
         synchronized (lock) {
             if (stopped) return;   // fired as the worker stopped
@@ -210,7 +227,11 @@ public final class FlowWorker {
             followUp = null;
             if (claim.succeeded()) {
                 for (WorkQueue.Item item : claim.result()) {
-                    if (running.containsKey(item.seq())) continue;   // its lease ran out under a run of ours that is still going
+                    Lease ours = running.get(item.seq());
+                    if (ours != null) {   // its lease ran out under a run of ours that is still going: the run takes this claim on
+                        ours.adopt(item);
+                        continue;
+                    }
                     Lease lease = new Lease(item);
                     running.put(item.seq(), lease);
                     fresh.add(lease);
@@ -240,7 +261,7 @@ public final class FlowWorker {
                 ran.complete(verdict);
             }
         });
-        return ran.future().compose(verdict -> settle(item, verdict)).andThen(settled -> finished(item));
+        return ran.future().compose(verdict -> settle(lease, verdict)).andThen(settled -> finished(item));
     }
 
     /** Runs the message from its ingress snapshot, or parks it there when it is past the bound; what to do with its item. */
@@ -276,19 +297,37 @@ public final class FlowWorker {
         }
     }
 
-    /** Completes, holds or leaves the item as the run decided; an unparkable item raises one ERROR whatever its hold answers. */
-    private Future<Void> settle(WorkQueue.Item item, Verdict verdict) {
-        if (verdict.complete()) return queue.complete(item.seq());
+    /**
+     * Completes, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's newest
+     * claim of it; a complete or hold answering false is stale and counted. An unparkable item raises one ERROR whatever its hold answers.
+     */
+    private Future<Void> settle(Lease lease, Verdict verdict) {
+        WorkQueue.Item item = lease.item;
+        int token = lease.token();
+        if (verdict.complete()) return queue.complete(item.seq(), token).compose(removed -> {
+            if (!removed) {
+                staleSettles.incrementAndGet();
+                LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt " + token
+                        + ") finished at worker " + workerId + " but was claimed again, held or completed meanwhile; left to its holder, not completed");
+            }
+            return Future.succeededFuture();
+        });
         Throwable unparkable = verdict.unparkable();
         if (unparkable == null) return Future.succeededFuture();
-        String alert = "message " + item.messageId() + " of flow " + flow + " was claimed " + item.attempts() + " times (maxAttempts "
+        String alert = "message " + item.messageId() + " of flow " + flow + " was claimed " + token + " times (maxAttempts "
                 + policy.maxAttempts() + ") and could not be parked: " + unparkable + "; work item " + item.seq();
-        return queue.hold(item.seq(), item.attempts()).transform(held -> {
+        return queue.hold(item.seq(), token).transform(held -> {
             if (held.failed()) {
                 LOG.log(System.Logger.Level.ERROR, alert + " could not be held either (" + held.cause() + "): it is left to its lease", unparkable);
                 return Future.failedFuture(held.cause());
             }
-            LOG.log(System.Logger.Level.ERROR, alert + " held for a human (never claimed again, it blocks its key): " + held.result(), unparkable);
+            if (held.result()) {
+                LOG.log(System.Logger.Level.ERROR, alert + " held for a human (never claimed again, it blocks its key)", unparkable);
+            } else {
+                staleSettles.incrementAndGet();
+                LOG.log(System.Logger.Level.ERROR, alert + " not held: claimed again, held or completed meanwhile (attempt " + token
+                        + "), it is left to its holder", unparkable);
+            }
             return Future.succeededFuture();
         });
     }
@@ -323,42 +362,67 @@ public final class FlowWorker {
         static Verdict hold(Throwable unparkable) { return new Verdict(false, unparkable); }
     }
 
-    /** The lease of one running item: renewed every third of the policy's lease, fenced by the claim's attempts, until the run ends or it is lost. */
+    /** Where the renewals of a lease stand: one scheduled or in flight, stopped as lost, or ended with the run. */
+    private enum Renewal { RENEWING, LOST, ENDED }
+
+    /**
+     * The lease of one running item: renewed every third of the policy's lease, fenced by its token — the attempts of this
+     * worker's newest claim of the item, read when a renewal fires — until the run ends or it is lost; a claim adopted later
+     * moves the token and resumes a lost lease (Q-1, D-074).
+     */
     private final class Lease {
-        final WorkQueue.Item item;
-        private Timer.Cancellable next;   // guarded by this
-        private boolean stopped;          // guarded by this: the run ended
+        final WorkQueue.Item item;          // as the run was started with
+        private int token;                  // guarded by this
+        private Timer.Cancellable next;     // guarded by this
+        private Renewal renewal = Renewal.RENEWING;   // guarded by this
 
         Lease(WorkQueue.Item item) {
             this.item = item;
+            this.token = item.attempts();
         }
 
         synchronized void renewLater() {
             next = timer.schedule(policy.lease().dividedBy(3), this::renew);
         }
 
+        synchronized int token() { return token; }
+
+        /** This worker claimed the item again while it runs: the newer attempts are the token from now on; a lost lease is renewed again. */
+        synchronized void adopt(WorkQueue.Item again) {
+            token = again.attempts();
+            if (renewal == Renewal.LOST) {
+                renewal = Renewal.RENEWING;
+                renewLater();
+            }
+        }
+
         /** The run ended: nothing is renewed from now on, and the answer of a renewal in flight is ignored. */
         synchronized void stop() {
-            stopped = true;
+            renewal = Renewal.ENDED;
             next.cancel();
         }
 
         private void renew() {
+            int asked;
             synchronized (this) {
-                if (stopped) return;   // fired as the run ended
+                if (renewal == Renewal.ENDED) return;   // fired as the run ended
+                asked = token;
             }
-            queue.renew(item.seq(), item.attempts(), policy.lease()).onComplete(this::renewed);
+            queue.renew(item.seq(), asked, policy.lease()).onComplete(answer -> renewed(asked, answer));
         }
 
-        private void renewed(AsyncResult<Boolean> answer) {
-            boolean lost = answer.succeeded() && !answer.result();
+        /** A false answer is a lost lease only for the token still current; one for a token an adopted claim superseded is not. */
+        private void renewed(int asked, AsyncResult<Boolean> answer) {
+            boolean lost;
             synchronized (this) {
-                if (stopped) return;   // the run ended while the renewal was in flight: its answer no longer matters
-                if (!lost) renewLater();
+                if (renewal == Renewal.ENDED) return;   // the run ended while the renewal was in flight: its answer no longer matters
+                lost = answer.succeeded() && !answer.result() && asked == token;
+                if (lost) renewal = Renewal.LOST;
+                else renewLater();
             }
             if (lost) {
                 LOG.log(System.Logger.Level.WARNING, "lease lost: message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt "
-                        + item.attempts() + ") runs on at worker " + workerId + " but was claimed again, held or completed meanwhile; its lease is no longer renewed");
+                        + asked + ") runs on at worker " + workerId + " but was claimed again, held or completed meanwhile; its lease is no longer renewed");
             } else if (answer.failed()) {
                 LOG.log(System.Logger.Level.WARNING, "the lease of message " + item.messageId() + " of flow " + flow + " (work item " + item.seq()
                         + ") could not be renewed; trying again in " + policy.lease().dividedBy(3) + ": " + answer.cause(), answer.cause());

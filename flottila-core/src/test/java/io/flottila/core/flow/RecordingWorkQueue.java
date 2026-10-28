@@ -30,6 +30,10 @@ import java.util.function.IntSupplier;
  * stage the store failing once: the next claim answered fails ({@link #failNextClaim}) or throws instead of answering
  * ({@link #throwOnNextClaim}); the next completes or holds fail ({@link #failCompletes}, {@link #failHolds}); holds can be
  * answered without touching the delegate ({@link #answerHolds}).
+ *
+ * <p>Q-1 (D-074): every complete and fast path also as a {@link CompleteCall} — its seq, the attempts it was fenced by and what
+ * it answered ({@code null}: failed) — in {@link #completeCalls()}; {@link #onHold} runs a hook at every hold before it reaches
+ * the delegate, so a test can claim the row again in between.
  */
 final class RecordingWorkQueue implements WorkQueue {
 
@@ -61,6 +65,9 @@ final class RecordingWorkQueue implements WorkQueue {
 
     record HoldCall(long seq, int attempts, Boolean answer) {}
 
+    /** One complete or fast path: the attempts it was fenced by, and whether it removed the row ({@code null}: it failed). */
+    record CompleteCall(long seq, int attempts, Boolean answer) {}
+
     private record Held(ClaimCall call, String flow, Promise<List<Item>> promise) {}
 
     private final InMemoryWorkQueue delegate;
@@ -69,6 +76,7 @@ final class RecordingWorkQueue implements WorkQueue {
     private final List<RenewCall> renews = new CopyOnWriteArrayList<>();
     private final List<HoldCall> holds = new CopyOnWriteArrayList<>();
     private final List<Long> completes = new CopyOnWriteArrayList<>();
+    private final List<CompleteCall> completeCalls = new CopyOnWriteArrayList<>();
     private final Map<String, Integer> handedOut = new ConcurrentHashMap<>();
     private final List<Held> held = new ArrayList<>();   // guarded by this
     private int inFlight;                                 // guarded by this
@@ -159,10 +167,18 @@ final class RecordingWorkQueue implements WorkQueue {
 
     List<Long> completes() { return List.copyOf(completes); }
 
+    /** Every complete and fast path so far with its attempts and answer, in call order (Q-1). */
+    List<CompleteCall> completeCalls() { return List.copyOf(completeCalls); }
+
     /** Runs at every {@code complete} / {@code completeAndTakeNext} call, before it reaches the delegate: what held at the call (P1-09k2). */
     private volatile java.util.function.LongConsumer onComplete = seq -> { };
 
     void onComplete(java.util.function.LongConsumer hook) { onComplete = java.util.Objects.requireNonNull(hook, "hook"); }
+
+    /** Runs at every {@code hold} call, before it reaches the delegate (Q-1): what the test changes there, the hold sees. */
+    private volatile java.util.function.LongConsumer onHold = seq -> { };
+
+    void onHold(java.util.function.LongConsumer hook) { onHold = java.util.Objects.requireNonNull(hook, "hook"); }
 
     synchronized int claimsInFlight() { return inFlight; }
 
@@ -231,21 +247,23 @@ final class RecordingWorkQueue implements WorkQueue {
     }
 
     @Override
-    public Future<Void> complete(long seq) {
+    public Future<Boolean> complete(long seq, int attempts) {
         onComplete.accept(seq);
         completes.add(seq);
         Throwable failure = completeFailures.pollFirst();
-        if (failure != null) return Future.failedFuture(failure);
-        return delegate.complete(seq);
+        Future<Boolean> answer = failure != null ? Future.failedFuture(failure) : delegate.complete(seq, attempts);
+        completeCalls.add(new CompleteCall(seq, attempts, answer.succeeded() ? answer.result() : null));
+        return answer;
     }
 
     @Override
-    public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) {
+    public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
         onComplete.accept(seq);
         completes.add(seq);
-        Future<Optional<Item>> next = delegate.completeAndTakeNext(seq, workerId, lease);
-        if (next.succeeded() && next.result().isPresent()) handedOut.merge(workerId, 1, Integer::sum);
-        return next;
+        Future<Completion> done = delegate.completeAndTakeNext(seq, attempts, workerId, lease);
+        completeCalls.add(new CompleteCall(seq, attempts, done.succeeded() ? done.result().completed() : null));
+        if (done.succeeded() && done.result().next().isPresent()) handedOut.merge(workerId, 1, Integer::sum);
+        return done;
     }
 
     @Override
@@ -261,6 +279,7 @@ final class RecordingWorkQueue implements WorkQueue {
 
     @Override
     public Future<Boolean> hold(long seq, int attempts) {
+        onHold.accept(seq);
         Throwable failure = holdFailures.pollFirst();
         Boolean forced = holdAnswer;
         Future<Boolean> answer = failure != null ? Future.failedFuture(failure)

@@ -337,8 +337,10 @@ class AdminServerWorkTest {
 
         @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) { return delegate.enqueue(messageId, flow, step, partitionKey); }
         @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) { return delegate.claim(workerId, flow, max, lease); }
-        @Override public Future<Void> complete(long seq) { return delegate.complete(seq); }
-        @Override public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) { return delegate.completeAndTakeNext(seq, workerId, lease); }
+        @Override public Future<Boolean> complete(long seq, int attempts) { return delegate.complete(seq, attempts); }
+        @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
+            return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
+        }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return delegate.renew(seq, attempts, lease); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
         @Override public Future<Boolean> hasItems(String flow) { return delegate.hasItems(flow); }

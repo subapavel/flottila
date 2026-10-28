@@ -117,7 +117,7 @@ class NodeBenchMainWarmupIT {
             queue.enqueue("m-1", "bench/bench", 1, null).await();
             WorkQueue.Item item = queue.claim("w", "bench/bench", 1, Duration.ofSeconds(30)).await().getFirst();
             assertTrue(queue.renew(item.seq(), item.attempts(), Duration.ofSeconds(30)).await(), "fixture: the lease is renewed");
-            queue.complete(item.seq()).await();
+            queue.complete(item.seq(), item.attempts()).await();
             assertEquals(1, count("select count(*) from bench_work_log where event = 'update' and seq = " + item.seq()),
                     "the claim is logged, the renewal is not");
             assertEquals(1, count("select count(*) from bench_work_log where event = 'delete' and seq = " + item.seq()));

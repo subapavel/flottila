@@ -726,6 +726,291 @@ class FlowWorkerTest {
         assertEquals(List.of(firstSeq), w.rows.snapshot().stream().map(WorkQueue.Item::seq).toList(), "the second completed; the first waits for its lease");
     }
 
+    // --- Q-1 (D-074): the worker settles under the attempts it holds
+
+    /**
+     * w1 runs the item at attempt 3; its lease is found lost (the renewal answered false), runs out, and w2 claims the item again
+     * (attempt 4). When w1's run ends its complete, fenced by attempt 3, answers false: the row stays w2's as w2 was handed it; one
+     * WARNING names the message, the flow, the work item, the attempt and the worker; {@code staleSettles} counts it; the round
+     * succeeds and the complete is never tried again.
+     */
+    @Test
+    void aStaleCompleteIsAWarningAndLeavesTheRowToItsNewHolder() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        for (int i = 1; i <= 6; i++) w.rows.enqueue("pad-" + i, "elsewhere", 1, null).await();   // the item's seq is 7: only the work item says 7
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        for (int k = 1; k <= 2; k++) {   // two workers claimed it and died: w1's claim is the third attempt
+            assertEquals(k, w.rows.claim("crashed-" + k, "orders", 1, LEASE).await().get(0).attempts(), "fixture");
+            w.rt.clock().advance(LEASE);
+        }
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> round = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.rt.timer().pending() == 1, () -> "the run at the gate with its renewal scheduled");
+        WorkQueue.Item mine = w.queue.claimsBy("w1").get(0).items.get(0);
+        assertEquals(7, mine.seq(), "fixture");
+        assertEquals(3, mine.attempts(), "fixture");
+        w.queue.answerRenews(false);
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        until(() -> w.queue.renews().size() == 1, () -> "the renewal, answered false");
+        w.queue.renewsOk();
+        w.rt.clock().advance(LEASE);   // w1's lease ran out
+        WorkQueue.Item theirs = w.rows.claim("w2", "orders", 1, LEASE).await().get(0);
+        assertEquals(new WorkQueue.Item(mine.seq(), in.id(), "orders", 1, null, 4), theirs, "fixture: w2 claims the item w1 still runs");
+
+        w.gate.runs().get(0).release();
+        assertEquals(1, round.await(5, SECONDS), "the round succeeds: a stale complete is no failure");
+        w.gate.joinPassed();
+        until(() -> w.queue.claimsInFlight() == 0, () -> "the finished item's poll answered");
+        assertEquals(List.of(in.id()), w.sentIds(), "the run itself went through");
+        assertEquals(List.of(new RecordingWorkQueue.CompleteCall(mine.seq(), 3, false)), w.queue.completeCalls(),
+                "one complete, fenced by w1's attempt 3, answered false, never tried again");
+        assertEquals(List.of(theirs), w.rows.snapshot().stream().filter(i -> i.flow().equals("orders")).toList(), "the row stays as w2 was handed it");
+        assertEquals(Optional.of("w2"), w.rows.leaseHolder(mine.seq()), "leased to its new holder");
+
+        List<String> stale = logs.at(Level.WARNING, "left to its holder");
+        assertEquals(1, stale.size(), "one WARNING: " + logs.all());
+        String line = stale.get(0);
+        assertTrue(line.contains(in.id()), "names the message: " + line);
+        assertTrue(line.contains("orders"), "names the flow: " + line);
+        assertTrue(Pattern.compile("work item\\W*7\\b").matcher(line).find(), "names the work item: " + line);
+        assertTrue(Pattern.compile("attempt\\W*3\\b").matcher(line).find(), "names the attempt: " + line);
+        assertTrue(line.contains("w1"), "names the worker: " + line);
+        assertTrue(line.contains("claimed again, held or completed meanwhile"), "says what became of it: " + line);
+        assertEquals(1, w1.staleSettles(), "counted");
+        assertEquals(List.of(), logs.at(Level.SEVERE, in.id()), "no ERROR: " + logs.all());
+
+        assertEquals(0, w1.poll().await(5, SECONDS), "w2's lease runs: nothing to claim");
+        assertEquals(1, w.queue.completeCalls().size(), "still one complete: " + w.queue.completeCalls());
+        assertEquals(1, w1.staleSettles());
+    }
+
+    /**
+     * Past the bound and unparkable, w1 holds the item fenced by its attempt 2 — but its lease ran out and w2 claimed the item
+     * again (attempt 3) just before the hold arrived: the hold answers false, nothing is held, the row stays w2's; the ERROR says
+     * the item was not held, and {@code staleSettles} counts the hold.
+     */
+    @Test
+    void aStaleHoldIsCounted() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        assertEquals(1, w.rows.claim("crashed", "orders", 1, LEASE).await().get(0).attempts(), "a worker claimed it and died at once");
+        w.rt.clock().advance(LEASE);
+        w.dlq.failParks(new IllegalStateException("dlq down"));
+        long seq = w.rows.snapshot().get(0).seq();
+        List<WorkQueue.Item> theirs = new CopyOnWriteArrayList<>();
+        w.queue.onHold(s -> {   // between the failed park and the hold: w1's lease runs out and w2 claims the item again
+            w.rt.clock().advance(LEASE);
+            theirs.addAll(w.rows.claim("w2", "orders", 1, LEASE).await());
+        });
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 1));
+
+        assertEquals(1, w1.poll().await(5, SECONDS), "the round succeeds: the hold answered");
+        assertEquals(List.of(new WorkQueue.Item(seq, in.id(), "orders", 1, null, 3)), theirs, "fixture: w2 claimed it before the hold arrived");
+        assertEquals(List.of(new RecordingWorkQueue.HoldCall(seq, 2, false)), w.queue.holds(), "the hold, fenced by w1's attempt 2, answered false");
+        assertEquals(List.of(), w.rows.held(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing held");
+        assertEquals(Optional.of("w2"), w.rows.leaseHolder(seq), "the row stays w2's");
+        List<String> errors = logs.at(Level.SEVERE, in.id());
+        assertEquals(1, errors.size(), "one ERROR naming the message: " + logs.all());
+        assertTrue(errors.get(0).contains("not held:"), "says the item was not held: " + errors.get(0));
+        assertFalse(errors.get(0).contains("held for a human"), "never that it was held: " + errors.get(0));
+        assertTrue(errors.get(0).contains("dlq down"), "names the park failure: " + errors.get(0));
+        assertEquals(1, w1.staleSettles(), "a stale hold counts");
+    }
+
+    /**
+     * w1's lease is found lost while its run goes on, the lease runs out, and w1 itself claims the item again (attempt 2): no
+     * second run, the claim is adopted — the renewal, stopped when the lease was found lost, resumes a third of the lease later
+     * fenced by attempt 2 and extends the lease; the run's end completes the item under attempt 2, and nothing is stale.
+     */
+    @Test
+    void aReclaimedRunRenewsAndCompletesUnderItsNewAttempts() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> first = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.rt.timer().pending() == 1, () -> "the run at the gate with its renewal scheduled");
+        long seq = w.queue.claimsBy("w1").get(0).items.get(0).seq();
+        w.queue.answerRenews(false);
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        until(() -> w.queue.renews().size() == 1, () -> "the renewal, answered false");
+        assertEquals(0, w.rt.timer().pending(), "fixture: the lease found lost, nothing scheduled");
+        w.queue.renewsOk();
+        w.rt.clock().advance(LEASE);   // the claim's lease ran out
+
+        Future<Integer> again = w1.poll();
+        until(() -> w.queue.claimsBy("w1").size() == 2 && w.queue.claimsInFlight() == 0, () -> "the re-claim: " + w.queue.claims());
+        assertEquals(List.of(new WorkQueue.Item(seq, in.id(), "orders", 1, null, 2)), w.queue.claimsBy("w1").get(1).items, "fixture: w1 claims its own item again");
+        until(() -> w.rt.timer().pending() == 1, () -> "the renewal resumed under the adopted claim; renewals " + w.queue.renews());
+        assertEquals(LEASE.dividedBy(3), w.rt.timer().nextDelay(), "a third of the lease after the re-claim");
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        until(() -> w.queue.renews().size() == 2 && w.rt.timer().pending() == 1, () -> "the renewal under attempt 2: " + w.queue.renews());
+        RecordingWorkQueue.RenewCall renewed = w.queue.renews().get(1);
+        assertEquals(List.of(seq, 2L), List.of(renewed.seq(), (long) renewed.attempts()), "fenced by the adopted attempt 2: " + renewed);
+        assertEquals(Boolean.TRUE, renewed.answer(), "and extends the lease");
+
+        w.gate.runs().get(0).release();
+        assertEquals(1, first.await(5, SECONDS));
+        again.otherwiseEmpty().await(5, SECONDS);
+        w.gate.joinPassed();
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(List.of(new RecordingWorkQueue.CompleteCall(seq, 2, true)), w.queue.completeCalls(), "completed under the adopted attempt 2");
+        assertEquals(0, w.rows.size());
+        assertEquals(0, w1.staleSettles(), "nothing stale");
+        assertEquals(List.of(), logs.at(Level.WARNING, "left to its holder"), logs.all().toString());
+        assertEquals(1, w.gate.entered(), "one run");
+        assertEquals(List.of(in.id()), w.sentIds());
+    }
+
+    /**
+     * The other branch of the adoption: w1's renewals fail (the store is away), so its lease is never found lost, yet it runs out
+     * while the next renewal is scheduled. w1 claims its own item again (attempt 2) and adopts the claim without a second renewal:
+     * the one already scheduled fires fenced by attempt 2 — the token is read when it fires, not when it was scheduled.
+     */
+    @Test
+    void aReclaimWhileARenewalIsScheduledKeepsOneRenewalUnderTheNewAttempts() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> first = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.rt.timer().pending() == 1, () -> "the run at the gate with its renewal scheduled");
+        long seq = w.queue.claimsBy("w1").get(0).items.get(0).seq();
+        w.queue.failRenews(new IllegalStateException("pg away"));
+        for (int r = 1; r <= 3; r++) {   // the renewals at +10 s, +20 s and +30 s fail: the claim's lease runs out at +30 s
+            w.rt.clock().advance(LEASE.dividedBy(3));
+            int renewals = r;
+            until(() -> w.queue.renews().size() == renewals && w.rt.timer().pending() == 1, () -> "failed renewal " + renewals + ": " + w.queue.renews());
+        }
+        w.queue.renewsOk();
+
+        w1.poll();
+        until(() -> w.queue.claimsBy("w1").size() == 2 && w.queue.claimsInFlight() == 0, () -> "the re-claim: " + w.queue.claims());
+        assertEquals(List.of(new WorkQueue.Item(seq, in.id(), "orders", 1, null, 2)), w.queue.claimsBy("w1").get(1).items, "fixture: w1 claims its own item again");
+        assertEquals(1, w.rt.timer().pending(), "one renewal scheduled: the adoption adds none");
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        until(() -> w.queue.renews().size() == 4 && w.rt.timer().pending() == 1, () -> "the scheduled renewal: " + w.queue.renews());
+        RecordingWorkQueue.RenewCall renewed = w.queue.renews().get(3);
+        assertEquals(List.of(seq, 2L), List.of(renewed.seq(), (long) renewed.attempts()), "fenced by the adopted attempt 2: " + renewed);
+        assertEquals(Boolean.TRUE, renewed.answer(), "and extends the lease");
+
+        w.gate.runs().get(0).release();
+        assertEquals(1, first.await(5, SECONDS));
+        w.gate.joinPassed();
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(List.of(new RecordingWorkQueue.CompleteCall(seq, 2, true)), w.queue.completeCalls(), "completed under the adopted attempt 2");
+        assertEquals(0, w1.staleSettles());
+    }
+
+    /**
+     * Q-1 (implementer): a lease resumed by an adoption renews as any other. w1's lease is found lost, runs out, and w1 claims its
+     * item again (attempt 2): the renewal resumes. Then the store is away, the renewals fail, the lease runs out once more and w1
+     * claims the item a third time (attempt 3): that adoption finds the renewal going and adds none — still one scheduled, fenced by
+     * attempt 3 when it fires — and the run's end completes the item under attempt 3.
+     */
+    @Test
+    void aSecondReclaimAfterAResumedRenewalKeepsOneRenewal() throws Exception {
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = w.builder();
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> first = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.rt.timer().pending() == 1, () -> "the run at the gate with its renewal scheduled");
+        long seq = w.queue.claimsBy("w1").get(0).items.get(0).seq();
+        w.queue.answerRenews(false);
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        until(() -> w.queue.renews().size() == 1, () -> "the renewal, answered false");
+        assertEquals(0, w.rt.timer().pending(), "fixture: the lease found lost, nothing scheduled");
+        w.queue.renewsOk();
+        w.rt.clock().advance(LEASE);   // the first claim's lease ran out
+
+        w1.poll();
+        until(() -> w.queue.claimsBy("w1").size() == 2 && w.queue.claimsInFlight() == 0, () -> "the second claim: " + w.queue.claims());
+        assertEquals(2, w.queue.claimsBy("w1").get(1).items.get(0).attempts(), "fixture: attempt 2");
+        assertEquals(1, w.rt.timer().pending(), "fixture: the renewal resumed");
+        w.queue.failRenews(new IllegalStateException("pg away"));
+        for (int r = 2; r <= 4; r++) {   // the renewals 10 s, 20 s and 30 s after the second claim fail: its lease runs out at 30 s
+            w.rt.clock().advance(LEASE.dividedBy(3));
+            int renewals = r;
+            until(() -> w.queue.renews().size() == renewals && w.rt.timer().pending() == 1, () -> "failed renewal " + renewals + ": " + w.queue.renews());
+        }
+        w.queue.renewsOk();
+
+        w1.poll();
+        until(() -> w.queue.claimsBy("w1").size() == 3 && w.queue.claimsInFlight() == 0, () -> "the third claim: " + w.queue.claims());
+        assertEquals(List.of(new WorkQueue.Item(seq, in.id(), "orders", 1, null, 3)), w.queue.claimsBy("w1").get(2).items, "fixture: attempt 3");
+        assertEquals(1, w.rt.timer().pending(), "one renewal scheduled: the second adoption found the renewal going and added none");
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        until(() -> w.queue.renews().size() == 5 && w.rt.timer().pending() == 1, () -> "the scheduled renewal: " + w.queue.renews());
+        RecordingWorkQueue.RenewCall renewed = w.queue.renews().get(4);
+        assertEquals(List.of(seq, 3L), List.of(renewed.seq(), (long) renewed.attempts()), "fenced by attempt 3: " + renewed);
+        assertEquals(Boolean.TRUE, renewed.answer(), "and extends the lease");
+
+        w.gate.runs().get(0).release();
+        assertEquals(1, first.await(5, SECONDS));
+        w.gate.joinPassed();
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(List.of(new RecordingWorkQueue.CompleteCall(seq, 3, true)), w.queue.completeCalls(), "completed under attempt 3");
+        assertEquals(0, w1.staleSettles());
+        assertEquals(1, w.gate.entered(), "one run");
+    }
+
+    /**
+     * Q-1 (implementer): the hold is fenced by the lease's token too. w1's claim is past the bound (attempt 2 of maxAttempts 1)
+     * and its park waits on the DLQ; meanwhile its lease is found lost, runs out, and w1 claims the item again (attempt 3), adopting
+     * the claim. The park then fails: the item is held under attempt 3 — w1 is its current holder — and nothing is stale.
+     */
+    @Test
+    void anAdoptedClaimIsHeldUnderItsAttempts() throws Exception {
+        List<Promise<Void>> parks = new CopyOnWriteArrayList<>();
+        io.flottila.core.dlq.Dlq waiting = new io.flottila.core.dlq.Dlq() {
+            @Override public Future<Void> park(Parked p) {
+                Promise<Void> answer = Promise.promise();
+                parks.add(answer);
+                return answer.future();
+            }
+            @Override public Future<Page<Parked>> list(Optional<String> after, int limit) { return w.parked.list(after, limit); }
+            @Override public Future<Optional<Parked>> get(String messageId) { return w.parked.get(messageId); }
+            @Override public Future<Void> remove(String messageId) { return w.parked.remove(messageId); }
+        };
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(w.gate), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
+                .recording(w.store, Meter.system()).queue(w.queue).dlq(waiting);
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        assertEquals(1, w.rows.claim("crashed", "orders", 1, LEASE).await().get(0).attempts(), "a worker claimed it and died at once");
+        w.rt.clock().advance(LEASE);
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 1));
+
+        Future<Integer> round = w1.poll();
+        until(() -> parks.size() == 1 && w.rt.timer().pending() == 1, () -> "the park of attempt 2 waiting, its renewal scheduled");
+        long seq = w.rows.snapshot().get(0).seq();
+        w.queue.answerRenews(false);
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        until(() -> w.queue.renews().size() == 1 && w.rt.timer().pending() == 0, () -> "the lease found lost");
+        w.queue.renewsOk();
+        w.rt.clock().advance(LEASE);   // the claim's lease ran out
+        w1.poll();
+        until(() -> w.queue.claimsBy("w1").size() == 2 && w.queue.claimsInFlight() == 0, () -> "the re-claim: " + w.queue.claims());
+        assertEquals(List.of(new WorkQueue.Item(seq, in.id(), "orders", 1, null, 3)), w.queue.claimsBy("w1").get(1).items, "fixture: attempt 3, adopted");
+
+        parks.get(0).fail(new IllegalStateException("dlq down"));
+        assertEquals(1, round.await(5, SECONDS));
+        assertEquals(List.of(new RecordingWorkQueue.HoldCall(seq, 3, true)), w.queue.holds(), "held under the adopted attempt 3");
+        assertEquals(List.of(new WorkQueue.Item(seq, in.id(), "orders", 1, null, 3)),
+                w.rows.held(Optional.empty(), Page.MAX_LIMIT).await().items().stream().map(WorkQueue.Held::item).toList(), "the item is held");
+        assertEquals(0, w1.staleSettles(), "nothing stale");
+        List<String> errors = logs.at(Level.SEVERE, in.id());
+        assertEquals(1, errors.size(), logs.all().toString());
+        assertTrue(errors.get(0).contains("held for a human"), errors.get(0));
+        assertEquals(0, w.gate.entered(), "past the bound: no run");
+    }
+
     // --- the attempts bound
 
     @Test
@@ -837,6 +1122,7 @@ class FlowWorkerTest {
         assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items());
         assertEquals(1, w.queue.holds().size());
         assertEquals(1, w.rows.size());
+        assertEquals(0, w1.staleSettles(), "Q-1: a hold that answered true is no stale settle");
     }
 
     /**

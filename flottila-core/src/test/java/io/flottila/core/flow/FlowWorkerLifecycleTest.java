@@ -64,17 +64,23 @@ class FlowWorkerLifecycleTest {
         }
     }
 
-    /** {@link WorkQueue} over the world's recording queue whose renewals stay open until the test answers them. */
+    /** {@link WorkQueue} over the world's recording queue whose renewals stay open until the test answers them; each one asked in {@link #asked}. */
     static final class DeferredRenewals implements WorkQueue {
+        /** One renewal asked: its seq and the attempts it is fenced by. */
+        record Asked(long seq, int attempts) {}
+
         final WorkQueue delegate;
         final List<Promise<Boolean>> open = new CopyOnWriteArrayList<>();
+        final List<Asked> asked = new CopyOnWriteArrayList<>();
 
         DeferredRenewals(WorkQueue delegate) { this.delegate = delegate; }
 
         @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) { return delegate.enqueue(messageId, flow, step, partitionKey); }
         @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) { return delegate.claim(workerId, flow, max, lease); }
-        @Override public Future<Void> complete(long seq) { return delegate.complete(seq); }
-        @Override public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) { return delegate.completeAndTakeNext(seq, workerId, lease); }
+        @Override public Future<Boolean> complete(long seq, int attempts) { return delegate.complete(seq, attempts); }
+        @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
+            return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
+        }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
         @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return delegate.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return delegate.release(seq); }
@@ -82,6 +88,7 @@ class FlowWorkerLifecycleTest {
 
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
             Promise<Boolean> answer = Promise.promise();
+            asked.add(new Asked(seq, attempts));
             open.add(answer);
             return answer.future();
         }
@@ -227,5 +234,51 @@ class FlowWorkerLifecycleTest {
         assertEquals(0, w.rt.timer().pending(), "the answer of a renewal for a run that ended schedules no further renewal");
         assertEquals(List.of(), logs.at(Level.WARNING, in.id()), "nor is it logged: " + logs.all());
         assertEquals(0, w.rows.size(), "the item completed");
+    }
+
+    /**
+     * Q-1 (D-074): a renewal fenced by attempt 1 is in flight when the claim's lease runs out and w1 claims its own item again
+     * (attempt 2), adopting the claim. The renewal then answers false — for a superseded claim, not a lost lease: nothing is
+     * logged, one renewal is scheduled a third of the lease later, fenced by attempt 2, and the item completes under attempt 2.
+     */
+    @Test
+    void aRenewalAnsweredForASupersededClaimIsNotALoss() throws Exception {
+        DeferredRenewals queue = new DeferredRenewals(w.queue);
+        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
+        FlowBuilder b = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
+                .recording(w.store, Meter.system()).queue(queue).dlq(w.dlq);
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+
+        Future<Integer> round = w1.poll();
+        until(() -> w.gate.entered() == 1 && w.rt.timer().pending() == 1, () -> "the run at the gate with its renewal scheduled");
+        long seq = w.queue.claimsBy("w1").get(0).items.get(0).seq();
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        assertEquals(List.of(new DeferredRenewals.Asked(seq, 1)), queue.asked, "fixture: the renewal is in flight, fenced by attempt 1");
+        assertEquals(0, w.rt.timer().pending(), "fixture: nothing scheduled while it is in flight");
+        w.rt.clock().advance(LEASE.minus(LEASE.dividedBy(3)));   // nobody extended the claim's lease: it ran out
+        w1.poll();
+        until(() -> w.queue.claimsBy("w1").size() == 2 && w.queue.claimsInFlight() == 0, () -> "w1's re-claim: " + w.queue.claims());
+        assertEquals(List.of(seq), w.queue.claimsBy("w1").get(1).items.stream().map(WorkQueue.Item::seq).toList(), "fixture: w1 claims its own item again");
+        assertEquals(2, w.queue.claimsBy("w1").get(1).items.get(0).attempts(), "fixture: attempt 2");
+
+        queue.open.get(0).complete(false);   // fenced by attempt 1, which w1's own claim superseded
+        assertEquals(List.of(), logs.at(Level.WARNING, in.id()), "a renewal refused for a superseded claim is no lost lease: " + logs.all());
+        assertEquals(1, w.rt.timer().pending(), "renewing goes on: one renewal scheduled");
+        assertEquals(LEASE.dividedBy(3), w.rt.timer().nextDelay(), "a third of the lease on");
+        w.rt.clock().advance(LEASE.dividedBy(3));
+        assertEquals(List.of(new DeferredRenewals.Asked(seq, 1), new DeferredRenewals.Asked(seq, 2)), queue.asked,
+                "the next renewal is fenced by the adopted attempt 2");
+        queue.open.get(1).complete(true);
+        assertEquals(1, w.rt.timer().pending(), "and renewing goes on after it");
+
+        RunGate.Run run = w.gate.runs().get(0);
+        run.release();
+        assertEquals(1, round.await(5, SECONDS));
+        run.joined();
+        assertEquals(List.of(new RecordingWorkQueue.CompleteCall(seq, 2, true)), w.queue.completeCalls(), "completed under the adopted attempt 2");
+        assertEquals(0, w.rows.size());
+        assertEquals(0, w1.staleSettles(), "nothing stale");
+        assertEquals(1, w.gate.entered(), "one run: the re-claim started none");
     }
 }

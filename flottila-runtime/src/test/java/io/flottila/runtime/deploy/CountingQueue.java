@@ -72,9 +72,27 @@ public final class CountingQueue implements WorkQueue {
         return items;
     }
 
-    @Override public Future<Void> complete(long seq) { return inner.complete(seq); }
+    @Override public Future<Boolean> complete(long seq, int attempts) { return inner.complete(seq, attempts); }
 
-    @Override public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) { return inner.completeAndTakeNext(seq, workerId, lease); }
+    @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
+        return inner.completeAndTakeNext(seq, attempts, workerId, lease);
+    }
+
+    /**
+     * Removes row {@code seq} whatever its state, as its holder would (Q-1, D-074: a complete is fenced by the attempts, and a held
+     * row leaves only through release, claim, complete): a held row is released, a row never handed out is claimed (it must be the
+     * first eligible row of its flow), then the current token completes it. Throws when the row is not removed.
+     */
+    public void drop(long seq) {
+        inner.release(seq).await();
+        Item row = inner.snapshot().stream().filter(i -> i.seq() == seq).findFirst().orElseThrow(() -> new IllegalStateException("no row " + seq));
+        int token = row.attempts();
+        if (token == 0) {
+            List<Item> got = inner.claim("drop", row.flow(), 1, Duration.ofSeconds(1)).await();
+            token = got.stream().filter(i -> i.seq() == seq).findFirst().orElseThrow(() -> new IllegalStateException("row " + seq + " not claimable: " + got)).attempts();
+        }
+        if (!inner.complete(seq, token).await()) throw new IllegalStateException("row " + seq + " not removed at attempts " + token);
+    }
 
     @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
         renews.incrementAndGet();

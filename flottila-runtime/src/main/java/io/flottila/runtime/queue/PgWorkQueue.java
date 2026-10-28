@@ -21,8 +21,9 @@ import java.util.Optional;
  * oldest row of its partition key (held rows included) and that key holds no live lease; the next
  * row of a key becomes eligible only after the previous one is completed (deleted) or its lease
  * expired — never while it is held. Leases are measured by the database clock. Every hand-out
- * increments the row's {@code attempts}, the holder's fencing token for {@link #renew} and
- * {@link #hold} (D-055, {@code V4__work_attempts}). The same-key fast path completes and claims
+ * increments the row's {@code attempts}, the holder's fencing token for {@link #renew}, {@link #hold},
+ * {@link #complete} and the fast path (D-055, {@code V4__work_attempts}; Q-1, D-074): each is guarded by the one
+ * {@code CURRENT} condition, so a held row is never deleted. The same-key fast path completes and claims
  * the next row of the key in one transaction (ARCHITECTURE §7). {@link #held} pages the held rows on V5's {@code work_held}
  * index; {@link #release} clears a hold and its lease and keeps the attempts (D-067).
  *
@@ -57,10 +58,14 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String CLAIM_NEXT_OF_KEY = TAKE
             + " where w.seq in (" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked)" + ITEM;
 
-    private static final String COMPLETE = "delete from work where seq = $1 returning flow, partition_key";
+    /**
+     * The holder's claim is the row's current one (D-055, Q-1 / D-074): it exists, is not held and was last handed out with
+     * these attempts, at least 1 — a row never handed out has attempts 0 (V4's default) and matches no token.
+     */
+    private static final String CURRENT = " where seq = $1 and attempts = $2 and attempts > 0 and held_at is null";
 
-    /** The holder's claim is the row's current one: it exists, is not held and was last handed out with these attempts. */
-    private static final String CURRENT = " where seq = $1 and attempts = $2 and held_at is null";
+    /** Only the current holder's row; the flow and key for the fast path's next-of-key claim. */
+    private static final String COMPLETE = "delete from work" + CURRENT + " returning flow, partition_key";
 
     private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
 
@@ -91,18 +96,19 @@ public final class PgWorkQueue implements WorkQueue {
         return pool.preparedQuery(CLAIM).execute(Tuple.of(workerId, flow, max, seconds(lease))).map(PgWorkQueue::items);
     }
 
-    @Override public Future<Void> complete(long seq) {
-        return pool.preparedQuery(COMPLETE).execute(Tuple.of(seq)).mapEmpty();
+    @Override public Future<Boolean> complete(long seq, int attempts) {
+        return pool.preparedQuery(COMPLETE).execute(Tuple.of(seq, attempts)).map(rows -> rows.rowCount() == 1);
     }
 
-    @Override public Future<Optional<Item>> completeAndTakeNext(long seq, String workerId, Duration lease) {
+    /** One transaction: the guarded delete, then — only when it removed the row and the row had a key — the next-of-key claim. */
+    @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
         if (lease.isNegative()) return Future.failedFuture(new IllegalArgumentException("negative lease: " + lease));
-        return pool.withTransaction(conn -> conn.preparedQuery(COMPLETE).execute(Tuple.of(seq)).compose(deleted -> {
-            if (deleted.rowCount() == 0) return Future.succeededFuture(Optional.empty());
+        return pool.withTransaction(conn -> conn.preparedQuery(COMPLETE).execute(Tuple.of(seq, attempts)).compose(deleted -> {
+            if (deleted.rowCount() == 0) return Future.succeededFuture(Completion.STALE);   // not the holder's: nothing taken either
             Row done = deleted.iterator().next();
             String key = done.getString("partition_key");
-            if (key == null) return Future.succeededFuture(Optional.empty());
-            return next(conn, workerId, done.getString("flow"), key, lease);
+            if (key == null) return Future.succeededFuture(Completion.done(Optional.empty()));
+            return next(conn, workerId, done.getString("flow"), key, lease).map(Completion::done);
         }));
     }
 
