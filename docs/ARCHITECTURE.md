@@ -41,6 +41,9 @@
 | 2026-10-29 | 3.4 | §4 durable save inserts the consumer's dedupe key in `processed_ids`, a duplicate answers the first id; §7 Component gains `polls` and `dedupeBy` (P2-02D, D-084) | D-084 |
 | 2026-10-29 | 3.4 | §9 Deployment mechanics: package dependencies by exact version, `package.lock` with a content digest, pins in the deployment record, `<dep>:<path>` references (P2-02b1, D-087) | D-087 |
 | 2026-10-29 | 3.4 | §9 Flow configuration: file references stay inside the package except a declared dependency's file named `<dep>:<path>` (P2-02b, D-087) | D-087 |
+| 2026-10-29 | 3.4 | §3 Valkey mandatory from two nodes on, a single node on in-memory implementations behind the same API (owner, D-090) | D-090 |
+| 2026-10-29 | 3.4 | §6 Recording: what a replay re-sends, replay of a sync flow gives nobody a second reply, bulk replay (owner, P2-20) | — |
+| 2026-10-29 | 3.4 | §14: brainstorm items from the owner's review — ClickHouse codecs, ratio and sizing, S3 storage policy, runtime bodies vs ClickHouse, Kafka optional, `/xi` door | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -126,7 +129,7 @@ Runtime nodes talk to all five stores; the control plane talks only to Postgres 
 | Apache Kafka (KRaft) | async hand-over between endpoint and flow, monitoring ingest, replay source, durable `/xi` door during Postgres failover | 3 brokers; tiered storage to S3 | yes |
 | ClickHouse | monitoring history, metrics, payload search (XPath/JSONPath via keys-as-columns + JSON projection) | replicated; hot NVMe → S3 by TTL | yes |
 | S3-compatible store | bodies above memory tier, archive, Kafka/CH cold tiers | customer backend | yes |
-| Valkey | warm config copy, partner OAuth tokens, global throttles, poller leases, distributed locks, UI sessions; persistence off | Sentinel or cluster | yes |
+| Valkey | warm config copy, partner OAuth tokens, global throttles, poller leases, distributed locks, UI sessions; persistence off | Sentinel or cluster | from two nodes on; a single node runs on in-memory implementations behind the same API (D-090) |
 | Control plane | Quarkus admin API + React UI, MCP server, developer portal | stateless, 1–2 instances | yes, but runtime survives without it |
 | ZITADEL | optional IdP for installs without one | — | optional |
 
@@ -228,7 +231,7 @@ Headers always cross; the body is shared by reference. Never through the event b
 
 **Dispatcher flows**: one endpoint (e.g. `/xi`) reads the routing key, looks up a versioned routing table in Postgres (cached per node), and forwards — a sync target is called directly on the same thread, an async target is enqueued with `target_flow`. Unknown route → error or DLQ "no route", never dropped. During a PO migration the dispatcher passes unmigrated interfaces through to the old PO, interface by interface.
 
-**Recording** per flow, overridable per step: level `all | ends | errors | off`, payload `keep | metadata-only`. Replay from step N needs the recorded output of step N−1 (the input step N saw); the at-least-once durable save at ingress is independent of recording. Every message pins the flow, partner-directory and routing-table versions it ran with, so monitoring tells the truth. A replay or a DLQ retry runs the flow version deployed now (a retry exists to rerun a parked message after a fix) and pins the versions it ran with, so each run's configuration stays visible (F-11). Replay from any recorded step works after a restart, because every kept step body is durable (D-064, D-066); 409 is reserved for a body removed by retention (P2-07).
+**Recording** per flow, overridable per step: level `all | ends | errors | off`, payload `keep | metadata-only`. Replay from step N needs the recorded output of step N−1 (the input step N saw); the at-least-once durable save at ingress is independent of recording. Every message pins the flow, partner-directory and routing-table versions it ran with, so monitoring tells the truth. A replay or a DLQ retry runs the flow version deployed now (a retry exists to rerun a parked message after a fix) and pins the versions it ran with, so each run's configuration stays visible (F-11). Replay from any recorded step works after a restart, because every kept step body is durable (D-064, D-066); 409 is reserved for a body removed by retention (P2-07). A replay re-runs the steps from N, its producers included (the partner receives the message again), so the step to replay from is the first one a fix changed, never a later one: a later step would start from the faulty output. A replay of a sync flow recomputes and records the run, but nobody receives a second reply: the original caller already holds the first answer, so correcting it is the sender's resend or what the replayed run sends to its partners. After a faulty flow version, messages that completed "successfully but wrong" are replayed in bulk by flow, time window, flow version or key (P2-20).
 
 ## 7. Components, queues, persistence
 
@@ -488,3 +491,12 @@ Eleven items remain open; the first four block Phase 0 and are the ones to close
 - [ ] Add-on boundary for later commercial modules: which control-plane plugin points exist from day one.
 - [ ] Envoy `ext_proc` integration: designed-for only, or built in Phase 5 as a reference deployment.
 - [ ] Saxon-EE streaming plugin: SPI shape so a licensed customer can drop it in without a platform change.
+
+**For a deep brainstorm (owner, 2026-10-29; nothing is built on these until decided):**
+
+- [ ] **ClickHouse column codecs**: ZSTD level per column, `LowCardinality` for flow / partner / state, `Delta` / `DoubleDelta` for timestamps, the payload column's codec.
+- [ ] **Compression ratio and sizing**: the expected ratio on real payloads (XML invoices, IDocs, JSON), measured, and the disk / S3 sizing derived from it per million messages and per retention day.
+- [ ] **Storage policy hot → S3**: ClickHouse `s3` disk, TTL moves from hot NVMe to S3, which tables and after how long, cold-query labelling (§8).
+- [ ] **Bytes exist once — runtime bodies vs ClickHouse**: when the runtime's durable body is in S3 (P2-22), does ClickHouse keep a compressed inline copy (≤ ~256 KB, §8) or only a reference? Options: (a) runtime bodies in S3, ClickHouse inline copy for search, two copies with different retention; (b) ClickHouse references S3 only, search reads S3; (c) the owner's proposal — keep the bodies in ClickHouse itself (its S3 tier and compression) instead of runtime S3 objects; (d) runtime S3 for the replay window only (days), ClickHouse the long-term compressed copy, replay after that window reads from ClickHouse. To weigh: the durable save before an irreversible ACK (synchronous, one transaction with the work item, D-082), point reads per step and per replay, bodies up to the flow's max (tens of MB), the delivery path depending on the monitoring store, the compression gain of columnar blocks over per-object zstd.
+- [ ] **Kafka optional**: the monitoring write path Postgres / batcher → ClickHouse without Kafka (owner agrees Kafka may be optional); what then needs Kafka at all (`queue: kafka`, replay from the log, cross-pool fan-out).
+- [ ] **`/xi` door**: "hold the request" (a longer save timeout for the xi endpoint, the Postgres client reconnecting to the new primary, duplicates dropped by `processed_ids` on the XI message id) before a Kafka door; first measure how PO Adapter Engine and ABAP proxy react to 503, a 30–60 s answer and a timeout, for EO and EOIO (§14 ABAP proxy question above).
