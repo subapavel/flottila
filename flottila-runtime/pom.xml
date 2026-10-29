@@ -136,6 +136,11 @@
       <groupId>io.vertx</groupId>
       <artifactId>vertx-web</artifactId>
     </dependency>
+    <!-- poller leases in Valkey (D-083, P2-02L); version from vertx-stack-depchain -->
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-redis-client</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-junit5</artifactId>
@@ -149,6 +154,14 @@
     <dependency>
       <groupId>net.jqwik</groupId>
       <artifactId>jqwik</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- EmbeddedSftp for the two-node lease test (P2-02L) -->
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-component-sftp</artifactId>
+      <version>${project.version}</version>
+      <type>test-jar</type>
       <scope>test</scope>
     </dependency>
     <!-- the node (F-4): runtime.node validates packages with the schemas; runtime.Main, and no other runtime class

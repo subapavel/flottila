@@ -17,8 +17,8 @@ import java.util.regex.Pattern;
 /**
  * A node's whole configuration, read from its environment (D-057 b). Every key has a default except {@code FLOTTILA_ENV};
  * every refusal is an {@link IllegalArgumentException} whose message names the key. No {@code toString} here carries a secret:
- * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, {@link Secrets} names
- * its variables only, and this record's prints theirs.
+ * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, {@link Leases} prints of
+ * the Valkey URI its scheme, host, port and database only, {@link Secrets} names its variables only, and this record's prints theirs.
  *
  * @param nodeId {@code FLOTTILA_NODE_ID}, else {@code $HOSTNAME}: a DNS label (lower-case letters, digits and inner dashes, at most 63)
  * @param env {@code FLOTTILA_ENV}, required
@@ -31,20 +31,29 @@ import java.util.regex.Pattern;
  * @param archives {@code FLOTTILA_ARCHIVE_STORE} and {@code FLOTTILA_ARCHIVE_DIR}: where package archives are stored (D-070)
  * @param s3 the {@code FLOTTILA_S3_*} keys: present exactly when the archive store is {@link Archives.Store#S3}
  * @param secrets what the endpoints' {@code secret://} references resolve to (D-081): the {@code FLOTTILA_SECRET_*} variables
+ * @param leases the {@code FLOTTILA_VALKEY_URI} and {@code FLOTTILA_POLLER_LEASE_*} keys: where and how long a polling consumer's
+ *               lease is held (D-083)
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
-                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets) {
+                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases) {
 
     /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
         Objects.requireNonNull(s3, "s3");
         Objects.requireNonNull(secrets, "secrets");
+        Objects.requireNonNull(leases, "leases");
         if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+    }
+
+    /** A node whose poller leases are held in its memory with the default ttl and renew period, as {@link #from} reads it by default. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, Leases.DEFAULTS);
     }
 
     /** A node without secrets: every {@code secret://} reference of an endpoint is not set (D-081). */
@@ -62,7 +71,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
-        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets);
+        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -144,10 +153,48 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
     }
 
+    /**
+     * Where a polling consumer's lease is held and for how long (D-083): the node runs the consumer only while it holds the lease.
+     *
+     * @param valkey {@code FLOTTILA_VALKEY_URI}, a {@code redis://} or {@code rediss://} URI with a host (none: the leases are held
+     *               in the node's memory — one node alone; two such nodes on one endpoint both poll)
+     * @param ttl {@code FLOTTILA_POLLER_LEASE_TTL}, ISO-8601 in whole milliseconds, more than zero and at most PT10M (PT30S): how
+     *            long a hold lasts
+     * @param renew {@code FLOTTILA_POLLER_LEASE_RENEW}, ISO-8601 in whole milliseconds, more than zero and at most PT10M, at most
+     *              half the ttl (PT10S): how often the holder holds again
+     * @since 0.1
+     */
+    public record Leases(Optional<URI> valkey, Duration ttl, Duration renew) {
+        /** No Valkey, ttl PT30S, renew PT10S. */
+        static final Leases DEFAULTS = new Leases(Optional.empty(), Duration.ofSeconds(30), Duration.ofSeconds(10));
+
+        /** The Valkey URI as {@link #shown}: a log line never carries its user info or its query. */
+        @Override
+        public String toString() {
+            return "Leases[valkey=" + valkey.map(Leases::shown) + ", ttl=" + ttl + ", renew=" + renew + "]";
+        }
+
+        /**
+         * {@code uri} (one {@link #from} accepted: it has a host) as {@code scheme://host[:port][/db]}, built from its parsed parts:
+         * its user info, query and fragment, and a path that is no {@code /<digits>} database, are left out — each may carry a
+         * password (a {@code user:password@} as well as a {@code ?password=}).
+         */
+        static String shown(URI uri) {
+            String port = uri.getPort() < 0 ? "" : ":" + uri.getPort();
+            String db = DB.matcher(uri.getPath()).matches() ? uri.getPath() : "";
+            return uri.getScheme() + "://" + uri.getHost() + port + db;
+        }
+    }
+
     private static final long MIB = 1024L * 1024;
     private static final long GIB = 1024 * MIB;
     private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
     private static final Set<String> HTTP = Set.of("http", "https");
+    private static final Set<String> REDIS = Set.of("redis", "rediss");
+    /** The one path of a Valkey URI that is printed: its database number. */
+    private static final Pattern DB = Pattern.compile("/\\d+");
+    /** The longest ttl and renew period of a poller lease. */
+    private static final Duration LEASE_MAX = Duration.ofMinutes(10);
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
@@ -177,7 +224,64 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
-                archives, s3, Secrets.fromEnv(env));
+                archives, s3, Secrets.fromEnv(env), leases(env));
+    }
+
+    /** The {@code FLOTTILA_VALKEY_URI} and {@code FLOTTILA_POLLER_LEASE_*} keys. */
+    private static Leases leases(Map<String, String> env) {
+        Optional<URI> valkey = Optional.ofNullable(env.get("FLOTTILA_VALKEY_URI")).map(NodeConfig::valkey);
+        Duration ttl = leaseDuration(env, "FLOTTILA_POLLER_LEASE_TTL", Leases.DEFAULTS.ttl());
+        Duration renew = leaseDuration(env, "FLOTTILA_POLLER_LEASE_RENEW", Leases.DEFAULTS.renew());
+        if (renew.multipliedBy(2).compareTo(ttl) > 0) {
+            throw new IllegalArgumentException("FLOTTILA_POLLER_LEASE_RENEW " + renew + " is more than half FLOTTILA_POLLER_LEASE_TTL " + ttl
+                    + ": the holder must hold again at least twice within a ttl");
+        }
+        return new Leases(valkey, ttl, renew);
+    }
+
+    /**
+     * {@code FLOTTILA_VALKEY_URI}: a redis:// or rediss:// URI with a host; a refusal never shows the value, which may carry a
+     * password.
+     */
+    private static URI valkey(String raw) {
+        URI uri;
+        try {
+            uri = new URI(raw);
+        } catch (URISyntaxException notAUri) {
+            throw notValkey("it is no URI");
+        }
+        // a URI without a scheme has none: never in the set, and Set.contains takes no null
+        if (!REDIS.contains(Objects.toString(uri.getScheme(), ""))) throw notValkey("its scheme is neither");
+        // an unencoded '/', '?' or '#' in a password ends the authority there: parsed as a registry name, it has no host
+        if (uri.getHost() == null) throw notValkey("it has no host (a '/', '?' or '#' in a password must be percent-encoded)");
+        return uri;
+    }
+
+    private static IllegalArgumentException notValkey(String why) {
+        return new IllegalArgumentException("FLOTTILA_VALKEY_URI must be a redis:// or rediss:// URI with a host, such as redis://valkey:6379, but "
+                + why + " (the value is not shown: it may carry a password)");
+    }
+
+    /**
+     * {@code key}'s ISO-8601 duration, more than zero and at most {@link #LEASE_MAX}, in whole milliseconds (a lease counts in them:
+     * Valkey's PX); {@code fallback} when the key is absent.
+     */
+    private static Duration leaseDuration(Map<String, String> env, String key, Duration fallback) {
+        String raw = env.get(key);
+        if (raw == null) return fallback;
+        Duration value;
+        try {
+            value = Duration.parse(raw);
+        } catch (DateTimeParseException notIso) {
+            throw new IllegalArgumentException(key + " must be an ISO-8601 duration such as " + fallback + ", was '" + raw + "'");
+        }
+        if (!value.isPositive() || value.compareTo(LEASE_MAX) > 0) {
+            throw new IllegalArgumentException(key + " must be more than zero and at most " + LEASE_MAX + ", was " + raw);
+        }
+        if (value.getNano() % 1_000_000 != 0) {
+            throw new IllegalArgumentException(key + " must be whole milliseconds (a lease counts in them), was " + raw);
+        }
+        return value;
     }
 
     private static Archives.Store archiveStore(Map<String, String> env) {

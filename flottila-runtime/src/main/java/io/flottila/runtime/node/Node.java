@@ -20,6 +20,9 @@ import io.flottila.runtime.deploy.Deployments;
 import io.flottila.runtime.deploy.DirArchiveStore;
 import io.flottila.runtime.deploy.PgDeploymentStore;
 import io.flottila.runtime.deploy.S3ArchiveStore;
+import io.flottila.runtime.lease.InMemoryPollerLeases;
+import io.flottila.runtime.lease.PollerLeases;
+import io.flottila.runtime.lease.ValkeyPollerLeases;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgIntake;
@@ -29,6 +32,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
+import io.vertx.redis.client.Redis;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
@@ -69,20 +73,23 @@ import java.util.stream.Stream;
  * store and an S3 endpoint over plain http (D-070) before it touches Postgres. It then refuses a
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
  * refused node leaves its database untouched, migrates the database, opens the stores and the archive store (an s3 store over
- * one S3 client the node builds), builds the {@link Deployments} (D-059) over them, restores what the pool's records name
- * ({@link Deployments#restore}, D-070: rows that cannot be read or a data directory that cannot be written fail the start; a
- * package or a flow that cannot be restored is listed FAILED and the node starts) and only then starts the admin server with the
+ * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
+ * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them, restores
+ * what the pool's records name ({@link Deployments#restore}, D-070: rows that cannot be read or a data directory that cannot be
+ * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts) and only then starts the admin server with the
  * deploy, work, replay and retry routes and the health checks {@code postgres} and {@code deployments} (DOWN while anything is
  * listed FAILED, {@link Deployments#health}); when any of this fails, what was opened closes again — the deployments first (the
  * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the store,
- * the pool, the S3 client — so nothing is left running, listening or pooled. {@code close} first closes the deployments
- * — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, while the admin port still
- * answers — then stops the admin server, then flushes and closes the message store, then closes the pool, then the S3 client,
- * each step even when the one before failed; Vert.x stays its caller's.
+ * the pool, the S3 client, the Valkey client — so nothing is left running, listening or pooled. {@code close} first closes the
+ * deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
+ * released, while the admin port still answers — then stops the admin server, then flushes and closes the message store, then
+ * closes the pool, then the S3 client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
  *
  * @since 0.1
  */
 public final class Node implements AutoCloseable {
+
+    private static final System.Logger LOG = System.getLogger(Node.class.getName());
 
     /** Where a mock lives, whatever scheme it is bound to (the testkit's RecordingComponent included); names, never classes (F-4). */
     private static final List<String> MOCK_PACKAGES = List.of("io.flottila.components.mock", "io.flottila.testkit");
@@ -100,14 +107,18 @@ public final class Node implements AutoCloseable {
     private final Pool pool;
     /** Closes the S3 client of an s3 archive store; nothing for a dir store. */
     private final Runnable closeS3;
+    /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
+    private final Runnable closeValkey;
 
-    private Node(Deployments deployments, AdminServer admin, int adminPort, PgMessageStore messages, Pool pool, Runnable closeS3) {
+    private Node(Deployments deployments, AdminServer admin, int adminPort, PgMessageStore messages, Pool pool, Runnable closeS3,
+                 Runnable closeValkey) {
         this.deployments = deployments;
         this.admin = admin;
         this.adminPort = adminPort;
         this.messages = messages;
         this.pool = pool;
         this.closeS3 = closeS3;
+        this.closeValkey = closeValkey;
     }
 
     /**
@@ -137,7 +148,8 @@ public final class Node implements AutoCloseable {
                 .connectingTo(new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password()))
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
         PgMessageStore messages = null;
-        Runnable closeS3 = () -> {};   // the S3 client once built: closed last
+        Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pool
+        Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
         try {
             TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
@@ -162,16 +174,27 @@ public final class Node implements AutoCloseable {
                 closeS3 = s3::close;
                 archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix());
             }
+            PollerLeases leases;
+            if (config.leases().valkey().isPresent()) {
+                Redis valkey = Redis.createClient(vertx, config.leases().valkey().get().toString());   // connects on its first command
+                closeValkey = () -> valkey.close().await();
+                leases = new ValkeyPollerLeases(valkey);
+            } else {
+                LOG.log(System.Logger.Level.WARNING, "FLOTTILA_VALKEY_URI is not set: this node holds its poller leases in its own memory. "
+                        + "Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of "
+                        + "nodes one Valkey (D-083)");
+                leases = new InMemoryPollerLeases(clock);
+            }
             // an at-least-once ingress saves its body, its record and its item in one transaction (D-082)
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
-                    Meter.system(), new PgDeploymentStore(pool), archives, new PgIntake(pool, blobs, messages, work));
+                    Meter.system(), new PgDeploymentStore(pool), archives, new PgIntake(pool, blobs, messages, work), leases);
             deployments = restored;
             restored.restore();   // before the admin port opens: what the pool recorded runs before a deploy can be taken (D-070)
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health())), messages::failed),
                     Optional.of(restored), work, ids);
-            return new Node(restored, admin, admin.start(vertx).await(), messages, pool, closeS3);
+            return new Node(restored, admin, admin.start(vertx).await(), messages, pool, closeS3, closeValkey);
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -181,7 +204,7 @@ public final class Node implements AutoCloseable {
             } catch (Throwable unstopped) {
                 failure.addSuppressed(unstopped);
             } finally {
-                closeStores(messages, pool, closeS3);
+                closeStores(messages, pool, closeS3, closeValkey);
             }
             throw failure;
         }
@@ -237,8 +260,9 @@ public final class Node implements AutoCloseable {
     public MessageStore messages() { return messages; }
 
     /**
-     * Closes the deployments (every flow stopped, deploys refused), then stops the admin server, then flushes and closes the message
-     * store, then closes the pool, then the S3 client — each step even when the one before failed.
+     * Closes the deployments (every flow stopped, its lease released, deploys refused), then stops the admin server, then flushes and
+     * closes the message store, then closes the pool, then the S3 client, then the Valkey client — each step even when the one
+     * before failed.
      */
     @Override
     public void close() {
@@ -248,23 +272,27 @@ public final class Node implements AutoCloseable {
             try {
                 admin.stop().await();
             } finally {
-                closeStores(messages, pool, closeS3);
+                closeStores(messages, pool, closeS3, closeValkey);
             }
         }
     }
 
     /**
-     * Flushes and closes the store (none yet: nothing to flush), then closes the pool, then the S3 client (none: nothing) — each
-     * even when the one before failed.
+     * Flushes and closes the store (none yet: nothing to flush), then closes the pool, then the S3 client (none: nothing), then the
+     * Valkey client (none: nothing) — each even when the one before failed.
      */
-    private static void closeStores(PgMessageStore messages, Pool pool, Runnable closeS3) {
+    private static void closeStores(PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
         try {
             if (messages != null) messages.close();
         } finally {
             try {
                 pool.close().await();
             } finally {
-                closeS3.run();
+                try {
+                    closeS3.run();
+                } finally {
+                    closeValkey.run();
+                }
             }
         }
     }

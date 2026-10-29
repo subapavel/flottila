@@ -45,8 +45,10 @@ import java.util.stream.Stream;
  * at a test's directory (remote {@code /inbox} is {@code root/inbox}), password login for {@link #USER}, an EC host key.
  * It counts sessions and password checks, records what the client opened, read, closed, removed and moved, and lets a test act
  * once inside a removal, an open or a read (drop the session, fail the read, grow the file).
+ *
+ * <p>Public, with what a test of another module needs (the sftp test-jar): runtime's two-node lease test (P2-02L).
  */
-final class EmbeddedSftp implements AutoCloseable {
+public final class EmbeddedSftp implements AutoCloseable {
 
     static final String USER = "flottila";
     static final String PASSWORD = "s3cret-for-tests";
@@ -98,17 +100,17 @@ final class EmbeddedSftp implements AutoCloseable {
     }
 
     /** A server on a free port (the kernel's choice at bind time). */
-    static EmbeddedSftp start(Path root) throws IOException { return new EmbeddedSftp(root, 0, HOST_KEY); }
+    public static EmbeddedSftp start(Path root) throws IOException { return new EmbeddedSftp(root, 0, HOST_KEY); }
 
     /** A server on {@code port} with {@code hostKey}: the same partner again after a restart. */
     static EmbeddedSftp start(Path root, int port, KeyPair hostKey) throws IOException { return new EmbeddedSftp(root, port, hostKey); }
 
-    int port() { return server.getPort(); }
+    public int port() { return server.getPort(); }
 
     /** The SHA256 fingerprint of {@code key} as OpenSSH prints it ({@code SHA256:<base64, unpadded>}): the endpoint's {@code hostKey}. */
     static String fingerprint(KeyPair key) { return KeyUtils.getFingerPrint(key.getPublic()); }
 
-    int sessionsCreated() { return sessionsCreated.get(); }
+    public int sessionsCreated() { return sessionsCreated.get(); }
 
     int sessionsClosed() { return sessionsClosed.get(); }
 
@@ -127,7 +129,7 @@ final class EmbeddedSftp implements AutoCloseable {
     Path local(String remote) { return root.resolve(remote.replaceFirst("^/", "")); }
 
     /** Creates the remote directory {@code remote}. */
-    Path mkdir(String remote) {
+    public Path mkdir(String remote) {
         try {
             return Files.createDirectories(local(remote));
         } catch (IOException e) {
@@ -136,7 +138,7 @@ final class EmbeddedSftp implements AutoCloseable {
     }
 
     /** Drops {@code name} into the remote directory {@code dir}, one second younger than the drop before it. */
-    void drop(String dir, String name, Buffer bytes) {
+    public void drop(String dir, String name, Buffer bytes) {
         drop(dir, name, bytes, FIRST_MTIME.plusSeconds(drops.getAndIncrement()));
     }
 
@@ -157,7 +159,7 @@ final class EmbeddedSftp implements AutoCloseable {
     }
 
     /** The names of the regular files in the remote directory {@code dir}. */
-    Set<String> files(String dir) {
+    public Set<String> files(String dir) {
         Path local = local(dir);
         if (!Files.isDirectory(local)) return Set.of();
         try (Stream<Path> listed = Files.list(local)) {
@@ -236,7 +238,7 @@ final class EmbeddedSftp implements AutoCloseable {
      * An endpoint polling the remote directory {@code dir} of this server: URI {@code sftp://127.0.0.1:<port><dir>}, the
      * required options (this server's user, password and host key, a body limit) plus {@code extra}, which may override them.
      */
-    EndpointConfig endpoint(String name, String dir, Map<String, Object> extra) {
+    public EndpointConfig endpoint(String name, String dir, Map<String, Object> extra) {
         Map<String, Object> options = new HashMap<>(Map.of("user", USER, "password", PASSWORD, "hostKey", fingerprint(HOST_KEY),
                 "maxBodyBytes", 1_000_000, "flow", "contract"));
         options.putAll(extra);

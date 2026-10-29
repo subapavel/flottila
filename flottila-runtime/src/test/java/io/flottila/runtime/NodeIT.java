@@ -1,9 +1,14 @@
 package io.flottila.runtime;
 
+import io.flottila.api.Ack;
 import io.flottila.api.Component;
+import io.flottila.api.EndpointConfig;
+import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
 import io.flottila.api.Headers;
+import io.flottila.api.Health;
 import io.flottila.api.Keys;
+import io.flottila.api.Producer;
 import io.flottila.api.Props;
 import io.flottila.components.http.HttpComponent;
 import io.flottila.components.mock.DisguisedMock;
@@ -31,6 +36,8 @@ import io.vertx.pgclient.PgConnection;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Transaction;
+import io.vertx.redis.client.Redis;
+import io.vertx.redis.client.RedisAPI;
 import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -40,8 +47,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.localstack.LocalStackContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
@@ -87,6 +96,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.logging.Handler;
+import java.util.logging.Level;
+import java.util.logging.LogRecord;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -358,6 +372,145 @@ class NodeIT {
         assertEquals(1, lines.size(), "one line on stderr, no stack trace: " + lines);
         assertTrue(lines.get(0).contains(bad), "the line names the key: " + lines.get(0));
         assertEquals(0, connections(), "the refused node never connected to its database");
+    }
+
+    // --- P2-02L (D-083): the node's poller lease store. FLOTTILA_VALKEY_URI set: the leases are held in that Valkey, the client is
+    // closed at close; absent: they are held in memory and start logs one WARNING naming the missing Valkey.
+
+    /** The lease of {@link #pollingShop()}'s flow in Valkey: the store's prefix, then {@code <package>/<flow>/<scheme>://<endpoint id>}. */
+    static final String FEED_LEASE = "flottila:poller:shop/feed/poll://drop";
+
+    /** The {@code poll} scheme: the {@link Doors} of the deploy tests, every endpoint of which polls, so the node leases its consumers. */
+    static final class PollingDoors implements Component {
+        final Doors inner = new Doors("poll");
+
+        @Override public String scheme() { return inner.scheme(); }
+
+        @Override public String configSchema() { return inner.configSchema(); }
+
+        @Override public io.flottila.api.Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { return inner.consumer(cfg, handler); }
+
+        @Override public Producer producer(EndpointConfig cfg) { return inner.producer(cfg); }
+
+        @Override public Future<Health> health() { return inner.health(); }
+
+        @Override public boolean polls(EndpointConfig cfg) { return true; }
+
+        boolean aConsumerRuns() { return inner.doors().stream().anyMatch(Doors.Door::started); }
+    }
+
+    /** {@code shop} 1.0.0: flow {@code feed} from the polling endpoint {@code drop} to {@code partner}, both on the {@code poll} scheme. */
+    static byte[] pollingShop() {
+        return PackageDraft.of("shop", "1.0.0")
+                .endpoint("drop", "poll", "in", new JsonObject().put("path", "/drop"))
+                .endpoint("partner", "poll", "out", new JsonObject().put("url", "poll://partner"))
+                .flow("feed", "1.0.0", "sync", "drop", 1024, PackageDraft.toPartner()).zip();
+    }
+
+    /** Every record at WARNING or above under {@code io.flottila}, formatted; attached while a case runs. */
+    static final class Warnings extends Handler {
+        final List<String> records = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void publish(LogRecord r) {
+            if (r.getLevel().intValue() >= Level.WARNING.intValue()) records.add(r.getLevel() + " " + r.getLoggerName() + ": " + new SimpleFormatter().formatMessage(r));
+        }
+
+        @Override public void flush() {}
+
+        @Override public void close() {}
+
+        /** The WARNING records whose text names Valkey (any case). */
+        List<String> namingValkey() {
+            return records.stream().filter(r -> r.startsWith(Level.WARNING + " ") && r.toLowerCase(java.util.Locale.ROOT).contains("valkey")).toList();
+        }
+    }
+
+    static boolean exists(RedisAPI api, String key) {
+        return api.exists(List.of(key)).await().toInteger() == 1;
+    }
+
+    /** {@code connected_clients} of {@code INFO clients}: every connection to the server, the asking one included. */
+    static int connectedClients(RedisAPI api) {
+        String info = api.info(List.of("clients")).await().toString();
+        for (String line : info.split("\\r?\\n")) {
+            if (line.startsWith("connected_clients:")) return Integer.parseInt(line.substring("connected_clients:".length()).trim());
+        }
+        throw new AssertionError("no connected_clients in INFO clients: " + info);
+    }
+
+    /**
+     * FLOTTILA_VALKEY_URI set: a polling flow deployed on the node is leased in that Valkey — its key appears there, held by the
+     * node ({@code <FLOTTILA_NODE_ID>#<n>}), and its consumer runs — and no WARNING names Valkey. Close releases the key (before
+     * the client closes: the release still reaches Valkey) and closes the node's client: only the observer stays connected.
+     */
+    @Test
+    void aNodeWithAValkeyUriHoldsItsPollerLeasesThereAndClosesTheClientAtClose() throws Exception {
+        Logger flottila = Logger.getLogger("io.flottila");
+        Warnings warnings = new Warnings();
+        flottila.addHandler(warnings);
+        try (GenericContainer<?> valkey = new GenericContainer<>(DockerImageName.parse("valkey/valkey:8")).withExposedPorts(6379)) {
+            valkey.start();
+            String uri = "redis://" + valkey.getHost() + ":" + valkey.getMappedPort(6379);
+            Redis observer = Redis.createClient(vertx, uri);
+            try {
+                RedisAPI api = RedisAPI.api(observer);
+                int alone = connectedClients(api);
+                assertFalse(exists(api, FEED_LEASE), "fixture: a fresh Valkey holds no lease");
+                Map<String, String> env = env("ci");
+                env.put("FLOTTILA_VALKEY_URI", uri);
+                PollingDoors poll = new PollingDoors();
+                Node started = start(env, ctx -> List.of(poll));
+
+                putOk(started.adminPort(), "shop", pollingShop());
+
+                until(() -> exists(api, FEED_LEASE), "the polling flow's lease key " + FEED_LEASE + " appears in the node's Valkey");
+                String owner = api.get(FEED_LEASE).await().toString();
+                assertTrue(owner.startsWith("node-it#"), "the key is held by this node, <FLOTTILA_NODE_ID>#<n>: " + owner);
+                until(poll::aConsumerRuns, "the flow's consumer runs under the lease held in Valkey");
+                assertTrue(connectedClients(api) > alone, "the node is connected to the Valkey");
+                assertEquals(List.of(), warnings.namingValkey(), "a node with a Valkey warns nothing about it: " + warnings.records);
+
+                closeNode(started);
+                node = null;
+
+                assertFalse(exists(api, FEED_LEASE), "close released the lease in Valkey: the release ran before the client closed");
+                until(() -> connectedClients(api) == alone, "close closed the node's Valkey client: only the observer's connection is left");
+            } finally {
+                if (node != null) {
+                    closeNode(node);
+                    node = null;
+                }
+                observer.close();
+            }
+        } finally {
+            flottila.removeHandler(warnings);
+        }
+    }
+
+    /**
+     * FLOTTILA_VALKEY_URI absent: the node leases in memory — a polling flow's consumer still starts — and its start logs exactly
+     * one WARNING naming the missing Valkey, before any deploy; holding a lease adds no other.
+     */
+    @Test
+    void aNodeWithoutAValkeyUriLeasesInMemoryAndWarnsOnceAtStart() throws Exception {
+        Logger flottila = Logger.getLogger("io.flottila");
+        Warnings warnings = new Warnings();
+        flottila.addHandler(warnings);
+        try {
+            Map<String, String> env = env("ci");
+            assertFalse(env.containsKey("FLOTTILA_VALKEY_URI"), "fixture: no Valkey configured");
+            PollingDoors poll = new PollingDoors();
+
+            Node started = start(env, ctx -> List.of(poll));
+
+            assertEquals(1, warnings.namingValkey().size(), "start logged exactly one WARNING naming the missing Valkey: " + warnings.records);
+            putOk(started.adminPort(), "shop", pollingShop());
+            until(poll::aConsumerRuns, "the polling flow's consumer starts under a lease held in memory");
+            assertEquals(1, warnings.namingValkey().size(), "holding a lease in memory warns no more: " + warnings.records);
+        } finally {
+            flottila.removeHandler(warnings);
+        }
     }
 
     // --- helpers

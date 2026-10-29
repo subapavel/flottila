@@ -23,6 +23,8 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.MessageStore;
 import io.flottila.runtime.deploy.DeployRefusedException.Kind;
+import io.flottila.runtime.lease.InMemoryPollerLeases;
+import io.flottila.runtime.lease.PollerLeases;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.schemas.Package;
 import io.flottila.schemas.Schemas;
@@ -58,8 +60,10 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -149,6 +153,14 @@ import java.util.stream.Stream;
  * the consumer option {@code flow}; the deploy also sets {@code maxBodyBytes}, the flow's limit. Every message carries the
  * versions {@code package=<name>@<version>} and, when the deploy names one, {@code revision}.
  *
+ * <p>A consumer whose component says it polls ({@code Component.polls}, asked in the same try as the consumer's build: a throw
+ * is that flow's problem line) runs under the endpoint's poller lease (D-083, {@link LeasedConsumer}): the key
+ * {@code <package>/<flow>/<endpoint uri as the component gets it>}, the owner {@code <nodeId>#<n>} (n counted here: every leased
+ * consumer its own owner), the ttl and renew period of {@code FLOTTILA_POLLER_LEASE_*}. Its start completes at once and its
+ * consumer polls only once the lease is held, so a leased consumer whose start fails after the deploy is a WARNING and a retry
+ * at its next tick, never the deploy's {@link Kind#FAILED}. Its stop — phase A, a rollback, {@link #close} — stops the consumer,
+ * then releases the lease: the flow that replaces it takes the lease at its first tick, not a ttl later.
+ *
  * <p>{@link #close} refuses deploys from then on, waits for a running one, then closes every replay to new runs and stops every
  * flow that runs at once: its worker first, then its delivery (within the node's stop deadline) and its consumer (bounded by the
  * stop deadline once the delivery stopped: ≤ 2× the stop deadline) together; once all have stopped it
@@ -187,6 +199,9 @@ public final class Deployments {
     private final Meter meter;
     private final DeploymentStore records;
     private final ArchiveStore archives;
+    private final PollerLeases leases;
+    /** Numbers the owners of the leased consumers built here: {@code <nodeId>#<n>}. */
+    private final AtomicLong owners = new AtomicLong();
     /** One deploy at a time; {@link #close} takes it to wait for the one running. */
     private final ReentrantLock deploying = new ReentrantLock();
     /** By name, so {@link #packages()} is sorted; written under {@link #deploying} — by a deploy once, as it returns or throws — read by anyone. */
@@ -213,19 +228,29 @@ public final class Deployments {
         this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, new SequentialIntake(messages, queue));
     }
 
+    /** Deployments whose poller leases are held in this process's memory, on {@code clock}: one node alone (D-083). */
+    public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                       ArchiveStore archives, Intake intake) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake,
+                new InMemoryPollerLeases(clock));
+    }
+
     /**
      * @param runtime handed to each deploy's {@code new FlowBuilder} and read nowhere else
      * @param components the node's components by scheme: the consumers, and the config schemas the endpoints are checked against
-     * @param clock {@code deployedAt}
-     * @param timer the node's (the one the runtime carries): it bounds a consumer's start and stop by the node's stop deadline
+     * @param clock {@code deployedAt}, and the validity of a leased consumer's lease
+     * @param timer the node's (the one the runtime carries): it bounds a consumer's start and stop by the node's stop deadline, and
+     *              ticks every leased consumer
      * @param records where a deploy writes its package's record, the deploy's commit point (D-070)
      * @param archives where a deploy stores its archive before anything stops (D-070)
      * @param intake the durable save of every at-least-once flow's delivery (D-082): body, ingress record and item, over the
      *               same stores as {@code messages} and {@code queue}
+     * @param leases where the consumer of a polling endpoint holds its lease (D-083)
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake) {
+                       ArchiveStore archives, Intake intake, PollerLeases leases) {
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
@@ -240,6 +265,7 @@ public final class Deployments {
         this.meter = Objects.requireNonNull(meter, "meter");
         this.records = Objects.requireNonNull(records, "records");
         this.archives = Objects.requireNonNull(archives, "archives");
+        this.leases = Objects.requireNonNull(leases, "leases");
     }
 
     /**
@@ -1113,19 +1139,34 @@ public final class Deployments {
 
     /**
      * Builds the consumer of each of {@code flows} (the added and changed ones) and returns their copies with it, in order; one the
-     * component refuses is one line added to {@code problems}. Nothing is started: a consumer never started is never stopped.
+     * component refuses, or whose {@code polls} throws, is one line added to {@code problems}. The consumer of a polling endpoint
+     * is wrapped in its {@link LeasedConsumer}, whose later consumers the component builds from the same endpoint and handler.
+     * Nothing is started: a consumer never started is never stopped.
      */
     private List<Flow> consumers(List<Flow> flows, List<String> problems) {
         List<Flow> with = new ArrayList<>(flows.size());
         for (Flow f : flows) {
             Function<Envelope, Future<Ack>> handler = f.worker() == null ? f.delivery() : f.worker().pollingAfterAccept(f.delivery());
+            EndpointConfig from = f.from();
+            Component component = components.get(from.scheme());
             try {
-                with.add(f.with(components.get(f.from().scheme()).consumer(f.from(), handler)));
+                boolean polls = component.polls(from);
+                Consumer consumer = component.consumer(from, handler);
+                with.add(f.with(polls ? leased(f.id() + "/" + from.uri(), consumer, () -> component.consumer(from, handler)) : consumer));
             } catch (RuntimeException refused) {
                 problems.add("flow '" + local(f.flow()) + "' does not build: " + reason(refused));
             }
         }
         return with;
+    }
+
+    /**
+     * {@code first} under the lease {@code key} ({@code <package>/<flow>/<endpoint uri>}), owned by {@code <nodeId>#<n>}, on the
+     * node's timer and clock with the ttl and renew period of its config; {@code fresh} builds each consumer after the first.
+     */
+    private LeasedConsumer leased(String key, Consumer first, Supplier<Consumer> fresh) {
+        NodeConfig.Leases lease = config.leases();
+        return new LeasedConsumer(leases, key, config.nodeId() + "#" + owners.incrementAndGet(), lease.ttl(), lease.renew(), timer, clock, first, fresh);
     }
 
     /**

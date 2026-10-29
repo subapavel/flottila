@@ -37,6 +37,7 @@
 | 2026-10-29 | 3.4 | §9 Security: `secret://` backed by environment variables until the wallet (P2-04, D-081) | — |
 | 2026-10-29 | 3.4 | §4 durable save and §8 monitoring: the at-least-once ingress body, record and work item commit in one Postgres transaction (P2-08a, D-082) | F-14 |
 | 2026-10-29 | 3.4 | §7 Sizing: durable ACK after the one-transaction save, 8.80 ms p99 at c=1 (FLOOR, not durable: 8.04 ms), the 5 ms target not met, the load regression until FIX-95 (P2-08b) | F-18 |
+| 2026-10-29 | 3.4 | §4 pollers run only under the endpoint's lease; §7 poller leases in memory on a node without Valkey (P2-02L, D-083) | D-083 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -134,7 +135,7 @@ One message = one plain JDK virtual thread, bounded per flow; verticles exist on
 
 **Threading**
 
-- Endpoint verticles (HTTP, XI) and pollers (a timer firing a round on a virtual thread, D-076) accept input and hand each message to `Executors.newVirtualThreadPerTaskExecutor()`; they never run a pipeline themselves.
+- Endpoint verticles (HTTP, XI) and pollers (a timer firing a round on a virtual thread, D-076) accept input and hand each message to `Executors.newVirtualThreadPerTaskExecutor()`; they never run a pipeline themselves. A poller starts a round only while its node holds the endpoint's lease (D-083); a stop at a lost or lapsed lease waits for the file in flight, so a takeover may overlap it by that file: a duplicate, never a loss.
 - Admission per flow = a semaphore that counts **requests and bytes** (body size is known from the content hash record). Over the limit: HTTP 503 + Retry-After, SFTP poller pauses, Kafka consumer stops polling. Memory, not thread count, is what backpressure protects.
 - Two executors only for work: the virtual-thread executor (default for everything) and a small **platform-thread pool for JCo/JNI**, because JNI still pins carriers on JDK 25; a client library's own transport I/O threads (Vert.x event loops, the Kafka network thread, MINA SSHD's NIO2 pool sized ≤ 2) are not executors and never run a pipeline (D-076). CPU-bound steps need no pool; the per-flow cap (default cores × 2 for CPU-heavy flows, higher for I/O flows) is the limit.
 - `ScopedValue` carries message id, tenant, trace id and deadline through every step without threading them through signatures. A thin `RequestScope` (fork / join / cancel on virtual threads) wraps each message so a timeout or cancel stops all of its children; swap in `StructuredTaskScope` when it leaves preview.
@@ -262,7 +263,7 @@ The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a 
 | --- | --- | --- |
 | WorkQueue | Postgres `work` table, `SELECT … FOR UPDATE SKIP LOCKED`, one row per message, `partition_key`, lease with expiry renewed while the item runs, an attempts count that fences the lease, the completion and the hold and bounds the retries, a held state that blocks its key | async at-least-once flows on small installs; all XI ordered (EOIO) queues with block-on-failure |
 | Kafka topics | one topic per flow or pool, key = partition key | async hand-over at scale, ingest buffer for monitoring, replay source, the durable `/xi` door |
-| Poller leases | Valkey (moved off Postgres) | which node polls which SFTP/mail/DB endpoint |
+| Poller leases | Valkey (moved off Postgres); in memory on a node without Valkey (single node only, D-083) | which node polls which SFTP/mail/DB endpoint |
 
 `WorkQueue` and `MessageStore` are interfaces; both are first-class and the flow config chooses `queue: postgres | kafka`. Rule (agreed Oct 17, 2026): Postgres is the default queue; a flow moves to Kafka when it needs high volume, cross-pool fan-out or replay from the log; XI EOIO ordered queues stay on Postgres always, while the /xi door itself is Kafka for failover. A broker replaces save-before-hand-over, never the monitoring store. Per-key serial processing: a worker that finishes a message takes the next one of the same key without a new claim round-trip (hot-partition optimisation, measured at 60–200 msg/s per key in the prototype without it). The key is evaluated at the durable save from the flow's `partitionBy` (the name of its one `extractKey` step; no value = unordered; over 256 chars = final refusal); after the item it claimed, a worker takes at most `maxChain` further items of the key by the fast path (default 32; 0 = fast path off) before the key goes back to the seq-ordered claim; a key the extractKey cannot read (MALFORMED/INVALID) is saved unkeyed, any other key failure is a retryable refusal; `queue: kafka` is refused at deploy until the Kafka hand-over lands (D-075).
 

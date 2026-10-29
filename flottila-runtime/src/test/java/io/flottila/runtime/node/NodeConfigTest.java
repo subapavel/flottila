@@ -323,4 +323,182 @@ class NodeConfigTest {
         assertTrue(s3.toString().contains("flottila-archives"), "the rest still shows: " + s3);
         assertTrue(c.toString().contains("flottila-archives"), "the config's line shows its S3 settings, redacted: " + c);
     }
+
+    // --- P2-02L (D-083): poller leases
+
+    /**
+     * {@code FLOTTILA_VALKEY_URI} is optional (none: leases in memory), a redis:// or rediss:// URI; {@code FLOTTILA_POLLER_LEASE_TTL}
+     * (PT30S) and {@code FLOTTILA_POLLER_LEASE_RENEW} (PT10S) are ISO-8601, each &gt; 0 and &le; PT10M, with 2 × renew &le; ttl; every
+     * refusal names its key (one between the two names both). The shape assumed (P2-02L test-author): a component
+     * {@code NodeConfig.Leases leases()} — {@code record Leases(Optional<URI> valkey, Duration ttl, Duration renew)}.
+     */
+    @Test
+    void leaseDefaultsAndRefusals() {
+        NodeConfig defaults = NodeConfig.from(minimal());
+        assertEquals(new NodeConfig.Leases(Optional.empty(), Duration.ofSeconds(30), Duration.ofSeconds(10)), defaults.leases(),
+                "no Valkey, ttl PT30S, renew PT10S");
+
+        NodeConfig set = NodeConfig.from(with(with(with(minimal(), "FLOTTILA_VALKEY_URI", "rediss://valkey.internal:6380"),
+                "FLOTTILA_POLLER_LEASE_TTL", "PT1M"), "FLOTTILA_POLLER_LEASE_RENEW", "PT20S"));
+        assertEquals(new NodeConfig.Leases(Optional.of(URI.create("rediss://valkey.internal:6380")), Duration.ofMinutes(1), Duration.ofSeconds(20)),
+                set.leases(), "every key read under its own name");
+        assertEquals(Optional.of(URI.create("redis://valkey:6379")), NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "redis://valkey:6379")).leases().valkey());
+
+        // the edges: ttl PT10M; 2 × renew = ttl; the smallest positive pair
+        for (String[] edge : new String[][] {{"PT10M", "PT5M"}, {"PT20S", "PT10S"}, {"PT0.002S", "PT0.001S"}}) {
+            NodeConfig c = NodeConfig.from(with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", edge[0]), "FLOTTILA_POLLER_LEASE_RENEW", edge[1]));
+            assertEquals(List.of(Duration.parse(edge[0]), Duration.parse(edge[1])), List.of(c.leases().ttl(), c.leases().renew()), "accepted: " + List.of(edge));
+        }
+
+        List<Map.Entry<String, Map<String, String>>> refused = List.of(
+                Map.entry("FLOTTILA_POLLER_LEASE_TTL", with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT0S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_TTL", with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT-30S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_TTL", with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT10M0.001S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_TTL", with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "30s")),
+                Map.entry("FLOTTILA_POLLER_LEASE_RENEW", with(minimal(), "FLOTTILA_POLLER_LEASE_RENEW", "PT0S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_RENEW", with(minimal(), "FLOTTILA_POLLER_LEASE_RENEW", "PT-10S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_RENEW", with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT10M"), "FLOTTILA_POLLER_LEASE_RENEW", "PT10M0.001S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_RENEW", with(minimal(), "FLOTTILA_POLLER_LEASE_RENEW", "10s")),
+                Map.entry("FLOTTILA_VALKEY_URI", with(minimal(), "FLOTTILA_VALKEY_URI", "http://valkey:6379")),
+                Map.entry("FLOTTILA_VALKEY_URI", with(minimal(), "FLOTTILA_VALKEY_URI", "valkey:6379")),
+                Map.entry("FLOTTILA_VALKEY_URI", with(minimal(), "FLOTTILA_VALKEY_URI", "redis://valkey:6379/ x")));
+        for (Map.Entry<String, Map<String, String>> r : refused) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(r.getValue()), "refused: " + r.getValue());
+            assertTrue(String.valueOf(e.getMessage()).contains(r.getKey()), "the refusal names " + r.getKey() + ": " + e.getMessage());
+        }
+
+        // 2 × renew > ttl: by default ttl, by an explicit pair, by a millisecond (the leases' grain: review r1)
+        for (String[] pair : new String[][] {{null, "PT15.001S"}, {"PT1M", "PT31S"}, {"PT20S", "PT10.001S"}}) {
+            Map<String, String> env = with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", pair[0]), "FLOTTILA_POLLER_LEASE_RENEW", pair[1]);
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(env), "refused: " + env);
+            assertTrue(String.valueOf(e.getMessage()).contains("FLOTTILA_POLLER_LEASE_RENEW") && e.getMessage().contains("FLOTTILA_POLLER_LEASE_TTL"),
+                    "a renew period above half the ttl is refused naming both keys: " + e.getMessage());
+        }
+    }
+
+    /** The Valkey password never shows: not in the config's line, not in its leases' line, not in a refusal of the URI. */
+    @Test
+    void theValkeyPasswordIsRedacted() {
+        String password = "valkey-pass-4711";
+        NodeConfig c = NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "redis://flottila:" + password + "@valkey.internal:6379"));
+        assertEquals(Optional.of(URI.create("redis://flottila:" + password + "@valkey.internal:6379")), c.leases().valkey(),
+                "the password is read: the checks below are not vacuous");
+        for (Object shown : new Object[] {c, c.leases()}) {
+            String text = shown.toString();
+            assertFalse(text.contains(password), "a log line of " + shown.getClass().getSimpleName() + " must not carry the Valkey password: " + text);
+        }
+        assertTrue(c.leases().toString().contains("valkey.internal"), "the rest still shows: " + c.leases());
+        assertTrue(c.toString().contains("valkey.internal"), "the config's line shows its Valkey host: " + c);
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "http://flottila:" + password + "@valkey.internal:6379")));
+        assertTrue(e.getMessage().contains("FLOTTILA_VALKEY_URI"), e.getMessage());
+        assertFalse(e.getMessage().contains(password), "a refusal is logged: it must not carry the password either: " + e.getMessage());
+    }
+
+    /**
+     * Review r1: of the Valkey URI only {@code scheme://host:port[/db]} is ever printed — not its user info, not its query (a
+     * {@code ?password=} is as secret as the user info) — in the leases' line, the config's line and every refusal; the client
+     * still gets the whole URI.
+     */
+    @Test
+    void theValkeyUriPrintsOnlySchemeHostPortAndDb() {
+        Map<String, String> printedAs = Map.of(
+                "redis://valkey:6379?password=s3cr3t", "redis://valkey:6379",
+                "rediss://u:p@h:6380/2?password=x", "rediss://h:6380/2");
+        List<String> secrets = List.of("s3cr3t", "password=x", "?password", "u:p@");   // the Pg line's own "password=***" is no leak
+        for (Map.Entry<String, String> uri : printedAs.entrySet()) {
+            NodeConfig c = NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", uri.getKey()));
+            assertEquals(Optional.of(URI.create(uri.getKey())), c.leases().valkey(), "the whole URI is read: the client gets its secret");
+            for (String text : List.of(c.leases().toString(), c.toString())) {
+                assertTrue(text.contains(uri.getValue()), "printed as " + uri.getValue() + ": " + text);
+                assertFalse(text.contains(uri.getValue() + "?"), "no query printed after " + uri.getValue() + ": " + text);
+                for (String secret : secrets) assertFalse(text.contains(secret), "'" + secret + "' is not printed: " + text);
+            }
+        }
+
+        List<Map.Entry<String, Map<String, String>>> refused = List.of(
+                Map.entry("FLOTTILA_VALKEY_URI", with(minimal(), "FLOTTILA_VALKEY_URI", "http://valkey:6379?password=s3cr3t")),
+                Map.entry("FLOTTILA_VALKEY_URI", with(minimal(), "FLOTTILA_VALKEY_URI", "valkey:6379?password=s3cr3t")),
+                Map.entry("FLOTTILA_VALKEY_URI", with(minimal(), "FLOTTILA_VALKEY_URI", "redis://valkey:6379/ x?password=s3cr3t")),
+                Map.entry("FLOTTILA_VALKEY_URI", with(minimal(), "FLOTTILA_VALKEY_URI", "http://u:p@h:6380/2?password=s3cr3t")),
+                Map.entry("FLOTTILA_POLLER_LEASE_TTL", with(with(minimal(), "FLOTTILA_VALKEY_URI", "rediss://u:p@h:6380/2?password=s3cr3t"),
+                        "FLOTTILA_POLLER_LEASE_TTL", "PT0S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_RENEW", with(with(with(minimal(), "FLOTTILA_VALKEY_URI", "redis://valkey:6379?password=s3cr3t"),
+                        "FLOTTILA_POLLER_LEASE_TTL", "PT1M"), "FLOTTILA_POLLER_LEASE_RENEW", "PT31S")));
+        for (Map.Entry<String, Map<String, String>> r : refused) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(r.getValue()), "refused: " + r.getKey());
+            String text = String.valueOf(e.getMessage());
+            assertTrue(text.contains(r.getKey()), "the refusal names " + r.getKey() + ": " + text);
+            for (String secret : secrets) assertFalse(text.contains(secret), "a refusal is logged: '" + secret + "' is not in it: " + text);
+        }
+    }
+
+    /**
+     * Review r2: a password with an unencoded {@code /} ({@code redis://:abc/def+g==@valkey:6379}) parses with no host — the
+     * {@code /} ends the authority — so it is refused, naming the key and saying it has no host, and never shown.
+     */
+    @Test
+    void aValkeyUriWithNoHostIsRefusedUnshown() {
+        List<String> secrets = List.of("abc", "def", "g==");
+        IllegalArgumentException hostless = assertThrows(IllegalArgumentException.class,
+                () -> NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "redis://:abc/def+g==@valkey:6379")), "a URI with no host is refused");
+        String text = String.valueOf(hostless.getMessage());
+        assertTrue(text.contains("FLOTTILA_VALKEY_URI"), "the refusal names the key: " + text);
+        assertTrue(text.toLowerCase(java.util.Locale.ROOT).contains("no host"), "the refusal says the URI has no host: " + text);
+        for (String secret : secrets) assertFalse(text.contains(secret), "'" + secret + "' is not in the refusal: " + text);
+    }
+
+    /** Review r2: the wrong-scheme refusal of a URI whose password holds an unencoded {@code /} does not echo that password. */
+    @Test
+    void aWrongSchemeRefusalDoesNotEchoAPasswordWithASlash() {
+        IllegalArgumentException scheme = assertThrows(IllegalArgumentException.class,
+                () -> NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "http://:abc/def@h:6379")), "a wrong scheme is refused");
+        String schemeText = String.valueOf(scheme.getMessage());
+        assertTrue(schemeText.contains("FLOTTILA_VALKEY_URI"), "the refusal names the key: " + schemeText);
+        for (String secret : List.of("abc", "def")) assertFalse(schemeText.contains(secret), "'" + secret + "' is not in the refusal: " + schemeText);
+    }
+
+    /** Review r3 (adopted from the implementer's scratch, mutant P1): a Valkey URI without a port prints none — no {@code :-1}. */
+    @Test
+    void aValkeyUriWithoutAPortPrintsNone() {
+        NodeConfig c = NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "redis://valkey/2"));
+        for (String shown : List.of(c.leases().toString(), c.toString())) {
+            assertTrue(shown.contains("redis://valkey/2"), "no port, none printed: " + shown);
+            assertFalse(shown.contains(":-1"), "no port number made up: " + shown);
+        }
+    }
+
+    /** Review r2: of the Valkey URI's path only a {@code /<digits>} database is printed. */
+    @Test
+    void onlyADbPathOfTheValkeyUriPrints() {
+        NodeConfig c = NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "redis://valkey:6379/notadb"));
+        for (String shown : List.of(c.leases().toString(), c.toString())) {
+            assertTrue(shown.contains("redis://valkey:6379"), "printed as redis://valkey:6379: " + shown);
+            assertFalse(shown.contains("/notadb"), "a path that is no /<digits> database is not printed: " + shown);
+        }
+        NodeConfig db = NodeConfig.from(with(minimal(), "FLOTTILA_VALKEY_URI", "redis://valkey:6379/3"));
+        assertTrue(db.leases().toString().contains("redis://valkey:6379/3"), "a /<digits> database is printed: " + db.leases());
+    }
+
+    /**
+     * Review r1: the leases count in whole milliseconds (Valkey's PX), so a ttl or a renew period with a part below a millisecond
+     * is refused naming its key — however small (PT0.0005S) or large (PT10.0005S) the rest.
+     */
+    @Test
+    void aSubMillisecondTtlOrRenewIsRefused() {
+        List<Map.Entry<String, Map<String, String>>> refused = List.of(
+                Map.entry("FLOTTILA_POLLER_LEASE_TTL", with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT10.0005S"), "FLOTTILA_POLLER_LEASE_RENEW", "PT5S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_TTL", with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT30.0005S"), "FLOTTILA_POLLER_LEASE_RENEW", "PT10S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_RENEW", with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT30S"), "FLOTTILA_POLLER_LEASE_RENEW", "PT10.0005S")),
+                Map.entry("FLOTTILA_POLLER_LEASE_RENEW", with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT30S"), "FLOTTILA_POLLER_LEASE_RENEW", "PT0.0005S")));
+        for (Map.Entry<String, Map<String, String>> r : refused) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(r.getValue()), "refused: " + r.getValue());
+            assertTrue(String.valueOf(e.getMessage()).contains(r.getKey()), "the refusal names " + r.getKey() + ": " + e.getMessage());
+        }
+        // both below a millisecond: refused, whichever key it names first
+        Map<String, String> both = with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT0.0005S"), "FLOTTILA_POLLER_LEASE_RENEW", "PT0.00025S");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(both), "refused: " + both);
+        assertTrue(e.getMessage().contains("FLOTTILA_POLLER_LEASE_TTL") || e.getMessage().contains("FLOTTILA_POLLER_LEASE_RENEW"), e.getMessage());
+    }
 }

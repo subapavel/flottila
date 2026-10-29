@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -587,5 +588,23 @@ class SftpComponentTest {
 
     static void assertRefused(String schema, Map<String, Object> options, String what) {
         assertFalse(Schemas.check(schema, new JsonObject(options)).valid(), what + ": refused by configSchema(), but valid: " + options);
+    }
+
+    // ---- P2-02L (D-083): the node holds the endpoint's lease ----------------------------------------------------------
+
+    /**
+     * Every sftp endpoint polls: the node runs its consumer only while it holds the endpoint's lease. Answered from the config
+     * alone — here one for a port nothing listens on, and one for this server: no session is opened.
+     */
+    @Test
+    void everySftpEndpointPolls() {
+        SftpComponent component = component(rt);
+        EndpointConfig nowhere = new EndpointConfig("sftp-in", URI.create("sftp://127.0.0.1:1/inbox"),
+                Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
+
+        assertTrue(component.polls(inbox(Map.of())), "the default options");
+        assertTrue(component.polls(inbox(Map.of("afterSuccess", "move", "moveTo", "/done", "glob", "*.xml"))), "moving, filtered");
+        assertTrue(component.polls(nowhere), "a partner nobody reaches");
+        assertEquals(0, sftp.sessionsCreated(), "answered from the config alone: nothing connected");
     }
 }

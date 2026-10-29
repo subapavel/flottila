@@ -9,8 +9,12 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-/** P1-09g (D-072): {@link Component#listensOn} — a component that does not say where its consumers listen holds no port. */
+/**
+ * P1-09g (D-072): {@link Component#listensOn} — a component that does not say where its consumers listen holds no port. P2-02L
+ * (D-083): {@code Component.polls} — a component that does not say its consumers poll is never run under a lease.
+ */
 class ComponentTest {
 
     /** A component implementing only what it must: it polls, subscribes or connects out, as far as anyone can tell. */
@@ -37,5 +41,12 @@ class ComponentTest {
         EndpointConfig cfg = new EndpointConfig("in", URI.create("http://127.0.0.1:8080/in"), Map.of("host", "0.0.0.0", "port", 8080));
 
         assertEquals(Optional.empty(), BARE.listensOn(cfg), "by default no address, whatever host and port the config names");
+    }
+
+    @Test
+    void pollsIsFalseByDefault() {
+        EndpointConfig cfg = new EndpointConfig("drop", URI.create("sftp://partner.example:22/outbox"), Map.of("intervalMs", 10_000));
+
+        assertFalse(BARE.polls(cfg), "by default a consumer is not leased, whatever its endpoint looks like");
     }
 }

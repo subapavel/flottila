@@ -2,8 +2,7 @@
 - Streams: a stream handed over paused that nobody resumes (TieredBlobStore, P1-06 round 2); an
   attach-time resume that undoes the store's own back-pressure pause (round 3). Look at every
   `pause()` / `resume()` pair across the component ↔ store boundary.
-- Bounds: an error-path body or reply buffered without a limit (http producer non-2xx, P1-06
-  round 1); a reply above the limit leaving the client response paused until the timeout.
+- Bounds: an error-path body or reply buffered without a limit (http producer non-2xx, P1-06 round 1); a reply above the limit leaving the client response paused until the timeout.
 - Event loop: parsing untrusted input (`Long.parseLong` on content-length) or doing I/O on the event loop thread; the virtual-thread rule is per message, verticles own sockets only.
 - Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id
   generators making an identity assertion vacuous (P1-06 round 5); a mock answering every
@@ -118,3 +117,4 @@
 - Wait-until-settled race fix is no weakening if the count stays exact on one snapshot and fails both ways (extra by assertion, missing by timeout); read a tree-only flake's direction first (P2-04).
 - Statements moved into a caller's tx: pin "never the pool" with a pool-of-1 fixture + connection timeout, "release after commit" with a deferred-constraint COMMIT failure; grep §8/D-rows for a bypassed writer's fail-fast sentence (P2-08a).
 - Evidence written after the fact (cleanup log, fsync rerun) is fine if RESULTS says which run each derived value came from; approximations in a §/FIX row are recomputed (P2-08b)
+- Redaction (P2-02L r1-r3): ask at the first review for toString + every refusal, unencoded / ? # in the password, no port, non-db path; a delay from a clock read before an awaited SPI call goes stale

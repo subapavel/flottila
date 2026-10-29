@@ -41,4 +41,17 @@ public interface Component {
     default Optional<InetSocketAddress> listensOn(EndpointConfig cfg) {
         return Optional.empty();
     }
+
+    /**
+     * Whether a consumer of {@code cfg} polls what another node may poll as well (a remote directory, a mailbox): answered from
+     * {@code cfg} alone — already valid against {@link #configSchema()} — nothing is opened. When true, the node runs a consumer
+     * of {@code cfg} only while it holds the endpoint's lease (D-083), so {@link #consumer} may be called again for {@code cfg}
+     * after the previous consumer stopped: a stopped consumer is never started again. The node calls it at deploy and at
+     * restore, on a virtual thread; a throw is a problem line of that deploy.
+     *
+     * @since 0.1
+     */
+    default boolean polls(EndpointConfig cfg) {
+        return false;
+    }
 }

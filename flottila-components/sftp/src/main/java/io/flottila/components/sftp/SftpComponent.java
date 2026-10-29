@@ -128,6 +128,12 @@ public final class SftpComponent implements Component {
         return new SftpConsumer(cfg, handler);
     }
 
+    /** Every sftp endpoint polls a directory other nodes may poll too: the node runs its consumer only under the endpoint's lease (D-083). */
+    @Override
+    public boolean polls(EndpointConfig cfg) {
+        return true;
+    }
+
     /** Refused: the flow build reports it (D-076). */
     @Override
     public Producer producer(EndpointConfig cfg) {
