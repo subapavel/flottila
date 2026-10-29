@@ -1,0 +1,31 @@
+# Both endpoints have a document entry; a case's entry replaces the document's for that endpoint whole (D-080).
+schemaVersion: 1
+kind: test
+flow: sync-order
+mocks:
+  archive: { delay: 50ms }
+  partner: { reply: fixtures/ack.xml, delay: 250ms }
+cases:
+  - name: happy path
+    send: fixtures/order.xml
+    headers: { X-Request-Id: r-1 }
+    expect:
+      status: 200
+      steps: 4
+      keys: { orderId: "42" }
+      dlq: 0
+      retries: 0
+      sent:
+        archive: { count: 1, contains: "<Id>42</Id>" }
+        partner: { count: 1, xpath: /Order/Customer, equals: Acme Corp }
+  - name: partner down
+    send: fixtures/order.xml
+    mocks:
+      partner: { fail: 503 }
+    expect:
+      status: 503
+      dlq: 0
+      retries: 3
+      error: "503"
+      sent:
+        partner: { count: 4, xpath: /Order/Id, equals: "42" }

@@ -363,4 +363,30 @@ class PackageTest {
         assertTrue(problem.contains(firstFile), "names " + firstFile + ": " + problem);
         assertTrue(problem.contains(secondFile), "names " + secondFile + ": " + problem);
     }
+
+    /**
+     * A test case whose {@code expect.sent} names an endpoint the package does not have is exactly one problem naming the test
+     * document, the case and the key; the same case sending to an endpoint of the package is none.
+     */
+    @Test
+    void aSentKeyNamingNoEndpointOfThePackageIsOneProblem(@TempDir Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "endpoints/partner.yaml", PARTNER);
+        write(dir, "flows/orders.yaml", flow("orders", 1024, "partner"));
+        write(dir, "fixtures/in.xml", "<in/>");
+        String test = """
+                schemaVersion: 1
+                kind: test
+                flow: orders
+                cases: [ { name: ghost, send: fixtures/in.xml, expect: { sent: { %s: { count: 1 } } } } ]
+                """;
+        write(dir, "flows/orders.test.yaml", test.formatted("partner"));
+        assertEquals(List.of(), Package.load(dir).problems(), "control: partner is an endpoint of the package");
+
+        write(dir, "flows/orders.test.yaml", test.formatted("nowhere"));
+
+        assertEquals(List.of("flows/orders.test.yaml: case 'ghost' expects sends to endpoint 'nowhere' which is not in this package"),
+                Package.load(dir).problems());
+    }
 }

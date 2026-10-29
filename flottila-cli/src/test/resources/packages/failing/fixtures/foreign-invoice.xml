@@ -1,0 +1,7 @@
+<Invoice>
+  <Id>4800</Id>
+  <Currency>EUR</Currency>
+  <Lines>
+    <Line><Sku>C-3</Sku><Qty>1</Qty><Price>99</Price></Line>
+  </Lines>
+</Invoice>

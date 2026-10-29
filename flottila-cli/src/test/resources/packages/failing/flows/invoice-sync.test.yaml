@@ -1,0 +1,28 @@
+# P2-03b1 fixture (D-080): the demo's cases with expectations that do not hold — the report shows each failed key with what
+# the case expected and what it was — and a foreign invoice whose expectations hold (3 cases: 1 passed, 2 failed).
+schemaVersion: 1
+kind: test
+flow: invoice-sync
+mocks:
+  partner-domestic: { reply: fixtures/partner-ack.xml, delay: 20ms }
+  partner-foreign: { reply: fixtures/partner-ack.xml }
+cases:
+  - name: domestic invoice
+    send: fixtures/sample-invoice.xml
+    expect:
+      sent:
+        partner-domestic: { xpath: /PartnerInvoice/@number, equals: "4712" }
+      keys: { invoiceId: "4711" }
+      steps: 5
+  - name: foreign invoice
+    send: fixtures/foreign-invoice.xml
+    expect:
+      sent:
+        partner-foreign: { count: 1, xpath: /PartnerInvoice/@currency, equals: EUR }
+      steps: 6
+      status: 200
+  - name: partner down
+    send: fixtures/sample-invoice.xml
+    mocks:
+      partner-domestic: { fail: 503 }
+    expect: { dlq: 0, status: 502, retries: 2 }

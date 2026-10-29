@@ -29,8 +29,7 @@
   `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`, mutate there while the main tree builds. HEAD's own
   figures (to attribute a band delta): `git archive HEAD | tar -xf - -C <scratch>` + `-o verify -pl ..` there (P1-09k1: the committed
   testkit branch baseline 96.4 % is a lucky run, HEAD measures 95.2 %). Wait on a background build: `timeout N tail -f --pid=<pid> /dev/null`.
-- PIT default mutators make 0 mutants of an api `default` method returning `Optional.empty()` (add `-Dmutators=ALL`). ArchUnit alone:
-  `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
+- ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
 - Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
   a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
 - Scoped core PIT: WorkQueue*/FlowWorker* ~4 min (Q-1); Delivery*/FlowBuilder*/FlowWorker*/WorkerPolicy ~5 min, 303 mutants (P2-01);
@@ -63,6 +62,9 @@
   the handler ran; `Future.await()` works on a virtual thread, sneaky-throws the cause.
 - AWS SDK 2.56.0 (javap): `RequestBody.fromFile(Path)` sizes the file at once (missing → UncheckedIOException); a client built without a credentialsProvider
   resolves `DefaultCredentialsProvider.builder()..build()` (`create()` is a static singleton); `serviceClientConfiguration()` shows region/endpoint/credentials.
+- JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
+  `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
+  FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
 - FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
   cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
 - Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (observed, P1-08c): stops accepting, keeps an HTTP/1.1 connection until its
@@ -92,7 +94,6 @@
   loadKeyPairIdentities: garbage → null, PKCS8 with an unknown OID → NoSuchAlgorithmException (a GSE). rename never overwrites.
 - Docker (P2-05a): native PG holds 127.0.0.1:5432 → compose with `FLOTTILA_PG_HOST_PORT=55432`; temurin images have bash, no curl;
   `docker volume prune` is denied. A non-loopback FLOTTILA_ADMIN_HOST without FLOTTILA_ADMIN_TOKEN (blank = none) is refused.
-- StepResources refusals end with the bare absolute root (no trailing separator): strip `dir` too, not only `dir + sep` (P2-02a).
 - P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch (source); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
 ## Findings that came back in review
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
@@ -102,7 +103,6 @@
   a double guard (two never-fail transforms) makes each single-drop mutant equivalent: drop the redundant one instead.
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
-- Unbounded error-path body buffering (keep a head, drain) and unguarded `Long.parseLong` of headers on the loop (P1-06).
 - A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05).
 - Before changing who resumes in `StreamingWrite`, grep the blob tests' fixtures for latches that wait on a
   sink resume (`TieredBlobStoreFailureTest.LatePauseStream` waits for one inside `pause()`): they pin the ordering.

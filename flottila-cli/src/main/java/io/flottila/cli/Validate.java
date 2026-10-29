@@ -23,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -40,22 +41,38 @@ final class Validate {
     private Validate() {}
 
     static int run(Cli.Options options, PrintStream out) throws IOException {
-        Path dir = options.dir();
+        Checked checked = check(options.dir(), options.value("--env").orElse("dev"));
+        checked.pkg().ifPresent(pkg -> tree(pkg, out));
+        checked.problems().forEach(p -> out.println("problem: " + p));
+        return checked.problems().isEmpty() ? 0 : 1;
+    }
+
+    /**
+     * What the check of a package directory found.
+     *
+     * @param pkg the package as loaded; empty when a file of it does not parse
+     * @param problems each on one line, each once, in order: the load's, else {@link Package#problems()} and the dry build's
+     * @param schemes the schemes of the components the dry build ran over ({@link Main#shipped()}); empty when it did not run
+     */
+    record Checked(Optional<Package> pkg, List<String> problems, Set<String> schemes) {}
+
+    /** {@link Package#problems()} of {@code dir}, then the dry build's in the environment {@code env} (see the class comment). */
+    static Checked check(Path dir, String env) throws IOException {
         Package pkg;
         try {
             pkg = Package.load(dir);
         } catch (IllegalArgumentException unreadable) {   // a file that does not parse stops the load; the message starts with its path from the root
-            out.println("problem: " + Cli.oneLine(unreadable.getMessage()));
-            return 1;
+            return new Checked(Optional.empty(), List.of(Cli.oneLine(unreadable.getMessage())), Set.of());
         }
-        tree(pkg, out);
         Set<String> problems = new LinkedHashSet<>();   // the dry build repeats Package.problems(): each line once, in order
         pkg.problems().forEach(p -> problems.add(Cli.oneLine(p)));
+        Set<String> schemes = Set.of();
         if (pkg.manifest().getValue("name") instanceof String name) {   // without a name the problems above say so; nothing to build as
-            dryBuild(name, dir, options.value("--env").orElse("dev")).forEach(p -> problems.add(Cli.oneLine(p)));
+            DryBuild built = dryBuild(name, dir, env);
+            built.problems().forEach(p -> problems.add(Cli.oneLine(p)));
+            schemes = built.schemes();
         }
-        problems.forEach(p -> out.println("problem: " + p));
-        return problems.isEmpty() ? 0 : 1;
+        return new Checked(Optional.of(pkg), List.copyOf(problems), schemes);
     }
 
     /**
@@ -86,12 +103,15 @@ final class Validate {
         out.println("  " + a.path().substring(a.path().lastIndexOf('/') + 1) + "  " + a.kind() + "  " + a.id().orElse("-"));
     }
 
+    /** The dry build's problems and the schemes of the components it ran over. */
+    private record DryBuild(List<String> problems, Set<String> schemes) {}
+
     /**
      * {@link Deployments#validate} of {@code dir} as {@code name} on a node of the environment {@code env} that runs nothing: the
      * shipped components on a Vert.x of the run's own (closed after it), the shipped steps and languages, a fake clock, timer and
      * ids, in-memory blobs and stores. Its data directory is never written (the dry build unpacks nothing).
      */
-    private static List<String> dryBuild(String name, Path dir, String env) throws IOException {
+    private static DryBuild dryBuild(String name, Path dir, String env) throws IOException {
         NodeConfig config = NodeConfig.from(Map.of("FLOTTILA_ENV", env, "FLOTTILA_NODE_ID", NODE_ID,
                 "FLOTTILA_DATA_DIR", Path.of(System.getProperty("java.io.tmpdir"), NODE_ID).toString()));
         FakeRuntime rt = FakeRuntime.create();
@@ -103,7 +123,7 @@ final class Validate {
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
             Deployments node = new Deployments(config, runtime, components, rt.clock(), rt.timer(), shipped.steps(), shipped.languages(),
                     new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), Meter.system());
-            return node.validate(name, dir);
+            return new DryBuild(node.validate(name, dir), Set.copyOf(components.keySet()));
         } finally {
             vertx.close().await();
         }

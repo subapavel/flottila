@@ -1,0 +1,9 @@
+# P2-03b1 fixture (D-080): `flottila test` on a sync and an at-least-once flow over one partner (TestCommandTest, ExpectationsTest).
+# The flow times its report prints follow from the mocks' delays and the retry backoff (100 + 200 + 400 ms); at-least-once,
+# the worker polls once after each Accepted, so the message runs at once. `twice` has no test document here: the tests write theirs.
+schemaVersion: 1
+kind: package
+name: flowtest
+version: 0.1.0
+description: A sync and an at-least-once order flow, and a flow that sends to the partner twice.
+dependencies: []

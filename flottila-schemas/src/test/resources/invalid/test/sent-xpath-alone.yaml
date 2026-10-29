@@ -1,0 +1,5 @@
+# expect: /cases/0/expect/sent/partner
+schemaVersion: 1
+kind: test
+flow: f
+cases: [ { name: c, send: a.xml, expect: { sent: { partner: { xpath: /a } } } } ]

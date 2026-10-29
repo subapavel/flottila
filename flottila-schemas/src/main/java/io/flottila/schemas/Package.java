@@ -385,8 +385,9 @@ public final class Package {
     }
 
     /**
-     * Problems the schemas cannot see: dangling endpoint, missing stylesheet or XSD, test of an unknown flow, missing fixture, a
-     * file reference that leaves the package, and a step field the flow schema leaves untyped holding a value of the wrong type.
+     * Problems the schemas cannot see: dangling endpoint (a test's mock or {@code expect.sent} included), missing stylesheet or
+     * XSD, test of an unknown flow, missing fixture, a file reference that leaves the package, and a step field the flow schema
+     * leaves untyped holding a value of the wrong type.
      * Empty = consistent. A line that names a file names it by its path relative to the package directory. Only the flow and test
      * files that passed their schema are read: the schema's problems already say what is wrong with the others, whose shape
      * nothing here may rely on. Their ids still count as present.
@@ -441,6 +442,11 @@ public final class Package {
             JsonObject c = cases.getJsonObject(i);
             requireFile(problems, file, "case '" + c.getString("name") + "' send", c.getString("send"));
             requireMocksExist(problems, file, c.getJsonObject("mocks", new JsonObject()));
+            for (String endpoint : c.getJsonObject("expect").getJsonObject("sent", new JsonObject()).fieldNames()) {
+                if (!endpoints.containsKey(endpoint)) {
+                    problems.add(relative(file) + ": case '" + c.getString("name") + "' expects sends to endpoint '" + endpoint + "' which is not in this package");
+                }
+            }
         }
     }
 

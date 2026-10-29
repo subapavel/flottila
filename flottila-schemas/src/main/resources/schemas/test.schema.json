@@ -37,6 +37,21 @@
         "delay": { "$ref": "#/$defs/duration" }
       }
     },
+    "sent": {
+      "type": "object",
+      "description": "What the mock of one endpoint received (D-080): count = its sends, retries included; equals or contains must hold for every send, on the value of xpath, or without xpath on the body as UTF-8. An entry checks something: xpath only with equals or contains.",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "xpath": { "type": "string", "minLength": 1 },
+        "equals": { "type": "string" },
+        "contains": { "type": "string" },
+        "count": { "type": "integer", "minimum": 0 }
+      },
+      "not": { "required": ["equals", "contains"] },
+      "if": { "required": ["xpath"] },
+      "then": { "anyOf": [ { "required": ["equals"] }, { "required": ["contains"] } ] }
+    },
     "case": {
       "type": "object",
       "required": ["name", "send", "expect"],
@@ -51,7 +66,7 @@
           "minProperties": 1,
           "additionalProperties": false,
           "properties": {
-            "sent": { "type": "object", "description": "Endpoint id → assertion on what the mock received (xpath/equals/contains …).", "additionalProperties": { "type": "object" } },
+            "sent": { "type": "object", "description": "Endpoint id → what its mock received (D-080).", "minProperties": 1, "additionalProperties": { "$ref": "#/$defs/sent" } },
             "keys": { "type": "object", "additionalProperties": { "type": "string" } },
             "steps": { "type": "integer", "minimum": 0 },
             "dlq": { "type": "integer", "minimum": 0 },

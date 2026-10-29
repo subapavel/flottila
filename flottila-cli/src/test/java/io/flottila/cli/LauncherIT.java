@@ -77,6 +77,15 @@ class LauncherIT {
         assertEquals(ValidateCommandTest.DEMO_TREE, e.out().lines().toList(), e.toString());
     }
 
+    /** CI's step after validate (P2-03b1, D-080): the demo's test file passes through the launcher, the report on stdout, exit 0. */
+    @Test
+    void binFlottilaTestDemoExit0() throws Exception {
+        Exited e = launch("test", "packages/demo");
+
+        assertEquals(0, e.code(), e.toString());
+        assertEquals(TestCommandTest.DEMO_REPORT, e.out().lines().toList(), e.toString());
+    }
+
     /** The process exits with the command's code: 1 for a package with a problem, 2 for an unknown command. */
     @Test
     void theProcessExitsWithTheCommandsCode() throws Exception {

@@ -893,3 +893,12 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS 2240 tests (target
 Review: FAIL r1 (zip mtime unpinned; testkit package-info wrong; launcher build hint; validate javadoc overclaimed; §8 socket rule silent on the CLI), PASS r2. Implementer-authored CliEdgeCasesTest approved after the fact (judged real). Raised FIX-87..89.
 D-054 data: class B raised to C (scout ×1, designer ×1, test-author ×1 + 3 fix packets, implementer ×1 + fix, verifier ×2, reviewer ×2); review rounds 2.
 Next: P2-03b [C] `flottila test` runner.
+
+## 2026-10-29 — P2-03b1 `flottila test` for send cases on virtual time (D-080, F-17) — done, review PASS
+Deviation: F-17 (the scheduler MXBean does not see a monitor-blocked virtual thread; quiescence is a heuristic: lock-free fingerprint, busy inside timer calls, 1 ms steady). Context restarted twice (container), re-verified with git status / git log -3.
+Test first: cli TestCommandTest, VirtualTimeTest, QuiescenceTest, ExpectationsTest, LauncherIT.binFlottilaTestDemoExit0, fixtures flowtest/failing/never-settles; mock MockIngestTest; http HttpStatusTest; schema `sent` fixtures (red: target/P2-03b1-red.log). [A] fix packets: race-guard survivors, retries per id+step, no-send, review r1 (answer monitor, vacuous `sent`, unknown endpoint).
+Change: cli FlowTests/Expectations/VirtualTime/Quiescence, Cli `test`; mock ingest/delivered; HttpComponent.status; test.schema `sent` tightened; Package.crossCheckTest checks `sent` endpoints; CI runs `bin/flottila test packages/demo`. Implementer fixed two wrong test expectations (async flow times; pollingAfterAccept).
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS 2319 tests (target/P2-03b1-r1-verifier.log); demo `flottila test` 2/2 PASS; repeat-100 green incl. under CPU load; coverage no decrease; in-tree mutants F7/F8/W1/W2 killed, V1 by timeout (FIX-90), D1 survives (read).
+Review: FAIL r1 (answer isComplete synchronized; vacuous `sent`; unknown sent endpoint NPE; D-080 retries wording; F-17 changelog), PASS r2. Raised FIX-90, CONSIDER-5 (exact quiescence, owner).
+D-054 data: class C (designer ×1, test-author ×2 runs + 3 fix packets, implementer ×1 + 2 fixes, verifier ×3, reviewer ×2); review rounds 2.
+Next: P2-03b2 [B] feed cases.

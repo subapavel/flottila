@@ -33,6 +33,7 @@
 | 2026-10-28 | 3.4 | §7: sftp consumer on Apache MINA SSHD in Phase 2, blocking SDKs on virtual threads the component starts (no `BlockingConsumer` yet), poller lease held by the node (P2-02L), duplicates dropped at the save (P2-02D); §13 Phase 4 sentence follows; §4 executors and pollers sentences say transport I/O threads are not executors (D-076, F-15, P2-02) | F-15 |
 | 2026-10-28 | 3.4 | §9 Flow configuration: artifacts found by `kind` in any folder (≤ 4 deep, slug names), file references are paths from the package root and stay inside it, a flow's hash no longer includes its file path (D-078, P2-02a) | — |
 | 2026-10-28 | 3.4 | §11 capture is the mocks' always-on record, no behaviour key; §12 `flottila-cli` depends on every module and nothing depends on it (ArchUnit NOTHING_DEPENDS_ON_CLI), the flow-test runner lives there; §8 the Component SPI socket rule binds the node, not the CLI's admin client; §13 `validate`, `test`, `deploy` move to Phase 2, `package`/`migrate` stay in Phase 4 (D-079, F-16, P2-03a) | F-16 |
+| 2026-10-28 | 3.4 | §11 flow tests: `flottila test` binds a mock per shipped scheme (no `mock://` endpoints, no `test` profile) and runs each case in-process on virtual time advanced only when the node looks quiet — a heuristic, since a monitor-blocked virtual thread is invisible to the scheduler MXBean (D-080, F-17, P2-03b1) | F-17 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -382,7 +383,7 @@ Every flow is testable in milliseconds without infrastructure because outside ac
 | --- | --- | --- |
 | Step / flow unit test | `new FlowBuilder(fakeRuntime).build(cfg)` with fake components and in-memory stores | ms, JUnit 5 |
 | Component contract suite | one suite every real and fake component must pass: backpressure, re-open on retry, ACK only after durable write, spill behaviour, cancel | seconds, Testcontainers where needed |
-| Flow tests in git | a `kind: test` YAML in the package (by convention next to the flow, D-078), `mock://` endpoints, a `test` partner-directory profile, run by `flottila test`; same runner the CI uses | seconds |
+| Flow tests in git | a `kind: test` YAML in the package (by convention next to the flow, D-078); `flottila test` binds a mock for every shipped scheme and runs each case in-process on virtual time; same runner the CI uses (D-080) | seconds |
 | Golden tests from monitoring | "save as test case" on a monitored message → input = step 1 payload, expected output = last step, partner reply = recorded response; rerun hundreds after an XSLT change | seconds |
 | Integration / stack | Testcontainers for Postgres, Kafka, ClickHouse, Valkey, S3; nightly Compose; kill -9 ledger tests (sent = final-step rows, DLQ 0, work 0) | minutes |
 | Protocol doubles | embedded MINA SSHD, Artemis, GreenMail, WireMock, own XI/IDoc simulator | — |

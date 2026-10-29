@@ -1,0 +1,11 @@
+# The flow's door: an HTTP consumer. Component config under `config` is the component's own business
+# (validated at deploy time by its configSchema); the schema fixes only the envelope around it.
+schemaVersion: 1
+kind: endpoint
+id: http-in
+scheme: http
+direction: in
+config:
+  host: 0.0.0.0
+  port: 8080
+  path: /in

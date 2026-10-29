@@ -12,8 +12,9 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The {@code flottila} command line (D-079): {@code validate}, {@code deploy} and {@code help}; {@code test} comes with P2-03b.
- * Exit codes: 0 done, 1 the package has problems or the node refused or could not be reached, 2 a usage error (nothing done).
+ * The {@code flottila} command line (D-079): {@code validate}, {@code test} (D-080), {@code deploy} and {@code help}.
+ * Exit codes: 0 done, 1 the package has problems, a flow test failed, or the node refused or could not be reached, 2 a usage
+ * error (nothing done).
  * Everything a command reports goes to stdout; stderr carries the usage and the tool's own failures.
  *
  * @since 0.1
@@ -25,12 +26,16 @@ public final class Cli {
               validate <dir> [--env <env>]
                   check the package in <dir> as a node would deploy it (schemas, component configs, a dry build of every
                   flow) and print its tree and its problems; nothing is started or stored (environment: dev unless --env)
+              test <dir>
+                  run the package's flow tests (*.test.yaml) as a node of environment ci would, each case on mocks and
+                  in-memory stores of its own and on virtual time; print PASS or FAIL per case and what failed (a problem
+                  validate would print runs no case)
               deploy <dir> [--name <name>] [--revision <revision>] [--admin <url>]
                   zip the package in <dir> and PUT it to <url>/admin/packages/<name> (name: package.yaml's unless --name;
                   url: --admin, else $FLOTTILA_ADMIN, else http://localhost:8081; bearer token: $FLOTTILA_ADMIN_TOKEN only)
               help
                   print this text
-            exit codes: 0 done, 1 problems / refused / unreachable, 2 usage
+            exit codes: 0 done, 1 problems / a failed case / refused / unreachable, 2 usage
             """;
 
     private Cli() {}
@@ -44,7 +49,7 @@ public final class Cli {
      * Runs the command {@code args} names, on a virtual thread of its own (the node's deploy code blocks on Vert.x futures), and
      * returns its exit code; never exits the JVM.
      *
-     * @param env the environment the command reads ({@code FLOTTILA_ADMIN}, {@code FLOTTILA_ADMIN_TOKEN}); validate reads none
+     * @param env the environment the command reads ({@code FLOTTILA_ADMIN}, {@code FLOTTILA_ADMIN_TOKEN}); validate and test read none
      */
     static int run(String[] args, Map<String, String> env, PrintStream out, PrintStream err) {
         return CompletableFuture.supplyAsync(() -> command(args, env, out, err), task -> Thread.ofVirtual().name("flottila").start(task)).join();
@@ -60,10 +65,7 @@ public final class Cli {
                     out.print(USAGE);
                     yield 0;
                 }
-                case "test" -> {
-                    err.println("flottila test: not yet (P2-03b)");
-                    yield 2;
-                }
+                case "test" -> FlowTests.run(options("test", args, Set.of()), out);
                 default -> throw new Usage(command.isEmpty() ? "no command" : "unknown command '" + command + "'");
             };
         } catch (Usage wrong) {

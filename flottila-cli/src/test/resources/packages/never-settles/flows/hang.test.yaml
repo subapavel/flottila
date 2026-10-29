@@ -1,0 +1,14 @@
+schemaVersion: 1
+kind: test
+flow: hang
+mocks:
+  slow: { delay: 9m }
+cases:
+  - name: answers after 9 minutes
+    send: fixtures/ping.xml
+    expect: { status: 200 }
+  - name: answers after 11 minutes
+    send: fixtures/ping.xml
+    mocks:
+      slow: { delay: 11m }
+    expect: { status: 200 }

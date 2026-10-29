@@ -165,6 +165,34 @@ public final class HttpComponent implements Component {
         return new Headers(m);
     }
 
+    /**
+     * The status the consumer answers its sender with (D-049), also {@code flottila test}'s {@code expect.status} (D-080): a
+     * handler that failed by its failure's {@link Fault.Kind} — {@code MALFORMED} 400, {@code INVALID} 422, {@code DOWNSTREAM}
+     * 503 when the failure says the sender may try again ({@link NackException}, {@link HttpStatusException}) else 502,
+     * {@code INTERNAL} and a failure that is no {@link Fault} 500; else its {@link Ack}: {@code Accepted} 202, a retryable
+     * {@code Nack} 503, a final one 400, a {@code Reply} its {@link #STATUS} prop or 200.
+     *
+     * @param ack the handler's answer; read only when {@code failure} is null
+     * @param failure what the handler failed with; null when it answered {@code ack}
+     */
+    public static int status(Ack ack, Throwable failure) {
+        if (failure != null) {
+            // a downstream failure says itself whether the sender may try again
+            boolean retryable = failure instanceof NackException nack ? nack.retryable() : failure instanceof HttpStatusException partner && partner.retryable();
+            return !(failure instanceof Fault fault) ? 500 : switch (fault.kind()) {
+                case MALFORMED -> 400;
+                case INVALID -> 422;
+                case DOWNSTREAM -> retryable ? 503 : 502;
+                case INTERNAL -> 500;
+            };
+        }
+        return switch (ack) {
+            case Ack.Accepted a -> 202;
+            case Ack.Nack n -> n.retryable() ? 503 : 400;
+            case Ack.Reply r -> r.reply().get(STATUS).orElse(200);
+        };
+    }
+
     // --- consumer
 
     /** @since 0.1 */
@@ -252,28 +280,21 @@ public final class HttpComponent implements Component {
         }
 
         private void answer(HttpServerResponse res, Ack ack, Throwable failure) {
+            int status = status(ack, failure);
             if (failure != null) {
-                // a downstream failure says itself whether the sender may try again
-                boolean retryable = failure instanceof NackException nack ? nack.retryable() : failure instanceof HttpStatusException partner && partner.retryable();
-                int status = !(failure instanceof Fault fault) ? 500 : switch (fault.kind()) {
-                    case MALFORMED -> 400;
-                    case INVALID -> 422;
-                    case DOWNSTREAM -> retryable ? 503 : 502;
-                    case INTERNAL -> 500;
-                };
                 if (status == 503) res.putHeader("retry-after", "1");
                 res.setStatusCode(status).putHeader("content-type", "text/plain").end(String.valueOf(failure.getMessage()));
                 return;
             }
             switch (ack) {
-                case Ack.Accepted a -> res.setStatusCode(202).putHeader(H_MESSAGE_ID, a.messageId()).end();
+                case Ack.Accepted a -> res.setStatusCode(status).putHeader(H_MESSAGE_ID, a.messageId()).end();
                 case Ack.Nack n -> {
-                    if (n.retryable()) res.setStatusCode(503).putHeader("retry-after", "1").end(n.reason());
-                    else res.setStatusCode(400).end(n.reason());
+                    if (n.retryable()) res.putHeader("retry-after", "1");
+                    res.setStatusCode(status).end(n.reason());
                 }
                 case Ack.Reply r -> {
                     Envelope reply = r.reply();
-                    res.setStatusCode(reply.get(STATUS).orElse(200));
+                    res.setStatusCode(status);
                     reply.headers().asMap().forEach((k, v) -> { if (!HOP_BY_HOP.contains(k)) res.putHeader(k, v); });
                     res.putHeader("content-length", String.valueOf(reply.body().size()));
                     reply.body().open().pipeTo(res);

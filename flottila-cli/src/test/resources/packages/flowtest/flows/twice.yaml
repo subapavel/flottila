@@ -1,0 +1,31 @@
+# Sync, two sends to the partner with different bodies: the order, then the archive's reply (what `sent` checks on every send).
+schemaVersion: 1
+kind: flow
+id: twice
+version: 0.1.0
+description: Send the order to the partner, archive it, send the archive's reply to the partner.
+from:
+  endpoint: in-twice
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+retry:
+  attempts: 3
+  initial: 100ms
+  max: 2s
+steps:
+  - type: to
+    name: first
+    endpoint: partner
+  - type: to
+    name: archive
+    endpoint: archive
+  - type: to
+    name: second
+    endpoint: partner

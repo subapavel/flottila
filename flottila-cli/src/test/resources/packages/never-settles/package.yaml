@@ -1,0 +1,8 @@
+# P2-03b1 fixture (D-080): a partner that answers after 9 minutes of flow time (the case settles) and one that answers after
+# 11 (beyond the constant 10 min horizon: the case fails "did not settle", the answer is never seen).
+schemaVersion: 1
+kind: package
+name: never-settles
+version: 0.1.0
+description: A sync flow whose partner answers late.
+dependencies: []

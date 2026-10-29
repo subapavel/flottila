@@ -9,10 +9,10 @@
   },
   "flottila-cli": {
     "branch": 100.0,
-    "line": 95.8
+    "line": 98.7
   },
   "flottila-components/http": {
-    "branch": 90.4,
+    "branch": 93.3,
     "line": 99.3
   },
   "flottila-components/mock": {
@@ -32,7 +32,7 @@
     "line": 99.6
   },
   "flottila-schemas": {
-    "branch": 99.3,
+    "branch": 99.4,
     "line": 99.3
   },
   "flottila-steps/validate": {

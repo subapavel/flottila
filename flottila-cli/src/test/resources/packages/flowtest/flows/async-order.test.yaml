@@ -1,0 +1,27 @@
+# The partner-down case runs first: the happy path after it sees nothing of it (a fresh runtime, mocks and stores per case).
+schemaVersion: 1
+kind: test
+flow: async-order
+mocks:
+  partner: { reply: fixtures/ack.xml, delay: 250ms }
+cases:
+  - name: partner down
+    send: fixtures/order.xml
+    mocks:
+      partner: { fail: 503 }
+    expect:
+      status: 202
+      dlq: 1
+      retries: 3
+      sent:
+        partner: { count: 4 }
+  - name: happy path
+    send: fixtures/order.xml
+    expect:
+      status: 202
+      steps: 3
+      keys: { orderId: "42" }
+      dlq: 0
+      retries: 0
+      sent:
+        partner: { count: 1, xpath: /Order/Id, equals: "42" }

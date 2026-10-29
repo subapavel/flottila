@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ({@code Deployments.validate}) over the shipped components, steps and languages, nothing started — prints the package's tree
  * and its problems and exits 0 when it is valid, 1 on any problem (an unreadable YAML included), 2 on a usage error or a missing
  * directory. {@code io.flottila.cli.Cli} dispatches {@code validate | deploy | help}; anything else is usage on stderr and 2,
- * {@code test} is not there yet (P2-03b).
+ * {@code test} is TestCommandTest's (P2-03b1).
  *
  * <p>The output format these tests pin (P2-03a test-author, within the packet): the first line {@code package <name> <version>};
  * then every folder of {@code Package.folders()} in that (path) order as {@code <path>/  <namespace|->  <description|->}, each
@@ -247,14 +247,6 @@ class ValidateCommandTest {
 
     static Stream<List<String>> noCommand() {
         return Stream.of(List.of("frobnicate"), List.of("frobnicate", DEMO.toString()), List.of());
-    }
-
-    @Test
-    void testCommandIsNotYetExit2() {
-        Ran ran = run("test", DEMO.toString());
-
-        assertEquals(2, ran.exit(), ran.toString());
-        assertTrue(ran.err().contains("not yet (P2-03b)"), ran.toString());
     }
 
     @Test

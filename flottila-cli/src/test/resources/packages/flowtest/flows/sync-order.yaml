@@ -1,0 +1,33 @@
+# Sync: the order's id becomes its key, the archive gets it, then the partner (retryable); the sender's answer is the partner's reply.
+schemaVersion: 1
+kind: flow
+id: sync-order
+version: 0.1.0
+description: Key the order, archive it, send it to the partner and answer with the partner's reply.
+from:
+  endpoint: in-sync
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+retry:
+  attempts: 3
+  initial: 100ms
+  max: 2s
+steps:
+  - type: extractKey
+    name: extractKey
+    key: orderId
+    xpath: /Order/Id
+  - type: to
+    name: archive
+    endpoint: archive
+  - type: to
+    name: partner
+    retryable: true
+    endpoint: partner
