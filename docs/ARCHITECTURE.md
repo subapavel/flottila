@@ -38,6 +38,7 @@
 | 2026-10-29 | 3.4 | §4 durable save and §8 monitoring: the at-least-once ingress body, record and work item commit in one Postgres transaction (P2-08a, D-082) | F-14 |
 | 2026-10-29 | 3.4 | §7 Sizing: durable ACK after the one-transaction save, 8.80 ms p99 at c=1 (FLOOR, not durable: 8.04 ms), the 5 ms target not met, the load regression until FIX-95 (P2-08b) | F-18 |
 | 2026-10-29 | 3.4 | §4 pollers run only under the endpoint's lease; §7 poller leases in memory on a node without Valkey (P2-02L, D-083) | D-083 |
+| 2026-10-29 | 3.4 | §4 durable save inserts the consumer's dedupe key in `processed_ids`, a duplicate answers the first id; §7 Component gains `polls` and `dedupeBy` (P2-02D, D-084) | D-084 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -135,7 +136,7 @@ One message = one plain JDK virtual thread, bounded per flow; verticles exist on
 
 **Threading**
 
-- Endpoint verticles (HTTP, XI) and pollers (a timer firing a round on a virtual thread, D-076) accept input and hand each message to `Executors.newVirtualThreadPerTaskExecutor()`; they never run a pipeline themselves. A poller starts a round only while its node holds the endpoint's lease (D-083); a stop at a lost or lapsed lease waits for the file in flight, so a takeover may overlap it by that file: a duplicate, never a loss.
+- Endpoint verticles (HTTP, XI) and pollers (a timer firing a round on a virtual thread, D-076) accept input and hand each message to `Executors.newVirtualThreadPerTaskExecutor()`; they never run a pipeline themselves. A poller starts a round only while its node holds the endpoint's lease (D-083); a stop at a lost or lapsed lease waits for the file in flight, so a takeover may overlap it by that file: a duplicate, never a loss; a consumer that names a dedupe key (`dedupeBy`, sftp `sftp.fileKey`) turns that duplicate into an `Accepted` naming the first message (D-084).
 - Admission per flow = a semaphore that counts **requests and bytes** (body size is known from the content hash record). Over the limit: HTTP 503 + Retry-After, SFTP poller pauses, Kafka consumer stops polling. Memory, not thread count, is what backpressure protects.
 - Two executors only for work: the virtual-thread executor (default for everything) and a small **platform-thread pool for JCo/JNI**, because JNI still pins carriers on JDK 25; a client library's own transport I/O threads (Vert.x event loops, the Kafka network thread, MINA SSHD's NIO2 pool sized ≤ 2) are not executors and never run a pipeline (D-076). CPU-bound steps need no pool; the per-flow cap (default cores × 2 for CPU-heavy flows, higher for I/O flows) is the limit.
 - `ScopedValue` carries message id, tenant, trace id and deadline through every step without threading them through signatures. A thin `RequestScope` (fork / join / cancel on virtual threads) wraps each message so a timeout or cancel stops all of its children; swap in `StructuredTaskScope` when it leaves preview.
@@ -150,7 +151,7 @@ One message = one plain JDK virtual thread, bounded per flow; verticles exist on
 | Async at-least-once (SFTP, JMS, HTTP 202, XI EO/EOIO, mail) | after the durable save, by the **consumer** before its irreversible ACK (file delete, JMS commit, 202) | yes, with a save timeout (default 5 s → NACK/503) | Postgres work table (SKIP LOCKED) or Kafka topic per flow config | yes | yes |
 | At-most-once (telemetry, heartbeats, state updates) | immediately | no | none | no, failure logged and dropped | metadata only |
 
-The durable save is the consumer's responsibility, never a pipeline stage: only the consumer knows what its ACK is and whether it is irreversible. Stage 0 "ingress" is a pure identity whose snapshot shows what arrived. For at-least-once the save *is* the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK — on Postgres in one transaction with its body and its work item (D-082) — whatever the flow's recording level says: the recording level governs the steps' snapshots, never the durable save (F-2). The worker then runs the pipeline without stage 0, which was recorded at the save.
+The durable save is the consumer's responsibility, never a pipeline stage (on Postgres it also inserts the consumer's dedupe key into `processed_ids` first, in the same transaction; a key already seen rolls back and answers the first message's id, D-084): only the consumer knows what its ACK is and whether it is irreversible. Stage 0 "ingress" is a pure identity whose snapshot shows what arrived. For at-least-once the save *is* the ingress snapshot with its payload, written and awaited by the consumer's delivery handler before the ACK — on Postgres in one transaction with its body and its work item (D-082) — whatever the flow's recording level says: the recording level governs the steps' snapshots, never the durable save (F-2). The worker then runs the pipeline without stage 0, which was recorded at the save.
 
 **XI quality of service** is a layer on at-least-once: exactly-once = at-least-once + `processed_ids` dedupe table; in-order = XI queue name as partition key, serial per key, parallel across keys; a failed message in an ordered queue blocks the queue by default (XI behaviour) or parks-and-continues per flow config. Three ack states are recorded per message: transport, system, application.
 
@@ -239,6 +240,8 @@ interface Component {
     Producer producer(EndpointConfig cfg);             // Future<Envelope> send(Envelope e)
     Future<Health> health();
     default Optional<InetSocketAddress> listensOn(EndpointConfig cfg) { return Optional.empty(); } // D-072
+    default boolean polls(EndpointConfig cfg) { return false; }                                   // D-083
+    default Optional<Key<String>> dedupeBy(EndpointConfig cfg) { return Optional.empty(); }        // D-084
 }
 ```
 

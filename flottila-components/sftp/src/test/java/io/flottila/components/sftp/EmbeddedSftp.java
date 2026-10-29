@@ -74,7 +74,7 @@ public final class EmbeddedSftp implements AutoCloseable {
 
     /** What a test does once inside the server's handling of a file, on the server's thread; a throw refuses the operation. */
     @FunctionalInterface
-    interface Hook {
+    public interface Hook {
         void at(ServerSession session, String path) throws IOException;
     }
 
@@ -116,8 +116,11 @@ public final class EmbeddedSftp implements AutoCloseable {
 
     int passwordChecks() { return passwordChecks.get(); }
 
-    /** Runs {@code hook} at the next removal the client asks for, once. */
-    void onNextRemoving(Hook hook) { onRemoving.set(hook); }
+    /** Runs {@code hook} at the next removal the client asks for, once (public: runtime's SftpIngressDedupeIT refuses one). */
+    public void onNextRemoving(Hook hook) { onRemoving.set(hook); }
+
+    /** {@link #events}, as they are now. */
+    public List<String> events() { return List.copyOf(events); }
 
     /** Runs {@code hook} when the client next opens a file for reading, once, before it reads a byte. */
     void onNextOpening(Hook hook) { onOpening.set(hook); }

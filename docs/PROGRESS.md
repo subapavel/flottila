@@ -18,3 +18,12 @@ Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS 2380/0/0/0 with report dirs clea
 Review: FAIL r1 (`?password=` printed; delay from a clock read before the start; failed start not stopped; docs overlap), FAIL r2 (hostless URI leaked the password), PASS r3.
 D-054 data: class C (designer ×1, test-author ×1 + 6 follow-ups, implementer ×1 + 2 fixes, verifier ×2, reviewer ×3); review rounds 3.
 Next: P2-02D [C].
+
+## 2026-10-29 — P2-02D ingress dedupe by a consumer-supplied key (D-084) — done, review PASS
+Test first: PgIntakeIT (12 dedupe cases incl. two lock-held races, own scope/key, row gone), DeliveryTest (duplicate answers M1, prop as arrived, absent/empty, wrongly typed → Nack), SequentialIntakeTest.refusesADedupeKey, SftpComponentTest, DeploymentsDedupeTest, SftpIngressDedupeIT (file delivered twice = one message, one item), MigrationsIT V8, PollingConsumerContract dedupe case (red: target/P2-02D-red*.log).
+Change: api `Component.dedupeBy` (sftp `sftp.fileKey`), Ack javadoc; core Intake.save(…, dedupeKey) → Future<String>, Delivery reads the prop guarded and answers Accepted(saved id); V8 processed_ids(scope, sha256 key_hash); PgIntake claims the key first in the tx, a duplicate rolls back, evicts its local body, answers the first id; sftp move suffix from the accepted id.
+Docs: D-084, §4 two sentences, §7 Component block (`polls`, `dedupeBy`), changelog; P2-07 retention note; FIX-98.
+Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS 2415/0/0/0, report dirs cleared (target/P2-02D-verify2.log); coverage no decrease; hand mutants 20/21 + 5/5 (target/P2-02D-mutants*.log; X4 later killed).
+Review: FAIL r1 (FIRST_ID's WHERE unpinned; typed-prop read unguarded), PASS r2.
+D-054 data: class C (designer ×1 (resumed at the turn limit), test-author ×1 (resumed) + 1 fix, implementer ×1 + 1 fix, reviewer ×2); review rounds 2.
+Next: next ready row (FIX-95 [C] or a FIX row).

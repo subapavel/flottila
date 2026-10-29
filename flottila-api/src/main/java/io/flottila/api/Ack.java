@@ -13,7 +13,9 @@ import java.util.Objects;
 public sealed interface Ack permits Ack.Accepted, Ack.Reply, Ack.Nack {
 
     /**
-     * Accepted for processing (async modes): the message is durable, the consumer may ACK irreversibly.
+     * Accepted for processing (async modes): the message is durable, the consumer may ACK irreversibly. {@code messageId} is
+     * the message the arrival is: its own id, or an earlier message's when the durable save found the arrival's dedupe key
+     * ({@link Component#dedupeBy}) taken by that message (D-084) — the arrival itself was not saved then.
      *
      * @since 0.1
      */

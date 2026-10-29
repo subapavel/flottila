@@ -54,4 +54,18 @@ public interface Component {
     default boolean polls(EndpointConfig cfg) {
         return false;
     }
+
+    /**
+     * The prop a consumer of {@code cfg} sets on every message to name what it delivers — the same value each time the same
+     * thing (a file) is delivered again, another value for another one — when the node's durable save is to dedupe by it
+     * (D-084): an at-least-once flow saves an arrival whose value its flow saved before as that earlier message, and its
+     * {@link Ack.Accepted} names the earlier message's id. Empty: no prop named, nothing deduped. Answered from {@code cfg}
+     * alone — already valid against {@link #configSchema()} — nothing is opened. The node calls it at deploy and at restore,
+     * on a virtual thread; a throw is a problem line of that deploy.
+     *
+     * @since 0.1
+     */
+    default Optional<Key<String>> dedupeBy(EndpointConfig cfg) {
+        return Optional.empty();
+    }
 }

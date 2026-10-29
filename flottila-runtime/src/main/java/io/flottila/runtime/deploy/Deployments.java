@@ -1087,9 +1087,11 @@ public final class Deployments {
     }
 
     /**
-     * One flow built from {@code recipe}, its package unpacked in {@code dir}: its delivery, its worker (at-least-once), its replay
-     * (D-067: after them, sharing the delivery's admission), its effective hash ({@link FlowHash}: the files those builds read, its
-     * endpoints as its consumer and its producers get them); its consumer comes later ({@link #consumers}). A flow that fails after
+     * One flow built from {@code recipe}, its package unpacked in {@code dir}: its delivery (its save deduped by the prop its in
+     * endpoint's component names, {@link Component#dedupeBy} — asked first; a throw is the flow's failure), its worker
+     * (at-least-once), its replay (D-067: after them, sharing the delivery's admission), its effective hash ({@link FlowHash}: the
+     * files those builds read, its endpoints as its consumer and its producers get them); its consumer comes later
+     * ({@link #consumers}). A flow that fails after
      * its delivery was built stops and closes what it built of itself before the failure leaves (FIX-30), unchecked ones included —
      * its worker and its replay have run nothing yet, so their closes run at once; a worker or a replay that does not build has
      * closed its own producers.
@@ -1102,14 +1104,15 @@ public final class Deployments {
         Set<Path> reads = ConcurrentHashMap.newKeySet();   // the stages keep the sink: thread-safe, each path once
         builder.reads(reads::add);
         Path baseDir = dir;   // a step's file reference is a path from the package root, wherever the flow file lies (D-078)
-        Delivery delivery = builder.delivery(def, baseDir);
+        EndpointConfig consumed = consumed(endpoints.get(def.fromEndpoint()), def);
+        // the save dedupes by the prop the in endpoint's component names (D-084), asked as the consumer gets the endpoint
+        Delivery delivery = builder.delivery(def, baseDir, components.get(consumed.scheme()).dedupeBy(consumed));
         FlowWorker worker = null;
         Replay replay = null;
         boolean built = false;
         try {
             worker = AT_LEAST_ONCE.equals(def.deliveryMode()) ? builder.worker(def, baseDir, config.nodeId()) : null;
             replay = builder.replay(def, baseDir, delivery);
-            EndpointConfig consumed = consumed(endpoints.get(def.fromEndpoint()), def);
             Map<String, EndpointConfig> written = recipe.written();   // the hash covers the references, never a value (D-081)
             String hash = FlowHash.of(dir, recipe.flowFile(), reads, consumed(written.get(def.fromEndpoint()), def),
                     def.referencedEndpoints().stream().map(written::get).toList());

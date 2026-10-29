@@ -19,10 +19,14 @@ public interface Intake {
     /**
      * Saves {@code arrived} — its body made durable in its own store, {@code ingress} (its payload kept) recorded, the item queued
      * for step 1 of {@code flow} under {@code partitionKey} (null: an unordered item). The future succeeds once all three are
-     * durable. A save that fails queues nothing — except one whose last write (the enqueue, or the commit that holds it) was
-     * already sent when it failed: that item may land, as the duplicate D-049 b accepts. {@code abandoned} is asked once, just
-     * before that last write, and true queues nothing and fails the future: the delivery's answer was decided meanwhile. A
-     * save that fails before that point never asks it.
+     * durable, with the id the answer names: {@code arrived}'s own. A save that fails queues nothing — except one whose last
+     * write (the enqueue, or the commit that holds it) was already sent when it failed: that item may land, as the duplicate
+     * D-049 b accepts. {@code abandoned} is asked once, just before that last write, and true queues nothing and fails the
+     * future: the delivery's answer was decided meanwhile. A save that fails before that point never asks it.
+     *
+     * <p>{@code dedupeKey} (D-084; null: none) names what arrived, scoped by {@code flow}: a key an earlier message of
+     * {@code flow} was saved under records and queues nothing of {@code arrived} and never asks {@code abandoned} — the
+     * future succeeds with that earlier message's id. An intake that cannot dedupe fails a keyed save, never saves it undeduped.
      */
-    Future<Void> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned);
+    Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned);
 }

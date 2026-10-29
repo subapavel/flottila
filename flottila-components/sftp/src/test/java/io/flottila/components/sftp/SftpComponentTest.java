@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,6 +42,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -606,5 +608,49 @@ class SftpComponentTest {
         assertTrue(component.polls(inbox(Map.of("afterSuccess", "move", "moveTo", "/done", "glob", "*.xml"))), "moving, filtered");
         assertTrue(component.polls(nowhere), "a partner nobody reaches");
         assertEquals(0, sftp.sessionsCreated(), "answered from the config alone: nothing connected");
+    }
+
+    // ---- P2-02D (D-084): the save dedupes by the file key ------------------------------------------------------------
+
+    /**
+     * Every sftp endpoint names {@code sftp.fileKey} as its dedupe key: the same file delivered again — its removal refused after
+     * the save, another node polling it after a takeover — is one message. Answered from the config alone.
+     */
+    @Test
+    void dedupesByTheFileKey() {
+        SftpComponent component = component(rt);
+        EndpointConfig nowhere = new EndpointConfig("sftp-in", URI.create("sftp://127.0.0.1:1/inbox"),
+                Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024));
+
+        assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(inbox(Map.of())), "the default options");
+        assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(inbox(Map.of("afterSuccess", "move", "moveTo", "/done"))), "moving");
+        assertEquals(Optional.of(SftpComponent.FILE_KEY), component.dedupeBy(nowhere), "a partner nobody reaches");
+        assertEquals("sftp.fileKey", component.dedupeBy(nowhere).orElseThrow().name(), "the prop every delivered file carries (propsCarryNamePathMtimeAndFileKey)");
+        assertEquals(0, sftp.sessionsCreated(), "answered from the config alone: nothing connected");
+    }
+
+    /**
+     * A duplicate is accepted under the first message's id: a move whose name is taken in {@code moveTo} is suffixed with the id
+     * the Accepted names — the message the file is — not the arrival's own id.
+     */
+    @Test
+    void aTakenMoveNameIsSuffixedWithTheAcceptedId() {
+        sftp.mkdir("/done");
+        List<Envelope> seen = new CopyOnWriteArrayList<>();
+        started(component(rt), inbox(Map.of("afterSuccess", "move", "moveTo", "/done")), e -> {
+            seen.add(e);
+            // the first arrival is saved as itself; the second is a duplicate of a message saved earlier
+            return Future.succeededFuture(new Ack.Accepted(seen.size() == 1 ? e.id() : "m-first-saved"));
+        });
+        sftp.drop("/inbox", "x.xml", Buffer.buffer("<first/>"));
+        round(rt);
+        assertEquals(Set.of("x.xml"), sftp.files("/done"), "fixture: moveTo/x.xml is taken now");
+        sftp.drop("/inbox", "x.xml", Buffer.buffer("<second/>"));
+        round(rt);
+        assertEquals(2, seen.size(), "fixture: the second file was delivered: " + files(seen));
+        assertNotEquals("m-first-saved", seen.get(1).id(), "fixture: the accepted id is not the arrival's");
+        assertEquals(Set.of("x.xml", "x.xml.m-first-saved"), sftp.files("/done"), "the taken name is suffixed with the accepted id, not " + seen.get(1).id());
+        assertEquals("<second/>", sftp.read("/done/x.xml.m-first-saved"));
+        assertEquals(Set.of(), sftp.files("/inbox"));
     }
 }

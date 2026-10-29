@@ -4,8 +4,7 @@
   `pause()` / `resume()` pair across the component ↔ store boundary.
 - Bounds: an error-path body or reply buffered without a limit (http producer non-2xx, P1-06 round 1); a reply above the limit leaving the client response paused until the timeout.
 - Event loop: parsing untrusted input (`Long.parseLong` on content-length) or doing I/O on the event loop thread; the virtual-thread rule is per message, verticles own sockets only.
-- Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id
-  generators making an identity assertion vacuous (P1-06 round 5); a mock answering every
+- Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id generators making an identity assertion vacuous (P1-06 round 5); a mock answering every
   endpoint from one handler (P1-06 round 1); `off`/`yes`/`no` read as YAML booleans (P1-03).
 - Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06). Since FIX-7: failure
   recorded under the monitor before the pause and before the promise fails; check that order on every new catch.
@@ -118,3 +117,4 @@
 - Statements moved into a caller's tx: pin "never the pool" with a pool-of-1 fixture + connection timeout, "release after commit" with a deferred-constraint COMMIT failure; grep §8/D-rows for a bypassed writer's fail-fast sentence (P2-08a).
 - Evidence written after the fact (cleanup log, fsync rerun) is fine if RESULTS says which run each derived value came from; approximations in a §/FIX row are recomputed (P2-08b)
 - Redaction (P2-02L r1-r3): ask at the first review for toString + every refusal, unencoded / ? # in the password, no port, non-db path; a delay from a clock read before an awaited SPI call goes stale
+- Follow-up select after ON CONFLICT DO NOTHING needs a case with a second row matching without each WHERE predicate; a Key<T> prop read needs a Throwable guard + wrong-type case (P2-02D)

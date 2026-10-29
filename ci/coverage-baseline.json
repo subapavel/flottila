@@ -28,7 +28,7 @@
     "line": 99.8
   },
   "flottila-runtime": {
-    "branch": 99.6,
+    "branch": 99.7,
     "line": 99.6
   },
   "flottila-schemas": {
@@ -44,7 +44,7 @@
     "line": 100.0
   },
   "flottila-testkit": {
-    "branch": 97.3,
+    "branch": 96.6,
     "line": 98.0
   }
 }

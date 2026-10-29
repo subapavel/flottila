@@ -10,6 +10,7 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Hasher;
 import io.flottila.api.Headers;
 import io.flottila.api.Health;
+import io.flottila.api.Key;
 import io.flottila.api.Producer;
 import io.flottila.api.Timer;
 import io.vertx.core.Future;
@@ -48,7 +49,8 @@ class PollingConsumerContractSelfTest {
             "aRetryableNackKeepsTheFileAndTheNextRoundDeliversItAgain", "aRetryableNackEndsTheRound", "aHandlerThatThrowsOrAnswersNullKeepsTheFile",
             "aFinalNackIsNotDeliveredAgain", "filesAreDeliveredOldestFirst", "aReplyFinishesTheFileAsAcceptedDoes",
             "aBodyAboveTheTreeLimitStreamsThroughIntact", "eachDeliveryRunsOnAVirtualThreadOfItsOwn",
-            "stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval", "aStoppedConsumerDeliversNothing", "healthIsUpWhileRunningAndDownAfterStop");
+            "stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval", "aStoppedConsumerDeliversNothing", "healthIsUpWhileRunningAndDownAfterStop",
+            "aNamedDedupePropIsSetAndStableAcrossRedeliveries");
 
     static final String DROPPED = "aDroppedFileIsDeliveredIntactAndRemovedAfterAccepted";
     static final String PENDING = "theFileStaysWhileTheAnswerIsPending";
@@ -63,6 +65,7 @@ class PollingConsumerContractSelfTest {
     static final String STOP_WAITS = "stopWaitsForTheDeliveryInFlightAndCompletesItsRemoval";
     static final String STOPPED = "aStoppedConsumerDeliversNothing";
     static final String HEALTH = "healthIsUpWhileRunningAndDownAfterStop";
+    static final String DEDUPE = "aNamedDedupePropIsSetAndStableAcrossRedeliveries";
 
     /**
      * A polling component over an in-memory directory, its own fake clock and timer and a BlobStore with a 4 KiB tree limit.
@@ -116,6 +119,14 @@ class PollingConsumerContractSelfTest {
         boolean stopTakesTheNextFile;
         /** Broken: a Reply is taken for a retryable Nack: the file stays and the round ends. */
         boolean replyKeepsTheFile;
+        /** The dedupe prop the component names (D-084): the file's name and mtime; null names none (the mock's way). */
+        Key<String> dedupeBy = new Key<>("polling.fileKey");
+        /** Broken: the named dedupe prop is never set on a delivery. */
+        boolean dedupeKeyUnset;
+        /** Broken: the dedupe prop carries the delivery's id: another value each time the same file is delivered again. */
+        boolean dedupeKeyPerDelivery;
+        /** Broken: every file carries the same dedupe value. */
+        boolean dedupeKeyShared;
         /** What the handler sees of a file's bytes; the correct one sees them all. */
         UnaryOperator<Buffer> delivered = b -> b;
 
@@ -147,6 +158,8 @@ class PollingConsumerContractSelfTest {
         @Override public Consumer consumer(EndpointConfig cfg, Function<Envelope, Future<Ack>> handler) { return new Poller(handler); }
 
         @Override public Producer producer(EndpointConfig cfg) { throw new IllegalArgumentException("a poller has no producer"); }
+
+        @Override public java.util.Optional<Key<String>> dedupeBy(EndpointConfig cfg) { return java.util.Optional.ofNullable(dedupeBy); }
 
         @Override public Future<Health> health() {
             return Future.succeededFuture(healthAlwaysUp || !running.isEmpty() ? Health.up() : Health.down("no consumer polls"));
@@ -210,7 +223,11 @@ class PollingConsumerContractSelfTest {
                 // Published before the handler can run: a stop() issued once the case saw the handler called reads this answer,
                 // never null nor the previous file's (the handler's thread may record the call before this thread runs on).
                 answerInFlight = promised.future();
-                deliver(Envelope.ingress(id, "contract", Headers.empty(), body), promised);
+                Envelope in = Envelope.ingress(id, "contract", Headers.empty(), body);
+                if (dedupeBy != null && !dedupeKeyUnset) {
+                    in = in.with(dedupeBy, dedupeKeyShared ? "every-file" : f.name() + "@" + f.mtime() + (dedupeKeyPerDelivery ? "#" + id : ""));
+                }
+                deliver(in, promised);
                 Future<Ack> answer = promised.future();
                 if (removedBeforeTheAnswer) dir.remove(f.name());
                 Ack ack;
@@ -347,13 +364,13 @@ class PollingConsumerContractSelfTest {
 
     @Test
     void aRemovalBeforeTheAnswerIsAwaitedFailsEveryCaseThatKeepsAFile() {
-        assertEquals(Set.of(PENDING, NACK_KEEPS, NACK_ENDS, BROKEN_HANDLER, FINAL_NACK, STOP_WAITS, STOPPED),
+        assertEquals(Set.of(PENDING, NACK_KEEPS, NACK_ENDS, BROKEN_HANDLER, FINAL_NACK, STOP_WAITS, STOPPED, DEDUPE),
                 failing(v -> v.removedBeforeTheAnswer = true));
     }
 
     @Test
     void aRemovalOnAnyAnswerFailsEveryCaseWhoseAnswerKeepsTheFile() {
-        assertEquals(Set.of(PENDING, NACK_KEEPS, NACK_ENDS, BROKEN_HANDLER, FINAL_NACK, STOPPED), failing(v -> v.removedOnAnyAnswer = true));
+        assertEquals(Set.of(PENDING, NACK_KEEPS, NACK_ENDS, BROKEN_HANDLER, FINAL_NACK, STOPPED, DEDUPE), failing(v -> v.removedOnAnyAnswer = true));
     }
 
     @Test
@@ -449,8 +466,26 @@ class PollingConsumerContractSelfTest {
     @Test
     void aSmallBodyThatLosesItsLastByteFailsTheIntactCaseAtItsBodyCheck() {
         Map<String, Throwable> f = failures(Variant.broken(v -> v.delivered = b -> b.length() > 4096 ? b : b.slice(0, Math.max(0, b.length() - 1)).copy()));
-        assertEquals(Set.of(DROPPED, PENDING, NACK_KEEPS, NACK_ENDS, BROKEN_HANDLER, FINAL_NACK, OLDEST, STOP_WAITS), f.keySet(),
+        assertEquals(Set.of(DROPPED, PENDING, NACK_KEEPS, NACK_ENDS, BROKEN_HANDLER, FINAL_NACK, OLDEST, STOP_WAITS, DEDUPE), f.keySet(),
                 "every case that tells the files apart by their text");
         ContractRun.caughtBy(f, DROPPED, "the body arrives intact");
+    }
+
+    @Test
+    void aDedupePropUnsetPerDeliveryOrSharedFailsOnlyTheDedupeCase() {
+        Map<String, Throwable> unset = failures(Variant.broken(v -> v.dedupeKeyUnset = true));
+        assertEquals(Set.of(DEDUPE), unset.keySet());
+        ContractRun.caughtBy(unset, DEDUPE, "is set on the delivery, never empty");
+        Map<String, Throwable> perDelivery = failures(Variant.broken(v -> v.dedupeKeyPerDelivery = true));
+        assertEquals(Set.of(DEDUPE), perDelivery.keySet());
+        ContractRun.caughtBy(perDelivery, DEDUPE, "the same file delivered again carries the same");
+        Map<String, Throwable> shared = failures(Variant.broken(v -> v.dedupeKeyShared = true));
+        assertEquals(Set.of(DEDUPE), shared.keySet());
+        ContractRun.caughtBy(shared, DEDUPE, "another file carries another");
+    }
+
+    @Test
+    void aComponentThatNamesNoDedupePropPassesTrivially() {
+        assertEquals(Map.of(), failures(Variant.broken(v -> v.dedupeBy = null)), "the mock's way: nothing named, nothing to keep stable");
     }
 }

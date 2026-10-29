@@ -22,8 +22,6 @@
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
-- "LedgerIT 2000/2000" = `java -cp "flottila-bench/target/flottila-bench-*.jar:flottila-bench/target/lib/*" io.flottila.bench.LedgerMain --host localhost
-  --port 5432 --db <name with 'bench'> --user flottila --password flottila --messages 2000 --out target/x.json` (IT runs 200; native PG, psql createdb, ~45 s).
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
   always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants offline (`-o`): ~13 s core, ~12 s runtime unit, ~55 s blob/Pg ITs, ~26 s per NodeIT#method. Scratch copy: `tar --exclude='*/target'
@@ -40,7 +38,6 @@
   The shared scratchpad may hold stale `backup/*.orig` from older sessions: use a task-named backup dir (P2-02L).
 
 ## APIs
-- PG 15+ (pgstat.c, P2-08b): a backend publishes pg_stat_* ≤1/s busy, 10 s idle, at exit; a relation-less commit waits for a later one.
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
   `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
 - vertx-web 5.1.10 (javap, P1-09a; fetch with `mvn dependency:get -Dartifact=io.vertx:vertx-web:5.1.10` if ~/.m2 lacks it):
@@ -70,7 +67,6 @@
 - JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
   `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
   FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
-- Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (P1-08c): keeps an HTTP/1.1 connection to its response's end, then force-closes; `close()` drops it.
 - Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
   loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
   `compose` can end unheard. `req.response().onSuccess(HttpClientResponse::pause)` registered BEFORE `send` runs inline in the head emit.
@@ -98,7 +94,11 @@
 - Docker (P2-05a): native PG holds :5432 → compose `FLOTTILA_PG_HOST_PORT=55432`; temurin: bash, no curl. No rsync on the VM: cp.
 - `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
 - P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch (source); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
+- vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
+  context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
+  cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
 ## Findings that came back in review
+- A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
 - Packet red tests can carry fixture bugs no implementation fixes (P1-09k2): check the fixture first, fix with a one-line reason.
 - Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; a double guard (two never-fail transforms)

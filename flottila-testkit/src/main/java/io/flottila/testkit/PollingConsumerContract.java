@@ -7,6 +7,7 @@ import io.flottila.api.Consumer;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Health;
+import io.flottila.api.Key;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Timeout;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +31,7 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -46,7 +49,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * failed answer, a handler that throws or answers null keep the file and end the round: the next round delivers it again.
  * A final Nack keeps the file (this endpoint names no error directory) but never delivers it again to the same consumer.
  * {@link Consumer#stop()} (D-056) takes no new file, waits for the answer in flight and for its removal; a stopped consumer
- * delivers nothing. Health is up only while a consumer runs.
+ * delivers nothing. Health is up only while a consumer runs. A dedupe prop the component names is set on every delivery and
+ * stable across redeliveries of the same file (D-084).
  *
  * @since 0.1
  */
@@ -514,5 +518,47 @@ public abstract class PollingConsumerContract {
             consumer.stop().await();
         }
         assertEquals(Health.Status.DOWN, health(component), "nothing polls any more");
+    }
+
+    /**
+     * A component that names a dedupe prop ({@link Component#dedupeBy}, D-084) sets it on every delivery, never empty, to the same
+     * value each time the same file is delivered again and to another value for another file: the durable save dedupes by it, so
+     * a file delivered again — its removal refused after the save, here a retryable Nack standing in — is one message, and two
+     * files are never one. A component that names none (the mock) passes trivially.
+     */
+    @Test
+    public void aNamedDedupePropIsSetAndStableAcrossRedeliveries() {
+        Component component = component();
+        Optional<Key<String>> named = component.dedupeBy(endpoint());
+        assertNotNull(named, "dedupeBy answers an Optional, never null");
+        if (named.isEmpty()) return;   // nothing named: nothing deduped, nothing to keep stable
+        Key<String> key = named.get();
+        Seen seen = new Seen();
+        AtomicInteger calls = new AtomicInteger();
+        Consumer consumer = component.consumer(endpoint(), seen.answering(e -> calls.incrementAndGet() == 1
+                ? Future.succeededFuture(new Ack.Nack("saved-but-not-removed", true)) : ACCEPT.apply(e)));
+        drop("same.txt", text("same-file"));
+        consumer.start().await();
+        try {
+            fire();
+            assertTrue(soon(() -> seen.count() == 1), "the dropped file was delivered: " + seen.files);
+            fire();
+            assertTrue(soon(() -> seen.count() == 2), "the kept file was delivered again: " + seen.files);
+            assertTrue(soon(() -> remaining().isEmpty()), "accepted the second time: removed: " + remaining());
+            drop("other.txt", text("other-file"));
+            fire();
+            assertTrue(soon(() -> seen.count() == 3), "another file was delivered: " + seen.files);
+        } finally {
+            consumer.stop().await();
+        }
+        assertEquals(List.of("same-file", "same-file", "other-file"), seen.files, "fixture: the same file twice, then another");
+        Optional<String> first = seen.envelopes.get(0).get(key);
+        Optional<String> again = seen.envelopes.get(1).get(key);
+        Optional<String> other = seen.envelopes.get(2).get(key);
+        assertTrue(first.isPresent() && !first.get().isEmpty(), "the named prop " + key.name() + " is set on the delivery, never empty: " + first);
+        assertNotEquals(seen.envelopes.get(0).id(), seen.envelopes.get(1).id(), "each delivery is a message of its own: the key, not the id, dedupes");
+        assertEquals(first, again, "the same file delivered again carries the same " + key.name());
+        assertTrue(other.isPresent() && !other.get().isEmpty(), "set on the other file's delivery too: " + other);
+        assertNotEquals(first, other, "another file carries another " + key.name() + ": two files are never one message");
     }
 }

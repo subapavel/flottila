@@ -89,9 +89,9 @@ class MigrationsIT {
         Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "work");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(7, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a)");
-        assertEquals("7", first.schemaVersion());
-        assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "work"), tables());
+        assertEquals(8, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D)");
+        assertEquals("8", first.schemaVersion());
+        assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "processed_ids", "work"), tables());
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
         assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "dlq_parked_at", "messages_pkey", "payloads_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
@@ -103,10 +103,10 @@ class MigrationsIT {
         assertTrue(String.valueOf(defs.get("work_held")).endsWith("(seq) WHERE (held_at IS NOT NULL)"), "V5: held work rows, partial: " + defs.get("work_held"));
         assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V7");
-        assertEquals("7", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V8");
+        assertEquals("8", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(7, applied);
+        assertEquals(8, applied);
     }
 
     /**
@@ -168,8 +168,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(3, r.migrationsExecuted(), "V5, V6 and V7 on top of V4");
-        assertEquals("7", r.schemaVersion());
+        assertEquals(4, r.migrationsExecuted(), "V5, V6, V7 and V8 on top of V4");
+        assertEquals("8", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));
@@ -196,7 +196,7 @@ class MigrationsIT {
     @Order(5)
     void v7DeploymentsHoldsTheRecordAndNoBytes() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("7", r.schemaVersion());
+        assertEquals("8", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'deployments' order by ordinal_position").execute().await()) {
@@ -221,6 +221,46 @@ class MigrationsIT {
         }
         long rows = pool.query("select count(*) from deployments").execute().await().iterator().next().getLong(0);
         assertEquals(1L, rows, "only the valid row was written");
+    }
+
+    /**
+     * V8 (D-084, P2-02D): {@code processed_ids} holds one row per (scope, key_hash) — the qualified flow id and the SHA-256 of a
+     * consumer-supplied dedupe key (32 bytes, checked by the database) — naming the first message saved under it and when; no
+     * foreign key (the retention job deletes it with or after its message's rows, P2-07).
+     */
+    @Test
+    @Order(6)
+    void v8ProcessedIdsHoldsOneRowPerScopeAndKeyHash() {
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        assertEquals("8", r.schemaVersion());
+        java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
+        for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
+                + "where table_schema = 'public' and table_name = 'processed_ids' order by ordinal_position").execute().await()) {
+            columns.put(c.getString(0), c.getString(1) + (c.getString(2).equals("NO") ? " not null" : ""));
+        }
+        assertEquals(java.util.Map.of("scope", "text not null", "key_hash", "bytea not null", "message_id", "text not null",
+                "created_at", "timestamp with time zone not null"), columns, "V8: the processed_ids columns");
+        assertEquals(List.of("scope", "key_hash", "message_id", "created_at"), List.copyOf(columns.keySet()), "in this order");
+        List<String> constraints = new java.util.ArrayList<>();
+        for (Row c : pool.query("select contype, pg_get_constraintdef(oid) from pg_constraint where conrelid = 'processed_ids'::regclass order by contype")
+                .execute().await()) {
+            constraints.add(c.getString(0) + " " + c.getString(1));
+        }
+        assertTrue(constraints.contains("p PRIMARY KEY (scope, key_hash)"), "V8: one row per scope and key hash: " + constraints);
+        assertTrue(constraints.stream().noneMatch(c -> c.startsWith("f ")), "V8: no foreign key: " + constraints);
+
+        String insert = "insert into processed_ids(scope, key_hash, message_id, created_at) values ($1, $2, $3, now())";
+        io.vertx.core.buffer.Buffer hash = io.vertx.core.buffer.Buffer.buffer(new byte[32]);
+        pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of("shop/orders", hash, "m-1")).await();
+        assertEquals("23505", sqlState(() -> pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of("shop/orders", hash, "m-2")).await()),
+                "a second row for a scope and key hash is a unique violation");
+        pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of("shop/invoices", hash, "m-3")).await();   // another scope: its own row
+        for (int length : new int[] {0, 31, 33, 64}) {
+            assertEquals("23514", sqlState(() -> pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of("other/flow",
+                    io.vertx.core.buffer.Buffer.buffer(new byte[length]), "m-4")).await()), "a key_hash of " + length + " bytes is refused by the check: 32 only");
+        }
+        long rows = pool.query("select count(*) from processed_ids").execute().await().iterator().next().getLong(0);
+        assertEquals(2L, rows, "only the valid rows were written");
     }
 
     /** The SQLSTATE of the Postgres error {@code call} fails with. */

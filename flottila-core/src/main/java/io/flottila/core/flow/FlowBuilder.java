@@ -172,10 +172,22 @@ public final class FlowBuilder {
      * its value (D-075); the flow does not build — an {@link IllegalArgumentException} naming the key — when no such step or two
      * of them exist, when a {@code split} or {@code to} step comes before it (the key is read from the body as it arrived), or
      * when its language needs the whole body and the flow's {@code maxBodyBytes} exceeds the store's tree limit. On a sync or
-     * at-most-once flow {@code partitionBy} has no effect.
+     * at-most-once flow {@code partitionBy} has no effect. No dedupe key: {@link #delivery(FlowDefinition, Path, Optional)} with
+     * none.
      */
     public Delivery delivery(FlowDefinition flow, Path baseDir) {
+        return delivery(flow, baseDir, Optional.empty());
+    }
+
+    /**
+     * {@link #delivery(FlowDefinition, Path)} whose at-least-once save dedupes by the prop {@code dedupeBy} names (D-084), the one
+     * the flow's in endpoint's component names ({@link Component#dedupeBy}): its value on each envelope as it
+     * arrived is the intake's dedupe key, scoped by the flow's id — no value or {@code ""} is none. Empty: no key. A sync or
+     * at-most-once flow saves nothing, so ignores it.
+     */
+    public Delivery delivery(FlowDefinition flow, Path baseDir, Optional<Key<String>> dedupeBy) {
         Objects.requireNonNull(flow, "flow");
+        Objects.requireNonNull(dedupeBy, "dedupeBy");
         Admission admission = admission(flow);
         return switch (flow.deliveryMode()) {
             case "sync" -> {
@@ -192,7 +204,8 @@ public final class FlowBuilder {
                 Function<Envelope, Optional<String>> partitionKey = partitionKey(flow, baseDir);
                 Recorder recorder = new Recorder(store, runtime.clock(), meter, versionsOf(flow));
                 yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
-                        partitionKey, intake != null ? intake : new SequentialIntake(store, queue), runtime.timer(), flow.saveTimeout());
+                        partitionKey, e -> dedupeBy.flatMap(e::get), intake != null ? intake : new SequentialIntake(store, queue), runtime.timer(),
+                        flow.saveTimeout());
             }
             default -> throw new IllegalArgumentException("flow '" + flow.id() + "': unknown delivery.mode '" + flow.deliveryMode() + "'");
         };

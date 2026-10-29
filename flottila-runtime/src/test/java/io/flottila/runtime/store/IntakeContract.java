@@ -42,8 +42,9 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code SequentialIntakeContractTest} (core's SequentialIntake over the in-memory store and queue) and
  * {@code PgIntakeContractIT} (runtime's PgIntake over Postgres).
  *
- * <p>The shape assumed: core {@code io.flottila.core.flow.Intake} with {@code Future<Void> save(Envelope arrived, Snapshot ingress,
- * String flow, String partitionKey, BooleanSupplier abandoned)}.
+ * <p>The shape assumed: core {@code io.flottila.core.flow.Intake} with {@code Future<String> save(Envelope arrived, Snapshot ingress,
+ * String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)} (P2-02D, D-084: the id the answer names; every
+ * case here passes no dedupe key).
  */
 @Timeout(60)
 public abstract class IntakeContract {
@@ -119,8 +120,9 @@ public abstract class IntakeContract {
         }
     }
 
-    protected Future<Void> save(Envelope e, String partitionKey, BooleanSupplier abandoned) {
-        return settled(world.intake().save(e, ingress(e), FLOW, partitionKey, abandoned));
+    /** A save without a dedupe key (P2-02D: null — the keyed saves are PgIntake's, {@code PgIntakeIT}). */
+    protected Future<String> save(Envelope e, String partitionKey, BooleanSupplier abandoned) {
+        return settled(world.intake().save(e, ingress(e), FLOW, partitionKey, null, abandoned));
     }
 
     /** {@code f} once complete, either way; still pending after 20 s fails the case. */
@@ -151,8 +153,9 @@ public abstract class IntakeContract {
         Buffer keyedBytes = bytes(300, 1);
         Envelope keyed = arrive("m-keyed", keyedBytes);
         Asked asked = Asked.answering(false);
-        Future<Void> saved = save(keyed, "K-1", asked.supplier());
+        Future<String> saved = save(keyed, "K-1", asked.supplier());
         assertTrue(saved.succeeded(), "saved: " + saved.cause());
+        assertEquals("m-keyed", saved.result(), "a save without a dedupe key answers the arrival's own id");
         assertEquals(1, asked.times().get(), "abandoned is asked once");
 
         List<Snapshot> rows = world.recorded("m-keyed");
@@ -166,7 +169,9 @@ public abstract class IntakeContract {
 
         Buffer unkeyedBytes = bytes(200, 2);
         Envelope unkeyed = arrive("m-unkeyed", unkeyedBytes);
-        assertTrue(save(unkeyed, null, () -> false).succeeded(), "a save without a partition key");
+        Future<String> unkeyedSave = save(unkeyed, null, () -> false);
+        assertTrue(unkeyedSave.succeeded(), "a save without a partition key");
+        assertEquals("m-unkeyed", unkeyedSave.result());
         assertEquals(List.of(new Queued("m-keyed", FLOW, 1, "K-1"), new Queued("m-unkeyed", FLOW, 1, null)), world.queued(),
                 "no key: an unordered item, queued after the first");
         assertEquals(List.of(Recorder.INGRESS), stepNames(world.recorded("m-unkeyed")));
@@ -177,7 +182,7 @@ public abstract class IntakeContract {
     void aBodyAboveTheBoundQueuesNothing() {
         Buffer above = bytes((int) BOUND + 1, 3);
         Envelope big = arrive("m-big", above);
-        Future<Void> saved = save(big, "K-1", () -> false);
+        Future<String> saved = save(big, "K-1", () -> false);
         assertTrue(saved.failed(), "a body that cannot be made durable is no save");
         assertTrue(causes(saved.cause()).stream().anyMatch(BodyTooLargeException.class::isInstance), "it is too large: " + causes(saved.cause()));
         assertEquals(List.of(), world.queued(), "nothing queued");
@@ -193,7 +198,7 @@ public abstract class IntakeContract {
         assertTrue(settled(earlier.body().store().persist(earlier.body().key())).succeeded(), "fixture: the key's first bytes are durable");
         Envelope again = arrive("m-twice", other);   // the key written again, with other bytes of the same size
 
-        Future<Void> saved = save(again, "K-1", () -> false);
+        Future<String> saved = save(again, "K-1", () -> false);
         assertTrue(saved.failed(), "a key's durable bytes never change (FIX-35): no save over other bytes");
         assertTrue(causes(saved.cause()).stream().anyMatch(t -> t instanceof IllegalStateException && String.valueOf(t.getMessage()).contains("other bytes")),
                 "refused as other bytes under a durable key: " + causes(saved.cause()));
@@ -206,12 +211,12 @@ public abstract class IntakeContract {
     void anAbandonedSaveQueuesNothing() {
         Envelope in = arrive("m-abandoned", bytes(300, 6));
         Asked asked = Asked.answering(true);
-        Future<Void> saved = save(in, "K-1", asked.supplier());
+        Future<String> saved = save(in, "K-1", asked.supplier());
         assertTrue(saved.failed(), "an abandoned save fails");
         assertEquals(1, asked.times().get(), "abandoned is asked once");
         assertEquals(List.of(), world.queued(), "nothing queued");
 
-        Future<Void> retry = save(in, "K-1", () -> false);
+        Future<String> retry = save(in, "K-1", () -> false);
         assertTrue(retry.succeeded(), "the sender's retry saves: the abandoned save left nothing in its way: " + retry.cause());
         assertEquals(List.of(new Queued("m-abandoned", FLOW, 1, "K-1")), world.queued(), "one item: the retry's");
         assertEquals(List.of(Recorder.INGRESS), stepNames(world.recorded("m-abandoned")));

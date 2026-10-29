@@ -48,6 +48,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -68,7 +69,8 @@ import java.util.function.Function;
  * {@code maxFilesPerPoll}, one at a time. A file listed above {@code maxBodyBytes} is refused finally without being read;
  * otherwise it streams into the {@link BlobStore} bounded by {@code maxBodyBytes} and goes to the handler on a virtual thread
  * of its own (D-057), the round waiting for the answer. {@link Ack.Accepted} or {@link Ack.Reply} (the durable save is the
- * handler's) deletes the file or renames it into {@code moveTo} ({@code <name>.<id>} when the name is taken); a file already
+ * handler's) deletes the file or renames it into {@code moveTo} ({@code <name>.<id>} when the name is taken, the id the
+ * Accepted names — an earlier message's for a file the save found delivered before, D-084); a file already
  * gone counts as done. A retryable Nack, a failed answer, a throw or null keep the file and end the round (the poller pauses,
  * §4). A final Nack, or a body above the limit, moves the file to {@code errorDir} if set, else leaves it and never takes it
  * again in this consumer's life. Any I/O failure ends the round and drops the session; the file stays.
@@ -132,6 +134,15 @@ public final class SftpComponent implements Component {
     @Override
     public boolean polls(EndpointConfig cfg) {
         return true;
+    }
+
+    /**
+     * Every sftp endpoint names {@link #FILE_KEY} as its dedupe key (D-084): the same file delivered again — its removal refused
+     * after the save, another node polling it after a takeover — is the one message it was saved as.
+     */
+    @Override
+    public Optional<Key<String>> dedupeBy(EndpointConfig cfg) {
+        return Optional.of(FILE_KEY);
     }
 
     /** Refused: the flow build reports it (D-076). */
@@ -358,7 +369,7 @@ public final class SftpComponent implements Component {
                     .with(MTIME, file.mtime().toString())
                     .with(FILE_KEY, "sftp://" + host + ":" + port + file.path() + "@" + file.mtime() + "#" + body.hash().hex());
             return switch (answer(in)) {
-                case Ack.Accepted accepted -> done(file, id);
+                case Ack.Accepted accepted -> done(file, accepted.messageId());   // the message the file is: maybe an earlier one (D-084)
                 case Ack.Reply reply -> done(file, id);
                 case Ack.Nack nack when nack.retryable() -> false;   // the flow is full: the poller pauses until the next round
                 case Ack.Nack nack -> refuse(file, id);

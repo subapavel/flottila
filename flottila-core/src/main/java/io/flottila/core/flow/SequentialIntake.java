@@ -14,7 +14,8 @@ import java.util.function.BooleanSupplier;
  * ({@link io.flottila.api.BlobStore#persist}) and the ingress snapshot's record in the {@link MessageStore} are asked side by
  * side; once both succeeded, {@code abandoned} is asked and false enqueues the item in the {@link WorkQueue}. The first failure
  * decides at once, without waiting for the other save, and nothing is queued; a store that throws instead of failing its
- * future is the same failed save. The in-memory stores and a future non-Postgres queue save so.
+ * future is the same failed save. The in-memory stores and a future non-Postgres queue save so. They dedupe nothing (D-084):
+ * a save with a dedupe key fails at once, nothing persisted, recorded or queued — every node saves through the Postgres intake.
  *
  * @since 0.1
  */
@@ -29,7 +30,11 @@ public final class SequentialIntake implements Intake {
     }
 
     @Override
-    public Future<Void> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned) {
+    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+        if (dedupeKey != null) {
+            return Future.failedFuture(new IllegalStateException("the save of " + arrived.id() + " has a dedupe key, which flow " + flow
+                    + "'s intake cannot keep: only the Postgres intake dedupes (D-084)"));
+        }
         Future<Void> persist;
         try {
             persist = arrived.body().store().persist(arrived.body().key());
@@ -44,7 +49,7 @@ public final class SequentialIntake implements Intake {
         }
         // the first failure decides at once, without waiting for the other save
         return Future.all(persist, record).compose(saved -> abandoned.getAsBoolean()
-                ? Future.failedFuture(new IllegalStateException("the save of " + arrived.id() + " was abandoned before its enqueue: its answer was decided"))
-                : queue.enqueue(arrived.id(), flow, 1, partitionKey));
+                ? Future.<String>failedFuture(new IllegalStateException("the save of " + arrived.id() + " was abandoned before its enqueue: its answer was decided"))
+                : queue.enqueue(arrived.id(), flow, 1, partitionKey).map(arrived.id()));
     }
 }

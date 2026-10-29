@@ -7,6 +7,7 @@ import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Fault;
 import io.flottila.api.Headers;
+import io.flottila.api.Key;
 import io.flottila.api.NackException;
 import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
@@ -1464,23 +1465,27 @@ class DeliveryTest {
 
     // --- the intake (P2-08a, D-082): an at-least-once delivery saves through its Intake, once; it persists, records and
     // enqueues nothing itself. The shape assumed: core {@code Intake} (package io.flottila.core.flow) with
-    // {@code Future<Void> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned)}
-    // and {@code FlowBuilder intake(Intake)}.
+    // {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}
+    // (P2-02D: the future answers the id the Accepted names) and {@code FlowBuilder intake(Intake)}.
 
     /**
      * An {@link Intake} whose saves the case answers — a mock at the store boundary, never of the delivery: every call is kept
      * with its arguments and a pending promise; {@link #throwNext} makes the next call throw instead of returning a future.
      */
     static final class HeldIntake implements Intake {
-        record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned, Promise<Void> answer) {}
+        record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned,
+                    Promise<String> answer) {
+            /** The save succeeded as the arrived message itself (no duplicate). */
+            void saved() { answer.complete(arrived.id()); }
+        }
 
         final List<Save> saves = new CopyOnWriteArrayList<>();
         private final AtomicReference<RuntimeException> throwNext = new AtomicReference<>();
 
         @Override
-        public Future<Void> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned) {
-            Promise<Void> answer = Promise.promise();
-            saves.add(new Save(arrived, ingress, flow, partitionKey, abandoned, answer));
+        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+            Promise<String> answer = Promise.promise();
+            saves.add(new Save(arrived, ingress, flow, partitionKey, dedupeKey, abandoned, answer));
             RuntimeException thrown = throwNext.getAndSet(null);
             if (thrown != null) throw thrown;
             return answer.future();
@@ -1527,7 +1532,7 @@ class DeliveryTest {
         assertEquals(0, store.recorded(Recorder.INGRESS), "records nothing itself");
         assertEquals(0, queue.size(), "enqueues nothing itself");
 
-        save.answer().complete();
+        save.saved();
         assertEquals(new Ack.Accepted(in.id()), settled(ack).result(), "Accepted once the intake's save completed");
         assertEquals(1, intake.saves.size(), "saved once");
         assertEquals(List.of(), own.persists(), "still nothing persisted by the delivery");
@@ -1563,7 +1568,7 @@ class DeliveryTest {
         Envelope next = ingress(ORDER);
         Future<Ack> nextAck = delivery.apply(next);
         assertEquals(2, intake.saves.size(), "the next one is admitted (one permit) and saved");
-        intake.saves.get(1).answer().complete();
+        intake.saves.get(1).saved();
         assertEquals(new Ack.Accepted(next.id()), settled(nextAck).result());
     }
 
@@ -1585,7 +1590,7 @@ class DeliveryTest {
         assertTrue(nack.retryable() && (nack.reason().contains("PT2S") || nack.reason().contains("2s")), "the save timed out: " + nack.reason());
         assertTrue(abandoned.getAsBoolean(), "once the timeout decided the answer, the intake must queue nothing");
         assertTrue(abandoned.getAsBoolean(), "and stays abandoned, however often asked");
-        intake.only().answer().complete();   // a late save the intake did not see abandoned
+        intake.only().saved();   // a late save the intake did not see abandoned
         assertEquals(nack, ack.result(), "the answer stays the timeout's");
         assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the timeout");
 
@@ -1597,5 +1602,157 @@ class DeliveryTest {
         rt.clock().advance(Duration.ofSeconds(1));
         cancelled(second);
         assertTrue(secondAbandoned.getAsBoolean(), "the stop's deadline decided the answer: abandoned");
+    }
+
+    // --- the dedupe key (P2-02D, D-084): the component names a prop; the delivery reads it on the envelope as it arrived (absent
+    // or "" = no key) and hands it to the intake; the intake's answer is the id the Accepted names — an earlier message's for a
+    // duplicate, logged once at INFO. The shape assumed: {@code FlowBuilder.delivery(FlowDefinition, Path, Optional<Key<String>>)}
+    // (the 2-arg overload passes empty) and the intake's {@code dedupeKey} argument (null: none).
+
+    /** The prop a component names as its dedupe key (sftp's {@code sftp.fileKey} in production). */
+    static final Key<String> FILE_KEY = new Key<>("test.fileKey");
+    /** Another prop on the same envelope: the named one is read, not any. */
+    static final Key<String> OTHER_KEY = new Key<>("test.other");
+
+    Delivery deduping(HeldIntake intake, Map<String, Object> doc) {
+        return builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES, Optional.of(FILE_KEY));
+    }
+
+    /** Every Delivery log record at INFO or above while {@code body} runs, as formatted text. */
+    static List<String> deliveryLogDuring(Runnable body) {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(Delivery.class.getName());   // System.Logger delegates to it
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            @Override public void publish(java.util.logging.LogRecord r) {
+                if (r.getLevel().intValue() < java.util.logging.Level.INFO.intValue()) return;
+                lines.add(r.getLevel() + " " + new java.util.logging.SimpleFormatter().formatMessage(r));
+            }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        jul.addHandler(handler);
+        try {
+            body.run();
+        } finally {
+            jul.removeHandler(handler);
+        }
+        return lines;
+    }
+
+    @Test
+    void aDuplicateIsAcceptedWithTheFirstMessageId() {
+        HeldIntake intake = new HeldIntake();
+        Delivery delivery = deduping(intake, oneInFlight(flow("at-least-once", List.of(TO_PARTNER))));
+        Envelope duplicate = ingress(ORDER).with(FILE_KEY, "inbox/a.xml|1730196000000|15");
+        String first = "m-first-arrival";
+
+        AtomicReference<Future<Ack>> ack = new AtomicReference<>();
+        List<String> log = deliveryLogDuring(() -> {
+            ack.set(delivery.apply(duplicate));
+            assertFalse(ack.get().isComplete(), "no answer before the intake's save completed");
+            intake.only().answer().complete(first);   // the intake found the key taken by an earlier message
+            settled(ack.get());
+        });
+        assertEquals(new Ack.Accepted(first), ack.get().result(),
+                "a duplicate is accepted with the id the intake answered — the first message's, not its own (" + duplicate.id() + ")");
+        List<String> info = log.stream().filter(l -> l.startsWith("INFO ")).toList();
+        assertEquals(1, info.size(), "one INFO line for the duplicate: " + log);
+        assertTrue(info.get(0).contains(duplicate.id()) && info.get(0).contains(first), "naming the arrival and the first message: " + info);
+        assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the ACK");
+        assertEquals(0, rt.timer().pending(), "the save timeout went with the answer");
+
+        // the same flow, a key no one had: the intake answers the arrival's own id, and nothing is logged
+        Envelope fresh = ingress(ORDER).with(FILE_KEY, "inbox/b.xml|1730196000000|15");
+        AtomicReference<Future<Ack>> freshAck = new AtomicReference<>();
+        List<String> quiet = deliveryLogDuring(() -> {
+            freshAck.set(delivery.apply(fresh));
+            intake.saves.get(1).saved();
+            settled(freshAck.get());
+        });
+        assertEquals(new Ack.Accepted(fresh.id()), freshAck.get().result());
+        assertEquals(List.of(), quiet.stream().filter(l -> l.startsWith("INFO ")).toList(), "no INFO line when the answered id is the arrival's own");
+    }
+
+    @Test
+    void theDedupeKeyIsTheNamedPropAsItArrived() {
+        HeldIntake intake = new HeldIntake();
+        Delivery delivery = deduping(intake, flow("at-least-once", List.of(TO_PARTNER)));
+        Envelope in = ingress(ORDER).with(OTHER_KEY, "not the key").with(FILE_KEY, "inbox/a.xml|1730196000000|15");
+
+        Future<Ack> ack = delivery.apply(in);
+        HeldIntake.Save save = intake.only();
+        assertEquals("inbox/a.xml|1730196000000|15", save.dedupeKey(), "the dedupe key is the named prop's value");
+        assertSame(in, save.arrived(), "read on the envelope as it arrived, which the intake gets as well");
+        assertEquals("orders", save.flow(), "the key's scope is the flow the intake is given");
+        save.saved();
+        assertEquals(new Ack.Accepted(in.id()), settled(ack).result());
+
+        Envelope other = ingress(ORDER).with(FILE_KEY, "inbox/b.xml|1730196000000|15");
+        delivery.apply(other);
+        assertEquals("inbox/b.xml|1730196000000|15", intake.saves.get(1).dedupeKey(), "read per arrival, never kept from an earlier one");
+        intake.saves.get(1).saved();
+    }
+
+    /** A prop of the dedupe key's name set with another type: what the component names must be text. */
+    @Test
+    void aDedupePropOfAnotherTypeIsARetryableNackAndNothingIsSaved() {
+        HeldIntake intake = new HeldIntake();
+        Delivery delivery = deduping(intake, oneInFlight(flow("at-least-once", List.of(TO_PARTNER))));
+        Envelope in = ingress(ORDER).with(new Key<Integer>(FILE_KEY.name()), 42);
+
+        Future<Ack> ack = assertDoesNotThrow(() -> delivery.apply(in), "a wrongly typed dedupe prop is an answer, not an exception out of apply");
+
+        assertTrue(ack.isComplete(), "answered at once: " + ack);
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, ack.result(), "refused for now: " + ack);
+        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
+        assertEquals(List.of(), intake.saves, "nothing saved");
+        assertEquals(0, delivery.admission().inFlightRequests(), "the permit is back with the Nack");
+        assertEquals(0, delivery.admission().inFlightBytes(), "its bytes are back");
+        assertEquals(0, rt.timer().pending(), "the save timeout went with the answer");
+
+        Envelope next = ingress(ORDER).with(FILE_KEY, "inbox/a.xml|1730196000000|15");
+        Future<Ack> nextAck = delivery.apply(next);
+        assertEquals(1, intake.saves.size(), "the next one is admitted (one permit) and saved");
+        intake.saves.get(0).saved();
+        assertEquals(new Ack.Accepted(next.id()), settled(nextAck).result());
+    }
+
+    static Stream<Arguments> noKey() {
+        return Stream.of(
+                Arguments.of("the named prop absent", Optional.of(FILE_KEY), Optional.<String>empty()),
+                Arguments.of("the named prop empty", Optional.of(FILE_KEY), Optional.of("")),
+                Arguments.of("no prop named (the 2-arg delivery)", Optional.<Key<String>>empty(), Optional.of("inbox/a.xml|1730196000000|15")));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("noKey")
+    void anAbsentOrEmptyKeyIsNoKey(String why, Optional<Key<String>> named, Optional<String> value) {
+        HeldIntake intake = new HeldIntake();
+        FlowDefinition def = FlowDefinition.from(flow("at-least-once", List.of(TO_PARTNER)));
+        Delivery delivery = named.isPresent()
+                ? builder().intake(intake).delivery(def, NO_FILES, named)
+                : builder().intake(intake).delivery(def, NO_FILES);
+        Envelope in = value.map(v -> ingress(ORDER).with(FILE_KEY, v)).orElseGet(() -> ingress(ORDER).with(OTHER_KEY, "not the key"));
+
+        Future<Ack> ack = delivery.apply(in);
+        assertEquals(null, intake.only().dedupeKey(), why + ": the intake is asked without a dedupe key");
+        intake.only().saved();
+        assertEquals(new Ack.Accepted(in.id()), settled(ack).result(), "and the arrival is saved as itself");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"sync", "at-most-once"})
+    void aSyncOrAtMostOnceFlowIgnoresTheDedupeKey(String mode) {
+        partner.replyWith(e -> e.next(rt.store(e, Buffer.buffer("<ack/>"))));
+        HeldIntake intake = new HeldIntake();
+        Delivery delivery = deduping(intake, flow(mode, List.of(TO_PARTNER)));
+        Envelope in = ingress(ORDER).with(FILE_KEY, "inbox/a.xml|1730196000000|15");
+
+        Ack ack = delivery.apply(in).await();
+        if (mode.equals("sync")) assertInstanceOf(Ack.Reply.class, ack, "a sync flow replies as without a key: " + ack);
+        else assertEquals(new Ack.Accepted(in.id()), ack, "an at-most-once flow accepts its own id as without a key");
+        partner.awaitSent(1);
+        assertEquals(List.of(), intake.saves, "no intake is asked: only at-least-once saves");
     }
 }
