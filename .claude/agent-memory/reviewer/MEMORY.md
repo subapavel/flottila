@@ -6,8 +6,7 @@
 - Event loop: parsing untrusted input (`Long.parseLong` on content-length) or doing I/O on the event loop thread; the virtual-thread rule is per message, verticles own sockets only.
 - Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id generators making an identity assertion vacuous (P1-06 round 5); a mock answering every
   endpoint from one handler (P1-06 round 1); `off`/`yes`/`no` read as YAML booleans (P1-03).
-- Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06). Since FIX-7: failure
-  recorded under the monitor before the pause and before the promise fails; check that order on every new catch.
+- Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06). Since FIX-7: failure recorded under the monitor before the pause and before the promise fails; check that order on every new catch.
 - A test that "covers" a branch is not a test that fails when the branch is wrong: name the
   mutants (`sed -i '<line>d'`-style edits of the production file) and have the verifier run them
   with the file restored by `cp`/`touch` (an `mv` restore leaves the mutant class compiled —
@@ -118,3 +117,4 @@
 - Evidence written after the fact (cleanup log, fsync rerun) is fine if RESULTS says which run each derived value came from; approximations in a §/FIX row are recomputed (P2-08b)
 - Redaction (P2-02L r1-r3): ask at the first review for toString + every refusal, unencoded / ? # in the password, no port, non-db path; a delay from a clock read before an awaited SPI call goes stale
 - Follow-up select after ON CONFLICT DO NOTHING needs a case with a second row matching without each WHERE predicate; a Key<T> prop read needs a Throwable guard + wrong-type case (P2-02D)
+- Compose/infra (P2-05): a negative requirement ("present, not wired") needs its own assertion; a CI timing metric must measure something non-trivial

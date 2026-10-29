@@ -72,3 +72,6 @@ docker compose down -v          # also remove the volumes: the next start is emp
 
 After a rebuild of the jar, `docker compose up -d --build --force-recreate` replaces all three containers (the echo has to
 join the new node's network namespace); the node restores the deployed demo from its volume.
+
+The fuller gate stack (Postgres, Valkey, SeaweedFS S3, Kafka, SFTP, the node, the echo and an automatic deploy of the demo) is in
+[`deploy/compose/`](../deploy/compose/README.md).

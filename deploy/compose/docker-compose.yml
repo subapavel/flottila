@@ -1,0 +1,161 @@
+# The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3), Kafka and an SFTP server beside one Flottila node,
+# the demo's partner echo and a one-shot that deploys packages/demo. A demo stack, not production: the node runs FLOTTILA_ENV=dev
+# so the manual deploy and the http S3 endpoint are allowed. Kafka and ClickHouse are present, not wired (GATE "Postponed").
+# Build the host jars first: mvn -B -ntp -q package -DskipTests -pl flottila-runtime,flottila-cli -am
+# Then:  FLOTTILA_ADMIN_TOKEN=<token> docker compose up -d --build        (see README.md)
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_DB: flottila
+      POSTGRES_USER: flottila
+      POSTGRES_PASSWORD: ${FLOTTILA_PG_PASSWORD:-flottila}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  valkey:
+    image: valkey/valkey:8.1.11
+    # persistence off: Valkey holds tempo state only
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  s3:
+    image: chrislusf/seaweedfs:4.50
+    # one process (master, volume, filer, S3 gateway on 8333). The demo identity is written to /tmp/s3.json at start from the
+    # S3 keys of the environment (Admin, so that the first upload creates the bucket: autoCreateBucket needs an admin identity)
+    environment:
+      FLOTTILA_S3_ACCESS_KEY: "${FLOTTILA_S3_ACCESS_KEY:-flottila}"
+      FLOTTILA_S3_SECRET_KEY: "${FLOTTILA_S3_SECRET_KEY:?set FLOTTILA_S3_SECRET_KEY: the S3 secret key of the stack}"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        printf '{"identities":[{"name":"flottila","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$FLOTTILA_S3_ACCESS_KEY" "$$FLOTTILA_S3_SECRET_KEY" > /tmp/s3.json
+        chmod 644 /tmp/s3.json
+        exec /entrypoint.sh server -s3 -s3.config=/tmp/s3.json -s3.autoCreateBucket=true -s3.port=8333
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/status || curl -s -o /dev/null http://127.0.0.1:8333/"]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+
+  kafka:
+    # KRaft, one node; not wired to the node in Phase 2
+    image: apache/kafka:3.9.1
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  sftp:
+    # user demo, directory inbox; the host key is generated into the sftp-hostkeys volume on first start (README: fingerprint).
+    # The tag is a moving one upstream, so the image is pinned by digest.
+    image: atmoz/sftp:alpine@sha256:43dd1c023cf1bae487127d4b54660b0aee6e94c188a6599be36fb89ba115f961
+    command: ["demo:${FLOTTILA_SFTP_PASSWORD:-demo}:::inbox"]
+    volumes:
+      - sftp-hostkeys:/etc/ssh
+      - sftp-data:/home/demo/inbox
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 22"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  flottila:
+    build:
+      context: ../..
+      dockerfile: deploy/quickstart/Dockerfile
+    image: flottila-stack:local
+    environment:
+      FLOTTILA_ENV: dev
+      FLOTTILA_NODE_ID: stack
+      FLOTTILA_PG_HOST: postgres
+      FLOTTILA_PG_PASSWORD: ${FLOTTILA_PG_PASSWORD:-flottila}
+      FLOTTILA_ARCHIVE_STORE: s3
+      FLOTTILA_S3_ENDPOINT: http://s3:8333
+      FLOTTILA_S3_PATH_STYLE: "true"
+      FLOTTILA_S3_BUCKET: flottila
+      FLOTTILA_S3_REGION: us-east-1
+      FLOTTILA_S3_ACCESS_KEY: "${FLOTTILA_S3_ACCESS_KEY:-flottila}"
+      FLOTTILA_S3_SECRET_KEY: "${FLOTTILA_S3_SECRET_KEY:?set FLOTTILA_S3_SECRET_KEY: the S3 secret key of the stack}"
+      FLOTTILA_VALKEY_URI: redis://valkey:6379
+      FLOTTILA_ADMIN_HOST: 0.0.0.0
+      FLOTTILA_ADMIN_TOKEN: "${FLOTTILA_ADMIN_TOKEN:?set FLOTTILA_ADMIN_TOKEN: the admin API on 0.0.0.0 needs a token}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"   # the demo's http-in
+      - "127.0.0.1:8081:8081"   # admin API and /health
+    healthcheck:
+      # the image has no curl: one HTTP/1.0 request over bash's /dev/tcp, healthy on a 200
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && head -n 1 <&3 | grep -q ' 200 '"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  echo:
+    # the demo's partner on localhost:8090 of the node (the node's network namespace)
+    image: eclipse-temurin:25.0.4.1_1-jdk-noble
+    user: ubuntu
+    network_mode: "service:flottila"
+    volumes:
+      - ../quickstart/PartnerEcho.java:/opt/echo/PartnerEcho.java:ro
+    command: ["java", "/opt/echo/PartnerEcho.java", "8090"]
+    depends_on:
+      flottila:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8090"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  deploy:
+    # one-shot: `flottila deploy /packages/demo` with the host-built CLI jar, then exit 0 (no healthcheck, no restart)
+    image: eclipse-temurin:25.0.4.1_1-jre-noble
+    restart: "no"
+    environment:
+      FLOTTILA_ADMIN_TOKEN: "${FLOTTILA_ADMIN_TOKEN:?set FLOTTILA_ADMIN_TOKEN: the admin API on 0.0.0.0 needs a token}"
+    volumes:
+      - ../../flottila-cli/target:/cli:ro
+      - ../../packages:/packages:ro
+    entrypoint: ["sh", "-c", "jar=$$(ls /cli/flottila-cli-*.jar | grep -v -E -- '-(sources|javadoc|tests)[.]jar$$' | head -n 1) && exec java -jar \"$$jar\" deploy /packages/demo --admin http://flottila:8081"]
+    depends_on:
+      flottila:
+        condition: service_healthy
+
+  clickhouse:
+    # history store of a later phase; present, not wired, started only with --profile history
+    image: clickhouse/clickhouse-server:25.8.33.6
+    profiles: ["history"]
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8123/ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 40
+
+volumes:
+  pg-data:
+  s3-data:
+  sftp-hostkeys:
+  sftp-data:
+  clickhouse-data:
