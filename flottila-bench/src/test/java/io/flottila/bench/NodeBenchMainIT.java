@@ -158,6 +158,29 @@ class NodeBenchMainIT {
                 "each 202 is a durable save including the bodies insert (D-061)");
     }
 
+    /**
+     * P2-08b, the twin of {@code NodeBenchAckCommitsIT}'s settings case on Testcontainers' defaults (fsync off): the record carries
+     * the six commit settings as a new session of the run's database shows them in pg_settings, the node's pool size and the two
+     * per-message counters.
+     */
+    @Test
+    void anAckRunRecordsTheCommitSettingsAsTheServerShowsThem() throws Exception {
+        String db = database();
+        Path out = dir.resolve("ack-settings.json");
+        assertEquals(0, NodeBenchMain.run(args(db, "ack", "keep", 4, out)));
+        JsonObject json = new JsonObject(Files.readString(out));
+        assertEquals("off", text(db, "select setting from pg_settings where name = 'fsync'"), "Testcontainers starts Postgres with fsync off");
+        for (String name : List.of("synchronous_commit", "commit_delay", "commit_siblings", "wal_sync_method", "fsync", "full_page_writes")) {
+            assertEquals(text(db, "select setting from pg_settings where name = '" + name + "'"), String.valueOf(json.getValue(name)),
+                    name + " as pg_settings shows it on the run's database: " + json.encode());
+        }
+        assertEquals(16, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default): " + json.encode());
+        assertNotNull(json.getDouble("commitsPerMessage"), "the ack record carries commitsPerMessage: " + json.encode());
+        assertTrue(json.getDouble("commitsPerMessage") >= 1.0, "each 202 is at least one commit: " + json.encode());
+        // fsync off: pg_stat_wal.wal_sync does not count, the field is there and zero
+        assertEquals(0.0, json.getDouble("walSyncsPerMessage"), "fsync off syncs no WAL: " + json.encode());
+    }
+
     @Test
     void recordingMetadataOnlyWritesNoBodies() throws Exception {
         String metadataOnly = database();

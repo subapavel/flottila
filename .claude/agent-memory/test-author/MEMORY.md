@@ -3,13 +3,11 @@
 - End-to-end reference: runtime `flow/InvoiceSyncFlowTest`; reference package `packages/demo`. Every new schema rule needs a negative fixture under `flottila-schemas/src/test/resources/invalid/<kind>/`; every ArchUnit rule a fixture. YAML `off`/`yes`/`no` = booleans: quote.
 - Two fresh id generators both mint `m-1`. Surefire `-Dtest=A+B` selects NO class: `-Dtest=A,B` (`A#m1*+m2` selects methods). Wall-time timing asserts pass wrongly (P0-04): fake clock.
   `mvn -pl <module>` needs `-am` (sibling SNAPSHOTs not in ~/.m2) + `-Dsurefire.failIfNoSpecifiedTests=false`; `-q` hides counts: read the XML.
-- TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose
-  getEncoded() waits on a latch) holds the sink thread at its open; a WatchService on the spool message dir
+- TieredBlobStore choreography tests (runtime blob/TieredBlobStoreHandoverTest): `GatedKey` (spool key whose getEncoded() waits on a latch) holds the sink thread at its open; a WatchService on the spool message dir
   observes the sink storing bytes. Every handed-over stream not paused by the store gets one handover resume(); a sync source's pause nested in a resume is NOT undone by it (FIX-10 r4).
 - RecordingComponent.holdNext(n) → CountDownLatch (recorded at once, answered after countDown, no caller waits); awaitSent(n) waits on a latch (10 s bound), awaitSent(n, Duration) with its own bound. Count every hold down
   in @AfterEach. Vert.x 5 `Future.await(long, TimeUnit)` works on any thread (latch), rethrows the cause.
-- core flow tests without XML: `BuiltInStepsTest.HEADERS` (header expression language, package-visible). Core's
-  `flow/HoldingMessageStore` (test tree) holds / releases / fails `record` futures, `throwNext`, `failReads`/`readsOk`, `recorded(stepName)`; `flow/FailingDlq` refuses parks (`failParks`/`parksOk`).
+- core flow tests without XML: `BuiltInStepsTest.HEADERS` (header expression language, package-visible). Core's `flow/HoldingMessageStore` (test tree) holds / releases / fails `record` futures, `throwNext`, `failReads`/`readsOk`, `recorded(stepName)`; `flow/FailingDlq` refuses parks (`failParks`/`parksOk`).
 - `System.Logger` in core tests resolves to JUL: a `java.util.logging.Handler` on `Logger.getLogger(X.class.getName())`
   sees the records. Acting inside `publish` (it runs on the logging thread, synchronously) pins "X happened before the log line" without a race.
 - ScriptedStream records "resume" before its hooks run, so the call order is not the effective state: a pause issued in
@@ -17,8 +15,7 @@
   A script chunk delivered inside handler() starts the sink before the attach: whether the handover resume is issued races.
 - Testkit streams' drain window (FIX-12): `DrainHandoverTest.Window` stages a call from a second thread at the package-private
   `beforeDrainExit(Runnable)` hook of Generated/ChunkedReadStream; `Kind` enum parameterises both streams (one-byte chunks "1".."n").
-  `handOff(timeoutMsg, Runnable)` there runs a call on a second platform thread from inside a handler (detects handler-under-lock).
-  Window records "<name> returned" on the other thread in `events`: a whole-list assertion must include it.
+  `handOff(timeoutMsg, Runnable)` there runs a call on a second platform thread from inside a handler (detects handler-under-lock). Window records "<name> returned" on the other thread in `events`: a whole-list assertion must include it.
 - Wrapper sources in TieredBlobStore tests: tell the sink's resume from start()'s handover resume by the thread that called
   handler() (capture it there), never by wrapper state set in pause() — the sink can resume before pause() is entered (FIX-11).
 - Classpath for scratch checks: `mvn -o -q -pl flottila-runtime -am compile dependency:build-classpath -Dmdep.outputFile=target/x.txt
@@ -120,3 +117,4 @@
 - P2-08a: runtime test `store/IntakeContract` (World: intake/bodies/durable/recorded/queued), `store/BoundedBodies` (InMemoryBlobStore + durable bound), `PgIntakeIT.caseDatabase/pool/blobs` helpers.
   Pg witnesses that survive a rollback: a sequence bumped in a trigger (`is_called`); `txid_current()` logged by AFTER INSERT triggers; a trigger can kill its own
   backend (`pg_terminate_backend(pg_backend_pid())`: FATAL inside the statement, tx rolled back). Scratch mutant toggle: env `MUT_FILE` reaches the surefire/failsafe fork.
+- P2-08b: Testcontainers 2.0.5 PostgreSQLContainer's constructor sets command `postgres -c fsync=off` (`.withCommand("postgres","-c",...)` replaces it). pg_stat_wal.wal_sync counts only with fsync on and fdatasync/fsync method (0 under open_*). An ack run's DB-wide Δxact_commit ≈ 13/msg (worker, polls, recording beside): not an ingress count. bench test `BenchRunScriptTest` runs a copy of bench/run.sh with stubbed java/psql/mvn/git/python3 (java logs its args).

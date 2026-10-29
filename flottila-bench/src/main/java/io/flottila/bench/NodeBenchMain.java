@@ -72,7 +72,15 @@ import java.util.zip.ZipOutputStream;
  * {@code --concurrency} connections. Every record carries
  * {@code walBytesPerSecond} ({@code pg_current_wal_lsn} delta), {@code bodiesBytesPerSecond} ({@code pg_total_relation_size('bodies')}
  * delta) — both taken once what the window accepted landed (recorded, the work queue empty) and divided by the window's
- * {@code elapsedMs} — and {@code bodiesGrowthPerHour} (the latter × 3600).
+ * {@code elapsedMs} — and {@code bodiesGrowthPerHour} (the latter × 3600). Every record also carries the server's commit settings
+ * as a session of the run's database reads them from pg_settings ({@link #SETTINGS}, text values) and the node's Postgres pool
+ * ({@code poolSize}); an ack record adds {@code commitsPerMessage} (Δ pg_stat_database.xact_commit of the database — the
+ * ingress, the worker, the recording and every poll, read-only ones included — over the window's messages) and
+ * {@code walSyncsPerMessage} (Δ pg_stat_wal.wal_sync of the cluster, 0 under fsync off or an open_* wal_sync_method; the
+ * column exists up to Postgres 17). Both counters are read after {@link #STATS_FLUSH} without a request on each side of the
+ * window: a backend publishes its counts at most once a second while busy and 10 s after it went idle (Postgres 15+; a commit
+ * that touched no relation waits for the backend's next one that did), so a read at once would miss the window's last second
+ * and count the warm-up's.
  *
  * <p>Before the node starts the run migrates the database, sets {@code synchronous_commit = on} on it (ALTER DATABASE: the
  * node's sessions commit durably whatever the database's default, and a node refuses off, D-061), truncates every table but
@@ -108,6 +116,14 @@ public final class NodeBenchMain {
     static final int SYNC_PERMITS_PER_CLIENT = 64;
     /** How long a run waits for what a window accepted to land (recorded, the work queue empty) before it gives up. */
     static final Duration DRAIN = Duration.ofMinutes(10);
+    /** Postgres' idle stats flush (PGSTAT_IDLE_INTERVAL, 10 s) and a margin: after it every backend's counts are published. */
+    static final Duration STATS_FLUSH = Duration.ofSeconds(11);
+    /** The commit settings every record carries, as pg_settings names them; NodeBenchMain sets none but synchronous_commit. */
+    static final List<String> SETTINGS = List.of("synchronous_commit", "commit_delay", "commit_siblings", "wal_sync_method", "fsync",
+            "full_page_writes");
+    /** The database's commits and the cluster's WAL syncs, as published. */
+    static final String COUNTERS = "select (select xact_commit from pg_stat_database where datname = current_database()),"
+            + " (select wal_sync from pg_stat_wal)";
 
     static final String STYLESHEET = """
             <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="3.0">
@@ -265,7 +281,8 @@ public final class NodeBenchMain {
         Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort());
         SaxonXml xml = new SaxonXml();
         JsonObject measured;
-        Node node = Node.start(nodeConfig(o, data), vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(),
+        NodeConfig config = nodeConfig(o, data);
+        Node node = Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(),
                 xml.languages());
         try {
             int admin = node.adminPort();
@@ -285,7 +302,10 @@ public final class NodeBenchMain {
                 // observed on a session opened as the node's were, not the flag
                 .put("syncCommit", "on".equals(server.getString(0))).put("postgres", server.getString(1))
                 .put("schemaVersion", migrated.schemaVersion()).put("bodyBytes", body.length()).put("machine", BenchMain.machine())
-                .put("date", Instant.now().toString()).put("commit", o.commit());
+                .put("date", Instant.now().toString()).put("commit", o.commit()).put("poolSize", config.pg().poolSize());
+        for (Row r : pool.query("select name, setting from pg_settings where name in ('" + String.join("', '", SETTINGS) + "')").execute().await()) {
+            json.put(r.getString(0), r.getString(1));
+        }
         Files.createDirectories(o.out().toAbsolutePath().getParent());
         Files.writeString(o.out(), json.encodePrettily() + "\n");
         System.out.println(json.encodePrettily());
@@ -415,6 +435,9 @@ public final class NodeBenchMain {
     /** The database's counters at one instant. */
     record Snapshot(long walBytes, long bodiesBytes, long parked) {}
 
+    /** pg_stat_database.xact_commit of the run's database and pg_stat_wal.wal_sync at one instant. */
+    record Counters(long commits, long walSyncs) {}
+
     /** A status and a body. */
     record Answer(int status, Buffer body) {}
 
@@ -443,7 +466,11 @@ public final class NodeBenchMain {
                     JsonObject flow = window(recorded, admin);
                     yield flow.put("raw", raw).put("overheadP50Ms", flow.getDouble("p50Ms") - raw.getDouble("p50Ms"));
                 }
-                case ACK -> window(recorded, admin);
+                case ACK -> {
+                    Counters before = counters();
+                    JsonObject w = window(recorded, admin);
+                    yield w.mergeIn(perMessage(before, counters(), o.messages()));
+                }
                 case WORKER -> worker(recorded, admin);
             };
         }
@@ -496,6 +523,19 @@ public final class NodeBenchMain {
             double bodies = (after.bodiesBytes() - before.bodiesBytes()) / seconds;
             return new JsonObject().put("walBytesPerSecond", (after.walBytes() - before.walBytes()) / seconds).put("bodiesBytesPerSecond", bodies)
                     .put("bodiesGrowthPerHour", bodies * 3600);
+        }
+
+        /** The database's commits and the cluster's WAL syncs once every backend published its counts ({@link #STATS_FLUSH}). */
+        Counters counters() {
+            vertx.timer(STATS_FLUSH.toMillis()).await();
+            Row r = pool.query(COUNTERS).execute().await().iterator().next();
+            return new Counters(r.getLong(0), r.getLong(1));
+        }
+
+        /** What one of {@code messages} cost the database between two counter reads. */
+        static JsonObject perMessage(Counters before, Counters after, int messages) {
+            return new JsonObject().put("commitsPerMessage", (after.commits() - before.commits()) / (double) messages)
+                    .put("walSyncsPerMessage", (after.walSyncs() - before.walSyncs()) / (double) messages);
         }
 
         Snapshot snapshot() {

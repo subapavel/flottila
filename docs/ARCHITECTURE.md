@@ -36,6 +36,7 @@
 | 2026-10-28 | 3.4 | §11 flow tests: `flottila test` binds a mock per shipped scheme (no `mock://` endpoints, no `test` profile) and runs each case in-process on virtual time advanced only when the node looks quiet — a heuristic, since a monitor-blocked virtual thread is invisible to the scheduler MXBean (D-080, F-17, P2-03b1) | F-17 |
 | 2026-10-29 | 3.4 | §9 Security: `secret://` backed by environment variables until the wallet (P2-04, D-081) | — |
 | 2026-10-29 | 3.4 | §4 durable save and §8 monitoring: the at-least-once ingress body, record and work item commit in one Postgres transaction (P2-08a, D-082) | F-14 |
+| 2026-10-29 | 3.4 | §7 Sizing: durable ACK after the one-transaction save, 8.80 ms p99 at c=1 (FLOOR, not durable: 8.04 ms), the 5 ms target not met, the load regression until FIX-95 (P2-08b) | F-18 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -267,7 +268,7 @@ The consumer contract is `Function<Envelope, Future<Ack>>` (§4 finding), not a 
 
 **Persistence tables (Postgres)**: `messages(id, step, flow, headers, props, keys, body_ref, versions…)`, `payloads(hash PK, size, …)`, `message_keys(name, value, message_id, step)`, `work`, `dlq(… body_ref, no FK so a park never fails on ordering)`, `processed_ids`, `aggregates`, `routing_table`, `partner_directory`, `flows`, `wallet`, `audit`. Rule: bytes exist in the system once; everything else is a reference. Never a synchronous delete on the hot path; retention is a background job by partition.
 
-**Sizing**: one 8-core node is expected to carry tens of thousands of HTTP passthrough req/s, 5–20k msg/s with persistence, hundreds to low thousands/s with 100 KB XSLT. Targets to hold on native Linux: sync request/reply platform overhead < 2 ms p50 (met in the prototype), at-least-once durable ACK measured p99 8.8 ms at c=1 on a 4 vCPU cloud VM with default Postgres 16 (two commits in sequence; F-14) — < 5 ms p99 is the tuning target of Phase 2 (P2-08a/b: one commit, group commit, faster storage).
+**Sizing**: one 8-core node is expected to carry tens of thousands of HTTP passthrough req/s, 5–20k msg/s with persistence, hundreds to low thousands/s with 100 KB XSLT. Targets to hold on native Linux: sync request/reply platform overhead < 2 ms p50 (met in the prototype), at-least-once durable ACK measured p99 8.80 ms at c=1 on a 4 vCPU cloud VM with Postgres 16 after the one-transaction save (10.58 ms before it on the same VM; F-14, F-18); a not-durable FLOOR run with pg_wal on tmpfs gave 8.04 ms, so faster storage alone cannot reach < 5 ms p99 on that machine; under load the one-transaction save is slower than the two-commit one (c=64 median 733 vs 833 msg/s, −12 %; c=8 p99 41.38 vs 31.83 ms) until FIX-95.
 
 ## 8. Monitoring, tracing, alerting
 

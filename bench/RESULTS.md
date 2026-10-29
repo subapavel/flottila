@@ -1,4 +1,71 @@
-# Bench results — Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
+# Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
+
+## P2-08 — durable ACK, one transaction — cloud VM, 4 vCPU
+
+Date: 2026-10-29. Commits: before = e2c8c53 (parent of P2-08a, a git worktree) and after = 1d5d507 (P2-08a, the ingress
+body, ingress row and work item in one transaction, D-082), both with the P2-08b harness (`NodeBenchMain` compiled unchanged
+on e2c8c53: `git diff --stat e2c8c53 1d5d507 -- flottila-bench` is empty, target/P2-08b-cleanup.log). Machine: this VM: kernel 6.18.44-fc-v185, 4 × "Intel(R) Xeon(R)
+Processor @ 2.80GHz" (model hidden), MemTotal 16 477 352 kB, /dev/vda virtio-blk ext4 (discard, write_cache "write back"),
+/dev/shm tmpfs. The host's storage behind /dev/vda is invisible to the guest: neither the device, its cache policy nor what
+an fdatasync reaches on the host can be read from inside, so "durable" means what the guest's fdatasync returns. Java 25.0.5,
+native PostgreSQL 16.15 (Ubuntu), default configuration; every record reads from pg_settings `synchronous_commit` on
+(ALTER DATABASE by the bench), `commit_delay` 0 (214 in the commit_delay rows), `commit_siblings` 5, `wal_sync_method`
+fdatasync, `fsync` on, `full_page_writes` on; node Pg pool 16 (`poolSize`). The 5432 cluster's pg_wal is on /dev/vda ext4
+(`df -T`, target/P2-08b-cleanup.log). `pg_test_fsync -s 5`, one 8 kB write, rerun after the cells with the command lines and
+exit codes logged (target/P2-08b-fsync2.log): `-f /var/lib/postgresql/16/main/pg_wal/p208b_pg_test_fsync.tmp` fdatasync
+2628 ops/s (381 µs/op), open_datasync 3104 ops/s (322 µs/op); `-f /dev/shm/p208b_pg_test_fsync.tmp` (the FLOOR's pg_wal
+filesystem) fdatasync 963 458 ops/s, open_datasync 1 253 354 ops/s (1 µs/op). These differ from the first run before the
+cells (target/P2-08b-raw/pg_test_fsync-{vda,shm}.txt, `-f /var/lib/postgresql/16/pg_test_fsync.tmp` on the same /dev/vda
+ext4, outside pg_wal, and a file in the FLOOR's /dev/shm pg_wal dir; those command lines were not logged): fdatasync 2331
+ops/s (429 µs/op), open_datasync 2364 ops/s (423 µs/op); /dev/shm fdatasync 779 901, open_datasync 1 277 972 ops/s. The
+commit_delay below was chosen from the first run's 429 µs; the rerun's 381 µs would give 190 µs.
+
+Harness: `NodeBenchMain --scenario ack` (HTTP ingress → 202 after the durable save; the worker and the passthrough → echo
+partner run beside), 20 000 messages after 1 000 warm-up, c = 1, 8, 64; every cell is the median [min–max] of 3 runs, before
+and after alternating (round 1 and 3 before first, round 2 after first), all 35 runs back to back (load average 0.8–8.2 when a
+run started: the previous run's tail). The bench body is 132 B (passthrough invoice), far below the spool tier, so P2-08a's
+spool-tier body read inside the transaction is not exercised here. commits/msg = Δ pg_stat_database.xact_commit of the
+bench database over the window / 20 000 — every transaction: the ingress, the worker, the recording and every poll,
+read-only ones included; WAL syncs/msg = Δ pg_stat_wal.wal_sync of the cluster / 20 000 (backends, walwriter, checkpointer).
+Both counters are read 11 s after the last request on each side of the window (Postgres publishes a backend's counts at most
+once a second while busy and 10 s after it went idle), so the after-read also counts the polls of those 11 s (not separated
+out). commit_delay = ½ the first run's fdatasync latency = 214 µs, set with ALTER SYSTEM +
+pg_reload_conf() by the role `flottila` (granted for the run by the postgres superuser `GRANT ALTER SYSTEM ON PARAMETER
+commit_delay TO flottila` and `GRANT EXECUTE ON FUNCTION pg_reload_conf() TO flottila`), one pilot run per c (r0, not in the
+table), then 3 kept. The commit_delay cells ran through a direct invocation (psql as `flottila`, then the cell driver), not
+through `bench/run.sh` `BENCH_COMMIT_DELAY` and its EXIT trap. FLOOR: a second cluster on port 5440 (`initdb -X /dev/shm/…`,
+default configuration, `synchronous_commit` on, data directory on /dev/vda, pg_wal on tmpfs), the after commit. State after
+the runs, observed (target/P2-08b-cleanup.log): postgresql.auto.conf empty, commit_delay 0 (source default),
+pg_parameter_acl empty, `flottila` without execute on pg_reload_conf(), the FLOOR data directory and its /dev/shm WAL absent,
+one git worktree. Raw JSON: bench/out/p208b-*.json, copied with a manifest (cell, run, tree, load) to the session's
+target/P2-08b-raw/.
+
+| config | c | p50 ms | p99 ms | max ms | msg/s | commits/msg | WAL syncs/msg |
+|---|---|---|---|---|---|---|---|
+| before (e2c8c53) | 1 | 4.84 [4.74–4.88] | 10.58 [10.13–10.85] | 67.6 [61.3–85.2] | 195 [195–198] | 16.32 [16.30–16.32] | 6.99 [6.99–6.99] |
+| after (1d5d507) | 1 | 4.06 [3.82–4.28] | 8.80 [8.13–9.25] | 61.2 [59.0–139.1] | 232 [222–248] | 12.33 [12.32–12.35] | 5.00 [5.00–5.00] |
+| FLOOR — not durable | 1 | 3.48 [3.46–3.80] | 8.04 [7.71–8.70] | 38.0 [31.9–51.4] | 269 [247–272] | 12.23 [12.22–12.23] | 5.00 [5.00–5.00] |
+| before (e2c8c53) | 8 | 14.35 [14.15–14.84] | 31.83 [31.68–33.07] | 63.1 [48.8–447.6] | 519 [507–526] | 13.84 [13.84–13.88] | 3.37 [3.34–3.37] |
+| after (1d5d507) | 8 | 14.52 [14.13–14.86] | 41.38 [38.79–41.73] | 95.1 [86.7–395.5] | 505 [490–507] | 10.87 [10.86–10.87] | 3.10 [3.09–3.12] |
+| after, commit_delay 214 µs | 8 | 13.32 [12.43–13.76] | 38.59 [34.70–40.29] | 71.4 [70.3–107.0] | 541 [521–586] | 10.82 [10.82–10.85] | 2.82 [2.82–2.83] |
+| FLOOR — not durable | 8 | 13.92 [13.81–14.46] | 42.03 [40.75–42.48] | 87.4 [84.6–105.9] | 517 [496–517] | 10.87 [10.86–10.89] | 4.16 [4.15–4.17] |
+| before (e2c8c53) | 64 | 69.52 [67.31–70.96] | 146.00 [143.69–164.26] | 237.4 [236.7–255.1] | 833 [810–896] | 12.39 [12.39–12.39] | 2.08 [2.08–2.10] |
+| after (1d5d507) | 64 | 82.04 [81.58–87.96] | 163.29 [157.38–166.39] | 252.4 [229.1–282.2] | 733 [687–736] | 9.39 [9.37–9.39] | 1.89 [1.88–1.90] |
+| after, commit_delay 214 µs | 64 | 80.46 [74.76–81.88] | 168.09 [156.97–171.62] | 267.9 [255.5–294.7] | 732 [728–789] | 9.39 [9.38–9.40] | 1.58 [1.57–1.58] |
+| FLOOR — not durable | 64 | 86.43 [80.98–87.39] | 170.19 [165.22–178.71] | 299.3 [277.1–314.5] | 695 [694–741] | 9.40 [9.40–9.40] | 3.22 [3.20–3.23] |
+
+**Verdict, c=1 against p99 < 5 ms: missed** — after 8.80 ms [8.13–9.25] durable (before 10.58 ms, −17 %); the FLOOR, with
+the WAL on tmpfs, is 8.04 ms [7.71–8.70], also above 5 ms.
+
+Reading: one transaction took 4.0 commits and 2.0 WAL syncs a message off the database at c=1 (16.32 → 12.33, 6.99 → 5.00),
+3.0 / 0.27 at c=8 and 3.0 / 0.19 at c=64. At c=1 the WAL on tmpfs takes only 0.8 ms more off p99: the remaining 8 ms are
+not the guest's fdatasync. Under load after is worse than before on every run at c=8 p99 (38.79–41.73 against 31.68–33.07)
+and at c=64 p50 (81.58–87.96 against 67.31–70.96) and msg/s (687–736 against 810–896); the c=64 p99 median is 163.29 against
+146.00 with overlapping ranges. The FLOOR is no better than after at c=8 and c=64 (p99 42.03, 170.19): there the WAL flush
+does not set the tail either. That the tail is CPU-bound on 4 vCPU rests on the Phase 0 reading below only (c=64 p99 with
+synchronous_commit off); this run did not measure CPU. commit_delay 214 µs, per kept run against the after median: c=8 p99
+−2.6 %, −6.7 %, −16.1 %; c=64 +5.1 %, +2.9 %, −3.9 % — not ≥ 10 % on all 3 runs at either c, so it is recorded here only and
+not put into deploy/compose.
 
 ## Phase 1 gate (P1-10) — cloud VM, 4 vCPU
 
