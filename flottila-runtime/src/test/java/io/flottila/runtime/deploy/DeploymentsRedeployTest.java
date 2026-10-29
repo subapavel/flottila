@@ -670,10 +670,15 @@ class DeploymentsRedeployTest {
         assertNothingClosedTwice();
 
         for (int tick = 1; tick <= 3; tick++) {
+            // settled before and after the tick (CountingQueue.claimsSettled): a claim in flight on an item's thread lands late
+            until(queue::claimsSettled, "no claim in flight on another thread: " + queue.claims());
             long polls = queue.claims().stream().filter((NODE + " shop/audit")::equals).count();
             rt.clock().advance(TICK);
-            assertEquals(polls + 1, queue.claims().stream().filter((NODE + " shop/audit")::equals).count(),
-                    "one worker polls audit per tick: v1's; v2's build of it was never started: " + queue.claims());
+            until(() -> queue.claims().stream().filter((NODE + " shop/audit")::equals).count() >= polls + 1 && queue.claimsSettled(),
+                    "the tick's claim and nothing in flight: " + queue.claims());
+            List<String> claims = queue.claims();
+            assertEquals(polls + 1, claims.stream().filter((NODE + " shop/audit")::equals).count(),
+                    "one worker polls audit per tick: v1's; v2's build of it was never started: " + claims);
         }
     }
 

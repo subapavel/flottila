@@ -911,3 +911,12 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/P2-03b2-fi
 Review: FAIL r1 (schema `not` unpinned; root-glob clause unpinned; D-080 stale), PASS r2. D-080 amended. Raised FIX-91.
 D-054 data: class B (test-author ×1 + 4 fix packets, implementer ×1 + 1 fix, verifier ×4, reviewer ×2); review rounds 2.
 Next: P2-04.
+
+## 2026-10-29 — P2-04 `secret://` resolver backed by environment variables (D-081) — done, review PASS
+Test first: runtime SecretsTest, DeploymentsSecretsTest (+ rollback rebuild case), cli SecretReferencesTest (red: target/P2-04-red.log, -red-deployments, -red-cli, -red2); after the fact (implementer): SecretsEqualityTest, DeploymentsSecretsListenerTest. [A]: placeholder `https://secret.invalid/`, empty variable = not set.
+Change: runtime Secrets (fromEnv/placeholder/resolve, FLOTTILA_SECRET_<NAME>); NodeConfig.secrets + withSecrets; Deployments resolves endpoint options after overlay + schema check into the config handed to consumer/producers/listensOn and the rollback rebuild, FlowHash over the reference; cli Validate/FlowTests use the placeholder. Docs: D-081, §9 sentence + changelog.
+Test race fixed (test-author): CountingQueue.claimsSettled; DeploymentsRollbackTest :445/:500/:651 and DeploymentsRedeployTest:672 wait before/after the tick (tree 1/40 → 40/40; HEAD 40/40).
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS surefire 2046 + failsafe 229 (target/P2-04-final-verify.log); coverage no decrease; demo validate + test exit 0; hand mutants 23 + M17 + race mutant killed.
+Review: FAIL r1 (docs claimed no value in problems: overlap line, exception text, parked failure; FIX-92 row incomplete; rollback rebuild unpinned; rollback test failure undecided), PASS r2. Raised FIX-92.
+D-054 data: class B (scout ×2, test-author ×1 + 3 fix packets, implementer ×1, verifier ×4, reviewer ×2); review rounds 2.
+Next: P2-08 [C].

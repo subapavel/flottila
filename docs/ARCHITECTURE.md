@@ -34,6 +34,7 @@
 | 2026-10-28 | 3.4 | §9 Flow configuration: artifacts found by `kind` in any folder (≤ 4 deep, slug names), file references are paths from the package root and stay inside it, a flow's hash no longer includes its file path (D-078, P2-02a) | — |
 | 2026-10-28 | 3.4 | §11 capture is the mocks' always-on record, no behaviour key; §12 `flottila-cli` depends on every module and nothing depends on it (ArchUnit NOTHING_DEPENDS_ON_CLI), the flow-test runner lives there; §8 the Component SPI socket rule binds the node, not the CLI's admin client; §13 `validate`, `test`, `deploy` move to Phase 2, `package`/`migrate` stay in Phase 4 (D-079, F-16, P2-03a) | F-16 |
 | 2026-10-28 | 3.4 | §11 flow tests: `flottila test` binds a mock per shipped scheme (no `mock://` endpoints, no `test` profile) and runs each case in-process on virtual time advanced only when the node looks quiet — a heuristic, since a monitor-blocked virtual thread is invisible to the scheduler MXBean (D-080, F-17, P2-03b1) | F-17 |
+| 2026-10-29 | 3.4 | §9 Security: `secret://` backed by environment variables until the wallet (P2-04, D-081) | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -309,6 +310,7 @@ Never cached: idempotent ids, aggregator state, ordered-queue state, DLQ.
 **Security**
 
 - Wallet: secrets, keys and certificates encrypted in Postgres (AES-GCM; master key from env, file or KMS, never in the DB), pluggable backends (Vault, Kubernetes Secrets, cloud vaults), `secret://` references only in flow config, audit log per read, certificate rotation via `updateSSLOptions` without restart.
+- Until the wallet exists, `secret://<name>` resolves from the node's environment (`FLOTTILA_SECRET_<NAME>`); runtime resolves endpoint options before a component sees them, and listings, records, the flow hash and unpacked files carry only the reference (D-081); until FIX-92, text a component or transport builds from a resolved value (an overlap problem's address, a build/start exception, a parked send failure) may show it.
 - Identity: OIDC relying party, local users fallback (argon2 + TOTP), API keys and mTLS for machines, client-credentials for service accounts; ZITADEL optional.
 - Three authorization planes: control-plane roles scoped tenant → package → flow with a separate view-payloads permission; runtime consumer entitlements; data-level payload visibility and masking. `vertx-auth-abac` remains a candidate, not a commitment.
 - TLS with hostname verification everywhere; payloads encrypted per tenant at rest; per-flow PII masking policy applied before any payload reaches an AI tool or an unprivileged viewer.

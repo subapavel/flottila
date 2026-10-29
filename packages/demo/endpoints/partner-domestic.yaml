@@ -9,4 +9,4 @@ config:
 environments:
   prod:
     config:
-      url: https://partner.example/invoices   # secrets stay out: ${secret://partner-token} would be a reference
+      url: https://partner.example/invoices   # secrets stay out: an option whose whole value is secret://partner-token is a reference

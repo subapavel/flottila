@@ -272,6 +272,23 @@ class DeploymentsRollbackTest {
         return queue.claims().stream().filter((NODE + " " + flow)::equals).count();
     }
 
+    /** The claims of {@code flow} once no other thread can still claim ({@link CountingQueue#claimsSettled}): a count no late claim changes. */
+    long settledClaimsOf(String flow) {
+        until(queue::claimsSettled, "no claim in flight on another thread: " + queue.claims());
+        return claimsOf(flow);
+    }
+
+    /**
+     * Advances the clock one tick from settled claims and asserts {@code flow}'s worker claimed exactly once on it: waits for that
+     * claim and for no other thread to be able to claim, then counts one snapshot. Two claims per tick fail it.
+     */
+    void assertOneClaimPerTick(String flow, long polls, String what) {
+        rt.clock().advance(TICK);
+        until(() -> claimsOf(flow) >= polls + 1 && queue.claimsSettled(), "the tick's claim of " + flow + " and nothing in flight: " + queue.claims());
+        List<String> claims = queue.claims();
+        assertEquals(polls + 1, claims.stream().filter((NODE + " " + flow)::equals).count(), what + ": " + claims);
+    }
+
     /**
      * Waits until the one message sent since {@code before} (the flow's claims then) completed and the worker polled once after
      * it finished — a worker polls once after an accepted message and once after each finished item (FlowWorker), so that is
@@ -440,9 +457,8 @@ class DeploymentsRollbackTest {
         Doors.Out auditOut = producerOf(alo);
         assertTrue(auditOut.ordinal() > producersBefore + v3Producers.size(), "audit's rebuilt worker sends it: " + auditOut);
         assertEquals(Map.of("flow", "shop/audit@1.0.3", "package", "shop@1.0.0", "revision", "r1"), versions(alo.id()), "audit runs with v1's stamps");
-        long polls = completedAndPolledAfter("shop/audit", claimsBefore);
-        rt.clock().advance(TICK);
-        assertEquals(polls + 1, claimsOf("shop/audit"), "one worker polls audit per tick, the rebuilt one: " + queue.claims());
+        completedAndPolledAfter("shop/audit", claimsBefore);
+        assertOneClaimPerTick("shop/audit", settledClaimsOf("shop/audit"), "one worker polls audit per tick, the rebuilt one");
         assertRefusesRetryable(extraV3, within(extraV3.deliver(envelope("shop/extra")), "a message on v3's extra"));
         for (Doors.Out o : running) assertEquals(1, o.closes(), "the producers running before v3 are closed once: " + o);
         assertEquals(6, doors.openProducers().size(), "open: one producer per rebuilt flow and one per its replay (D-067): " + doors.producers());
@@ -495,9 +511,7 @@ class DeploymentsRollbackTest {
     @Test
     void aFailedRollbackListsFailedAnd500sNamingIt() throws Exception {
         String sha1 = deploy(shop(), "r1").pkg().archiveSha256();
-        long v1Polls = claimsOf("shop/audit");
-        rt.clock().advance(TICK);
-        assertEquals(v1Polls + 1, claimsOf("shop/audit"), "fixture: a running audit worker shows as one claim per tick");
+        assertOneClaimPerTick("shop/audit", settledClaimsOf("shop/audit"), "fixture: a running audit worker shows as one claim per tick");
         Map<String, DeployedFlow> before = byId(deployments.flows());
         List<DeployedPackage> packagesBefore = deployments.packages();
         PackageDraft v2 = changed(changed(removed(shop(), "ping"), "orders", "v2"), "audit", "v2");
@@ -646,9 +660,8 @@ class DeploymentsRollbackTest {
         Sent alo = send(live("shop/audit").get(0));
         assertEquals(new Ack.Accepted(alo.id()), within(alo.answer(), "audit's answer"), "audit serves");
         assertEquals(0, producerOf(alo).closes(), "and a running worker sends it on");
-        long polls = completedAndPolledAfter("shop/audit", claimsBefore);
-        rt.clock().advance(TICK);
-        assertEquals(polls + 1, claimsOf("shop/audit"), "one worker polls audit per tick: " + queue.claims());
+        completedAndPolledAfter("shop/audit", claimsBefore);
+        assertOneClaimPerTick("shop/audit", settledClaimsOf("shop/audit"), "one worker polls audit per tick");
     }
 
     /**

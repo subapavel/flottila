@@ -268,11 +268,13 @@ public final class Deployments {
     }
 
     /**
-     * What a flow's build took besides the builder's stamps: its definition, its yaml, the package's endpoints as built, and where
-     * its consumer listens as its check asked the component ({@link #listeners}; empty when it accepts no connections): the
-     * address it holds against another package's deploy while it runs (D-072).
+     * What a flow's build took besides the builder's stamps: its definition, its yaml, the package's endpoints as built — their
+     * {@code secret://} references resolved (D-081) — and as {@code written}, references kept (what its effective hash covers),
+     * and where its consumer listens as its check asked the component ({@link #listeners}; empty when it accepts no connections):
+     * the address it holds against another package's deploy while it runs (D-072).
      */
-    private record Recipe(FlowDefinition def, Path flowFile, Map<String, EndpointConfig> endpoints, Optional<InetSocketAddress> listensOn) {}
+    private record Recipe(FlowDefinition def, Path flowFile, Map<String, EndpointConfig> endpoints, Map<String, EndpointConfig> written,
+                          Optional<InetSocketAddress> listensOn) {}
 
     /**
      * A package deployed: its record, its flows, the directories this node keeps for it (D-063) — current, previous and in use —
@@ -285,12 +287,13 @@ public final class Deployments {
     private record Start(Flow flow, Throwable failure) {}
 
     /**
-     * What the checks hand the build: each valid endpoint's scheme and config (environment laid over), each valid flow's
-     * definition, the qualified ids of the at-least-once flows running that the new version does not run at-least-once, and
-     * where each flow's consumer listens, by the flow's local id (a flow whose consumer accepts no connections is not in it).
+     * What the checks hand the build: each valid endpoint's scheme and config (environment laid over) as written and with its
+     * {@code secret://} references resolved ({@code resolved}, D-081), each valid flow's definition, the qualified ids of the
+     * at-least-once flows running that the new version does not run at-least-once, and where each flow's consumer listens, by
+     * the flow's local id (a flow whose consumer accepts no connections is not in it).
      */
-    private record Checked(Map<String, String> schemes, Map<String, JsonObject> configs, Map<String, FlowDefinition> flows, Set<String> leaving,
-                           Map<String, InetSocketAddress> listening) {}
+    private record Checked(Map<String, String> schemes, Map<String, JsonObject> configs, Map<String, JsonObject> resolved,
+                           Map<String, FlowDefinition> flows, Set<String> leaving, Map<String, InetSocketAddress> listening) {}
 
     /** Where {@code holder} — a flow and its in endpoint, or the node's admin API — listens (D-072). */
     private record Listener(String holder, InetSocketAddress at) {}
@@ -778,7 +781,8 @@ public final class Deployments {
     }
 
     /**
-     * Every check that needs no component built; all problems at once, as one {@link Kind#INVALID}. Of the flows {@code running}
+     * Every check that needs no component built; all problems at once, as one {@link Kind#INVALID}. Each endpoint's
+     * {@code secret://} references are resolved after its schema check, which sees them as written ({@link #resolved}). Of the flows {@code running}
      * (the package's, empty on a first deploy), every at-least-once one the new version does not run at-least-once — removed, or
      * another delivery mode — is asked whether the work queue holds items of it (blocking): if so, those items would never run.
      * One the new version names with a yaml that does not read is not asked: its problems are listed already. A question the queue
@@ -794,6 +798,7 @@ public final class Deployments {
         }
         Map<String, String> schemes = new LinkedHashMap<>();
         Map<String, JsonObject> configs = new LinkedHashMap<>();
+        Map<String, JsonObject> resolved = new LinkedHashMap<>();   // as the components get them: every secret:// reference resolved (D-081)
         Set<String> outs = new HashSet<>();
         Set<String> ins = new HashSet<>();   // the in endpoints whose component takes their config: the ones asked where they listen (D-072)
         pkg.endpoints().forEach((id, endpoint) -> {
@@ -813,11 +818,13 @@ public final class Deployments {
                 }
                 valid = refused.isEmpty();
             }
+            JsonObject values = resolved(id, cfg, problems);   // null: a reference did not resolve, its problem is listed
+            if (values != null) resolved.put(id, values);
             if ("in".equals(endpoint.getString("direction"))) {
                 for (String key : RESERVED) {
                     if (cfg.containsKey(key)) problems.add("endpoint '" + id + "' sets '" + key + "': the deploy sets it on every in endpoint (the flow's qualified id, its maxBodyBytes)");
                 }
-                if (valid) ins.add(id);
+                if (valid && values != null) ins.add(id);
             } else {
                 outs.add(id);   // the schema allows in and out only
             }
@@ -853,7 +860,7 @@ public final class Deployments {
         Map<String, EndpointConfig> asked = new TreeMap<>();   // by the local id of the flow each feeds: a pair's line goes on the later one
         feeds.forEach((endpoint, fed) -> {
             if (fed.size() > 1) problems.add("endpoint '" + endpoint + "' is the from endpoint of the flows " + fed + ": an in endpoint feeds one flow");
-            if (ins.contains(endpoint)) asked.put(fed.getFirst(), endpoint(endpoint, schemes.get(endpoint), configs.get(endpoint)));
+            if (ins.contains(endpoint)) asked.put(fed.getFirst(), endpoint(endpoint, schemes.get(endpoint), resolved.get(endpoint)));
         });
         Map<String, InetSocketAddress> listening = listeners(name, asked, problems);
         Set<String> stayQueued = new HashSet<>();   // the qualified ids the new version runs at-least-once
@@ -877,12 +884,13 @@ public final class Deployments {
         }
         if (!problems.isEmpty()) throw invalid(name, problems);
         if (unanswered != null) throw unanswered;
-        return new Checked(schemes, configs, flows, Set.copyOf(leaving), Map.copyOf(listening));
+        return new Checked(schemes, configs, resolved, flows, Set.copyOf(leaving), Map.copyOf(listening));
     }
 
     /**
      * One listener per host:port on a node (D-072). Asks the component of each of {@code asked} — an in endpoint whose config its
-     * schema takes, this node's environment laid over it, by the local id of the flow it feeds — where its consumer would listen,
+     * schema takes, this node's environment laid over it and every {@code secret://} reference resolved (D-081; one that does
+     * not resolve is not asked), by the local id of the flow it feeds — where its consumer would listen,
      * and adds a line to {@code problems} for every address that overlaps ({@link Listeners#overlap}) the address of a flow before
      * it in id order (once per pair, on the later flow), the node's admin API ({@code FLOTTILA_ADMIN_HOST/PORT}), or a running
      * flow of another package, as that flow's check answered it. A FAILED flow holds no port, nor does a FAILED package (it
@@ -966,21 +974,61 @@ public final class Deployments {
     }
 
     /**
+     * A copy of the endpoint config {@code cfg} with every string value that starts with {@code secret://}, at any depth of its
+     * objects and arrays, replaced by the node's value of that reference ({@link NodeConfig#secrets()}, D-081); a string that
+     * merely contains one is kept as written. Null, with a line added to {@code problems} per reference, when one is malformed
+     * ({@code endpoint '<id>': } and the refusal naming it) or not set ({@code endpoint '<id>': secret '<reference>' is not set
+     * (<variable>)}): no line carries a value.
+     */
+    private JsonObject resolved(String id, JsonObject cfg, List<String> problems) {
+        int before = problems.size();
+        JsonObject values = (JsonObject) resolved(id, (Object) cfg, problems);
+        return problems.size() == before ? values : null;
+    }
+
+    private Object resolved(String id, Object value, List<String> problems) {
+        if (value instanceof JsonObject object) {
+            JsonObject copy = new JsonObject();
+            object.forEach(e -> copy.put(e.getKey(), resolved(id, e.getValue(), problems)));
+            return copy;
+        }
+        if (value instanceof JsonArray array) {
+            JsonArray copy = new JsonArray();
+            array.forEach(item -> copy.add(resolved(id, item, problems)));
+            return copy;
+        }
+        if (!(value instanceof String reference) || !reference.startsWith(Secrets.SCHEME)) return value;
+        try {
+            Optional<String> secret = config.secrets().resolve(reference);
+            if (secret.isEmpty()) problems.add("endpoint '" + id + "': secret '" + reference + "' is not set (" + Secrets.variable(reference) + ")");
+            return secret.orElse(null);
+        } catch (IllegalArgumentException malformed) {
+            problems.add("endpoint '" + id + "': " + malformed.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Every flow built — delivery, worker, effective hash; no consumer yet — over one builder that carries the package's versions,
      * each added to {@code flows} as soon as it is built; returns every failure as one problem line, the flows that built in
      * {@code flows} all the same.
      */
     private List<String> build(String name, Optional<String> revision, String version, String archive, Package pkg, Path dir, Checked checked,
                                List<Flow> flows) throws IOException {
-        Map<String, EndpointConfig> endpoints = new LinkedHashMap<>();
-        checked.configs().forEach((id, cfg) -> endpoints.put(id, endpoint(id, checked.schemes().get(id), cfg)));
+        Map<String, EndpointConfig> endpoints = new LinkedHashMap<>();   // as the components get them, references resolved
+        Map<String, EndpointConfig> written = new LinkedHashMap<>();     // as the package writes them: what the hash covers (D-081)
+        checked.configs().forEach((id, cfg) -> {
+            endpoints.put(id, endpoint(id, checked.schemes().get(id), checked.resolved().get(id)));
+            written.put(id, endpoint(id, checked.schemes().get(id), cfg));
+        });
         FlowBuilder builder = builder(name, version, revision, endpoints);
         List<String> problems = new ArrayList<>();
         for (Map.Entry<String, FlowDefinition> each : checked.flows().entrySet()) {
             String id = each.getKey();
             try {
                 flows.add(flow(builder, name, version, revision, archive,
-                        new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints), Optional.ofNullable(checked.listening().get(id))), dir));
+                        new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints), Map.copyOf(written),
+                                Optional.ofNullable(checked.listening().get(id))), dir));
             } catch (RuntimeException refused) {
                 problems.add("flow '" + id + "' does not build: " + fromRoot(reason(refused), dir));
             }
@@ -1019,12 +1067,10 @@ public final class Deployments {
         try {
             worker = AT_LEAST_ONCE.equals(def.deliveryMode()) ? builder.worker(def, baseDir, config.nodeId()) : null;
             replay = builder.replay(def, baseDir, delivery);
-            EndpointConfig from = endpoints.get(def.fromEndpoint());
-            Map<String, Object> options = new HashMap<>(from.options());
-            options.put("flow", def.id());
-            options.put("maxBodyBytes", def.maxBodyBytes());
-            EndpointConfig consumed = new EndpointConfig(from.name(), from.uri(), options);
-            String hash = FlowHash.of(dir, recipe.flowFile(), reads, consumed, def.referencedEndpoints().stream().map(endpoints::get).toList());
+            EndpointConfig consumed = consumed(endpoints.get(def.fromEndpoint()), def);
+            Map<String, EndpointConfig> written = recipe.written();   // the hash covers the references, never a value (D-081)
+            String hash = FlowHash.of(dir, recipe.flowFile(), reads, consumed(written.get(def.fromEndpoint()), def),
+                    def.referencedEndpoints().stream().map(written::get).toList());
             built = true;
             return new Flow(new DeployedFlow(def.id(), name, version, revision, def.version(), def.deliveryMode(), hash, DeployedFlow.State.RUNNING),
                     archive, recipe, delivery, worker, replay, consumed, null);
@@ -1039,6 +1085,14 @@ public final class Deployments {
                 if (replay != null) replay.close();   // nothing ran on it yet: its producers close at once
             }
         }
+    }
+
+    /** The in endpoint {@code from} as the consumer of {@code def} gets it: with the flow's qualified id and its maxBodyBytes (D-059). */
+    private static EndpointConfig consumed(EndpointConfig from, FlowDefinition def) {
+        Map<String, Object> options = new HashMap<>(from.options());
+        options.put("flow", def.id());
+        options.put("maxBodyBytes", def.maxBodyBytes());
+        return new EndpointConfig(from.name(), from.uri(), options);
     }
 
     /**

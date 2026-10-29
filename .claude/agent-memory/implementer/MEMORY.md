@@ -65,7 +65,6 @@
 - JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
   `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
   FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
-- FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled (FlowWorkerLifecycleTest.ManualTimer).
 - Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (observed, P1-08c): stops accepting, keeps an HTTP/1.1 connection until its
   in-flight response ends, force-closes at the timeout; `close()` drops in-flight requests ("Connection was closed").
 - Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
@@ -117,4 +116,5 @@
   `rt.timer().pending()`. FlowWorker polls once more after each item finishes: read claim counts only after that claim (P1-09d2c).
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
+- NodeConfig carries `Secrets` (P2-04): NodeConfigArchivesTest asserts `from(env).equals(<10-arg ctor>)`: a new component needs value equality.
 - A `throw sneaky(cause)` catch line is always JaCoCo-missed (P1-10c). Hand mutants: python runner + cp/touch/cmp, ~8 s schemas, ~22 s runtime (P2-02a).

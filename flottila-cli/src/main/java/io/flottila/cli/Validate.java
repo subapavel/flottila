@@ -8,6 +8,7 @@ import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.runtime.Main;
 import io.flottila.runtime.deploy.Deployments;
+import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.node.ComponentContext;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.schemas.Package;
@@ -113,7 +114,8 @@ final class Validate {
      */
     private static DryBuild dryBuild(String name, Path dir, String env) throws IOException {
         NodeConfig config = NodeConfig.from(Map.of("FLOTTILA_ENV", env, "FLOTTILA_NODE_ID", NODE_ID,
-                "FLOTTILA_DATA_DIR", Path.of(System.getProperty("java.io.tmpdir"), NODE_ID).toString()));
+                "FLOTTILA_DATA_DIR", Path.of(System.getProperty("java.io.tmpdir"), NODE_ID).toString()))
+                .withSecrets(Secrets.placeholder());   // no secret off the node: references are syntax-checked, resolved to the placeholder (D-081)
         FakeRuntime rt = FakeRuntime.create();
         Main.Shipped shipped = Main.shipped();
         Vertx vertx = Vertx.vertx();

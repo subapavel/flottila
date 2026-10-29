@@ -1,6 +1,7 @@
 package io.flottila.runtime.node;
 
 import io.flottila.runtime.admin.AdminServer;
+import io.flottila.runtime.deploy.Secrets;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -16,8 +17,8 @@ import java.util.regex.Pattern;
 /**
  * A node's whole configuration, read from its environment (D-057 b). Every key has a default except {@code FLOTTILA_ENV};
  * every refusal is an {@link IllegalArgumentException} whose message names the key. No {@code toString} here carries a secret:
- * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, and this record's
- * prints theirs.
+ * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, {@link Secrets} names
+ * its variables only, and this record's prints theirs.
  *
  * @param nodeId {@code FLOTTILA_NODE_ID}, else {@code $HOSTNAME}: a DNS label (lower-case letters, digits and inner dashes, at most 63)
  * @param env {@code FLOTTILA_ENV}, required
@@ -29,26 +30,39 @@ import java.util.regex.Pattern;
  * @param blobs the {@code FLOTTILA_BLOB_*} keys
  * @param archives {@code FLOTTILA_ARCHIVE_STORE} and {@code FLOTTILA_ARCHIVE_DIR}: where package archives are stored (D-070)
  * @param s3 the {@code FLOTTILA_S3_*} keys: present exactly when the archive store is {@link Archives.Store#S3}
+ * @param secrets what the endpoints' {@code secret://} references resolve to (D-081): the {@code FLOTTILA_SECRET_*} variables
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
-                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3) {
+                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets) {
 
     /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
         Objects.requireNonNull(s3, "s3");
+        Objects.requireNonNull(secrets, "secrets");
         if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
     }
 
-    /** A node whose archives are stored in {@code <dataDir>/archives} (the dir store), as {@link #from} reads it by default. */
+    /** A node without secrets: every {@code secret://} reference of an endpoint is not set (D-081). */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, Secrets.fromEnv(Map.of()));
+    }
+
+    /** A node whose archives are stored in {@code <dataDir>/archives} (the dir store), as {@link #from} reads it by default; no secrets. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
                       Blobs blobs) {
         this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, new Archives(Archives.Store.DIR, dataDir.resolve("archives")),
                 Optional.empty());
+    }
+
+    /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
+    public NodeConfig withSecrets(Secrets secrets) {
+        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -135,7 +149,10 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
     private static final Set<String> HTTP = Set.of("http", "https");
 
-    /** Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key. */
+    /**
+     * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
+     * {@code FLOTTILA_SECRET_*} variables are the node's secrets ({@link Secrets#fromEnv}).
+     */
     public static NodeConfig from(Map<String, String> env) {
         String name = env.get("FLOTTILA_ENV");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("FLOTTILA_ENV must name the environment (dev, ci, test, prod, ...)");
@@ -160,7 +177,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
-                archives, s3);
+                archives, s3, Secrets.fromEnv(env));
     }
 
     private static Archives.Store archiveStore(Map<String, String> env) {

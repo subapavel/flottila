@@ -17,6 +17,7 @@ import io.flottila.core.record.Meter;
 import io.flottila.runtime.Main;
 import io.flottila.runtime.deploy.DeployRefusedException;
 import io.flottila.runtime.deploy.Deployments;
+import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.schemas.Documents;
 import io.flottila.schemas.Package;
@@ -247,7 +248,8 @@ final class FlowTests {
         Map<String, Component> components = new LinkedHashMap<>(mocks);
         Path data = Files.createTempDirectory("flottila-test-");
         try {
-            NodeConfig config = NodeConfig.from(Map.of("FLOTTILA_ENV", ENV, "FLOTTILA_NODE_ID", NODE_ID, "FLOTTILA_DATA_DIR", data.toString()));
+            NodeConfig config = NodeConfig.from(Map.of("FLOTTILA_ENV", ENV, "FLOTTILA_NODE_ID", NODE_ID, "FLOTTILA_DATA_DIR", data.toString()))
+                    .withSecrets(Secrets.placeholder());   // no secret off the node: every reference resolves to the placeholder (D-081)
             Deployments node = new Deployments(config, new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), components), components,
                     rt.clock(), timer, shipped.steps(), shipped.languages(), messages, dlq, queue, Meter.system());
             try {

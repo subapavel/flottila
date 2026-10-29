@@ -23,6 +23,8 @@ public final class CountingQueue implements WorkQueue {
 
     private final InMemoryWorkQueue inner;
     private final List<String> claims = new CopyOnWriteArrayList<>();
+    /** The thread of every claim, in order: a worker's follow-up claim runs on the thread of the claim it follows (in-memory: inline). */
+    private final List<Thread> claimers = new CopyOnWriteArrayList<>();
     private final List<String> enqueued = new CopyOnWriteArrayList<>();
     private final List<String> claimed = new CopyOnWriteArrayList<>();
     private final List<String> hasItemsCalls = new CopyOnWriteArrayList<>();
@@ -36,6 +38,16 @@ public final class CountingQueue implements WorkQueue {
 
     /** Every claim so far, as {@code "<workerId> <flow>"}. */
     public List<String> claims() { return List.copyOf(claims); }
+
+    /**
+     * Whether no claim can still land from another thread: every thread but the caller's that claimed has ended. A worker's poll
+     * after an item (FlowWorker: at the end of the item's virtual thread) and the follow-up it may have asked for run on that thread,
+     * so once it ended every claim it makes is counted; a tick's poll runs on the thread advancing the clock.
+     */
+    public boolean claimsSettled() {
+        Thread self = Thread.currentThread();
+        return claimers.stream().allMatch(t -> t == self || !t.isAlive());
+    }
 
     /** The items queued and not completed (FIX-30: an item completed by its own success leaves none). */
     public int size() { return inner.size(); }
@@ -66,6 +78,7 @@ public final class CountingQueue implements WorkQueue {
 
     @Override
     public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {
+        claimers.add(Thread.currentThread());
         claims.add(workerId + " " + flow);
         Future<List<Item>> items = inner.claim(workerId, flow, max, lease);
         items.onSuccess(taken -> taken.forEach(i -> claimed.add(i.messageId())));   // in-memory: already complete, runs here

@@ -34,7 +34,8 @@ import java.util.stream.Stream;
  *       listed collection), {@code absent <path>} for anything else (a probe of a file that does not exist);</li>
  *   <li>{@code endpoint <id> <scheme> <options as JSON, keys sorted at every level>}: first the {@code from} endpoint as its
  *       consumer gets it ({@code flow} and {@code maxBodyBytes} included), then every endpoint the flow sends to, by id — each
- *       with this environment's overlay laid over its config.</li>
+ *       with this environment's overlay laid over its config, each {@code secret://} reference as written, never its value
+ *       (D-081).</li>
  * </ol>
  * Nothing else: package.yaml, the package's version, the deploy's revision, the archive, its directory, other environments'
  * overlays and files no build read are not part of it, so the same content hashes the same on any node; a stylesheet or schema
