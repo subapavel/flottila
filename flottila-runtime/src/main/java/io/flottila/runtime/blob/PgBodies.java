@@ -5,6 +5,7 @@ import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
 import java.util.Objects;
@@ -12,10 +13,12 @@ import java.util.Optional;
 
 /**
  * The Postgres tier of {@link TieredBlobStore} (D-058, D-061): the {@code bodies} table ({@code V6__bodies.sql}), keyed by
- * message id, step and part. A body goes in with one autocommit insert, {@code on conflict do nothing}, whose future completes
- * once the insert has committed (the pool answers on the server's ReadyForQuery, after the statement's implicit transaction).
- * A key's durable bytes never change (D-061 amended by FIX-35): when the insert finds the key's row already there, a second
- * autocommit statement compares that row's bytes with these, byte for byte in Postgres — never by the body's 64-bit hash.
+ * message id, step and part. A body goes in with one insert, {@code on conflict do nothing}, on the client the caller gives:
+ * the pool — an autocommit statement whose future completes once it has committed (the pool answers on the server's
+ * ReadyForQuery, after the statement's implicit transaction) — or a transaction's connection, which commits it with the rest
+ * of that transaction (D-082). A key's durable bytes never change (D-061 amended by FIX-35): when the insert finds the key's
+ * row already there, a second statement on the same client compares that row's bytes with these, byte for byte in
+ * Postgres — never by the body's 64-bit hash.
  * It reads a body back by key. It never deletes: only the retention job does (P2-07). Its bound is finite: at least one
  * byte, at most 64 MiB, one body being one {@code bytea}.
  *
@@ -50,16 +53,20 @@ public final class PgBodies {
     /** The largest body this tier takes. */
     long maxBytes() { return maxBytes; }
 
+    /** The tier's pool: the client of a persist that shares no transaction. */
+    Pool pool() { return pool; }
+
     /**
-     * Inserts the body unless a row for {@code key} exists, then nothing changes; completes once the insert has committed.
-     * {@code true} when the key's row holds these bytes: inserted now, or found holding the same bytes — then a second
-     * statement compares them, after the conflicting row has committed; {@code false} when the row holds other bytes.
+     * Inserts the body on {@code client} unless a row for {@code key} exists, then nothing changes; completes once the insert
+     * ran — on the pool, once it has committed. {@code true} when the key's row holds these bytes: inserted now, or found
+     * holding the same bytes — then a second statement compares them, after the conflicting row has committed; {@code false}
+     * when the row holds other bytes.
      */
-    Future<Boolean> insert(BlobKey key, Buffer bytes) {
+    Future<Boolean> insert(SqlClient client, BlobKey key, Buffer bytes) {
         Tuple body = Tuple.of(key.messageId(), key.step(), key.part(), bytes);
-        return pool.preparedQuery(INSERT).execute(body).compose(inserted -> inserted.rowCount() == 1
+        return client.preparedQuery(INSERT).execute(body).compose(inserted -> inserted.rowCount() == 1
                 ? Future.succeededFuture(true)
-                : pool.preparedQuery(SAME).execute(body).map(same -> same.size() > 0));
+                : client.preparedQuery(SAME).execute(body).map(same -> same.size() > 0));
     }
 
     /** The bytes stored under {@code key}, or empty. */
@@ -70,9 +77,9 @@ public final class PgBodies {
         });
     }
 
-    /** Whether a row exists for {@code key}. */
-    Future<Boolean> exists(BlobKey key) {
-        return pool.preparedQuery(EXISTS).execute(of(key)).map(rows -> rows.size() > 0);
+    /** Whether a row exists for {@code key}, as {@code client} sees it. */
+    Future<Boolean> exists(SqlClient client, BlobKey key) {
+        return client.preparedQuery(EXISTS).execute(of(key)).map(rows -> rows.size() > 0);
     }
 
     private static Tuple of(BlobKey key) { return Tuple.of(key.messageId(), key.step(), key.part()); }

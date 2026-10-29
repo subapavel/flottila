@@ -31,17 +31,17 @@ import java.util.function.Function;
  * the returned future with the step's exception as thrown, a checked one included — the consumer maps it (by
  * {@link io.flottila.api.Fault.Kind}). The answer is returned as soon as the pipeline has returned or thrown; the permit is
  * released once the run's {@link Trail} closed (D-064, F-10).</li>
- * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2): the ingress body is persisted in
- * its own store ({@link io.flottila.api.BlobStore#persist}, D-058) and, beside it, the ingress snapshot with its payload is
- * recorded — whatever the flow's recording level; once both succeeded the message is enqueued in the flow's
- * {@link WorkQueue} under its partition key, and only when that is durable too is the answer {@link Ack.Accepted}. The key
+ * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2), and it is one call to the flow's
+ * {@link Intake} (D-082): the ingress body made durable, the ingress snapshot with its payload recorded — whatever the
+ * flow's recording level — and the message queued for its worker under its partition key; only when the intake's save
+ * succeeded is the answer {@link Ack.Accepted}. The key
  * (D-075, {@code partitionBy}) is evaluated first, inside the save's window, on the envelope as it arrived: no value or
  * {@code ""} is no key; one over {@value #MAX_PARTITION_KEY_CHARS} characters is a final Nack; a {@link Fault} of kind
  * MALFORMED or INVALID saves the message without a key (its run parks it); any other failure is a retryable Nack — and
  * after either Nack nothing is saved. A save not done within the
- * flow's {@code saveTimeout} is a retryable {@link Ack.Nack}, and a save that completes after that enqueues nothing; a
- * failed persist or record is a retryable Nack at once (it does not wait for the other), whether its future fails or its
- * store throws, and so is a timer that refuses to bound the save (nothing is saved then). Nothing of the pipeline runs
+ * flow's {@code saveTimeout} is a retryable {@link Ack.Nack}, and from then on the save is {@code abandoned}: one that has
+ * not reached its last write queues nothing; a failed save is a retryable Nack at once, whether its future fails or the
+ * intake throws, and so is a timer that refuses to bound the save (nothing is saved then). Nothing of the pipeline runs
  * here but the key's expression: a {@link FlowWorker} runs it. The permit is released when the answer is decided.</li>
  * <li><b>at-most-once</b>: {@link Ack.Accepted} at once; the pipeline runs afterwards on a virtual thread of its own and a
  * failure is logged and dropped — not parked, not queued. The permit is released when the pipeline ended and its
@@ -237,19 +237,29 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
     }
 
     /**
-     * At-least-once: the envelope's body is persisted in the body's own store, {@code ingress} gives the snapshot to save
-     * (payload kept), {@code store} saves it, {@code queue} takes the item for {@code flow}; {@code timer} bounds the whole save
-     * by {@code saveTimeout} and runs the stop's deadline. The item's partition key is what {@code partitionKey} gives the
-     * envelope as it arrived, on the caller's thread, once the save timeout was scheduled and before the persist and the record
-     * are asked (D-075, superseding D-049 b): the flow's {@code partitionBy} extractKey expression, compiled at build time.
+     * At-least-once over a {@link SequentialIntake}: the envelope's body is persisted in the body's own store, {@code ingress}
+     * gives the snapshot to save (payload kept), {@code store} saves it, {@code queue} takes the item for {@code flow} (see
+     * {@link #atLeastOnce(Admission, String, Function, Function, Intake, Timer, Duration)}).
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
                                 MessageStore store, WorkQueue queue, Timer timer, Duration saveTimeout) {
+        return atLeastOnce(admission, flow, ingress, partitionKey, new SequentialIntake(store, queue), timer, saveTimeout);
+    }
+
+    /**
+     * At-least-once: {@code intake} saves the envelope as it arrived, with the snapshot {@code ingress} gives (payload kept), for
+     * {@code flow} (D-082); {@code timer} bounds the whole save by {@code saveTimeout} and runs the stop's deadline. The item's
+     * partition key is what {@code partitionKey} gives the envelope as it arrived, on the caller's thread, once the save timeout
+     * was scheduled and before the save is asked (D-075, superseding D-049 b): the flow's {@code partitionBy} extractKey
+     * expression, compiled at build time. The save's {@code abandoned} answers whether the answer is decided already — by the
+     * save timeout or the stop's deadline.
+     */
+    static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
+                                Intake intake, Timer timer, Duration saveTimeout) {
         Objects.requireNonNull(flow, "flow");
         Objects.requireNonNull(ingress, "ingress");
         Objects.requireNonNull(partitionKey, "partitionKey");
-        Objects.requireNonNull(store, "store");
-        Objects.requireNonNull(queue, "queue");
+        Objects.requireNonNull(intake, "intake");
         Objects.requireNonNull(timer, "timer");
         Objects.requireNonNull(saveTimeout, "saveTimeout");
         return new Delivery(admission, timer, Producers.NONE, new Mode() {
@@ -287,27 +297,17 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                             + " characters (D-075)", false));
                     return answer.future();
                 }
-                String partition = key;
-                // both saves are asked now, side by side (D-058): the body in its own store, the ingress snapshot in the message store
-                Future<Void> persist;
+                // the one save (D-082); a save still running once the answer is decided finds itself abandoned and queues nothing
+                Future<Void> saved;
                 try {
-                    persist = e.body().store().persist(e.body().key());
-                } catch (RuntimeException failure) {   // a blob store that throws instead of failing its future: the same failed save
-                    persist = Future.failedFuture(failure);
+                    saved = intake.save(e, ingress.apply(e), flow, key, () -> answer.future().isComplete());
+                } catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
+                    saved = Future.failedFuture(failure);
                 }
-                Future<Void> record;
-                try {
-                    record = store.record(ingress.apply(e));
-                } catch (RuntimeException failure) {   // a store that throws instead of failing its future: the same failed save
-                    record = Future.failedFuture(failure);
-                }
-                // the first failure decides at once, without waiting for the other save
-                Future.all(persist, record)
-                        .compose(saved -> answer.future().isComplete() ? Future.<Void>succeededFuture() : queue.enqueue(e.id(), flow, 1, partition))
-                        .onComplete(saved -> {
-                            if (saved.succeeded()) answer.tryComplete(new Ack.Accepted(e.id()));
-                            else answer.tryComplete(retryable(saved.cause()));
-                        });
+                saved.onComplete(done -> {
+                    if (done.succeeded()) answer.tryComplete(new Ack.Accepted(e.id()));
+                    else answer.tryComplete(retryable(done.cause()));
+                });
                 return answer.future();
             }
         });
@@ -341,8 +341,8 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
      * Stops the flow's deliveries (D-056): from this call on {@link #apply} answers a retryable Nack before admission; the
      * deliveries in flight finish as usual until {@code deadline} on the injected timer, then are cancelled — a sync or
      * at-most-once run's thread is interrupted (a sync failure after that answers a retryable Nack "cancelled: ..." whatever
-     * its kind, a reply still returned is kept), a pending at-least-once answer becomes that Nack (its late save enqueues
-     * nothing). A zero deadline cancels at once. A sync or at-most-once flight stays in flight until its run's {@link Trail}
+     * its kind, a reply still returned is kept), a pending at-least-once answer becomes that Nack (its save is abandoned
+     * from then on). A zero deadline cancels at once. A sync or at-most-once flight stays in flight until its run's {@link Trail}
      * closed, and the deadline does not cancel that close: a flight whose trail is still closing at the deadline (its run
      * ended before it, or was interrupted by it) is left to close, and stop completes only after that close ends — a close
      * that never ends holds the stop open, with no bound yet (FIX-49). The future completes when nothing is in flight any

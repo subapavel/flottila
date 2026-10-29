@@ -10,6 +10,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.ReadStream;
+import io.vertx.sqlclient.SqlClient;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -44,8 +45,10 @@ import java.util.function.Consumer;
  * <p>With a durable tier ({@link PgBodies}, D-058, D-061) {@link #persist} moves a memory or spool body into Postgres: once
  * the insert has committed, the index entry and its memory budget go before the future completes, a spool file is unlinked
  * afterwards on a virtual thread. From then on — and on any node, after any restart — a key missing from the index is read
- * from Postgres; nothing is cached locally. A key's durable bytes never change (D-061 amended by FIX-35): other bytes under a
- * durable key are refused and stay local. An S3 body is durable already. No path of this store deletes a durable body.
+ * from Postgres; nothing is cached locally. {@link #persistIn} inserts it inside the caller's transaction instead and leaves
+ * the local copy until the caller says the transaction committed (D-082). A key's durable bytes never change (D-061 amended
+ * by FIX-35): other bytes under a durable key are refused and stay local. An S3 body is durable already. No path of this
+ * store deletes a durable body.
  *
  * <p>Every spool write has a file of its own (FIX-35): the index entry holds its path, and an unlink — after a persist, an
  * evict, or a write of the key that replaced the entry — only ever removes the file of the entry it took out of the index. A
@@ -102,6 +105,8 @@ public final class TieredBlobStore implements BlobStore {
     private volatile Consumer<BlobKey> afterRelease;   // test seam: see afterRelease(Consumer)
 
     private static final System.Logger LOG = System.getLogger(TieredBlobStore.class.getName());
+    /** What a persist of a body durable already runs once committed: there is no local copy to let go. */
+    private static final Runnable NOTHING_TO_RELEASE = () -> { };
 
     /**
      * One write's index entry. Identity equality, never value equality (D-062): a same-size rewrite of a body has the same
@@ -293,20 +298,41 @@ public final class TieredBlobStore implements BlobStore {
      */
     @Override
     public Future<Void> persist(BlobKey key) {
+        return persisting(bodies == null ? null : bodies.pool(), key).map(committed -> {
+            committed.run();   // the pool's insert has committed: the local copy goes before the future completes
+            return null;
+        });
+    }
+
+    /**
+     * {@link #persist} inside the caller's transaction (D-082): the same checks, and the insert — or, for a key the index
+     * misses, the look for its row — on {@code client}, the transaction's connection. The future gives what the caller runs
+     * once that transaction has committed, and only then: it proves the entry durable and lets its local copy go, as
+     * {@link #persist} does after its own insert; a body durable already has nothing to let go. A transaction that rolls back
+     * never runs it, and the body stays local with its budget or spool file. A failed future is a failed persist, as
+     * {@link #persist} documents, and the caller's transaction must not commit then.
+     */
+    public Future<Runnable> persistIn(SqlClient client, BlobKey key) {
+        return persisting(Objects.requireNonNull(client, "client"), key);
+    }
+
+    /** The persist of {@code key} on {@code client} (null only without a durable tier); its result runs once the insert committed. */
+    private Future<Runnable> persisting(SqlClient client, BlobKey key) {
         Stored s = objects.get(key);
-        if (s != null && s.location() == Location.S3) return Future.succeededFuture();   // the S3 object outlives the process already
+        if (s != null && s.location() == Location.S3) return Future.succeededFuture(NOTHING_TO_RELEASE);   // the S3 object outlives the process already
         if (bodies == null) return Future.failedFuture(new IllegalStateException("this blob store has no durable tier: " + key + " cannot be persisted"));
-        if (s == null) return bodies.exists(key).compose(found -> found ? Future.succeededFuture() : Future.failedFuture(noObject(key)));
+        if (s == null) return bodies.exists(client, key).compose(found -> found ? Future.succeededFuture(NOTHING_TO_RELEASE) : Future.failedFuture(noObject(key)));
         if (s.size() > bodies.maxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), bodies.maxBytes()));
         Future<Buffer> local = s.location() == Location.MEMORY ? Future.succeededFuture(s.bytes()) : collect(open(key, s));
-        return local.compose(bytes -> bodies.insert(key, bytes)).compose(same -> {
+        return local.compose(bytes -> bodies.insert(client, key, bytes)).compose(same -> {
             if (!same) {
                 return Future.failedFuture(new IllegalStateException("the durable body under " + key + " holds other bytes than these " + s.size()
                         + ": a key's durable bytes never change (D-061, FIX-35); nothing was persisted and the body stays local"));
             }
-            s.provenDurable();   // before the release unlinks its file: a stream that then misses the file reads the row
-            release(key, s);   // before the future completes: whoever awaits it finds the local copy gone
-            return Future.succeededFuture();
+            return Future.succeededFuture(() -> {
+                s.provenDurable();   // before the release unlinks its file: a stream that then misses the file reads the row
+                release(key, s);   // before the persist's future completes: whoever awaits it finds the local copy gone
+            });
         });
     }
 

@@ -88,7 +88,12 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
-        return pool.preparedQuery(ENQUEUE).execute(Tuple.of(messageId, flow, step, partitionKey)).mapEmpty();
+        return enqueue(pool, messageId, flow, step, partitionKey);
+    }
+
+    /** {@link #enqueue(String, String, int, String)} on {@code client}: inside the caller's transaction, visible once it commits (D-082). */
+    public Future<Void> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey) {
+        return client.preparedQuery(ENQUEUE).execute(Tuple.of(messageId, flow, step, partitionKey)).mapEmpty();
     }
 
     @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {

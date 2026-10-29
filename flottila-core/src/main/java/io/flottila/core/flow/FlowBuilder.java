@@ -58,7 +58,8 @@ import java.util.function.UnaryOperator;
  * the flow's replay: steps {@code n..end} as a new message.
  *
  * <p>{@link #delivery} gives the flow's consumer handler per delivery mode, under the flow's {@link Admission} — at-least-once
- * saves durably into the store and the {@link WorkQueue} given through {@link #queue(WorkQueue)} — and {@link #worker} the
+ * saves durably through the {@link Intake} given through {@link #intake(Intake)}, by default into the store and the
+ * {@link WorkQueue} given through {@link #queue(WorkQueue)} — and {@link #worker} the
  * {@link FlowWorker} that runs what an at-least-once delivery accepted (ARCHITECTURE §4 lifecycle table, D-049, D-055). The steps
  * see every header; a producer receives only the headers the flow's {@code forwardHeaders} name (case-insensitive) plus
  * {@code content-type}, the body's media type, whatever set them — the {@code to} step filters at the producer boundary
@@ -88,6 +89,7 @@ public final class FlowBuilder {
     private Meter meter;
     private Dlq dlq;
     private WorkQueue queue;
+    private Intake intake;   // null: a SequentialIntake over the store and the queue
     private Map<String, String> extraVersions = Map.of();
     private Consumer<Path> reads = path -> { };
 
@@ -118,6 +120,16 @@ public final class FlowBuilder {
     /** Queues the accepted messages of at-least-once flows in {@code queue} (ARCHITECTURE §4, §7); their delivery and worker need it. */
     public FlowBuilder queue(WorkQueue queue) {
         this.queue = Objects.requireNonNull(queue, "queue");
+        return this;
+    }
+
+    /**
+     * Saves the messages of at-least-once flows through {@code intake} (D-082): their delivery's durable save — body, ingress
+     * record and work item. Without this call it is a {@link SequentialIntake} over the {@link #recording} store and the
+     * {@link #queue}; the node's is the Postgres intake, all three in one transaction.
+     */
+    public FlowBuilder intake(Intake intake) {
+        this.intake = Objects.requireNonNull(intake, "intake");
         return this;
     }
 
@@ -180,7 +192,7 @@ public final class FlowBuilder {
                 Function<Envelope, Optional<String>> partitionKey = partitionKey(flow, baseDir);
                 Recorder recorder = new Recorder(store, runtime.clock(), meter, versionsOf(flow));
                 yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
-                        partitionKey, store, queue, runtime.timer(), flow.saveTimeout());
+                        partitionKey, intake != null ? intake : new SequentialIntake(store, queue), runtime.timer(), flow.saveTimeout());
             }
             default -> throw new IllegalArgumentException("flow '" + flow.id() + "': unknown delivery.mode '" + flow.deliveryMode() + "'");
         };

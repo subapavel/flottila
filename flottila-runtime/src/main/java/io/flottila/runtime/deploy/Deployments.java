@@ -16,7 +16,9 @@ import io.flottila.core.flow.Delivery;
 import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.FlowWorker;
+import io.flottila.core.flow.Intake;
 import io.flottila.core.flow.Replay;
+import io.flottila.core.flow.SequentialIntake;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.MessageStore;
@@ -181,6 +183,7 @@ public final class Deployments {
     private final MessageStore messages;
     private final Dlq dlq;
     private final WorkQueue queue;
+    private final Intake intake;
     private final Meter meter;
     private final DeploymentStore records;
     private final ArchiveStore archives;
@@ -201,16 +204,28 @@ public final class Deployments {
     }
 
     /**
+     * Deployments whose at-least-once flows save through a {@link SequentialIntake} over {@code messages} and {@code queue}: tests
+     * and tools; the node passes its Postgres intake (D-082).
+     */
+    public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                       ArchiveStore archives) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, new SequentialIntake(messages, queue));
+    }
+
+    /**
      * @param runtime handed to each deploy's {@code new FlowBuilder} and read nowhere else
      * @param components the node's components by scheme: the consumers, and the config schemas the endpoints are checked against
      * @param clock {@code deployedAt}
      * @param timer the node's (the one the runtime carries): it bounds a consumer's start and stop by the node's stop deadline
      * @param records where a deploy writes its package's record, the deploy's commit point (D-070)
      * @param archives where a deploy stores its archive before anything stops (D-070)
+     * @param intake the durable save of every at-least-once flow's delivery (D-082): body, ingress record and item, over the
+     *               same stores as {@code messages} and {@code queue}
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives) {
+                       ArchiveStore archives, Intake intake) {
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
@@ -221,6 +236,7 @@ public final class Deployments {
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
         this.queue = Objects.requireNonNull(queue, "queue");
+        this.intake = Objects.requireNonNull(intake, "intake");
         this.meter = Objects.requireNonNull(meter, "meter");
         this.records = Objects.requireNonNull(records, "records");
         this.archives = Objects.requireNonNull(archives, "archives");
@@ -1041,7 +1057,7 @@ public final class Deployments {
         Map<String, String> versions = new HashMap<>();
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
-        return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).versions(versions);
+        return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions);
     }
 
     /**

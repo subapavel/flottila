@@ -920,3 +920,11 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS surefire 2046 + fa
 Review: FAIL r1 (docs claimed no value in problems: overlap line, exception text, parked failure; FIX-92 row incomplete; rollback rebuild unpinned; rollback test failure undecided), PASS r2. Raised FIX-92.
 D-054 data: class B (scout ×2, test-author ×1 + 3 fix packets, implementer ×1, verifier ×4, reviewer ×2); review rounds 2.
 Next: P2-08 [C].
+
+## 2026-10-29 — P2-08a durable ACK in one transaction (D-082) — done, review PASS
+Test first: core DeliveryTest (3 intake cases), SequentialIntakeTest; runtime IntakeContract (in-memory + Pg runners), PgIntakeIT (killed session, failing enqueue, one txid, abandoned, commit failure, body already durable / from another store), AtLeastOnceIntakeIT (red: target/P2-08a-red*.log).
+Change: core Intake + SequentialIntake (today's save moved), Delivery takes an Intake, FlowBuilder.intake; runtime PgIntake (body → record → item in one withTransaction, release after commit), SqlClient seams in PgBodies/TieredBlobStore/PgBatchSink/PgMessageStore/PgWorkQueue, Node wires PgIntake through Deployments. Docs: D-082, §4/§8 + changelog, D-071 replaced.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS surefire 2062 + failsafe 241 (target/P2-08a-final-verify.log); LedgerMain 2000/2000 (target/P2-08a-ledger.log); coverage no decrease; 18 + R12..R15 hand mutants killed; PIT core 148/149 (survivor: an equivalent capacity hint, not in the diff).
+Review: FAIL r1 (§8/D-071 fail-fast ingress sentence stale; release-after-commit unpinned at COMMIT; reads on the pool unpinned), PASS r2. Raised FIX-93, FIX-94.
+D-054 data: class C (designer ×1, test-author ×1 (resumed at the turn limit) + 1 fix packet, implementer ×1 + 1 fix, verifier ×1, reviewer ×2); review rounds 2.
+Next: P2-08b [B] measurement.

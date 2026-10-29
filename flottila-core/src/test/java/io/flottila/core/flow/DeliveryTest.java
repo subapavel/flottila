@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.net.URI;
@@ -58,6 +59,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -1458,5 +1460,142 @@ class DeliveryTest {
         assertEquals(List.of(), rows.waitingCalls, "the ingress row never waits for room");
         assertEquals(0, queue.size(), "nothing enqueued");
         assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the Nack");
+    }
+
+    // --- the intake (P2-08a, D-082): an at-least-once delivery saves through its Intake, once; it persists, records and
+    // enqueues nothing itself. The shape assumed: core {@code Intake} (package io.flottila.core.flow) with
+    // {@code Future<Void> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned)}
+    // and {@code FlowBuilder intake(Intake)}.
+
+    /**
+     * An {@link Intake} whose saves the case answers — a mock at the store boundary, never of the delivery: every call is kept
+     * with its arguments and a pending promise; {@link #throwNext} makes the next call throw instead of returning a future.
+     */
+    static final class HeldIntake implements Intake {
+        record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned, Promise<Void> answer) {}
+
+        final List<Save> saves = new CopyOnWriteArrayList<>();
+        private final AtomicReference<RuntimeException> throwNext = new AtomicReference<>();
+
+        @Override
+        public Future<Void> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, BooleanSupplier abandoned) {
+            Promise<Void> answer = Promise.promise();
+            saves.add(new Save(arrived, ingress, flow, partitionKey, abandoned, answer));
+            RuntimeException thrown = throwNext.getAndSet(null);
+            if (thrown != null) throw thrown;
+            return answer.future();
+        }
+
+        HeldIntake throwNext(RuntimeException failure) {
+            throwNext.set(failure);
+            return this;
+        }
+
+        /** The one save asked so far. */
+        Save only() {
+            assertEquals(1, saves.size(), "one save asked: " + saves);
+            return saves.get(0);
+        }
+    }
+
+    /** {@code extractKey} {@code key}: the partition key {@code orderId} from the header {@code x-order}. */
+    static final Map<String, Object> ORDER_KEY = Map.of("type", "extractKey", "name", "key", "language", "header", "key", "orderId", "xpath", "x-order");
+
+    @Test
+    void anAtLeastOnceDeliverySavesOnceThroughItsIntake() {
+        HeldIntake intake = new HeldIntake();
+        Map<String, Object> doc = flow("at-least-once", List.of(ORDER_KEY, TO_PARTNER));
+        doc.put("partitionBy", "orderId");
+        doc.put("recording", Map.of("level", "off"));
+        Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
+        String id = rt.ids().next();
+        Body body = own.write(BlobKey.body(id, 0), ORDER, own.treeLimit()).await();
+        Envelope in = Envelope.ingress(id, "orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml").with("x-order", "K-7"), body);
+
+        Future<Ack> ack = delivery.apply(in);
+        HeldIntake.Save save = intake.only();
+        assertSame(in, save.arrived(), "the intake gets the envelope as it arrived");
+        assertEquals("orders", save.flow());
+        assertEquals("K-7", save.partitionKey(), "the partition key the flow's expression gave, evaluated before the save");
+        assertEquals(in.id(), save.ingress().messageId());
+        assertEquals(Recorder.INGRESS, save.ingress().stepName(), "the ingress snapshot");
+        assertEquals(0, save.ingress().step());
+        assertEquals(Optional.of(in.body().key()), save.ingress().bodyKey(), "its payload kept although the flow records nothing");
+        assertFalse(save.abandoned().getAsBoolean(), "an undecided save is not abandoned");
+        assertFalse(ack.isComplete(), "no ACK before the intake's save completed");
+        assertEquals(List.of(), own.persists(), "the delivery persists nothing itself: the intake does");
+        assertEquals(0, store.recorded(Recorder.INGRESS), "records nothing itself");
+        assertEquals(0, queue.size(), "enqueues nothing itself");
+
+        save.answer().complete();
+        assertEquals(new Ack.Accepted(in.id()), settled(ack).result(), "Accepted once the intake's save completed");
+        assertEquals(1, intake.saves.size(), "saved once");
+        assertEquals(List.of(), own.persists(), "still nothing persisted by the delivery");
+        assertEquals(0, store.recorded(Recorder.INGRESS));
+        assertEquals(0, queue.size());
+        assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the ACK");
+        assertEquals(0, rt.timer().pending(), "the save timeout went with the answer");
+        assertEquals(List.of(), partner.sent(), "nothing of the pipeline runs on the handler's thread");
+    }
+
+    @ParameterizedTest(name = "throws instead of failing its future: {0}")
+    @ValueSource(booleans = {false, true})
+    void anIntakeThatFailsOrThrowsIsARetryableNackAndReleasesThePermit(boolean throwsInstead) {
+        HeldIntake intake = new HeldIntake();
+        Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(oneInFlight(flow("at-least-once", List.of(TO_PARTNER)))), NO_FILES);
+        Envelope in = ingress(ORDER);
+        if (throwsInstead) intake.throwNext(new IllegalStateException("intake closed"));
+
+        Future<Ack> ack = assertDoesNotThrow(() -> delivery.apply(in), "an intake that throws is a failed save, not an exception escaping apply");
+        if (!throwsInstead) {
+            assertFalse(ack.isComplete(), "the save is pending");
+            intake.only().answer().fail(new IllegalStateException("intake closed"));
+        }
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "a failed intake is an answer, not a failed future: " + ack);
+        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
+        assertTrue(nack.reason().contains("intake closed"), "names the cause: " + nack.reason());
+        assertEquals(1, intake.saves.size(), "asked once");
+        assertEquals(0, delivery.admission().inFlightRequests(), "the permit is back with the Nack");
+        assertEquals(0, delivery.admission().inFlightBytes(), "its bytes are back");
+        assertEquals(0, rt.timer().pending(), "the failed save's timeout went with it");
+        assertEquals(0, queue.size(), "nothing queued by the delivery");
+
+        Envelope next = ingress(ORDER);
+        Future<Ack> nextAck = delivery.apply(next);
+        assertEquals(2, intake.saves.size(), "the next one is admitted (one permit) and saved");
+        intake.saves.get(1).answer().complete();
+        assertEquals(new Ack.Accepted(next.id()), settled(nextAck).result());
+    }
+
+    @Test
+    void anIntakeIsAbandonedOnceTheSaveTimeoutDecided() {
+        HeldIntake intake = new HeldIntake();
+        Map<String, Object> doc = flow("at-least-once", List.of(TO_PARTNER));
+        doc.put("delivery", Map.of("mode", "at-least-once", "saveTimeout", "2s"));
+        Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
+
+        Future<Ack> ack = delivery.apply(ingress(ORDER));
+        BooleanSupplier abandoned = intake.only().abandoned();
+        assertFalse(abandoned.getAsBoolean(), "just asked: not abandoned");
+        rt.clock().advance(Duration.ofMillis(1999));
+        assertFalse(ack.isComplete(), "not answered before the timeout");
+        assertFalse(abandoned.getAsBoolean(), "1 ms before the timeout the save may still commit");
+        rt.clock().advance(Duration.ofMillis(1));
+        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "the timeout decided: " + ack);
+        assertTrue(nack.retryable() && (nack.reason().contains("PT2S") || nack.reason().contains("2s")), "the save timed out: " + nack.reason());
+        assertTrue(abandoned.getAsBoolean(), "once the timeout decided the answer, the intake must queue nothing");
+        assertTrue(abandoned.getAsBoolean(), "and stays abandoned, however often asked");
+        intake.only().answer().complete();   // a late save the intake did not see abandoned
+        assertEquals(nack, ack.result(), "the answer stays the timeout's");
+        assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the timeout");
+
+        // the stop's deadline decides an answer too
+        Future<Ack> second = delivery.apply(ingress(ORDER));
+        BooleanSupplier secondAbandoned = intake.saves.get(1).abandoned();
+        delivery.stop(Duration.ofSeconds(1));
+        assertFalse(secondAbandoned.getAsBoolean(), "stopping is not cancelling: the save may still land before the deadline");
+        rt.clock().advance(Duration.ofSeconds(1));
+        cancelled(second);
+        assertTrue(secondAbandoned.getAsBoolean(), "the stop's deadline decided the answer: abandoned");
     }
 }

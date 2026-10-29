@@ -22,6 +22,7 @@ import io.flottila.runtime.deploy.PgDeploymentStore;
 import io.flottila.runtime.deploy.S3ArchiveStore;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
+import io.flottila.runtime.store.PgIntake;
 import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
 import io.vertx.core.Future;
@@ -161,8 +162,9 @@ public final class Node implements AutoCloseable {
                 closeS3 = s3::close;
                 archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix());
             }
+            // an at-least-once ingress saves its body, its record and its item in one transaction (D-082)
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
-                    Meter.system(), new PgDeploymentStore(pool), archives);
+                    Meter.system(), new PgDeploymentStore(pool), archives, new PgIntake(pool, blobs, messages, work));
             deployments = restored;
             restored.restore();   // before the admin port opens: what the pool recorded runs before a deploy can be taken (D-070)
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,

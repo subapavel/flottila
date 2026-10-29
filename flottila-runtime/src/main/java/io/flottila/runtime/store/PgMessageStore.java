@@ -17,6 +17,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
+import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
 import java.nio.ByteBuffer;
@@ -35,13 +36,14 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * The MessageStore over Postgres (ARCHITECTURE §7, §8): every snapshot goes through the P0-06 {@link BatchingWriter} into
- * one transaction per batch — {@code payloads} (hash, size, algorithm; {@code ON CONFLICT DO NOTHING}, the bytes are the
- * BlobStore's), {@code messages} (one row per message and step, the first wins) and {@code message_keys} (one row per
- * (name, value, message), numbered by V5's {@code seq} in the order the message first carried the key — what
- * {@link #findByKey} pages through its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads
- * are plain queries. A failed commit fails the snapshot's future and counts in {@link #failed()}; the message path does
- * not wait for it.
+ * The MessageStore over Postgres (ARCHITECTURE §7, §8). Every snapshot given to {@link #record} goes through the P0-06
+ * {@link BatchingWriter} into one transaction per batch: {@code payloads} (hash, size, algorithm; {@code ON CONFLICT DO
+ * NOTHING}, the bytes are the BlobStore's), {@code messages} (one row per message and step, the first wins) and
+ * {@code message_keys} (one row per (name, value, message), numbered by V5's {@code seq} in the order the message first
+ * carried the key — what {@link #findByKey} pages through its {@code (name, value, seq)} index; the cursor is the page's last
+ * {@code seq}). Reads are plain queries. A failed commit fails the snapshot's future and counts in {@link #failed()}; the
+ * message path does not wait for it. On the node, the at-least-once ingress row bypasses the writer: {@link #insert} writes
+ * it with the same statements in the intake's transaction (D-082), and its failure fails that save, not counted here.
  *
  * @since 0.1
  */
@@ -64,15 +66,17 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     private record KeyRow(String name, String value, String messageId) {}
 
     private final Pool pool;
+    private final PgBatchSink<Snapshot> sink;
     private final BatchingWriter<Snapshot> writer;
     private final AtomicLong failed = new AtomicLong();
 
     public PgMessageStore(Pool pool, Timer timer, BatchingWriter.Options options) {
         this.pool = Objects.requireNonNull(pool, "pool");
-        this.writer = new BatchingWriter<>(new PgBatchSink<>(pool, List.of(
+        this.sink = new PgBatchSink<>(pool, List.of(
                 new PgBatchSink.Statement<>(INSERT_PAYLOADS, PgMessageStore::payloads),
                 new PgBatchSink.Statement<>(INSERT_MESSAGES, PgMessageStore::messages),
-                new PgBatchSink.Statement<>(INSERT_KEYS, PgMessageStore::keys))), timer, options);
+                new PgBatchSink.Statement<>(INSERT_KEYS, PgMessageStore::keys)));
+        this.writer = new BatchingWriter<>(sink, timer, options);
     }
 
     @Override
@@ -84,6 +88,15 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     @Override
     public Future<Void> recordWaiting(Snapshot snapshot) {
         return writer.saveWaiting(Objects.requireNonNull(snapshot, "snapshot")).onFailure(t -> failed.incrementAndGet());
+    }
+
+    /**
+     * Writes {@code snapshot} on {@code client} — the intake's transaction (D-082) — with the writer's statements, never through
+     * the writer: the caller's commit makes it durable. A failure fails the future only; it is not counted in {@link #failed()},
+     * since the save it belongs to fails with it and no acknowledged row is missing.
+     */
+    Future<Void> insert(SqlClient client, Snapshot snapshot) {
+        return sink.write(client, List.of(snapshot));
     }
 
     @Override

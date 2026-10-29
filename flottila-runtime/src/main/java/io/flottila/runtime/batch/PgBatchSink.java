@@ -3,7 +3,7 @@ package io.flottila.runtime.batch;
 import io.flottila.core.batch.BatchSink;
 import io.vertx.core.Future;
 import io.vertx.sqlclient.Pool;
-import io.vertx.sqlclient.SqlConnection;
+import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
 import java.util.List;
@@ -14,7 +14,8 @@ import java.util.function.Function;
  * A {@link BatchSink} that commits one batch as one Postgres transaction. Each {@link Statement}
  * is fixed-shape SQL over {@code unnest} arrays, so the statement text never changes with the batch
  * size and the client's prepared-statement cache applies (ARCHITECTURE §4 "Writer"); statements
- * run in order inside the transaction and a failure rolls the whole batch back.
+ * run in order inside the transaction and a failure rolls the whole batch back. {@link #write(SqlClient, List)} runs the same
+ * statements inside a transaction the caller holds (D-082).
  *
  * @param <T> the item type
  * @since 0.1
@@ -45,10 +46,18 @@ public final class PgBatchSink<T> implements BatchSink<T> {
 
     @Override public Future<Void> write(List<T> batch) {
         if (batch.isEmpty()) return Future.succeededFuture();
-        return pool.withTransaction(conn -> run(conn, batch, 0));
+        return pool.withTransaction(conn -> write(conn, batch));
     }
 
-    private Future<Void> run(SqlConnection conn, List<T> batch, int index) {
+    /**
+     * Runs the statements over {@code batch}, in order, on {@code client} — a transaction's connection the caller commits or
+     * rolls back; the first failure fails the future and runs no later statement.
+     */
+    public Future<Void> write(SqlClient client, List<T> batch) {
+        return run(client, batch, 0);
+    }
+
+    private Future<Void> run(SqlClient conn, List<T> batch, int index) {
         if (index == statements.size()) return Future.succeededFuture();
         Statement<T> s = statements.get(index);
         return conn.preparedQuery(s.sql()).execute(s.arrays().apply(batch))

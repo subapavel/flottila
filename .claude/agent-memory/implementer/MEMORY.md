@@ -20,18 +20,18 @@
 - A new Flyway migration bumps the schema version in MigrationsIT, PgMessageStoreIT:69 (@BeforeAll) and BenchMainIT:36; packets miss PgMessageStoreIT (P1-08b, P1-09c3a).
 - Mutant loop: add `-Dsurefire.timeout=150` so a mutant that hangs a stop()/await is killed by "timeout in the fork" (mock and
   some testkit tests have no @Timeout). Never kill a running loop without restoring the mutated file from its backup (cp + touch + cmp).
-- Failsafe `-Dit.test=A,B` together with `-am` fails upstream modules ("No tests matching pattern"): add
-  `-Dfailsafe.failIfNoSpecifiedTests=false` (and `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false` to skip unit tests).
-  A PgWorkQueueIT mutant that way (`-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am`) is ~17-28 s.
+- Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
+  `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
+  After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
+- "LedgerIT 2000/2000" = `java -cp "flottila-bench/target/flottila-bench-*.jar:flottila-bench/target/lib/*" io.flottila.bench.LedgerMain --host localhost
+  --port 5432 --db <name with 'bench'> --user flottila --password flottila --messages 2000 --out target/x.json` (IT runs 200; native PG, psql createdb, ~45 s).
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
   always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
-- Mutants run offline (`-o`): ~5 s (core) to ~12 s (runtime unit), ~55 s with the blob ITs, ~26 s per NodeIT#method (`-Dit.test=NodeIT#m`; scratch `install -DskipTests -pl flottila-runtime -am` once, then `-pl flottila-runtime`). Scratch copy (no rsync):
-  `tar --exclude='*/target' --exclude=./.git -cf - . | tar -xf - -C <scratch>`, mutate there while the main tree builds. HEAD's own
-  figures (to attribute a band delta): `git archive HEAD | tar -xf - -C <scratch>` + `-o verify -pl ..` there (P1-09k1: the committed
-  testkit branch baseline 96.4 % is a lucky run, HEAD measures 95.2 %). Wait on a background build: `timeout N tail -f --pid=<pid> /dev/null`.
+- Mutants offline (`-o`): ~13 s core, ~12 s runtime unit, ~55 s blob/Pg ITs, ~26 s per NodeIT#method. Scratch copy: `tar --exclude='*/target'
+  --exclude=./.git -cf - . | tar -xf - -C <scratch>`; HEAD's own figures: `git archive HEAD | tar -xf - -C <scratch>` + `-o verify` there
+  (P1-09k1: a committed baseline can be a lucky run). Wait on a background build: `timeout N tail -f --pid=<pid> /dev/null`.
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
-- Scoped PIT with `-DtargetClasses=..` over `-pl flottila-api,flottila-core -am` needs `-DfailWhenNoMutations=false` (api has none);
-  a class score under a narrow `-DtargetTests` filter is not the module score. Full api+core PIT takes ~10 min.
+- Scoped PIT `-DtargetClasses=..` over api,core needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min.
 - Scoped core PIT: WorkQueue*/FlowWorker* ~4 min (Q-1); Delivery*/FlowBuilder*/FlowWorker*/WorkerPolicy ~5 min, 303 mutants (P2-01);
   FlowWorker mostly TIMED_OUT = killed. Maven's stale check is mtime-based: a source edited while a build compiles it is never
   recompiled (class newer) — no edits during a verify, else `touch` the sources and rebuild before quoting JaCoCo/PIT lines (P2-01).
@@ -48,6 +48,9 @@
 - vertx-web 5.1.10 `Router.post(String)`→Route; RouterImpl never pauses (javap). Pg `UPDATE…RETURNING` has no order: CLAIM sorts in a CTE (P1-09c1).
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
+- vertx-sql-client 5.1.10 (javap -c Pool): `Pool`, `SqlConnection` extend `SqlClient`; `withTransaction(fn)` = getConnection → begin →
+  fn.apply(conn) called directly (a sync throw skips the rollback: start fn's chain from a completed future) → commit, or rollback
+  then fail with fn's cause → close. A statement on the pool is autocommit; on the tx conn it commits with the tx.
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
   connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
@@ -92,29 +95,25 @@
   loadKeyPairIdentities: garbage → null, PKCS8 with an unknown OID → NoSuchAlgorithmException (a GSE). rename never overwrites.
 - Docker (P2-05a): native PG holds 127.0.0.1:5432 → compose with `FLOTTILA_PG_HOST_PORT=55432`; temurin images have bash, no curl;
   `docker volume prune` is denied. A non-loopback FLOTTILA_ADMIN_HOST without FLOTTILA_ADMIN_TOKEN (blank = none) is refused.
-- `-pl flottila-cli` alone compiles against ~/.m2 jars of http/mock/schemas: after the reactor moved, `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2: "cannot find symbol HttpComponent.status"). Full `verify -Pit` ~8.5 min (P2-03b2).
+- `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
 - P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch (source); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
 ## Findings that came back in review
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
 - Packet red tests can carry fixture bugs that no implementation fixes (P1-09k2: a step key off by one past a gate, a replay over a
   store the runtime cannot read, a replay rerunning a crash-first step): check the fixture first, fix with a one-line reason.
-- Core mutant loop over `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true` is ~20 s per mutant (P1-09k2);
-  a double guard (two never-fail transforms) makes each single-drop mutant equivalent: drop the redundant one instead.
+- Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; a double guard (two never-fail transforms)
+  makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
-- A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05).
-- Before changing who resumes in `StreamingWrite`, grep the blob tests' fixtures for latches that wait on a
-  sink resume (`TieredBlobStoreFailureTest.LatePauseStream` waits for one inside `pause()`): they pin the ordering.
-- JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)` in a refusal test); runtime has ~980 measured
-  lines, so 10 uncovered lines are 1 pp of the 2 pp band — count before adding untestable wiring (Main).
-- Known flake (FIX-30; P1-09d2b with a mutant loop running: never verify beside one; testkit, not fixed): `RecordingComponent.send`
-  counts `awaitSent` waiters down BEFORE `holds.pollFirst()`: hold(); send A; awaitSent(1); hold(); send B can give A's latch
-  to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
+- A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05). Before changing who resumes in
+  `StreamingWrite`, grep blob fixtures for latches waiting on a sink resume (`TieredBlobStoreFailureTest.LatePauseStream`).
+- JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`); measured lines (P2-08a): core ~1560, runtime ~2200.
+- Known flake (FIX-30, never verify beside a mutant loop): `RecordingComponent.send` counts `awaitSent` down BEFORE `holds.pollFirst()`:
+  A's latch can go to B (DeploymentsTest#closeStopsWorkersThenDrains... "drained answer").
 - A fixture that bumps a counter a test polls (`until(closes() > 0)`) BEFORE recording what the test then reads races (FIX-30 r2,
   Doors.Out.close): record first, count last. Mutants that hang a close need `-Dsurefire.timeout`; N4-style ones take ~130 s.
-- deploy TracingTimer lists/traces a task BEFORE `inner.schedule`: advancing the FakeTimer in that window loses it; wait on
-  `rt.timer().pending()`. FlowWorker polls once more after each item finishes: read claim counts only after that claim (P1-09d2c).
+- deploy TracingTimer traces a task BEFORE `inner.schedule`: wait on `rt.timer().pending()`; FlowWorker polls once more per finished item (P1-09d2c).
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
 - NodeConfig carries `Secrets` (P2-04): NodeConfigArchivesTest asserts `from(env).equals(<10-arg ctor>)`: a new component needs value equality.
-- A `throw sneaky(cause)` catch line is always JaCoCo-missed (P1-10c). Hand mutants: python runner + cp/touch/cmp, ~8 s schemas, ~22 s runtime (P2-02a).
+- A `throw sneaky(cause)` catch line is always JaCoCo-missed (P1-10c). Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a).
