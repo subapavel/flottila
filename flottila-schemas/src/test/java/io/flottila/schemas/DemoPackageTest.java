@@ -25,7 +25,7 @@ class DemoPackageTest {
         try (Stream<Path> s = Files.walk(DEMO)) {
             files = s.filter(p -> p.toString().endsWith(".yaml") || p.toString().endsWith(".yml") || p.toString().endsWith(".json")).sorted().toList();
         }
-        assertTrue(files.size() >= 6, "package.yaml, three endpoints, a flow and its test: " + files);
+        assertTrue(files.size() >= 12, "package.yaml, five endpoints, three flows and their tests: " + files);
         for (Path f : files) {
             JsonObject doc = Documents.read(f);
             Schemas schema = Schemas.forKind(doc.getString("kind"));
@@ -38,8 +38,8 @@ class DemoPackageTest {
     void theFlowReferencesOnlyEndpointsThatExistAndTheTestOnlyFixturesThatExist() throws IOException {
         Package pkg = Package.load(DEMO);
         assertEquals("demo", pkg.name());
-        assertEquals(Set.of("http-in", "partner-domestic", "partner-foreign"), pkg.endpointIds());
-        assertEquals(List.of("invoice-sync"), pkg.flowIds());
+        assertEquals(Set.of("http-in", "http-in-async", "sftp-inbox", "partner-domestic", "partner-foreign"), pkg.endpointIds());
+        assertEquals(Set.of("invoice-sync", "invoice-async", "sftp-invoice"), Set.copyOf(pkg.flowIds()));
         List<String> problems = pkg.crossCheck();
         assertTrue(problems.isEmpty(), String.join("\n", problems));
     }

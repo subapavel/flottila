@@ -111,9 +111,9 @@
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
 - Known flakes (never verify beside a mutant loop): FIX-30 `RecordingComponent.send` counts `awaitSent` down before `holds.pollFirst()`;
   P2-02L TwoNodeSftpLeaseTest:192 (round tail outlasts the steps), LeasedConsumerTest#aHangingRenew cleanup (a hold after answerEveryOpenHold).
-- A fixture that bumps a counter a test polls (`until(closes() > 0)`) BEFORE recording what the test then reads races (FIX-30 r2,
-  Doors.Out.close): record first, count last. Mutants that hang a close need `-Dsurefire.timeout`; N4-style ones take ~130 s.
-- deploy TracingTimer traces a task BEFORE `inner.schedule`: wait on `rt.timer().pending()`; FlowWorker polls once more per finished item (P1-09d2c).
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
 - NodeConfig carries `Secrets` (P2-04): tests compare `from(env)` to the 11-arg ctor: a new component needs equality + a defaulting overload.
+- Compose/SFTP (P2-06, observed): the shipped MINA 2.20 client offers no ssh-ed25519 (atmoz sshd log "no matching host key type found") and
+  the image makes its own rsa key too: the stack pins the RSA fingerprint. A named volume mounted on /home/demo/inbox is root-owned
+  (create-sftp-user skips chown of an existing dir): chown in an entrypoint wrapper. Compose long syntax `volume: {subpath: <file>}` mounts one file.

@@ -28,8 +28,13 @@ deploy/quickstart/deploy.sh packages/demo
 ```
 
 It zips the directory (`package.yaml` at the root), PUTs it to `/admin/packages/demo` with the token and prints the node's
-answer — `{"package":"demo","version":"0.1.0",…,"flows":["demo/invoice-sync"],"added":["demo/invoice-sync"],…}` — or exits
+answer — `{"package":"demo","version":"0.1.0",…,"flows":["demo/invoice-sync","demo/invoice-async","demo/sftp-invoice"],"added":[…],…}` — or exits
 non-zero on a refusal. `FLOTTILA_ADMIN` (default `http://localhost:8081`) points it at another node.
+
+The demo holds two more flows, `demo/invoice-async` (the same invoice at least once, on `localhost:8082/invoice/async` — not
+published by this stack) and `demo/sftp-invoice` (a file dropped in an SFTP inbox). This stack has no SFTP server, so its node
+carries placeholder secrets for them and the SFTP flow cannot connect; both flows run in the fuller stack,
+[`deploy/compose/`](../deploy/compose/README.md).
 
 ## 3. Send an invoice
 

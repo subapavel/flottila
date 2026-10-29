@@ -346,6 +346,7 @@ class QuickstartIT {
         Path copy = work.resolve("demo");
         try (Stream<Path> walk = Files.walk(DEMO)) {
             for (Path p : walk.filter(Files::isRegularFile).toList()) {
+                if (NodeIT.addedByP206(DEMO.relativize(p).toString().replace('\\', '/'))) continue;   // the quickstart is the sync demo: no stack secrets here
                 Path target = copy.resolve(DEMO.relativize(p).toString());
                 Files.createDirectories(target.getParent());
                 Files.copy(p, target);

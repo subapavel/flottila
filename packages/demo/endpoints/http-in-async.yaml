@@ -1,0 +1,10 @@
+# invoice-async's door: its own port, because Vert.x shares a port between HttpServers round-robin, not by path (D-086).
+schemaVersion: 1
+kind: endpoint
+id: http-in-async
+scheme: http
+direction: in
+config:
+  host: 0.0.0.0
+  port: 8082
+  path: /invoice/async

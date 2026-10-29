@@ -571,6 +571,125 @@ class SftpComponentTest {
         assertTrue(String.valueOf(unlimited.getMessage()).contains("maxBodyBytes"), "a consumer without maxBodyBytes is refused, never unlimited: " + unlimited.getMessage());
     }
 
+    // ---- P2-06 (D-086): host, port and dir as options, for a deployed endpoint whose URI is only <scheme>://<id> ------------
+
+    /** The real server's options under {@code uri}: the URI's own host, port and directory are what the options must override. */
+    private EndpointConfig under(String uri, Map<String, Object> extra) {
+        return new EndpointConfig("sftp-in", URI.create(uri), sftp.endpoint("sftp-in", "/inbox", extra).options());
+    }
+
+    private List<String> deliveredBy(FakeRuntime on, EndpointConfig cfg, SftpComponent component) {
+        List<Envelope> seen = new CopyOnWriteArrayList<>();
+        started(component, cfg, accepting(seen));
+        round(on);
+        return files(seen);
+    }
+
+    @Test
+    void hostOptionWinsOverTheUriHost() {
+        sftp.drop("/inbox", "real.xml", Buffer.buffer("<real/>"));
+        SftpComponent component = component(rt);
+        assertEquals(List.of("real.xml"),
+                deliveredBy(rt, under("sftp://no-such-host.invalid:" + sftp.port() + "/inbox", Map.of("host", "127.0.0.1")), component),
+                "the host option names the server; the URI's host does not resolve");
+        assertEquals(Health.Status.UP, health(component));
+        assertEquals(Set.of(), sftp.files("/inbox"), "and the delivered file was deleted");
+    }
+
+    @Test
+    void portOptionWinsOverTheUriPort() {
+        sftp.drop("/inbox", "real.xml", Buffer.buffer("<real/>"));
+        assertEquals(List.of("real.xml"),
+                deliveredBy(rt, under("sftp://127.0.0.1:1/inbox", Map.of("port", sftp.port())), component(rt)),
+                "the port option names the server's port; the URI's port 1 refuses");
+    }
+
+    @Test
+    void dirOptionWinsOverTheUriPath() {
+        sftp.mkdir("/other");
+        sftp.drop("/other", "decoy.xml", Buffer.buffer("<decoy/>"));
+        sftp.drop("/inbox", "real.xml", Buffer.buffer("<real/>"));
+        assertEquals(List.of("real.xml"),
+                deliveredBy(rt, under("sftp://127.0.0.1:" + sftp.port() + "/other", Map.of("dir", "/inbox")), component(rt)),
+                "the dir option names the polled directory, not the URI's path");
+        assertEquals(Set.of("decoy.xml"), sftp.files("/other"), "the URI's directory is never touched");
+    }
+
+    @Test
+    void hostPortAndDirOptionsWinOverTheUri() {
+        sftp.mkdir("/other");
+        sftp.drop("/other", "decoy.xml", Buffer.buffer("<decoy/>"));
+        sftp.drop("/inbox", "real.xml", Buffer.buffer("<real/>"));
+        List<Envelope> seen = new CopyOnWriteArrayList<>();
+        // what a deployed endpoint looks like: the URI is <scheme>://<id>, host, port and directory come from the options
+        started(component(rt), under("sftp://sftp-in", Map.of("host", "127.0.0.1", "port", sftp.port(), "dir", "/inbox")), accepting(seen));
+        round(rt);
+        assertEquals(List.of("real.xml"), files(seen));
+        assertEquals("/inbox/real.xml", seen.get(0).get(SftpComponent.PATH).orElse(null));
+        assertTrue(seen.get(0).get(SftpComponent.FILE_KEY).orElse("").startsWith("sftp://127.0.0.1:" + sftp.port() + "/inbox/real.xml@"),
+                "the file key names the server the options chose: " + seen.get(0).get(SftpComponent.FILE_KEY).orElse(null));
+        assertEquals(Set.of("decoy.xml"), sftp.files("/other"));
+    }
+
+    @Test
+    void withoutOptionsTheUriDecides() {
+        sftp.mkdir("/other");
+        sftp.drop("/other", "decoy.xml", Buffer.buffer("<decoy/>"));
+        sftp.drop("/inbox", "real.xml", Buffer.buffer("<real/>"));
+        assertEquals(List.of("real.xml"), deliveredBy(rt, under("sftp://127.0.0.1:" + sftp.port() + "/inbox", Map.of()), component(rt)),
+                "the URI's host, port and path are used when no option is given");
+        assertEquals(Set.of("decoy.xml"), sftp.files("/other"));
+
+        FakeRuntime other = FakeRuntime.create();   // and a URI naming a host that is not there reaches nothing: the URI's host is the one dialled
+        sftp.drop("/inbox", "kept.xml", Buffer.buffer("<kept/>"));
+        SftpComponent unreachable = component(other);
+        assertEquals(List.of(), deliveredBy(other, under("sftp://no-such-host.invalid:" + sftp.port() + "/inbox", Map.of()), unreachable));
+        assertEquals(Health.Status.DOWN, health(unreachable), "the round could not connect");
+        assertEquals(Set.of("kept.xml"), sftp.files("/inbox"));
+    }
+
+    @Test
+    void theConfigSchemaAcceptsHostPortAndDirAndRefusesBadPorts() {
+        String schema = component(rt).configSchema();
+        Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+        assertValid(schema, with(with(with(base, "host", "sftp"), "port", 22), "dir", "inbox"), "host, port and dir together");
+        assertValid(schema, with(base, "host", "sftp"), "host alone");
+        assertValid(schema, with(base, "port", 1), "port 1, the lowest");
+        assertValid(schema, with(base, "port", 65535), "port 65535, the highest");
+        assertValid(schema, with(base, "dir", "/inbox"), "dir alone");
+        assertRefused(schema, with(base, "port", 0), "port 0");
+        assertRefused(schema, with(base, "port", 70000), "port 70000");
+        assertRefused(schema, with(base, "port", 65536), "port 65536");
+        assertRefused(schema, with(base, "port", "22"), "port as text");
+        assertRefused(schema, with(base, "host", 7), "host as a number");
+        assertRefused(schema, with(base, "dir", 7), "dir as a number");
+    }
+
+    @Test
+    void anEmptyHostOptionIsRefusedByTheConfigSchema() {
+        Map<String, Object> base = Map.of("user", "flottila", "password", "s3cret", "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
+        assertRefused(component(rt).configSchema(), with(base, "host", ""), "an empty host names no server (the URI's would silently not be used)");
+    }
+
+    /**
+     * The deploy checks the config as written, secret references unresolved (D-081): the demo's {@code hostKey: secret://sftp-host-key}
+     * (the key is generated at the stack's first start) and {@code password: secret://sftp-password} must pass this schema, and a
+     * hostKey that is neither a fingerprint nor a well-formed reference must still not.
+     */
+    @Test
+    void theHostKeyMayBeASecretReferenceButNothingElseThatIsNotAFingerprint() {
+        String schema = component(rt).configSchema();
+        Map<String, Object> base = Map.of("user", "demo", "password", "secret://sftp-password", "hostKey", "secret://sftp-host-key");
+        assertValid(schema, base, "password and hostKey as secret references, as the demo's endpoint is written");
+        assertValid(schema, with(base, "hostKey", "secret://sftp.host-key_2"), "a reference name with . and -");
+        assertValid(schema, with(base, "hostKey", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU"), "a fingerprint still validates");
+        assertRefused(schema, with(base, "hostKey", "secret://"), "a reference without a name");
+        assertRefused(schema, with(base, "hostKey", "secret://UPPER"), "a reference name outside [a-z0-9][a-z0-9._-]*");
+        assertRefused(schema, with(base, "hostKey", "x secret://sftp-host-key"), "text around a reference");
+        assertRefused(schema, with(base, "hostKey", "sha256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU"), "a fingerprint with the wrong prefix case");
+        assertRefused(schema, with(base, "hostKey", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA"), "a public key line is no fingerprint");
+    }
+
     static Map<String, Object> with(Map<String, Object> options, String key, Object value) {
         Map<String, Object> m = new HashMap<>(options);
         m.put(key, value);

@@ -928,3 +928,13 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS surefire 2062 + fa
 Review: FAIL r1 (§8/D-071 fail-fast ingress sentence stale; release-after-commit unpinned at COMMIT; reads on the pool unpinned), PASS r2. Raised FIX-93, FIX-94.
 D-054 data: class C (designer ×1, test-author ×1 (resumed at the turn limit) + 1 fix packet, implementer ×1 + 1 fix, verifier ×1, reviewer ×2); review rounds 2.
 Next: P2-08b [B] measurement.
+
+## 2026-10-29 — P2-06 demo package: invoice-async, sftp-invoice, tests for each flow (D-086) — done, review PASS
+Deviation: F-19 (a packaged sftp endpoint could not name its server or directory). Context compacted before this task (re-verified).
+Test first: sftp SftpComponentTest (host/port/dir options, hostKey fingerprint-or-secret), schemas DemoFlowsTest, cli TestCommandTest (6 cases + dlq witness), runtime ComposeStackTest (red: target/P2-06-red.log, -red-sftp.log, -red3.log r1 re-pin).
+Change: sftp optional `host`/`port`/`dir` win over the URI, hostKey may be `secret://<name>`; packages/demo gains http-in-async (:8082 /invoice/async), invoice-async (at-least-once), sftp-inbox, sftp-invoice, fixtures/inbox, two test.yaml; deploy/compose: sftp-keys one-shot (RSA 3072, guarded) → fingerprint volume read-only in the node, 8082 published; root quickstart placeholder secrets.
+Checks: `flottila test packages/demo` 6/6 in 3.16 s (GATE check 8, target/P2-06-flowtests.log); verify -Pit VERIFIED_PASS surefire 2174 + failsafe 273 (target/P2-06-verify3.log); coverage no decrease; 14/14 sftp hand mutants; stack (target/P2-06-stack2.log): three flows, async 202 → echo, sftp file → echo + deleted, node holds no host key file (target/P2-06-keyread.log).
+Tests changed by the implementer: DeploymentsValidateTest aBrokenXsltNamesTheFile 1 → 3 problems (wrong expectation: three flows share the stylesheet).
+Review: FAIL r1 (node mounted the private host-key volume; compose tests pinned ed25519 while the stack used RSA; D-086 silent), PASS r2. Raised FIX-100.
+D-054 data: class A (scout ×1, test-author ×1 + 1 fix, implementer ×1 + 2 fixes, reviewer ×2); review rounds 2.
+Next: P2-02b [C], P2-07 [C], then GATE [G].

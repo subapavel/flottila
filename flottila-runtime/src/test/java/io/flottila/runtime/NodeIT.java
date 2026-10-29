@@ -526,11 +526,26 @@ class NodeIT {
         }
     }
 
-    /** The demo package as a zip, its http-in endpoint on 127.0.0.1:{@code inPort}, its partners at {@code partnerBase}; every rewrite asserted. */
+    /**
+     * The files P2-06 added to the demo: the async door, the SFTP inbox (its secrets are references only a stack node has) and the two
+     * flows of them. The ITs that mean "the demo" mean its invoice-sync flow behind http-in, which is what {@link #demoFiles} keeps.
+     */
+    static boolean addedByP206(String path) {
+        return path.equals("endpoints/http-in-async.yaml") || path.equals("endpoints/sftp-inbox.yaml")
+                || path.startsWith("flows/invoice-async.") || path.startsWith("flows/sftp-invoice.") || path.startsWith("fixtures/inbox/");
+    }
+
+    /**
+     * The demo package's invoice-sync part as a zip, its http-in endpoint on 127.0.0.1:{@code inPort}, its partners at
+     * {@code partnerBase}; every rewrite asserted.
+     */
     static Map<String, byte[]> demoFiles(int inPort, String partnerBase) throws IOException {
         Map<String, byte[]> files = new java.util.TreeMap<>();
         try (Stream<Path> walk = Files.walk(DEMO)) {
-            for (Path p : walk.filter(Files::isRegularFile).toList()) files.put(DEMO.relativize(p).toString().replace('\\', '/'), Files.readAllBytes(p));
+            for (Path p : walk.filter(Files::isRegularFile).toList()) {
+                String path = DEMO.relativize(p).toString().replace('\\', '/');
+                if (!addedByP206(path)) files.put(path, Files.readAllBytes(p));
+            }
         }
         files.put("endpoints/http-in.yaml", replaced(files.get("endpoints/http-in.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8080", "port: " + inPort)));
         for (String partner : List.of("endpoints/partner-domestic.yaml", "endpoints/partner-foreign.yaml")) {

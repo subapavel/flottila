@@ -100,6 +100,9 @@ class DeployCommandIT {
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
         env.put("FLOTTILA_ADMIN_TOKEN", TOKEN);
+        // the demo's sftp-inbox keeps its password and host key as secret:// references (P2-06): the node it is deployed to has both
+        env.put("FLOTTILA_SECRET_SFTP_PASSWORD", "demo");
+        env.put("FLOTTILA_SECRET_SFTP_HOST_KEY", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         NodeConfig config = NodeConfig.from(env);
         Main.Shipped shipped = Main.shipped();
         node = onVirtualThread(() -> Node.start(config, vertx, shipped.components(), shipped.steps(), shipped.languages()));
@@ -142,6 +145,9 @@ class DeployCommandIT {
     Path withFreeInPort(Path from, String as) throws IOException {
         Path copy = CliRuns.copy(from, work.resolve(as));
         CliRuns.rewrite(copy.resolve("endpoints/http-in.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8080", "port: " + freePort()));
+        if (Files.exists(copy.resolve("endpoints/http-in-async.yaml"))) {   // the demo's second door (P2-06) has a port of its own
+            CliRuns.rewrite(copy.resolve("endpoints/http-in-async.yaml"), Map.of("host: 0.0.0.0", "host: 127.0.0.1", "port: 8082", "port: " + freePort()));
+        }
         return copy;
     }
 
@@ -179,7 +185,8 @@ class DeployCommandIT {
         Ran ran = run(Map.of("FLOTTILA_ADMIN_TOKEN", TOKEN), "deploy", demo.toString(), "--admin", adminUrl());
 
         assertEquals(0, ran.exit(), ran.toString());
-        assertTrue(ran.out().contains("\"package\":\"demo\"") && ran.out().contains("\"demo/invoice-sync\""), "the node's answer is printed: " + ran);
+        assertTrue(ran.out().contains("\"package\":\"demo\"") && ran.out().contains("\"demo/invoice-sync\"")
+                && ran.out().contains("\"demo/invoice-async\"") && ran.out().contains("\"demo/sftp-invoice\""), "the node's answer names the three flows: " + ran);
         JsonArray items = packages();
         assertEquals(1, items.size(), "one package deployed: " + items.encode());
         JsonObject item = items.getJsonObject(0);

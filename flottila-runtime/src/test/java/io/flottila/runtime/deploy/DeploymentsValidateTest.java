@@ -89,6 +89,9 @@ class DeploymentsValidateTest {
         env.put("FLOTTILA_ENV", flottilaEnv);
         env.put("FLOTTILA_NODE_ID", NODE);
         env.put("FLOTTILA_DATA_DIR", data.toString());
+        // the demo's sftp-inbox keeps its password and host key as secret:// references (P2-06): a node that validates it has both set
+        env.put("FLOTTILA_SECRET_SFTP_PASSWORD", "demo");
+        env.put("FLOTTILA_SECRET_SFTP_HOST_KEY", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");
         return env;
     }
 
@@ -189,7 +192,7 @@ class DeploymentsValidateTest {
     }
 
     /**
-     * A stylesheet that does not compile is found only by the dry build (Package.problems() compiles no XSLT): one problem, the
+     * A stylesheet that does not compile is found only by the dry build (Package.problems() compiles no XSLT): one problem per flow, the
      * flow's build line, naming the stylesheet by its path from the package root and never by an absolute path.
      */
     @Test
@@ -199,9 +202,13 @@ class DeploymentsValidateTest {
 
         List<String> problems = validate(shipped("dev"), "demo", broken);
 
-        assertEquals(1, problems.size(), "one problem, the build's: " + problems);
-        assertTrue(problems.getFirst().startsWith("flow 'invoice-sync' does not build: "), "the flow's build line: " + problems);
-        assertTrue(problems.getFirst().contains("flows/invoice-to-partner.xsl"), "it names the stylesheet from the package root: " + problems);
+        // the demo's three flows share the stylesheet (P2-06): the dry build reports one problem per flow
+        assertEquals(3, problems.size(), "one problem per flow, the build's: " + problems);
+        for (String flow : List.of("invoice-async", "invoice-sync", "sftp-invoice")) {
+            String line = problems.stream().filter(p -> p.startsWith("flow '" + flow + "' does not build: ")).findFirst().orElse(null);
+            assertTrue(line != null, "the build line of flow '" + flow + "': " + problems);
+            assertTrue(line.contains("flows/invoice-to-partner.xsl"), "it names the stylesheet from the package root: " + line);
+        }
         noAbsolutePath(problems, broken);
     }
 

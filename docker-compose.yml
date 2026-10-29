@@ -33,6 +33,11 @@ services:
       FLOTTILA_ADMIN_HOST: 0.0.0.0
       # an admin API off loopback needs a token: the node refuses to start without one (export it, docs/QUICKSTART.md)
       FLOTTILA_ADMIN_TOKEN: ${FLOTTILA_ADMIN_TOKEN:-}
+      # the demo's sftp-inbox names its password and host key as secret:// references, so the node needs both to deploy the demo. This
+      # stack has no SFTP server: placeholders (a well-formed fake fingerprint); that endpoint cannot connect, the sync flow is unaffected
+      # (the working SFTP flow is in deploy/compose)
+      FLOTTILA_SECRET_SFTP_PASSWORD: placeholder
+      FLOTTILA_SECRET_SFTP_HOST_KEY: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     depends_on:
       postgres:
         condition: service_healthy

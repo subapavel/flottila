@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ValidateCommandTest {
 
-    /** {@code packages/demo} as validate prints it. */
+    /** The invoice-sync-only demo as validate printed it before P2-06: the tree of the fixtures that are copies of it (broken-xslt, bad-config, bad-schema, env-overlay). */
     static final List<String> DEMO_TREE = List.of(
             "package demo 0.1.0",
             "endpoints/  -  -",
@@ -50,6 +50,25 @@ class ValidateCommandTest {
             "flows/  -  -",
             "  invoice-sync.test.yaml  test  -",
             "  invoice-sync.yaml  flow  invoice-sync");
+
+    /** The real demo as validate prints it (P2-06: three flows, the async and the SFTP door, an SFTP fixture folder). */
+    static final List<String> DEMO_PACKAGE_TREE = List.of(
+            "package demo 0.1.0",
+            "endpoints/  -  -",
+            "  http-in-async.yaml  endpoint  http-in-async",
+            "  http-in.yaml  endpoint  http-in",
+            "  partner-domestic.yaml  endpoint  partner-domestic",
+            "  partner-foreign.yaml  endpoint  partner-foreign",
+            "  sftp-inbox.yaml  endpoint  sftp-inbox",
+            "fixtures/  -  -",
+            "fixtures/inbox/  -  -",
+            "flows/  -  -",
+            "  invoice-async.test.yaml  test  -",
+            "  invoice-async.yaml  flow  invoice-async",
+            "  invoice-sync.test.yaml  test  -",
+            "  invoice-sync.yaml  flow  invoice-sync",
+            "  sftp-invoice.test.yaml  test  -",
+            "  sftp-invoice.yaml  flow  sftp-invoice");
 
     /** The {@code tree} fixture: a root endpoint, folder.yaml with both fields and with a description only, a nested folder. */
     static final List<String> TREE = List.of(
@@ -71,7 +90,7 @@ class ValidateCommandTest {
         Ran ran = run("validate", DEMO.toString());
 
         assertEquals(0, ran.exit(), ran.toString());
-        assertEquals(DEMO_TREE, ran.outLines(), ran.toString());
+        assertEquals(DEMO_PACKAGE_TREE, ran.outLines(), ran.toString());
         assertEquals("", ran.err(), "a valid package prints nothing on stderr");
     }
 
@@ -162,7 +181,7 @@ class ValidateCommandTest {
         assertEquals(1, ran.exit(), ran.toString());
         assertEquals("package " + (nameLine.isEmpty() ? "-" : "42") + " 0.1.0", ran.outLines().getFirst(), ran.toString());
         assertEquals(expected, ran.problems(), "Package.problems() and nothing a dry build would add: " + ran);
-        assertEquals(DEMO_TREE.subList(1, DEMO_TREE.size()), ran.outLines().subList(1, DEMO_TREE.size()), "the rest of the tree: " + ran);
+        assertEquals(DEMO_PACKAGE_TREE.subList(1, DEMO_PACKAGE_TREE.size()), ran.outLines().subList(1, DEMO_PACKAGE_TREE.size()), "the rest of the tree: " + ran);
     }
 
     /** A YAML that does not parse stops the load: exit 1 and one problem line naming the file from the package root, its parser's message on that one line. */

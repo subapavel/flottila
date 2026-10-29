@@ -74,7 +74,7 @@ class LauncherIT {
         Exited e = launch("validate", "packages/demo");
 
         assertEquals(0, e.code(), e.toString());
-        assertEquals(ValidateCommandTest.DEMO_TREE, e.out().lines().toList(), e.toString());
+        assertEquals(ValidateCommandTest.DEMO_PACKAGE_TREE, e.out().lines().toList(), e.toString());
     }
 
     /** CI's step after validate (P2-03b1, D-080): the demo's test file passes through the launcher, the report on stdout, exit 0. */

@@ -1,0 +1,22 @@
+# invoice-async (at-least-once): the sender has its 202 after the durable save; a partner that keeps failing 503 parks the message in
+# the DLQ after the retries of the policy (100 + 200 + 400 ms).
+schemaVersion: 1
+kind: test
+flow: invoice-async
+mocks:
+  partner-domestic: { reply: fixtures/partner-ack.xml, delay: 20ms }
+  partner-foreign: { reply: fixtures/partner-ack.xml }
+cases:
+  - name: domestic invoice
+    send: fixtures/sample-invoice.xml
+    expect:
+      status: 202
+      sent:
+        partner-domestic: { count: 1, xpath: /PartnerInvoice/@number, equals: "4711" }
+      keys: { invoiceId: "4711" }
+      dlq: 0
+  - name: partner down
+    send: fixtures/sample-invoice.xml
+    mocks:
+      partner-domestic: { fail: 503 }
+    expect: { status: 202, dlq: 1, retries: 3 }

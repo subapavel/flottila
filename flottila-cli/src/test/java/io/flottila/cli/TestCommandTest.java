@@ -49,9 +49,13 @@ class TestCommandTest {
 
     /** {@code bin/flottila test packages/demo} — CI's step. */
     static final List<String> DEMO_REPORT = List.of(
+            "PASS invoice-async: domestic invoice (flow time 20ms)",
+            "PASS invoice-async: partner down (flow time 700ms)",
             "PASS invoice-sync: domestic invoice (flow time 20ms)",
             "PASS invoice-sync: partner down (flow time 700ms)",
-            "2 cases: 2 passed, 0 failed");
+            "PASS sftp-invoice: invoice file (flow time 20ms)",
+            "PASS sftp-invoice: partner down (flow time 700ms)",
+            "6 cases: 6 passed, 0 failed");
 
     /** The {@code flowtest} fixture: test documents in path order (async-order before sync-order), cases in order. */
     static final List<String> FLOWTEST_REPORT = List.of(
@@ -81,14 +85,46 @@ class TestCommandTest {
 
     // --- passing packages: exit 0
 
-    /** CI's step: the demo's test file passes unchanged ({@code dlq: 0, status: 503, retries: 3} is right for a sync flow). */
+    /**
+     * CI's step (P2-06, GATE checks 3-5): the demo's three flows pass every case — invoice-sync (a sync flow: {@code dlq: 0,
+     * status: 503, retries: 3}), invoice-async over its http door (202, one send, 503 and the DLQ) and sftp-invoice fed an SFTP
+     * fixture file (one send of the transformed body, 503 and the DLQ). The partner-down cases end after 100 + 200 + 400 ms of retries.
+     */
     @Test
     @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void demoPassesBothCasesExit0() {
+    void demoPassesEveryCaseOfTheThreeFlowsExit0() {
         Ran ran = run("test", DEMO.toString());
 
         assertEquals(DEMO_REPORT, ran.outLines(), ran.toString());
         assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /**
+     * The witness that the two at-least-once flows of the demo really park one message when the partner fails 503: the same demo
+     * with {@code dlq: 1} written {@code dlq: 0} in the two new test documents fails exactly those two cases, each saying it was 1
+     * (the passing run above would also pass if the documents never asked).
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void demoPartnerDownCasesOfTheAtLeastOnceFlowsReallyParkOneMessage() throws IOException {
+        Path pkg = CliRuns.copy(DEMO, tmp.resolve("demo-no-dlq"));
+        for (String doc : List.of("invoice-async.test.yaml", "sftp-invoice.test.yaml")) {
+            CliRuns.rewrite(pkg.resolve("flows").resolve(doc), Map.of("dlq: 1", "dlq: 0"));
+        }
+
+        Ran ran = run("test", pkg.toString());
+
+        assertEquals(List.of(
+                "PASS invoice-async: domestic invoice (flow time 20ms)",
+                "FAIL invoice-async: partner down (flow time 700ms)",
+                "  expect.dlq: expected 0, was 1",
+                "PASS invoice-sync: domestic invoice (flow time 20ms)",
+                "PASS invoice-sync: partner down (flow time 700ms)",
+                "PASS sftp-invoice: invoice file (flow time 20ms)",
+                "FAIL sftp-invoice: partner down (flow time 700ms)",
+                "  expect.dlq: expected 0, was 1",
+                "6 cases: 4 passed, 2 failed"), ran.outLines(), ran.toString());
+        assertEquals(1, ran.exit(), ran.toString());
     }
 
     /** A sync and an at-least-once flow, a happy path and a partner down each: every expectation of the fixture holds. */

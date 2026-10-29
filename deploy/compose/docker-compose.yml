@@ -1,5 +1,5 @@
 # The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3), Kafka and an SFTP server beside one Flottila node,
-# the demo's partner echo and a one-shot that deploys packages/demo. A demo stack, not production: the node runs FLOTTILA_ENV=dev
+# the demo's partner echo and a one-shot that deploys packages/demo; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack, not production: the node runs FLOTTILA_ENV=dev
 # so the manual deploy and the http S3 endpoint are allowed. Kafka and ClickHouse are present, not wired (GATE "Postponed").
 # Build the host jars first: mvn -B -ntp -q package -DskipTests -pl flottila-runtime,flottila-cli -am
 # Then:  FLOTTILA_ADMIN_TOKEN=<token> docker compose up -d --build        (see README.md)
@@ -59,14 +59,51 @@ services:
       timeout: 10s
       retries: 30
 
+  sftp-keys:
+    # one-shot: generates the SFTP server's RSA host key (3072 bits) into the sftp-hostkeys volume, only when it is not there yet (a
+    # second `up` keeps the key the server already presented), and writes the SHA256 fingerprint of its public half, which is public,
+    # to host-key.fingerprint in the separate volume sftp-fingerprint: the node mounts only that one, read-only, and reads the file into
+    # FLOTTILA_SECRET_SFTP_HOST_KEY; no path holding a host key reaches it. It exits non-zero when the fingerprint file is empty. RSA
+    # because the node's SFTP client (Apache MINA SSHD 2.20 as shipped) does not offer ssh-ed25519 (observed, P2-06). Same pinned
+    # image as `sftp` (it ships ssh-keygen).
+    image: atmoz/sftp:alpine@sha256:43dd1c023cf1bae487127d4b54660b0aee6e94c188a6599be36fb89ba115f961
+    restart: "no"
+    volumes:
+      - sftp-hostkeys:/keys
+      - sftp-fingerprint:/fingerprint
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ ! -s /keys/ssh_host_rsa_key ]; then ssh-keygen -q -t rsa -b 3072 -N '' -f /keys/ssh_host_rsa_key; fi
+        ssh-keygen -l -f /keys/ssh_host_rsa_key.pub | awk '{print $$2}' > /fingerprint/host-key.fingerprint
+        chmod 644 /fingerprint/host-key.fingerprint
+        [ -s /fingerprint/host-key.fingerprint ]
+
   sftp:
-    # user demo, directory inbox; the host key is generated into the sftp-hostkeys volume on first start (README: fingerprint).
+    # user demo, directory inbox. The host key is the RSA one `sftp-keys` generated: only the key file is mounted (a volume over
+    # /etc/ssh would shadow the image's sshd_config); the image makes its own ed25519 key, which the node's client never negotiates. The wrapper hands the inbox volume (root-owned when mounted) to the user demo,
+    # uid 1001, so that it can delete a delivered file. README: how to drop a file, the fingerprint.
     # The tag is a moving one upstream, so the image is pinned by digest.
     image: atmoz/sftp:alpine@sha256:43dd1c023cf1bae487127d4b54660b0aee6e94c188a6599be36fb89ba115f961
-    command: ["demo:${FLOTTILA_SFTP_PASSWORD:-demo}:::inbox"]
+    entrypoint:
+      - sh
+      - -c
+      - 'chown 1001:100 /home/demo/inbox && exec /entrypoint "$$@"'
+      - sftp
+    command: ["demo:${FLOTTILA_SFTP_PASSWORD:-demo}:1001:100:inbox"]
     volumes:
-      - sftp-hostkeys:/etc/ssh
+      - type: volume
+        source: sftp-hostkeys
+        target: /etc/ssh/ssh_host_rsa_key
+        read_only: true
+        volume:
+          subpath: ssh_host_rsa_key
       - sftp-data:/home/demo/inbox
+    depends_on:
+      sftp-keys:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 22"]
       interval: 2s
@@ -93,7 +130,18 @@ services:
       FLOTTILA_VALKEY_URI: redis://valkey:6379
       FLOTTILA_ADMIN_HOST: 0.0.0.0
       FLOTTILA_ADMIN_TOKEN: "${FLOTTILA_ADMIN_TOKEN:?set FLOTTILA_ADMIN_TOKEN: the admin API on 0.0.0.0 needs a token}"
+      # the demo's sftp-inbox names both as secret:// references (D-086); the host key's fingerprint is read below
+      FLOTTILA_SECRET_SFTP_PASSWORD: "${FLOTTILA_SFTP_PASSWORD:-demo}"
+    # the image's own command, behind a wrapper that reads the fingerprint `sftp-keys` wrote (public, unknown until the key exists)
+    entrypoint:
+      - sh
+      - -c
+      - 'FLOTTILA_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export FLOTTILA_SECRET_SFTP_HOST_KEY && exec java -jar /opt/flottila/flottila-runtime.jar'
+    volumes:
+      - sftp-fingerprint:/sftp-fingerprint:ro
     depends_on:
+      sftp-keys:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       valkey:
@@ -102,6 +150,7 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8080:8080"   # the demo's http-in
+      - "127.0.0.1:8082:8082"   # the demo's http-in-async (/invoice/async)
       - "127.0.0.1:8081:8081"   # admin API and /health
     healthcheck:
       # the image has no curl: one HTTP/1.0 request over bash's /dev/tcp, healthy on a 200
@@ -157,5 +206,6 @@ volumes:
   pg-data:
   s3-data:
   sftp-hostkeys:
+  sftp-fingerprint:
   sftp-data:
   clickhouse-data:

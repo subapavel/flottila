@@ -56,9 +56,12 @@ import java.util.function.Function;
 
 /**
  * The {@code sftp} component (D-076, ARCHITECTURE §7): a polling consumer on the Apache MINA SSHD client; no producer before
- * Phase 4. URI {@code sftp://host[:port, default 22]/dir}; options (validated against {@link #configSchema()}): {@code user},
+ * Phase 4. URI {@code sftp://host[:port, default 22]/dir}; options (validated against {@link #configSchema()}): optional
+ * {@code host}, {@code port} (1–65535) and {@code dir}, each of which wins over the URI's own part (a deployed endpoint's URI is
+ * only {@code sftp://<id>}, D-086; absent, the URI decides), {@code user},
  * exactly one of {@code password} / {@code privateKey}, {@code hostKey} (the server key's {@code SHA256:} fingerprint — a
- * mismatch refuses the session, there is no accept-all), {@code maxBodyBytes} (set by the deploy, never unlimited), and
+ * mismatch refuses the session, there is no accept-all; in a packaged endpoint as written, a {@code secret://<name>}
+ * reference, which the schema lets pass because the deploy checks the config before it resolves secrets, D-081), {@code maxBodyBytes} (set by the deploy, never unlimited), and
  * {@code glob} ({@code *}), {@code intervalMs} (10 000), {@code maxFilesPerPoll} (100), {@code minAgeMs} (0),
  * {@code afterSuccess} ({@code delete} | {@code move}, then {@code moveTo}), {@code connectTimeoutMs} (10 000),
  * {@code ioTimeoutMs} (30 000), optional {@code errorDir} and {@code flow}.
@@ -94,7 +97,8 @@ public final class SftpComponent implements Component {
     static final String CONFIG_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "properties":{"user":{"type":"string","minLength":1},"password":{"type":"string"},"privateKey":{"type":"string"},
-              "hostKey":{"type":"string","pattern":"^SHA256:[A-Za-z0-9+/]+=*$"},"maxBodyBytes":{"type":"integer","minimum":1},
+              "hostKey":{"type":"string","pattern":"^(SHA256:[A-Za-z0-9+/]+=*|secret://[a-z0-9][a-z0-9._-]*)$"},
+              "host":{"type":"string","minLength":1},"port":{"type":"integer","minimum":1,"maximum":65535},"dir":{"type":"string"},"maxBodyBytes":{"type":"integer","minimum":1},
               "flow":{"type":"string"},"glob":{"type":"string","minLength":1},"intervalMs":{"type":"integer","minimum":1},
               "maxFilesPerPoll":{"type":"integer","minimum":1},"minAgeMs":{"type":"integer","minimum":0},
               "afterSuccess":{"enum":["delete","move"]},"moveTo":{"type":"string","minLength":1},"errorDir":{"type":"string","minLength":1},
@@ -227,9 +231,10 @@ public final class SftpComponent implements Component {
             Map<String, Object> o = cfg.options();
             this.name = cfg.name();
             URI uri = cfg.uri();
-            this.host = uri.getHost();
-            this.port = uri.getPort() < 0 ? DEFAULT_PORT : uri.getPort();
-            this.dir = uri.getPath();
+            // an option wins over the URI part (D-086): a deployed endpoint's URI is only sftp://<id>
+            this.host = text(o, "host", uri.getHost());
+            this.port = (int) number(o, "port", uri.getPort() < 0 ? DEFAULT_PORT : uri.getPort());
+            this.dir = text(o, "dir", uri.getPath());
             this.user = required(cfg, "user");
             this.password = text(o, "password", null);
             this.privateKey = text(o, "privateKey", null);

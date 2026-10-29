@@ -1,0 +1,40 @@
+# A file dropped in the SFTP inbox, the same transformation at least once: the file is deleted after the durable save (the consumer's
+# job), the invoice is sent to the domestic partner through the Postgres work queue; a partner that keeps failing parks it in the DLQ.
+schemaVersion: 1
+kind: flow
+id: sftp-invoice
+version: 0.1.0
+description: Validate an invoice file from the SFTP inbox, map it for the partner and send it on.
+from:
+  endpoint: sftp-inbox
+delivery:
+  mode: at-least-once
+  saveTimeout: 5s
+  queue: postgres
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+partitionBy: invoiceId
+retry:
+  attempts: 3
+  initial: 100ms
+  max: 2s
+steps:
+  - type: xsd
+    name: validate
+    schema: flows/invoice.xsd
+  - type: extractKey
+    name: extractKey
+    key: invoiceId
+    xpath: /Invoice/Id
+  - type: xslt
+    name: toPartner
+    stylesheet: flows/invoice-to-partner.xsl
+  - type: to
+    name: partner
+    retryable: true
+    endpoint: partner-domestic
