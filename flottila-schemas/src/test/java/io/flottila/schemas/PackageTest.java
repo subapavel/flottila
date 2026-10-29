@@ -389,4 +389,160 @@ class PackageTest {
         assertEquals(List.of("flows/orders.test.yaml: case 'ghost' expects sends to endpoint 'nowhere' which is not in this package"),
                 Package.load(dir).problems());
     }
+
+    // --- P2-03b2 (D-080): a case sends, or its flow's from endpoint is fed
+
+    /** {@code orders} (from {@code in}) with the fixtures a feed case names: {@code fixtures/in.xml} and a folder {@code inbox}. */
+    static Path feedPackage(Path dir) throws IOException {
+        write(dir, "package.yaml", PACKAGE);
+        write(dir, "endpoints/in.yaml", IN);
+        write(dir, "endpoints/partner.yaml", PARTNER);
+        write(dir, "flows/orders.yaml", flow("orders", 1024, "partner"));
+        write(dir, "fixtures/in.xml", "<in/>");
+        write(dir, "inbox/order-1.xml", "<Order/>");
+        return dir;
+    }
+
+    /** {@code flows/orders.test.yaml} with the document's {@code mocks} (a flow-style map, or none) and one case {@code c}. */
+    static String feedTest(String documentMocks, String c) {
+        return "schemaVersion: 1\nkind: test\nflow: orders\n" + (documentMocks.isEmpty() ? "" : "mocks: " + documentMocks + "\n")
+                + "cases: [ " + c + " ]\n";
+    }
+
+    static final String SENDS_NOTHING = "flows/orders.test.yaml: case 'c' sends nothing: no send and no files/messages feed on 'in'";
+
+    /**
+     * {@code send} is optional: a case without one is valid when its flow's from endpoint is fed — {@code files} or
+     * {@code messages}, in the document's mocks or the case's — else it sends nothing, one problem naming the document, the case
+     * and the from endpoint. The effective entry counts: a feed on another endpoint does not, and a case's entry for the from
+     * endpoint replaces the document's whole (its feed with it).
+     */
+    @Test
+    void aCaseSendsOrItsFromEndpointIsFed(@TempDir Path dir) throws IOException {
+        record Variant(String name, String documentMocks, String c, List<String> problems) {}
+        List<Variant> variants = List.of(
+                new Variant("send, no feed", "", "{ name: c, send: fixtures/in.xml, expect: { steps: 1 } }", List.of()),
+                new Variant("document files", "{ in: { files: inbox/*.xml } }", "{ name: c, expect: { steps: 1 } }", List.of()),
+                new Variant("document messages", "{ in: { messages: inbox/*.xml } }", "{ name: c, expect: { steps: 1 } }", List.of()),
+                new Variant("case files", "", "{ name: c, mocks: { in: { files: inbox/*.xml } }, expect: { steps: 1 } }", List.of()),
+                new Variant("case files over a document entry without", "{ in: { delay: 1s } }",
+                        "{ name: c, mocks: { in: { files: inbox/*.xml } }, expect: { steps: 1 } }", List.of()),
+                new Variant("no send, no feed", "", "{ name: c, expect: { steps: 1 } }", List.of(SENDS_NOTHING)),
+                new Variant("a feed on another endpoint", "{ partner: { files: inbox/*.xml } }", "{ name: c, expect: { steps: 1 } }",
+                        List.of(SENDS_NOTHING)),
+                new Variant("the case's entry replaces the document's feed", "{ in: { files: inbox/*.xml } }",
+                        "{ name: c, mocks: { in: { delay: 1s } }, expect: { steps: 1 } }", List.of(SENDS_NOTHING)));
+        feedPackage(dir);
+        List<String> wrong = new ArrayList<>();
+        for (Variant v : variants) {
+            write(dir, "flows/orders.test.yaml", feedTest(v.documentMocks(), v.c()));
+            List<String> problems = Package.load(dir).problems();
+            if (!problems.equals(v.problems())) wrong.add(v.name() + ": expected " + v.problems() + ", was " + problems);
+        }
+        assertEquals(List.of(), wrong, "each variant: exactly its problems");
+    }
+
+    /**
+     * {@code expect.status} is the answer to a send: on a case fed and not sent to it is one problem naming the document and the
+     * case; the same case with a send is none.
+     */
+    @Test
+    void statusWithoutSendIsAProblem(@TempDir Path dir) throws IOException {
+        feedPackage(dir);
+        write(dir, "flows/orders.test.yaml", feedTest("{ in: { files: inbox/*.xml } }", "{ name: c, send: fixtures/in.xml, expect: { status: 200 } }"));
+        assertEquals(List.of(), Package.load(dir).problems(), "control: status with a send");
+
+        write(dir, "flows/orders.test.yaml", feedTest("{ in: { files: inbox/*.xml } }", "{ name: c, expect: { status: 200 } }"));
+
+        assertEquals(List.of("flows/orders.test.yaml: case 'c' expects a status but sends nothing"), Package.load(dir).problems());
+    }
+
+    /**
+     * A feed glob whose folder is not in the package is one problem naming the document and the glob — {@code files} or
+     * {@code messages}, the document's mocks or a case's; a glob over a folder that exists is none, whether or not a file
+     * matches it.
+     */
+    @Test
+    void aFeedGlobWhoseFolderIsMissingIsAProblem(@TempDir Path dir) throws IOException {
+        record Variant(String name, String documentMocks, String c, String glob) {}
+        List<Variant> variants = List.of(
+                new Variant("document files", "{ in: { files: missing/*.xml } }", "{ name: c, expect: { steps: 1 } }", "missing/*.xml"),
+                new Variant("document messages", "{ in: { messages: inbox/deeper/*.xml } }", "{ name: c, expect: { steps: 1 } }", "inbox/deeper/*.xml"),
+                new Variant("case messages", "{ in: { files: inbox/*.xml } }",
+                        "{ name: c, mocks: { in: { messages: absent/*.xml } }, expect: { steps: 1 } }", "absent/*.xml"),
+                new Variant("case files on another endpoint", "{ in: { files: inbox/*.xml } }",
+                        "{ name: c, mocks: { partner: { files: gone/*.xml } }, expect: { steps: 1 } }", "gone/*.xml"));
+        feedPackage(dir);
+        write(dir, "order-0.xml", "<Order/>");
+        for (String control : List.of("inbox/*.xml", "inbox/*.json", "inbox/order-1.xml", "*.xml")) {   // *.xml: no '/', the package root
+            write(dir, "flows/orders.test.yaml", feedTest("{ in: { files: \"" + control + "\" } }", "{ name: c, expect: { steps: 1 } }"));
+            assertEquals(List.of(), Package.load(dir).problems(), "control: the folder of " + control + " exists");
+        }
+        List<String> wrong = new ArrayList<>();
+        for (Variant v : variants) {
+            write(dir, "flows/orders.test.yaml", feedTest(v.documentMocks(), v.c()));
+            List<String> problems = Package.load(dir).problems();
+            boolean named = problems.size() == 1 && problems.getFirst().startsWith("flows/orders.test.yaml: ") && problems.getFirst().contains(v.glob());
+            if (!named) wrong.add(v.name() + ": " + problems);
+        }
+        assertEquals(List.of(), wrong, "each variant: one problem naming the document and its glob");
+    }
+
+    /**
+     * (P2-03b2, adopted from the implementer's scratch, D-078) A feed glob whose folder lies outside the package is one problem
+     * naming the document and the glob — though the folder exists and holds a file the glob matches.
+     */
+    @Test
+    void aFeedGlobWhoseFolderLeavesThePackageIsAProblem(@TempDir Path dir) throws IOException {
+        Path pkg = feedPackage(dir.resolve("pkg"));
+        write(dir, "outside/order.xml", "<Order/>");
+        write(pkg, "flows/orders.test.yaml", feedTest("{ in: { files: ../outside/*.xml } }", "{ name: c, expect: { steps: 1 } }"));
+
+        List<String> problems = Package.load(pkg).problems();
+
+        assertEquals(1, problems.size(), problems.toString());
+        assertTrue(problems.getFirst().startsWith("flows/orders.test.yaml: ") && problems.getFirst().contains("../outside/*.xml"), problems.toString());
+    }
+
+    /**
+     * (P2-03b2 [A]) The feed's folder is the glob's literal parent, read as a plain path as the mock lists it — not the part
+     * before the first metacharacter: {@code inbo*}/x.xml, with {@code inbox} there but no folder named {@code inbo*}, is one
+     * problem naming the glob; once a folder literally named {@code inbo*} exists, none.
+     */
+    @Test
+    void aFeedFolderIsTheGlobsLiteralParent(@TempDir Path dir) throws IOException {
+        feedPackage(dir);
+        assertTrue(Files.isDirectory(dir.resolve("inbox")) && Files.notExists(dir.resolve("inbo*")), "fixture: inbox, no folder named inbo*");
+        write(dir, "flows/orders.test.yaml", feedTest("{ in: { files: inbo*/x.xml } }", "{ name: c, expect: { steps: 1 } }"));
+
+        List<String> problems = Package.load(dir).problems();
+
+        assertEquals(1, problems.size(), problems.toString());
+        assertTrue(problems.getFirst().startsWith("flows/orders.test.yaml: ") && problems.getFirst().contains("inbo*/x.xml"), problems.toString());
+
+        write(dir, "inbo*/x.xml", "<Order/>");
+        List<String> control = Package.load(dir).problems();
+        assertEquals(List.of("inbo*: folder name 'inbo*' is not a slug"), control,
+                "control: a folder literally named inbo* is the feed's folder — only the layout rule (D-078) speaks of it, no line names the glob");
+        assertTrue(control.stream().noneMatch(l -> l.contains("inbo*/x.xml")), "no glob problem: " + control);
+    }
+
+    /**
+     * {@code files} and {@code messages} on one mock are refused by the test schema — a package problem naming the place, in
+     * the document's mocks and in a case's alike, never a throw mid-run.
+     */
+    @Test
+    void filesAndMessagesOnOneMockIsASchemaProblem(@TempDir Path dir) throws IOException {
+        feedPackage(dir);
+        String both = "{ files: inbox/*.xml, messages: inbox/*.xml }";
+        write(dir, "flows/orders.test.yaml", feedTest("{ in: " + both + " }", "{ name: c, expect: { steps: 1 } }"));
+        List<String> document = Package.load(dir).problems();
+        assertTrue(document.contains("flows/orders.test.yaml at '/mocks/in': Instance matched \"not\" schema"), "in the document's mocks: " + document);
+        assertTrue(document.stream().allMatch(l -> l.startsWith("flows/orders.test.yaml at '/mocks")), "schema lines only: " + document);
+
+        write(dir, "flows/orders.test.yaml", feedTest("", "{ name: c, mocks: { in: " + both + " }, expect: { steps: 1 } }"));
+        List<String> inCase = Package.load(dir).problems();
+        assertTrue(inCase.contains("flows/orders.test.yaml at '/cases/0/mocks/in': Instance matched \"not\" schema"), "in a case's mocks: " + inCase);
+        assertTrue(inCase.stream().allMatch(l -> l.startsWith("flows/orders.test.yaml at '/cases")), "schema lines only: " + inCase);
+    }
 }

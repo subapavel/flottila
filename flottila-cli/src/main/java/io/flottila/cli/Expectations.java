@@ -33,16 +33,19 @@ import java.util.function.Function;
  *       it does not hold for, {@code was no send} when there is none ({@code sent.<endpoint>.count} first, then
  *       {@code .equals} or {@code .contains}).</li>
  * </ul>
- * A value that is not there is {@value #NONE}.
+ * A value that is not there is {@value #NONE}; {@code steps} and {@code keys} of a case whose from endpoint delivered no message
+ * (a feed whose glob matched no file) were {@value #NO_MESSAGE}.
  */
 final class Expectations {
 
     static final String NONE = "(none)";
+    /** What {@code steps} and {@code keys} were when the case's from endpoint delivered no message (a feed whose glob matched no file). */
+    static final String NO_MESSAGE = "no message";
 
     /**
      * What a settled case observed.
      *
-     * @param messageId the message the case's send became
+     * @param messageId the message the case's send became, or the first a feed delivered; empty when none was delivered
      * @param ack the answer, when it succeeded; else null
      * @param failure what the answer failed with; else null
      * @param dlq the DLQ's rows
@@ -50,7 +53,7 @@ final class Expectations {
      * @param sentTo an endpoint's sends, in order
      * @param xpaths each {@code xpath} of the case's {@code sent}, compiled
      */
-    record Observed(String messageId, Ack ack, Throwable failure, MessageStore messages, int dlq, List<Envelope> sends,
+    record Observed(Optional<String> messageId, Ack ack, Throwable failure, MessageStore messages, int dlq, List<Envelope> sends,
                     Function<String, List<Envelope>> sentTo, Map<String, Function<Envelope, Optional<String>>> xpaths) {}
 
     /** One {@code expect} key's check: adds the lines of what failed. */
@@ -62,7 +65,7 @@ final class Expectations {
     /** By key; the test schema allows no other. */
     private static final Map<String, Check> CHECKS = Map.of(
             "status", (expect, o, failed) -> compare(failed, "status", expect.getInteger("status"), HttpComponent.status(o.ack(), o.failure())),
-            "steps", (expect, o, failed) -> compare(failed, "steps", expect.getInteger("steps"), o.messages().timeline(o.messageId()).await().size()),
+            "steps", Expectations::steps,
             "keys", Expectations::keys,
             "dlq", (expect, o, failed) -> compare(failed, "dlq", expect.getInteger("dlq"), o.dlq()),
             "retries", (expect, o, failed) -> compare(failed, "retries", expect.getInteger("retries"), retries(o.sends())),
@@ -91,12 +94,23 @@ final class Expectations {
         return sends.size() - (int) sends.stream().map(e -> List.of(e.id(), e.step())).distinct().count();
     }
 
+    private static void steps(JsonObject expect, Observed o, List<String> failed) {
+        int expected = expect.getInteger("steps");
+        o.messageId().ifPresentOrElse(id -> compare(failed, "steps", expected, o.messages().timeline(id).await().size()),
+                () -> failed.add(line("steps", expected, NO_MESSAGE)));
+    }
+
     private static void keys(JsonObject expect, Observed o, List<String> failed) {
         JsonObject keys = expect.getJsonObject("keys");
         for (String name : keys.fieldNames()) {
             String value = keys.getString(name);
-            if (!o.messages().findByKey(name, value, Optional.empty(), Page.MAX_LIMIT).await().items().contains(o.messageId())) {
-                String carried = o.messages().timeline(o.messageId()).await().stream().map(s -> s.keys().get(name)).filter(Objects::nonNull)
+            if (o.messageId().isEmpty()) {
+                failed.add(line("keys." + name, value, NO_MESSAGE));
+                continue;
+            }
+            String id = o.messageId().get();
+            if (!o.messages().findByKey(name, value, Optional.empty(), Page.MAX_LIMIT).await().items().contains(id)) {
+                String carried = o.messages().timeline(id).await().stream().map(s -> s.keys().get(name)).filter(Objects::nonNull)
                         .reduce((first, last) -> last).orElse(NONE);
                 failed.add(line("keys." + name, value, carried));
             }

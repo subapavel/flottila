@@ -130,8 +130,10 @@ class TestCommandEdgeTest {
     }
 
     /**
-     * A case whose node refuses the deploy — its sftp door's {@code files} fixtures lie in a folder that does not exist, so the
-     * mock consumer cannot start — fails with the refusal's reason; the case after it, on a world of its own, still runs and passes.
+     * A case whose node refuses the deploy — its sftp door's {@code files} glob is no glob ({@code *.{xml}: an unclosed group) over
+     * a folder that exists, so the mock consumer's start throws while no check before the deploy reads the glob (P2-03b2: the
+     * package's cross-check refuses only a missing folder) — fails with the refusal's reason; the case after it, on a world of its
+     * own, still runs and passes.
      */
     @Test
     @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
@@ -141,24 +143,24 @@ class TestCommandEdgeTest {
                 kind: test
                 flow: from-sftp
                 cases:
-                  - name: missing fixtures
+                  - name: malformed glob
                     send: fixtures/order.xml
                     mocks:
-                      drop: { files: missing/*.xml }
+                      drop: { files: "fixtures/*.{xml" }
                     expect: { sent: { partner: { count: 1 } } }
                   - name: dropped order
                     send: fixtures/order.xml
                     expect: { sent: { partner: { count: 1 } } }
                 """)));
-        assertTrue(Files.notExists(pkg.resolve("missing")), "fixture: the folder does not exist");
+        assertTrue(Files.isDirectory(pkg.resolve("fixtures")), "fixture: the glob's folder exists");
 
         Ran ran = run("test", pkg.toString());
 
         List<String> lines = ran.outLines();
         assertEquals(4, lines.size(), ran.toString());
-        assertEquals("FAIL from-sftp: missing fixtures (flow time 0ms)", lines.get(0), ran.toString());
+        assertEquals("FAIL from-sftp: malformed glob (flow time 0ms)", lines.get(0), ran.toString());
         assertTrue(lines.get(1).startsWith("  deploy refused: "), ran.toString());
-        assertTrue(lines.get(1).contains("drop"), "the reason names the endpoint: " + ran);
+        assertTrue(lines.get(1).contains("from-sftp") && lines.get(1).contains("*.{xml"), "the reason names the flow and the glob: " + ran);
         assertEquals("PASS from-sftp: dropped order (flow time 0ms)", lines.get(2), ran.toString());
         assertEquals("2 cases: 1 passed, 1 failed", lines.get(3), ran.toString());
         assertEquals(1, ran.exit(), ran.toString());

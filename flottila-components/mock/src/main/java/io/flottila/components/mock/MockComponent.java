@@ -49,10 +49,10 @@ import java.util.stream.Stream;
  * injected timer it delivers the files {@link #drop dropped} on its endpoint — and the behaviour's {@code files} fixtures,
  * fed at its start in name order — oldest first, one at a time, by the rules of the real one: Accepted or Reply removes
  * the file, a retryable Nack or a failed answer keeps it and ends the round, a final Nack (or a body above the endpoint's
- * {@code maxBodyBytes}) keeps it and never delivers it again to that consumer. {@link #ingest} hands a running consumer a
- * message as the real one would take it from its sender ({@code flottila test}'s {@code send}, D-080); {@link #delivered}
- * records what each consumer's handler was given, whoever gave it. Development and CI only: a deployed node refuses a mock
- * binding by its scheme and by this package (the node's start).
+ * {@code maxBodyBytes}) keeps it and never delivers it again to that consumer; {@link #undelivered} names the files still
+ * pending. {@link #ingest} hands a running consumer a message as the real one would take it from its sender
+ * ({@code flottila test}'s {@code send}, D-080); {@link #delivered} records what each consumer's handler was given, whoever gave
+ * it. Development and CI only: a deployed node refuses a mock binding by its scheme and by this package (the node's start).
  *
  * @since 0.1
  */
@@ -70,6 +70,8 @@ public final class MockComponent implements Component {
     private final Timer timer;
     private final IdGenerator ids;
     private final Map<String, Inbox> inboxes = new ConcurrentHashMap<>();
+    /** By endpoint name: the files the consumer started last on it refused finally (its poller's own set). */
+    private final Map<String, Set<Dropped>> refusedOn = new ConcurrentHashMap<>();
     private final Map<String, Behaviour> behaviours = new ConcurrentHashMap<>();
     private final Map<String, AtomicLong> sends = new ConcurrentHashMap<>();
     private final List<Envelope> sent = new CopyOnWriteArrayList<>();
@@ -103,9 +105,30 @@ public final class MockComponent implements Component {
         inbox(endpoint).drop(new Dropped(Objects.requireNonNull(name, "name"), bytes.copy()));
     }
 
-    /** The names of the files still on the endpoint named {@code endpoint}, oldest first. */
+    /**
+     * The names of the files still on the endpoint named {@code endpoint}, oldest first. Takes no lock (a sampler of a world in
+     * which virtual threads take the inbox's monitor must hold none, F-17): a read of the inbox map and of the inbox's current
+     * list, which a drop or a removal replaces whole.
+     */
     public Collection<String> remaining(String endpoint) {
-        return inbox(endpoint).files().stream().map(Dropped::name).toList();
+        return existing(endpoint).files().stream().map(Dropped::name).toList();
+    }
+
+    /**
+     * The names of the files on the endpoint named {@code endpoint} still to be delivered, oldest first: those
+     * {@linkplain #remaining remaining} minus those the consumer started last on it refused finally — a final Nack, a body above
+     * its {@code maxBodyBytes} — which it never delivers again: settled, not pending ({@code flottila test}'s feed cases, D-080).
+     * A file dropped again under a refused one's name is a new file, pending. Takes no lock, as {@link #remaining} takes none.
+     */
+    public Collection<String> undelivered(String endpoint) {
+        List<Dropped> files = existing(endpoint).files();
+        Set<Dropped> refused = refusedOn.getOrDefault(endpoint, Set.of());
+        return files.stream().filter(f -> !refused.contains(f)).map(Dropped::name).toList();
+    }
+
+    /** The endpoint's inbox, or an empty one when nothing was ever dropped on it: a read of the map only, never an insert. */
+    private Inbox existing(String endpoint) {
+        return inboxes.getOrDefault(Objects.requireNonNull(endpoint, "endpoint"), Inbox.NONE);
     }
 
     private Inbox inbox(String endpoint) {
@@ -198,6 +221,7 @@ public final class MockComponent implements Component {
                     return Future.failedFuture(new IllegalStateException("mock files fixtures cannot be read for endpoint " + cfg.name(), unreadable));
                 }
                 handlers.put(cfg.name(), running);
+                refusedOn.put(cfg.name(), poller.refused);
                 poller.start();
                 return Future.succeededFuture();
             }
@@ -224,18 +248,30 @@ public final class MockComponent implements Component {
         Buffer bytes() { return bytes; }
     }
 
-    /** The files dropped on one endpoint, oldest first. */
+    /**
+     * The files dropped on one endpoint, oldest first: an immutable list that a drop or a removal replaces whole under this
+     * inbox's monitor, and that a reader takes without it.
+     */
     private static final class Inbox {
-        private final List<Dropped> files = new ArrayList<>();   // guarded by this
+        /** The inbox of an endpoint nothing was dropped on: read, never written. */
+        static final Inbox NONE = new Inbox();
+
+        private volatile List<Dropped> files = List.of();   // replaced under this, read without it
 
         synchronized void drop(Dropped file) {
-            files.removeIf(f -> f.name().equals(file.name()));
-            files.add(file);
+            List<Dropped> next = new ArrayList<>(files);
+            next.removeIf(f -> f.name().equals(file.name()));
+            next.add(file);
+            files = List.copyOf(next);
         }
 
-        synchronized List<Dropped> files() { return List.copyOf(files); }
+        List<Dropped> files() { return files; }
 
-        synchronized void remove(Dropped file) { files.remove(file); }
+        synchronized void remove(Dropped file) {
+            List<Dropped> next = new ArrayList<>(files);
+            next.remove(file);
+            files = List.copyOf(next);
+        }
     }
 
     /** A consumer's rounds: every {@link #ROUND} on the injected timer, each on a virtual thread of its own. */

@@ -1,0 +1,11 @@
+# P2-03b2 fixture (D-080): `flottila test` feed cases — a case without `send` whose from endpoint's mock is fed `files` or
+# `messages` (TestCommandFeedTest). Both from endpoints are sftp consumers whose config is valid against the real sftp schema
+# (maxBodyBytes not set: the deploy sets it on every in endpoint from the flow, D-059).
+# Flow times follow from the mocks: the partner answers after 250 ms; the mock's round 0 runs at the consumer's start and
+# delivers its files one at a time, oldest (name order) first.
+schemaVersion: 1
+kind: package
+name: feed
+version: 0.1.0
+description: Orders polled from an sftp drop, one sync flow and one at-least-once flow partitioned by the order id.
+dependencies: []

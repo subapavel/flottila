@@ -1,0 +1,12 @@
+# Three orders fed as files, no send: delivered one at a time (250 ms each at the partner), every one removed.
+schemaVersion: 1
+kind: test
+flow: from-drop
+mocks:
+  drop: { files: fixtures/inbox/*.xml }
+  partner: { reply: fixtures/ack.xml, delay: 250ms }
+cases:
+  - name: three orders
+    expect:
+      sent:
+        partner: { count: 3, contains: "<Customer>Acme Corp</Customer>" }

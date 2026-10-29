@@ -1,0 +1,14 @@
+# The first file's order id is 300 characters: refused finally, kept, never delivered again; the second is accepted and sent.
+schemaVersion: 1
+kind: test
+flow: keyed-drop
+mocks:
+  drop-keyed: { files: fixtures/refusing/*.xml }
+  partner: { reply: fixtures/ack.xml, delay: 250ms }
+cases:
+  - name: one refused one accepted
+    expect:
+      dlq: 0
+      retries: 0
+      sent:
+        partner: { count: 1, xpath: /Order/Id, equals: "7" }

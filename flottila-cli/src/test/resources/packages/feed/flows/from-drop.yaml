@@ -1,0 +1,21 @@
+# Sync: each polled order goes to the partner; the partner's reply is the consumer's answer (the file is removed on it).
+schemaVersion: 1
+kind: flow
+id: from-drop
+version: 0.1.0
+description: Send each order dropped on the sftp drop to the partner.
+from:
+  endpoint: drop
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 4
+  maxInFlightBytes: 4194304
+steps:
+  - type: to
+    name: partner
+    endpoint: partner

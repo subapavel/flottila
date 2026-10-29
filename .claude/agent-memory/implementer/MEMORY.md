@@ -65,8 +65,7 @@
 - JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
   `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
   FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
-- FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled — test "fired as it was
-  cancelled" guards with a hand-written Timer whose Cancellable returns false (FlowWorkerLifecycleTest.ManualTimer).
+- FakeTimer fires on the thread that advances the clock; a dequeued task cannot be cancelled (FlowWorkerLifecycleTest.ManualTimer).
 - Vert.x 5.1.10 `HttpServer.shutdown(Duration)` (observed, P1-08c): stops accepting, keeps an HTTP/1.1 connection until its
   in-flight response ends, force-closes at the timeout; `close()` drops in-flight requests ("Connection was closed").
 - Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
@@ -94,6 +93,7 @@
   loadKeyPairIdentities: garbage → null, PKCS8 with an unknown OID → NoSuchAlgorithmException (a GSE). rename never overwrites.
 - Docker (P2-05a): native PG holds 127.0.0.1:5432 → compose with `FLOTTILA_PG_HOST_PORT=55432`; temurin images have bash, no curl;
   `docker volume prune` is denied. A non-loopback FLOTTILA_ADMIN_HOST without FLOTTILA_ADMIN_TOKEN (blank = none) is refused.
+- `-pl flottila-cli` alone compiles against ~/.m2 jars of http/mock/schemas: after the reactor moved, `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2: "cannot find symbol HttpComponent.status"). Full `verify -Pit` ~8.5 min (P2-03b2).
 - P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch (source); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
 ## Findings that came back in review
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.

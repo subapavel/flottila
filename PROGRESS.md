@@ -902,3 +902,12 @@ Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS 2319 tests (target
 Review: FAIL r1 (answer isComplete synchronized; vacuous `sent`; unknown sent endpoint NPE; D-080 retries wording; F-17 changelog), PASS r2. Raised FIX-90, CONSIDER-5 (exact quiescence, owner).
 D-054 data: class C (designer ×1, test-author ×2 runs + 3 fix packets, implementer ×1 + 2 fixes, verifier ×3, reviewer ×2); review rounds 2.
 Next: P2-03b2 [B] feed cases.
+
+## 2026-10-29 — P2-03b2 `flottila test` feed cases (`files` / `messages` instead of `send`, D-080) — done, review PASS
+Context compacted (one line); re-verified with git status / git log -3.
+Test first: cli TestCommandFeedTest (+ fixture `feed`, two sftp in endpoints), PackageTest (send-or-feed, status/error without send, feed folder), mock MockFeedTest (red: target/P2-03b2-red.log); TestCommandEdgeTest deploy-refused case moved to a malformed glob (test-author). [A] fix packets: literal-parent folder, `was no message`, schema `not`, root-glob control.
+Change: test.schema `send` optional, files/messages exclusive; Package.crossCheckTest (sends nothing, status/error without send, feed folder = literal parent inside the package); mock `messages` as `files`, `undelivered` (per consumer, finally refused excluded), lock-free inbox reads; FlowTests settle adds undelivered, fingerprint adds remaining; Expectations steps/keys `was no message`.
+Checks: whole reactor `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/P2-03b2-final2-verify.log); demo `flottila test` 2/2; TestCommandFeedTest 20× green; coverage no decrease (cli 98.7/100, mock 100/99.2, schemas 99.4/99.4); hand mutants 20 + MS1/MS2/M9/M12 killed, M13 accepted by reading.
+Review: FAIL r1 (schema `not` unpinned; root-glob clause unpinned; D-080 stale), PASS r2. D-080 amended. Raised FIX-91.
+D-054 data: class B (test-author ×1 + 4 fix packets, implementer ×1 + 1 fix, verifier ×4, reviewer ×2); review rounds 2.
+Next: P2-04.

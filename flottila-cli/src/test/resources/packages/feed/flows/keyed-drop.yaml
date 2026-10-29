@@ -1,0 +1,32 @@
+# At-least-once, partitioned by the order id: an id over 256 characters is a final Nack at the door (D-075) — the mock
+# consumer refuses that file finally and keeps it; any other order is accepted, keyed and sent to the partner by the worker.
+schemaVersion: 1
+kind: flow
+id: keyed-drop
+version: 0.1.0
+description: Accept each order dropped on the keyed drop, then key it and send it to the partner.
+from:
+  endpoint: drop-keyed
+delivery:
+  mode: at-least-once
+partitionBy: orderId
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 4
+  maxInFlightBytes: 4194304
+retry:
+  attempts: 3
+  initial: 100ms
+  max: 2s
+steps:
+  - type: extractKey
+    name: extractKey
+    key: orderId
+    xpath: /Order/Id
+  - type: to
+    name: partner
+    retryable: true
+    endpoint: partner

@@ -43,6 +43,10 @@ public final class Package {
     private static final String MANIFEST = "package.yaml";
     private static final String FOLDER = "folder.yaml";
     private static final Set<Schemas> ARTIFACTS = Set.of(Schemas.ENDPOINT, Schemas.FLOW, Schemas.TEST);
+    /** A mock behaviour's keys that feed a consumer (D-080): its fixtures, polled at the consumer's start. */
+    private static final List<String> FEEDS = List.of("files", "messages");
+    /** The {@code expect} keys that read the answer to a send, each as its problem line names it. */
+    private static final Map<String, String> NEEDS_ANSWER = Map.of("status", "a status", "error", "an error");
 
     private final Path dir;
     private final Path root;
@@ -386,8 +390,9 @@ public final class Package {
 
     /**
      * Problems the schemas cannot see: dangling endpoint (a test's mock or {@code expect.sent} included), missing stylesheet or
-     * XSD, test of an unknown flow, missing fixture, a file reference that leaves the package, and a step field the flow schema
-     * leaves untyped holding a value of the wrong type.
+     * XSD, test of an unknown flow, missing fixture or feed folder, a file reference that leaves the package, a test case that
+     * sends nothing or expects an answer it has no send for, and a step field the flow schema leaves untyped holding a value of
+     * the wrong type.
      * Empty = consistent. A line that names a file names it by its path relative to the package directory. Only the flow and test
      * files that passed their schema are read: the schema's problems already say what is wrong with the others, whose shape
      * nothing here may rely on. Their ids still count as present.
@@ -433,15 +438,34 @@ public final class Package {
         return null;
     }
 
+    /**
+     * A test's flow exists, its mocks' endpoints and files ({@link #requireMocksExist}) and its cases' sends exist; a case sends,
+     * or its flow's from endpoint is fed — {@code files} or {@code messages} in its effective entry, the case's own replacing the
+     * document's whole (D-080) — and a case without a send expects nothing of an answer ({@link #NEEDS_ANSWER}). Nothing about
+     * sending is said of a case whose flow is not there or names no from endpoint: the flow's own problem says it.
+     */
     private void crossCheckTest(List<String> problems, Path file, JsonObject test) {
         String flow = test.getString("flow");
         if (!flows.containsKey(flow)) problems.add(relative(file) + ": flow '" + flow + "' is not in this package");
-        requireMocksExist(problems, file, test.getJsonObject("mocks", new JsonObject()));
+        Optional<String> from = Optional.ofNullable(flows.get(flow)).map(f -> f.getValue("from")).filter(JsonObject.class::isInstance)
+                .map(f -> ((JsonObject) f).getValue("endpoint")).filter(String.class::isInstance).map(String.class::cast);
+        JsonObject mocks = test.getJsonObject("mocks", new JsonObject());
+        requireMocksExist(problems, file, mocks);
         JsonArray cases = test.getJsonArray("cases", new JsonArray());
         for (int i = 0; i < cases.size(); i++) {
             JsonObject c = cases.getJsonObject(i);
+            String where = relative(file) + ": case '" + c.getString("name") + "' ";
             requireFile(problems, file, "case '" + c.getString("name") + "' send", c.getString("send"));
-            requireMocksExist(problems, file, c.getJsonObject("mocks", new JsonObject()));
+            JsonObject caseMocks = c.getJsonObject("mocks", new JsonObject());
+            requireMocksExist(problems, file, caseMocks);
+            if (!c.containsKey("send")) {
+                from.filter(endpoint -> !fed(caseMocks.getJsonObject(endpoint, mocks.getJsonObject(endpoint, new JsonObject()))))
+                        .ifPresent(endpoint -> problems.add(where + "sends nothing: no send and no files/messages feed on '" + endpoint + "'"));
+                for (String key : c.getJsonObject("expect").fieldNames()) {
+                    String what = NEEDS_ANSWER.get(key);
+                    if (what != null) problems.add(where + "expects " + what + " but sends nothing");
+                }
+            }
             for (String endpoint : c.getJsonObject("expect").getJsonObject("sent", new JsonObject()).fieldNames()) {
                 if (!endpoints.containsKey(endpoint)) {
                     problems.add(relative(file) + ": case '" + c.getString("name") + "' expects sends to endpoint '" + endpoint + "' which is not in this package");
@@ -454,11 +478,31 @@ public final class Package {
         if (id != null && !endpoints.containsKey(id)) problems.add(where + ": endpoint '" + id + "' is not in this package");
     }
 
+    /** Each mock's endpoint exists, its {@code reply} fixture exists, and the folder its {@code files} or {@code messages} feed from. */
     private void requireMocksExist(List<String> problems, Path testFile, JsonObject mocks) {
         for (String endpoint : mocks.fieldNames()) {
             if (!endpoints.containsKey(endpoint)) problems.add(relative(testFile) + ": mock for endpoint '" + endpoint + "' which is not in this package");
             JsonObject behaviour = mocks.getJsonObject(endpoint);
             if (behaviour.containsKey("reply")) requireFile(problems, testFile, "mock '" + endpoint + "' reply", behaviour.getString("reply"));
+            for (String feed : FEEDS) requireFolder(problems, testFile, "mock '" + endpoint + "' " + feed, behaviour.getString(feed));
+        }
+    }
+
+    /** Whether a mock's behaviour feeds a consumer. */
+    private static boolean fed(JsonObject behaviour) {
+        return FEEDS.stream().anyMatch(behaviour::containsKey);
+    }
+
+    /**
+     * A feed's glob reads its literal parent folder — everything before its last {@code /}, read as a plain path, the package root
+     * without one, as the mock lists it — which is a folder in the package; the glob itself is never compiled here (a malformed
+     * one is the mock's to refuse where it feeds).
+     */
+    private void requireFolder(List<String> problems, Path namingFile, String what, String glob) {
+        if (glob == null) return;
+        Path folder = root.resolve(glob.substring(0, glob.lastIndexOf('/') + 1)).normalize();
+        if (!folder.startsWith(root) || !Files.isDirectory(folder)) {
+            problems.add(relative(namingFile) + ": " + what + " '" + glob + "' feeds from a folder that is not in the package");
         }
     }
 

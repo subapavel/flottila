@@ -1,0 +1,9 @@
+schemaVersion: 1
+kind: endpoint
+id: drop
+scheme: sftp
+direction: in
+config:
+  user: flottila
+  password: secret
+  hostKey: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

@@ -61,9 +61,12 @@ import java.util.stream.Stream;
  * {@code mocks} — a case's entry for an endpoint replaces the document's whole — in-memory stores, and a node
  * ({@link Deployments}) of environment {@code ci} over a temporary data directory, deleted after the case, to which the
  * package's deterministic zip ({@link Deploy#zip}, built once) is deployed. The case's {@code send} — the fixture's bytes and
- * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint; the case settles on virtual time
- * ({@link VirtualTime}: settled = the answer complete and the work queue empty, on a quiet world) and its {@code expect} is
- * evaluated ({@link Expectations}); then the node is closed, on virtual time too.
+ * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint; a case without one is fed by that
+ * endpoint's mock, whose {@code files} or {@code messages} its consumer polls from its start (the package's cross-check refuses
+ * a case that neither sends nor is fed, D-080). The case settles on virtual time ({@link VirtualTime}: settled = the answer
+ * complete — a fed case has none —, no file of the from endpoint {@linkplain MockComponent#undelivered undelivered} and the
+ * work queue empty, on a quiet world) and its {@code expect} is evaluated ({@link Expectations}; {@code steps} and {@code keys}
+ * read the first message the from endpoint delivered); then the node is closed, on virtual time too.
  *
  * <p>The report, on stdout: {@code PASS|FAIL <flow>: <case> (flow time <d>)} per case, after a FAIL what failed, each on an
  * indented line — the failed keys ({@link Expectations}), or {@code did not settle: <what>}, {@code send refused: <why>} (the
@@ -87,6 +90,8 @@ final class FlowTests {
     private static final String NODE_ID = "flottila-test";
     /** Behaviours the schema takes and this runner does not run yet. */
     private static final List<String> NOT_YET = List.of("recorded", "script");
+    /** The answer of a case without a send, fed by its from endpoint's mock: there is none to wait for, and no Ack. */
+    private static final Future<Ack> FED = Future.succeededFuture();
 
     private final Package pkg;
     private final Path root;
@@ -230,7 +235,8 @@ final class FlowTests {
         }
         String from = from(doc.flow());
         MockComponent door = mocks.get(scheme(from));
-        Buffer send = Buffer.buffer(Files.readAllBytes(root.resolve(c.getString("send"))));
+        String sends = c.getString("send");
+        byte[] send = sends == null ? null : Files.readAllBytes(root.resolve(sends));
         Map<String, String> headers = new LinkedHashMap<>();
         JsonObject given = c.getJsonObject("headers", new JsonObject());
         given.fieldNames().forEach(name -> headers.put(name, given.getString(name)));
@@ -246,18 +252,19 @@ final class FlowTests {
                     rt.clock(), timer, shipped.steps(), shipped.languages(), messages, dlq, queue, Meter.system());
             try {
                 node.deploy(pkg.name(), Optional.empty(), Files.write(data.resolve("package.zip"), zip));
-                Future<Ack> answer = door.ingest(from, new Headers(headers), send);
+                Future<Ack> answer = send == null ? FED : door.ingest(from, new Headers(headers), Buffer.buffer(send));
                 BooleanSupplier answered = done(answer);   // the answer's monitor stays out of the sampling: read through this only
                 VirtualTime.Outcome outcome = new VirtualTime(rt.clock(), rt.timer(),
                         Quiescence.ofJvm(watched::inside, STEADY, world(watched, rt.clock(), door, from, mocks.values(), answered)), WALL_GUARD)
-                        .settle(() -> answered.getAsBoolean() && queue.size() == 0);
+                        .settle(() -> answered.getAsBoolean() && door.undelivered(from).isEmpty() && queue.size() == 0);
                 if (!outcome.settled()) {
                     return Verdict.failed(outcome.flowTime(), "did not settle: " + outcome.reason() + " (answer complete: " + answered.getAsBoolean()
-                            + ", work queue items: " + queue.size() + ")");
+                            + ", undelivered files: " + door.undelivered(from).size() + ", work queue items: " + queue.size() + ")");
                 }
                 List<Envelope> taken = door.delivered(from);
-                if (taken.isEmpty()) return Verdict.failed(outcome.flowTime(), "send refused: " + Cli.oneLine(answer.cause().getMessage()));
-                Expectations.Observed observed = new Expectations.Observed(taken.getFirst().id(), answer.result(), answer.cause(), messages, dlq.size(),
+                if (answer.failed() && taken.isEmpty()) return Verdict.failed(outcome.flowTime(), "send refused: " + Cli.oneLine(answer.cause().getMessage()));
+                Optional<String> first = taken.stream().findFirst().map(Envelope::id);   // none: a feed whose glob matched no file
+                Expectations.Observed observed = new Expectations.Observed(first, answer.result(), answer.cause(), messages, dlq.size(),
                         mocks.values().stream().flatMap(m -> m.sent().stream()).toList(), endpoint -> mocks.get(scheme(endpoint)).sentTo(endpoint), xpaths);
                 List<String> failed = Expectations.failed(c.getJsonObject("expect"), observed);
                 return new Verdict(failed.isEmpty(), outcome.flowTime(), failed);
@@ -274,16 +281,18 @@ final class FlowTests {
     /**
      * The fingerprint of a case's world that {@link Quiescence} compares: the calls into {@code watched}'s timer, the moves of
      * {@code clock} from now on — every advance, a zero one too, starts the steady wait afresh — its instant, {@code door}'s
-     * deliveries on {@code from}, each mock's sends and {@code done} (the case's answer, the node's close). It takes no monitor a
-     * virtual thread takes, as a store's size or a Vert.x future's {@code isComplete()} would: a thread blocked on one would
-     * leave its carrier unseen.
+     * deliveries on {@code from} and the files remaining there, each mock's sends and {@code done} (the case's answer, the node's
+     * close). It takes no monitor a virtual thread takes, as a store's size or a Vert.x future's {@code isComplete()} would: a
+     * thread blocked on one would leave its carrier unseen. The remaining files are read without one: the inbox's current
+     * immutable list through a volatile field, found by a {@code ConcurrentHashMap} get ({@link MockComponent#remaining}).
      */
     static Supplier<List<Object>> world(Watched watched, FakeClock clock, MockComponent door, String from, Collection<MockComponent> mocks,
                                         BooleanSupplier done) {
         AtomicLong moves = new AtomicLong();
         clock.onChange(moves::incrementAndGet);
         return () -> {
-            List<Object> seen = new ArrayList<>(List.of(watched.calls(), moves.get(), clock.instant(), door.delivered(from).size()));
+            List<Object> seen = new ArrayList<>(List.of(watched.calls(), moves.get(), clock.instant(), door.delivered(from).size(),
+                    door.remaining(from).size()));
             mocks.forEach(m -> seen.add(m.sent().size()));
             seen.add(done.getAsBoolean());
             return seen;
