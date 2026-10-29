@@ -938,3 +938,11 @@ Tests changed by the implementer: DeploymentsValidateTest aBrokenXsltNamesTheFil
 Review: FAIL r1 (node mounted the private host-key volume; compose tests pinned ed25519 while the stack used RSA; D-086 silent), PASS r2. Raised FIX-100.
 D-054 data: class A (scout ×1, test-author ×1 + 1 fix, implementer ×1 + 2 fixes, reviewer ×2); review rounds 2.
 Next: P2-02b [C], P2-07 [C], then GATE [G].
+
+## 2026-10-29 — P2-02b package dependencies, node side (D-087) — done, review PASS
+Test first: schemas PackageDependenciesTest + invalid lock fixtures, api StepResourcesTest, core FlowBuilderTest, steps CompiledFilesTest ×2, runtime FlowHashTest, DeploymentsDependenciesTest (25 cases), store contract/PgDeploymentStoreIT/MigrationsIT V9, AdminServerDeployTest (red: target/P2-02b-red.log … -red5.log).
+Change: package.yaml exact-version dependencies; package.lock (lock.schema.json) with a zipper-independent content digest; `<dep>:<path>` references confined to the dependency; StepResources dependencies component; FlowHash `file <dep>:<path>`; the node resolves the closure (versions held by RUNNING packages, content compared, name cycles refused, 422 without absolute paths), the record stores the pins (V9 jsonb), prune and refusal cleanup spare pinned and in-use dirs, restore fetches a pin by sha and checks it.
+Checks: verify -Pit VERIFIED_PASS 2509/0/0/0 (target/P2-02b-verify4.log); coverage no decrease; PIT StepResources 23/23; demo validate/test exit 0; 40+ hand mutants killed (M36 cosmetic survives) (target/P2-02b-mutants.log).
+Review: FAIL r1 (`..` relative path into a dependency dir; prune ignored dirs running recipes read; non-UTF-8 lock escaped 422; §9/D-052 not amended), PASS r2. Raised FIX-102, FIX-103; rows P2-02b2, P2-02c, CONSIDER-7, CONSIDER-8.
+D-054 data: class C (designer ×1, test-author ×1 (resumed at the turn limit) + 4 fix packets, implementer ×1 + 4 fixes, reviewer ×2); review rounds 2.
+Next: P2-07 [C], then GATE [G].

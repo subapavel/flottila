@@ -92,6 +92,7 @@ public final class FlowBuilder {
     private Intake intake;   // null: a SequentialIntake over the store and the queue
     private Map<String, String> extraVersions = Map.of();
     private Consumer<Path> reads = path -> { };
+    private Map<String, Path> dependencies = Map.of();
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -153,6 +154,16 @@ public final class FlowBuilder {
      */
     public FlowBuilder reads(Consumer<Path> sink) {
         this.reads = Objects.requireNonNull(sink, "sink");
+        return this;
+    }
+
+    /**
+     * Gives the steps of the flows built from now on the package's dependencies, each name to the directory its resolved version
+     * is unpacked in, as {@link StepResources#dependencies()} (D-087); it replaces the map of an earlier call. Without a call a
+     * flow has none.
+     */
+    public FlowBuilder dependencies(Map<String, Path> dependencies) {
+        this.dependencies = Map.copyOf(Objects.requireNonNull(dependencies, "dependencies"));
         return this;
     }
 
@@ -411,7 +422,7 @@ public final class FlowBuilder {
 
     /** What a step of {@code flow} is built with; the paths it reads go to the {@link #reads} sink. */
     private StepResources resources(FlowDefinition flow, Path baseDir) {
-        return new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir, reads);
+        return new StepResources(runtime.clock(), runtime.timer(), runtime.ids(), runtime.blobs(), runtime.hasher(), flow.maxBodyBytes(), baseDir, reads, dependencies);
     }
 
     private StepFactory factoryFor(StepConfig step) {

@@ -311,6 +311,54 @@ class FlowBuilderTest {
         assertEquals(2, atMostOnce.size(), "a sink replaced by a later reads(...) gets nothing more: " + atMostOnce);
     }
 
+    // --- P2-02b (D-087): the package's dependencies reach every step's resources
+
+    /** Records the dependencies its resources carry, then reads the file its {@code file} option names. */
+    static final class DependencyProbe implements StepFactory {
+        final List<Map<String, Path>> seen = new ArrayList<>();
+        @Override public String type() { return "probe-deps"; }
+        @Override public String configSchema() { return "{}"; }
+        @Override public Stage create(StepConfig step, StepResources res) {
+            seen.add(res.dependencies());
+            res.file((String) step.config().get("file"));
+            return Stage.of(e -> e);
+        }
+    }
+
+    static FlowDefinition probing(String mode, String file) {
+        Map<String, Object> doc = new java.util.HashMap<>(flow(List.of(Map.of("type", "probe-deps", "name", "p", "file", file))));
+        doc.put("delivery", Map.of("mode", mode));
+        return FlowDefinition.from(doc);
+    }
+
+    /**
+     * {@code dependencies(map)} hands every flow built from then on resources whose {@code dependencies()} is that map — a sync
+     * delivery's build and an at-least-once worker's alike — so {@code file("common:x.xsl")} resolves in common's directory and is
+     * reported to the reads sink; without a call the map is empty, and a later call replaces it.
+     */
+    @Test
+    void theDependenciesReachEveryStepsResources() {
+        DependencyProbe probe = new DependencyProbe();
+        FlowBuilder b = new FlowBuilder(rt.runtime(), List.of(probe), List.of(), Map.of())
+                .recording(new InMemoryMessageStore(), () -> 0).dlq(new InMemoryDlq()).queue(new InMemoryWorkQueue(rt.clock()));
+        Path pkg = Path.of("pkg-invoice").toAbsolutePath().normalize();
+        Path common = Path.of("pkg-common").toAbsolutePath().normalize();
+
+        b.delivery(probing("sync", "x.xsl"), pkg);
+        assertEquals(List.of(Map.of()), probe.seen, "without a call: no dependencies");
+
+        List<Path> reads = new ArrayList<>();
+        b.dependencies(Map.of("common", common)).reads(reads::add).delivery(probing("sync", "common:x.xsl"), pkg);
+        b.worker(probing("at-least-once", "common:xslt/y.xsl"), pkg, "w1");
+        assertEquals(List.of(Map.of(), Map.of("common", common), Map.of("common", common)), probe.seen, "the delivery's and the worker's step");
+        assertEquals(List.of(common.resolve("x.xsl"), common.resolve("xslt/y.xsl")), reads, "each resolved in common's directory, reported");
+
+        b.dependencies(Map.of());
+        assertThrows(IllegalArgumentException.class, () -> b.delivery(probing("sync", "common:x.xsl"), pkg),
+                "a later call replaces the map: common is no dependency any more");
+        assertThrows(NullPointerException.class, () -> b.dependencies(null));
+    }
+
     // --- P1-09c2 (D-067): a replay takes its permit from the flow's admission
 
     /** {@code mark a} (keeps the body), then the {@link RunGate}: a sync flow with {@code maxInFlight} requests and {@code maxInFlightBytes}. */

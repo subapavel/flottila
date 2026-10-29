@@ -84,7 +84,9 @@ import java.util.function.Supplier;
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
  * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
  * flows, no files, no folders and no artifacts) and its tree (D-078): {@code folders:[{path, namespace|null, description|null}]}
- * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path. Without one these routes do not exist (404).
+ * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path, its {@code content} digest (null when FAILED) and its
+ * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087). Without one these
+ * routes do not exist (404).
  *
  * <p>With a {@link WorkQueue} (D-067) it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
@@ -597,9 +599,13 @@ public final class AdminServer {
                     .put("description", f.description().orElse(null))));
             JsonArray artifacts = new JsonArray();   // D-078: a test's id is null
             p.artifacts().forEach(a -> artifacts.add(new JsonObject().put("path", a.path()).put("kind", a.kind()).put("id", a.id().orElse(null))));
+            JsonArray dependencies = new JsonArray();   // D-087: the closure, each marked direct or not
+            p.dependencies().forEach(d -> dependencies.add(new JsonObject().put("name", d.name()).put("version", d.version()).put("content", d.content())
+                    .put("archive", "sha256:" + d.archiveSha256()).put("direct", d.direct())));
             items.add(new JsonObject().put("name", p.name()).put("version", p.version()).put("revision", p.revision().orElse(null))
                     .put("archive", "sha256:" + p.archiveSha256()).put("deployedAt", p.deployedAt().toString()).put("flows", new JsonArray(p.flows())).put("files", files)
-                    .put("folders", folders).put("artifacts", artifacts).put("state", p.state().name()).put("problems", new JsonArray(p.problems())));
+                    .put("folders", folders).put("artifacts", artifacts).put("state", p.state().name()).put("problems", new JsonArray(p.problems()))
+                    .put("content", p.content()).put("dependencies", dependencies));
         }
         return Json.of(200, new JsonObject().put("items", items));
     }

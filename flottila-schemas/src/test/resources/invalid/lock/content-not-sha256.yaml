@@ -1,0 +1,7 @@
+# expect: /dependencies/0/content
+schemaVersion: 1
+kind: lock
+dependencies:
+  - name: common
+    version: 1.2.0
+    content: sha256:abc

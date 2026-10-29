@@ -693,8 +693,11 @@ class AdminServerDeployTest {
             Expected e = expected.get(i);
             // P1-09c3b: every item also carries its state and its problems (packagesListStateAndProblems)
             // P2-02a: and its folders and artifacts (packagesListsFoldersAndArtifacts)
-            assertEquals(Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "folders", "artifacts", "state", "problems"), item.fieldNames(),
-                    "an item: " + item);
+            // P2-02b: and its content digest and dependencies (packagesListsContentAndDependencies)
+            assertEquals(Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "folders", "artifacts", "state", "problems", "content",
+                    "dependencies"), item.fieldNames(), "an item: " + item);
+            assertEquals(e.p().content(), item.getString("content"), "the content digest of its files (D-087): " + item);
+            assertEquals(new JsonArray(), item.getJsonArray("dependencies"), "no dependencies: " + item);
             assertEquals(e.version(), item.getString("version"));
             assertTrue(item.containsKey("revision") && java.util.Objects.equals(e.revision(), item.getValue("revision")), "revision, null without one: " + item);
             assertEquals("sha256:" + PackageDraft.sha256(e.zip()), item.getString("archive"));
@@ -754,7 +757,8 @@ class AdminServerDeployTest {
         assertJson(200, a, "GET /admin/packages");
         JsonArray items = a.json().getJsonArray("items");
         assertEquals(List.of("alpha", "zeta"), items.stream().map(i -> ((JsonObject) i).getString("name")).toList(), "sorted by name: " + a.json());
-        Set<String> fields = Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "folders", "artifacts", "state", "problems");
+        Set<String> fields = Set.of("name", "version", "revision", "archive", "deployedAt", "flows", "files", "folders", "artifacts", "state", "problems", "content",
+                "dependencies");
         JsonObject running = items.getJsonObject(0);
         assertEquals(fields, running.fieldNames(), "an item: " + running);
         assertEquals("RUNNING", running.getString("state"), running.encode());
@@ -771,6 +775,7 @@ class AdminServerDeployTest {
         assertEquals(new JsonArray(), failed.getJsonArray("files"), "nor files: " + failed.encode());
         assertEquals(new JsonArray(), failed.getJsonArray("folders"), "nor folders (P2-02a): " + failed.encode());
         assertEquals(new JsonArray(), failed.getJsonArray("artifacts"), "nor artifacts (P2-02a): " + failed.encode());
+        assertTrue(failed.containsKey("content") && failed.getValue("content") == null, "nor a content digest (P2-02b): null: " + failed.encode());
         assertEquals("3.0.0", failed.getString("version"), failed.encode());
         assertTrue(failed.containsKey("revision") && failed.getValue("revision") == null, "revision null, as its row: " + failed.encode());
         assertEquals("sha256:" + zetaSha, failed.getString("archive"), failed.encode());
@@ -778,6 +783,42 @@ class AdminServerDeployTest {
 
         JsonArray flows = request(at, HttpMethod.GET, "/admin/flows", AUTH, null).json().getJsonArray("items");
         assertEquals(List.of("alpha/orders"), flows.stream().map(i -> ((JsonObject) i).getString("id")).toList(), "only alpha's flow runs: " + flows.encode());
+    }
+
+    // --- P2-02b (D-087): every item lists its content digest and its dependencies, the closure, each marked direct or not
+
+    /**
+     * base; mid -> base; top -> mid, all PUT: top lists mid (direct) and base (through mid's lock), each with its version, content
+     * digest and archive; mid lists base (direct); base none. Each item's content is the digest of its files.
+     */
+    @Test
+    void packagesListsContentAndDependencies() throws Exception {
+        PackageDraft base = PackageDraft.of("base", "1.0.0").file("xslt/base.xsl", "<xsl:stylesheet/>");
+        byte[] baseZip = base.zip();
+        assertJson(200, put("/admin/packages/base", baseZip), "fixture");
+        PackageDraft mid = PackageDraft.of("mid", "2.1.0").file("xslt/mid.xsl", "<xsl:stylesheet/>").dependingOn(base);
+        byte[] midZip = mid.zip();
+        assertJson(200, put("/admin/packages/mid", midZip), "fixture");
+        PackageDraft top = pkg("top", "1.0.0", Map.of("orders", "sync")).dependingOn(mid);
+        assertJson(200, put("/admin/packages/top", top.zip()), "fixture");
+
+        Answer a = get("/admin/packages");
+
+        assertJson(200, a, "GET /admin/packages");
+        JsonArray items = a.json().getJsonArray("items");
+        assertEquals(List.of("base", "mid", "top"), items.stream().map(i -> ((JsonObject) i).getString("name")).toList(), a.json().encode());
+        JsonObject baseDep = new JsonObject().put("name", "base").put("version", "1.0.0").put("content", base.content())
+                .put("archive", "sha256:" + PackageDraft.sha256(baseZip));
+        JsonObject midDep = new JsonObject().put("name", "mid").put("version", "2.1.0").put("content", mid.content())
+                .put("archive", "sha256:" + PackageDraft.sha256(midZip));
+        assertEquals(base.content(), items.getJsonObject(0).getString("content"));
+        assertEquals(new JsonArray(), items.getJsonObject(0).getJsonArray("dependencies"), "base depends on nothing");
+        assertEquals(mid.content(), items.getJsonObject(1).getString("content"));
+        assertEquals(new JsonArray().add(baseDep.copy().put("direct", true)), items.getJsonObject(1).getJsonArray("dependencies"), "mid: base, direct");
+        assertEquals(top.content(), items.getJsonObject(2).getString("content"));
+        assertEquals(Set.of(midDep.copy().put("direct", true), baseDep.copy().put("direct", false)), set(items.getJsonObject(2).getJsonArray("dependencies")),
+                "top: mid direct, base through mid: " + items.getJsonObject(2).encode());
+        assertEquals(2, items.getJsonObject(2).getJsonArray("dependencies").size(), items.getJsonObject(2).encode());
     }
 
     // --- P2-02a (D-078): every item lists its folders and artifacts; a FAILED package lists none
@@ -830,7 +871,7 @@ class AdminServerDeployTest {
         String sha = PackageDraft.sha256(legacy);
         Path upload = PackageDraft.write(tmp.resolve("uploads"), legacy);
         OnVirtualThread.call(() -> { bucket.put(sha, upload); return null; });
-        rows.save(new DeploymentRecord("legacy", "1.0.0", Optional.empty(), sha, rt.clock().instant())).await(10, TimeUnit.SECONDS);
+        rows.save(new DeploymentRecord("legacy", "1.0.0", Optional.empty(), sha, rt.clock().instant(), List.of())).await(10, TimeUnit.SECONDS);
         Deployments restoring = deployments(tmp.resolve("node-2"), rows, bucket);
         OnVirtualThread.call(() -> { restoring.restore(); return null; });
         int at = serve(Optional.of(restoring));

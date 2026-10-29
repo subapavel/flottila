@@ -304,7 +304,7 @@ class DeploymentsRestoreTest {
             shelf.put(sha256, file);
             return null;
         });
-        records.save(new DeploymentRecord(name, "1.0.0", Optional.empty(), sha256, NOW)).await();
+        records.save(new DeploymentRecord(name, "1.0.0", Optional.empty(), sha256, NOW, List.of())).await();
         return sha256;
     }
 
@@ -751,7 +751,7 @@ class DeploymentsRestoreTest {
         assertRunning(now, "shop after the PUT");
         assertEquals(List.of("shop/a", "shop/b"), now.flows());
         assertFalse(now.files().isEmpty(), "its files are listed again");
-        assertEquals(List.of(new DeploymentRecord("shop", "1.0.0", Optional.of("r2"), sha(shop), put.pkg().deployedAt())), records.rows(), "the PUT's row");
+        assertEquals(List.of(new DeploymentRecord("shop", "1.0.0", Optional.of("r2"), sha(shop), put.pkg().deployedAt(), List.of())), records.rows(), "the PUT's row");
         assertTrue(shelf.holds(sha(shop)), "the PUT stored the archive again");
         assertInstanceOf(Ack.Reply.class, second.send("shop/a"), "a serves");
         assertInstanceOf(Ack.Reply.class, second.send("shop/b"), "b serves");

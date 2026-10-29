@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flottila:schema:lock:1",
+  "title": "Flottila package.lock, schemaVersion 1 (draft — review at hand-over, D-087)",
+  "description": "The exact version and content digest of every direct dependency package.yaml declares, sorted by name. content is sha256: and the lower-case hex SHA-256 over the UTF-8 lines 'flottila-package-content 1' and 'file <path> <sha256>' for every regular file of the dependency, sorted by its /-separated path, each ended by a newline: the files decide, not the archive they came in.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "dependencies"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "lock" },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "version", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 64 },
+          "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$" },
+          "content": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

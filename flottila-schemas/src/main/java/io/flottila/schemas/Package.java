@@ -7,17 +7,23 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
@@ -32,6 +38,12 @@ import java.util.stream.Stream;
  * component is asked (D-059). {@link #manifest()}, {@link #endpoints()} and {@link #flows()} hand out copies of the documents as
  * loaded, by id; {@link #folders()} and {@link #artifacts()} are the package's tree.
  *
+ * <p>Dependencies (D-087): {@code package.yaml} declares each at an exact version, {@code package.lock} at the root (read when it
+ * exists; no document of the walk) pins each with its {@link #content(Path) content digest}, and a step's {@code stylesheet} or
+ * {@code schema} names a dependency's file as {@code <dep>:<path from its root>} — a package name before the first {@code /};
+ * anything else is a path from the package root, so a root file whose name has a colon is named {@code ./<name>}. Only a declared
+ * dependency may be named, and the reference stays inside it; whether its file exists is the node's to say, which holds it.
+ *
  * @since 0.1
  */
 public final class Package {
@@ -42,6 +54,9 @@ public final class Package {
     private static final Pattern SLUG = Pattern.compile("[a-z][a-z0-9-]{0,63}");
     private static final String MANIFEST = "package.yaml";
     private static final String FOLDER = "folder.yaml";
+    private static final String LOCK = "package.lock";
+    /** A dependency reference's prefix (D-087): a package name, then a colon, before the first {@code /}. */
+    private static final Pattern DEPENDENCY = Pattern.compile("([a-z][a-z0-9-]{0,63}):");
     private static final Set<Schemas> ARTIFACTS = Set.of(Schemas.ENDPOINT, Schemas.FLOW, Schemas.TEST);
     /** A mock behaviour's keys that feed a consumer (D-080): its fixtures, polled at the consumer's start. */
     private static final List<String> FEEDS = List.of("files", "messages");
@@ -51,6 +66,11 @@ public final class Package {
     private final Path dir;
     private final Path root;
     private final JsonObject manifest;
+    /** {@code package.yaml}'s dependencies by name, the first declaration of each; empty when it does not pass its schema. */
+    private final Map<String, String> declared;
+    private final List<String> declaredTwice;
+    private final Read lock;   // null without a package.lock
+    private final List<Locked> locked;
     private final Map<String, JsonObject> endpoints;
     private final Map<String, JsonObject> flows;
     private final Map<String, Path> flowFiles;
@@ -65,6 +85,10 @@ public final class Package {
         this.dir = load.dir;
         this.root = load.root;
         this.manifest = load.manifest;
+        this.declared = load.declared;
+        this.declaredTwice = List.copyOf(load.declaredTwice);
+        this.lock = load.lock;
+        this.locked = List.copyOf(load.locked);
         this.endpoints = load.endpoints;
         this.flows = load.flows;
         this.flowFiles = load.flowFiles;
@@ -103,6 +127,16 @@ public final class Package {
      */
     public record Artifact(String path, String kind, Optional<String> id) {}
 
+    /**
+     * One dependency as {@code package.lock} pins it (D-087).
+     *
+     * @param name    the dependency's package name
+     * @param version its exact version
+     * @param content its content digest, {@code sha256:<hex>} ({@link #content(Path)})
+     * @since 0.1
+     */
+    public record Locked(String name, String version, String content) {}
+
     /** One document as read, with the schema its kind (or its name) names and that schema's verdict on it. */
     private record Read(String path, Path file, Schemas schema, JsonObject document, Schemas.Report report) {
         Read(String path, Path file, Schemas schema, JsonObject document) { this(path, file, schema, document, schema.validate(document)); }
@@ -128,6 +162,10 @@ public final class Package {
         final Path dir;
         final Path root;
         final JsonObject manifest;
+        final Map<String, String> declared = new LinkedHashMap<>();
+        final List<String> declaredTwice = new ArrayList<>();
+        final Read lock;
+        final List<Locked> locked = new ArrayList<>();   // package.lock's entries, when it passed its schema
         final List<Read> documents = new ArrayList<>();
         final Map<String, String> layout = new TreeMap<>();   // a folder's path → its one line: in path order
         final List<String> folders = new ArrayList<>();
@@ -141,13 +179,36 @@ public final class Package {
         final Map<String, JsonObject> flows = new LinkedHashMap<>();
         final Map<String, Path> flowFiles = new LinkedHashMap<>();
 
-        /** A missing or unreadable {@code package.yaml} stops the load before anything else is read. */
-        Load(Path dir) {
+        /**
+         * A missing or unreadable {@code package.yaml}, or a {@code package.lock} that does not parse, stops the load before
+         * anything else is read.
+         */
+        Load(Path dir) throws IOException {
             this.dir = dir;
             this.root = dir.toAbsolutePath().normalize();
             Path manifestFile = dir.resolve(MANIFEST);
             this.manifest = read(dir, manifestFile);
-            documents.add(new Read(MANIFEST, manifestFile, Schemas.PACKAGE, manifest));
+            Read m = new Read(MANIFEST, manifestFile, Schemas.PACKAGE, manifest);
+            documents.add(m);
+            if (m.report().valid()) {
+                for (Object d : manifest.getJsonArray("dependencies", new JsonArray())) {
+                    String name = ((JsonObject) d).getString("name");
+                    if (declared.putIfAbsent(name, ((JsonObject) d).getString("version")) != null) declaredTwice.add("dependency '" + name + "' is declared twice");
+                }
+            }
+            Path lockFile = dir.resolve(LOCK);
+            if (Files.isRegularFile(lockFile)) {
+                this.lock = new Read(LOCK, lockFile, Schemas.LOCK, parsed(dir, lockFile, () -> Documents.yaml(utf8(lockFile))));
+                documents.add(lock);
+                if (lock.report().valid()) {
+                    for (Object e : lock.document().getJsonArray("dependencies")) {
+                        JsonObject entry = (JsonObject) e;
+                        locked.add(new Locked(entry.getString("name"), entry.getString("version"), entry.getString("content")));
+                    }
+                }
+            } else {
+                this.lock = null;
+            }
         }
 
         /** Every folder below {@code folder} ({@code depth} deep) with its name checked, and every YAML in them; never below a folder too deep. */
@@ -302,10 +363,24 @@ public final class Package {
 
     /** {@code file} as a document; one that does not parse or cannot be read is refused naming its path relative to {@code dir}. */
     private static JsonObject read(Path dir, Path file) {
+        return parsed(dir, file, () -> Documents.read(file));
+    }
+
+    /** What {@code parse} reads of {@code file}; a file that does not parse or cannot be read is refused as {@link #read} refuses it. */
+    private static JsonObject parsed(Path dir, Path file, java.util.function.Supplier<JsonObject> parse) {
         try {
-            return Documents.read(file);
+            return parse.get();
         } catch (IllegalArgumentException | UncheckedIOException unreadable) {
             throw unreadable(dir, file, unreadable);
+        }
+    }
+
+    /** {@code file} as UTF-8 text; a file that cannot be read, or is not UTF-8, is an {@link UncheckedIOException}. */
+    private static String utf8(Path file) {
+        try {
+            return Files.readString(file);
+        } catch (IOException unreadable) {   // not UTF-8 (MalformedInputException), or a read failure
+            throw new UncheckedIOException(unreadable);
         }
     }
 
@@ -384,8 +459,82 @@ public final class Package {
         }
         problems.addAll(misplaced);
         problems.addAll(duplicates);
+        problems.addAll(lockProblems());
         problems.addAll(crossCheck());
         return List.copyOf(problems);
+    }
+
+    /**
+     * {@code package.yaml}'s dependencies against {@code package.lock} (D-087), once both passed their schemas: a name declared
+     * twice, the package declaring itself (the shortest cycle), declared dependencies without a lock, a lock entry package.yaml
+     * does not declare or declares at another version, a name the lock pins twice (once per name; each entry is compared),
+     * and a declared dependency the lock does not pin.
+     */
+    private List<String> lockProblems() {
+        List<String> problems = new ArrayList<>(declaredTwice);
+        if (declared.containsKey(name())) problems.add("dependency cycle: " + name() + " -> " + name());
+        if (lock == null) {
+            if (!declared.isEmpty()) problems.add("package.yaml declares dependencies " + declared.keySet() + ", package.lock is missing");
+            return problems;
+        }
+        if (!documents.getFirst().report().valid() || !lock.report().valid()) return problems;   // their schema problems say it
+        Set<String> pinned = new HashSet<>();
+        Set<String> twice = new LinkedHashSet<>();
+        for (Locked l : lock()) {
+            if (!pinned.add(l.name())) twice.add(l.name());   // every entry is compared with package.yaml
+            String version = declared.get(l.name());
+            if (version == null) problems.add("package.lock pins " + l.name() + " " + l.version() + ", which package.yaml does not declare");
+            else if (!version.equals(l.version())) problems.add("package.lock pins " + l.name() + " " + l.version() + ", package.yaml declares " + version);
+        }
+        twice.forEach(n -> problems.add("package.lock pins '" + n + "' twice"));
+        declared.forEach((name, version) -> {
+            if (!pinned.contains(name)) problems.add("package.yaml declares " + name + " " + version + ", package.lock does not pin it");
+        });
+        return problems;
+    }
+
+    /** Every entry of {@code package.lock} in its order, when it passed its schema; empty without one, or when it did not. */
+    public List<Locked> lock() {
+        return locked;
+    }
+
+    /**
+     * The package a step's file reference names (D-087): {@code <name>} of {@code <name>:<path>}, a package name before the first
+     * {@code /}; empty for a path from the package root.
+     */
+    public static Optional<String> dependencyOf(String reference) {
+        Matcher m = DEPENDENCY.matcher(reference);
+        return m.lookingAt() ? Optional.of(m.group(1)) : Optional.empty();
+    }
+
+    /**
+     * The content digest of the package in {@code dir} (D-087), what {@code package.lock} pins: {@code sha256:} and the lower-case hex
+     * SHA-256 over the UTF-8 lines {@code flottila-package-content 1} and {@code file <path> <sha256>} for every regular file below
+     * {@code dir}, sorted by its {@code /}-separated path, each line ended by {@code \n}. The files decide — not the archive they
+     * came in, their modification times or empty folders.
+     *
+     * @throws IOException {@code dir} cannot be walked or a file read
+     */
+    public static String content(Path dir) throws IOException {
+        Map<String, Path> files = new TreeMap<>();
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.filter(Files::isRegularFile).forEach(f -> files.put(path(dir, f), f));
+        }
+        MessageDigest digest = sha256();
+        digest.update("flottila-package-content 1\n".getBytes(StandardCharsets.UTF_8));
+        for (Map.Entry<String, Path> f : files.entrySet()) {
+            String line = "file " + f.getKey() + " " + HexFormat.of().formatHex(sha256().digest(Files.readAllBytes(f.getValue()))) + "\n";
+            digest.update(line.getBytes(StandardCharsets.UTF_8));
+        }
+        return "sha256:" + HexFormat.of().formatHex(digest.digest());
+    }
+
+    private static MessageDigest sha256() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException mandatory) {
+            throw new IllegalStateException("SHA-256 is mandatory in every JDK", mandatory);
+        }
     }
 
     /**
@@ -417,8 +566,8 @@ public final class Package {
             String where = "flow '" + flow + "' step '" + step.getString("name") + "'";
             // a step's fields beyond its type's requirements are untyped in the flow schema: each is read through a type guard
             requireEndpoint(problems, where, string(problems, file, where + " endpoint", step.getValue("endpoint")));
-            requireFile(problems, file, where + " stylesheet", string(problems, file, where + " stylesheet", step.getValue("stylesheet")));
-            requireFile(problems, file, where + " schema", string(problems, file, where + " schema", step.getValue("schema")));
+            requireStepFile(problems, file, where + " stylesheet", string(problems, file, where + " stylesheet", step.getValue("stylesheet")));
+            requireStepFile(problems, file, where + " schema", string(problems, file, where + " schema", step.getValue("schema")));
             Object endpoints = step.getValue("endpoints");
             if (endpoints instanceof JsonObject byValue) {
                 for (String k : byValue.fieldNames()) {
@@ -503,6 +652,24 @@ public final class Package {
         Path folder = root.resolve(glob.substring(0, glob.lastIndexOf('/') + 1)).normalize();
         if (!folder.startsWith(root) || !Files.isDirectory(folder)) {
             problems.add(relative(namingFile) + ": " + what + " '" + glob + "' feeds from a folder that is not in the package");
+        }
+    }
+
+    /**
+     * A step's stylesheet or schema: {@code <dep>:<path>} names a package package.yaml declares (D-087) and stays inside it — its
+     * file is the node's to find — and any other reference is a path from the package root ({@link #requireFile}).
+     */
+    private void requireStepFile(List<String> problems, Path namingFile, String what, String reference) {
+        Optional<String> dependency = reference == null ? Optional.empty() : dependencyOf(reference);
+        if (dependency.isEmpty()) {
+            requireFile(problems, namingFile, what, reference);
+            return;
+        }
+        String dep = dependency.get();
+        if (!declared.containsKey(dep)) {
+            problems.add(relative(namingFile) + ": " + what + " '" + reference + "' names package '" + dep + "', which package.yaml does not declare");
+        } else if (!root.resolve(reference.substring(dep.length() + 1)).normalize().startsWith(root)) {
+            problems.add(relative(namingFile) + ": " + what + " '" + reference + "' leaves package " + dep);
         }
     }
 

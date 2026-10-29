@@ -22,11 +22,15 @@ import java.util.Optional;
  * @param artifacts every endpoint, flow and test document, sorted by path (D-078); none when it is {@link State#FAILED}
  * @param state whether the node runs it
  * @param problems why it is {@link State#FAILED}, one line each; none when it runs
+ * @param content the content digest of its files as {@code Package.content} takes it, what a {@code package.lock} pins
+ *                (D-087); null when it is {@link State#FAILED}
+ * @param dependencies the closure of its dependencies as its deploy resolved them (D-087), in the order resolved; none when it is
+ *                     {@link State#FAILED}
  * @since 0.1
  */
 public record DeployedPackage(String name, String version, Optional<String> revision, String archiveSha256, List<String> flows,
                               Instant deployedAt, List<PackageFile> files, List<Package.Folder> folders, List<Package.Artifact> artifacts, State state,
-                              List<String> problems) {
+                              List<String> problems, String content, List<Dependency> dependencies) {
 
     /**
      * {@link #RUNNING}: installed, its flows listed each with its own state; {@link #FAILED}: the restore at the node's start could
@@ -42,7 +46,20 @@ public record DeployedPackage(String name, String version, Optional<String> revi
         folders = List.copyOf(folders);
         artifacts = List.copyOf(artifacts);
         problems = List.copyOf(problems);
+        dependencies = List.copyOf(dependencies);
     }
+
+    /**
+     * One package version this package's deploy resolved a dependency to (D-087).
+     *
+     * @param name the dependency's package name
+     * @param version its exact version
+     * @param content its content digest, {@code sha256:<hex>}: what the lock that named it pins
+     * @param archiveSha256 its archive's SHA-256, lower-case hex: the directory under {@code packages/<name>/} it is read from
+     * @param direct whether this package's own {@code package.lock} names it; false for one only a dependency's lock names
+     * @since 0.1
+     */
+    public record Dependency(String name, String version, String content, String archiveSha256, boolean direct) {}
 
     /**
      * One file of a deployed package: a changed XSD, XSLT or script shows here without a flow change (D-060 b).

@@ -2,12 +2,14 @@ package io.flottila.steps.validate;
 
 import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
+import io.flottila.api.StepResources;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static io.flottila.steps.validate.XsdCompileCacheTest.XS;
@@ -87,5 +89,39 @@ class CompiledFilesTest {
         assertEquals(Set.of(), reported, "nothing reported on a miss");
         assertTrue(files.sameIn(first.resolve("main.xsd"), cache.resources(first, reported)), "fixture: the same flow, the same file");
         assertEquals(Set.of(first.resolve("types.xsd")), reported);
+    }
+
+    /** {@code pkg}'s resources with {@code common} its one dependency (P2-02b), every read reported to {@code reads}. */
+    StepResources withCommon(Path pkg, Path common, Set<Path> reads) {
+        return new StepResources(cache.rt.clock(), cache.rt.timer(), cache.rt.ids(), cache.rt.blobs(), cache.rt.hasher(), 65536, pkg, reads::add,
+                Map.of("common", common));
+    }
+
+    /**
+     * P2-02b (D-087): a schema two packages name as {@code common:xsd/order.xsd} lies in the one directory of common's pinned version;
+     * its include resolves there, not in either package (which has a file of that name too). The second package's compile is served
+     * from the cache — the same files, where they lie — and reports what the compile read, so the cached files' check keeps the
+     * dependencies of the resources it was given.
+     */
+    @Test
+    void aDependencySchemaIsServedFromTheCacheForTheNextPackage(@TempDir Path root) throws IOException {
+        Path common = root.resolve("packages/common/" + "c".repeat(64)).toAbsolutePath().normalize();
+        write(common.resolve("xsd/order.xsd"), including("types.xsd"));
+        write(common.resolve("xsd/types.xsd"), types(3));
+        Path invoice = root.resolve("packages/invoice/" + "1".repeat(64)).toAbsolutePath().normalize();
+        Path billing = root.resolve("packages/billing/" + "2".repeat(64)).toAbsolutePath().normalize();
+        write(invoice.resolve("xsd/types.xsd"), types(4));   // the include's name at the package root: never read
+        write(billing.resolve("xsd/types.xsd"), types(5));
+        Set<Path> compiled = new HashSet<>();
+        Stage first = factory.create(step("common:xsd/order.xsd"), withCommon(invoice, common, compiled));
+        assertTrue(cache.accepts(first, "ABC") && !cache.accepts(first, "ABCD"), "fixture: the include resolves next to the including file, in common");
+        assertEquals(Set.of(common.resolve("xsd/order.xsd"), common.resolve("xsd/types.xsd")), compiled, "fixture: the compile read common's two files");
+
+        Set<Path> hit = new HashSet<>();
+        Stage served = factory.create(step("common:xsd/order.xsd"), withCommon(billing, common, hit));
+
+        assertTrue(cache.accepts(served, "ABC") && !cache.accepts(served, "ABCDE"), "common's types: three characters");
+        assertEquals(1, factory.compiledSchemas(), "the second package's compile reads the same files in common: served from the cache");
+        assertEquals(compiled, hit, "the hit reports common's files, as the compile did");
     }
 }

@@ -29,8 +29,9 @@ import java.util.stream.Stream;
  *   <li>{@code flottila-flow-hash 2};</li>
  *   <li>{@code yaml <sha256>} over the flow file's bytes, without its path: a flow file moved alone to another folder is no
  *       change (its references are paths from the package root, D-078);</li>
- *   <li>for every distinct path its build read (the {@code StepResources} reads sink), sorted by path:
- *       {@code file <path> <sha256>} for a file, {@code dir <path> <entry names as a JSON array, sorted>} for a directory (a
+ *   <li>for every distinct path its build read (the {@code StepResources} reads sink), sorted by path — a path in a
+ *       dependency's directory spelled {@code <dep>:<path from its root>} (D-087), never the directory of the version it is
+ *       unpacked in, so the line changes exactly when the bytes read change: {@code file <path> <sha256>} for a file, {@code dir <path> <entry names as a JSON array, sorted>} for a directory (a
  *       listed collection), {@code absent <path>} for anything else (a probe of a file that does not exist);</li>
  *   <li>{@code endpoint <id> <scheme> <options as JSON, keys sorted at every level>}: first the {@code from} endpoint as its
  *       consumer gets it ({@code flow} and {@code maxBodyBytes} included), then every endpoint the flow sends to, by id — each
@@ -47,21 +48,25 @@ final class FlowHash {
     private FlowHash() {}
 
     /**
-     * @param dir the package's directory, every path below lies inside it
+     * @param dir the package's directory, every path below lies inside it or inside one of {@code dependencies}
+     * @param dependencies the build's dependencies, each name to the directory its version is unpacked in (D-087)
      * @param yaml the flow's file, wherever it lies in the package
      * @param reads every path the flow's build reported, in any order, a path reported twice counted once
      * @param from the {@code from} endpoint as its consumer gets it
      * @param to every endpoint the flow sends to, in any order
-     * @throws IllegalArgumentException a path that normalises outside {@code dir}: the flow does not build
+     * @throws IllegalArgumentException a path that normalises outside {@code dir} and every dependency's: the flow does not build
      * @throws IOException a file cannot be read: the node's failure, not the package's
      */
-    static String of(Path dir, Path yaml, Collection<Path> reads, EndpointConfig from, Collection<EndpointConfig> to) throws IOException {
+    static String of(Path dir, Map<String, Path> dependencies, Path yaml, Collection<Path> reads, EndpointConfig from, Collection<EndpointConfig> to)
+            throws IOException {
         Path root = dir.toAbsolutePath().normalize();
+        Map<String, Path> roots = new TreeMap<>();
+        dependencies.forEach((name, d) -> roots.put(name, d.toAbsolutePath().normalize()));
         MessageDigest digest = digest();
         line(digest, "flottila-flow-hash 2");
         line(digest, "yaml " + sha256(yaml));
         Map<String, Path> byPath = new TreeMap<>();
-        for (Path read : reads) byPath.put(relative(root, read), read);
+        for (Path read : reads) byPath.put(relative(root, roots, read), read);
         for (Map.Entry<String, Path> read : byPath.entrySet()) line(digest, read(read.getKey(), read.getValue()));
         line(digest, endpoint(from));
         for (EndpointConfig e : to.stream().sorted(Comparator.comparing(EndpointConfig::name)).toList()) line(digest, endpoint(e));
@@ -89,11 +94,21 @@ final class FlowHash {
         digest.update((line + "\n").getBytes(StandardCharsets.UTF_8));
     }
 
-    /** {@code path} from {@code root}, {@code /}-separated; one that normalises outside the package is refused, never hashed. */
-    private static String relative(Path root, Path path) {
+    /**
+     * {@code path} from {@code root}, {@code /}-separated, or {@code <dep>:<path>} from the dependency directory that holds it; one
+     * that normalises outside the package and every dependency is refused, never hashed.
+     */
+    private static String relative(Path root, Map<String, Path> dependencies, Path path) {
         Path normalised = path.toAbsolutePath().normalize();
-        if (!normalised.startsWith(root)) throw new IllegalArgumentException(normalised + " is outside the package directory " + root + ": not hashed");
-        return root.relativize(normalised).toString().replace(File.separatorChar, '/');
+        if (normalised.startsWith(root)) return slashed(root.relativize(normalised));
+        for (Map.Entry<String, Path> d : dependencies.entrySet()) {
+            if (normalised.startsWith(d.getValue())) return d.getKey() + ":" + slashed(d.getValue().relativize(normalised));
+        }
+        throw new IllegalArgumentException(normalised + " is outside the package directory " + root + " and its dependencies': not hashed");
+    }
+
+    private static String slashed(Path relative) {
+        return relative.toString().replace(File.separatorChar, '/');
     }
 
     /** The line of one path the build read: what is there now. */

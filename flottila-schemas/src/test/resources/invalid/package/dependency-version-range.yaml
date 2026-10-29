@@ -1,0 +1,6 @@
+# expect: /dependencies/0/version
+schemaVersion: 1
+kind: package
+name: invoice
+version: 1.0.0
+dependencies: [ { name: common, version: "^1.2.0" } ]

@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +27,9 @@ import java.util.zip.ZipOutputStream;
  * {@code flows/<id>.yaml} held as documents a case may change before it zips them, plus any other file as bytes. Documents are
  * written as JSON, which every YAML reader reads (the files keep their {@code .yaml} names). Endpoints default to the
  * {@link Doors#SCHEME} scheme. {@link #zip()} puts {@code package.yaml} at the archive root, files only, in path order.
+ *
+ * <p>P2-02b (D-087): {@link #content()} is the content digest a {@code package.lock} pins, computed here from the files (never by
+ * the code under test); {@link #dependingOn} and {@link #locking} declare dependencies in {@code package.yaml} and write the lock.
  */
 public final class PackageDraft {
 
@@ -169,6 +174,49 @@ public final class PackageDraft {
             throw new UncheckedIOException(e);
         }
         return bytes.toByteArray();
+    }
+
+    public String name() { return manifest().getString("name"); }
+
+    public String version() { return manifest().getString("version"); }
+
+    /** One entry of a {@code package.lock}: a dependency's name, its exact version and its content digest. */
+    public record LockEntry(String name, String version, String content) {}
+
+    /**
+     * The content digest of this package as unpacked (D-087): {@code sha256:} and the SHA-256 over the UTF-8 lines
+     * {@code flottila-package-content 1} and {@code file <path> <sha256>} for every file, sorted by path, each ended by {@code \n} —
+     * whatever archive the files come in.
+     */
+    public String content() {
+        StringBuilder text = new StringBuilder("flottila-package-content 1\n");
+        files().forEach((path, bytes) -> text.append("file ").append(path).append(' ').append(sha256(bytes)).append('\n'));
+        return "sha256:" + sha256(text.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** This package as a lock entry pins it: its name, version and {@link #content()} as they are now. */
+    public LockEntry locked() {
+        return new LockEntry(name(), version(), content());
+    }
+
+    /** Declares each of {@code deps} at its version and pins it in {@code package.lock} with its content as it is now. */
+    public PackageDraft dependingOn(PackageDraft... deps) {
+        return locking(Arrays.stream(deps).map(PackageDraft::locked).toList());
+    }
+
+    /**
+     * {@code package.yaml} declares each entry's name and version, {@code package.lock} (JSON, which YAML reads) pins each with its
+     * content: both sorted by name, replacing what they held.
+     */
+    public PackageDraft locking(List<LockEntry> entries) {
+        JsonArray declared = new JsonArray();
+        JsonArray pinned = new JsonArray();
+        for (LockEntry e : entries.stream().sorted(Comparator.comparing(LockEntry::name)).toList()) {
+            declared.add(new JsonObject().put("name", e.name()).put("version", e.version()));
+            pinned.add(new JsonObject().put("name", e.name()).put("version", e.version()).put("content", e.content()));
+        }
+        manifest().put("dependencies", declared);
+        return file("package.lock", new JsonObject().put("schemaVersion", 1).put("kind", "lock").put("dependencies", pinned).encodePrettily());
     }
 
     /** The SHA-256 of {@code bytes}, lower-case hex. */

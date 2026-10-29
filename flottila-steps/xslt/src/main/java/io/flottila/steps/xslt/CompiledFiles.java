@@ -43,13 +43,13 @@ final class CompiledFiles {
 
     /**
      * Whether {@code resources}' flow, compiling the main file {@code main}, would read the same: every read located
-     * against {@code main}'s directory lies inside the flow's directory (D-052: one outside means the compile there is
-     * refused) and holds what it held. When it does, every located read is reported to the flow's {@code reads} sink, as
+     * against {@code main}'s directory lies inside the flow's directory or the dependency's that holds it (D-052, D-087: one
+     * outside means the compile there is refused) and holds what it held. When it does, every located read is reported to the flow's {@code reads} sink, as
      * the compile there would report it; when it does not, none is.
      */
     boolean sameIn(Path main, StepResources resources) {
         StepResources unreported = new StepResources(resources.clock(), resources.timer(), resources.ids(), resources.blobs(),
-                resources.hasher(), resources.maxBodyBytes(), resources.baseDir());
+                resources.hasher(), resources.maxBodyBytes(), resources.baseDir(), path -> { }, resources.dependencies());
         List<Path> located = new ArrayList<>(held.size());
         for (Map.Entry<Path, Object> read : held.entrySet()) {
             Path file;

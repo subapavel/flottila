@@ -117,3 +117,4 @@
 - Follow-up select after ON CONFLICT DO NOTHING needs a case with a second row matching without each WHERE predicate; a Key<T> prop read needs a Throwable guard + wrong-type case (P2-02D)
 - Compose/infra (P2-05): a negative requirement ("present, not wired") needs its own assertion; a CI timing metric must measure something non-trivial
 - Compose one-shots (P2-06): a deviation from the packet (ed25519 → RSA) leaves the tests pinning the packet's key — mutate the key the stack uses; a secret-adjacent mount is pinned by exact mount-list equality plus a name ban, never by file mode
+- Pins/deps (P2-02b): every keep decision (prune, refusal cleanup) needs record pins + running-recipe reads + FAILED records' pins, one case each; a holder-of-target lookup on a relative path lets `..` into another root; a checked IOException reading a user file skips IAE→422

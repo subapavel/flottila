@@ -89,8 +89,8 @@ class MigrationsIT {
         Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "work");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(8, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D)");
-        assertEquals("8", first.schemaVersion());
+        assertEquals(9, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b)");
+        assertEquals("9", first.schemaVersion());
         assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "processed_ids", "work"), tables());
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
@@ -103,10 +103,10 @@ class MigrationsIT {
         assertTrue(String.valueOf(defs.get("work_held")).endsWith("(seq) WHERE (held_at IS NOT NULL)"), "V5: held work rows, partial: " + defs.get("work_held"));
         assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V8");
-        assertEquals("8", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V9");
+        assertEquals("9", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(8, applied);
+        assertEquals(9, applied);
     }
 
     /**
@@ -168,8 +168,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(4, r.migrationsExecuted(), "V5, V6, V7 and V8 on top of V4");
-        assertEquals("8", r.schemaVersion());
+        assertEquals(5, r.migrationsExecuted(), "V5, V6, V7, V8 and V9 on top of V4");
+        assertEquals("9", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));
@@ -196,15 +196,15 @@ class MigrationsIT {
     @Order(5)
     void v7DeploymentsHoldsTheRecordAndNoBytes() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("8", r.schemaVersion());
+        assertEquals("9", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'deployments' order by ordinal_position").execute().await()) {
             columns.put(c.getString(0), c.getString(1) + (c.getString(2).equals("NO") ? " not null" : ""));
         }
         assertEquals(java.util.Map.of("package", "text not null", "version", "text not null", "revision", "text", "archive_sha256", "text not null",
-                "deployed_at", "timestamp with time zone not null"), columns, "V7: the deployments columns");
-        assertEquals(List.of("package", "version", "revision", "archive_sha256", "deployed_at"), List.copyOf(columns.keySet()), "in this order");
+                "deployed_at", "timestamp with time zone not null", "dependencies", "jsonb not null"), columns, "V7: the deployments columns, V9's dependencies");
+        assertEquals(List.of("package", "version", "revision", "archive_sha256", "deployed_at", "dependencies"), List.copyOf(columns.keySet()), "in this order");
         assertTrue(columns.values().stream().noneMatch(t -> t.startsWith("bytea")), "no bytes in the record: the archive is in the archive store");
         String pk = pool.query("select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'deployments'::regclass and contype = 'p'")
                 .execute().await().iterator().next().getString(0);
@@ -232,7 +232,7 @@ class MigrationsIT {
     @Order(6)
     void v8ProcessedIdsHoldsOneRowPerScopeAndKeyHash() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("8", r.schemaVersion());
+        assertEquals("9", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'processed_ids' order by ordinal_position").execute().await()) {
@@ -261,6 +261,37 @@ class MigrationsIT {
         }
         long rows = pool.query("select count(*) from processed_ids").execute().await().iterator().next().getLong(0);
         assertEquals(2L, rows, "only the valid rows were written");
+    }
+
+    /**
+     * V9 (D-087, P2-02b): {@code deployments.dependencies} is jsonb, not null, default {@code '[]'::jsonb}: a row written before it
+     * reads as no pins, an insert that names no dependencies gets an empty array, an explicit null is refused.
+     */
+    @Test
+    @Order(7)
+    void v9DependenciesDefaultToAnEmptyArray() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("8").load().migrate();
+        String sha = "0123456789abcdef".repeat(4);
+        String v7Insert = "insert into deployments(package, version, revision, archive_sha256, deployed_at) values ($1, $2, $3, $4, now())";
+        pool.preparedQuery(v7Insert).execute(io.vertx.sqlclient.Tuple.of("before", "1.0.0", null, sha)).await();
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(1, r.migrationsExecuted(), "V9 on top of V8");
+        assertEquals("9", r.schemaVersion());
+        Row column = pool.query("select column_default, is_nullable, data_type from information_schema.columns where table_schema = 'public' "
+                + "and table_name = 'deployments' and column_name = 'dependencies'").execute().await().iterator().next();
+        assertEquals("'[]'::jsonb", column.getString(0), "V9: the default");
+        assertEquals("NO", column.getString(1), "V9: not null");
+        assertEquals("jsonb", column.getString(2));
+        pool.preparedQuery(v7Insert).execute(io.vertx.sqlclient.Tuple.of("after", "1.0.0", null, sha)).await();
+        List<String> rows = new java.util.ArrayList<>();
+        for (Row row : pool.query("select package, dependencies::text from deployments order by package").execute().await()) {
+            rows.add(row.getString(0) + " " + row.getString(1));
+        }
+        assertEquals(List.of("after []", "before []"), rows, "the row written before V9 and one naming no dependencies: an empty array each");
+        assertEquals("23502", sqlState(() -> pool.preparedQuery("insert into deployments(package, version, revision, archive_sha256, deployed_at, dependencies) "
+                + "values ('nulled', '1.0.0', null, '" + sha + "', now(), null)").execute().await()), "an explicit null is refused: not null");
     }
 
     /** The SQLSTATE of the Postgres error {@code call} fails with. */

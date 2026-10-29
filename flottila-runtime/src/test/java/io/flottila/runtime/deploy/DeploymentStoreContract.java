@@ -20,6 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code record DeploymentRecord(String name, String version, Optional<String> revision, String archiveSha256, Instant deployedAt)}
  * whose constructor truncates {@code deployedAt} to microseconds, and {@code interface DeploymentStore} with
  * {@code Future<Void> save(DeploymentRecord)} and {@code Future<List<DeploymentRecord>> list()}.
+ *
+ * <p>P2-02b (D-087): the record gains a last component {@code List<DeploymentRecord.Pin> dependencies}, {@code Pin(String name,
+ * String version, String archiveSha256)}: the closure of the package's dependencies, saved in the same upsert and listed as saved —
+ * in order, replaced whole, emptied by a save without pins.
  */
 public abstract class DeploymentStoreContract {
 
@@ -40,7 +44,11 @@ public abstract class DeploymentStoreContract {
     }
 
     static DeploymentRecord record(String name, String version, Optional<String> revision, String sha256, Instant at) {
-        return new DeploymentRecord(name, version, revision, sha256, at);
+        return new DeploymentRecord(name, version, revision, sha256, at, List.of());
+    }
+
+    static DeploymentRecord record(String name, String version, String sha256, List<DeploymentRecord.Pin> pins) {
+        return new DeploymentRecord(name, version, Optional.empty(), sha256, AT, pins);
     }
 
     List<DeploymentRecord> list() {
@@ -104,5 +112,28 @@ public abstract class DeploymentStoreContract {
         List<DeploymentRecord> back = list();
         assertEquals(Optional.of("0"), back.get(0).revision(), "a revision is kept as given: " + back);
         assertEquals(Optional.empty(), back.get(1).revision(), "no revision: empty, never null and never an empty string: " + back);
+    }
+
+    /** Pins come back in the order saved, every field as saved; a second save replaces them whole; one without pins empties them. */
+    @Test
+    void pinsRoundTrip() {
+        // out of name order, two versions of one name: a store that sorts, dedupes by name or keeps only the first shows here
+        List<DeploymentRecord.Pin> pins = List.of(new DeploymentRecord.Pin("util", "2.0.0", SHA_3), new DeploymentRecord.Pin("common", "1.2.0", SHA_1),
+                new DeploymentRecord.Pin("common", "1.3.0-rc.1", SHA_2));
+        DeploymentRecord invoice = record("invoice", "1.0.0", SHA_1, pins);
+        DeploymentRecord common = record("common", "1.2.0", SHA_2, List.of());
+        save(invoice);
+        save(common);
+
+        assertEquals(List.of(common, invoice), list(), "every field as saved, pins included");
+        assertEquals(pins, list().get(1).dependencies(), "the pins in the order saved");
+        assertEquals(List.of(), list().get(0).dependencies(), "no pins: an empty list, never null");
+
+        List<DeploymentRecord.Pin> other = List.of(new DeploymentRecord.Pin("common", "1.4.0", SHA_3));
+        save(record("invoice", "1.0.1", SHA_2, other));
+        assertEquals(other, list().get(1).dependencies(), "a second save replaces the pins whole: " + list());
+
+        save(record("invoice", "1.0.2", SHA_3, List.of()));
+        assertEquals(List.of(), list().get(1).dependencies(), "a save without pins empties them: " + list());
     }
 }
