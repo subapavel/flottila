@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -783,5 +785,24 @@ class TestCommandTest {
 
         assertEquals(INVOICE_PASSES, ran.outLines(), ran.toString());
         assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /**
+     * FIX-110: common runs an http flow listening on a loopback port this case holds bound; testing invoice, which depends on it,
+     * passes its case, exit 0 — the check before the cases holds common for the dry build without deploying or starting it, and
+     * each case's node deploys it over the mocks: nothing tries to listen on the port (a real listener could not, and its
+     * refusal would be a problem line and no case).
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aDependencyWithAnHttpFlowBindsNoPortDuringTest() throws Exception {
+        try (ServerSocket taken = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+            Path invoice = DepsFixture.invoiceOverCommonWithAnHttpFlow(tmp.resolve("deps"), taken.getLocalPort());
+
+            Ran ran = run("test", invoice.toString());
+
+            assertEquals(INVOICE_PASSES, ran.outLines(), "the port is held by the case, the test binds nothing: " + ran);
+            assertEquals(0, ran.exit(), ran.toString());
+        }
     }
 }

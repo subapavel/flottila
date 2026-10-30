@@ -132,6 +132,27 @@ final class DepsFixture {
     }
 
     /**
+     * FIX-110: a candidates directory at {@code deps} whose {@code common} 1.2.0 runs a flow of its own — {@code to-partner} (sync,
+     * from its http in endpoint {@code invoice-in} on 127.0.0.1:{@code port}, path {@code /common}, mapping with its own
+     * {@code xslt/to-partner.xsl}, sending to its http {@code partner}) — and {@code invoice} locked to it. A node that deployed
+     * this common, a dry build's included, would listen on {@code port}. Returns invoice's directory.
+     */
+    static Path invoiceOverCommonWithAnHttpFlow(Path deps, int port) throws IOException {
+        Path common = copy("common", deps.resolve("common"));
+        Path invoiceFiles = DEPS.resolve("invoice");
+        Files.createDirectories(common.resolve("endpoints"));
+        Files.createDirectories(common.resolve("flows"));
+        Files.copy(invoiceFiles.resolve("endpoints/invoice-in.yaml"), common.resolve("endpoints/invoice-in.yaml"));
+        Files.copy(invoiceFiles.resolve("endpoints/partner.yaml"), common.resolve("endpoints/partner.yaml"));
+        Files.copy(invoiceFiles.resolve("flows/to-partner.yaml"), common.resolve("flows/to-partner.yaml"));
+        CliRuns.rewrite(common.resolve("endpoints/invoice-in.yaml"), Map.of("port: 18090", "port: " + port, "path: /invoice", "path: /common"));
+        CliRuns.rewrite(common.resolve("flows/to-partner.yaml"), Map.of("stylesheet: common:xslt/to-partner.xsl", "stylesheet: xslt/to-partner.xsl"));
+        Path invoice = copy("invoice", deps.resolve("invoice"));
+        lock(invoice, common);
+        return invoice;
+    }
+
+    /**
      * A chain in {@code deps}: {@code common} (copied), {@code ubl} 1.0.0 (a copy of common whose {@code lib.xsl} writes
      * {@code ubl 1.0.0}) declaring {@code common 1.2.0}, locked; {@code order} 1.0.0 (a copy of invoice) declaring
      * {@code ubl 1.0.0}, mapping with {@code ubl:xslt/to-partner.xsl}, its case expecting {@code by = ubl 1.0.0}, locked. Returns

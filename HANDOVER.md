@@ -117,12 +117,14 @@ licence point for the owner. Also left for the owner: D-064/65B/67A/72/73 and th
 
 P2-02b2 (`flottila lock`, off-node validate/test of a package with dependencies, D-089) is done.
 
-1. **FIX-110** (in progress at hand-over): off-node validate holds a package's dependencies for one validation, nothing
-   deployed or started, any `--env`.
-2. **FIX-108**: CPU per flow and step by JFR sampling (ISSUE-3 option 2).
-3. **P2-02c**: undeploy, `DELETE /admin/packages/{name}`, with a 409 while another package pins it.
+FIX-110 (off-node validate holds a package's dependencies for one validation, nothing deployed or started, any `--env`)
+is done as well.
 
-Then P2-07b (409 for a body removed by retention), FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (agent/BACKLOG.md).
+1. **FIX-108**: CPU per flow and step by JFR sampling (ISSUE-3 option 2).
+2. **P2-02c**: undeploy, `DELETE /admin/packages/{name}`, with a 409 while another package pins it.
+3. **P2-07b**: replay and payload reads of a body removed by retention answer 409.
+
+Then FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (agent/BACKLOG.md).
 
 ## 9. Stretch (GATE.md) — not reached
 

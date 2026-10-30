@@ -26,14 +26,13 @@ public final class Cli {
             usage: flottila <command> [arguments]
               validate <dir> [--env <env>] [--deps <dir>]
                   check the package in <dir> as a node would deploy it (schemas, component configs, a dry build of every
-                  flow) and print its tree and its problems (environment: dev unless --env); nothing is started or stored
-                  except its dependencies, resolved as lock finds them: they are deployed into the dry build's node first,
-                  which starts their flows and is refused for a deployed --env (FIX-110)
+                  flow) and print its tree and its problems (environment: dev unless --env); its dependencies, resolved
+                  as lock finds them, are held for the dry build, never deployed; nothing is started or stored
               test <dir> [--deps <dir>]
                   run the package's flow tests (*.test.yaml) as a node of environment ci would, each case on mocks and
                   in-memory stores of its own and on virtual time; print PASS or FAIL per case and what failed (a problem
-                  validate would print runs no case); a package with dependencies first runs validate's dry build, which
-                  deploys them and starts their flows on the shipped components (FIX-110)
+                  validate would print runs no case); each case's node deploys the package's dependencies, resolved as
+                  lock finds them, on the same mocks
               lock <dir> [--deps <dir>]
                   write <dir>/package.lock pinning each dependency package.yaml declares with its candidate's content digest:
                   candidates are the folders of --deps, else of the package folder's parent, whose package.yaml loads (the

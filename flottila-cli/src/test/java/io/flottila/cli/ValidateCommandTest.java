@@ -8,6 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.UncheckedIOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
@@ -22,6 +23,7 @@ import static io.flottila.cli.CliRuns.FIXTURES;
 import static io.flottila.cli.CliRuns.run;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -449,21 +451,117 @@ class ValidateCommandTest {
     }
 
     /**
-     * {@code --env prod}: the dry build's node refuses the manual deploy of the dependency (non-production only, §9) — that refusal
-     * is the one problem (invoice itself is not built, so no "not deployed on this node"), exit 1; the same package passes in dev.
+     * FIX-110 (D-089): {@code --env prod} holds the closure for the dry build instead of deploying it — the node of a deployed
+     * environment refuses no dependency, so invoice validates there with exit 0, as in dev. The build did run in prod with common
+     * held: invoice mapping with a stylesheet common lacks is named (exit 1). Fixture witness: invoice with common's stylesheets
+     * copied in (no dependency) passes in prod — prod has no objection of its own to the package.
      */
     @Test
-    void aDeployedEnvironmentsNodeRefusingTheDependencyIsTheOneProblem() throws Exception {
+    void validateInADeployedEnvWithDependenciesIsExit0() throws Exception {
         Path invoice = DepsFixture.invoiceWithCandidates(tmp.resolve("deps"));
+        Path missing = DepsFixture.invoiceWithCandidates(tmp.resolve("missing"));
+        CliRuns.rewrite(missing.resolve("flows/to-partner.yaml"), Map.of("stylesheet: common:xslt/to-partner.xsl", "stylesheet: common:xslt/missing.xsl"));
+        Path inline = DepsFixture.copy("invoice", tmp.resolve("inline/invoice"));
+        CliRuns.copy(DepsFixture.DEPS.resolve("common/xslt"), inline.resolve("xslt"));
+        DepsFixture.manifest(inline, "invoice", "1.0.0");
+        CliRuns.rewrite(inline.resolve("flows/to-partner.yaml"), Map.of("stylesheet: common:xslt/to-partner.xsl", "stylesheet: xslt/to-partner.xsl"));
 
+        Ran inlineProd = run("validate", inline.toString(), "--env", "prod");
         Ran prod = run("validate", invoice.toString(), "--env", "prod");
         Ran dev = run("validate", invoice.toString(), "--env", "dev");
+        Ran missingProd = run("validate", missing.toString(), "--env", "prod");
 
-        assertEquals(List.of("problem: dependency common@1.2.0 refused by the dry build's node: FORBIDDEN: manual deploy is non-production only (ARCHITECTURE §9)"),
-                prod.problems(), prod.toString());
-        assertEquals(1, prod.exit(), prod.toString());
+        assertEquals(List.of(), inlineProd.problems(), "fixture witness: prod objects to nothing of invoice itself: " + inlineProd);
+        assertEquals(0, inlineProd.exit(), inlineProd.toString());
+        assertEquals(List.of(), prod.problems(), prod.toString());
+        assertEquals("package invoice 1.0.0", prod.outLines().getFirst(), prod.toString());
+        assertEquals(0, prod.exit(), prod.toString());
+        assertEquals("", prod.err(), prod.toString());
         assertEquals(List.of(), dev.problems(), dev.toString());
         assertEquals(0, dev.exit(), dev.toString());
+        assertTrue(missingProd.problems().stream().anyMatch(l -> l.endsWith("stylesheet 'common:xslt/missing.xsl' does not exist in common@1.2.0")),
+                "the prod dry build read common's files: " + missingProd);
+        assertEquals(1, missingProd.exit(), missingProd.toString());
+        DepsFixture.assertNoAbsolutePath(missingProd, tmp);
+    }
+
+    /**
+     * FIX-110: common runs an http flow listening on a loopback port this case holds bound; validating invoice, which depends on
+     * it, answers 0 with no problem — the dry build neither deploys nor starts the dependency, so nothing tries to listen there
+     * (a deployed common could not, and its refusal would be a problem).
+     */
+    @Test
+    void aDependencyWithAnHttpFlowBindsNoPort() throws Exception {
+        try (ServerSocket taken = new ServerSocket(0, 0, InetAddress.ofLiteral("127.0.0.1"))) {
+            Path invoice = DepsFixture.invoiceOverCommonWithAnHttpFlow(tmp.resolve("deps"), taken.getLocalPort());
+
+            Ran ran = run("validate", invoice.toString());
+
+            assertEquals(List.of(), ran.problems(), "the port is held by the case, the dry build binds nothing: " + ran);
+            assertEquals(0, ran.exit(), ran.toString());
+            assertEquals("", ran.err(), ran.toString());
+        }
+    }
+
+    /**
+     * FIX-110: a sibling whose files cannot be read is no candidate, like one that does not load. {@code common-copy} declares
+     * common 1.2.0 too, but holds a folder chain past PATH_MAX (its content cannot be walked: the fixture witness below), and
+     * {@code odd} has a directory named package.yaml; invoice still resolves to {@code common}: exit 0, nothing on stderr, no path.
+     */
+    @Test
+    void anUnreadableSiblingIsIgnored() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        Path copy = DepsFixture.copy("common", deps.resolve("common-copy"));
+        Files.createDirectories(deps.resolve("odd/package.yaml"));
+        Path top = copy.resolve("deep");
+        List<String> below = LongPaths.pastPathMax(top);
+        Path stage = tmp.resolve("stage");
+        LongPaths.chain(top, below, stage);
+        try {
+            assertThrows(UncheckedIOException.class, () -> DepsFixture.content(copy), "fixture witness: common-copy's files cannot be walked");
+
+            Ran ran = run("validate", invoice.toString());
+
+            assertEquals(List.of(), ran.problems(), ran.toString());
+            assertEquals(0, ran.exit(), ran.toString());
+            assertEquals("", ran.err(), ran.toString());
+            DepsFixture.assertNoAbsolutePath(ran, tmp);
+        } finally {
+            LongPaths.unchain(top, below, stage);
+        }
+    }
+
+    /**
+     * FIX-110: a candidates directory that cannot be listed — {@code --deps} names, relative to the working directory, a folder
+     * {@code vendor-deps} whose absolute path is PATH_MAX long (reachable relatively, never absolutely: the fixture witness) — is
+     * exit 1 with the line {@code problem: cannot list vendor-deps}, and no absolute path on stdout or stderr.
+     */
+    @Test
+    void anUnlistableDepsFolderIsExit1WithoutAbsolutePath() throws Exception {
+        Path invoice = DepsFixture.copy("invoice", tmp.resolve("work/invoice"));
+        DepsFixture.lock(invoice, DepsFixture.copy("common", tmp.resolve("elsewhere/common")));
+        Path top = Path.of("target", "fix110-deps-" + System.nanoTime());
+        List<String> below = LongPaths.exactlyPathMax(top, "vendor-deps");
+        Path stage = Path.of("target", "fix110-stage-" + System.nanoTime());
+        LongPaths.chain(top, below, stage);
+        try {
+            Path vendor = top;
+            for (String name : below) vendor = vendor.resolve(name);
+            assertTrue(Files.isDirectory(vendor), "fixture witness: the folder is reachable relative to the working directory");
+            assertFalse(Files.isDirectory(vendor.toAbsolutePath()), "fixture witness: its absolute path is refused");
+
+            Ran ran = run("validate", invoice.toString(), "--deps", vendor.toString());
+
+            assertEquals(1, ran.exit(), ran.toString());
+            assertTrue(ran.problems().contains("problem: cannot list vendor-deps"), ran.toString());
+            assertEquals("", ran.err(), ran.toString());
+            String cwd = Path.of("").toAbsolutePath().toString();
+            assertFalse(ran.out().contains(cwd) || ran.err().contains(cwd), "no absolute path (" + cwd + "): " + ran);
+            DepsFixture.assertNoAbsolutePath(ran, tmp);
+        } finally {
+            LongPaths.unchain(top, below, stage);
+        }
     }
 
     /** Without dependencies nothing of the candidates dir is read: siblings that do not load change nothing of the output. */

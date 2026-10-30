@@ -307,6 +307,45 @@ class LockCommandTest {
         assertArrayEquals(before, Files.readAllBytes(invoice.resolve("package.lock")), "the previous lock untouched: " + ran);
     }
 
+    /**
+     * FIX-110: a {@code --deps} folder that cannot be listed ({@link LongPaths#exactlyPathMax}: reachable relatively, never by its
+     * absolute path) is the one line {@code problem: cannot list vendor-deps} however many dependencies are looked up — invoice
+     * declares two; exit 1, nothing written. Witness that both are looked up: the same invoice against an empty, listable folder is
+     * one {@code no candidate} line for each.
+     */
+    @Test
+    void anUnlistableDepsFolderIsOneLineForTwoDependencies() throws Exception {
+        Path invoice = copy("invoice", tmp.resolve("work/invoice"));
+        DepsFixture.manifest(invoice, "invoice", "1.0.0", "common@1.2.0", "zeta@1.0.0");
+        Path empty = Files.createDirectories(tmp.resolve("empty-deps"));
+
+        Ran listable = run("lock", invoice.toString(), "--deps", empty.toString());
+
+        assertEquals(1, listable.exit(), listable.toString());
+        reported(listable, l -> l.startsWith("dependency common@1.2.0: no candidate under "));
+        reported(listable, l -> l.startsWith("dependency zeta@1.0.0: no candidate under "));
+        assertNoLock(invoice, listable);
+
+        Path top = Path.of("target", "fix110-lock-deps-" + System.nanoTime());
+        List<String> below = LongPaths.exactlyPathMax(top, "vendor-deps");
+        Path stage = Path.of("target", "fix110-lock-stage-" + System.nanoTime());
+        LongPaths.chain(top, below, stage);
+        try {
+            Path vendor = top;
+            for (String name : below) vendor = vendor.resolve(name);
+            assertTrue(Files.isDirectory(vendor), "fixture witness: the folder is reachable relative to the working directory");
+            assertFalse(Files.isDirectory(vendor.toAbsolutePath()), "fixture witness: its absolute path is refused");
+
+            Ran ran = run("lock", invoice.toString(), "--deps", vendor.toString());
+
+            assertEquals(List.of("problem: cannot list vendor-deps"), ran.outLines(), ran.toString());
+            assertEquals(1, ran.exit(), ran.toString());
+            assertNoLock(invoice, ran);
+        } finally {
+            LongPaths.unchain(top, below, stage);
+        }
+    }
+
     /** {@code --deps} that is not a directory: usage, exit 2, nothing on stdout, nothing written. */
     @Test
     void depsNotADirIsUsage2() throws Exception {

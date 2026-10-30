@@ -7,7 +7,6 @@ import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.runtime.Main;
-import io.flottila.runtime.deploy.DeployRefusedException;
 import io.flottila.runtime.deploy.Deployments;
 import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.node.ComponentContext;
@@ -35,8 +34,8 @@ import java.util.stream.Collectors;
  * {@code flottila validate <dir> [--env <env>] [--deps <dir>]} (D-079): {@link Package#problems()}, then its dependencies'
  * closure resolved from the candidates ({@link Dependencies#resolve}, D-089), then — when that found no problem — the node's dry
  * build ({@link Deployments#validate}) over what a node ships ({@link Main#shipped()}) in the environment {@code --env} (dev
- * unless given, whatever {@code FLOTTILA_ENV} says), with in-memory stores on one Vert.x, the closure deployed into it leaves
- * first so that the node's own resolution (D-087) runs; nothing of the package is started or stored. Prints the package's tree,
+ * unless given, whatever {@code FLOTTILA_ENV} says), with in-memory stores on one Vert.x, the closure held for that call so that
+ * the node's own resolution (D-087) runs over it; nothing of the package or its closure is deployed, started or stored. Prints the package's tree,
  * then one {@code problem: } line per problem, each once; exit 0 without a problem, 1 with one.
  */
 final class Validate {
@@ -59,7 +58,7 @@ final class Validate {
      * @param pkg the package as loaded; empty when a file of it does not parse
      * @param problems each on one line, each once, in order: the load's, else {@link Package#problems()} and the dry build's
      * @param schemes the schemes of the components the dry build ran over ({@link Main#shipped()}); empty when it did not run
-     * @param dependencies the closure the dry build deployed, leaves first; empty when it did not run
+     * @param dependencies the closure the dry build held, leaves first; empty when it did not run
      */
     record Checked(Optional<Package> pkg, List<String> problems, Set<String> schemes, List<Dependencies.Found> dependencies) {}
 
@@ -124,11 +123,11 @@ final class Validate {
     private record DryBuild(List<String> problems, Set<String> schemes) {}
 
     /**
-     * {@link Deployments#validate} of {@code dir} as {@code name} on a node of the environment {@code env} that runs nothing of
-     * the package: the shipped components on a Vert.x of the run's own (closed after it), the shipped steps and languages, a fake
-     * clock, timer and ids, in-memory blobs and stores, and a data directory of the run's own (deleted after it), into which
-     * {@code closure} is deployed first, leaves first; a dependency the node refuses is the one problem, and nothing is built then.
-     * The node is closed after the build.
+     * {@link Deployments#validate(String, Path, List)} of {@code dir} as {@code name}, {@code closure}'s folders held (D-089), on a
+     * node of the environment {@code env} that runs nothing: the shipped components on a Vert.x of the run's own (closed after
+     * it), the shipped steps and languages, a fake clock, timer and ids, in-memory blobs and stores, and an empty data directory
+     * of the run's own (deleted after it). Nothing of the closure is deployed or started, so no component of it listens or
+     * connects, in every environment. The node is closed after the build.
      */
     private static DryBuild dryBuild(String name, Path dir, String env, List<Dependencies.Found> closure) throws IOException {
         Path data = Files.createTempDirectory("flottila-validate-");
@@ -146,15 +145,7 @@ final class Validate {
                 Deployments node = new Deployments(config, runtime, components, rt.clock(), rt.timer(), shipped.steps(), shipped.languages(),
                         new InMemoryMessageStore(), new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), Meter.system());
                 try {
-                    for (Dependencies.Found dep : closure) {
-                        try {
-                            deploy(node, dep.pin().name(), Deploy.zip(dep.dir()), data);
-                        } catch (DeployRefusedException refused) {
-                            return new DryBuild(List.of("dependency " + dep.pin().name() + "@" + dep.pin().version() + " refused by the dry build's node: "
-                                    + refused.getMessage()), schemes);
-                        }
-                    }
-                    return new DryBuild(node.validate(name, dir), schemes);
+                    return new DryBuild(node.validate(name, dir, closure.stream().map(Dependencies.Found::dir).toList()), schemes);
                 } finally {
                     node.close();
                 }
@@ -164,10 +155,5 @@ final class Validate {
         } finally {
             FlowTests.deleteTree(data);
         }
-    }
-
-    /** Deploys a dependency's archive {@code zip} into {@code node} as {@code name}, written into {@code data} as {@code dependency-<name>.zip} first. */
-    static void deploy(Deployments node, String name, byte[] zip, Path data) throws DeployRefusedException, IOException {
-        node.deploy(name, Optional.empty(), Files.write(data.resolve("dependency-" + name + ".zip"), zip));
     }
 }

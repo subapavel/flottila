@@ -262,7 +262,7 @@ final class FlowTests {
             Deployments node = new Deployments(config, new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), components), components,
                     rt.clock(), timer, shipped.steps(), shipped.languages(), messages, dlq, queue, Meter.system());
             try {
-                for (Archive dep : dependencies) Validate.deploy(node, dep.name(), dep.zip(), data);   // leaves first
+                for (Archive dep : dependencies) node.deploy(dep.name(), Optional.empty(), Files.write(data.resolve("dependency-" + dep.name() + ".zip"), dep.zip()));   // leaves first
                 node.deploy(pkg.name(), Optional.empty(), Files.write(data.resolve("package.zip"), zip));
                 Future<Ack> answer = send == null ? FED : door.ingest(from, new Headers(headers), Buffer.buffer(send));
                 BooleanSupplier answered = done(answer);   // the answer's monitor stays out of the sampling: read through this only

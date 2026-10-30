@@ -91,7 +91,8 @@
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- Deployments.deploy refuses FORBIDDEN unless env is dev/ci (NodeConfig.deployed()): no deploy into a prod-env in-process node (P2-02b2).
+- Deployments.deploy refuses FORBIDDEN unless env is dev/ci; off-node `validate(name, dir, held)` holds folders without deploying (FIX-110).
+- Package.load stops at MAX_DEPTH 4 (a deeper tree still loads); Package.content walks all of it: a past-PATH_MAX chain → UncheckedIOException (FIX-110).
 ## Findings that came back in review
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class
@@ -101,8 +102,7 @@
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
-- A lambda that rebuilds the pipeline per call where one build was meant (`FlowBuilder.replay`, P1-05). Before changing who resumes in
-  `StreamingWrite`, grep blob fixtures for latches waiting on a sink resume (`TieredBlobStoreFailureTest.LatePauseStream`).
+- Before changing who resumes in `StreamingWrite`, grep blob fixtures for latches waiting on a sink resume (`TieredBlobStoreFailureTest.LatePauseStream`).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
 - Known flakes (never verify beside a mutant loop): FIX-30 `RecordingComponent.send` counts `awaitSent` down before `holds.pollFirst()`;

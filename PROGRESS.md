@@ -1029,3 +1029,16 @@ and null where the JVM cannot measure a virtual thread (F-21); ARCHITECTURE chan
 Gate-reviewer r3: check 6 MET against the new wording (target/GATE3-stack.log:17-48), checks 1–5 and 7–9 unchanged from r2 →
 GATE_MET on gate commit fea6c5c. HANDOVER.md state line, check-6 row, open issues and next tasks updated. CI run 148 green on c652f49.
 Next: FIX-110 (in flight), then FIX-108.
+
+## 2026-10-30 — FIX-110 off-node validate holds dependencies without deploying them — done, review PASS
+Test first: runtime DeploymentsHeldValidateTest (8 cases, compile red), cli ValidateCommandTest/TestCommandTest 5 red (deployed env,
+http port in validate and in test, unreadable sibling via a > PATH_MAX chain, unlistable --deps) — target/FIX-110-red.log; the
+test-author replaced its own aDeployedEnvironmentsNodeRefusingTheDependencyIsTheOneProblem (FIX-110 removes that refusal).
+Change: runtime `Deployments.validate(name, dir, held)` (held pins → folder map for that call only, available() + dirOf()); cli
+Validate holds the closure instead of deploying it; Dependencies hashes candidates in scan and skips unreadable ones, `cannot list
+<name>` once; USAGE clauses dropped. Docs: D-079, D-089, §9 sentence + changelog row.
+Checks: verify -Pit VERIFIED_PASS 2651/0/0/0 on the final tree (target/FIX-110-verify-final.log); coverage no decrease
+(-coverage-final.log); packet mutants + two adopted proof cases killed (-mutants.log, -proof.log).
+Review: PASS r1 (non-blocking: the checked-IOException arm has no root-constructible case; Files.isSameFile outside the try).
+D-054 data: class B (scout ×1, test-author ×2, implementer ×1, verifier ×1, reviewer ×1); review rounds 1.
+Next: stopped by the owner after FIX-110 (credits); FIX-108 waits for the owner's go.

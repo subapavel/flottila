@@ -436,12 +436,42 @@ public final class Deployments {
      * @throws IOException a file the build read cannot be hashed, or the work queue could not answer: the node's failure
      */
     public List<String> validate(String name, Path dir) throws IOException {
+        return validate(name, dir, Map.of());
+    }
+
+    /**
+     * Off-node validation (D-089): {@link #validate(String, Path)} of {@code dir} as {@code name} with the package's dependency
+     * closure handed over as package folders, {@code held}. For this call only, each held folder counts as a version this node has —
+     * its name and version from its {@code package.yaml}, its content {@code Package.content} of the folder — in the resolution
+     * ({@link #dependencies}: the missing version, the content, the cycle, the {@code <dep>:<path>} file checks run as for a deployed
+     * version) and in the build, which reads a {@code <dep>:<path>} from the folder. Nothing of a held folder is deployed, unpacked,
+     * stored, recorded, built, started or listed, in any environment (no {@link Kind#FORBIDDEN}: nothing is deployed), and after the
+     * call nothing of it is visible. Blocking: on a virtual thread.
+     *
+     * @param held the closure's package folders, each a package that loads with a name and a version
+     * @return the problems, as {@link #validate(String, Path)} returns them
+     * @throws IOException a held folder or a file of it cannot be read, a file the build read cannot be hashed, or the work queue
+     *                     could not answer: the node's failure
+     * @throws IllegalArgumentException a file of a held folder does not parse ({@code Package.load})
+     */
+    public List<String> validate(String name, Path dir, List<Path> held) throws IOException {
+        Map<DeploymentRecord.Pin, Path> versions = new LinkedHashMap<>();
+        for (Path folder : held) {
+            JsonObject manifest = Package.load(folder).manifest();
+            // a key no archive has: a held version is never stored, fetched or recorded; dirOf maps it to its folder
+            versions.put(new DeploymentRecord.Pin(manifest.getString("name"), manifest.getString("version"), "held-" + versions.size()), folder);
+        }
+        return validate(name, dir, versions);
+    }
+
+    /** {@link #validate(String, Path)} with {@code held} versions available besides the node's own (D-089), each pin to its folder. */
+    private List<String> validate(String name, Path dir, Map<DeploymentRecord.Pin, Path> held) throws IOException {
         Deployed listed = deployed.get(name);
         List<Flow> before = listed == null ? List.of() : listed.flows();   // a package listed FAILED lists no flows (restore)
         List<Flow> built = new ArrayList<>();
         try {
             Package pkg = load(name, dir);
-            Checked checked = check(name, pkg, dir, before, null);
+            Checked checked = check(name, pkg, dir, before, null, held);
             return build(name, Optional.empty(), pkg.manifest().getString("version"), "validate", pkg, dir, checked, built);
         } catch (DeployRefusedException refused) {
             return refused.problems();
@@ -645,7 +675,7 @@ public final class Deployments {
                 for (DeploymentRecord.Pin pin : restoring.dependencies()) installPin(pin, incoming, written);
             }
             Package pkg = load(name, dir);
-            Checked checked = check(name, pkg, dir, before, restoring);
+            Checked checked = check(name, pkg, dir, before, restoring, Map.of());
             String version = pkg.manifest().getString("version");
             List<String> problems = build(name, revision, version, sha256, pkg, dir, checked, built);
 
@@ -892,13 +922,14 @@ public final class Deployments {
      * another delivery mode — is asked whether the work queue holds items of it (blocking): if so, those items would never run.
      * One the new version names with a yaml that does not read is not asked: its problems are listed already. A question the queue
      * fails is the node's {@link IOException} (its cause the queue's failure) once every one was asked — unless there are
-     * problems: then they are the answer. {@code restoring} is the record a restore installs, null for a deploy or a validate.
+     * problems: then they are the answer. {@code restoring} is the record a restore installs, null for a deploy or a validate;
+     * {@code held} the versions an off-node validate holds (D-089), each pin to its folder, empty otherwise.
      */
-    private Checked check(String name, Package pkg, Path dir, List<Flow> running, DeploymentRecord restoring) throws DeployRefusedException, IOException {
+    private Checked check(String name, Package pkg, Path dir, List<Flow> running, DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held) throws DeployRefusedException, IOException {
         List<String> problems = new ArrayList<>(pkg.problems());
         JsonObject manifest = pkg.manifest();
         if (!name.equals(manifest.getValue("name"))) problems.add("package.yaml names the package '" + manifest.getValue("name") + "', the deploy '" + name + "'");
-        Resolved dependencies = dependencies(name, pkg, dir, restoring, problems);
+        Resolved dependencies = dependencies(name, pkg, dir, restoring, held, problems);
         Map<String, String> schemes = new LinkedHashMap<>();
         Map<String, JsonObject> configs = new LinkedHashMap<>();
         Map<String, JsonObject> resolved = new LinkedHashMap<>();   // as the components get them: every secret:// reference resolved (D-081)
@@ -996,19 +1027,21 @@ public final class Deployments {
      * {@link #available} with the content the lock pins ({@code Package.content} of its directory), and so must each entry of that
      * version's own lock, to the closure; a name met again on the way is a cycle ({@code dependency cycle: a -> b -> a}). Then each
      * step's {@code stylesheet} or {@code schema} naming a resolved direct dependency, {@code <dep>:<path>}, must be a file of it.
+     * The versions {@code held} (D-089) are available besides the node's own, each read from its folder ({@link #dirOf}).
      *
      * @throws IOException a directory of the node cannot be read
      */
-    private Resolved dependencies(String name, Package pkg, Path dir, DeploymentRecord restoring, List<String> problems) throws IOException {
+    private Resolved dependencies(String name, Package pkg, Path dir, DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held, List<String> problems)
+            throws IOException {
         Set<String> lines = new LinkedHashSet<>();
         Map<DeploymentRecord.Pin, String> closure = new LinkedHashMap<>();   // each pin to its content, in the order resolved
         Set<DeploymentRecord.Pin> direct = new HashSet<>();
         Map<String, Path> dirs = new LinkedHashMap<>();
         Map<String, String> versions = new LinkedHashMap<>();
         List<String> path = new ArrayList<>(List.of(name));
-        resolve(pkg.lock(), path, available(restoring), closure, direct, lines);
+        resolve(pkg.lock(), path, available(restoring, held), held, closure, direct, lines);
         for (DeploymentRecord.Pin p : direct) {
-            dirs.put(p.name(), pinDir(p));
+            dirs.put(p.name(), dirOf(p, held));
             versions.put(p.name(), p.version());
         }
         pkg.flows().forEach((id, flow) -> {
@@ -1040,8 +1073,8 @@ public final class Deployments {
      * that version's own lock with its name on {@code path}; a name {@code path} holds already is a cycle, not followed. Every
      * problem is a line of {@code lines}.
      */
-    private void resolve(List<Package.Locked> entries, List<String> path, List<DeploymentRecord.Pin> available, Map<DeploymentRecord.Pin, String> closure,
-                         Set<DeploymentRecord.Pin> direct, Set<String> lines) throws IOException {
+    private void resolve(List<Package.Locked> entries, List<String> path, List<DeploymentRecord.Pin> available, Map<DeploymentRecord.Pin, Path> held,
+                         Map<DeploymentRecord.Pin, String> closure, Set<DeploymentRecord.Pin> direct, Set<String> lines) throws IOException {
         for (Package.Locked entry : entries) {
             if (path.contains(entry.name())) {
                 lines.add("dependency cycle: " + String.join(" -> ", path) + " -> " + entry.name());
@@ -1056,7 +1089,7 @@ public final class Deployments {
             DeploymentRecord.Pin match = null;
             List<String> contents = new ArrayList<>();
             for (DeploymentRecord.Pin candidate : candidates) {
-                String content = Package.content(pinDir(candidate));
+                String content = Package.content(dirOf(candidate, held));
                 contents.add(content);
                 if (content.equals(entry.content())) match = candidate;
             }
@@ -1067,7 +1100,7 @@ public final class Deployments {
             closure.put(match, entry.content());
             if (path.size() == 1) direct.add(match);
             path.add(entry.name());
-            resolve(Package.load(pinDir(match)).lock(), path, available, closure, direct, lines);
+            resolve(Package.load(dirOf(match, held)).lock(), path, available, held, closure, direct, lines);
             path.removeLast();
         }
     }
@@ -1084,9 +1117,10 @@ public final class Deployments {
     /**
      * The package versions this node holds for a deploy's dependencies (D-087), as pins: each RUNNING package's current version and
      * every version its record pins, and the pins of the record {@code restoring} installs (fetched before its check). A package
-     * listed FAILED holds none: its version may not be on disk, nor what its record pins.
+     * listed FAILED holds none: its version may not be on disk, nor what its record pins. Then the versions an off-node validate
+     * holds (D-089).
      */
-    private List<DeploymentRecord.Pin> available(DeploymentRecord restoring) {
+    private List<DeploymentRecord.Pin> available(DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held) {
         List<DeploymentRecord.Pin> available = new ArrayList<>();
         for (Deployed d : deployed.values()) {
             if (d.pkg().state() == DeployedPackage.State.FAILED) continue;
@@ -1094,6 +1128,7 @@ public final class Deployments {
             available.addAll(d.pins());
         }
         if (restoring != null) available.addAll(restoring.dependencies());
+        available.addAll(held.keySet());
         return available;
     }
 
@@ -1118,6 +1153,11 @@ public final class Deployments {
             }
         }
         return read;
+    }
+
+    /** Where the version of {@code pin} is read: its held folder (D-089), else {@link #pinDir}. */
+    private Path dirOf(DeploymentRecord.Pin pin, Map<DeploymentRecord.Pin, Path> held) {
+        return held.getOrDefault(pin, pinDir(pin));
     }
 
     /** {@code packages/<name>/<sha256>/} of a pin: where its version is unpacked. */

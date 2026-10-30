@@ -4,6 +4,7 @@ import io.flottila.schemas.Package;
 import io.vertx.core.json.JsonObject;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -20,7 +21,9 @@ import java.util.stream.Stream;
  * A package's dependencies resolved off the node (D-087, D-089), for {@code lock}, {@code validate} and {@code test}: the candidates
  * are the immediate subdirectories of the candidates directory — {@code --deps <dir>}, else the package directory's parent —
  * that hold a {@code package.yaml} and load ({@link Package#load}), the package's own directory excluded; a candidate whose files
- * do not load is none. They are read once, at the first lookup: a package without dependencies reads nothing of the directory. A
+ * do not load, or cannot be read or walked for its content ({@link Package#content}: an {@link IOException} or
+ * {@link UncheckedIOException}), is none. They are read once, at the first lookup: a package without dependencies reads nothing
+ * of the directory; a candidates directory that cannot be listed is the one problem {@code cannot list <its name>}. A
  * candidate matches a dependency by its package.yaml's name and version (not its directory's name); two matches with different
  * content ({@link Package#content}) are refused. A message names a candidate by its directory's name and the candidates directory
  * by its own name, never by a path.
@@ -32,6 +35,7 @@ final class Dependencies {
     /** The candidates directory's own name, as the messages name it. */
     private final String under;
     private List<Candidate> candidates;   // null until the first lookup
+    private boolean unlisted;   // the candidates directory could not be listed: candidates is empty
 
     private Dependencies(Path deps, Path own) {
         this.deps = deps;
@@ -39,8 +43,8 @@ final class Dependencies {
         this.under = Objects.toString(deps.getFileName(), "/");
     }
 
-    /** One candidate: its directory's name and path, the package as loaded, and its package.yaml's name and version as written. */
-    private record Candidate(String folder, Path dir, Package pkg, Object name, Object version) {}
+    /** One candidate: its directory's name and path, the package as loaded, its package.yaml's name and version as written, its content. */
+    private record Candidate(String folder, Path dir, Package pkg, Object name, Object version, String content) {}
 
     /**
      * A dependency resolved to its candidate.
@@ -62,12 +66,19 @@ final class Dependencies {
     /**
      * The one candidate for {@code name} at {@code version}; empty with a line added to {@code problems} when no candidate has that
      * name and version ({@code dependency <name>@<version>: no candidate under <deps> (it has <name> <versions> | no package <name>)})
-     * or two that do have different content.
+     * or two that do have different content; empty with the line {@code cannot list <deps>} (once) when the candidates directory
+     * cannot be listed.
      *
-     * @throws IOException the candidates directory cannot be listed, a candidate's folder listed or a matching candidate's file read
+     * @throws IOException a candidate cannot be compared with the package's own directory
      */
     Optional<Found> find(String name, String version, List<String> problems) throws IOException {
-        List<Candidate> named = candidates().stream().filter(c -> name.equals(c.name())).toList();
+        List<Candidate> all = candidates();
+        if (unlisted) {
+            String line = "cannot list " + under;   // the directory by its name only, never by its path
+            if (!problems.contains(line)) problems.add(line);   // once, whatever number of dependencies is looked up
+            return Optional.empty();
+        }
+        List<Candidate> named = all.stream().filter(c -> name.equals(c.name())).toList();
         List<Candidate> matching = named.stream().filter(c -> version.equals(c.version())).toList();
         String dependency = "dependency " + name + "@" + version + ": ";
         if (matching.isEmpty()) {
@@ -77,7 +88,7 @@ final class Dependencies {
             return Optional.empty();
         }
         TreeSet<String> contents = new TreeSet<>();
-        for (Candidate c : matching) contents.add(Package.content(c.dir()));
+        for (Candidate c : matching) contents.add(c.content());
         if (contents.size() > 1) {
             problems.add(dependency + "candidates " + matching.stream().map(Candidate::folder).collect(Collectors.joining(", ")) + " under " + under
                     + " have different content");
@@ -126,11 +137,14 @@ final class Dependencies {
         return candidates;
     }
 
-    /** Every candidate in directory-name order (see the class comment). */
+    /** Every candidate in directory-name order (see the class comment); none, {@link #unlisted} set, when {@link #deps} cannot be listed. */
     private List<Candidate> scan() throws IOException {
         List<Path> dirs;
         try (Stream<Path> listed = Files.list(deps)) {
             dirs = listed.filter(d -> Files.isRegularFile(d.resolve("package.yaml"))).sorted().toList();
+        } catch (IOException | UncheckedIOException cannotList) {   // its message holds the absolute path: find names the folder instead
+            unlisted = true;
+            return List.of();
         }
         List<Candidate> found = new ArrayList<>();
         for (Path d : dirs) {
@@ -138,9 +152,9 @@ final class Dependencies {
             try {
                 Package pkg = Package.load(d);
                 JsonObject manifest = pkg.manifest();
-                found.add(new Candidate(d.getFileName().toString(), d, pkg, manifest.getValue("name"), manifest.getValue("version")));
-            } catch (IllegalArgumentException unreadable) {
-                // a file of it does not parse: no candidate, and no stop to the others
+                found.add(new Candidate(d.getFileName().toString(), d, pkg, manifest.getValue("name"), manifest.getValue("version"), Package.content(d)));
+            } catch (IllegalArgumentException | IOException | UncheckedIOException unreadable) {
+                // a file of it does not parse, or it cannot be listed, walked or read: no candidate, and no stop to the others
             }
         }
         return List.copyOf(found);
