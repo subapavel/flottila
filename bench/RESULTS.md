@@ -1,5 +1,78 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## Hand-over gate (GATE) — commit fea6c5c — cloud VM, 4 vCPU
+
+Date: 2026-10-30. Commit: fea6c5c (FIX-107, the last commit before the gate review). Machine: Intel Xeon @ 2.80 GHz × 4 vCPU,
+16 GiB, kernel 6.18.44, Java 25.0.5 HotSpot, native PostgreSQL 16.15 (default config, `synchronous_commit` on); load 0.98
+before the batch, no stack running (target/GATE2-bench.log :1-5). Harness and settings as in the Phase 1 gate section below
+(`NodeBenchMain` via bench/run.sh, `LedgerMain`, `StreamHeapIT`); **one run per cell** for sync and ACK (the gate packet), three
+runs for the ledger and the 50 MB body. Raw JSON: the session's target/GATE2-json/ (node-ack-c{1,8,64}.json, sync-c{1,8}-*.json,
+ledger2000-run{1,2,3}.json); the node-ack-c*-r{1,2,3}.json files in that folder are copies of the committed bench/out files (earlier runs), not this one.
+
+**Gate verdict (GATE.md check 9):**
+
+| threshold | measured on fea6c5c | verdict |
+|---|---|---|
+| kill -9 ledger 2000/2000 (sent = final-step rows, DLQ 0, work 0) | 2000/2000/2000 in 3 of 3 runs; missing 0, DLQ 0, work 0; node 1 exit 137 after ~1000 sent | **met** |
+| sync platform overhead < 2 ms p50 | c=1: 0.77 ms metadata-only, 1.11 ms keep; c=8: 1.69 metadata-only, 4.66 keep | **met at c=1** (as P1); not under load |
+| durable ACK p99 as measured (F-14, F-18: < 5 ms is a tuning target) | c=1 7.91 ms, c=8 35.70 ms, c=64 157.62 ms | recorded; target missed (ISSUE-2 answered, F-18) |
+| 50 MB body through a stream step without heap growth | StreamHeapIT at -Xmx56m: −303 336 / −62 400 / −300 184 B, 1/1 green each, no OOM | **met** |
+| coverage and mutation of the gate commit | table below (CI run 146) | see table |
+
+**Ledger (`LedgerMain`, 2000 messages, concurrency 8, kill -9 of node 1 mid-run, node 2 drains; target/GATE2-ledger2000.log):**
+
+| run | sent | final-step rows | missing | DLQ | work | duplicates (partner) | re-sent by client | saved, unACKed at kill | held → kill ms |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 2000 | 2000 | 0 | 0 | 0 | 8 | 6 | 1 | −1 |
+| 2 | 2000 | 2000 | 0 | 0 | 0 | 4 | 6 | 1 | 15 |
+| 3 | 2000 | 2000 | 0 | 0 | 0 | 9 | 7 | 1 | 43 |
+
+Duplicates are outbound resends after the kill (at-least-once, expected), not extra messages. The run used `LedgerMain` directly:
+LedgerIT in the tree runs 40 and 200 messages only; the first scripted LedgerIT/StreamHeapIT attempts in GATE2-bench.log :6-15 failed
+on a wrong `-Dit.test` reactor invocation and were re-run (GATE2-ledger2000.log, GATE2-StreamHeap{1,2,3}.log).
+
+**Sync request/reply (overhead = p50(flow) − p50(raw), same client; one run each):**
+
+| run | p50 ms | p99 ms | msg/s | overhead p50 ms | raw p50 ms |
+|---|---|---|---|---|---|
+| metadata-only c=1 | 0.95 | 3.07 | 933 | 0.77 | 0.18 |
+| keep c=1 | 1.25 | 4.40 | 717 | 1.11 | 0.14 |
+| metadata-only c=8 | 2.73 | 10.86 | 2402 | 1.69 | 1.03 |
+| keep c=8 | 6.05 | 18.09 | 1192 | 4.66 | 1.40 |
+
+**Durable ACK (at-least-once HTTP → 202 after the one-transaction save, D-082; 20 000 + 1 000 warm-up; target/GATE2-ack.log :25/:45/:65):**
+
+| run | p50 ms | p95 ms | p99 ms | max ms | msg/s |
+|---|---|---|---|---|---|
+| c=1 | 3.66 | 5.45 | 7.91 | 73.4 | 259 |
+| c=8 | 13.50 | 26.40 | 35.70 | 172.9 | 540 |
+| c=64 | 77.08 | 132.10 | 157.62 | 223.3 | 766 |
+
+Against the P2-08 "after (1d5d507)" medians above (p99 8.80 / 41.38 / 163.29 ms at c=1/8/64): every cell is lower or within
+that run's range — one run each here, P2-02D's dedupe table and P2-07's V10 indexes are on the path since; no verdict from one run
+(the load regression stays F-18 / FIX-95).
+
+### Gate commit fea6c5c — CI evidence (GATE, 2026-10-30)
+
+Push run 145 (success) and dispatched run 146 = 41014601889 (jobs: build 123927964494, stack 123931660052, bench 123931660130,
+dco 123927964797, mutation 123931660045). Coverage from `ci/coverage-baseline.json` at fea6c5c, which the build job's "baseline
+describes this commit" step checked (±2 pp; the build job log reads "coverage: no decrease" and "baseline: current", target/GATE2-build-job.txt, full log GATE2-build-job-full.txt); PIT from the mutation job log (target/GATE2-pit-job.txt, full log target/GATE2-pit-job-full.txt). All floors met.
+
+| module | line % | branch % | floor | PIT killed / generated | PIT floor |
+|---|---|---|---|---|---|
+| flottila-api | 99.2 | 100.0 | 90 | 172 / 173 (99 %) | 80 |
+| flottila-core | 99.8 | 99.5 | 90 | 859 / 867 (99 %) | 80 |
+| flottila-runtime | 99.7 | 99.7 | 75 (ITs counted) | — | — |
+| flottila-cli | 98.7 | 100.0 | 75 | — | — |
+| flottila-components/http | 99.3 | 93.3 | 75 | — | — |
+| flottila-components/mock | 100.0 | 99.2 | 75 | — | — |
+| flottila-components/sftp | 100.0 | 98.9 | 75 | — | — |
+| flottila-steps/validate | 100.0 | 100.0 | 75 | — | — |
+| flottila-steps/xslt | 100.0 | 100.0 | 75 | — | — |
+| flottila-testkit | 98.0 | 95.8 | 75 | 577 / 747 (77 %, informational) | — |
+| flottila-schemas | 99.0 | 99.5 | 75 | — | — |
+| flottila-bench | 96.8 | 95.4 | 75 | — | — |
+
 ## P2-07 — the retention indexes (V10) on the durable ACK path — cloud VM, 4 vCPU
 
 Date: 2026-10-30. Commits: before = a39a3ed (HEAD, a git worktree, schema 9) and after = a39a3ed + the P2-07 working tree

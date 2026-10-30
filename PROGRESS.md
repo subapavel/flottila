@@ -1011,3 +1011,14 @@ equivalent (-mutants.log).
 Review: FAIL r1 ("nothing started" claims, FIX-110 scope, unquoted lock scalars, temp-dir pin, final-tree verify) → PASS r2.
 D-054 data: class B (scout ×1, test-author ×3, implementer ×1 + 2 fixes, reviewer ×2); review rounds 2.
 Next: GATE commit (HANDOVER.md, RESULTS gate section; review r1 NOT_MET: check 6 CPU → ISSUE-3, evidence gaps re-run in flight).
+
+## 2026-10-30 — GATE hand-over gate on fea6c5c — blocked on ISSUE-3 (check 6 CPU per step), gate-reviewer r2
+Run 1 (5505b0f) found FIX-105..107; run 2 on fea6c5c: stack checks target/GATE2-stack.log, evidence re-run target/GATE3-stack.log
+(worktree at fea6c5c: validate exit, ?key, /steps/3|5/body, sftp single file, DLQ retry delivered), numbers target/GATE2-bench.log,
+-ack/-sync-c1/-sync-c8, ledger 3×2000/2000 (GATE2-ledger2000.log), 50 MB ×3 (GATE2-StreamHeap{1,2,3}.log); CI run 146 green
+(build "coverage: no decrease"/"baseline: current" GATE2-build-job.txt; PIT api 172/173, core 859/867 GATE2-pit-job.txt).
+Docs: HANDOVER.md (new), bench/RESULTS.md gate section, D-085 marked draft, D-090 (netns holder), F-19 changelog row.
+Gate-reviewer (Fable): r1 NOT_MET (check 6; body/key routes and CI coverage not evidenced by command; P2-02b2 undeclared WIP;
+HANDOVER gaps) → all fixed; r2 NOT_MET on check 6 CPU only (cpuNanos null, F-21). GATE row blocked on ISSUE-3 (owner): option 1
+or 2 makes check 6 met with a GATE.md wording change + changelog row.
+Next: ready rows while ISSUE-3 waits — FIX-110, P2-02c, P2-07b, P2-07c, FIX-109; FIX-108 after ISSUE-3.

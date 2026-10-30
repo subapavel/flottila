@@ -1,12 +1,12 @@
 # Handoff
 
-state: RUNNING — Phase 2; P2-02b2 done; GATE r1 NOT_MET (check 6 CPU → ISSUE-3; evidence gaps being re-run); HANDOVER.md drafted, uncommitted
-last commit: `Task: P2-02b2` (this commit); fea6c5c `Task: FIX-107` (gate commit); 741fe09 FIX-106; ef6fc10 FIX-105
-branch: claude/stoic-cannon-2byixj, pushed to main as well (local refs/heads/main is stale; origin/main is the truth)
-next exact action: GATE: read target/GATE3-stack.log (verifier re-run on worktree fea6c5c: validate exit, ?key, /steps/n/body, sftp single, retry)
-then: fix HANDOVER §4 row 6, gate-reviewer r2, commit GATE docs (HANDOVER, RESULTS, D-085 mark, D-090, F-19 row); GATE blocked on ISSUE-3; then FIX-110, P2-02c
+state: RUNNING — GATE blocked on ISSUE-3 only (check 6 CPU per step, F-21); HANDOVER.md committed; Phase 2 rows continue
+last commit: `Task: GATE` (this commit, docs); 7506325 `Task: P2-02b2`; fea6c5c `Task: FIX-107` (gate commit)
+branch: claude/stoic-cannon-2byixj, pushed to main as well (local main synced to origin/main 7506325)
+next exact action: FIX-110 [B] (off-node validate/test of a package with dependencies: no consumers started, deployed --env works)
+then: P2-02c, P2-07b, P2-07c, FIX-109; FIX-108 if ISSUE-3 says option 2; owner answer to ISSUE-3 → GATE.md wording + GATE_MET
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
-CI: 741fe09 pending at commit; ef6fc10 run 143 green; 5505b0f runs 141 + 142 (dispatch: bench, mutation 67 min) green; FIX-101 open
+CI: 7506325 run 147 in progress at commit; fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
 open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 GATE check 6 CPU (F-21), open
 open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..64, 68,71..75,77..84,86..104,108..110; CONSIDER-1..3,5..8 (owner)
