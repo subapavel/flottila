@@ -995,3 +995,19 @@ Checks: verify -Pit VERIFIED_PASS 2586/0 (target/FIX-107-verify2.log, -xml2.log)
 Review: PASS r1 (cleanup folded in: the sneaky rethrow helper removed). Raised FIX-109 (interrupt edges).
 D-054 data: class B (scout ×1, test-author ×2, implementer ×1 + 1 cleanup, reviewer ×1); review rounds 1.
 Next: GATE [G] re-run.
+
+## 2026-10-30 — P2-02b2 package dependencies off-node: `flottila lock`, `--deps` — done, review PASS
+Context compacted (earlier in this episode); re-verified with git status / git log -3 before changing anything.
+Test first: cli LockCommandTest (new), ValidateCommandTest, TestCommandTest, CliEdgeCasesTest cases + fixtures deps/{common,
+common-1.3.0,invoice} (red: target/P2-02b2-red.log, 25 red); coverage cases (-cov-cases.log), r1 cases (-red2.log, -mutant.log).
+Change: cli Dependencies (candidates = sibling folders or --deps, own dir excluded, closure leaves-first, drift/missing/cycle/
+two-candidates as `problem:` lines, no absolute path), Lock (writes package.lock, quoted scalars, only when every entry resolves),
+Validate and FlowTests deploy the closure into their node first. Test fix (wrong expectation): DepsFixture.relabel `[^<]*`→`[^<]+`.
+Docs: D-089, D-079 amended, ARCHITECTURE §9 sentence + changelog. Raised FIX-110 (validate/test start a dependency's flows on the
+shipped components; deployed --env refused; IOException of an unrelated sibling).
+Checks: verify -Pit VERIFIED_PASS 2637/0/0/0, 265 fresh XML (target/P2-02b2-verify2.log); after a USAGE-text change CliEdgeCasesTest
++ TestCommandTest green (-usage.log); coverage no decrease, cli 99.0/100.0 (-coverage2.log); mutants: packet six + own killed, M15
+equivalent (-mutants.log).
+Review: FAIL r1 ("nothing started" claims, FIX-110 scope, unquoted lock scalars, temp-dir pin, final-tree verify) → PASS r2.
+D-054 data: class B (scout ×1, test-author ×3, implementer ×1 + 2 fixes, reviewer ×2); review rounds 2.
+Next: GATE commit (HANDOVER.md, RESULTS gate section; review r1 NOT_MET: check 6 CPU → ISSUE-3, evidence gaps re-run in flight).

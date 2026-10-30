@@ -1,0 +1,8 @@
+# P2-02b2 fixture: depends on common 1.2.0; the tests write its package.lock.
+schemaVersion: 1
+kind: package
+name: invoice
+version: 1.0.0
+description: Maps an invoice with common's stylesheet and sends it to the partner.
+dependencies:
+  - { name: common, version: 1.2.0 }

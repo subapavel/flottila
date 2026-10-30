@@ -1,0 +1,13 @@
+# The partner sees what common 1.2.0's stylesheet wrote: its include (lib.xsl) names the version.
+schemaVersion: 1
+kind: test
+flow: to-partner
+mocks:
+  partner: { reply: fixtures/ack.xml, delay: 20ms }
+cases:
+  - name: maps with common
+    send: fixtures/invoice.xml
+    expect:
+      status: 200
+      sent:
+        partner: { count: 1, xpath: /PartnerInvoice/@by, equals: common 1.2.0 }

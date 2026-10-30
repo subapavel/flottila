@@ -679,4 +679,109 @@ class TestCommandTest {
         }
         assertEquals(List.of(), differing, "every run prints " + FLOWTEST_REPORT);
     }
+
+    // --- P2-02b2 (D-087, D-089): dependencies resolved off-node from a candidates dir (DepsFixture), deployed into each case's node
+
+    /** invoice's report when its one case passes: the partner saw what the expected stylesheet wrote. */
+    static final List<String> INVOICE_PASSES = List.of("PASS to-partner: maps with common (flow time 20ms)", "1 cases: 1 passed, 0 failed");
+
+    /**
+     * Fixture witness: the invoice package with common's stylesheet copied in (no dependency) passes its case today — the report
+     * the dependency cases expect is the package's own, not a guess.
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void theInvoiceFixturePassesWithCommonsStylesheetCopiedIn() throws Exception {
+        Path invoice = DepsFixture.copy("invoice", tmp.resolve("inline/invoice"));
+        CliRuns.copy(DepsFixture.DEPS.resolve("common/xslt"), invoice.resolve("xslt"));
+        DepsFixture.manifest(invoice, "invoice", "1.0.0");
+        CliRuns.rewrite(invoice.resolve("flows/to-partner.yaml"), Map.of("stylesheet: common:xslt/to-partner.xsl", "stylesheet: xslt/to-partner.xsl"));
+
+        Ran ran = run("test", invoice.toString());
+
+        assertEquals(INVOICE_PASSES, ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /** invoice pins common 1.2.0 (the parent holds it and common 1.3.0): its case passes, common 1.2.0's XSLT and include ran. */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aPackagePinningCommon120TestsOffNode() throws Exception {
+        Path invoice = DepsFixture.invoiceWithCandidates(tmp.resolve("deps"));
+
+        Ran ran = run("test", invoice.toString());
+
+        assertEquals(INVOICE_PASSES, ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /**
+     * The witness that the case runs the pinned version: invoice pinning common 1.3.0 from {@code --deps} (the parent holds no
+     * common) fails the same case, the partner having seen 1.3.0's output.
+     */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aPackagePinningCommon130MapsWithItFromTheDepsOption() throws Exception {
+        Path vendor = tmp.resolve("vendor");
+        DepsFixture.copy("common", vendor.resolve("common"));
+        Path common130 = DepsFixture.copy("common-1.3.0", vendor.resolve("common-1.3.0"));
+        Path invoice = DepsFixture.copy("invoice", tmp.resolve("work/invoice"));
+        DepsFixture.manifest(invoice, "invoice", "1.0.0", "common@1.3.0");
+        DepsFixture.lock(invoice, common130);
+
+        Ran ran = run("test", invoice.toString(), "--deps", vendor.toString());
+
+        assertEquals(List.of(
+                "FAIL to-partner: maps with common (flow time 20ms)",
+                "  expect.sent.partner.equals: expected common 1.2.0, was common 1.3.0",
+                "1 cases: 0 passed, 1 failed"), ran.outLines(), ran.toString());
+        assertEquals(1, ran.exit(), ran.toString());
+    }
+
+    /** common changed after invoice was locked: the drift is a problem line, no case runs, exit 1. */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aLockDriftFailsBeforeAnyCase() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        String pinned = DepsFixture.content(deps.resolve("common"));
+        DepsFixture.relabel(deps.resolve("common"), "changed after the lock");
+        String now = DepsFixture.content(deps.resolve("common"));
+
+        Ran ran = run("test", invoice.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ran.toString());
+        assertTrue(ran.outLines().stream().noneMatch(TestCommandTest::caseLine), "no case ran: " + ran);
+        DepsFixture.assertNoAbsolutePath(ran, tmp);
+    }
+
+    /** The candidates hold common 1.3.0 only: a problem line naming what they hold, no case runs, exit 1. */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aMissingCandidateFailsBeforeAnyCase() throws Exception {
+        Path pinnedElsewhere = DepsFixture.copy("common", tmp.resolve("elsewhere/common"));
+        Path invoice = DepsFixture.copy("invoice", tmp.resolve("deps/invoice"));
+        DepsFixture.copy("common-1.3.0", tmp.resolve("deps/common-1.3.0"));
+        DepsFixture.lock(invoice, pinnedElsewhere);
+
+        Ran ran = run("test", invoice.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        assertTrue(ran.problems().stream().anyMatch(l -> l.startsWith("problem: dependency common@1.2.0: no candidate under ")
+                && l.endsWith(" (it has common 1.3.0)")), ran.toString());
+        assertTrue(ran.outLines().stream().noneMatch(TestCommandTest::caseLine), "no case ran: " + ran);
+    }
+
+    /** order -> ubl -> common: each case's node gets common, then ubl, then order; the case sees ubl's stylesheet output. */
+    @Test
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aTransitiveDependencyIsDeployedLeavesFirstInEachCase() throws Exception {
+        Path order = DepsFixture.orderOverUblOverCommon(tmp.resolve("deps"));
+
+        Ran ran = run("test", order.toString());
+
+        assertEquals(INVOICE_PASSES, ran.outLines(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
 }

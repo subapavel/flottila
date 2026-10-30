@@ -52,8 +52,9 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
- * {@code flottila test <dir>} (D-080). First what {@code flottila validate} checks, in the environment {@code ci} — the package's
- * problems and the dry build over what a node ships — and what only a test run asks of its test documents: a {@code recorded}
+ * {@code flottila test <dir> [--deps <dir>]} (D-080). First what {@code flottila validate} checks, in the environment {@code ci}
+ * — the package's problems, its dependencies' closure (D-089) and the dry build over what a node ships — and what only a test
+ * run asks of its test documents: a {@code recorded}
  * or {@code script} behaviour (not implemented yet), {@code expect.status} on a flow whose from endpoint is not http, an
  * {@code xpath} that does not compile; any problem is printed as validate prints it and no case runs (exit 1).
  *
@@ -61,7 +62,8 @@ import java.util.stream.Stream;
  * fresh fake runtime (clock, timer, ids, blobs), one {@link MockComponent} per shipped scheme bound to the document's
  * {@code mocks} — a case's entry for an endpoint replaces the document's whole — in-memory stores, and a node
  * ({@link Deployments}) of environment {@code ci} over a temporary data directory, deleted after the case, to which the
- * package's deterministic zip ({@link Deploy#zip}, built once) is deployed. The case's {@code send} — the fixture's bytes and
+ * dependencies' closure validate resolved (D-089) is deployed leaves first, then the package, each as its deterministic zip
+ * ({@link Deploy#zip}, built once). The case's {@code send} — the fixture's bytes and
  * its {@code headers} — is {@link MockComponent#ingest ingested} on the flow's from endpoint; a case without one is fed by that
  * endpoint's mock, whose {@code files} or {@code messages} its consumer polls from its start (the package's cross-check refuses
  * a case that neither sends nor is fed, D-080). The case settles on virtual time ({@link VirtualTime}: settled = the answer
@@ -100,6 +102,7 @@ final class FlowTests {
     private final Main.Shipped shipped;
     private final Map<String, Function<Envelope, Optional<String>>> xpaths = new HashMap<>();
     private byte[] zip;
+    private List<Archive> dependencies;
 
     private FlowTests(Package pkg, Path root, List<String> schemes, Main.Shipped shipped) {
         this.pkg = pkg;
@@ -111,6 +114,9 @@ final class FlowTests {
     /** One test document: its path from the package root, its flow, its {@code mocks} and its cases. */
     private record Doc(String path, String flow, JsonObject mocks, List<JsonObject> cases) {}
 
+    /** A dependency's deterministic zip ({@link Deploy#zip}) and the name it is deployed as. */
+    private record Archive(String name, byte[] zip) {}
+
     /** How a case ended: passed or not, at what flow time, and the indented lines that say what failed. */
     private record Verdict(boolean passed, Duration flowTime, List<String> why) {
         static Verdict failed(Duration flowTime, String why) {
@@ -120,7 +126,7 @@ final class FlowTests {
 
     static int run(Cli.Options options, PrintStream out) throws IOException {
         Path dir = options.dir();
-        Validate.Checked checked = Validate.check(dir, ENV);
+        Validate.Checked checked = Validate.check(dir, ENV, Dependencies.of(options));
         if (!checked.problems().isEmpty()) return problems(checked.problems(), out);
         Package pkg = checked.pkg().orElseThrow();
         FlowTests run = new FlowTests(pkg, dir.toAbsolutePath().normalize(), checked.schemes().stream().sorted().toList(), Main.shipped());
@@ -132,6 +138,9 @@ final class FlowTests {
             return 1;
         }
         run.zip = Deploy.zip(dir);
+        List<Archive> dependencies = new ArrayList<>();
+        for (Dependencies.Found dep : checked.dependencies()) dependencies.add(new Archive(dep.pin().name(), Deploy.zip(dep.dir())));
+        run.dependencies = List.copyOf(dependencies);
         int passed = 0;
         int cases = 0;
         for (Doc doc : docs) {
@@ -253,6 +262,7 @@ final class FlowTests {
             Deployments node = new Deployments(config, new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), components), components,
                     rt.clock(), timer, shipped.steps(), shipped.languages(), messages, dlq, queue, Meter.system());
             try {
+                for (Archive dep : dependencies) Validate.deploy(node, dep.name(), dep.zip(), data);   // leaves first
                 node.deploy(pkg.name(), Optional.empty(), Files.write(data.resolve("package.zip"), zip));
                 Future<Ack> answer = send == null ? FED : door.ingest(from, new Headers(headers), Buffer.buffer(send));
                 BooleanSupplier answered = done(answer);   // the answer's monitor stays out of the sampling: read through this only
@@ -354,7 +364,7 @@ final class FlowTests {
         }
     }
 
-    private static void deleteTree(Path dir) throws IOException {
+    static void deleteTree(Path dir) throws IOException {
         List<Path> paths;
         try (Stream<Path> walk = Files.walk(dir)) {
             paths = walk.sorted(Comparator.reverseOrder()).toList();

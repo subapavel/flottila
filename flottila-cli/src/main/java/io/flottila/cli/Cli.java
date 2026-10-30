@@ -12,7 +12,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * The {@code flottila} command line (D-079): {@code validate}, {@code test} (D-080), {@code deploy} and {@code help}.
+ * The {@code flottila} command line (D-079): {@code validate}, {@code test} (D-080), {@code lock} (D-089), {@code deploy} and
+ * {@code help}.
  * Exit codes: 0 done, 1 the package has problems, a flow test failed, or the node refused or could not be reached, 2 a usage
  * error (nothing done).
  * Everything a command reports goes to stdout; stderr carries the usage and the tool's own failures.
@@ -23,13 +24,20 @@ public final class Cli {
 
     static final String USAGE = """
             usage: flottila <command> [arguments]
-              validate <dir> [--env <env>]
+              validate <dir> [--env <env>] [--deps <dir>]
                   check the package in <dir> as a node would deploy it (schemas, component configs, a dry build of every
-                  flow) and print its tree and its problems; nothing is started or stored (environment: dev unless --env)
-              test <dir>
+                  flow) and print its tree and its problems (environment: dev unless --env); nothing is started or stored
+                  except its dependencies, resolved as lock finds them: they are deployed into the dry build's node first,
+                  which starts their flows and is refused for a deployed --env (FIX-110)
+              test <dir> [--deps <dir>]
                   run the package's flow tests (*.test.yaml) as a node of environment ci would, each case on mocks and
                   in-memory stores of its own and on virtual time; print PASS or FAIL per case and what failed (a problem
-                  validate would print runs no case)
+                  validate would print runs no case); a package with dependencies first runs validate's dry build, which
+                  deploys them and starts their flows on the shipped components (FIX-110)
+              lock <dir> [--deps <dir>]
+                  write <dir>/package.lock pinning each dependency package.yaml declares with its candidate's content digest:
+                  candidates are the folders of --deps, else of the package folder's parent, whose package.yaml loads (the
+                  package's own excluded), matched by name and version; print one line per entry
               deploy <dir> [--name <name>] [--revision <revision>] [--admin <url>]
                   zip the package in <dir> and PUT it to <url>/admin/packages/<name> (name: package.yaml's unless --name;
                   url: --admin, else $FLOTTILA_ADMIN, else http://localhost:8081; bearer token: $FLOTTILA_ADMIN_TOKEN only)
@@ -59,13 +67,14 @@ public final class Cli {
         try {
             String command = args.length == 0 ? "" : args[0];
             return switch (command) {
-                case "validate" -> Validate.run(options("validate", args, Set.of("--env")), out);
+                case "validate" -> Validate.run(options("validate", args, Set.of("--env", "--deps")), out);
                 case "deploy" -> Deploy.run(options("deploy", args, Set.of("--name", "--revision", "--admin")), env, out, err);
                 case "help" -> {
                     out.print(USAGE);
                     yield 0;
                 }
-                case "test" -> FlowTests.run(options("test", args, Set.of()), out);
+                case "test" -> FlowTests.run(options("test", args, Set.of("--deps")), out);
+                case "lock" -> Lock.run(options("lock", args, Set.of("--deps")), out);
                 default -> throw new Usage(command.isEmpty() ? "no command" : "unknown command '" + command + "'");
             };
         } catch (Usage wrong) {
@@ -86,7 +95,8 @@ public final class Cli {
     }
 
     /**
-     * A command's arguments: one package directory, which exists, and each option at most once with a value that is not blank.
+     * A command's arguments: one package directory, which exists, and each option at most once with a value that is not blank;
+     * {@code --deps} names a directory.
      *
      * @param dir the package directory
      * @param values the options given, by name ({@code --env}, ...)
@@ -115,6 +125,8 @@ public final class Cli {
         }
         if (dir == null) throw new Usage(command + ": the package directory is missing");
         if (!Files.isDirectory(dir)) throw new Usage(command + ": no package directory at " + dir);
+        String deps = values.get("--deps");
+        if (deps != null && !Files.isDirectory(Path.of(deps))) throw new Usage(command + ": --deps names no directory: " + deps);
         return new Options(dir, Map.copyOf(values));
     }
 

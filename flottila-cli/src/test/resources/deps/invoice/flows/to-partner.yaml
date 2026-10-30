@@ -1,0 +1,24 @@
+# Sync: map with common's stylesheet (a dependency reference, D-087), send to the partner, answer with its reply.
+schemaVersion: 1
+kind: flow
+id: to-partner
+version: 1.0.0
+description: Map the invoice with common's stylesheet and send it to the partner.
+from:
+  endpoint: invoice-in
+delivery:
+  mode: sync
+recording:
+  level: all
+  payload: keep
+limits:
+  maxBodyBytes: 1048576
+  maxInFlight: 16
+  maxInFlightBytes: 16777216
+steps:
+  - type: xslt
+    name: map
+    stylesheet: common:xslt/to-partner.xsl
+  - type: to
+    name: partner
+    endpoint: partner

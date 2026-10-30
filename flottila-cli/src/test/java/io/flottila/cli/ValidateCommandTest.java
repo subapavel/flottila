@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -275,5 +276,209 @@ class ValidateCommandTest {
         assertEquals(0, ran.exit(), ran.toString());
         assertTrue(ran.out().contains("validate") && ran.out().contains("deploy"), "the usage on stdout names the commands: " + ran);
         assertEquals("", ran.err(), ran.toString());
+    }
+
+    // --- P2-02b2 (D-087, D-089): dependencies resolved off-node from a candidates dir (DepsFixture), deployed into the dry build
+
+    /** invoice pins common 1.2.0 (the parent dir holds it and common 1.3.0): the closure is deployed into the dry build, exit 0. */
+    @Test
+    void aPackagePinningCommon120ValidatesOffNode() throws Exception {
+        Path invoice = DepsFixture.invoiceWithCandidates(tmp.resolve("deps"));
+
+        Ran ran = run("validate", invoice.toString());
+
+        assertEquals(List.of(), ran.problems(), ran.toString());
+        assertEquals("package invoice 1.0.0", ran.outLines().getFirst(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /** The dry build's data directory ({@code flottila-validate-*} under java.io.tmpdir, the dependency archives in it) is deleted after the run. */
+    @Test
+    void theDryBuildLeavesNoDataDirInTmp() throws Exception {
+        Path invoice = DepsFixture.invoiceWithCandidates(tmp.resolve("deps"));
+        List<Path> before = validateDirs();
+
+        Ran ran = run("validate", invoice.toString());
+
+        assertEquals(List.of(), ran.problems(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+        List<Path> left = new ArrayList<>(validateDirs());
+        left.removeAll(before);
+        assertEquals(List.of(), left, "no new flottila-validate-* entry in java.io.tmpdir");
+    }
+
+    private static List<Path> validateDirs() throws java.io.IOException {
+        try (Stream<Path> list = Files.list(Path.of(System.getProperty("java.io.tmpdir")))) {
+            return list.filter(p -> p.getFileName().toString().startsWith("flottila-validate-")).toList();
+        }
+    }
+
+    /** {@code --deps} (with {@code --env}) names the candidates dir; the parent's common 1.2.0 has other content and is not used. */
+    @Test
+    void theDepsOptionNamesTheCandidatesDir() throws Exception {
+        Path vendor = tmp.resolve("vendor");
+        Path common = DepsFixture.copy("common", vendor.resolve("shared-xsl"));
+        DepsFixture.relabel(DepsFixture.copy("common", tmp.resolve("work/common")), "a decoy");
+        Path invoice = DepsFixture.copy("invoice", tmp.resolve("work/invoice"));
+        DepsFixture.lock(invoice, common);
+
+        Ran ran = run("validate", invoice.toString(), "--env", "dev", "--deps", vendor.toString());
+
+        assertEquals(List.of(), ran.problems(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /** common changed after invoice was locked: exit 1 naming the entry, both digests and the candidate dir relative to the deps dir. */
+    @Test
+    void aLockDriftIsExit1NamingTheEntry() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path invoice = DepsFixture.invoiceWithCandidates(deps);
+        String pinned = DepsFixture.content(deps.resolve("common"));
+        DepsFixture.relabel(deps.resolve("common"), "changed after the lock");
+        String now = DepsFixture.content(deps.resolve("common"));
+
+        Ran ran = run("validate", invoice.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ran.toString());
+        DepsFixture.assertNoAbsolutePath(ran, tmp);
+    }
+
+    /** The lock pins common 1.2.0; the candidates hold common 1.3.0 only, or no common: exit 1 naming what they hold. */
+    @Test
+    void aMissingCandidateIsExit1() throws Exception {
+        Path pinnedElsewhere = DepsFixture.copy("common", tmp.resolve("elsewhere/common"));
+        Path other = DepsFixture.copy("invoice", tmp.resolve("other/invoice"));
+        DepsFixture.copy("common-1.3.0", tmp.resolve("other/common-1.3.0"));
+        DepsFixture.lock(other, pinnedElsewhere);
+        Path none = DepsFixture.copy("invoice", tmp.resolve("none/invoice"));
+        DepsFixture.lock(none, pinnedElsewhere);
+
+        Ran ranOther = run("validate", other.toString());
+        Ran ranNone = run("validate", none.toString());
+
+        assertEquals(1, ranOther.exit(), ranOther.toString());
+        assertTrue(ranOther.problems().stream().anyMatch(l -> l.startsWith("problem: dependency common@1.2.0: no candidate under ")
+                && l.endsWith(" (it has common 1.3.0)")), ranOther.toString());
+        assertEquals(1, ranNone.exit(), ranNone.toString());
+        assertTrue(ranNone.problems().stream().anyMatch(l -> l.startsWith("problem: dependency common@1.2.0: no candidate under ")
+                && l.endsWith(" (no package common)")), ranNone.toString());
+        DepsFixture.assertNoAbsolutePath(ranOther, tmp);
+        DepsFixture.assertNoAbsolutePath(ranNone, tmp);
+    }
+
+    /** a declares b, b declares a: exit 1 naming the cycle by name (a's own dir is no candidate; the name decides). */
+    @Test
+    void aCycleIsExit1NamingIt() throws Exception {
+        Path a = DepsFixture.cycle(tmp.resolve("deps"));
+
+        Ran ran = run("validate", a.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        assertTrue(ran.problems().contains("problem: dependency cycle: a -> b -> a"), ran.toString());
+    }
+
+    /** order -> ubl -> common: ubl's own lock is followed and the closure deployed leaves first (common, then ubl), exit 0. */
+    @Test
+    void aTransitiveDependencyIsResolvedThroughTheCandidatesLock() throws Exception {
+        Path order = DepsFixture.orderOverUblOverCommon(tmp.resolve("deps"));
+
+        Ran ran = run("validate", order.toString());
+
+        assertEquals(List.of(), ran.problems(), ran.toString());
+        assertEquals(0, ran.exit(), ran.toString());
+    }
+
+    /** common changed after ubl was locked (order's lock still matches ubl): the drift in the candidate's own lock is named, exit 1. */
+    @Test
+    void aDriftInTheCandidatesOwnLockIsExit1() throws Exception {
+        Path deps = tmp.resolve("deps");
+        Path order = DepsFixture.orderOverUblOverCommon(deps);
+        String pinned = DepsFixture.content(deps.resolve("common"));
+        DepsFixture.relabel(deps.resolve("common"), "changed after the lock");
+        String now = DepsFixture.content(deps.resolve("common"));
+
+        Ran ran = run("validate", order.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        assertTrue(ran.problems().contains("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ran.toString());
+    }
+
+    /** common 1.2.0 in two candidate dirs with different content: exit 1 naming both, relative to the deps dir. */
+    @Test
+    void twoCandidatesWithDifferentContentIsExit1NamingBoth() throws Exception {
+        Path left = DepsFixture.copy("common", tmp.resolve("deps/left"));
+        DepsFixture.relabel(DepsFixture.copy("common", tmp.resolve("deps/right")), "built elsewhere");
+        Path invoice = DepsFixture.copy("invoice", tmp.resolve("deps/invoice"));
+        DepsFixture.lock(invoice, left);
+
+        Ran ran = run("validate", invoice.toString());
+
+        assertEquals(1, ran.exit(), ran.toString());
+        assertTrue(ran.problems().stream().anyMatch(l -> l.contains("common@1.2.0") && l.contains("left") && l.contains("right")), ran.toString());
+        DepsFixture.assertNoAbsolutePath(ran, tmp);
+    }
+
+    /**
+     * An unresolved closure runs no dry build: a missing candidate, a lock drift and a cycle each print exactly their one resolution
+     * problem (the node's "not deployed on this node" is not added), exit 1.
+     */
+    @Test
+    void anUnresolvedClosureRunsNoDryBuild() throws Exception {
+        Path elsewhere = DepsFixture.copy("common", tmp.resolve("elsewhere/common"));
+        Path none = DepsFixture.copy("invoice", tmp.resolve("none/invoice"));
+        DepsFixture.lock(none, elsewhere);
+        Path drifted = DepsFixture.invoiceWithCandidates(tmp.resolve("drift"));
+        String pinned = DepsFixture.content(tmp.resolve("drift/common"));
+        DepsFixture.relabel(tmp.resolve("drift/common"), "changed after the lock");
+        String now = DepsFixture.content(tmp.resolve("drift/common"));
+        Path a = DepsFixture.cycle(tmp.resolve("cycle"));
+
+        Ran ranNone = run("validate", none.toString());
+        Ran ranDrift = run("validate", drifted.toString());
+        Ran ranCycle = run("validate", a.toString());
+
+        assertEquals(1, ranNone.problems().size(), ranNone.toString());
+        assertTrue(ranNone.problems().getFirst().startsWith("problem: dependency common@1.2.0: no candidate under ")
+                && ranNone.problems().getFirst().endsWith(" (no package common)"), ranNone.toString());
+        assertEquals(1, ranNone.exit(), ranNone.toString());
+        assertEquals(List.of("problem: package.lock pins common@1.2.0 " + pinned + "; candidate common has " + now), ranDrift.problems(), ranDrift.toString());
+        assertEquals(1, ranDrift.exit(), ranDrift.toString());
+        assertEquals(List.of("problem: dependency cycle: a -> b -> a"), ranCycle.problems(), ranCycle.toString());
+        assertEquals(1, ranCycle.exit(), ranCycle.toString());
+    }
+
+    /**
+     * {@code --env prod}: the dry build's node refuses the manual deploy of the dependency (non-production only, §9) — that refusal
+     * is the one problem (invoice itself is not built, so no "not deployed on this node"), exit 1; the same package passes in dev.
+     */
+    @Test
+    void aDeployedEnvironmentsNodeRefusingTheDependencyIsTheOneProblem() throws Exception {
+        Path invoice = DepsFixture.invoiceWithCandidates(tmp.resolve("deps"));
+
+        Ran prod = run("validate", invoice.toString(), "--env", "prod");
+        Ran dev = run("validate", invoice.toString(), "--env", "dev");
+
+        assertEquals(List.of("problem: dependency common@1.2.0 refused by the dry build's node: FORBIDDEN: manual deploy is non-production only (ARCHITECTURE §9)"),
+                prod.problems(), prod.toString());
+        assertEquals(1, prod.exit(), prod.toString());
+        assertEquals(List.of(), dev.problems(), dev.toString());
+        assertEquals(0, dev.exit(), dev.toString());
+    }
+
+    /** Without dependencies nothing of the candidates dir is read: siblings that do not load change nothing of the output. */
+    @Test
+    void aPackageWithoutDependenciesIgnoresItsSiblings() throws Exception {
+        Path alone = DepsFixture.copy("common", tmp.resolve("alone/common"));
+        Path crowded = DepsFixture.copy("common", tmp.resolve("crowd/common"));
+        Files.createDirectories(tmp.resolve("crowd/broken"));
+        Files.writeString(tmp.resolve("crowd/broken/package.yaml"), "name: [common\nversion: {");
+        Files.createDirectories(tmp.resolve("crowd/notes"));
+
+        Ran a = run("validate", alone.toString());
+        Ran c = run("validate", crowded.toString());
+
+        assertEquals(0, a.exit(), a.toString());
+        assertEquals(a.toString(), c.toString());
     }
 }

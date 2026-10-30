@@ -162,4 +162,56 @@ class CliEdgeCasesTest {
         assertEquals(List.of(""), ran.outLines(), ran.toString());
         assertNull(admin.only().query());
     }
+
+    // --- P2-02b2 (D-089): the lock command and the --deps option
+
+    /** help names lock and the --deps option of lock, validate and test, one usage line each. */
+    @Test
+    void theUsageNamesLockAndTheDepsOption() {
+        Ran ran = run("help");
+
+        List<String> lines = ran.outLines().stream().map(String::strip).toList();
+        assertEquals(0, ran.exit(), ran.toString());
+        for (String usage : List.of("lock <dir> [--deps <dir>]", "validate <dir> [--env <env>] [--deps <dir>]", "test <dir> [--deps <dir>]")) {
+            assertTrue(lines.contains(usage), "a usage line '" + usage + "': " + ran);
+        }
+    }
+
+    static Stream<List<String>> depsUsageErrors() {
+        List<List<String>> cases = new ArrayList<>();
+        for (String command : List.of("lock", "validate", "test")) {
+            cases.add(List.of(command, "PKG", "--deps"));
+            cases.add(List.of(command, "PKG", "--deps", "MISSING"));
+            cases.add(List.of(command, "PKG", "--deps", "FILE"));
+            cases.add(List.of(command, "PKG", "--deps", "DEPS", "--deps", "DEPS"));
+        }
+        cases.add(List.of("lock"));
+        cases.add(List.of("lock", "MISSING"));
+        cases.add(List.of("lock", "PKG", "--env", "dev"));
+        cases.add(List.of("lock", "PKG", "--bogus", "x"));
+        cases.add(List.of("lock", "PKG", "PKG"));
+        return cases.stream();
+    }
+
+    /**
+     * {@code --deps} without a value, naming no directory (missing or a plain file) or given twice, and lock's own usage errors
+     * (no dir, a missing dir, an option it does not take, two dirs): exit 2, nothing on stdout, no lock written.
+     */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("depsUsageErrors")
+    void aDepsOrLockUsageErrorIsExit2(List<String> args) throws IOException {
+        Path deps = tmp.resolve("deps");
+        Path pkg = DepsFixture.copy("invoice", deps.resolve("invoice"));
+        DepsFixture.copy("common", deps.resolve("common"));
+        Files.writeString(tmp.resolve("plain-file"), "not a directory");
+        Map<String, String> placeholders = Map.of("PKG", pkg.toString(), "MISSING", tmp.resolve("no-such-dir").toString(),
+                "FILE", tmp.resolve("plain-file").toString(), "DEPS", deps.toString());
+
+        Ran ran = run(args.stream().map(a -> placeholders.getOrDefault(a, a)).toArray(String[]::new));
+
+        assertEquals(2, ran.exit(), ran.toString());
+        assertEquals("", ran.out(), ran.toString());
+        assertTrue(ran.err().startsWith("flottila: "), ran.toString());
+        assertFalse(Files.exists(pkg.resolve("package.lock")), "nothing written: " + ran);
+    }
 }
