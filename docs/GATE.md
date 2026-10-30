@@ -20,8 +20,9 @@ covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
 5. **Flow B** — `sftp-invoice`: file in the SFTP inbox → poller (lease in Valkey) → durable save →
    file deleted → XSLT → HTTP partner. Killing the runtime between pick-up and delete loses
    nothing and duplicates nothing.
-6. **Snapshots.** `GET /admin/messages/{id}` returns the step timeline with wall and CPU time per
-   step; `GET /admin/messages/{id}/steps/{n}/body` returns the payload as it was after step n;
+6. **Snapshots.** `GET /admin/messages/{id}` returns the step timeline with wall time per
+   step and `cpuNanos` present, null where the JVM cannot measure a virtual thread (F-21; ISSUE-3 option 2,
+   2026-10-30 — CPU per flow and step by JFR sampling follows as FIX-108); `GET /admin/messages/{id}/steps/{n}/body` returns the payload as it was after step n;
    `GET /admin/messages?key=invoiceId:4711` finds the message by business key.
 7. **Replay and DLQ.** `POST /admin/messages/{id}/replay?from=3` runs steps 3..n as a new message
    marked `REPLAY_OF`. Partner down → retries per flow policy → DLQ row at `GET /admin/dlq`;

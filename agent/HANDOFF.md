@@ -1,14 +1,14 @@
 # Handoff
 
-state: RUNNING — GATE blocked on ISSUE-3 only (check 6 CPU per step, F-21); HANDOVER.md committed; Phase 2 rows continue
-last commit: `Task: GATE` (this commit, docs); 7506325 `Task: P2-02b2`; fea6c5c `Task: FIX-107` (gate commit)
+state: GATE_MET — gate-reviewer MET r3 on fea6c5c (ISSUE-3 answered option 2); HANDOVER.md committed; WIP FIX-110 (implementer running)
+last commit: `Task: GATE` (this commit, GATE_MET); c652f49 GATE docs; 7506325 `Task: P2-02b2`; fea6c5c `Task: FIX-107` (gate commit)
 branch: claude/stoic-cannon-2byixj, pushed to main as well (local main synced to origin/main 7506325)
-next exact action: FIX-110 [B] (off-node validate/test of a package with dependencies: no consumers started, deployed --env works)
-then: P2-02c, P2-07b, P2-07c, FIX-109; FIX-108 if ISSUE-3 says option 2; owner answer to ISSUE-3 → GATE.md wording + GATE_MET
+next exact action: WIP FIX-110 — implementer hand-back (packet agent/packets/FIX-110.md), then review; its docs edits sit uncommitted in DECISIONS/ARCH
+then: FIX-108 (JFR CPU sampling, ISSUE-3 option 2), P2-02c, P2-07b, P2-07c, FIX-109; FIX-68..
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
-CI: 7506325 run 147 in progress at commit; fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
+CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
-open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 GATE check 6 CPU (F-21), open
+open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 answered 2026-10-30 (option 2)
 open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..64, 68,71..75,77..84,86..104,108..110; CONSIDER-1..3,5..8 (owner)
 pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..21
 owner at hand-over: F-18 (5 ms target; load regression until FIX-95); D-064/65B/67A/72/73

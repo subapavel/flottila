@@ -5,8 +5,8 @@ Gate: `docs/GATE.md` (agreed 2026-10-17). Gate commit: `fea6c5c` (2026-10-30). E
 session's verifier logs (`target/GATE2-*.log`, `target/GATE3-stack.log` for the evidence re-run, named per check below). Verdict: the gate-reviewer's, in `PROGRESS.md`
 (GATE entry).
 
-**State in one line:** checks 1–5 and 7–9 hold. Check 6 holds except for "CPU time per step": the JVM cannot measure a virtual
-thread's CPU time (F-21). The timeline shows wall time per step and `cpuNanos: null`. That is the owner's call: ISSUE-3.
+**State in one line:** GATE_MET. Checks 1–9 hold. Check 6 reads "wall time per step, `cpuNanos` null where the JVM cannot
+measure a virtual thread" since the owner answered ISSUE-3 with option 2 (2026-10-30); CPU per flow and step by JFR sampling is FIX-108.
 
 ## 1. Start the stack
 
@@ -73,7 +73,7 @@ bench/run.sh                               # the bench harness (native Postgres)
 | 3 | invoice-sync | 200 with the PartnerInvoice body, timeline steps 0–5 OK | met |
 | 4 | invoice-async | 202, final step `partner` OK, work 0 | met |
 | 5 | sftp-invoice + kill | one file: inbox empty in ~6 s, sftp-invoice steps 0–4 OK, echo received it (GATE3-stack.log:49-65). Kill: 5 rounds × 50 files, node killed mid-round: 50/50 distinct ingress per round, DLQ 0, work 0, inbox empty, echo never restarted; outbound resends seen only as echo totals (at-least-once). No kill landed in the save-to-delete window (no dedupe line in run 2; run 1 on 5505b0f logged one); that window rests on SftpIngressDedupeIT (GATE2-stack.log:257-363) | met |
-| 6 | timeline, body per step, search by key | `?key=invoiceId:4711` finds the message; timeline steps 0–5 with wallNanos; `/steps/3/body` and `/steps/5/body` 200 with the payload as it was after each step (GATE3-stack.log:17-48). **CPU per step is `null`** on every step (F-21) | **open: ISSUE-3** |
+| 6 | timeline, body per step, search by key | `?key=invoiceId:4711` finds the message; timeline steps 0–5 with wallNanos; `/steps/3/body` and `/steps/5/body` 200 with the payload as it was after each step (GATE3-stack.log:17-48). `cpuNanos` null on every step, as the check now reads (F-21, ISSUE-3 option 2) | met |
 | 7 | replay from 3, DLQ, retry | replay COMPLETE, replayOf set (GATE2-stack.log:198); DLQ row at step 5 `partner` after 1.11 s (GATE2:367) / ~3 s (GATE3:66-81) (FIX-107); retry COMPLETE, the echo logs the delivery, DLQ empty after (GATE3-stack.log:66-81) | met |
 | 8 | `flottila test packages/demo` | 6 passed (target/GATE2-check8.log; CI build job steps 5–6) | met |
 | 9 | evidence | bench/RESULTS.md GATE section: ledger 2000×3, sync overhead, durable ACK, 50 MB, CI coverage + PIT | met (ACK p99 recorded, target missed: F-18) |
@@ -109,8 +109,7 @@ licence point for the owner. Also left for the owner: D-064/65B/67A/72/73 and th
 
 ## 7. Open issues
 
-- **ISSUE-3**: GATE check 6, CPU time per step (F-21). Options: accept wall + null CPU; that plus FIX-108 (JFR sampling per
-  flow and step); or keep the wording (needs a non-public hook). Default: check 6 stays NOT_MET.
+- ISSUE-3 was answered 2026-10-30 (option 2): check 6 accepts wall time with `cpuNanos` null; FIX-108 adds JFR CPU sampling.
 - **ISSUE-1**: Context7 quota. The javap fallback is in use; an API key would restore documentation lookups.
 - ISSUE-2 was answered 2026-10-28 (options 1 + 2: the < 5 ms is a tuning target; the one-transaction ACK shipped as P2-08).
 
@@ -118,12 +117,12 @@ licence point for the owner. Also left for the owner: D-064/65B/67A/72/73 and th
 
 P2-02b2 (`flottila lock`, off-node validate/test of a package with dependencies, D-089) is done.
 
-1. **FIX-108** if ISSUE-3 picks option 2: CPU per step by JFR sampling. Otherwise **FIX-110**: off-node validate/test of a
-   package with dependencies must start no consumers and must work for a deployed `--env`.
-2. **P2-02c**: undeploy, `DELETE /admin/packages/{name}`, with a 409 while another package pins it.
-3. **P2-07b**: replay and payload reads of a body removed by retention answer 409.
+1. **FIX-110** (in progress at hand-over): off-node validate holds a package's dependencies for one validation, nothing
+   deployed or started, any `--env`.
+2. **FIX-108**: CPU per flow and step by JFR sampling (ISSUE-3 option 2).
+3. **P2-02c**: undeploy, `DELETE /admin/packages/{name}`, with a 409 while another package pins it.
 
-Then FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (agent/BACKLOG.md).
+Then P2-07b (409 for a body removed by retention), FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (agent/BACKLOG.md).
 
 ## 9. Stretch (GATE.md) — not reached
 

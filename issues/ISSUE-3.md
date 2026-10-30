@@ -25,4 +25,6 @@ this issue once every other check holds. Option 1 or 2 → check 6 is met at onc
 task outside the threading rule.
 
 ## Owner's answer
-(left empty; the owner fills it in and the next session reads it)
+2026-10-30, in the session: "ISSUE-3: 2" — option 2. Check 6 now reads wall time per step with `cpuNanos` present and
+null where the JVM cannot measure (docs/GATE.md, changelog row); FIX-108 (JFR CPU sampling per flow and step) is ready after the gate.
+Status: answered.

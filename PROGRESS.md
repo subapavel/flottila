@@ -1022,3 +1022,10 @@ Gate-reviewer (Fable): r1 NOT_MET (check 6; body/key routes and CI coverage not 
 HANDOVER gaps) → all fixed; r2 NOT_MET on check 6 CPU only (cpuNanos null, F-21). GATE row blocked on ISSUE-3 (owner): option 1
 or 2 makes check 6 met with a GATE.md wording change + changelog row.
 Next: ready rows while ISSUE-3 waits — FIX-110, P2-02c, P2-07b, P2-07c, FIX-109; FIX-108 after ISSUE-3.
+
+## 2026-10-30 — GATE — GATE_MET (gate-reviewer r3)
+The owner answered ISSUE-3 in the session ("ISSUE-3: 2"): docs/GATE.md check 6 now reads wall time per step with `cpuNanos` present
+and null where the JVM cannot measure a virtual thread (F-21); ARCHITECTURE changelog row; FIX-108 (JFR CPU sampling) follows.
+Gate-reviewer r3: check 6 MET against the new wording (target/GATE3-stack.log:17-48), checks 1–5 and 7–9 unchanged from r2 →
+GATE_MET on gate commit fea6c5c. HANDOVER.md state line, check-6 row, open issues and next tasks updated. CI run 148 green on c652f49.
+Next: FIX-110 (in flight), then FIX-108.

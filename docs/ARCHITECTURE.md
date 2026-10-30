@@ -46,6 +46,7 @@
 | 2026-10-30 | 3.4 | §6 Retry per step: checked failures rethrown by an awaited future are retried and parked like unchecked ones; an interrupt is neither retried nor parked (FIX-107) | FIX-107 |
 | 2026-10-30 | 3.4 | §9 Deployment mechanics: `flottila lock` and off-node resolution for validate/test against sibling package folders | D-089 |
 | 2026-10-30 | 3.4 | §7 Component SPI (minor, no text change): a packaged sftp endpoint names its server and directory by the `host`, `port`, `dir` options, which win over the URI (recorded at the GATE review; finding dated 2026-10-29) | F-19, D-086 |
+| 2026-10-30 | 3.4 | GATE.md check 6 (owner, ISSUE-3 option 2): wall time per step, `cpuNanos` present and null on virtual threads; CPU per flow and step by JFR sampling is FIX-108 | ISSUE-3, F-21 |
 
 ## Amendments (Part A, 2026-10-17)
 
