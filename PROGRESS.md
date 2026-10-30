@@ -981,3 +981,17 @@ decrease; PIT Recorder/Meter 36/36; mutants M1–M5, R1, R2 killed (target/FIX-1
 Review: FAIL r1 (ISSUE-3 default read check 6 as met; §7 CPU clauses unflagged; Meter javadoc quoted deleted text), PASS r2.
 D-054 data: class C (designer ×1, test-author ×1, implementer ×1 + 1 fix, reviewer ×2); review rounds 2.
 Next: FIX-107 [B] (implementer in flight), then GATE re-run.
+
+## 2026-10-30 — FIX-107 a refused partner connection parks at its step — done, review PASS
+Found by GATE run 1 check 7: with the echo down, invoice-async never parked at `partner`; the item ran out its lease 5 times and was
+parked AttemptsExhausted at step 1 after 154 s. Root cause: Vert.x Future.await() rethrows a checked cause unchanged (netty
+AnnotatedConnectException), and Retry/Parking caught RuntimeException only → FlowWorker LEAVE.
+Test first: runtime PartnerFailureParkIT (real HttpComponent, closed port; 503 control green), FlowWorkerTest checked-failure case
+(red: target/FIX-107-red.log, -red-core.log); r2 interrupt cases RetryTest/ParkingTest/FlowWorkerTest + DeliveryTest at-most-once.
+Change: Retry and Parking catch Exception; an InterruptedException is rethrown with the flag restored, never retried or parked;
+Errors not caught. ARCHITECTURE §6 sentence + changelog.
+Checks: verify -Pit VERIFIED_PASS 2586/0 (target/FIX-107-verify2.log, -xml2.log); coverage no decrease; PIT Retry/Parking 33/36
+(the 2 no-coverage now killed by hand, Retry:71 pre-existing); mutants M1–M6 + Delivery:215 killed (target/FIX-107-mutants*.log, -red2.log).
+Review: PASS r1 (cleanup folded in: the sneaky rethrow helper removed). Raised FIX-109 (interrupt edges).
+D-054 data: class B (scout ×1, test-author ×2, implementer ×1 + 1 cleanup, reviewer ×1); review rounds 1.
+Next: GATE [G] re-run.

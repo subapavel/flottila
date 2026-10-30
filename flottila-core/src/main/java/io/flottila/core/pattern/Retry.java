@@ -18,7 +18,10 @@ import java.util.concurrent.CountDownLatch;
  * is thrown with the earlier ones suppressed; the message fails (DLQ is the runtime's job). An interrupt while
  * waiting (a cancelled scope) stops retrying at once, keeps the interrupt and throws the last exception.
  *
- * <p>Only {@link RuntimeException}s are retried; an {@link Error} is not a transient failure.
+ * <p>Any {@link Exception} is retried, a checked one too — {@code Future.await()} rethrows a failed future's checked cause
+ * as is, a refused connection's {@link java.net.ConnectException} among them (FIX-107) — except an
+ * {@link InterruptedException}: a cancelled run, rethrown at once with the interrupt flag restored. An {@link Error} is
+ * not a transient failure and is never caught.
  *
  * @since 0.1
  */
@@ -33,11 +36,15 @@ public final class Retry {
         Objects.requireNonNull(timer, "timer");
         if (policy.attempts() == 0) return step;
         return e -> {
-            List<RuntimeException> earlier = new ArrayList<>();
+            List<Exception> earlier = new ArrayList<>();
             for (int attempt = 1; ; attempt++) {
                 try {
                     return step.apply(e);
-                } catch (RuntimeException failure) {
+                } catch (Exception failure) {   // a checked one too: await() rethrows a failed future's checked cause as is
+                    if (failure instanceof InterruptedException) {   // a cancelled run, not the step's failure: never retried
+                        Thread.currentThread().interrupt();
+                        throw failure;
+                    }
                     if (attempt > policy.attempts() || !pause(policy.delayBefore(attempt), timer)) {
                         earlier.forEach(failure::addSuppressed);
                         throw failure;

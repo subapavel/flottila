@@ -407,6 +407,50 @@ class DeliveryTest {
         assertEquals(0, queue.size(), "nothing queued");
     }
 
+    /**
+     * FIX-107: a partner whose send fails with a checked exception — a refused connection's {@link java.net.ConnectException},
+     * rethrown as is by {@code await()} — fails an at-most-once run like any other failure: logged at WARNING with that very
+     * exception and the message id, dropped (nothing parked, nothing queued), and the run is over (the stop completes).
+     */
+    @Test
+    void anAtMostOnceStepThrowingACheckedExceptionIsLoggedAndDropped() throws InterruptedException {
+        Delivery delivery = delivery(flow("at-most-once", List.of(TO_PARTNER)));
+        java.net.ConnectException refused = new java.net.ConnectException("Connection refused");
+        partner.failNext(1, () -> refused);
+        Envelope in = ingress(ORDER);
+        List<java.util.logging.LogRecord> dropped = new CopyOnWriteArrayList<>();
+        CountDownLatch logged = new CountDownLatch(1);
+        java.util.logging.Logger jul = java.util.logging.Logger.getLogger(Delivery.class.getName());   // System.Logger delegates to it
+        java.util.logging.Handler handler = new java.util.logging.Handler() {
+            @Override public void publish(java.util.logging.LogRecord r) {
+                String text = new java.util.logging.SimpleFormatter().formatMessage(r);
+                if (text != null && text.contains(in.id())) {
+                    dropped.add(r);
+                    logged.countDown();
+                }
+            }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        handler.setLevel(java.util.logging.Level.ALL);
+        jul.addHandler(handler);
+        try {
+            assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
+            assertTrue(logged.await(10, TimeUnit.SECONDS), "a log line naming " + in.id());
+        } finally {
+            jul.removeHandler(handler);
+        }
+        assertEquals(1, dropped.size(), "one line: " + dropped.stream().map(java.util.logging.LogRecord::getMessage).toList());
+        java.util.logging.LogRecord line = dropped.get(0);
+        assertEquals(java.util.logging.Level.WARNING, line.getLevel());
+        assertTrue(line.getMessage().contains("failed and is dropped"), line.getMessage());
+        assertSame(refused, line.getThrown(), "the partner's checked exception itself");
+        assertEquals(1, partner.sent().size(), "one send");
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "nothing parked");
+        assertEquals(0, queue.size(), "nothing queued");
+        assertTrue(settled(delivery.stop(Duration.ofHours(1))).succeeded(), "the run is over: nothing in flight");
+    }
+
     // --- review round 1 (D-049 c: the worker completes only on success, a parked failure or a gone snapshot; admission per mode)
 
     /** At-least-once flows below record every step: the worker's own snapshots are part of what is asserted. */

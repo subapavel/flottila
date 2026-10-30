@@ -110,4 +110,57 @@ class RetryTest {
         assertEquals(0, seen.get().getSuppressed().length);
         assertEquals(0, timer.pending(), "the cut-short wait is cancelled");
     }
+
+    /** {@code failure} thrown as it is, a checked one included, from a lambda that declares none (as {@code Future.await()} does). */
+    @SuppressWarnings("unchecked")
+    static <T extends Throwable> RuntimeException sneaky(Throwable failure) throws T {
+        throw (T) failure;
+    }
+
+    /**
+     * FIX-107: a step's {@link InterruptedException} is a cancelled run, not the step's failure: it is not retried — no backoff
+     * scheduled, the step not called again — it propagates as is, and the interrupt flag, cleared by whatever threw it, is set
+     * again on the thread that ran the step. The step throws with the flag clear, as an interrupted JDK wait does; the run's
+     * thread reads (and clears) its flag after the call, so it never leaks; the fake clock is driven as for a real retry.
+     */
+    @Test
+    void anInterruptedExceptionFromTheStepIsNeitherRetriedNorSwallowedAndTheFlagIsRestored() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        List<Boolean> flagWhenThrown = new java.util.concurrent.CopyOnWriteArrayList<>();
+        InterruptedException cancelled = new InterruptedException("cancelled");
+        Step interrupted = e -> {
+            calls.incrementAndGet();
+            flagWhenThrown.add(Thread.currentThread().isInterrupted());
+            throw sneaky(cancelled);
+        };
+        Step retried = Retry.step(interrupted, policy, timer);
+        AtomicReference<Object> outcome = new AtomicReference<>();
+        AtomicReference<Boolean> flagAfter = new AtomicReference<>();
+        Thread t = Thread.ofVirtual().start(() -> {
+            try {
+                outcome.set(retried.apply(in));
+            } catch (Throwable x) {
+                outcome.set(x);
+            } finally {
+                flagAfter.set(Thread.interrupted());   // read and cleared on the thread that ran the step
+            }
+        });
+        List<Duration> waits = new ArrayList<>();
+        while (t.isAlive()) {
+            if (timer.pending() > 0) {   // a retry's backoff: driven, so a wrong retry runs to its end instead of hanging
+                Duration next = timer.nextDelay();
+                waits.add(next);
+                clock.advance(next);
+            }
+            Thread.onSpinWait();
+            Thread.yield();
+        }
+        assertEquals(List.of(), waits, "no backoff: an interrupt is never retried");
+        assertEquals(1, calls.get(), "the step ran once");
+        assertEquals(List.of(false), flagWhenThrown, "fixture: the step threw with the flag clear");
+        assertSame(cancelled, outcome.get(), "the InterruptedException propagates as is");
+        assertEquals(0, cancelled.getSuppressed().length);
+        assertTrue(flagAfter.get(), "the interrupt flag is set again for the caller");
+        assertEquals(0, timer.pending());
+    }
 }

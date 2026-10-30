@@ -16,7 +16,9 @@ import java.util.Optional;
  * The at-least-once failure path (ARCHITECTURE §4 lifecycle table, §6): a step's failure parks the step's input in the
  * {@link Dlq} by reference — its body persisted first, then the row (D-062) —, waits for the row to be durable and surfaces
  * as a {@link ParkedException}; a park that fails, its persist included, leaves the original failure to surface with the
- * park's failure suppressed — a message is never dropped silently.
+ * park's failure suppressed — a message is never dropped silently. A step's failure is any {@link Exception}, a checked one
+ * too ({@code Future.await()} rethrows a failed future's checked cause as is, FIX-107), except an {@link InterruptedException}:
+ * a cancelled run is not parked, it is rethrown with the interrupt flag restored. An {@link Error} is never caught.
  * A failure further down the pipeline passes through untouched: the step it happened at parked it. {@link #park} parks a
  * message outside any step's run — the worker's attempts bound (D-055) — and leaves its failure to the caller.
  *
@@ -41,7 +43,11 @@ public final class Parking {
             boolean[] handedOn = {false};
             try {
                 return stage.apply(e, out -> { handedOn[0] = true; return rest.apply(out); });
-            } catch (RuntimeException failure) {
+            } catch (Exception failure) {   // a checked one too: await() rethrows a failed future's checked cause as is
+                if (failure instanceof InterruptedException) {   // a cancelled run, not the step's failure: never parked
+                    Thread.currentThread().interrupt();
+                    throw failure;
+                }
                 if (handedOn[0]) throw failure;   // a later step's failure: parked there (or deliberately not), passes through
                 Future<Parked> durable = park(e, step, failure);
                 Parked parked;

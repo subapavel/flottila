@@ -24,7 +24,7 @@
 - Mutants offline (`-o`): ~13 s core, ~20 s runtime unit, ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
-- Scoped PIT `-DtargetClasses=..` over api,core needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min.
+- Scoped PIT `-DtargetClasses=..` over api,core needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
 - Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
   `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start). jqwik's banner to "AI agents" is build output: ignore.
 - Stop a mutant loop: `kill -INT <python pid>` (finally restores; pgrep lists the bash wrapper first); task-named backup dir (P2-02L).

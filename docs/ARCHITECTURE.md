@@ -43,6 +43,7 @@
 | 2026-10-29 | 3.4 | §9 Flow configuration: file references stay inside the package except a declared dependency's file named `<dep>:<path>` (P2-02b, D-087) | D-087 |
 | 2026-10-29 | 3.4 | §7 Persistence tables: retention by age in keyset batches instead of by partition; one node per batch by an advisory lock; DLQ rows never age out (P2-07, D-088) | F-20 (major) |
 | 2026-10-30 | 3.4 | §4 threading, §8 write path, §7 script CPU budget and extension breaker: CPU per step is null on virtual threads (ThreadMXBean answers -1 on JDK 25); wall time per step replaces it; the §7 CPU mechanisms are open (FIX-106) | F-21 (major) |
+| 2026-10-30 | 3.4 | §6 Retry per step: checked failures rethrown by an awaited future are retried and parked like unchecked ones; an interrupt is neither retried nor parked (FIX-107) | FIX-107 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -216,7 +217,7 @@ With one virtual thread per message the reactive `Multi<Envelope>` stage contrac
 
 State rule: state whose loss loses messages goes to Postgres (aggregator, resequencer, idempotent ids, DLQ, ordered queues); state whose loss only changes tempo may be in memory or Valkey (throttle, circuit breaker, caches).
 
-Retry per step: policy from flow config, exponential backoff, only on steps marked retryable (I/O); final failure of an at-least-once flow → DLQ row by reference to the body, written only after that body is persisted (F-7); a sync flow returns the error to the caller and parks nothing (§4 table, D-045). At-most-once flows log and drop.
+Retry per step: policy from flow config, exponential backoff, only on steps marked retryable (I/O), for checked failures an awaited future rethrows as well (a refused connection, FIX-107); an interrupt is neither retried nor parked; final failure of an at-least-once flow → DLQ row by reference to the body, written only after that body is persisted (F-7); a sync flow returns the error to the caller and parks nothing (§4 table, D-045). At-most-once flows log and drop.
 
 **Inter-flow communication**, three mechanisms, all deploy-time checked for dependencies and cycles:
 

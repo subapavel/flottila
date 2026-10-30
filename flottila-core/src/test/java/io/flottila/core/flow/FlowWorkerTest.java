@@ -1579,6 +1579,114 @@ class FlowWorkerTest {
     }
 
     /**
+     * FIX-107: a partner whose send fails with a checked exception — the http producer's refused connection is netty's
+     * {@code AnnotatedConnectException}, a {@link java.net.ConnectException}, which {@code Future.await()} rethrows as is — is
+     * a step failure like a Nack: the retryable {@code to} step is retried by the flow's policy on the runtime's timer, then
+     * the message is parked at that step by its input; the item is completed by the one claim that ran it, nothing is left to
+     * its lease and nothing logged at WARNING.
+     */
+    @Test
+    void aPartnerFailingWithACheckedExceptionIsRetriedThenParkedAtItsStep() throws Exception {
+        int retries = 2;
+        Map<String, Object> doc = flow(4, List.of(STAMP, Map.of("type", "to", "name", "partner", "endpoint", "partner", "retryable", true)));
+        doc.put("retry", Map.of("attempts", retries, "initial", "100ms", "max", "2s"));
+        FlowDefinition def = FlowDefinition.from(doc);
+        List<Duration> retryWaits = new CopyOnWriteArrayList<>();
+        Timer timer = (delay, task) -> {
+            Timer.Cancellable pending = w.rt.timer().schedule(delay, task);
+            // a wait the run schedules on its own thread (flottila-worker-<worker>-<seq>) is a retry's; recorded once pending
+            if (Thread.currentThread().getName().startsWith("flottila-worker-")) retryWaits.add(delay);
+            return pending;
+        };
+        FlowBuilder b = w.builder(w.runtimeWith(timer));
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+        w.partner.failNext(100, () -> new java.net.ConnectException("Connection refused"));
+
+        Future<Integer> round = w1.poll();
+        for (int fired = 0; ; fired++) {
+            int done = fired;
+            until(() -> round.isComplete() || retryWaits.size() > done, () -> "the run ends or waits for retry " + (done + 1) + "; " + logs.all());
+            if (retryWaits.size() == fired) break;
+            assertTrue(fired < retries, "no more retries than the policy's " + retries + ": " + retryWaits);
+            assertEquals(retryWaits.get(fired), w.rt.timer().nextDelay(), "fixture: the retry's wait is the earliest task");
+            w.rt.clock().advance(retryWaits.get(fired));
+        }
+        assertEquals(1, round.await(5, SECONDS), "one claim ran it");
+        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+
+        List<Parked> rows = w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items();
+        assertEquals(1, rows.size(), "one DLQ row after the retries: " + rows + "; sends " + w.partner.sent().size() + "; logs " + logs.all());
+        Parked p = rows.get(0);
+        assertEquals(2, p.step(), "parked at the to step, by its index");
+        assertEquals("partner", p.stepName(), "by its name");
+        assertEquals(BlobKey.body(in.id(), 1), p.bodyKey(), "by the to step's input, the body stamp handed on");
+        assertTrue(p.error().contains("ConnectException"), "the partner's failure is the row's error: " + p.error());
+        assertEquals(1 + retries, w.partner.sent().size(), "the partner was tried once and retried " + retries + " times");
+        assertEquals(List.of(def.retry().delayBefore(1), def.retry().delayBefore(2)), retryWaits, "the retries waited the policy's delays");
+        assertEquals(1, w.stamped.size(), "stamp ran once: the retries re-ran only the to step");
+        assertEquals(0, w.rows.size(), "parked: the item is completed");
+        assertEquals(List.of(1), w.claimedAttempts(), "by the one claim that ran it");
+        assertEquals(List.of(), logs.at(Level.WARNING, in.id()), "nothing left to its lease: " + logs.all());
+    }
+
+    /**
+     * FIX-107: a step's {@link InterruptedException} — a send whose future failed with it, rethrown as is by {@code await()} —
+     * is a cancelled run, not the step's failure: through the worker the retryable {@code to} step is not retried (no backoff
+     * on the run's thread, one send), not parked (no DLQ row, the item not completed), the run fails and the item is left to
+     * its lease with the worker's WARNING — written on the thread that ran the step, whose interrupt flag is set again by then.
+     */
+    @Test
+    void anInterruptedExceptionFromARetryableStepIsNeitherRetriedNorParkedAndTheRunsThreadKeepsTheInterrupt() throws Exception {
+        Map<String, Object> doc = flow(4, List.of(Map.of("type", "to", "name", "partner", "endpoint", "partner", "retryable", true)));
+        doc.put("retry", Map.of("attempts", 2, "initial", "100ms", "max", "2s"));
+        FlowDefinition def = FlowDefinition.from(doc);
+        List<Duration> retryWaits = new CopyOnWriteArrayList<>();
+        Timer timer = (delay, task) -> {
+            Timer.Cancellable pending = w.rt.timer().schedule(delay, task);
+            // a wait the run schedules on its own thread (flottila-worker-<worker>-<seq>) is a retry's
+            if (Thread.currentThread().getName().startsWith("flottila-worker-")) retryWaits.add(delay);
+            return pending;
+        };
+        FlowBuilder b = w.builder(w.runtimeWith(timer));
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+        w.partner.failNext(1, () -> new InterruptedException("cancelled"));
+        List<String> atTheWarning = new CopyOnWriteArrayList<>();   // "<thread> interrupted=<flag>" of each WARNING naming the message
+        Logger jul = Logger.getLogger(FlowWorker.class.getName());
+        Handler onTheRunsThread = new Handler() {
+            @Override public void publish(LogRecord r) {   // runs synchronously on the thread that logs
+                if (r.getLevel().equals(Level.WARNING) && String.valueOf(r.getMessage()).contains(in.id())) {
+                    atTheWarning.add(Thread.currentThread().getName() + " interrupted=" + Thread.currentThread().isInterrupted());
+                }
+            }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        onTheRunsThread.setLevel(Level.ALL);
+        jul.addHandler(onTheRunsThread);
+        try {
+            Future<Integer> round = w1.poll();
+            until(() -> round.isComplete() || !retryWaits.isEmpty(), () -> "the run ends or waits for a retry; " + logs.all());
+            assertEquals(List.of(), retryWaits, "no backoff: an interrupt is never retried");
+            assertEquals(1, round.await(5, SECONDS), "one claim ran it");
+            until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        } finally {
+            jul.removeHandler(onTheRunsThread);
+        }
+        assertEquals(1, w.partner.sent().size(), "one send, no retry");
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "a cancelled run is never parked");
+        assertEquals(1, w.rows.size(), "not parked, not completed: the item is left to its lease");
+        assertEquals(List.of(1), w.claimedAttempts());
+        List<String> warnings = logs.at(Level.WARNING, in.id());
+        assertEquals(1, warnings.size(), logs.all().toString());
+        assertTrue(warnings.get(0).contains("left to its lease") && warnings.get(0).contains("java.lang.InterruptedException: cancelled"),
+                "the run failed with the InterruptedException itself: " + warnings.get(0));
+        String runThread = "flottila-worker-w1-" + w.queue.claims().stream().filter(c -> c.items != null).flatMap(c -> c.items.stream()).findFirst().orElseThrow().seq();
+        assertEquals(List.of(runThread + " interrupted=true"), atTheWarning, "the interrupt flag is set again on the thread that ran the step");
+    }
+
+    /**
      * The worker's trail is seeded with the ingress key (P1-09k2 r1b): the delivery made the ingress durable (D-058), so a
      * row that shows it — the gate's, which hands the ingress on — keeps the key and the trail never persists it again. The
      * worker rebuilds the ingress in the runtime's store, here the recording one, where the same trail persists the

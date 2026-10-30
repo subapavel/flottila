@@ -357,4 +357,49 @@ class ParkingTest {
         assertThrows(ParkedException.class, () -> atLeastOnce.apply(parkedIn));
         assertEquals(List.of(BlobKey.body(parkedIn.id(), 1)), bodies.persists(), "this store records a park's persist");
     }
+
+    /** {@code failure} thrown as it is, a checked one included, from a lambda that declares none (as {@code Future.await()} does). */
+    @SuppressWarnings("unchecked")
+    static <T extends Throwable> RuntimeException sneaky(Throwable failure) throws T {
+        throw (T) failure;
+    }
+
+    /**
+     * FIX-107: a step's {@link InterruptedException} is a cancelled run, not the step's failure: the wrapped step does not park
+     * it — no row, nothing handed on — it propagates as is, and the interrupt flag, cleared by whatever threw it, is set again
+     * on the thread that ran the step (read and cleared right after the call, so it never leaks). Witness: the same wrap over
+     * the same DLQ parks a checked {@link java.io.IOException} — the DLQ records what is parked.
+     */
+    @Test
+    void anInterruptedExceptionFromTheStepIsNotParkedAndTheFlagIsRestored() {
+        InterruptedException cancelled = new InterruptedException("cancelled");
+        List<Boolean> flagWhenThrown = new CopyOnWriteArrayList<>();
+        List<Envelope> handedOn = new CopyOnWriteArrayList<>();
+        Stage interrupted = parking(dlq).wrap(Stage.of(e -> {
+            flagWhenThrown.add(Thread.currentThread().isInterrupted());
+            throw sneaky(cancelled);
+        }), STEP_X);
+        Envelope in = in();
+        InterruptedException thrown;
+        boolean flagAfter;
+        try {
+            thrown = assertThrows(InterruptedException.class, () -> interrupted.apply(in, out -> { handedOn.add(out); return out; }));
+        } finally {
+            flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the step, whatever was thrown
+        }
+        assertSame(cancelled, thrown, "the InterruptedException propagates as is");
+        assertEquals(0, thrown.getSuppressed().length, "no park was tried on the side: " + List.of(thrown.getSuppressed()));
+        assertEquals(List.of(false), flagWhenThrown, "fixture: the step threw with the flag clear");
+        assertTrue(flagAfter, "the interrupt flag is set again for the caller");
+        assertEquals(List.of(), handedOn);
+        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "a cancelled run is never parked");
+
+        // witness: a checked failure of the same wrapped step over the same DLQ is parked
+        java.io.IOException reset = new java.io.IOException("partner socket reset");
+        Stage failing = parking(dlq).wrap(Stage.of(e -> { throw sneaky(reset); }), STEP_X);
+        ParkedException parked = assertThrows(ParkedException.class, () -> failing.apply(in, out -> out));
+        assertSame(reset, parked.getCause());
+        assertFalse(Thread.interrupted(), "a parked failure leaves the flag alone (read and cleared)");
+        assertEquals(List.of(parked.parked()), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items());
+    }
 }
