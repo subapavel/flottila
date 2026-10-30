@@ -955,3 +955,16 @@ Checks: verify -Pit VERIFIED_PASS 2567/0 (target/P2-07-verify2.log) + final Rete
 Review: FAIL r1 (a message split across batch transactions; a parked replay could lose its body; no final verify), FAIL r2 (§7 sentence without the accepted exceptions; no green evidence for the final case), PASS r3. Raised FIX-104; rows P2-07b, P2-07c.
 D-054 data: class C (designer ×1, test-author ×1 (resumed at the turn limit) + 4 fix packets, implementer ×1 + 1 fix, verifier ×1, reviewer ×3); review rounds 3.
 Next: GATE [G].
+
+## 2026-10-30 — FIX-105 compose namespace holder — done, review PASS
+Context compacted before GATE run 1 (re-verified with git status / git log -3).
+Found by GATE run 1 (target/GATE-stack.log): after a node kill the echo kept the dead node's namespace, 29 kill-test messages parked;
+also raised FIX-106 (F-21, CPU per step unknown on virtual threads), FIX-107 (attempts-exhausted DLQ row names the first step).
+Test first: ComposeStackTest 5 new cases over both compose files + 2 re-pinned (red: target/FIX-105-red.log, 7/19).
+Change: a `netns` service (the quickstart JRE image, `sleep infinity`, alias `flottila`) publishes the ports; node and echo join
+its namespace (deploy/compose and root docker-compose.yml); README/QUICKSTART lines.
+Checks: ComposeStackTest 19/0; verify -Pit VERIFIED_PASS (target/FIX-105-verify.log); coverage no decrease; stack on this VM: kill
+node → up → POST 200 from the echo with no echo restart, stop echo → /health 200, root quickstart POST 200 (target/FIX-105-stack.log).
+Review: PASS r1 (non-blocking: root echo depends_on condition and netns healthcheck content unpinned).
+D-054 data: class A (test-author ×1, implementer ×1, reviewer ×1); review rounds 1.
+Next: FIX-106 [C] (red tests in flight), FIX-107 [B], then GATE re-run.

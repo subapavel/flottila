@@ -1,7 +1,7 @@
 # The gate stack (`deploy/compose`)
 
 A demo stack for GATE checks 1-2 (D-085), not production: the node runs `FLOTTILA_ENV=dev`. Services: `postgres`, `valkey`
-(persistence off), `s3` (SeaweedFS), `kafka` (KRaft, not wired), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `flottila` (the node), `echo` (the demo's partner),
+(persistence off), `s3` (SeaweedFS), `kafka` (KRaft, not wired), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `netns` (holds the published ports and the network namespace of the node and the echo), `flottila` (the node), `echo` (the demo's partner),
 `deploy` (one-shot: `flottila deploy /packages/demo`), and `clickhouse` under the `history` profile (not wired).
 
 ```sh

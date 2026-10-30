@@ -152,7 +152,7 @@ class ComposeStackTest {
         assertEquals("no", deploy.path("restart").asText("no"), "a one-shot is not restarted");
         assertTrue(environment(deploy).getOrDefault("FLOTTILA_ADMIN_TOKEN", "").startsWith("${FLOTTILA_ADMIN_TOKEN:?"),
                 "the CLI reads the same required token");
-        assertEquals("service:flottila", service("echo").path("network_mode").asText());
+        assertEquals("service:netns", service("echo").path("network_mode").asText(), "FIX-105: the echo joins the holder's namespace, not the node's");
     }
 
     @Test
@@ -234,11 +234,91 @@ class ComposeStackTest {
 
     @Test
     void theNodePublishesTheAsyncDoorOnLoopbackBesideTheOthers() throws IOException {
-        List<String> ports = ports(service("flottila"));
+        // FIX-105: the ports are published by the namespace holder `netns`, no longer by the node (the old pin on flottila contradicted it)
+        List<String> ports = ports(service("netns"));
         assertTrue(ports.contains("127.0.0.1:8082:8082"), "the async http door 8082 is published on loopback: " + ports);
         assertTrue(ports.contains("127.0.0.1:8080:8080") && ports.contains("127.0.0.1:8081:8081"), "the sync door and the admin API stay: " + ports);
         assertTrue(ports.stream().allMatch(p -> p.startsWith("127.0.0.1:")), "every published port is on loopback only: " + ports);
         assertEquals(3, ports.size(), "nothing else is published: " + ports);
+    }
+
+    // ---- FIX-105: a network-namespace holder outlives the node and the echo, in both compose files -----------------------------
+
+    private static final Path ROOT_FILE = Path.of("..", "docker-compose.yml").toAbsolutePath().normalize();
+
+    /** Both stacks with the ports the node published before the holder (deploy: 8080, 8082, 8081; root quickstart: 8080, 8081). */
+    private static final Map<Path, List<String>> NODE_PORTS = Map.of(
+            FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8082:8082", "127.0.0.1:8081:8081"),
+            ROOT_FILE, List.of("127.0.0.1:8080:8080", "127.0.0.1:8081:8081"));
+
+    private static JsonNode serviceIn(Path file, String name) throws IOException {
+        assertTrue(Files.isRegularFile(file), file + " must exist");
+        JsonNode service = new ObjectMapper(new YAMLFactory()).readTree(file.toFile()).path("services").get(name);
+        assertTrue(service != null, file.getFileName() + " (" + file.getParent().getFileName() + "): service " + name + " is present");
+        return service;
+    }
+
+    @Test
+    void aNamespaceHolderPublishesTheNodesPorts() throws IOException {
+        for (var stack : NODE_PORTS.entrySet()) {
+            JsonNode netns = serviceIn(stack.getKey(), "netns");
+            assertEquals(new java.util.TreeSet<>(stack.getValue()), new java.util.TreeSet<>(ports(netns)),
+                    stack.getKey() + ": netns publishes exactly the node's former bindings");
+            assertEquals(stack.getValue().size(), ports(netns).size(), stack.getKey() + ": no binding twice");
+            assertEquals("sleep infinity", joined(netns.path("command")).replace("\"", ""), stack.getKey() + ": the holder only sleeps");
+            assertFalse(joined(netns.path("healthcheck").path("test")).isBlank(), stack.getKey() + ": the holder has a healthcheck");
+            assertFalse(netns.has("network_mode"), stack.getKey() + ": the holder owns the namespace, it joins none");
+        }
+    }
+
+    @Test
+    void theNodeAndTheEchoJoinTheHoldersNamespace() throws IOException {
+        for (Path file : NODE_PORTS.keySet()) {
+            for (String name : List.of("flottila", "echo")) {
+                assertEquals("service:netns", serviceIn(file, name).path("network_mode").asText(), file + ": " + name + " joins the holder");
+            }
+            assertEquals("service_healthy", serviceIn(file, "flottila").path("depends_on").path("netns").path("condition").asText(),
+                    file + ": the node waits for the holder healthy");
+            assertEquals("service_healthy", serviceIn(file, "echo").path("depends_on").path("netns").path("condition").asText(),
+                    file + ": the echo waits for the holder healthy");
+            JsonNode echoDeps = serviceIn(file, "echo").path("depends_on");
+            assertTrue(echoDeps.has("flottila") || echoDeps.toString().contains("\"flottila\""), file + ": the echo still waits for the node: " + echoDeps);
+            if (file.equals(FILE)) {
+                assertEquals("service_healthy", echoDeps.path("flottila").path("condition").asText(), file + ": healthy, as today");
+            }
+        }
+    }
+
+    @Test
+    void neitherTheNodeNorTheEchoPublishesAPort() throws IOException {
+        for (Path file : NODE_PORTS.keySet()) {
+            for (String name : List.of("flottila", "echo")) {
+                assertFalse(serviceIn(file, name).has("ports"), file + ": " + name + " shares the holder's namespace and publishes nothing itself");
+            }
+        }
+    }
+
+    @Test
+    void theHolderAnswersAsFlottilaOnTheNetwork() throws IOException {
+        for (Path file : NODE_PORTS.keySet()) {
+            JsonNode aliases = serviceIn(file, "netns").path("networks").path("default").path("aliases");
+            List<String> names = new ArrayList<>();
+            aliases.forEach(a -> names.add(a.asText()));
+            assertTrue(names.contains("flottila"), file + ": netns carries the alias flottila on the default network, was " + names);
+            assertFalse(serviceIn(file, "flottila").has("networks"), file + ": the node joins the holder's namespace, it has no networks of its own");
+        }
+    }
+
+    @Test
+    void theHolderUsesAnImageTheStackAlreadyPins() throws IOException {
+        String dockerfile = Files.readString(Path.of("..", "deploy", "quickstart", "Dockerfile"));
+        java.util.regex.Matcher from = java.util.regex.Pattern.compile("(?m)^FROM\\s+(\\S+)").matcher(dockerfile);
+        assertTrue(from.find(), "the node Dockerfile has a FROM");
+        String nodeImage = from.group(1);
+        assertEquals("eclipse-temurin:25.0.4.1_1-jre-noble", nodeImage, "the node's base image is the pinned JRE the packet names");
+        for (Path file : NODE_PORTS.keySet()) {
+            assertEquals(nodeImage, serviceIn(file, "netns").path("image").asText(), file + ": the holder runs the node's base image, no new image");
+        }
     }
 
     /** The path after {@code ssh-keygen ... -t rsa ... -f}, the key the one-shot generates. */

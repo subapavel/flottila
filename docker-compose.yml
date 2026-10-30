@@ -20,7 +20,25 @@ services:
       timeout: 2s
       retries: 15
 
+  netns:
+    # holds the network namespace of the node and the echo: either can die and come back without the other losing localhost
+    image: eclipse-temurin:25.0.4.1_1-jre-noble
+    command: ["sleep", "infinity"]
+    networks:
+      default:
+        aliases:
+          - flottila
+    ports:
+      - "127.0.0.1:8080:8080"   # the demo's http-in
+      - "127.0.0.1:8081:8081"   # admin API and /health
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
   flottila:
+    network_mode: "service:netns"
     build:
       context: .
       dockerfile: deploy/quickstart/Dockerfile
@@ -39,11 +57,10 @@ services:
       FLOTTILA_SECRET_SFTP_PASSWORD: placeholder
       FLOTTILA_SECRET_SFTP_HOST_KEY: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
     depends_on:
+      netns:
+        condition: service_healthy
       postgres:
         condition: service_healthy
-    ports:
-      - "127.0.0.1:8080:8080"   # the demo's http-in
-      - "127.0.0.1:8081:8081"   # admin API and /health
     volumes:
       - flottila-data:/var/lib/flottila   # a restart restores the deployed packages from the archives here
     healthcheck:
@@ -58,12 +75,15 @@ services:
     # the JDK image, not the JRE); the demo package is deployed unchanged
     image: eclipse-temurin:25.0.4.1_1-jdk-noble
     user: ubuntu
-    network_mode: "service:flottila"
+    network_mode: "service:netns"
     volumes:
       - ./deploy/quickstart/PartnerEcho.java:/opt/echo/PartnerEcho.java:ro
     command: ["java", "/opt/echo/PartnerEcho.java", "8090"]
     depends_on:
-      - flottila
+      netns:
+        condition: service_healthy
+      flottila:
+        condition: service_healthy
 
 volumes:
   flottila-pg:

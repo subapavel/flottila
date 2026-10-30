@@ -18,7 +18,7 @@ The node migrates the database itself (Flyway) and serves `/health` on `localhos
 the host's loopback, port 5432; if that port is taken, prefix the `up` with `FLOTTILA_PG_HOST_PORT=55432`. Without a token
 the node exits with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs flottila`).
 
-The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` in the node's network namespace, on
+The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` in the network namespace the `netns` service holds for the node (it publishes the ports), on
 `localhost:8090`; it answers every path with the body it was sent.
 
 ## 2. Deploy the demo
@@ -75,8 +75,7 @@ docker compose down             # stop and remove the containers; the database a
 docker compose down -v          # also remove the volumes: the next start is empty, deploy the demo again
 ```
 
-After a rebuild of the jar, `docker compose up -d --build --force-recreate` replaces all three containers (the echo has to
-join the new node's network namespace); the node restores the deployed demo from its volume.
+After a rebuild of the jar, `docker compose up -d --build --force-recreate` replaces all containers (`netns` holds the namespace, so the node and the echo restart independently); the node restores the deployed demo from its volume.
 
 The fuller gate stack (Postgres, Valkey, SeaweedFS S3, Kafka, SFTP, the node, the echo and an automatic deploy of the demo) is in
 [`deploy/compose/`](../deploy/compose/README.md).
