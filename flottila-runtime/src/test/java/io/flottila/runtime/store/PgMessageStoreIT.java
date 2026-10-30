@@ -69,7 +69,7 @@ class PgMessageStoreIT {
                 .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true);
         pool = PgBuilder.pool().connectingTo(connect).with(new PoolOptions().setMaxSize(8)).using(vertx).build();
         Migrations.Result r = Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
-        assertEquals("9", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087)");
+        assertEquals("10", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087), V10 the retention indexes (P2-07, D-088)");
     }
 
     @AfterAll

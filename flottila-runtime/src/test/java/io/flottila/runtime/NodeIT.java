@@ -334,6 +334,62 @@ class NodeIT {
     }
 
     /**
+     * P2-07 (D-088): the node runs its retention job — the first run at once, on the node's own clock, without holding the start —
+     * and closes it before the pool: close waits for the batch in flight, which commits, then the pool closes. The case's messages
+     * table is locked by another session while the node starts, so the first run's batch waits on it; a row older than the default
+     * max age (P7D) is gone once close returned, a fresh row stays, and no store WARNING says a batch failed.
+     */
+    @Test
+    void theNodeRunsRetentionAtStartAndClosesItBeforeThePool() throws Exception {
+        Migrations.migrate(url, pg.getUsername(), pg.getPassword());   // the node's own migrate then finds nothing to do and touches no table
+        Logger flottila = Logger.getLogger("io.flottila");
+        Warnings warnings = new Warnings();
+        flottila.addHandler(warnings);
+        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
+        try {
+            holder.preparedQuery("insert into payloads(hash, size) values ($1, 0)").execute(Tuple.of(hashBytes(7L))).await();
+            holder.preparedQuery("insert into messages(id, step, flow, body_hash, created_at) values ('m-aged', 0, 'shop/orders', $1, now() - interval '8 days'),"
+                    + " ('m-fresh', 0, 'shop/orders', $1, now() - interval '6 days')").execute(Tuple.of(hashBytes(7L))).await();
+            Transaction held = holder.begin().await();
+            holder.query("lock table messages in access exclusive mode").execute().await();
+            NodeConfig config = NodeConfig.from(env("ci"));
+            OnVirtualThread.Call<Node> starting = OnVirtualThread.start(() -> Node.start(config, vertx, ctx -> List.of(), List.of(), List.of()));
+            until(() -> lockWaiters() == 1, "the node's first retention run starts at once: its batch waits on the locked messages table");
+            node = OnVirtualThread.join(starting);   // the start does not wait for the run
+            int port = node.adminPort();
+            assertEquals(200, get(port, "/health").statusCode(), "the node serves while its first retention batch waits");
+
+            Node started = node;
+            closing = OnVirtualThread.start(started::close);
+            until(() -> refuses(port), "close stopped the admin server");
+            until(() -> closing.isDone() || closing.thread().getState() == Thread.State.WAITING,
+                    "close goes on to the retention job and waits there (or, wrongly, ends)");
+            assertFalse(closing.isDone(), "close waits for the retention batch in flight");
+            assertEquals(1, lockWaiters(), "the batch still waits on the table");
+            assertTrue(connections() > 0, "the pool is open while close waits for the batch");
+            held.rollback().await();
+        } finally {
+            holder.close().await();
+        }
+        try {
+            OnVirtualThread.join(closing);
+            until(() -> connections() == 0, "close closed the pool after the retention job");
+            PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+            try {
+                List<String> left = new java.util.ArrayList<>();
+                for (io.vertx.sqlclient.Row r : reader.query("select id from messages order by id").execute().await()) left.add(r.getString(0));
+                assertEquals(List.of("m-fresh"), left, "the batch in flight committed before the pool closed: the row older than P7D is gone");
+            } finally {
+                reader.close().await();
+            }
+            assertEquals(List.of(), warnings.records.stream().filter(r -> r.contains("io.flottila.runtime.store")).toList(),
+                    "no retention batch failed under a closed pool");
+        } finally {
+            flottila.removeHandler(warnings);
+        }
+    }
+
+    /**
      * An admin port another socket holds: start fails after it migrated and opened the pool and the stores, and closes them
      * again — no connection to the case database is left, no verticle stays deployed.
      */

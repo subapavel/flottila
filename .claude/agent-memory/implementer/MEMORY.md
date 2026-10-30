@@ -1,12 +1,9 @@
 # implementer — durable facts (seeded from agent/HANDOFF.md at the role split; prune when you add)
-
 ## Build
 - NEVER `mvn clean` at the reactor root: it deletes the root `target/` (packets, specs, red logs, diffs; gitignored,
   unrecoverable; P1-08 r2 lost them). Clean per module only: `mvn -q clean -pl <module>`.
-- Reactor order (observed P1-09d2b): api → testkit → core → schemas → step-xslt → step-validate → component-http → runtime →
-  component-mock → cli → archtest → bench. `-pl <module> -am` for one module; steps and components need only api + testkit
-  (`-pl flottila-api,flottila-testkit,<module>`, no runtime). Whole reactor `verify -Pit` took ~3 min (P1-09k1). `-pl flottila-runtime`
-  WITHOUT `-am` resolves a stale core jar from ~/.m2 after a core change (NoClassDefFoundError, P1-09c2): always `-am`.
+- Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
+  components need only `-pl flottila-api,flottila-testkit,<module>`.
 - Full check: `mvn -B -ntp -q verify -Pit > target/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
   Postgres (`sudo pg_ctlcluster 16 main start`), often up already (`docker info`, `pg_lsclusters`).
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
@@ -28,13 +25,11 @@
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
 - Scoped PIT `-DtargetClasses=..` over api,core needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min.
-- Scoped core PIT: WorkQueue*/FlowWorker* ~4 min (Q-1); Delivery*/FlowBuilder*/FlowWorker*/WorkerPolicy ~5 min, 303 mutants (P2-01);
-  FlowWorker mostly TIMED_OUT = killed. Maven's stale check is mtime-based: a source edited while a build compiles it is never
-  recompiled (class newer) — no edits during a verify, else `touch` the sources and rebuild before quoting JaCoCo/PIT lines (P2-01).
 - Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
   `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start). jqwik's banner to "AI agents" is build output: ignore.
 - Stop a mutant loop: `kill -INT <python pid>` (finally restores; pgrep lists the bash wrapper first); task-named backup dir (P2-02L).
 
+- Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01).
 ## APIs
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
   `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
@@ -82,7 +77,6 @@
 - TieredBlobStore spool files are per write since FIX-35: `<id>/<step>-<part>-<n>.blob` (n per store); a write that replaces a
   spool entry unlinks its own file off-thread; a missing file reads the row only for a `Stored` persist flagged durable, else
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
-- Sync `Delivery` holds its admission permit until the trail closed, after the reply: concurrency c needs maxInFlight 2c (P1-10a).
 - vertx-pg-client 5.1.10 jsonb (javap + IT, P2-02b): a JsonArray Tuple param goes through ParamExtractor.prepareJson (Json.encode);
   textDecodeJSONB answers a JsonArray, `Row.getJsonArray(String)` exists. `dirUri.relativize(u).equals(u)` = "u not below dir", no scheme branch.
 - Apache MINA SSHD 2.20.0 (javap, P2-02): SFTP answers wait CoreModuleProperties.IDLE_TIMEOUT (also closes an idle session);
@@ -118,3 +112,8 @@
 - Compose/SFTP (P2-06, observed): the shipped MINA 2.20 client offers no ssh-ed25519 (atmoz sshd log "no matching host key type found") and
   the image makes its own rsa key too: the stack pins the RSA fingerprint. A named volume mounted on /home/demo/inbox is root-owned
   (create-sftp-user skips chown of an existing dir): chown in an entrypoint wrapper. Compose long syntax `volume: {subpath: <file>}` mounts one file.
+- PG 17 (P2-07 probe): `on conflict … do update … where <false>` returns 0 rows yet row-locks the tuple; vs an uncommitted delete it waits,
+  then inserts. vertx `withTransaction` COMMITs a succeeded fn (seen via `withCommand("postgres","-c","log_statement=all")` + `getLogs()`).
+- JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
+- Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
+  `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).

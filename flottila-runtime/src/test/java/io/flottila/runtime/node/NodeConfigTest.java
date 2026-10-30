@@ -1,6 +1,7 @@
 package io.flottila.runtime.node;
 
 import io.flottila.runtime.admin.AdminServer;
+import io.flottila.runtime.store.Retention;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -500,5 +501,73 @@ class NodeConfigTest {
         Map<String, String> both = with(with(minimal(), "FLOTTILA_POLLER_LEASE_TTL", "PT0.0005S"), "FLOTTILA_POLLER_LEASE_RENEW", "PT0.00025S");
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(both), "refused: " + both);
         assertTrue(e.getMessage().contains("FLOTTILA_POLLER_LEASE_TTL") || e.getMessage().contains("FLOTTILA_POLLER_LEASE_RENEW"), e.getMessage());
+    }
+
+    /** P2-07 (D-088): the retention job's keys default to a max age of P7D, an interval of PT1H and batches of 1000 rows. */
+    @Test
+    void retentionDefaults() {
+        assertEquals(new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000), NodeConfig.from(minimal()).retention(),
+                "FLOTTILA_RETENTION_MAX_AGE P7D, FLOTTILA_RETENTION_INTERVAL PT1H, FLOTTILA_RETENTION_BATCH 1000");
+    }
+
+    @Test
+    void retentionReadsEveryKeyUnderItsOwnName() {
+        NodeConfig c = NodeConfig.from(with(with(with(minimal(), "FLOTTILA_RETENTION_MAX_AGE", "P30DT12H"), "FLOTTILA_RETENTION_INTERVAL", "PT15M"),
+                "FLOTTILA_RETENTION_BATCH", "250"));
+        assertEquals(new Retention.Config(Duration.ofHours(30 * 24 + 12), Duration.ofMinutes(15), 250), c.retention(), "ISO-8601 durations, a whole number");
+    }
+
+    /** The edges of each range are accepted: max age PT1H..P366D, interval PT1M..P1D, batch 1..10000. */
+    @ParameterizedTest(name = "{0}={1}")
+    @CsvSource({"FLOTTILA_RETENTION_MAX_AGE, PT1H", "FLOTTILA_RETENTION_MAX_AGE, P366D", "FLOTTILA_RETENTION_INTERVAL, PT1M",
+            "FLOTTILA_RETENTION_INTERVAL, P1D", "FLOTTILA_RETENTION_BATCH, 1", "FLOTTILA_RETENTION_BATCH, 10000"})
+    void retentionAcceptsTheEdgesOfEachRange(String key, String value) {
+        Retention.Config c = NodeConfig.from(with(minimal(), key, value)).retention();
+        Object read = switch (key) {
+            case "FLOTTILA_RETENTION_MAX_AGE" -> c.maxAge();
+            case "FLOTTILA_RETENTION_INTERVAL" -> c.interval();
+            default -> c.batch();
+        };
+        assertEquals(key.endsWith("BATCH") ? (Object) Integer.parseInt(value) : Duration.parse(value), read);
+    }
+
+    static Stream<Arguments> retentionRefusals() {
+        return Stream.of(
+                Arguments.of("FLOTTILA_RETENTION_MAX_AGE", "PT59M59.999999999S"),   // a nanosecond below the floor
+                Arguments.of("FLOTTILA_RETENTION_MAX_AGE", "P366DT0.000000001S"),   // a nanosecond above the ceiling
+                Arguments.of("FLOTTILA_RETENTION_MAX_AGE", "PT0S"),
+                Arguments.of("FLOTTILA_RETENTION_MAX_AGE", "-P7D"),
+                Arguments.of("FLOTTILA_RETENTION_MAX_AGE", "7d"),
+                Arguments.of("FLOTTILA_RETENTION_MAX_AGE", "a week"),
+                Arguments.of("FLOTTILA_RETENTION_INTERVAL", "PT59.999999999S"),
+                Arguments.of("FLOTTILA_RETENTION_INTERVAL", "P1DT0.000000001S"),
+                Arguments.of("FLOTTILA_RETENTION_INTERVAL", "PT0S"),
+                Arguments.of("FLOTTILA_RETENTION_INTERVAL", "-PT1H"),
+                Arguments.of("FLOTTILA_RETENTION_INTERVAL", "1h"),
+                Arguments.of("FLOTTILA_RETENTION_BATCH", "0"),
+                Arguments.of("FLOTTILA_RETENTION_BATCH", "10001"),
+                Arguments.of("FLOTTILA_RETENTION_BATCH", "-1"),
+                Arguments.of("FLOTTILA_RETENTION_BATCH", "many"),
+                Arguments.of("FLOTTILA_RETENTION_BATCH", "1.5"),
+                Arguments.of("FLOTTILA_RETENTION_BATCH", "4294967297"));   // beyond an int: not wrapped into range
+    }
+
+    /**
+     * Out of range or unreadable: refused at start naming the key; the refusal prints the key and its bounds, never the value —
+     * not as written, not as parsed ("0" is the one value not checked: every refusal of the batch says 10000).
+     */
+    @ParameterizedTest(name = "{0}={1}")
+    @MethodSource("retentionRefusals")
+    void retentionRefusalsNameTheKeyAndShowNoValue(String key, String value) {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(minimal(), key, value)), key + "=" + value);
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains(key), "the refusal names " + key + ": " + message);
+        if (!value.equals("0")) assertFalse(message.contains(value), "the refusal does not print the value '" + value + "': " + message);
+        try {
+            String parsed = Duration.parse(value).toString();
+            assertFalse(message.contains(parsed), "nor the value as parsed, " + parsed + ": " + message);
+        } catch (java.time.format.DateTimeParseException notADuration) {
+            assertTrue(notADuration.getMessage().contains("Text cannot be parsed"), "fixture: not a duration: " + notADuration.getMessage());
+        }
     }
 }

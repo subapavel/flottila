@@ -2,6 +2,7 @@ package io.flottila.runtime.node;
 
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
+import io.flottila.runtime.store.Retention;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -33,10 +34,14 @@ import java.util.regex.Pattern;
  * @param secrets what the endpoints' {@code secret://} references resolve to (D-081): the {@code FLOTTILA_SECRET_*} variables
  * @param leases the {@code FLOTTILA_VALKEY_URI} and {@code FLOTTILA_POLLER_LEASE_*} keys: where and how long a polling consumer's
  *               lease is held (D-083)
+ * @param retention the retention job's keys (D-088): {@code FLOTTILA_RETENTION_MAX_AGE}, ISO-8601, PT1H to P366D (P7D): rows
+ *                  older are deleted; {@code FLOTTILA_RETENTION_INTERVAL}, ISO-8601, PT1M to P1D (PT1H): from the end of a run to
+ *                  the start of the next; {@code FLOTTILA_RETENTION_BATCH}, 1 to 10000 (1000): the rows one batch scans
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
-                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases) {
+                         long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
+                         Retention.Config retention) {
 
     /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
     public NodeConfig {
@@ -44,10 +49,17 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(s3, "s3");
         Objects.requireNonNull(secrets, "secrets");
         Objects.requireNonNull(leases, "leases");
+        Objects.requireNonNull(retention, "retention");
         if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+    }
+
+    /** A node with the retention job's defaults (P7D, PT1H, 1000 rows), as {@link #from} reads them by default. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, RETENTION_DEFAULTS);
     }
 
     /** A node whose poller leases are held in its memory with the default ttl and renew period, as {@link #from} reads it by default. */
@@ -71,7 +83,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
-        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases);
+        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -195,6 +207,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Pattern DB = Pattern.compile("/\\d+");
     /** The longest ttl and renew period of a poller lease. */
     private static final Duration LEASE_MAX = Duration.ofMinutes(10);
+    /** The retention job's defaults (D-088): a max age of P7D, an interval of PT1H, batches of 1000 rows. */
+    private static final Retention.Config RETENTION_DEFAULTS = new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000);
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
@@ -224,7 +238,45 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
-                archives, s3, Secrets.fromEnv(env), leases(env));
+                archives, s3, Secrets.fromEnv(env), leases(env), retention(env));
+    }
+
+    /** The {@code FLOTTILA_RETENTION_*} keys; a refusal names the key and its bounds, never the value. */
+    private static Retention.Config retention(Map<String, String> env) {
+        Duration maxAge = retentionSpan(env, "FLOTTILA_RETENTION_MAX_AGE", RETENTION_DEFAULTS.maxAge(), "PT1H", "P366D");
+        Duration interval = retentionSpan(env, "FLOTTILA_RETENTION_INTERVAL", RETENTION_DEFAULTS.interval(), "PT1M", "P1D");
+        String raw = env.get("FLOTTILA_RETENTION_BATCH");
+        int batch = RETENTION_DEFAULTS.batch();
+        if (raw != null) {
+            try {
+                batch = Integer.parseInt(raw);
+            } catch (NumberFormatException notAnInt) {
+                batch = 0;   // refused below: a word, a fraction or beyond an int is no batch either
+            }
+            if (batch < 1 || batch > 10_000) {
+                throw new IllegalArgumentException("FLOTTILA_RETENTION_BATCH must be a whole number of rows from 1 to 10000 (the value is not shown)");
+            }
+        }
+        return new Retention.Config(maxAge, interval, batch);
+    }
+
+    /**
+     * {@code key}'s ISO-8601 duration within [{@code min}, {@code max}] (ISO-8601 both), {@code fallback} when the key is absent; a
+     * refusal names the key and the bounds, never the value.
+     */
+    private static Duration retentionSpan(Map<String, String> env, String key, Duration fallback, String min, String max) {
+        String raw = env.get(key);
+        if (raw == null) return fallback;
+        Duration value;
+        try {
+            value = Duration.parse(raw);
+        } catch (DateTimeParseException notIso) {
+            value = Duration.ZERO;   // refused below, as any value out of range
+        }
+        if (value.compareTo(Duration.parse(min)) < 0 || value.compareTo(Duration.parse(max)) > 0) {
+            throw new IllegalArgumentException(key + " must be an ISO-8601 duration from " + min + " to " + max + " (the value is not shown)");
+        }
+        return value;
     }
 
     /** The {@code FLOTTILA_VALKEY_URI} and {@code FLOTTILA_POLLER_LEASE_*} keys. */

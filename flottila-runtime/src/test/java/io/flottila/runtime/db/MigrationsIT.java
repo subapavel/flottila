@@ -31,7 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P0-08: a fresh Postgres → migrated → the milestone-1 tables and indexes exist; migrating again changes nothing.
- * FIX-5: every case runs on a database of its own, created on the class's container before the case.
+ * FIX-5: every case runs on a database of its own, created on the class's container before the case. P2-07: V10 indexes the
+ * retention job's scans by age.
  */
 // the order that failed in P1-04 (FIX-5): the fresh case leaves V3 applied, the empty location then sees it as current and throws nothing
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -89,8 +90,8 @@ class MigrationsIT {
         Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "work");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(9, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b)");
-        assertEquals("9", first.schemaVersion());
+        assertEquals(10, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b), V10 (retention indexes, P2-07)");
+        assertEquals("10", first.schemaVersion());
         assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "processed_ids", "work"), tables());
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
@@ -103,10 +104,10 @@ class MigrationsIT {
         assertTrue(String.valueOf(defs.get("work_held")).endsWith("(seq) WHERE (held_at IS NOT NULL)"), "V5: held work rows, partial: " + defs.get("work_held"));
         assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V9");
-        assertEquals("9", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V10");
+        assertEquals("10", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(9, applied);
+        assertEquals(10, applied);
     }
 
     /**
@@ -168,8 +169,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(5, r.migrationsExecuted(), "V5, V6, V7, V8 and V9 on top of V4");
-        assertEquals("9", r.schemaVersion());
+        assertEquals(6, r.migrationsExecuted(), "V5, V6, V7, V8, V9 and V10 on top of V4");
+        assertEquals("10", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));
@@ -196,7 +197,7 @@ class MigrationsIT {
     @Order(5)
     void v7DeploymentsHoldsTheRecordAndNoBytes() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("9", r.schemaVersion());
+        assertEquals("10", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'deployments' order by ordinal_position").execute().await()) {
@@ -232,7 +233,7 @@ class MigrationsIT {
     @Order(6)
     void v8ProcessedIdsHoldsOneRowPerScopeAndKeyHash() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("9", r.schemaVersion());
+        assertEquals("10", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'processed_ids' order by ordinal_position").execute().await()) {
@@ -277,8 +278,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(1, r.migrationsExecuted(), "V9 on top of V8");
-        assertEquals("9", r.schemaVersion());
+        assertEquals(2, r.migrationsExecuted(), "V9 and V10 on top of V8");
+        assertEquals("10", r.schemaVersion());
         Row column = pool.query("select column_default, is_nullable, data_type from information_schema.columns where table_schema = 'public' "
                 + "and table_name = 'deployments' and column_name = 'dependencies'").execute().await().iterator().next();
         assertEquals("'[]'::jsonb", column.getString(0), "V9: the default");
@@ -292,6 +293,31 @@ class MigrationsIT {
         assertEquals(List.of("after []", "before []"), rows, "the row written before V9 and one naming no dependencies: an empty array each");
         assertEquals("23502", sqlState(() -> pool.preparedQuery("insert into deployments(package, version, revision, archive_sha256, deployed_at, dependencies) "
                 + "values ('nulled', '1.0.0', null, '" + sha + "', now(), null)").execute().await()), "an explicit null is refused: not null");
+    }
+
+    /**
+     * V10 (D-088, P2-07): the retention job's keyset scans by age — one plain btree index per table it deletes from, led by
+     * {@code created_at} and ending in the table's key, so a batch's cursor {@code (created_at, key) > (...)} is one index range.
+     */
+    @Test
+    @Order(8)
+    void v10IndexesTheRetentionScansByAge() {
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        assertEquals("10", r.schemaVersion());
+        java.util.Map<String, String> expected = java.util.Map.of(
+                "messages", " USING btree (created_at, id, step)",
+                "bodies", " USING btree (created_at, message_id, step, part)",
+                "processed_ids", " USING btree (created_at, scope, key_hash)");
+        for (java.util.Map.Entry<String, String> e : expected.entrySet()) {
+            List<String> defs = new java.util.ArrayList<>();
+            for (Row row : pool.preparedQuery("select indexdef from pg_indexes where schemaname = 'public' and tablename = $1")
+                    .execute(io.vertx.sqlclient.Tuple.of(e.getKey())).await()) {
+                defs.add(row.getString(0));
+            }
+            List<String> byAge = defs.stream().filter(d -> d.endsWith(e.getValue())).toList();
+            assertEquals(1, byAge.size(), "V10: one index on " + e.getKey() + e.getValue() + ", among " + defs);
+            assertTrue(byAge.get(0).startsWith("CREATE INDEX "), "a plain index, not unique, not partial: " + byAge.get(0));
+        }
     }
 
     /** The SQLSTATE of the Postgres error {@code call} fails with. */

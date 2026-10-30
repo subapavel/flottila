@@ -946,3 +946,12 @@ Checks: verify -Pit VERIFIED_PASS 2509/0/0/0 (target/P2-02b-verify4.log); covera
 Review: FAIL r1 (`..` relative path into a dependency dir; prune ignored dirs running recipes read; non-UTF-8 lock escaped 422; §9/D-052 not amended), PASS r2. Raised FIX-102, FIX-103; rows P2-02b2, P2-02c, CONSIDER-7, CONSIDER-8.
 D-054 data: class C (designer ×1, test-author ×1 (resumed at the turn limit) + 4 fix packets, implementer ×1 + 4 fixes, reviewer ×2); review rounds 2.
 Next: P2-07 [C], then GATE [G].
+
+## 2026-10-30 — P2-07 retention job (D-088) — done, review PASS
+Deviation: F-20 (retention by age in keyset batches, not by partition; accepted limits named in §7).
+Test first: runtime store/RetentionIT (26 cases), RetentionConfigTest, NodeConfigTest retention keys, NodeIT wiring, PgBodiesIT race case; schema "10" pins (red: target/P2-07-red-compile.log, -red-head*.log, -red2..4.log).
+Change: store.Retention (start/runOnce/totals/close; advisory try-lock per batch; phase 1 whole messages + keys, phase 2 bodies incl. orphans, phase 3 processed_ids; cutoff from the injected clock; on a virtual thread, never overlapping); V10 created_at indexes; NodeConfig FLOTTILA_RETENTION_* (P7D/PT1H/1000, bounded); Node wiring; PgBodies.insert one statement (FIX-35 closed).
+Checks: verify -Pit VERIFIED_PASS 2567/0 (target/P2-07-verify2.log) + final RetentionIT 26/0 (target/P2-07-retention-final.log); coverage no decrease; mutants target/P2-07-mutants.log (M-d survives, accepted); bench c=8 one run each: WAL/msg +17 %, bodies B/msg +27 % (structural), latency confounded (bench/RESULTS.md).
+Review: FAIL r1 (a message split across batch transactions; a parked replay could lose its body; no final verify), FAIL r2 (§7 sentence without the accepted exceptions; no green evidence for the final case), PASS r3. Raised FIX-104; rows P2-07b, P2-07c.
+D-054 data: class C (designer ×1, test-author ×1 (resumed at the turn limit) + 4 fix packets, implementer ×1 + 1 fix, verifier ×1, reviewer ×3); review rounds 3.
+Next: GATE [G].

@@ -564,6 +564,138 @@ class PgBodiesIT {
         assertEquals(ours, await(s.read(equal)), "read from Postgres");
     }
 
+    /**
+     * FIX-35 closed (D-088): the retention job deletes from {@code bodies} (P2-07), so an insert that finds the key's row and then
+     * compares in a second statement can see the row vanish in between and call the same bytes "other bytes". The insert is one
+     * statement — the conflicting row is compared, and kept, under the row lock of that statement — so a delete staged before a
+     * second statement finds none to precede: the answer is "these bytes", and the row is there holding them.
+     */
+    @Test
+    void aRowDeletedBetweenConflictAndCompareIsNoOtherBytes() {
+        other.query("alter table bodies disable trigger bodies_never_deleted").execute().await();   // this case plays the retention job
+        BlobKey k = BlobKey.body("m-aged", 0);
+        Buffer bytes = bytes(700, 5);
+        other.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part(), bytes)).await();   // a rerun's key: the row holds the same bytes
+        DeletingClient client = new DeletingClient(pool, other, k);
+
+        boolean these = await(new PgBodies(pool, BOUND).insert(client, k, bytes.copy()));
+
+        assertTrue(these, "the key's row held these bytes when the insert met it: never 'other bytes' (statements " + client.statements
+                + ", row deleted before a second: " + client.deleted + ")");
+        assertEquals(1, client.statements.size(), "one statement on the caller's client, nothing a delete can come between: " + client.statements);
+        assertEquals(Optional.of(bytes), row(k), "the row is there with the bytes");
+        assertEquals(1, rows());
+    }
+
+    /**
+     * The same bytes inserted again over a row the retention job ages (D-088): the row keeps its {@code created_at} — a rerun's
+     * persist does not make an old body young — and its bytes.
+     */
+    @Test
+    void theSameBytesAgainKeepTheRowsAge() {
+        BlobKey k = BlobKey.body("m-old", 2);
+        Buffer bytes = bytes(300, 8);
+        other.preparedQuery("insert into bodies(message_id, step, part, bytes, created_at) values ($1, $2, $3, $4, timestamptz '2026-01-02 03:04:05.678901+00')")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part(), bytes)).await();
+
+        assertTrue(await(new PgBodies(pool, BOUND).insert(pool, k, bytes.copy())), "the same bytes: true");
+
+        Row r = other.preparedQuery("select created_at, bytes from bodies where message_id = $1 and step = $2 and part = $3")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().iterator().next();
+        assertEquals(Instant.parse("2026-01-02T03:04:05.678901Z"), r.getOffsetDateTime(0).toInstant(), "created_at unchanged");
+        assertEquals(bytes, r.getBuffer(1));
+        assertEquals(1, rows());
+    }
+
+    /**
+     * {@link PgBodies#insert}'s client: the case's pool, recording every statement executed through it; before the second, another
+     * session deletes the key's row and commits (the retention job's delete between the conflict and the compare).
+     */
+    static final class DeletingClient implements io.vertx.sqlclient.SqlClient {
+        final Pool delegate;
+        final Pool deleter;
+        final BlobKey key;
+        final List<String> statements = new CopyOnWriteArrayList<>();
+        volatile boolean deleted;
+
+        DeletingClient(Pool delegate, Pool deleter, BlobKey key) {
+            this.delegate = delegate;
+            this.deleter = deleter;
+            this.key = key;
+        }
+
+        /** Records {@code sql}; before the second statement, deletes the key's row on the other session. */
+        Future<Void> before(String sql) {
+            statements.add(sql);
+            if (statements.size() != 2) return Future.succeededFuture();
+            return deleter.preparedQuery("delete from bodies where message_id = $1 and step = $2 and part = $3")
+                    .execute(Tuple.of(key.messageId(), key.step(), key.part())).map(rows -> {
+                        deleted = rows.rowCount() == 1;
+                        return null;
+                    });
+        }
+
+        @Override
+        public io.vertx.sqlclient.Query<io.vertx.sqlclient.RowSet<Row>> query(String sql) {
+            return new Counted(sql, delegate.preparedQuery(sql), delegate.query(sql));
+        }
+
+        @Override
+        public io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> preparedQuery(String sql) {
+            return new Counted(sql, delegate.preparedQuery(sql), delegate.query(sql));
+        }
+
+        @Override
+        public io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> preparedQuery(String sql, io.vertx.sqlclient.PrepareOptions options) {
+            return new Counted(sql, delegate.preparedQuery(sql, options), delegate.query(sql));
+        }
+
+        @Override
+        public Future<Void> close() {
+            throw new UnsupportedOperationException("the case closes the pool, never the insert");
+        }
+
+        /** One statement of the client: executed after {@link #before}. */
+        final class Counted implements io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> {
+            final String sql;
+            final io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> prepared;
+            final io.vertx.sqlclient.Query<io.vertx.sqlclient.RowSet<Row>> simple;
+
+            Counted(String sql, io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> prepared,
+                    io.vertx.sqlclient.Query<io.vertx.sqlclient.RowSet<Row>> simple) {
+                this.sql = sql;
+                this.prepared = prepared;
+                this.simple = simple;
+            }
+
+            @Override
+            public Future<io.vertx.sqlclient.RowSet<Row>> execute(Tuple tuple) {
+                return before(sql).compose(v -> prepared.execute(tuple));
+            }
+
+            @Override
+            public Future<io.vertx.sqlclient.RowSet<Row>> executeBatch(List<Tuple> batch) {
+                return before(sql).compose(v -> prepared.executeBatch(batch));
+            }
+
+            @Override
+            public Future<io.vertx.sqlclient.RowSet<Row>> execute() {
+                return before(sql).compose(v -> simple.execute());
+            }
+
+            @Override
+            public <R> io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.SqlResult<R>> collecting(java.util.stream.Collector<Row, ?, R> collector) {
+                throw new UnsupportedOperationException("not a statement PgBodies.insert runs: " + sql);
+            }
+
+            @Override
+            public <U> io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<U>> mapping(java.util.function.Function<Row, U> mapper) {
+                throw new UnsupportedOperationException("not a statement PgBodies.insert runs: " + sql);
+            }
+        }
+    }
+
     @Test
     void aBodyKeyWithNoIndexEntryAndNoRowIs404NoLongerStoredThroughTheAdminRoute() {
         TieredBlobStore s = store(dir, 1L << 16, pool);

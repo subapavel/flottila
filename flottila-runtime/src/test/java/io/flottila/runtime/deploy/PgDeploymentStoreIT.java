@@ -80,7 +80,7 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
 
             Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-            assertEquals("9", r.schemaVersion(), "V9 applied over the V8 database");
+            assertEquals("10", r.schemaVersion(), "V9 (and V10, P2-07) applied over the V8 database");
             assertEquals(List.of(new DeploymentRecord("shop", "1.0.0", Optional.of("r1"), SHA_1, Instant.parse("2026-10-27T09:30:00.123456Z"), List.of())),
                     new PgDeploymentStore(own).list().await(), "the row written before V9 lists with no pins");
         } finally {

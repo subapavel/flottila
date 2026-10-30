@@ -1,5 +1,28 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## P2-07 — the retention indexes (V10) on the durable ACK path — cloud VM, 4 vCPU
+
+Date: 2026-10-30. Commits: before = a39a3ed (HEAD, a git worktree, schema 9) and after = a39a3ed + the P2-07 working tree
+(schema 10: `messages(created_at, id, step)`, `bodies(created_at, message_id, step, part)`, `processed_ids(created_at,
+scope, key_hash)`, D-088), the same `NodeBenchMain` source on both sides. Machine: this VM: kernel 6.18.44-fc-v185, 4 ×
+"Intel(R) Xeon(R) Processor @ 2.80GHz" (model hidden), MemTotal 16 477 352 kB, /dev/vda virtio-blk ext4 (write_cache "write
+back"), pg_wal on /dev/vda. Java 25.0.5, native PostgreSQL 16.15 (Ubuntu), default configuration; both records read from
+pg_settings `synchronous_commit` on, `commit_delay` 0, `commit_siblings` 5, `wal_sync_method` fdatasync, `fsync` on,
+`full_page_writes` on; node Pg pool 16. Harness: `NodeBenchMain --scenario ack --concurrency 8` (HTTP ingress → 202 after
+the durable save, the worker and the passthrough → echo partner beside), 20 000 messages after 1 000 warm-up, body 132 B, a
+fresh database per side, one run each, back to back (load average 1.08 when before started, 4.05 when after started: the
+before run's tail). WAL B/msg = `pg_current_wal_lsn` delta of the cluster / messages; bodies B/msg =
+`pg_total_relation_size('bodies')` delta (its indexes included) / messages. The measured cost of the V10 indexes is the bytes:
+WAL per message +17 % (3 007 → 3 522 B) and bodies per message +27 % (668 → 846 B, the new bodies index) are structural — every
+insert writes one more index entry, whatever the load. The latency and throughput differences (p50 +0.30 ms, p99 +2.2 ms, msg/s
+−3 %) are confounded: one run per side, the after run starting at load 4.05, so they are not attributed to the indexes. No
+verdict threshold. Raw JSON and the run manifest: the session's target/P2-07-raw/.
+
+| config | c | p50 ms | p95 ms | p99 ms | max ms | msg/s | commits/msg | WAL syncs/msg | WAL B/msg | bodies B/msg |
+|---|---|---|---|---|---|---|---|---|---|---|
+| before (a39a3ed, V9) | 8 | 11.37 | 22.51 | 30.68 | 90.0 | 643 | 10.83 | 3.13 | 3 007 | 668 |
+| after (P2-07, V10) | 8 | 11.67 | 23.50 | 32.85 | 69.3 | 621 | 10.82 | 3.09 | 3 522 | 846 |
+
 ## P2-08 — durable ACK, one transaction — cloud VM, 4 vCPU
 
 Date: 2026-10-29. Commits: before = e2c8c53 (parent of P2-08a, a git worktree) and after = 1d5d507 (P2-08a, the ingress
