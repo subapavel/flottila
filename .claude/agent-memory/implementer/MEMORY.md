@@ -15,7 +15,7 @@
 - flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
 - A new Flyway migration bumps the schema version in MigrationsIT, PgMessageStoreIT:69 (@BeforeAll) and BenchMainIT:36; packets miss PgMessageStoreIT (P1-08b, P1-09c3a).
-- Mutant loop: `-Dsurefire.timeout=150` kills a mutant hanging a stop()/await; never kill a loop without its cp + touch + cmp restore.
+- Mutant loop: `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`.
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.

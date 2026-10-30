@@ -10,6 +10,7 @@ import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
 import io.flottila.core.flow.FlowBuilder;
 import io.flottila.core.flow.FlowDefinition;
+import io.flottila.core.flow.Replay;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -202,13 +203,50 @@ class RecorderTest {
         Envelope in2 = in();
         unrecorded.apply(in2);
         assertEquals(List.of(), store.timeline(in2.id()).await());
-        Meter unknown = Meter.system();
-        assertTrue(unknown.cpuNanos() >= Snapshot.CPU_UNKNOWN, "the system meter answers a reading or -1");
         Envelope in3 = in();
         new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, () -> Snapshot.CPU_UNKNOWN)
                 .build(FlowDefinition.from(flow(null, List.of(step("mark", "a")))), java.nio.file.Path.of("")).apply(in3);
         assertEquals(Snapshot.CPU_UNKNOWN, store.timeline(in3.id()).await().get(1).cpuNanos(), "a meter without a reading records unknown, not a difference of -1s");
         assertSame(RecordingPolicy.DEFAULT, FlowDefinition.from(flow(null, List.of(step("mark", "a")))).recording());
+    }
+
+    /** A meter that always has a reading: what step 0 records cannot come from a meter without one. */
+    static final Meter READING = () -> 5_000;
+
+    static List<String> names(List<Snapshot> t) { return t.stream().map(Snapshot::stepName).toList(); }
+
+    @Test
+    void startSnapshotRecordsCpuUnknownEvenWithAReadingMeter() {
+        Envelope in = in();
+        new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, READING)
+                .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a")))), java.nio.file.Path.of("")).apply(in);
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of("ingress", "a"), names(t));
+        assertEquals(Snapshot.CPU_UNKNOWN, t.get(0).cpuNanos(), "step 0 times nothing: its CPU is unknown, never 0 (F-21)");
+        assertEquals(0, t.get(0).wallNanos(), "and its wall stays 0");
+        assertEquals(0, t.get(1).cpuNanos(), "the same meter still measures step a: two equal readings, a difference of 0, not unknown");
+
+        Envelope arrived = in();
+        Snapshot ingress = new Recorder(store, rt.clock(), READING, Map.of()).startSnapshot(arrived, Recorder.INGRESS, RecordingPolicy.DEFAULT);
+        assertEquals(Snapshot.CPU_UNKNOWN, ingress.cpuNanos(), "the row an at-least-once delivery saves before its ACK: CPU unknown, never 0");
+        assertEquals(0, ingress.wallNanos());
+        assertEquals(0, ingress.step());
+    }
+
+    @Test
+    void replayStartRowRecordsCpuUnknown() {
+        FlowDefinition def = FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a"), step("mark", "b"))));
+        Envelope in = in();
+        new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, READING)
+                .build(def, java.nio.file.Path.of("")).apply(in);
+        Envelope again = new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, READING)
+                .replay(def, java.nio.file.Path.of("")).from(in.id(), 2);
+        List<Snapshot> t = store.timeline(again.id()).await();
+        assertEquals(List.of(Replay.REPLAY_INPUT, "b"), names(t), "the replay's timeline starts with the input it was given");
+        assertEquals(1, t.get(0).step());
+        assertEquals(Snapshot.CPU_UNKNOWN, t.get(0).cpuNanos(), "the replay's start row times nothing: its CPU is unknown, never 0 (F-21)");
+        assertEquals(0, t.get(0).wallNanos(), "and its wall stays 0");
+        assertEquals(0, t.get(1).cpuNanos(), "step b is measured by the same meter: a reading, not unknown");
     }
 
     /** Throws a checked {@code failure} from code that declares none, as Vert.x {@code Future.await()} does when interrupted. */

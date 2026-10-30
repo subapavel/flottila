@@ -119,9 +119,33 @@ class InvoiceSyncRecordingIT {
         assertTrue(!t.get(4).bodyHash().equals(in.body().hash()), "the xslt step wrote a new body");
         assertEquals(Optional.of(io.flottila.api.BlobKey.body(in.id(), 4)), t.get(4).bodyKey());
         assertEquals(out.body().hash(), t.get(5).bodyHash(), "the partner's reply is step 5's body");
-        assertTrue(t.stream().allMatch(s -> s.wallNanos() >= 0 && s.cpuNanos() >= Snapshot.CPU_UNKNOWN));
         assertEquals(List.of(in.id()), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items(), "GATE check 6: found by business key");
         assertEquals(0, store.failed());
+    }
+
+    @Test
+    void everyDeployedStepHasCpuUnknown() throws InterruptedException {
+        Envelope in = rt.ingress("invoice-sync", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), invoice);
+        io.flottila.api.Pipeline p = pipeline(flowDoc);
+        java.util.concurrent.atomic.AtomicReference<Object> outcome = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicBoolean onVirtual = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread run = Thread.ofVirtual().start(() -> {   // as deployed: one virtual thread per message
+            onVirtual.set(Thread.currentThread().isVirtual());
+            try { outcome.set(p.apply(in)); } catch (Throwable x) { outcome.set(x); }
+        });
+        assertTrue(run.join(Duration.ofSeconds(30)), "the message's thread did not end within 30 s, at " + java.util.Arrays.toString(run.getStackTrace()));
+        assertTrue(onVirtual.get(), "fixture: the pipeline ran on a virtual thread");
+        assertTrue(outcome.get() instanceof Envelope, "the invoice went through: " + outcome.get());
+        store.flush().await();
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of(0, 1, 2, 3, 4, 5), t.stream().map(Snapshot::step).toList());
+        assertEquals(java.util.Collections.nCopies(6, Snapshot.CPU_UNKNOWN), t.stream().map(Snapshot::cpuNanos).toList(),
+                "F-21: every step on the message's virtual thread records CPU unknown, step 0 included: never 0, never a reading");
+        List<Long> stored = new java.util.ArrayList<>();
+        for (io.vertx.sqlclient.Row r : pool.preparedQuery("select cpu_ns from messages where id = $1 order by step").execute(io.vertx.sqlclient.Tuple.of(in.id())).await()) {
+            stored.add(r.getLong("cpu_ns"));
+        }
+        assertEquals(java.util.Collections.nCopies(6, (Long) null), stored, "in Postgres every row's cpu_ns is NULL");
     }
 
     @Test

@@ -414,6 +414,24 @@ class PgIntakeIT {
     }
 
     @Test
+    void theIngressRowStoresNullCpu() {
+        Envelope in = arrive("m-cpu", bytes(300, 9));
+        Meter reading = () -> 5_000L;   // a meter with a reading: the ingress row still measured nothing (F-21)
+        Snapshot ingress = new Recorder(new InMemoryMessageStore(), Clock.fixed(Instant.parse("2026-10-29T10:00:00.123456Z"), ZoneOffset.UTC), reading, Map.of())
+                .startSnapshot(in, Recorder.INGRESS, RecordingPolicy.DEFAULT);
+
+        Future<String> saved = settled(intake.save(in, ingress, FLOW, "K-1", null, () -> false));
+        assertTrue(saved.succeeded(), "saved: " + saved.cause());
+        List<String> rows = new ArrayList<>();
+        for (Row r : other.preparedQuery("select step, wall_ns, cpu_ns from messages where id = $1").execute(Tuple.of("m-cpu")).await()) {
+            rows.add("step " + r.getInteger("step") + " wall_ns " + r.getLong("wall_ns") + " cpu_ns " + r.getLong("cpu_ns"));
+        }
+        assertEquals(List.of("step 0 wall_ns 0 cpu_ns null"), rows, "the at-least-once ingress row: cpu_ns NULL, no reading and never 0 (F-21)");
+        List<Snapshot> timeline = settled(messages.timeline("m-cpu")).result();
+        assertEquals(Snapshot.CPU_UNKNOWN, timeline.get(0).cpuNanos(), "and it reads back as unknown");
+    }
+
+    @Test
     void aBodyAlreadyDurableIsNotInsertedAgain() {
         Buffer bytes = bytes(300, 6);
         Envelope in = arrive("m-durable", bytes);

@@ -3,6 +3,7 @@ package io.flottila.runtime.admin;
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
+import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
 import io.flottila.api.Hasher;
 import io.flottila.api.Headers;
@@ -15,7 +16,10 @@ import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.MessageStore;
+import io.flottila.core.record.Meter;
 import io.flottila.core.record.Page;
+import io.flottila.core.record.Recorder;
+import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.InMemoryBlobStore;
 import io.vertx.core.Context;
@@ -36,7 +40,9 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -275,6 +281,24 @@ class AdminServerTest {
         JsonObject body = validate.getJsonObject("body");
         assertEquals(false, body.getBoolean("kept"), "metadata only: hash and size, no bytes kept");
         assertEquals(xml.length(), body.getLong("size"));
+    }
+
+    @Test
+    void timelineStepZeroCpuIsNull() throws Exception {
+        start();
+        Body arrived = blobs.write(BlobKey.body("m-0", 0), xml, MAX).await();
+        Envelope e = Envelope.ingress("m-0", "invoice-sync", Headers.empty().with("content-type", "application/xml"), arrived);
+        Meter reading = () -> 5_000L;   // a meter with a reading: step 0 still measured nothing (F-21)
+        Recorder recorder = new Recorder(messages, Clock.fixed(T0, ZoneOffset.UTC), reading, Map.of("flow", "invoice-sync@0.1.0"));
+        messages.record(recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT)).await();
+        JsonArray steps = admin("/admin/messages/m-0").json().getJsonArray("steps");
+        assertEquals(1, steps.size(), steps.encode());
+        JsonObject ingress = steps.getJsonObject(0);
+        assertEquals(0, ingress.getInteger("step"));
+        assertEquals("ingress", ingress.getString("name"));
+        assertTrue(ingress.containsKey("cpuNanos"), "present: " + ingress);
+        assertNull(ingress.getValue("cpuNanos"), "step 0 measured nothing: null, never 0 (F-21): " + ingress);
+        assertEquals(0L, ingress.getLong("wallNanos"), "its wall time stays 0");
     }
 
     @Test

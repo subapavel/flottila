@@ -968,3 +968,16 @@ node → up → POST 200 from the echo with no echo restart, stop echo → /heal
 Review: PASS r1 (non-blocking: root echo depends_on condition and netns healthcheck content unpinned).
 D-054 data: class A (test-author ×1, implementer ×1, reviewer ×1); review rounds 1.
 Next: FIX-106 [C] (red tests in flight), FIX-107 [B], then GATE re-run.
+
+## 2026-10-30 — FIX-106 CPU per step unknown on virtual threads (F-21) — done, review PASS
+Deviation: F-21 (ThreadMXBean answers -1 on a virtual thread on JDK 25; per-step CPU and GATE check 6 cannot hold as written).
+Test first: core RecorderTest ×2, MeterTest tripwire (green on HEAD by design), runtime InvoiceSyncRecordingIT, PgIntakeIT,
+AdminServerTest (red: target/FIX-106-red-core.log, -red-runtime.log); three always-true `>= CPU_UNKNOWN` assertions removed.
+Change: Recorder.startSnapshot records CPU unknown (step 0 no longer a fake 0); Meter javadoc names F-21. Probes (FFM carrier clock,
+JFR CPUTimeSample) in F-21 and target/F-21-probes.log; ARCHITECTURE §4/§7/§8 + changelog; D-044 amended; ISSUE-3 (check 6 wording,
+GATE blocked on it once the rest holds); FIX-108 (JFR sampling, post-gate).
+Checks: verify -Pit VERIFIED_PASS (target/FIX-106-verify.log; r1 core+runtime -am 2029/0, target/FIX-106-xml.log); coverage no
+decrease; PIT Recorder/Meter 36/36; mutants M1–M5, R1, R2 killed (target/FIX-106-mutants*.log).
+Review: FAIL r1 (ISSUE-3 default read check 6 as met; §7 CPU clauses unflagged; Meter javadoc quoted deleted text), PASS r2.
+D-054 data: class C (designer ×1, test-author ×1, implementer ×1 + 1 fix, reviewer ×2); review rounds 2.
+Next: FIX-107 [B] (implementer in flight), then GATE re-run.
