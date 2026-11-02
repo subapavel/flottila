@@ -1,0 +1,116 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 4fc0f63..6539f94 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -44,6 +44,12 @@ class-C design work to the designer, a fresh read-only agent with a small contex
+ what comes back. Fable 5.1 runs only as the gate-reviewer. `CLAUDE_CODE_EFFORT_LEVEL` must not be
+ set in the environment: it overrides every per-call effort.
+ 
++Parallel worker sessions (D-092, pilot): the architect may brief up to two worker sessions, each
++in its own cloud container on its own branch, and acts as their coordinator (`docs/WORKFLOW.md`
++§11). A worker session's main session is the task architect for its one row, follows
++`agent/WORKER.md` and never touches the ledger or `main`. The limits below hold inside every
++session.
++
+ Concurrency: at most two subagents at once beside the architect, and exactly one writer — while
+ the test-author or the implementer owns a task, nobody else edits source, the ledger files or git;
+ the scout, verifier and reviewer never write. No nested delegation, no agent teams, no scheduled
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 10d23ab..ef01e37 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -69,6 +69,8 @@ build; this file holds the rules that keep the code and the way of working align
+ 
+ ## Working rules
+ 
++- In a worker session (D-092) the main session is the task architect for one row and follows
++  `agent/WORKER.md`: no ledger edits, no push to `main`, one commit on its own branch.
+ - The main session is the architect (`AGENTS.md`): it writes the acceptance spec and the task
+   packet, approves the red tests, decides, commits. It never edits `src/`, never writes a test,
+   never runs Maven — the test-author, implementer, verifier and reviewer do. The architect runs on
+diff --git a/agent/WORKER.md b/agent/WORKER.md
+new file mode 100644
+index 0000000..30b72a2
+--- /dev/null
++++ b/agent/WORKER.md
+@@ -0,0 +1,27 @@
++# Worker session brief (D-092)
++
++You are a worker session on Flottila. The coordinator (the architect of the main campaign) gave
++you one BACKLOG row, a base commit and the allowed paths. For this one row you are the task
++architect: read `CLAUDE.md`, `AGENTS.md`, `docs/WORKFLOW.md` §1 and §11 and the row, then run the
++loop of §1 steps 3–6 for it — acceptance spec, test-author (red observed), your approval of the
++tests, task packet, implementer, verifier (`mvn -B -ntp verify -Pit`, coverage check against the
++base commit, scoped PIT), reviewer — with the model and effort of the row's class.
++
++Done for you is: review PASS, then **one** commit on branch `claude/w-<task id>` (Conventional
++Commits, the row's `Task:` trailer, the trailers of `docs/WORKFLOW.md` §3), pushed with
++`git push -u origin claude/w-<task id>`, and the handback file `agent/handbacks/<task id>.md`
++inside that commit.
++
++The handback file, at most 40 lines: the PROGRESS entry as you would write it (format in
++`docs/WORKFLOW.md` §2, commit hash left as `<integrate>`), every evidence line with its log path,
++the reviewer's verdict and reasons, the coverage figures of the touched modules, and any
++**proposed** D-line or finding as text without a number (the coordinator numbers it).
++
++Leave to the coordinator, always: `agent/BACKLOG.md`, `agent/HANDOFF.md`, `agent/NOTES.md`,
++`PROGRESS.md`, `docs/DECISIONS.md`, `docs/findings/`, `ci/coverage-baseline.json`, `main`, and
++every path outside the allowed paths. A change the row needs outside them is a stop: write it in
++the handback as blocked, with the path and why, commit what is reviewed, push, and end.
++
++Never ask the owner; never start another session. If the row turns out harder than its class (a
++second review FAIL, a design question the row did not settle), stop with a partial handback marked
++`raise to C` — the coordinator takes the row back into its serial loop.
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index f4c764e..460933b 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -98,3 +98,4 @@ ARCHITECTURE.md changelog instead.
+ | D-089 | 2026-10-30 | Package dependencies off-node (P2-02b2, D-087), draft — review at hand-over (the `lock` command line and the `--deps` option). Candidates are the immediate subfolders of `--deps <dir>` (default: the package folder's parent, the package itself excluded) whose `package.yaml` loads and whose files can be read (FIX-110: each candidate's content is hashed at the first lookup, so a large folder of packages costs one walk per run); a candidate matches by name and version; two matches with different content are refused. `flottila lock <dir>` writes `package.lock` with the direct dependencies sorted by name and each candidate's `Package.content` digest, writing nothing when an entry has no candidate. `flottila validate` and `flottila test` resolve the closure the same way (missing candidate, lock drift naming the entry and both digests, name cycle → exit 1, no absolute path) and hand it to their in-process node, so the node's own D-087 checks run unchanged: validate passes the closure as held folders to `Deployments.validate(name, dir, held)` for that one call (nothing deployed, stored or started, any `--env`; FIX-110), and `flottila test` deploys it leaves-first into each case's ci node, on mocks, before the package. | One source of candidates for lock, validate and test keeps the off-node answer equal to what a node holding the same folders would say; sibling folders are the layout a repo of packages already has, so no registry or extra config is needed before the control plane exists. |
+ | D-090 | 2026-10-30 | Network-namespace holder in both compose files (FIX-105, D-085), draft — review at hand-over (compose topology). A `netns` service (the pinned `eclipse-temurin:25.0.4.1_1-jre-noble`, `sleep infinity`) owns the network namespace, publishes the node's ports on 127.0.0.1 and carries the network alias `flottila`; the node and the partner echo join it with `network_mode: "service:netns"` and publish nothing. | GATE run 1: the echo joined the node's namespace and lost it when the node was killed (`Connection refused localhost:8090` until an echo restart). A holder that never restarts keeps `localhost:8090` valid for the demo endpoints and every `http://flottila:8081` reference unchanged, with no new image or licence. |
+ | D-091 | 2026-11-02 | Workflow skills adapted from mattpocock/skills (WF-1, owner request), applied by the owner from `agent/patches/pocock-skills-claude.patch` (§10 D). Six pieces: `/retro` (session retrospective, ranked environment changes, accepted ones become a patch, a D-line or a BACKLOG row); `writing-for-agents` (the only model-invoked one; rules for CLAUDE.md, AGENTS.md, agent definitions and skills); `diagnosing-bugs` (read by path from implementer.md and test-author.md on FIX rows: tight red loop, 3–5 falsifiable hypotheses, tagged debug lines, regression test at a correct seam); `/grill-handover` (owner-attended rounds over the hand-over drafts, recommended answer per question, async questionnaire variant); the `tdd` anti-patterns *implementation-coupled* and *tautological* in the reviewer checklist, the test-author self-check and §5; a PreToolUse hook `block-history-rewrite.sh` (force push, reset --hard, clean -f, branch -D, checkout/restore of the whole tree, rebase, amend, filter-branch, stash drop; a plain push passes; 31-case self-test). Not taken: implement, implement-spec, to-spec, to-tickets, triage, wayfinder, pr, handoff, tdd's seam confirmation with the user. MIT, attributed in NOTICE. | The full plugin conflicts with D-007/D-048 (parallel and nested subagents), BACKLOG as the tracker, HANDOFF in git and "never ask the owner" during autonomous runs, and its 27 descriptions would load into every architect turn; vendored copies cost one description (writing-for-agents) and change only by a reviewed patch. "Never force-push or rewrite history" becomes a deterministic check instead of prose. |
++| D-092 | 2026-11-02 | Parallel worker sessions, pilot (WF-2), **proposed — owner decides** (cost, WORKFLOW §6), amending the concurrency lines of D-007 / D-048: the architect becomes the coordinator of up to two worker sessions (`create_session`, each its own container and branch `claude/w-<task>`), each running one class-A/B row on disjoint files through the full role chain under `agent/WORKER.md`; the coordinator integrates one worker at a time (cherry-pick on `main`, re-verify with `-Pit` and coverage, ledger, one commit per task) and alone writes the ledger, the coverage baseline and `main`. Class C, gate rows, red-main fixes, bench measurements and shared files (`pom.xml` modules, ArchUnit, `.claude/`, the baseline, `flottila-api` types) stay serial. One `send_later` check-in per worker is the only scheduled wake-up. Pilot = four integrated tasks, measured in `bench/RESULTS.md` §D-092 pilot (wall time, review rounds, tokens where reported) against comparable single-session tasks; continue only if tasks per day ≥ 1.6×, review PASS rate and red-`main` count not worse, tokens per task ≤ 1.3×. | The binding limit is one tree and 4 vCPU per session, not the subagent count: worktrees in one session would share the CPU that one `verify -Pit` already fills, while a second container adds CPU. About seventy open FIX rows include many independent class-A/B rows. The cost is tokens roughly linear in sessions and the coordinator's serial review and integration, which caps the useful count at two or three; the pilot measures it before the rule changes for good. |
+diff --git a/docs/WORKFLOW.md b/docs/WORKFLOW.md
+index bc6b2f7..9af5934 100644
+--- a/docs/WORKFLOW.md
++++ b/docs/WORKFLOW.md
+@@ -202,3 +202,39 @@ carried an owner message. The rules below remove most of them.
+   running hand-back file from its first turn, so a turn-limit stop loses nothing.
+ - **Stop-hook messages are advisory.** A reminder that arrives while a task is mid-flight is
+   declined in one line; it never triggers a commit of an unreviewed tree.
++
++## 11. Parallel worker sessions (D-092, pilot)
++
++Two worker sessions run tasks beside the architect, each in its own cloud container (own CPU, own
++tree); the architect becomes the **coordinator**: it selects, briefs, integrates and keeps the
++ledger. Inside every session the limits of `AGENTS.md` still hold (two subagents, one writer).
++
++1. **Select.** Up to two `ready` rows that can run side by side: class A or B; disjoint modules and
++   files (compare the allowed paths of the packets); no bench or gate measurement; no change to
++   `pom.xml` module structure, ArchUnit rules, `.claude/`, `ci/coverage-baseline.json` or a
++   public type in `flottila-api`; neither depends on the other. Class C, gate rows, FIX rows for a
++   red `main` and anything touching a shared file stay in the coordinator's own serial loop.
++2. **Brief.** One `create_session` per row, prompt = `agent/WORKER.md` + the row id + the base
++   commit + the allowed paths, `outcome_branch: claude/w-<task id>`. The row is set `in-progress`
++   with `worker: claude/w-<task id>` in the coordinator's next ledger commit.
++3. **Wait without polling.** The coordinator does integration or ledger work meanwhile; with
++   nothing else to do it sets one `send_later` check-in per worker at the expected duration (the
++   only scheduled wake-up D-092 allows) and reads `get_session` (`status_bucket`) then — never a
++   sleep, never a loop. A worker that is `failed`, or idle without its handback, is read through
++   `list_events` and either resumed with one `send_message` or its row returned to `ready`.
++4. **Integrate, one worker at a time.** Fetch the branch; cherry-pick its commit onto current
++   `main`; the verifier runs `mvn -B -ntp verify -Pit` and the coverage check on the rebased tree;
++   the reviewer reads the rebased diff only where the rebase changed it (else the worker's review
++   PASS stands). Then the coordinator writes the coverage baseline (`--write`), the PROGRESS entry
++   from the handback, the BACKLOG status and HANDOFF, assigns the numbers of any proposed D-line
++   or finding, and commits **one** commit per task to `main` with the usual trailers. A conflict
++   or a red re-verify goes back to the worker by `send_message` with the failing section, or the
++   row returns to `ready` with the reason.
++5. **Measure the pilot.** Per task: wall time from brief to integration, review rounds, and tokens
++   where the session reports them (else `ENVIRONMENT_BLOCKED`), against the last comparable
++   single-session tasks in PROGRESS. The numbers go to `bench/RESULTS.md` §D-092 pilot. The pilot
++   ends after four integrated tasks; the owner decides on continuing from that section.
++
++A worker never edits the ledger (`agent/BACKLOG.md`, `agent/HANDOFF.md`, `agent/NOTES.md`,
++`PROGRESS.md`, `docs/DECISIONS.md`, `docs/findings/`), `ci/coverage-baseline.json` or `main`;
++it proposes, the coordinator records.

@@ -7,7 +7,7 @@ next exact action: wait for owner; then FIX-108 [C] (JFR CPU, ISSUE-3 opt. 2); t
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
-owner to apply: agent/patches/pocock-skills-claude.patch (WF-1, D-091: skills + history-rewrite hook)
+owner to apply: agent/patches/pocock-skills-claude.patch (WF-1, D-091); decide: agent/patches/parallel-sessions.patch (WF-2, D-092)
 open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 answered 2026-10-30 (option 2)
 open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..64, 68,71..75,77..84,86..104,108,109; CONSIDER-1..3,5..9 (owner)
 pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..21
