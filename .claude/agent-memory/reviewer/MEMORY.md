@@ -17,8 +17,7 @@
 - TieredBlobStore: test a pause after the first one, and the attach and failure paths of the re-check (FIX-10).
 - A new entry into a guarded section (start()'s re-issue into pauseAndReCheck) breaks "one at a time" unless every
   setter checks the flag; check each setter, not the packet's invariant (FIX-10 round 3).
-- A hold before a call takes effect cannot pin "undone by a later call"; the hold must come after the effect
-  (FIX-10 round 3, the again path).
+- A hold before a call takes effect cannot pin "undone by a later call"; the hold must come after the effect (FIX-10 r3).
 - "Decided" is not "resumed": a guard reading a flag the sink cleared (`!sourcePaused`) does not mean the sink's resume has taken effect (FIX-10 round 4, TieredBlobStore:285).
 - A resume in flight (the hand-over) plus a second party's resume decided during it makes two resumes for one pause. Check every resumer against every resume that may still be in flight.
 - Read JaCoCo's missed branches in new choreography code before the mutants. An uncovered branch there has twice hidden the bug (D-050).
@@ -118,3 +117,4 @@
 - Compose/infra (P2-05): a negative requirement ("present, not wired") needs its own assertion; a CI timing metric must measure something non-trivial; Compose one-shots (P2-06): a deviation from the packet (ed25519 → RSA) leaves the tests pinning the packet's key — mutate the key the stack uses; a secret-adjacent mount is pinned by exact mount-list equality plus a name ban, never by file mode
 - Pins/deps (P2-02b): every keep decision (prune, refusal cleanup) needs record pins + running-recipe reads + FAILED records' pins, one case each; a holder-of-target lookup on a relative path lets `..` into another root; a checked IOException reading a user file skips IAE→422
 - Retention (P2-07): keyset deletes by row split a multi-row entity across batches — check every "whole"/"only"/"never" claim against batch boundaries and against persist→reference protocols (Parking, Replay); an accepted limit goes beside the § sentence; the verifier writes cmp restores into the mutant's log
+- Command guardrails (WF-1, three FAIL rounds, hook dropped): a hook reading shell text fails on each new syntax class (`#` comments, heredocs, quotes, wrappers), on value-option sets (`mvn -e`), on `-am` pulling the root parent, and on dir/glob pathspecs; a condition mutation misses `or` arms — demand a case per arm. Prefer removing the cause (files out of `target/`) to guarding commands.

@@ -1,4 +1,14 @@
 
+## 2026-11-02 — WF-1 workflow skills from mattpocock/skills (D-091) — done, review PASS — Deviation: hook dropped
+Test first: none (docs and agent workflow only). Owner request ("aplikuj patch WF-1"); applied and committed by the architect, an owner-sanctioned §10 D exception. Context compacted.
+Change: .claude/skills/ (retro, writing-for-agents, diagnosing-bugs, grill-handover, MIT licence); reviewer, test-author and implementer definitions (tdd anti-patterns, FIX-row pointer); memories; NOTICE.
+Hook: the command guard (force push, history rewrite, discarded work, reactor-root `mvn clean`) failed review r1 (regex), r2 (blanking parser) and r3 (lexer: `#` comments, `mvn -e`, `-pl X -am`, dir/glob pathspecs, untested `or` arms); owner dropped it; kept unapplied in agent/patches/guard-commands-hook.patch.
+Found: `clean` with `-am` cleans the root `target/` too; the root cause of the P1-08 r2 loss goes to FIX-111 [A] (agent files out of target/).
+Checks: no production code; licence header matches upstream (curl raw LICENSE, observed); `git apply --check` of the hook patch clean.
+Review: FAIL r1–r3 (hook), FAIL r4 (retro still named a PreToolUse hook; NOTICE missed the tracked patches), FAIL r5 (FIX-111 grep could not come back empty), PASS r6.
+D-054 data: class B (raised from A after r2); reviewer ×6; review rounds 6.
+Next: owner decides; then FIX-111 [A].
+
 ## 2026-10-29 — P2-08b durable ACK measurement after one transaction — done, review PASS — Deviation: F-18
 Context compacted (once, mid-review); re-verified with git status / git log -3.
 Test first: bench NodeBenchAckCommitsIT, BenchRunScriptTest, NodeBenchMainIT settings case (red: target/P2-08b-red.log); implementer-authored BenchRunScriptCommitDelayTest, NodeBenchAckCountersIT approved after the fact.

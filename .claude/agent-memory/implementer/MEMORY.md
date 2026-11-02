@@ -1,8 +1,9 @@
 # implementer — durable facts (seeded from agent/HANDOFF.md at the role split; prune when you add)
 ## Build
 - NEVER `mvn clean` at the reactor root: it deletes the root `target/` (packets, specs, red logs, diffs; gitignored,
-  unrecoverable; P1-08 r2 lost them). Clean per module only: `mvn -q clean -pl <module>`.
-- Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
+  unrecoverable; P1-08 r2 lost them). Clean per module only: `mvn -q clean -pl <module>`, never with `-am` (it pulls
+  the root parent into the reactor and cleans the root `target/` too).
+- Always `-am` (never together with `clean`): `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
   components need only `-pl flottila-api,flottila-testkit,<module>`.
 - Full check: `mvn -B -ntp -q verify -Pit > target/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
   Postgres (`sudo pg_ctlcluster 16 main start`), often up already (`docker info`, `pg_lsclusters`).

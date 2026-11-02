@@ -55,6 +55,13 @@ costs a full review round — `docs/WORKFLOW.md` "Turn economy"). Answer each in
    XML, never from a `-q` log.
 10. Never read `target/surefire-reports` while the verifier runs mutants in the same tree, and
     never edit the tree while a Maven of another agent runs.
+11. No **tautological** expectation: every expected value comes from a literal, a worked example
+    or the spec, never from the production helper or formula under test. No
+    **implementation-coupled** case: observe through the public seam the spec names, not a
+    private method, an internal collaborator or a table the interface already exposes.
+12. A FIX row's regression test reproduces the reported symptom at a seam deep enough to carry
+    the real bug pattern (`.claude/skills/diagnosing-bugs/SKILL.md` Phase 5); a shallow seam is
+    named in the handback, not papered over.
 
 Memory (`.claude/agent-memory/test-author/MEMORY.md`): durable facts only — a testkit helper that
 exists, a fixture location, a framework quirk. Never the spec, never task state. Under 120 lines.

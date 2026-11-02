@@ -17,12 +17,21 @@ acceptance, expected behaviour, checks to run, constraints, the ARCHITECTURE sec
 the change. Work only inside the allowed paths. You do not see the architect's conversation; the
 packet is your whole context, so ask for a missing fact in the handback instead of guessing it.
 
+On a FIX row, a reported bug or a performance regression, read
+`.claude/skills/diagnosing-bugs/SKILL.md` before touching code and follow its phases: a tight
+red-capable loop first — the packet's red test is that loop and the regression test; a deeper seam
+goes into the handback for the test-author — then 3–5 falsifiable hypotheses (listed in the
+handback), tagged debug lines removed before hand-back, and the hypothesis that proved correct
+stated for the commit body.
+
 Rules:
 - Red first is already done: the packet's tests define "done". Make them green with the smallest
   correct change. Do not modify those tests except to fix a wrong expectation, and then say so in
   the handback with the reason.
 - Add further tests when you find behaviour the packet's tests do not cover; they must assert
-  observable behaviour, never mock the class under test, never use sleeps, never be `@Disabled`.
+  observable behaviour, never mock the class under test, never use sleeps, never be `@Disabled`,
+  never be **tautological** (expected values from a literal, a worked example or the spec) or
+  **implementation-coupled** (observe through the public seam, not a private method or a table).
 - Library APIs: use the Context7 MCP tools first; if unavailable or ambiguous, run
   `javap -cp <jar>` on the resolved jar under `~/.m2`. Never guess an API.
 - Build output goes to a file: `mvn -B -ntp -q ... > target/<task>-<check>.log 2>&1`; read only

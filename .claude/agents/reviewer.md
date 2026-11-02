@@ -18,6 +18,14 @@ Answer, for every test in the diff: **would this test fail if the code were wron
 checklist:
 
 1. asserts observable behaviour — not mock internals, not "no exception thrown";
+   **implementation-coupled** is a FAIL: it mocks an internal collaborator, tests a private
+   method, or verifies through a side channel (a SQL query, a field read) where the public
+   interface would show the behaviour — the tell is a test that breaks on a refactor that keeps
+   behaviour;
+   **tautological** is a FAIL: the expected value is recomputed the way the code computes it
+   (the same formula, a digest built by the same helper, a constant asserted against itself), so
+   it can never disagree with the code; expected values come from an independent source — a
+   literal, a worked example, the spec;
 2. kills mutants in the touched classes (a test that kills none is fake);
 3. no `@Disabled`, no skipped cases, no swallowed exceptions, no `assertTrue(true)`, no sleeps;
 4. mocks only at the SPI / store boundary, never of the class under test;
