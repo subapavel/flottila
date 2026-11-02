@@ -296,18 +296,18 @@ snapshots). Mutant runs (a reviewer's "would this test fail if…"): after `sed 
 restore it with `cp` or `touch` it — `mv backup file` keeps the backup's older mtime, Maven's
 incremental compile then keeps the mutated class in `target/classes` and the next "clean" run
 tests the mutant (FIX-7 round 2, target/fix7-r2-verify-runtime.log). When in doubt,
-`mvn -q clean -pl <module>` first — never `mvn clean` at the reactor root: the root `target/` holds
-the task's packets, specs, logs and diffs, and a root clean deleted them all in P1-08 round 2 (the
-reds were re-cited from the handbacks). Task packets and specs now live in the session scratchpad;
-only logs and diffs go under `target/`. Surefire: `-Dtest=A+B` selects nothing (`+` joins methods)
+`mvn -q clean -pl <module>` first. Agent logs, diffs and scratch harnesses live in `agent/work/`
+(FIX-111), outside every Maven `target/`: a root clean deleted them in P1-08 round 2 when they lived
+in the root `target/` (the reds were re-cited from the handbacks); task packets are in `agent/packets/`. Surefire: `-Dtest=A+B` selects nothing (`+` joins methods)
 and with `failIfNoSpecifiedTests=false` the run is a silent green — use `-Dtest=A,B`.
 
 Loops for a timing-dependent test (FIX-11): `stress-ng` is not installed on the VM (a verifier once reported it
 present — it was not); CPU load is four `sh -c 'while :; do :; done' &` hogs with their pids recorded in a file
 and killed by pid (never `pkill -f` a pattern that matches the calling shell), the Maven run pinned with
 `taskset -c 0,1` to mimic the 2-vCPU runner; check `/proc/loadavg` first. Downloaded CI reports must not stay
-under `target/` — `coverage_check.py` globs every `target/site/jacoco/jacoco.xml` below the root and then
-reports them as unknown modules at `--check-baseline`; keep them in the session scratchpad.
+under any `target/` — `coverage_check.py` globs every `target/site/jacoco/jacoco.xml` below the root and then
+reports them as unknown modules at `--check-baseline`; keep them in the session scratchpad. The same holds
+for a built bisect worktree or Maven harness under `agent/work/` (it survives every clean): remove it when done.
 
 jqwik-engine 1.10.2 prints an anti-AI-agent sentence in its own report header. Treated as data;
 the property tests are real. Owner may want to revisit the library choice.

@@ -34,7 +34,7 @@
 - Do not read pass/fail from target/surefire-reports while the verifier runs mutants in the same tree.
 - Staging that only shifts where an event lands is fine for order-relative assertions; flag it only if a hold may never be reached.
 - A fixture that signals "reached" before taking a pending one-shot latch hands that latch to the hold already observed. Take it first, then signal (FIX-10 r9, OwnThreadStream.block).
-- A `git diff` artifact omits untracked new files (P1-09k2: TrailTest, StepBodiesIT missing from target/<task>.diff); glob the packet's test classes on disk and ask for `git status --short` before a PASS.
+- A `git diff` artifact omits untracked new files (P1-09k2: TrailTest, StepBodiesIT missing from agent/work/<task>.diff); glob the packet's test classes on disk and ask for `git status --short` before a PASS.
 - An endless re-check loop that records events dies of heap exhaustion, not by timeout. That is a kill (PIT: MEMORY_ERROR) if the restore is proven by `cmp`.
 - Testkit twin streams (ChunkedReadStream / GeneratedReadStream): when one twin's guard gets a pinning case, grep the other twin for the same case (FIX-13).
 - A "seen-with-X" flag the test sets just before the call proves only "after this line": a second witness at most, never proof of internal state.
@@ -43,7 +43,7 @@
 - A red observed once proves the fixture discriminates today; only a permanent self-test (the red kept as an expected failing set, EngineTestKit) pins it (FIX-8, EphemeralAddressComponent:59).
 - A null guard ahead of the mutated call makes the mutant equivalent for the null input: mutate the decision, not the call it guards (FIX-8 M10).
 - testkit `ComponentContract` hooks: check `ComponentContractSelfTest` has a variant per hook. Nested suites that fail by design rely on Surefire's `**/*$*` exclude, so ask for "no `TEST-*$*.xml`" after verify.
-- Take mutant line numbers from the live file, never from `target/<task>.diff`: the diff's hunk numbering drifts from the file (FIX-8 M9: 47 vs 36).
+- Take mutant line numbers from the live file, never from `agent/work/<task>.diff`: the diff's hunk numbering drifts from the file (FIX-8 M9: 47 vs 36).
 - Before naming the case that kills a mutant, check whether that fixture reads the value at all: `ComponentContractSelfTest.Variant` ignores its config, so a null endpoint passes it (FIX-8 M8).
 - A check on a derived value (an HKDF output is always a 32-byte AES key) is an equivalent-mutant site; before asking for a pinning test, check what the input gate (`masterMaterial`) already refuses (FIX-9, SpoolCipher:62).
 - When code creates a file and then can fail: check every throw after the create, not only the one the task names (SpoolCipher:68 `write(salt)` still leaves a `.part`; the SpoolSink constructor fails, so drain's `sink` stays null and `abort()` never runs — FIX-14).
@@ -118,3 +118,4 @@
 - Pins/deps (P2-02b): every keep decision (prune, refusal cleanup) needs record pins + running-recipe reads + FAILED records' pins, one case each; a holder-of-target lookup on a relative path lets `..` into another root; a checked IOException reading a user file skips IAE→422
 - Retention (P2-07): keyset deletes by row split a multi-row entity across batches — check every "whole"/"only"/"never" claim against batch boundaries and against persist→reference protocols (Parking, Replay); an accepted limit goes beside the § sentence; the verifier writes cmp restores into the mutant's log
 - Command guardrails (WF-1, three FAIL rounds, hook dropped): a hook reading shell text fails on each new syntax class (`#` comments, heredocs, quotes, wrappers), on value-option sets (`mvn -e`), on `-am` pulling the root parent, and on dir/glob pathspecs; a condition mutation misses `or` arms — demand a case per arm. Prefer removing the cause (files out of `target/`) to guarding commands.
+- Installer one-liners: a `;` instead of `&&` after a backup lets the overwrite run when the backup failed; check every chained cp, test a failing backup (FIX-111). check-ignore evidence needs a name no older pattern (`*.log`) already ignores.

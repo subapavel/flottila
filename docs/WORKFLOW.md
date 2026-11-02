@@ -24,11 +24,11 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
    section; the coordinator reads the log tail itself and records each check with its evidence
    state.
 6. Review by the reviewer agent (Opus 5.5, effort by the row's class), the diff handed over as
-   `target/<task>.diff`. When the diff goes to the reviewer the architect runs
-   `touch target/.batch-in-review` (§10). `FAIL` reopens the task at step 4; a second `FAIL`
+   `agent/work/<task>.diff`. When the diff goes to the reviewer the architect runs
+   `touch agent/work/.batch-in-review` (§10). `FAIL` reopens the task at step 4; a second `FAIL`
    reopens it at step 3 with a rewritten spec, drafted by the designer, and raises the row's class
    if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.1) instead.
-7. Commit and push to `main`: `rm -f target/.batch-in-review && git commit …`. Append the
+7. Commit and push to `main`: `rm -f agent/work/.batch-in-review && git commit …`. Append the
    PROGRESS entry, rewrite HANDOFF, set the row to `done`. These three edits go in the same
    commit as the code.
 8. Continue with the next `ready` row without asking. Stop only on `GATE_MET` (docs/GATE.md
@@ -178,8 +178,8 @@ carried an owner message. The rules below remove most of them.
   agent (a message to an existing agent) always runs in the background; a fresh agent can run in
   the foreground. The same holds for `gh run watch`: foreground, with a timeout.
 - **B. Mark the batch under review.** When a batch leaves for the reviewer the architect runs
-  `touch target/.batch-in-review` (`target/` is gitignored). The commit command removes it:
-  `rm -f target/.batch-in-review && git commit …`.
+  `touch agent/work/.batch-in-review` (`agent/work/` is gitignored, outside every Maven `target/`, FIX-111). The commit command removes it:
+  `rm -f agent/work/.batch-in-review && git commit …`.
 - **C. Gated Stop hook.** `.claude/hooks/stop-hook-git-check.gated.sh` fronts the environment's
   `~/.claude/stop-hook-git-check.sh`: silent while the marker exists, silent on a `claude/*` branch
   with a dirty tree (the normal mid-batch state there; Flottila works on `main`, so that gate is
@@ -189,9 +189,11 @@ carried an owner message. The rules below remove most of them.
   `~/.claude/stop-hook-git-check.sh` at every container start (its mtime equals the boot time), so
   the swap happens in a `startup|resume` SessionStart hook in `.claude/settings.json`: it backs the
   original up to `~/.claude/stop-hook-git-check.orig.sh` and copies the gated script over it,
-  idempotently (it checks for the marker string `batch-in-review`). The agent never installs or
+  idempotently (it checks for the marker path `agent/work/.batch-in-review`; a gated copy with an
+  older marker path is replaced without overwriting the backup). The agent never installs or
   edits its own hooks: changes under `.claude/` are committed by the owner from a patch the agent
-  leaves in `agent/patches/`.
+  leaves in `agent/patches/`, unless the owner explicitly asks the architect to apply one (recorded
+  in the D-line, e.g. D-091, D-093).
 - **E. Author self-check list.** `implementer.md` and `test-author.md` carry a "Self-check before
   every hand-back" list that mirrors the reviewer's memory, so the author checks what the reviewer
   will check. When a review FAIL repeats a lesson, the lesson goes into the reviewer memory and the

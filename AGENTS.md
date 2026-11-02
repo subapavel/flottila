@@ -81,20 +81,20 @@ sections that govern the change; checks to run; known constraints. Only the cont
 ## Handback (any agent → architect)
 
 At most 40 lines. Changed paths; one line per path group; commands executed with observed results
-(evidence word, counts line, log path under `target/`); remaining uncertainty; proposed next
+(evidence word, counts line, log path under `agent/work/`); remaining uncertainty; proposed next
 action. A failure quotes the failing test and at most 10 lines of its section. A turn cap returns
 partial work, marked as such. No agent updates BACKLOG / HANDOFF / PROGRESS or commits to `main`.
 
 ## Verification (verifier, after every handback and before every commit)
 
-The architect names the commands; the verifier runs them with output under `target/<task>-*.log`
+The architect names the commands; the verifier runs them with output under `agent/work/<task>-*.log`
 and reports exit codes, counts lines and the failing section. The architect reads the tail of the
 log itself for the evidence line it writes into PROGRESS.md — a claim without observed output
 behind it is not evidence.
 
 ## Review (reviewer, after every task)
 
-Input from the architect, by path: the diff (`target/<task>.diff`), the test output, and the scoped
+Input from the architect, by path: the diff (`agent/work/<task>.diff`), the test output, and the scoped
 PIT mutation report for the classes the task touched. The reviewer answers, per test, "would this
 fail if the code were wrong?" against the checklist in `docs/WORKFLOW.md` and returns `PASS` or
 `FAIL — <reason>`, every blocking reason in one round. The architect records the verdict in

@@ -3,13 +3,14 @@
 # environment manager at every container start). Silent while a batch is under review, skips the
 # dirty-tree reminder on claude/* branches, throttles the rest, then runs the original hook.
 # Installed by the startup|resume SessionStart hook in .claude/settings.json (committed by the
-# owner); the agent never installs or edits its own hooks. See docs/WORKFLOW.md "Turn economy".
+# owner, or by the architect at the owner's explicit request, D-093); the agent never installs
+# or edits its own hooks on its own. See docs/WORKFLOW.md "Turn economy".
 input=$(cat)
 [[ "$(printf '%s' "$input" | jq -r '.stop_hook_active' 2>/dev/null)" == "true" ]] && exit 0
 top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
 # Gate 1 — a batch is under review (architect: touch on hand-off to the reviewer, rm in the commit command).
-[[ -f "$top/target/.batch-in-review" ]] && exit 0
+[[ -f "$top/agent/work/.batch-in-review" ]] && exit 0
 
 # Gate 2 — autonomous branch with a dirty tree: the normal mid-batch state. A clean tree falls through.
 if [[ "$(git branch --show-current 2>/dev/null)" == claude/* ]]; then

@@ -27,15 +27,15 @@ Ways to build one, roughly in this order:
 
 1. A failing JUnit test at the seam that reaches the bug (unit, contract suite, `-Pit`
    Testcontainers), run as `mvn -B -ntp -q -pl <module> -Dtest=<Class>#<method> … >
-   target/<task>-loop.log 2>&1`.
+   agent/work/<task>-loop.log 2>&1`.
 2. The CLI (`flottila validate|test`) on a fixture package, diffing output against a known-good one.
 3. An HTTP request against a node of the compose stack (NOTES "Build and VM").
 4. Replay of a captured message: the trail already holds every body and step — replay it.
-5. A throwaway harness in `target/` (one component, mocks, a single call).
+5. A throwaway harness in `agent/work/` (one component, mocks, a single call).
 6. A jqwik property loop for "sometimes wrong output".
 7. `git bisect run` over a harness when the bug appeared between two known commits — in a scratch
-   tree (`git worktree add --detach target/bisect <commit>`), never in the shared tree; remove it with
-   `git worktree remove --force target/bisect && git worktree prune` when done.
+   tree (`git worktree add --detach agent/work/bisect <commit>`), never in the shared tree; remove it with
+   `git worktree remove --force agent/work/bisect && git worktree prune` when done.
 8. A differential loop: the same input through two commits or two configurations.
 
 **Tighten** it: faster (one module, one test, no reactor root), sharper (assert the exact
@@ -56,7 +56,7 @@ the exact failure this skill prevents.
 Run the loop; confirm it fails with the **reported** symptom, not a neighbour. Then cut inputs,
 steps, config and data one at a time, re-running after each cut. Done when every remaining element
 is load-bearing: removing any one turns the loop green. The implementer minimises in a throwaway
-copy under `target/`, never in the packet's red test.
+copy under `agent/work/`, never in the packet's red test.
 
 ## Phase 3: Hypothesise
 
@@ -91,5 +91,5 @@ in the handback; the architect decides on a finding (`docs/findings/`).
 - [ ] Phase 1 loop green on the original scenario
 - [ ] The packet's regression test green (or the missing seam named in the handback)
 - [ ] `grep -rn "\[DEBUG-"` over the touched modules returns nothing
-- [ ] Throwaway harnesses under `target/` only, nothing committed
+- [ ] Throwaway harnesses under `agent/work/` only, nothing committed
 - [ ] The hypothesis that proved correct is stated in the handback, for the commit body

@@ -34,7 +34,7 @@ Rules:
   **implementation-coupled** (observe through the public seam, not a private method or a table).
 - Library APIs: use the Context7 MCP tools first; if unavailable or ambiguous, run
   `javap -cp <jar>` on the resolved jar under `~/.m2`. Never guess an API.
-- Build output goes to a file: `mvn -B -ntp -q ... > target/<task>-<check>.log 2>&1`; read only
+- Build output goes to a file: `mvn -B -ntp -q ... > agent/work/<task>-<check>.log 2>&1`; read only
   its tail or the failing section, never the whole log. Run `mvn -B -ntp verify` (and the checks
   the packet names) before handing back. Report observed results only, with the evidence words
   `VERIFIED_PASS`, `EXECUTED_FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED`.

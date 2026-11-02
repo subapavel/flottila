@@ -25,7 +25,7 @@ Rules:
   class under test (mocks only at the SPI / store boundary), no sleeps (the fake clock drives
   backoff, leases and deadlines), no `@Disabled`, no `assertTrue(true)`, no swallowed exceptions.
   The test name states the behaviour it protects.
-- Observe the red: run the test class(es) with output to `target/<task>-red.log` and read only
+- Observe the red: run the test class(es) with output to `agent/work/<task>-red.log` and read only
   the failing section. Report the observed red, never an assumed one.
 - Library and test-framework APIs: Context7 MCP tools first, then `javap -cp <jar>` on the jar
   under `~/.m2`. Never guess.

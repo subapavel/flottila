@@ -1,4 +1,12 @@
 
+## 2026-11-02 — FIX-111 agent work files out of target/ (D-093) — done, review PASS
+Test first: none (docs and workflow only); acceptance observed by the verifier (below).
+Change: `agent/work/` (gitignored, `.gitkeep`) replaces `target/` for logs, diffs, harnesses, bisect worktrees and `.batch-in-review` in CLAUDE.md, AGENTS.md, WORKFLOW §1/§10, NOTES, HANDOFF, verifier/reviewer/implementer/test-author definitions, memories, diagnosing-bugs, the gated Stop hook; SessionStart install checks the new marker path and keeps the original's backup (owner-sanctioned §10 D exception).
+Checks: root `mvn -B -ntp -q clean` exit 0 and `clean -pl flottila-runtime -am` exit 0 leave agent/work/ intact, target/ probe gone (verifier, agent/work/FIX-111-clean-am.log); done-when grep 0 hits; SessionStart install tested in a fake HOME (original → backup; old gated copy → replaced, backup kept; rerun idempotent; failing backup (dangling symlink) → exit 1, hook unchanged); check-ignore -v agent/work/x.diff → .gitignore:12, ls-files agent/work = .gitkeep.
+Review: FAIL r1 (installer `;` could overwrite the original hook after a failed backup; ledger stale), PASS r2. WF-2 patch rebased (D-093 moved its context).
+D-054 data: class A (verifier ×1, reviewer ×2); review rounds 2.
+Next: owner decides; a new session picks up the Stop-hook marker path.
+
 ## 2026-11-02 — WF-1 workflow skills from mattpocock/skills (D-091) — done, review PASS — Deviation: hook dropped
 Test first: none (docs and agent workflow only). Owner request ("aplikuj patch WF-1"); applied and committed by the architect, an owner-sanctioned §10 D exception. Context compacted.
 Change: .claude/skills/ (retro, writing-for-agents, diagnosing-bugs, grill-handover, MIT licence); reviewer, test-author and implementer definitions (tdd anti-patterns, FIX-row pointer); memories; NOTICE.

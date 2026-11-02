@@ -1,11 +1,10 @@
 # implementer — durable facts (seeded from agent/HANDOFF.md at the role split; prune when you add)
 ## Build
-- NEVER `mvn clean` at the reactor root: it deletes the root `target/` (packets, specs, red logs, diffs; gitignored,
-  unrecoverable; P1-08 r2 lost them). Clean per module only: `mvn -q clean -pl <module>`, never with `-am` (it pulls
-  the root parent into the reactor and cleans the root `target/` too).
-- Always `-am` (never together with `clean`): `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
+- Agent files (logs, diffs, scratch harnesses, the batch marker) live in `agent/work/` (FIX-111), outside every Maven
+  `target/`, so any `mvn clean` leaves them; P1-08 r2 lost them when they lived in the root `target/`.
+- Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
   components need only `-pl flottila-api,flottila-testkit,<module>`.
-- Full check: `mvn -B -ntp -q verify -Pit > target/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
+- Full check: `mvn -B -ntp -q verify -Pit > agent/work/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
   Postgres (`sudo pg_ctlcluster 16 main start`), often up already (`docker info`, `pg_lsclusters`).
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
   Scoped PIT: `mvn -pl flottila-api,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage` (floor 80 %).

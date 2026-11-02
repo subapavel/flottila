@@ -8,3 +8,6 @@ bench/out/
 .claude/settings.local.json
 .DS_Store
 __pycache__/
+# agent work files (logs, diffs, scratch harnesses, review marker), FIX-111
+agent/work/*
+!agent/work/.gitkeep

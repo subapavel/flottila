@@ -100,12 +100,12 @@ build; this file holds the rules that keep the code and the way of working align
   unknown and re-read the files; say "context compacted" in one line of the next PROGRESS entry
   and re-verify with `git status` and `git log -3` before changing anything.
 - Keep the context small: `mvn -B -ntp -q` by default; send build and test output to a file under
-  `target/` and read only its tail or the failing section; never cat a file longer than ~200
+  `agent/work/` and read only its tail or the failing section; never cat a file longer than ~200
   lines — use offsets, grep, or the scout; never paste a diff you do not need to reason about.
 - Large reads (surveying modules, finding call sites, reading logs) go to the scout agent; its
   summary comes back, not the files.
 - From a delegated task only the handback (at most 40 lines) enters the architect's context. The
-  diff goes to `target/<task>.diff` for the reviewer; the architect reads `git diff --stat` and
+  diff goes to `agent/work/<task>.diff` for the reviewer; the architect reads `git diff --stat` and
   the test files it approves, never the whole patch.
 - `agent/HANDOFF.md` is at most 20 lines of at most 160 characters: state, last commit, next exact
   action, open issues, pointers. Module notes live in `agent/NOTES.md`, read by section on demand.
@@ -113,7 +113,7 @@ build; this file holds the rules that keep the code and the way of working align
 - One task per context episode: finish, commit, push, rewrite HANDOFF, then start the next. Never
   carry an in-flight task across a compaction without a WIP line in `agent/HANDOFF.md`.
 - Turn economy (`docs/WORKFLOW.md` §10, D-053): wait for a single subagent in the foreground;
-  `touch target/.batch-in-review` when a batch goes to the reviewer and `rm -f` it in the commit
+  `touch agent/work/.batch-in-review` when a batch goes to the reviewer and `rm -f` it in the commit
   command; a Stop-hook reminder mid-task is declined in one line; a fix packet names file, line,
   evidence and sentence, nothing else.
 

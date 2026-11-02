@@ -12,7 +12,7 @@ and report what you observed. You do not edit files, do not fix anything, do not
 make it pass, and do not decide whether a result is acceptable.
 
 Rules:
-- Every command's output goes to `target/<task>-<check>.log` (`> file 2>&1`); read only the tail
+- Every command's output goes to `agent/work/<task>-<check>.log` (`> file 2>&1`); read only the tail
   and the failing section with `tail`, `grep -n`, `sed -n`. Never print a whole log.
 - One run per check unless the architect asks for a repeat by exact command.
 - Evidence words: `VERIFIED_PASS` (exit 0, observed), `EXECUTED_FAIL` (ran, non-zero or a failing

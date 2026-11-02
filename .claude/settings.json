@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "h=~/.claude/stop-hook-git-check.sh; g=\"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/stop-hook-git-check.gated.sh\"; if [ -f \"$h\" ] && [ -f \"$g\" ] && ! grep -q batch-in-review \"$h\"; then cp \"$h\" ~/.claude/stop-hook-git-check.orig.sh && cp \"$g\" \"$h\" && chmod +x \"$h\" && echo 'gated stop hook installed'; fi"
+            "command": "h=~/.claude/stop-hook-git-check.sh; g=\"${CLAUDE_PROJECT_DIR:-$PWD}/.claude/hooks/stop-hook-git-check.gated.sh\"; if [ -f \"$h\" ] && [ -f \"$g\" ] && ! grep -q agent/work/.batch-in-review \"$h\"; then { grep -q batch-in-review \"$h\" || cp \"$h\" ~/.claude/stop-hook-git-check.orig.sh; } && cp \"$g\" \"$h\" && chmod +x \"$h\" && echo 'gated stop hook installed'; fi"
           }
         ]
       },
