@@ -106,6 +106,9 @@ touched classes, and answers per test: *would this test fail if the code were wr
 - kills mutants in the touched classes — a test that kills none is fake by definition;
 - no `@Disabled`, no skipped cases, no swallowed exceptions, no `assertTrue(true)`, no sleeps;
 - mocks only at the SPI / store boundary, never of the class under test;
+- not **implementation-coupled** (a private method, an internal collaborator or a side channel
+  where the public interface shows the behaviour) and not **tautological** (the expected value
+  recomputed the way the code computes it, instead of a literal, a worked example or the spec);
 - the test name states the behaviour it protects;
 - the test was written or approved before the code (the PROGRESS `Test first:` line names it).
 

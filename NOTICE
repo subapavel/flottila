@@ -8,3 +8,8 @@ SSH/SFTP client, licensed under the Apache License, Version 2.0:
   Apache MINA SSHD
   Copyright 2008-2026 The Apache Software Foundation
   This product includes software developed at The Apache Software Foundation (http://www.apache.org/).
+
+The agent workflow files under .claude/skills/ and .claude/hooks/block-history-rewrite.sh are
+adapted from mattpocock/skills (https://github.com/mattpocock/skills), licensed under the MIT
+License (see .claude/skills/LICENSE-mattpocock-skills):
+  Copyright (c) 2026 Matt Pocock
