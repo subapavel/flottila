@@ -3,7 +3,7 @@
 state: GATE_MET; PAUSED by the owner after FIX-110 (2026-10-30, credits) — start nothing until the owner says so
 last commit: `Task: FIX-110` (this commit); b046743 `Task: GATE` (GATE_MET); 7506325 `Task: P2-02b2`; fea6c5c gate commit
 branch: claude/stoic-cannon-2byixj, pushed to main as well (local main synced to origin/main 7506325)
-next exact action: wait for the owner; then FIX-108 [C] (JFR CPU per flow+step, ISSUE-3 opt. 2); then P2-02c, P2-07b, P2-07c, FIX-109, P2-09..12; FIX-68..
+next exact action: wait for the owner; then FIX-108 [C] (JFR CPU, ISSUE-3 opt. 2); then P2-02c, P2-07b, P2-07c, FIX-109, P2-09..13 (13 before FIX-95); FIX-68..
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
