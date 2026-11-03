@@ -136,7 +136,7 @@ later phases. Exception: "fix main".
     period for messages that ended in error** (e.g. async 30 days, errors 90 days); applied as
     ClickHouse TTL by flow and age, older parts to S3 by age, then deleted. Open: what counts as
     "ended in error" (parked or failed at its end, also when later restarted manually?).
-  - **Per step — open, architect's proposal**: no full level per step, only a narrow override on
-    a step's body, `keep` (store it even when the flow's level would not) or `skip` (never store
-    it: sensitive data after a decrypt step, huge intermediates); a skipped body makes replay from
-    the next step impossible and the UI says so.
+  - **Per step: `keep` and `skip` on a step's body only** (owner 2026-11-03), no full level per
+    step: `keep` stores it even when the flow's level would not, `skip` never stores it (sensitive
+    data after a decrypt step, huge intermediates); a skipped body makes replay from the next
+    step impossible and the UI says so.
