@@ -2,6 +2,10 @@
 > 2026-10-17, unchanged. The *Amendments* agreed in Part A on 2026-10-17 come first and override the
 > body where they differ. During autonomous execution the coordinator edits this file on findings
 > (`docs/WORKFLOW.md §7`) and adds a line to the changelog for every change.
+>
+> **Under revision (owner, 2026-11-03):** `docs/CORE-REWORK.md` states the owner's intent for the core
+> (bodies, queue, Kafka, ClickHouse, takeover, work pickup). Where it differs from this file, the brief
+> wins; this file is rewritten to it in CORE-12.
 
 ## Changelog
 
@@ -56,6 +60,7 @@
 | 2026-11-03 | 3.4 | §4 concurrency per target system (requests only, held for the send, maxWait → retryable Nack); §7 Component gains `target` | P2-09a, D-099, F-24 |
 | 2026-11-03 | 3.4 | §4 the target limit is node-wide: one Targets per node from FLOTTILA_TARGET_MAX_CALLS/_MAX_WAIT/_LIMITS, shared across packages and versions; GET /admin/targets | P2-09b, D-099 |
 | 2026-11-03 | 3.4 | §4 MessageContext bound on every deployed pipeline (deadline = run start + `delivery.timeout`, default 30 s); the target wait takes the earlier of maxWait and the deadline; RequestScope per message still open (FIX-117) | FIX-115, D-100, F-24 |
+| 2026-11-03 | 3.4 | Status note: the core is under revision by the owner's brief `docs/CORE-REWORK.md` (priority 1); the brief wins where it differs until CORE-12 rewrites the sections | — |
 
 ## Amendments (Part A, 2026-10-17)
 

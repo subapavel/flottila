@@ -1,10 +1,10 @@
 # Handoff
 
-state: RUNNING (owner RESUME 2026-11-02, "until STOP"); FIX-115 done (review PASS r2); next P2-10 [C]
-last commit: `Task: FIX-115` (this commit); f0d3a03 `Task: P2-09b`; 7fc652c `Task: P2-09a`; b046743 `Task: GATE` (GATE_MET)
-owner 2026-11-03: core rework in discussion (bodies off Pg, body journal, Kafka optional); D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10
-branch: claude/dazzling-gauss-9x7tiw, pushed to main as well
-next exact action: P2-10 [C] designer → spec → red tests; then P2-11, P2-12 [C], P2-13, P2-14 (before FIX-95a/b); FIX-112..114, FIX-116..119
+state: HOLD for CORE-0 (owner 2026-11-03): core rework = priority 1, docs/CORE-REWORK.md; brainstorm open, nothing starts before CORE-0
+last commit: `docs: core rework brief` (this commit); 57c9253 D-102; 8bdf671 D-101; 1b32585 `Task: FIX-115`
+owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
+branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
+next exact action: owner answers CORE-REWORK §5 and approves (CORE-0); then CORE-1, P2-13, P2-14, CORE-2. All other rows wait (BACKLOG §Core rework)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

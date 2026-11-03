@@ -11,6 +11,28 @@ Class (D-054, `AGENTS.md`): every row that is not `done` opens its title with `[
 A new row gets its class when it is written; the architect raises a class with a reason in the
 row, never lowers it mid-task.
 
+## Core rework — priority 1 (owner 2026-11-03, `docs/CORE-REWORK.md`)
+
+Until CORE-GATE is `done`, the coordinator takes only rows of this section, the rows it names (P2-13, P2-14, P2-15, P2-16,
+FIX-95, FIX-95a, FIX-95b) and "fix main". Every other row waits, whatever its status says. Nothing here starts before CORE-0.
+
+| Id | Title | Depends on | Status | Done when | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| CORE-0 | [G] The owner closes the core-rework brainstorm: docs/CORE-REWORK.md §5 answered, the brief approved (draft marker removed) | — | pending (owner) | the owner's approval recorded in a D-line; §5 answers written into the brief | |
+| CORE-1 | [B] Targets and the reference machine (docs/CORE-REWORK.md Q-1, Q-2): the latency and sustained-throughput targets per delivery mode and concurrency, and the machine that decides CORE-GATE (client, partner and Postgres separated or pinned) — GATE.md gets the CORE-GATE conditions | CORE-0 | pending | GATE.md §CORE-GATE lists each target with its measurement; RESULTS names the machine | |
+| CORE-2 | [B] ClickHouse payload compression and size bound (docs/CORE-REWORK.md O-3): payloads 100 KB, 1 MB, 10 MB, 50 MB of the demo XML/JSON kinds, zstd levels; compression ratio, insert and merge memory, single-payload read time; the bound proposed from the numbers | CORE-0 | pending | RESULTS §CORE-2 table with machine, date, configuration and commit; a bound proposed to the owner | |
+| CORE-3 | [C] Body journal design (docs/CORE-REWORK.md §3, O-5..O-7): segment and record format, group fsync, references in Postgres, large bodies, node identity and recovery, node-to-node read, copies, retention by reference, migration; finding + D-line | CORE-1, P2-13, P2-14 | pending | the designer's draft approved by the architect; the owner's points marked draft — review at hand-over | |
+| CORE-4 | [C] Body journal, one copy: BlobStore over the journal as the durable tier, replacing PgBodies on every path (ingress, step bodies, DLQ), CRC-checked recovery after kill -9, reads by reference | CORE-3 | pending | DurableBlobStoreContract green on the journal; kill -9 ledger 2000/2000 with no body in Postgres; recovery test with a torn tail | |
+| CORE-5 | [C] Body journal, copies: replication to a peer per the environment's count, ACK per Q-5, re-replication after a lost node, internal node-to-node read; the single-copy start notice (D-101 (5)) | CORE-4, P2-15 | pending | two-node tests: kill -9 of either node loses no message; a lost node's segments regain their copies; P2-10-style interleavings once the simulator exists | |
+| CORE-6 | [C] Intake rework: the body leaves the transaction (journal first), the transaction holds record + work item only, group commit of concurrent saves (FIX-95a), fewer round trips (FIX-95b), pool sized by measurement; D-082's all-or-none and D-084's dedupe kept | CORE-4, P2-13 | pending | the FIX-95a and FIX-95b acceptance; P2-13 table: xact/msg, WAL syncs/msg and round trips/msg fall; RESULTS row | |
+| CORE-7 | [C] Batched completion of work items (no delete per message on the hot path; the designer picks: batched delete, a done marker swept later, or partitions) with D-101's fence kept | P2-16 | pending | completion statements/msg fall in the P2-13 table; ledger and lease tests unchanged | |
+| CORE-8 | [C] Step bodies and monitoring rows off the hot path: batched into the journal and the trail, the pipeline never waits for them, nothing dropped silently (a bounded queue that fills is an alert) | CORE-4 | pending | sync overhead and ACK p99 measured with `keep` against metadata-only; no trail row without its durable body | |
+| CORE-9 | [B] Kafka out of the core (docs/CORE-REWORK.md O-1): no core path depends on Kafka; compose keeps Kafka under an optional profile; `queue: kafka` and the /xi door listed as the add-on | CORE-0 | pending | ArchUnit or a test shows no core module needs a Kafka client; compose starts without Kafka; ARCHITECTURE §2/§3/§7/§8 edited (CORE-12) | |
+| CORE-10 | [C] ClickHouse ingest per the owner's Q-3 answer, queried through pg_clickhouse; bodies leave the journal once ClickHouse holds them | CORE-2, CORE-8 | pending | an end-to-end test: a message's history and payload found through Postgres after its journal segment is gone | |
+| CORE-11 | [B] Migration off `bodies`: existing rows moved to the journal or ClickHouse, the table and PgBodies dropped, retention adjusted | CORE-4, CORE-10 | pending | a migration test from the last V-schema; no code reads `bodies` | |
+| CORE-12 | [B] ARCHITECTURE rewritten to docs/CORE-REWORK.md: §2, §3, §4, §5, §7, §8 and the amendments, each change with a changelog line and a finding | CORE-3 | pending | no ARCHITECTURE sentence contradicts the brief; the brief's draft status closed | |
+| CORE-GATE | [G] The core meets the CORE-1 targets on the reference machine: GATE.md §CORE-GATE conditions observed in CI or on the named machine, numbers in bench/RESULTS.md | CORE-1..CORE-12, P2-13..P2-16, FIX-95 | pending | every CORE-GATE condition met with evidence; then the other rows resume | |
+
 ## Phase 0 — scaffolding, imports, spikes (ARCHITECTURE §13, PROTOTYPE-VS-ARCHITECTURE §5)
 
 | Id | Title | Depends on | Status | Done when | Evidence |
