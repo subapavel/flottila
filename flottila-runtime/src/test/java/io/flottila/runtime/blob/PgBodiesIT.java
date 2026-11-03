@@ -732,6 +732,106 @@ class PgBodiesIT {
         }
     }
 
+    /**
+     * D-096: a persisted key whose row the retention job deleted reads as never written, for the store that persisted it (its
+     * local copy went with the persist) and for a fresh store alike: exists is false (an answer), read fails with the miss
+     * signal naming the key, open throws it or its stream fails with it before any byte, persist fails with it. Witness: before
+     * the delete the key exists and reads from Postgres; a sibling key persisted beside it still does afterwards.
+     */
+    @Test
+    void aKeyWhoseRowWasDeletedIsFalseToExistsAndBlobNotFoundToReadOpenPersist() {
+        TieredBlobStore s = store(dir, 1L << 16, pool);
+        BlobKey k = BlobKey.body("m-retained", 1);
+        BlobKey sibling = BlobKey.body("m-retained", 2);
+        await(s.write(k, bytes(400, 5), FLOW_MAX));
+        await(s.write(sibling, bytes(300, 6), FLOW_MAX));
+        await(s.persist(k));
+        await(s.persist(sibling));
+        assertEquals(Optional.empty(), s.location(k), "fixture: the persist let the local copy go");
+        assertEquals(Boolean.TRUE, await(s.exists(k)), "witness: the persisted key exists, from its row");
+        assertEquals(bytes(400, 5), await(s.read(k)), "witness: and reads from Postgres");
+
+        // the retention job's delete (P2-07): the trigger that fails every other DELETE is dropped first
+        other.query("drop trigger bodies_never_deleted on bodies").execute().await();
+        assertEquals(1, other.preparedQuery("delete from bodies where message_id = $1 and step = $2 and part = $3")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().rowCount(), "fixture: the row is deleted");
+
+        TieredBlobStore fresh = store(dir.resolve("fresh"), 1L << 16, pool);
+        for (TieredBlobStore store : List.of(s, fresh)) {
+            String which = store == s ? "the store that persisted it" : "a fresh store";
+            Future<Boolean> exists = awaitOutcome(store.exists(k));
+            assertTrue(exists.succeeded(), which + ": a key with no row is an answer, not a failure: " + exists.cause());
+            assertEquals(Boolean.FALSE, exists.result(), which);
+
+            Future<Buffer> read = awaitOutcome(store.read(k));
+            assertTrue(read.failed(), which + ": the read fails");
+            assertEquals(k, assertInstanceOf(io.flottila.api.BlobNotFoundException.class, read.cause(), which + ": " + read.cause()).key(), which);
+
+            assertEquals(k, openFailure(store, k).key(), which + ": open");
+
+            Future<Void> persist = awaitOutcome(store.persist(k));
+            assertTrue(persist.failed(), which + ": nothing to make durable");
+            assertEquals(k, assertInstanceOf(io.flottila.api.BlobNotFoundException.class, persist.cause(), which + ": " + persist.cause()).key(), which);
+
+            assertEquals(Boolean.TRUE, await(store.exists(sibling)), which + ": witness: the sibling's row stays");
+            assertEquals(bytes(300, 6), await(store.read(sibling)), which);
+        }
+        assertEquals(Optional.empty(), row(k), "nothing wrote the key back");
+    }
+
+    /**
+     * D-096: exists of a key whose local copy the persist let go asks Postgres whether the row is there, never for its bytes:
+     * every statement the store sends from the exists on is recorded at the pool (a proxy, the store boundary) and none
+     * selects {@code bytes}. Witness: a read of the same key through the same pool does.
+     */
+    @Test
+    void existsAsksForTheRowNotItsBytes() {
+        List<String> statements = new CopyOnWriteArrayList<>();
+        Pool recording = (Pool) java.lang.reflect.Proxy.newProxyInstance(Pool.class.getClassLoader(), new Class<?>[] {Pool.class}, (proxy, method, args) -> {
+            if ((method.getName().equals("preparedQuery") || method.getName().equals("query")) && args != null && args.length > 0 && args[0] instanceof String sql) {
+                statements.add(sql);
+            }
+            try {
+                return method.invoke(pool, args);
+            } catch (java.lang.reflect.InvocationTargetException e) {
+                throw e.getCause();
+            }
+        });
+        TieredBlobStore s = store(dir, 1L << 16, recording);
+        BlobKey k = BlobKey.body("m-exists-only", 1);
+        await(s.write(k, bytes(900, 9), FLOW_MAX));
+        await(s.persist(k));
+        assertEquals(Optional.empty(), s.location(k), "fixture: the persist let the local copy go");
+        statements.clear();
+
+        assertEquals(Boolean.TRUE, await(s.exists(k)), "the row is there");
+        assertEquals(Boolean.FALSE, await(s.exists(BlobKey.body("m-exists-only", 2))), "no row for the next step");
+        assertFalse(statements.isEmpty(), "fixture: exists asked Postgres through the pool");
+        assertEquals(List.of(), statements.stream().filter(q -> q.toLowerCase(java.util.Locale.ROOT).contains("select bytes")).toList(),
+                "exists fetched no bytes: " + statements);
+
+        await(s.read(k));
+        assertTrue(statements.stream().anyMatch(q -> q.toLowerCase(java.util.Locale.ROOT).contains("select bytes")), "witness: a read selects the bytes: " + statements);
+    }
+
+    /** The miss signal of opening {@code k}: thrown by open, or its stream's failure, with no chunk and no end before it. */
+    static io.flottila.api.BlobNotFoundException openFailure(TieredBlobStore s, BlobKey k) {
+        ReadStream<Buffer> stream;
+        try {
+            stream = s.open(k);
+        } catch (io.flottila.api.BlobNotFoundException thrown) {
+            return thrown;
+        }
+        io.vertx.core.Promise<Throwable> failed = io.vertx.core.Promise.promise();
+        List<String> seen = new CopyOnWriteArrayList<>();
+        stream.exceptionHandler(t -> { seen.add("failure"); failed.tryComplete(t); });
+        stream.endHandler(v -> { seen.add("end"); failed.tryComplete(null); });
+        stream.handler(chunk -> seen.add("chunk"));
+        Throwable t = await(failed.future());
+        assertEquals(List.of("failure"), seen, "the stream of " + k + " fails before any byte and never ends");
+        return assertInstanceOf(io.flottila.api.BlobNotFoundException.class, t, String.valueOf(t));
+    }
+
     record Answer(int status, String contentType, Buffer body) {}
 
     static Answer get(HttpClientAgent client, int port, String token, String path) {

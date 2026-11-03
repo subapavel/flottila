@@ -1070,3 +1070,16 @@ Checks: verify -Pit 2740/0/0/0 fresh XML (agent/work/P2-02c-verify4.log); covera
 Review: FAIL r1 (listing-after-stop order unpinned; D-095 pin scope and pool effect; ARCHITECTURE §9), PASS r2.
 D-054 data: class B (scout ×1, test-author ×4, implementer ×3, verifier ×2, reviewer ×2); review rounds 2.
 Next: P2-07b.
+
+## 2026-11-03 — P2-07b1 removed body signal and replay refusal — done, review PASS r2
+Context compacted (re-verified with git status / git log -3). Row split from P2-07b (b1 [B], b2 [C]); designer draft → D-096.
+Test first: contract cases (BlobNotFound on read/open/persist, exists), BlobNotFoundExceptionTest, ReplayTest 5 cases, PgBodiesIT,
+AdminServerTest/-ReplayTest 409/404/502, ReplayRetentionIT (red: agent/work/P2-07b1-red-compile.log, -red-unit.log, -red-it.log).
+Change: api `BlobNotFoundException` + `default BlobStore.exists` (Tiered, InMemory override, no bytes read); Replay from/retry
+refuse REMOVED_BY_RETENTION before admit → 409 "removed by retention"; GET …/body 404 "(removed by retention)"; narrowed IAE catches.
+Docs: D-096, D-062 note, D-088, F-20, ARCHITECTURE §6/§7 + changelog. PublicTypesHaveSinceTest 40→41 (new api type).
+Checks: verify -Pit 2778/0/0/0 fresh XML (agent/work/P2-07b1-verify2.log); coverage no decrease (-coverage2.log); PIT core 55/55,
+api 7/7; runtime mutants M1–M8 killed (-mutants.log, -M8.log), M9/M10 killed (-M9.log, -M10.log); round 2 comments (-r2-build.log).
+Review: FAIL r1 (detached admit javadoc; BlobStore javadoc overclaims; stale P2-07b pointers; M9/M10 not run), PASS r2.
+D-054 data: class B (scout ×1, designer ×1, test-author ×2, implementer ×3, verifier ×3, reviewer ×2); review rounds 2.
+Next: P2-07b2 [C].

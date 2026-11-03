@@ -1,6 +1,7 @@
 package io.flottila.runtime.blob;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
@@ -250,7 +251,7 @@ public final class TieredBlobStore implements BlobStore {
 
     /**
      * {@inheritDoc} A key the index misses is read from the durable tier when there is one, lazily: the stream asks Postgres
-     * when it is first read and fails with an {@link IllegalArgumentException} when no row exists. Without a durable tier an
+     * when it is first read and fails with a {@link BlobNotFoundException} when no row exists. Without a durable tier an
      * unknown key throws that at once.
      */
     @Override
@@ -269,7 +270,7 @@ public final class TieredBlobStore implements BlobStore {
         };
     }
 
-    /** A key the index misses is read from the durable tier when there is one; no row (or no tier) fails with an {@link IllegalArgumentException}. */
+    /** A key the index misses is read from the durable tier when there is one; no row (or no tier) fails with a {@link BlobNotFoundException}. */
     @Override
     public Future<Buffer> read(BlobKey key) {
         Stored s = objects.get(key);
@@ -282,10 +283,21 @@ public final class TieredBlobStore implements BlobStore {
     }
 
     /**
+     * {@inheritDoc} Reads no bytes (D-096): a key in the index exists; a key it misses exists when the durable tier has its row,
+     * asked by primary key; without a durable tier it does not.
+     */
+    @Override
+    public Future<Boolean> exists(BlobKey key) {
+        if (objects.containsKey(key)) return Future.succeededFuture(Boolean.TRUE);
+        if (bodies == null) return Future.succeededFuture(Boolean.FALSE);
+        return bodies.exists(bodies.pool(), key);
+    }
+
+    /**
      * Makes a body durable (D-061). An S3 body is already: done at once. Without a durable tier every other key — a local body
      * or one the index misses — is refused with an {@link IllegalStateException}. With one: a key the index misses is done when
-     * its row exists, else refused with an
-     * {@link IllegalArgumentException}; a body above the tier's bound fails with {@link BodyTooLargeException} and stays where it
+     * its row exists, else refused with a
+     * {@link BlobNotFoundException}; a body above the tier's bound fails with {@link BodyTooLargeException} and stays where it
      * is; otherwise its bytes are read and inserted. Once the key's row holds these bytes — inserted now and committed, or
      * found holding the same bytes — the entry is proven durable and its local copy goes: the index entry and the memory budget
      * before the future completes, a spool file afterwards on a virtual thread (an unlink that fails is logged). A row that
@@ -403,14 +415,14 @@ public final class TieredBlobStore implements BlobStore {
         }
     }
 
-    /** The durable row's bytes, on the stream's virtual thread (it blocks on the query); no row fails with an {@link IllegalArgumentException}. */
+    /** The durable row's bytes, on the stream's virtual thread (it blocks on the query); no row fails with a {@link BlobNotFoundException}. */
     private InputStream durable(BlobKey key) {
         Optional<Buffer> row = bodies.select(key).await();
         if (row.isEmpty()) throw noObject(key);
         return new ByteArrayInputStream(row.get().getBytes());
     }
 
-    private static IllegalArgumentException noObject(BlobKey key) { return new IllegalArgumentException("no object stored under " + key); }
+    private static BlobNotFoundException noObject(BlobKey key) { return new BlobNotFoundException(key); }
 
     /** Every byte of {@code stream}, in order. */
     private static Future<Buffer> collect(ReadStream<Buffer> stream) {

@@ -102,6 +102,6 @@ class PublicTypesHaveSinceTest {
             }
         }
         assertEquals(List.of(), missing, "public types without @since");
-        assertEquals(40, publicTypes, "33 top-level + 7 nested public types after P2-02 (InputStreamReadStream); update this number with every api change");
+        assertEquals(41, publicTypes, "34 top-level + 7 nested public types after P2-07b1 (BlobNotFoundException); update this number with every api change");
     }
 }

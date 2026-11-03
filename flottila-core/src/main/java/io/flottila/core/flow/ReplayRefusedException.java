@@ -25,6 +25,8 @@ public final class ReplayRefusedException extends IllegalArgumentException {
         METADATA_ONLY,
         /** The parked step is beyond the flow deployed now. */
         STEP_BEYOND_FLOW,
+        /** The input body is no longer stored: the retention job removed it (D-096). */
+        REMOVED_BY_RETENTION,
         /** The input body is above the flow's in-flight byte budget: it can never be admitted. */
         TOO_LARGE,
         /** The flow's admission has no room for the run now. */

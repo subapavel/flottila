@@ -1,6 +1,7 @@
 package io.flottila.testkit;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
@@ -158,10 +159,74 @@ public abstract class BlobStoreContract {
         assertEquals(0, await(collect(body.open())).length());
     }
 
+    /**
+     * D-096: a key with nothing stored — never written, or removed by retention — fails the read with a
+     * {@link BlobNotFoundException} naming that key, whatever is stored under its siblings.
+     */
     @Test
-    public void readingAnUnknownKeyFailsInsteadOfReturningNothing() {
+    public void readingAnUnknownKeyFailsBlobNotFoundNamingTheKey() {
         BlobStore s = store();
-        assertTrue(awaitOutcome(s.read(key("never", 0))).failed());
+        await(s.write(key("m-known", 0), Buffer.buffer("stored"), TREE_LIMIT));
+        for (BlobKey unknown : List.of(key("never", 0), key("m-known", 1), BlobKey.attachment("m-known", 0, "invoice.pdf"))) {
+            Future<Buffer> read = awaitOutcome(s.read(unknown));
+            assertTrue(read.failed(), "nothing is stored under " + unknown + ": the read fails instead of returning nothing");
+            BlobNotFoundException e = assertInstanceOf(BlobNotFoundException.class, read.cause(), "the miss signal: " + read.cause());
+            assertEquals(unknown, e.key(), "it names the key read");
+            assertEquals("no object stored under " + unknown, e.getMessage());
+        }
+    }
+
+    /**
+     * D-096: opening a key with nothing stored either throws a {@link BlobNotFoundException} naming the key, or returns a stream
+     * that fails with one before its first chunk — and never ends as an empty body.
+     */
+    @Test
+    public void openingAnUnknownKeyFailsBlobNotFoundBeforeAnyByte() {
+        BlobStore s = store();
+        await(s.write(key("m-opened", 0), Buffer.buffer("stored"), TREE_LIMIT));
+        for (BlobKey unknown : List.of(key("never-opened", 0), key("m-opened", 1))) {
+            BlobNotFoundException e = openFailure(s, unknown);
+            assertEquals(unknown, e.key(), "it names the key opened");
+            assertEquals("no object stored under " + unknown, e.getMessage());
+        }
+    }
+
+    /** The miss signal of opening {@code unknown}: thrown by open, or the stream's failure, which no chunk and no end precede. */
+    static BlobNotFoundException openFailure(BlobStore s, BlobKey unknown) {
+        ReadStream<Buffer> stream;
+        try {
+            stream = s.open(unknown);
+        } catch (BlobNotFoundException thrown) {
+            return thrown;
+        }
+        Promise<Throwable> failed = Promise.promise();
+        List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+        stream.exceptionHandler(t -> { seen.add("failure"); failed.tryComplete(t); });
+        stream.endHandler(v -> { seen.add("end"); failed.tryComplete(null); });
+        stream.handler(chunk -> seen.add("chunk of " + chunk.length() + " bytes"));
+        Throwable t = await(failed.future());
+        assertEquals(List.of("failure"), seen, "the stream of " + unknown + " fails before any byte and never ends: " + seen);
+        return assertInstanceOf(BlobNotFoundException.class, t, "the miss signal: " + t);
+    }
+
+    /**
+     * D-096: {@code exists} is true for every written key — an empty body too — and false, as an answer and not a failure, for a
+     * key with nothing stored: another step, another part, another message.
+     */
+    @Test
+    public void existsIsTrueForAWrittenKeyFalseForAnUnknownOne() {
+        BlobStore s = store();
+        BlobKey written = key("m-exists", 1);
+        BlobKey empty = key("m-exists-empty", 0);
+        await(s.write(written, Buffer.buffer("<invoice/>"), TREE_LIMIT));
+        await(s.write(empty, Buffer.buffer(), TREE_LIMIT));
+        assertEquals(Boolean.TRUE, await(s.exists(written)), "a written key exists");
+        assertEquals(Boolean.TRUE, await(s.exists(empty)), "an empty body is a body too");
+        for (BlobKey unknown : List.of(key("m-exists", 0), key("m-exists", 2), BlobKey.attachment("m-exists", 1, "invoice.pdf"), key("never-exists", 1))) {
+            Future<Boolean> answer = awaitOutcome(s.exists(unknown));
+            assertTrue(answer.succeeded(), "a key with nothing stored is an answer, not a failure: " + unknown + " " + answer.cause());
+            assertEquals(Boolean.FALSE, answer.result(), "nothing is stored under " + unknown);
+        }
     }
 
     @Test

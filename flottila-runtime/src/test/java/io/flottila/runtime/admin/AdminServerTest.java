@@ -1,6 +1,7 @@
 package io.flottila.runtime.admin;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Envelope;
@@ -379,25 +380,47 @@ class AdminServerTest {
                 gone.hash(), gone.size(), Optional.of(BlobKey.body("m-gone", 1)), Map.of())).await();   // a key the blob store does not hold (retention took it)
         Answer missing = admin("/admin/messages/m-gone/steps/0/body");
         assertJsonError(404, missing, "the snapshot names a key whose bytes are gone");
-        assertTrue(missing.error().contains("no longer stored"), "says the bytes are no longer stored: " + missing.error());
+        assertEquals("the bytes of step 0 of message m-gone are no longer stored (removed by retention)", missing.error(), "D-096: says why the bytes are gone");
         Answer metadataOnly = admin("/admin/messages/m-1/steps/1/body");
         assertFalse(metadataOnly.error().contains("no longer stored"), "metadata-only is another reason: " + metadataOnly.error());
         assertNotEquals(metadataOnly.error(), missing.error());
     }
 
     @Test
-    void aBodyWhoseStreamFailsLazilyWithIllegalArgumentBeforeAnyDataIs404() throws Exception {
+    void aBodyWhoseStreamFailsLazilyWithBlobNotFoundBeforeAnyDataIs404() throws Exception {
         start();
         recordInvoice();
         blobs.missingLazily.add(BlobKey.body("m-1", 2));   // a durable tier's lazy open: the row is gone, found only once read
         Answer missing = admin("/admin/messages/m-1/steps/2/body");
-        assertJsonError(404, missing, "an IllegalArgumentException from the stream before the head is the store holding nothing: a 404, not a 500");
-        assertTrue(missing.error().contains("no longer stored"), "says the bytes are no longer stored: " + missing.error());
-        assertTrue(blobs.lazyFailures.get() > 0, "the stream was opened and read, and failed with the IllegalArgumentException");
+        assertJsonError(404, missing, "the miss signal from the stream before the head is the store holding nothing: a 404, not a 500");
+        assertEquals("the bytes of step 2 of message m-1 are no longer stored (removed by retention)", missing.error(), "D-096: says why the bytes are gone");
+        assertTrue(blobs.lazyFailures.get() > 0, "the stream was opened and read, and failed with the BlobNotFoundException");
         assertEquals(200, admin("/admin/messages/m-1/steps/0/body").status(), "another body still streams");
     }
 
-    /** The 404 is only for a stream that fails before the head: an IllegalArgumentException after bytes went out cuts the response like any failure. */
+    /**
+     * D-096: only the miss signal is "no longer stored". An open that throws a plain IllegalArgumentException, and a stream that
+     * fails with one before any data, are a store failure: 500 {error}, never the 404 of a removed body. Witness: the miss signal
+     * on the same route is the 404.
+     */
+    @Test
+    void aPlainIllegalArgumentFromTheStoreIs500NotRemoved() throws Exception {
+        start();
+        recordInvoice();
+        blobs.plainOnOpen.add(BlobKey.body("m-1", 0));
+        Answer thrown = admin("/admin/messages/m-1/steps/0/body");
+        assertJsonError(500, thrown, "an open that throws a plain IllegalArgumentException is a store failure");
+        assertFalse(thrown.error().contains("no longer stored"), thrown.error());
+        blobs.plainLazily.add(BlobKey.body("m-1", 2));
+        Answer lazily = admin("/admin/messages/m-1/steps/2/body");
+        assertJsonError(500, lazily, "a stream failing with a plain IllegalArgumentException before any data is a store failure");
+        assertFalse(lazily.error().contains("no longer stored"), lazily.error());
+        blobs.plainLazily.clear();
+        blobs.missingLazily.add(BlobKey.body("m-1", 2));
+        assertJsonError(404, admin("/admin/messages/m-1/steps/2/body"), "witness: the miss signal on the same route");
+    }
+
+    /** The 404 is only for a stream that fails before the head: the miss signal after bytes went out cuts the response like any failure. */
     @Test
     void aBlobStreamFailingWithIllegalArgumentMidBodyCutsTheResponse() throws Exception {
         start();
@@ -832,11 +855,15 @@ class AdminServerTest {
         final List<Boolean> attachedOnEventLoop = new CopyOnWriteArrayList<>();
         /** Keys whose stream fails: the bytes delivered first (empty: the first read fails), then an IOException. */
         final Map<BlobKey, Buffer> failAfter = new ConcurrentHashMap<>();
-        /** Keys whose open() answers a stream that, once read, fails with an IllegalArgumentException before any data (a lazy durable tier, row gone). */
+        /** Keys whose open() answers a stream that, once read, fails with a BlobNotFoundException before any data (a lazy durable tier, row gone). */
         final Set<BlobKey> missingLazily = ConcurrentHashMap.newKeySet();
-        /** How many IllegalArgumentExceptions a lazily missing stream has delivered to an exception handler. */
+        /** How many BlobNotFoundExceptions a lazily missing stream has delivered to an exception handler. */
         final AtomicInteger lazyFailures = new AtomicInteger();
-        /** Keys whose stream delivers these bytes and then fails with an IllegalArgumentException (after the head is out). */
+        /** Keys whose open() throws a plain IllegalArgumentException (not the miss signal). */
+        final Set<BlobKey> plainOnOpen = ConcurrentHashMap.newKeySet();
+        /** Keys whose open() answers a stream that, once read, fails with a plain IllegalArgumentException before any data. */
+        final Set<BlobKey> plainLazily = ConcurrentHashMap.newKeySet();
+        /** Keys whose stream delivers these bytes and then fails with a BlobNotFoundException (after the head is out). */
         final Map<BlobKey, Buffer> illegalAfter = new ConcurrentHashMap<>();
 
         @Override public ReadStream<Buffer> open(BlobKey key) {
@@ -844,11 +871,13 @@ class AdminServerTest {
             if (missingLazily.contains(key)) {
                 return new AttachWatch(new BrokenStream(Buffer.buffer(), () -> {
                     lazyFailures.incrementAndGet();
-                    return new IllegalArgumentException("no object stored under " + key);
+                    return new BlobNotFoundException(key);
                 }));
             }
+            if (plainOnOpen.contains(key)) throw new IllegalArgumentException("not the miss signal: " + key);
+            if (plainLazily.contains(key)) return new AttachWatch(new BrokenStream(Buffer.buffer(), () -> new IllegalArgumentException("not the miss signal: " + key)));
             Buffer illegal = illegalAfter.get(key);
-            if (illegal != null) return new AttachWatch(new BrokenStream(illegal, () -> new IllegalArgumentException("no object stored under " + key)));
+            if (illegal != null) return new AttachWatch(new BrokenStream(illegal, () -> new BlobNotFoundException(key)));
             Buffer before = failAfter.get(key);
             return new AttachWatch(before != null ? new BrokenStream(before) : inner.open(key));
         }

@@ -91,6 +91,7 @@ class AdminServerReplayTest {
 
     @TempDir Path tmp;
     final FakeRuntime rt = FakeRuntime.create();
+    final ForgettingBlobs blobs = new ForgettingBlobs(rt.blobs());
     final Doors doors = new Doors();
     final InMemoryMessageStore messages = new InMemoryMessageStore();
     final RemovalFailingDlq dlq = new RemovalFailingDlq(new InMemoryDlq());
@@ -121,7 +122,7 @@ class AdminServerReplayTest {
         env.put("FLOTTILA_NODE_ID", "node-1");
         env.put("FLOTTILA_DATA_DIR", tmp.resolve("data").toString());
         env.put("FLOTTILA_STOP_DEADLINE", "PT37S");
-        Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
+        Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), blobs, rt.hasher(), Map.of(Doors.SCHEME, doors));
         deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), probe.factories(), List.of(),
                 messages, dlq, queue, () -> 0L);
         IdGenerator ids = () -> {
@@ -129,7 +130,7 @@ class AdminServerReplayTest {
             minted.add(id);
             return id;
         };
-        server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, rt.blobs(),
+        server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, blobs,
                 new AdminServer.HealthProbe(Map.of(), () -> 0L), Optional.of(deployments), queue, ids);
         port = server.start(vertx).await(10, TimeUnit.SECONDS);
     }
@@ -256,6 +257,44 @@ class AdminServerReplayTest {
         @Override public Future<Optional<Parked>> get(String messageId) { return inner.get(messageId); }
         @Override public Future<Void> remove(String messageId) {
             return failRemoves ? Future.failedFuture(new IllegalStateException("the DLQ row of " + messageId + " could not be removed")) : inner.remove(messageId);
+        }
+    }
+
+    // --- the store boundary: a blob store whose bytes retention can take (D-096)
+
+    /**
+     * The fake runtime's heap store, read through a view that can forget keys as the retention job takes them: a forgotten key
+     * reads as never written — read and persist fail with the miss signal, open throws it, exists is false; after
+     * {@link #failExists} every exists fails with that cause (a store that cannot answer).
+     */
+    static final class ForgettingBlobs implements io.flottila.api.BlobStore {
+        final io.flottila.testkit.InMemoryBlobStore inner;
+        final Set<io.flottila.api.BlobKey> forgotten = ConcurrentHashMap.newKeySet();
+        volatile Throwable existsFails;
+
+        ForgettingBlobs(io.flottila.testkit.InMemoryBlobStore inner) { this.inner = inner; }
+
+        void forget(io.flottila.api.BlobKey key) { forgotten.add(key); }
+
+        void failExists(Throwable cause) { existsFails = cause; }
+
+        @Override public long treeLimit() { return inner.treeLimit(); }
+        @Override public Future<Body> write(io.flottila.api.BlobKey key, Buffer whole, long maxSize) { return inner.write(key, whole, maxSize); }
+        @Override public Future<Body> write(io.flottila.api.BlobKey key, io.vertx.core.streams.ReadStream<Buffer> in, long maxSize) { return inner.write(key, in, maxSize); }
+        @Override public io.vertx.core.streams.ReadStream<Buffer> open(io.flottila.api.BlobKey key) {
+            if (forgotten.contains(key)) throw new io.flottila.api.BlobNotFoundException(key);
+            return inner.open(key);
+        }
+        @Override public Future<Buffer> read(io.flottila.api.BlobKey key) {
+            return forgotten.contains(key) ? Future.failedFuture(new io.flottila.api.BlobNotFoundException(key)) : inner.read(key);
+        }
+        @Override public Future<Void> persist(io.flottila.api.BlobKey key) {
+            return forgotten.contains(key) ? Future.failedFuture(new io.flottila.api.BlobNotFoundException(key)) : inner.persist(key);
+        }
+        @Override public Future<Boolean> exists(io.flottila.api.BlobKey key) {
+            Throwable fails = existsFails;
+            if (fails != null) return Future.failedFuture(fails);
+            return Future.succeededFuture(!forgotten.contains(key) && inner.contains(key));
         }
     }
 
@@ -732,5 +771,109 @@ class AdminServerReplayTest {
         assertNothingRan(ran, "no token");
         assertEquals(List.of(), minted, "no id minted without the token");
         assertTrue(dlq.get(parked.id()).await().isPresent());
+    }
+
+    // --- P2-07b1 (D-096): a body removed by retention
+
+    /** The minted ids since {@code before}: none has a row or a DLQ row. */
+    void assertNoRowsSince(List<String> before, String what) {
+        for (String id : minted) {
+            if (before.contains(id)) continue;
+            assertEquals(List.of(), messages.timeline(id).await(), what + ": no row under " + id);
+            assertEquals(Optional.empty(), dlq.get(id).await(), what + ": no DLQ row under " + id);
+        }
+    }
+
+    /**
+     * A replay from a step whose input retention took is 409 {@code {error}} naming the step, the message and the key — and
+     * nothing ran. It is checked before the permit: while a delivery holds orders' only permit it is still 409, a stored input
+     * 429. GET of that body is 404 "(removed by retention)" (D-057). Witness: the same replay was 200 before the key went, and
+     * a stored input replays afterwards.
+     */
+    @Test
+    void aReplayFromARemovedBodyIs409RemovedByRetention() throws Exception {
+        deploy(shop());
+        Envelope gone = recorded("orders");
+        Envelope kept = recorded("orders");
+        io.flottila.api.BlobKey input = io.flottila.api.BlobKey.body(gone.id(), 0);
+        until(() -> messages.timeline(gone.id()).await().stream().anyMatch(s -> s.step() == 1), "fixture: step 1 of " + gone.id() + " recorded");
+        assertEquals(Optional.of(input), messages.timeline(gone.id()).await().stream().filter(s -> s.step() == 1).findFirst().orElseThrow().bodyKey(),
+                "fixture: step 1 names the ingress body (a hands it on)");
+        assertComplete(replay(gone.id(), "2"), gone.id(), 2, "witness: replayed while the body is stored");
+        blobs.forget(input);   // the retention job took it
+        int ran = probe.total();
+        List<String> mintedBefore = List.copyOf(minted);
+
+        Answer refused = replay(gone.id(), "2");
+
+        assertError(409, refused, "removed by retention");
+        assertEquals("the body of step 1 of message " + gone.id() + " (" + input + ") was removed by retention", refused.json().getString("error"));
+        assertEquals(ran, probe.total(), "no step ran");
+        assertNoRowsSince(mintedBefore, "removed by retention");
+
+        Hold h = probe.holdNext();
+        Future<Ack> holding = doors.door("shop/orders").deliver(envelope("orders"));
+        h.awaitReached("a delivery of orders holds its only permit");
+        int heldRan = probe.total();
+        assertError(409, replay(gone.id(), "2"), "409 before 429: checked before the permit");
+        assertError(429, replay(kept.id(), "2"), "witness: the permit is taken");
+        assertEquals(heldRan, probe.total(), "nothing ran while the permit is held");
+        h.release();
+        assertInstanceOf(Ack.Reply.class, holding.await(BOUND.toMillis(), TimeUnit.MILLISECONDS));
+        assertNoRowsSince(mintedBefore, "refused while the permit is held");
+
+        Answer body = send(HttpMethod.GET, "/admin/messages/" + gone.id() + "/steps/1/body", AUTH);
+        assertError(404, body, "a GET of a removed body is a 404 (D-057), not a conflict");
+        assertEquals("the bytes of step 1 of message " + gone.id() + " are no longer stored (removed by retention)", body.json().getString("error"));
+        assertComplete(replay(kept.id(), "2"), kept.id(), 2, "witness: a stored input replays: the refusals kept no permit");
+    }
+
+    /**
+     * A retry of a parked message whose input retention took is 409 {@code {error}} naming the parked step's input step, the
+     * message and the key; nothing ran, the row stays unchanged, and the retry guard is free again (a second retry is the same
+     * 409, not "runs already"). Witness: a sibling parked message retries.
+     */
+    @Test
+    void aRetryOfARemovedBodyIs409RemovedByRetention() throws Exception {
+        deploy(shop());
+        Envelope gone = parked("audit");
+        Envelope kept = parked("audit");
+        Parked row = dlq.get(gone.id()).await().orElseThrow();
+        io.flottila.api.BlobKey input = row.bodyKey();
+        assertEquals(io.flottila.api.BlobKey.body(gone.id(), 0), input, "fixture: the parked input is the ingress body (a, b, h hand it on)");
+        blobs.forget(input);
+        int ran = probe.total();
+        List<String> mintedBefore = List.copyOf(minted);
+        String says = "the body of step 3 of message " + gone.id() + " (" + input + ") was removed by retention";
+
+        Answer refused = retry(gone.id());
+
+        assertError(409, refused, "removed by retention");
+        assertEquals(says, refused.json().getString("error"));
+        assertEquals(Optional.of(row), dlq.get(gone.id()).await(), "the refused retry keeps its row, unchanged");
+        Answer again = retry(gone.id());
+        assertError(409, again, "again");
+        assertEquals(says, again.json().getString("error"), "the guard was freed by the refusal: the same refusal, not 'runs already'");
+        assertEquals(ran, probe.total(), "no step ran");
+        assertNoRowsSince(mintedBefore, "removed by retention");
+        assertComplete(retry(kept.id()), kept.id(), 4, "witness: a stored parked input retries");
+        assertEquals(Optional.of(row), dlq.get(gone.id()).await(), "the removed one's row still stays");
+    }
+
+    /** A store that cannot say whether the body exists is no refusal: the run is 502 FAILED with the store's error, nothing ran. */
+    @Test
+    void aStoreFailureCheckingTheBodyIs502Failed() throws Exception {
+        deploy(shop());
+        Envelope original = recorded("orders");
+        Envelope parked = parked("audit");
+        int ran = probe.total();
+        blobs.failExists(new IllegalStateException("postgres down"));
+
+        String id = assertFailed(replay(original.id(), "2"), original.id(), 2, "FAILED", "postgres down", "a replay whose check failed");
+        String retryId = assertFailed(retry(parked.id()), parked.id(), 4, "FAILED", "postgres down", "a retry whose check failed");
+
+        assertEquals(ran, probe.total(), "no step ran");
+        for (String run : List.of(id, retryId)) assertEquals(List.of(), messages.timeline(run).await(), "no row under " + run);
+        assertTrue(dlq.get(parked.id()).await().isPresent(), "the retry keeps its row");
     }
 }

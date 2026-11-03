@@ -1,6 +1,7 @@
 package io.flottila.testkit;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Hasher;
@@ -114,7 +115,11 @@ class DurableBlobStoreContractSelfTest {
         OPEN_CACHED,
         /** the local bytes are slotted by message id and step, the part dropped (rows keep the full key): an attachment's write
          *  overwrites the body of its step. */
-        PART_BLIND
+        PART_BLIND,
+        /** D-096: a persist of a key with nothing stored fails with a plain IllegalArgumentException, not the miss signal. */
+        PERSIST_UNKNOWN_PLAIN,
+        /** D-096: exists asks the local tier only, as if a persist had let the local copy go: a persisted key does not exist. */
+        EXISTS_FORGETS_THE_PERSISTED
     }
 
     /** A heap store whose {@code persist} follows {@code rule}; everything else is the in-memory store's, served as {@link Local} says. */
@@ -165,8 +170,16 @@ class DurableBlobStoreContractSelfTest {
         }
 
         @Override public Future<Void> persist(BlobKey key) {
-            if (!local.contains(slot(key))) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+            if (!local.contains(slot(key))) {
+                return Future.failedFuture(served == Local.PERSIST_UNKNOWN_PLAIN ? new IllegalArgumentException("no object stored under " + key) : new BlobNotFoundException(key));
+            }
             return rule.persist(rows, local, key, local.read(slot(key)).result());
+        }
+
+        /** The interface's default (it reads), but for {@link Local#EXISTS_FORGETS_THE_PERSISTED}. */
+        @Override public Future<Boolean> exists(BlobKey key) {
+            if (served == Local.EXISTS_FORGETS_THE_PERSISTED) return Future.succeededFuture(!rows.containsKey(key) && local.contains(slot(key)));
+            return BlobStore.super.exists(key);
         }
     }
 
@@ -207,6 +220,8 @@ class DurableBlobStoreContractSelfTest {
     static final String OTHER_BYTES = "persistingOtherBytesUnderADurableKeyFailsIllegalStateAndKeepsTheFirst";
     static final String SAME_BYTES = "persistingTheSameBytesWrittenAgainIsQuiet";
     static final String SIBLINGS = "otherBytesUnderAnotherStepOrPartAreNoConflict";
+    static final String PERSIST_UNKNOWN = "persistingAnUnknownKeyFailsBlobNotFound";
+    static final String EXISTS_PERSISTED = "existsStaysTrueOncePersistLetTheLocalCopyGo";
 
     @Test
     void aStoreWhoseDurableBytesNeverChangePassesEveryCase() {
@@ -327,7 +342,26 @@ class DurableBlobStoreContractSelfTest {
     @Test
     void aPartBlindLocalTierIsCaughtByTheDurableKeyReadingItsOwnBytesAfterTheSiblingsWrites() {
         Map<String, Throwable> f = failures(CORRECT, Local.PART_BLIND);
-        assertEquals(Set.of(SIBLINGS), f.keySet());
+        // D-096: an attachment's key never written reads (and exists as) the body of its step: the miss-signal cases catch it too
+        assertEquals(Set.of(SIBLINGS, "readingAnUnknownKeyFailsBlobNotFoundNamingTheKey", "existsIsTrueForAWrittenKeyFalseForAnUnknownOne"), f.keySet());
         caughtBy(f, SIBLINGS, "the durable key reads its own bytes");
+        caughtBy(f, "readingAnUnknownKeyFailsBlobNotFoundNamingTheKey", "nothing is stored under " + BlobKey.attachment("m-known", 0, "invoice.pdf"));
+        caughtBy(f, "existsIsTrueForAWrittenKeyFalseForAnUnknownOne", "nothing is stored under " + BlobKey.attachment("m-exists", 1, "invoice.pdf"));
+    }
+
+    // ---- D-096: the miss signal of persist, and exists once the local copy went ------------------------------------------
+
+    @Test
+    void aPlainIllegalArgumentForAnUnknownPersistIsCaughtByTheMissSignalCheck() {
+        Map<String, Throwable> f = failures(CORRECT, Local.PERSIST_UNKNOWN_PLAIN);
+        assertEquals(Set.of(PERSIST_UNKNOWN), f.keySet());
+        caughtBy(f, PERSIST_UNKNOWN, "the miss signal: java.lang.IllegalArgumentException: no object stored under " + BlobKey.body("p-3", 1));
+    }
+
+    @Test
+    void anExistsThatForgetsAPersistedKeyIsCaughtByTheExistsAfterPersistCase() {
+        Map<String, Throwable> f = failures(CORRECT, Local.EXISTS_FORGETS_THE_PERSISTED);
+        assertEquals(Set.of(EXISTS_PERSISTED), f.keySet());
+        caughtBy(f, EXISTS_PERSISTED, "a persisted key exists");
     }
 }

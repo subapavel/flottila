@@ -1,6 +1,7 @@
 package io.flottila.testkit;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Hasher;
@@ -55,7 +56,21 @@ class BlobStoreContractSelfTest {
         /** No write is refused: one above the flow's max size is stored, a failing stream stores an empty body. */
         NEVER_REFUSES,
         /** A read of a key never written succeeds with an empty buffer. */
-        UNKNOWN_KEY_READS_EMPTY
+        UNKNOWN_KEY_READS_EMPTY,
+        /** D-096: a read of a key never written fails with a plain IllegalArgumentException, not the miss signal. */
+        UNKNOWN_KEY_FAILS_PLAIN,
+        /** D-096: a read of a key never written fails with the miss signal naming the next step's key. */
+        UNKNOWN_KEY_NAMES_ANOTHER_KEY,
+        /** D-096: open of a key never written throws a plain IllegalArgumentException. */
+        OPEN_UNKNOWN_THROWS_PLAIN,
+        /** D-096: open of a key never written returns a stream that delivers a byte, then fails with the miss signal. */
+        OPEN_UNKNOWN_DELIVERS_A_BYTE_FIRST,
+        /** D-096: open of a key never written returns a stream that ends empty. */
+        OPEN_UNKNOWN_ENDS_EMPTY,
+        /** D-096: exists is true for every key. */
+        EXISTS_ALWAYS_TRUE,
+        /** D-096: exists is false for an empty body (it asks whether bytes are stored). */
+        EXISTS_FALSE_FOR_EMPTY
     }
 
     static final class Variant implements BlobStore {
@@ -104,7 +119,14 @@ class BlobStoreContractSelfTest {
         }
 
         @Override public ReadStream<Buffer> open(BlobKey key) {
-            if (!local.contains(key)) return local.open(key);
+            if (!local.contains(key)) {
+                return switch (defect) {
+                    case OPEN_UNKNOWN_THROWS_PLAIN -> throw new IllegalArgumentException("no object stored under " + key);
+                    case OPEN_UNKNOWN_DELIVERS_A_BYTE_FIRST -> new ChunkedReadStream(List.of("x"), new BlobNotFoundException(key));
+                    case OPEN_UNKNOWN_ENDS_EMPTY -> new ChunkedReadStream(List.of());
+                    default -> local.open(key);
+                };
+            }
             int n = opens.merge(key, 1, Integer::sum);
             if (defect == Defect.OPEN_ONCE_ONLY && n > 1) return new ChunkedReadStream(List.of());
             if (defect == Defect.OPEN_APPENDS_A_BYTE) return new ChunkedReadStream(List.of(local.read(key).result(), "!"));
@@ -113,11 +135,24 @@ class BlobStoreContractSelfTest {
 
         @Override public Future<Buffer> read(BlobKey key) {
             if (defect == Defect.UNKNOWN_KEY_READS_EMPTY && !local.contains(key)) return Future.succeededFuture(Buffer.buffer());
+            if (defect == Defect.UNKNOWN_KEY_FAILS_PLAIN && !local.contains(key)) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+            if (defect == Defect.UNKNOWN_KEY_NAMES_ANOTHER_KEY && !local.contains(key)) {
+                return Future.failedFuture(new BlobNotFoundException(new BlobKey(key.messageId(), key.step() + 1, key.part())));
+            }
             if (defect == Defect.READ_APPENDS_THE_KEY) return local.read(key).map(b -> b.copy().appendString(" " + key));
             return local.read(key);
         }
 
         @Override public Future<Void> persist(BlobKey key) { return local.persist(key); }
+
+        /** The interface's default (it reads), but for the exists defects. */
+        @Override public Future<Boolean> exists(BlobKey key) {
+            return switch (defect) {
+                case EXISTS_ALWAYS_TRUE -> Future.succeededFuture(true);
+                case EXISTS_FALSE_FOR_EMPTY -> BlobStore.super.exists(key).map(found -> found && local.read(key).result().length() > 0);
+                default -> BlobStore.super.exists(key);
+            };
+        }
     }
 
     /** The engine instantiates the suite itself; the defect under test is handed over through this slot. */
@@ -146,7 +181,9 @@ class BlobStoreContractSelfTest {
     static final String FAILING_STREAM = "aFailingStreamFailsTheWriteAndNothingIsStored";
     static final String KEYED = "objectsAreKeyedByMessageIdAndStepNotByContent";
     static final String EMPTY = "anEmptyBodyIsABodyToo";
-    static final String UNKNOWN = "readingAnUnknownKeyFailsInsteadOfReturningNothing";
+    static final String UNKNOWN = "readingAnUnknownKeyFailsBlobNotFoundNamingTheKey";
+    static final String OPEN_UNKNOWN = "openingAnUnknownKeyFailsBlobNotFoundBeforeAnyByte";
+    static final String EXISTS = "existsIsTrueForAWrittenKeyFalseForAnUnknownOne";
     static final String BIG = "aBigStreamPassesThroughIntact";
 
     /** An assertTrue / assertFalse without a message of its own, as the engine reports it. */
@@ -272,8 +309,53 @@ class BlobStoreContractSelfTest {
     @Test
     void anUnknownKeyThatReadsEmptyFailsTheUnknownKeyAndNothingIsStoredChecks() {
         Map<String, Throwable> f = failures(Defect.UNKNOWN_KEY_READS_EMPTY);
-        assertEquals(Set.of(UNKNOWN, BUFFER_ABOVE_MAX, STREAM_ABOVE_MAX, FAILING_STREAM), f.keySet());
-        caughtExactlyBy(f, UNKNOWN, NOT_TRUE);
+        assertEquals(Set.of(UNKNOWN, BUFFER_ABOVE_MAX, STREAM_ABOVE_MAX, FAILING_STREAM, EXISTS), f.keySet(), "exists' default reads: the empty read is 'stored'");
+        caughtBy(f, UNKNOWN, "nothing is stored under " + BlobKey.body("never", 0) + ": the read fails instead of returning nothing");
         caughtExactlyBy(f, FAILING_STREAM, NOT_TRUE);
+        caughtBy(f, EXISTS, "nothing is stored under " + BlobKey.body("m-exists", 0) + " ==> expected: <false> but was: <true>");
+    }
+
+    // ---- D-096: the miss signal and exists ------------------------------------------------------------------------------
+
+    @Test
+    void aPlainIllegalArgumentForAnUnknownKeyFailsTheMissSignalChecksOfReadAndExists() {
+        Map<String, Throwable> f = failures(Defect.UNKNOWN_KEY_FAILS_PLAIN);
+        assertEquals(Set.of(UNKNOWN, EXISTS), f.keySet());
+        caughtBy(f, UNKNOWN, "the miss signal: java.lang.IllegalArgumentException: no object stored under " + BlobKey.body("never", 0));
+        caughtBy(f, EXISTS, "a key with nothing stored is an answer, not a failure: " + BlobKey.body("m-exists", 0));
+    }
+
+    @Test
+    void aMissSignalNamingAnotherKeyFailsTheKeyCheck() {
+        Map<String, Throwable> f = failures(Defect.UNKNOWN_KEY_NAMES_ANOTHER_KEY);
+        assertEquals(Set.of(UNKNOWN), f.keySet());
+        caughtBy(f, UNKNOWN, "it names the key read ==> expected: <" + BlobKey.body("never", 0) + "> but was: <" + BlobKey.body("never", 1) + ">");
+    }
+
+    @Test
+    void anOpenOfAnUnknownKeyThrowingAPlainIllegalArgumentFailsTheOpenCase() {
+        Map<String, Throwable> f = failures(Defect.OPEN_UNKNOWN_THROWS_PLAIN);
+        assertEquals(Set.of(OPEN_UNKNOWN), f.keySet());
+        caughtExactlyBy(f, OPEN_UNKNOWN, "java.lang.IllegalArgumentException: no object stored under " + BlobKey.body("never-opened", 0));
+    }
+
+    @Test
+    void anOpenOfAnUnknownKeyDeliveringAByteOrEndingEmptyFailsBeforeAnyByte() {
+        Map<String, Throwable> byte1 = failures(Defect.OPEN_UNKNOWN_DELIVERS_A_BYTE_FIRST);
+        assertEquals(Set.of(OPEN_UNKNOWN), byte1.keySet());
+        caughtBy(byte1, OPEN_UNKNOWN, "fails before any byte and never ends: [chunk of 1 bytes, failure]");
+        Map<String, Throwable> ended = failures(Defect.OPEN_UNKNOWN_ENDS_EMPTY);
+        assertEquals(Set.of(OPEN_UNKNOWN), ended.keySet());
+        caughtBy(ended, OPEN_UNKNOWN, "fails before any byte and never ends: [end]");
+    }
+
+    @Test
+    void anExistsThatIsAlwaysTrueOrFalseForAnEmptyBodyFailsTheExistsCase() {
+        Map<String, Throwable> always = failures(Defect.EXISTS_ALWAYS_TRUE);
+        assertEquals(Set.of(EXISTS), always.keySet());
+        caughtBy(always, EXISTS, "nothing is stored under " + BlobKey.body("m-exists", 0));
+        Map<String, Throwable> bytes = failures(Defect.EXISTS_FALSE_FOR_EMPTY);
+        assertEquals(Set.of(EXISTS), bytes.keySet());
+        caughtBy(bytes, EXISTS, "an empty body is a body too");
     }
 }

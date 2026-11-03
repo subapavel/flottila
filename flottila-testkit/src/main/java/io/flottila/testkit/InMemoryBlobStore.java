@@ -1,6 +1,7 @@
 package io.flottila.testkit;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
@@ -71,26 +72,31 @@ public final class InMemoryBlobStore implements BlobStore {
 
     @Override public ReadStream<Buffer> open(BlobKey key) {
         Buffer stored = objects.get(key);
-        if (stored == null) throw new IllegalArgumentException("no object stored under " + key);
+        if (stored == null) throw new BlobNotFoundException(key);
         return new ChunkedReadStream(List.of(stored));
     }
 
     @Override public Future<Buffer> read(BlobKey key) {
         Buffer stored = objects.get(key);
-        if (stored == null) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+        if (stored == null) return Future.failedFuture(new BlobNotFoundException(key));
         return Future.succeededFuture(stored.copy());
+    }
+
+    /** Whether an object is stored under {@code key}, without copying its bytes. */
+    @Override public Future<Boolean> exists(BlobKey key) {
+        return Future.succeededFuture(objects.containsKey(key));
     }
 
     /**
      * The heap is this store's durable tier: a stored key is durable at once — {@link #persisted(BlobKey)} says so from then
      * on — with a copy of the bytes stored under it now. A key's durable bytes never change (D-061 amended by FIX-35):
      * persisting the same bytes again succeeds; other bytes under a durable key fail with an {@link IllegalStateException},
-     * the durable copy stays the first and the key reads what was written last. A key with nothing stored is refused with an
-     * {@link IllegalArgumentException}.
+     * the durable copy stays the first and the key reads what was written last. A key with nothing stored is refused with a
+     * {@link BlobNotFoundException}.
      */
     @Override public Future<Void> persist(BlobKey key) {
         Buffer stored = objects.get(key);
-        if (stored == null) return Future.failedFuture(new IllegalArgumentException("no object stored under " + key));
+        if (stored == null) return Future.failedFuture(new BlobNotFoundException(key));
         Buffer first = durable.putIfAbsent(key, stored.copy());
         if (first != null && !first.equals(stored)) {
             return Future.failedFuture(new IllegalStateException("the durable body under " + key + " holds other bytes than these " + stored.length()

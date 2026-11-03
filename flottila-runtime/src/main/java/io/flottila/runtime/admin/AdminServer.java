@@ -1,5 +1,6 @@
 package io.flottila.runtime.admin;
 
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
@@ -114,8 +115,9 @@ import java.util.function.Supplier;
  * {@link Replay} on the route's virtual thread. 200 {@code {id, replayOf, from, outcome:"COMPLETE"}}; a run that failed is 502
  * with the same fields, {@code outcome} PARKED or FAILED, and {@code error}. Refusals, nothing run: 400 ({@code from} missing, not
  * an int, outside 1..steps) → 404 (no timeline, no DLQ row) → 409 (the flow does not run here; a retry of the id already runs on
- * this node) → 422 (step n−1 unrecorded or metadata-only, the parked step beyond the flow, a body above the flow's byte budget) →
- * 429 with {@code retry-after: 1} (no permit of the flow's admission now). A retry that went through but whose row could not be
+ * this node) → 422 (step n−1 unrecorded or metadata-only, the parked step beyond the flow) → 409 (the input body removed by
+ * retention, D-096) → 422 (a body above the flow's byte budget) → 429 with {@code retry-after: 1} (no permit of the flow's
+ * admission now). A store that cannot say whether the input body exists is no refusal: 502 FAILED. A retry that went through but whose row could not be
  * removed is 500 naming the new message.
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
@@ -492,11 +494,11 @@ public final class AdminServer {
         if (at.bodyKey().isEmpty()) return Json.of(404, error("step " + n + " of message " + id + " was recorded as metadata only: hash and size, no bytes"));
         // the head first: a recorded content-type no response may carry is refused here (IllegalArgumentException, a 500), before any stream is opened
         MultiMap head = HttpHeaders.headers().set("content-type", at.headers().getOrDefault("content-type", OCTETS)).set("content-length", Long.toString(at.bodySize()));
-        String gone = "the bytes of step " + n + " of message " + id + " are no longer stored";
+        String gone = "the bytes of step " + n + " of message " + id + " are no longer stored (removed by retention)";
         ReadStream<Buffer> bytes;
         try {
             bytes = blobs.open(at.bodyKey().get());
-        } catch (IllegalArgumentException missing) {   // the store holds no object under the key: retention took the bytes
+        } catch (BlobNotFoundException missing) {   // the store holds no object under the key: retention took the bytes (D-096)
             return Json.of(404, error(gone));
         }
         return new Bytes(head, bytes, gone);
@@ -600,7 +602,7 @@ public final class AdminServer {
         return switch (refused.reason()) {
             case STEP_OUT_OF_RANGE -> Json.of(400, error("bad request: " + why));
             case UNKNOWN_MESSAGE, NO_DLQ_ROW -> Json.of(404, error(why));
-            case CLOSED -> Json.of(409, error(why));
+            case CLOSED, REMOVED_BY_RETENTION -> Json.of(409, error(why));
             case NOT_RECORDED, METADATA_ONLY, STEP_BEYOND_FLOW, TOO_LARGE -> Json.of(422, error(why));
             case BUSY -> {
                 Json busy = Json.of(429, error(why));
@@ -793,7 +795,7 @@ public final class AdminServer {
     /**
      * The stored bytes, streamed with back-pressure under the head checked on the virtual thread (content-type and length
      * from the snapshot). A stream that fails is never a complete answer: before the head is out a 500 — or, when it fails
-     * with an {@link IllegalArgumentException}, the store holding nothing under the key (a durable tier opens lazily and finds
+     * with a {@link BlobNotFoundException}, the store holding nothing under the key (a durable tier opens lazily and finds
      * no row only when read), the 404 {@code gone} — after it a reset, whatever the failure.
      */
     private record Bytes(MultiMap head, ReadStream<Buffer> bytes, String gone) implements Reply {
@@ -801,7 +803,7 @@ public final class AdminServer {
         public Future<?> send(HttpServerResponse res) {
             res.setStatusCode(200).headers().setAll(head);
             return bytes.pipe().endOnFailure(false).to(res).onFailure(failed -> {
-                if (failed instanceof IllegalArgumentException && !res.headWritten()) {
+                if (failed instanceof BlobNotFoundException && !res.headWritten()) {
                     Json.of(404, error(gone)).send(res);
                     return;
                 }

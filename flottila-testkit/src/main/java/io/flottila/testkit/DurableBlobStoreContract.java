@@ -1,6 +1,7 @@
 package io.flottila.testkit;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.vertx.core.Future;
@@ -16,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The contract of a {@link BlobStore} with a durable tier (D-061): everything {@link BlobStoreContract} asks, plus
  * {@link BlobStore#persist(BlobKey)} — it completes once the bytes outlive the process, a persisted body reads back intact
- * by every path, and a key with nothing stored is refused with an {@link IllegalArgumentException} as a failed future. A key's
+ * by every path, and a key with nothing stored is refused with a {@link BlobNotFoundException} (an IllegalArgumentException) as a failed future. A key's
  * durable bytes never change (D-061 amended by FIX-35): persisting the same bytes again is quiet; persisting other bytes under
  * a durable key fails with an {@link IllegalStateException}, makes nothing durable and leaves the body as written; another
  * step or part is another key, for a conflict and for a match alike. The in-memory testkit store and every runtime store with
@@ -60,16 +61,38 @@ public abstract class DurableBlobStoreContract extends BlobStoreContract {
         assertEquals(bytes, await(s.read(key)), "a second persist changes nothing");
     }
 
+    /**
+     * D-096: a key with nothing stored — never written, or removed by retention — is refused as a failed future with a
+     * {@link BlobNotFoundException} (an {@link IllegalArgumentException}, D-061) naming that key.
+     */
     @Test
-    public void persistingAnUnknownKeyFailsIllegalArgument() {
+    public void persistingAnUnknownKeyFailsBlobNotFound() {
         BlobStore s = store();
         await(s.write(key("p-3", 0), Buffer.buffer("stored"), TREE_LIMIT));
-        Future<Void> unknown = awaitOutcome(s.persist(key("p-3", 1)));
-        assertTrue(unknown.failed(), "nothing is stored under p-3 step 1: nothing can be made durable");
-        assertInstanceOf(IllegalArgumentException.class, unknown.cause(), "an unknown key is the caller's error: " + unknown.cause());
-        Future<Void> never = awaitOutcome(s.persist(key("never-written", 0)));
-        assertTrue(never.failed());
-        assertInstanceOf(IllegalArgumentException.class, never.cause(), String.valueOf(never.cause()));
+        for (BlobKey unknown : List.of(key("p-3", 1), key("never-written", 0))) {
+            Future<Void> refused = awaitOutcome(s.persist(unknown));
+            assertTrue(refused.failed(), "nothing is stored under " + unknown + ": nothing can be made durable");
+            BlobNotFoundException e = assertInstanceOf(BlobNotFoundException.class, refused.cause(), "the miss signal: " + refused.cause());
+            assertEquals(unknown, e.key(), "it names the key persisted");
+            assertEquals("no object stored under " + unknown, e.getMessage());
+            assertEquals(Boolean.FALSE, await(s.exists(unknown)), "and the refused persist stored nothing under " + unknown);
+        }
+    }
+
+    /**
+     * D-096: a persisted key exists — also once the persist let its local copy go (a tier whose local index forgets the key
+     * must ask its durable tier) — and a sibling key never written still does not.
+     */
+    @Test
+    public void existsStaysTrueOncePersistLetTheLocalCopyGo() {
+        BlobStore s = store();
+        Buffer bytes = invoice();
+        BlobKey key = key("p-exists", 2);
+        await(s.write(key, bytes, TREE_LIMIT));
+        await(s.persist(key));
+        assertEquals(Boolean.TRUE, await(s.exists(key)), "a persisted key exists");
+        assertEquals(bytes, await(s.read(key)), "fixture: it reads back intact");
+        assertEquals(Boolean.FALSE, await(s.exists(key("p-exists", 3))), "the next step was never written");
     }
 
     /** The refusal's text (FIX-35): it names the key and the size of the bytes that were refused. */

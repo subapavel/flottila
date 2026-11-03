@@ -479,8 +479,8 @@ class ReplayTest {
      * Every pre-run refusal is a {@link ReplayRefusedException} — an {@link IllegalArgumentException}, so the asserts above still
      * hold — naming its {@link ReplayRefusedException.Reason}; every reason has a case here (exact set). The order of the checks is
      * the admin API's status order: a step out of range beats an unknown message (400 before 404), and while the replay's only
-     * permit is taken the refusals that are no capacity question — unknown, no DLQ row, not recorded, metadata only, beyond the
-     * flow, too large — still name their own reason, never BUSY (404/422 before 429). Nothing runs for a refusal: no step, no row
+     * permit is taken the refusals that are no capacity question — unknown, no DLQ row, not recorded, metadata only, removed by
+     * retention (D-096), beyond the flow, too large — still name their own reason, never BUSY (404/409/422 before 429). Nothing runs for a refusal: no step, no row
      * under the given id. What the run itself throws — an IllegalArgumentException of a step included — is its outcome, never a
      * refusal. After close, CLOSED.
      */
@@ -505,10 +505,16 @@ class ReplayTest {
         partnerDown.set(false);
         Envelope rejected = in();
         recorded(rejected);
+        Envelope removed = in("<in/>");                  // step 1 body: the 5-byte ingress, then taken by retention (D-096)
+        recorded(removed);
+        Envelope parkedRemoved = parkedAtC(in("<in/>")); // parked input: step b's output, then taken by retention
 
-        // the replay: a, b, gate, c — one request and 12 bytes in flight at most
+        // the replay: a, b, gate, c — one request and 12 bytes in flight at most — reading the runtime's store through a forgetting one
         FlowDefinition def = FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), step("b", "b"), RunGate.STEP, step("c", "c")), 12, 1, 12L));
-        Replay replay = gated().replay(def, NO_FILES);
+        ForgettingBlobStore retained = new ForgettingBlobStore(rt.blobs());
+        Replay replay = over(retained, withGate()).replay(def, NO_FILES);
+        retained.forget(BlobKey.body(removed.id(), 0));
+        retained.forget(dlq.get(parkedRemoved.id()).await().orElseThrow().bodyKey());
         Map<ReplayRefusedException.Reason, ReplayRefusedException> seen = new java.util.EnumMap<>(ReplayRefusedException.Reason.class);
         List<Integer> callsBefore = List.of(aCalls.get(), bCalls.get(), cCalls.get());
 
@@ -523,6 +529,9 @@ class ReplayTest {
             seen.put(ReplayRefusedException.Reason.UNKNOWN_MESSAGE, refusal(() -> replay.from("nobody", 2, "refused-unknown")));
             seen.put(ReplayRefusedException.Reason.NOT_RECORDED, refusal(() -> replay.from(ends.id(), 3, "refused-ends")));
             seen.put(ReplayRefusedException.Reason.METADATA_ONLY, refusal(() -> replay.from(meta.id(), 2, "refused-meta")));
+            seen.put(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.from(removed.id(), 2, "refused-removed")));
+            assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.retry(parkedRemoved.id(), "refused-removed-retry")).reason(),
+                    "a parked body taken by retention, refused while the permit is held: never BUSY");
             seen.put(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> replay.from(big.id(), 3, "refused-big")));
             seen.put(ReplayRefusedException.Reason.NO_DLQ_ROW, refusal(() -> replay.retry("nobody", "refused-no-row")));
             seen.put(ReplayRefusedException.Reason.STEP_BEYOND_FLOW, refusal(() -> replay.retry(parkedAtFive.id(), "refused-beyond")));
@@ -555,12 +564,13 @@ class ReplayTest {
                 "no step ran for a refusal: only the holding run's step c");
         assertEquals(List.of("holding"), gate.runs().stream().map(r -> r.messageId).toList(), "only the holding run reached the gate");
         for (String id : List.of("refused-0", "refused-5", "refused-nobody-0", "refused-unknown", "refused-ends", "refused-meta", "refused-big", "refused-no-row",
-                "refused-beyond", "refused-big-retry", "refused-busy", "refused-busy-retry", "refused-closed", "refused-closed-retry")) {
+                "refused-beyond", "refused-big-retry", "refused-busy", "refused-busy-retry", "refused-closed", "refused-closed-retry", "refused-removed",
+                "refused-removed-retry")) {
             assertEquals(List.of(), stepsOf(id), id + ": no row for a refused run");
             assertEquals(Optional.empty(), dlq.get(id).await(), id + ": no DLQ row for a refused run");
         }
-        assertTrue(dlq.get(parked.id()).await().isPresent() && dlq.get(parkedBig.id()).await().isPresent() && dlq.get(parkedAtFive.id()).await().isPresent(),
-                "a refused retry keeps its row");
+        assertTrue(dlq.get(parked.id()).await().isPresent() && dlq.get(parkedBig.id()).await().isPresent() && dlq.get(parkedAtFive.id()).await().isPresent()
+                && dlq.get(parkedRemoved.id()).await().isPresent(), "a refused retry keeps its row");
     }
 
     /**
@@ -713,5 +723,276 @@ class ReplayTest {
         idle.close().await(5, java.util.concurrent.TimeUnit.SECONDS);
         assertEquals(1, idleOwn.closes(), "an idle replay closes its producers at once");
         assertEquals(0, other.closes());
+    }
+
+    // --- P2-07b1 (D-096): a body removed by retention is refused REMOVED_BY_RETENTION before the run, its permit and any read
+
+    /** A fresh heap store that forgets keys on demand; the original runs write their ingress bodies there. */
+    ForgettingBlobStore forgetting() {
+        return new ForgettingBlobStore(new io.flottila.testkit.InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT));
+    }
+
+    /** a, b, c, gate, reject — plus {@code cr}: c that reads its body whole first (a body gone fails it), counted as c. */
+    List<StepFactory> reading() {
+        List<StepFactory> all = new java.util.ArrayList<>(withGate());
+        all.add(factory("cr", s -> Stage.of(e -> {
+            cCalls.incrementAndGet();
+            e.body().whole();
+            if (partnerDown.get()) throw new IllegalStateException("partner down");
+            return e.withHeader("sent", "yes");
+        })));
+        return all;
+    }
+
+    /** A builder over a runtime whose blob store is {@code blobs}: a replay reads its input by key from there (M19). */
+    FlowBuilder over(io.flottila.api.BlobStore blobs, List<StepFactory> all) {
+        io.flottila.api.Runtime fake = rt.runtime();
+        return new FlowBuilder(new io.flottila.api.Runtime(fake.clock(), fake.timer(), fake.ids(), blobs, fake.hasher(), fake.components()), all, List.of(),
+                Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+    }
+
+    /** A message whose ingress body {@code body} is written to {@code blobs}. */
+    Envelope ingress(io.flottila.api.BlobStore blobs, String body) {
+        String id = rt.ids().next();
+        return Envelope.ingress(id, "f", Headers.empty().with("x", "1"), blobs.write(BlobKey.body(id, 0), Buffer.buffer(body), 4096).await());
+    }
+
+    /** A sync a, b, c run of a fresh message over {@code blobs}: step a hands the ingress body on, so step 1's row names it. */
+    Envelope recordedOver(ForgettingBlobStore blobs) {
+        Envelope e = ingress(blobs, "<in/>");
+        over(blobs, reading()).build(FlowDefinition.from(flow("sync", null)), NO_FILES).apply(e);
+        Snapshot one = store.timeline(e.id()).await().stream().filter(r -> r.step() == 1).findFirst().orElseThrow();
+        assertEquals(Optional.of(BlobKey.body(e.id(), 0)), one.bodyKey(), "fixture: step 1 of " + e.id() + " names the ingress body");
+        return e;
+    }
+
+    /** The at-least-once flow a, cr (cr is step 2, named c), 4096 bytes, four in flight. */
+    static FlowDefinition aThenC() {
+        return FlowDefinition.from(shaped(flow("at-least-once", null), List.of(step("a", "a"), step("cr", "c")), 4096, 4, null));
+    }
+
+    /** A fresh message over {@code blobs} parked at step 2 of {@link #aThenC}: its parked input is the ingress body. */
+    Envelope parkedOver(ForgettingBlobStore blobs) {
+        Envelope e = ingress(blobs, "<in/>");
+        partnerDown.set(true);
+        try {
+            Parked parked = assertThrows(ParkedException.class, () -> over(blobs, reading()).build(aThenC(), NO_FILES).apply(e)).parked();
+            assertEquals(2, parked.step(), "fixture: parked at step 2");
+            assertEquals(BlobKey.body(e.id(), 0), parked.bodyKey(), "fixture: the parked input is the ingress body");
+        } finally {
+            partnerDown.set(false);
+        }
+        return e;
+    }
+
+    static String removed(int step, String messageId, BlobKey key) {
+        return "the body of step " + step + " of message " + messageId + " (" + key + ") was removed by retention";
+    }
+
+    /** The events of {@code blobs} since {@code mark} that name a key of {@code messageId}. */
+    static List<String> touched(ForgettingBlobStore blobs, int mark, String messageId) {
+        return blobs.eventsSince(mark).stream().filter(e -> e.contains("messageId=" + messageId + ",")).toList();
+    }
+
+    /**
+     * A replay from step n of a message whose step n−1 body retention took is refused REMOVED_BY_RETENTION naming the step, the
+     * message and the key — before anything ran: no step, no row or DLQ row under the given id, no read, open or persist of the
+     * key (the store was asked whether it exists, once); before the permit: while the flow's only permit is held by another run it
+     * is still REMOVED_BY_RETENTION, never BUSY, and once that run ended the permit is free again. Witness: the same replay ran
+     * before the key went.
+     */
+    @Test
+    void aReplayFromARemovedBodyIsRefusedRemovedByRetentionBeforeAnythingRan() throws Exception {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope gone = recordedOver(blobs);
+        Envelope kept = recordedOver(blobs);
+        BlobKey input = BlobKey.body(gone.id(), 0);
+        FlowDefinition def = FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), step("b", "b"), RunGate.STEP, step("c", "c")), 4096, 1, null));
+        Replay replay = over(blobs, reading()).replay(def, NO_FILES);
+        java.util.concurrent.CompletableFuture<Envelope> before = onVirtualThread(() -> replay.from(gone.id(), 2, "before"));
+        atGate("before").release();
+        assertEquals("before", joined(before).id(), "witness: the replay runs while the body is stored");
+
+        blobs.forget(input);   // the retention job took it
+        java.util.concurrent.CompletableFuture<Envelope> holding = onVirtualThread(() -> replay.from(kept.id(), 2, "holding"));
+        RunGate.Run held = atGate("holding");   // the flow's only permit
+        List<Integer> calls = List.of(aCalls.get(), bCalls.get(), cCalls.get());
+        int mark = blobs.eventCount();
+
+        ReplayRefusedException refused = refusal(() -> replay.from(gone.id(), 2, "refused"));
+
+        assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refused.reason(), "removed, and checked before the permit: never BUSY: " + refused.getMessage());
+        assertEquals(removed(1, gone.id(), input), refused.getMessage());
+        assertEquals(List.of("exists " + input), touched(blobs, mark, gone.id()), "asked whether the key exists, nothing read, opened or persisted");
+        assertEquals(calls, List.of(aCalls.get(), bCalls.get(), cCalls.get()), "no step ran");
+        assertEquals(List.of(), stepsOf("refused"), "no row under the refused run's id");
+        assertEquals(Optional.empty(), dlq.get("refused").await());
+        assertEquals(List.of("before", "holding"), gate.runs().stream().map(r -> r.messageId).toList(), "the refused run never reached the gate");
+
+        held.release();
+        assertEquals("holding", joined(holding).id());
+        gate.open();
+        assertEquals("after", replay.from(kept.id(), 2, "after").id(), "the refusal kept no permit: the next run is admitted");
+        assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.from(gone.id(), 1, "from-one")).reason(),
+                "from step 1 the ingress row names the same removed key");
+    }
+
+    /**
+     * A DLQ retry of a message whose parked input retention took is refused REMOVED_BY_RETENTION naming the parked step's input
+     * step, the message and the key; nothing ran, nothing was read, opened or persisted, no row or DLQ row under the given id —
+     * and the original DLQ row stays as it was, for the operator. Witness: a sibling parked message retries and its row goes.
+     */
+    @Test
+    void aRetryOfARemovedParkedBodyIsRefusedAndItsRowStays() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope gone = parkedOver(blobs);
+        Envelope kept = parkedOver(blobs);
+        BlobKey input = BlobKey.body(gone.id(), 0);
+        Parked row = dlq.get(gone.id()).await().orElseThrow();
+        Replay replay = over(blobs, reading()).replay(aThenC(), NO_FILES);
+        blobs.forget(input);
+        int c = cCalls.get();
+        int mark = blobs.eventCount();
+
+        ReplayRefusedException refused = refusal(() -> replay.retry(gone.id(), "refused-retry"));
+
+        assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refused.reason(), refused.getMessage());
+        assertEquals(removed(1, gone.id(), input), refused.getMessage());
+        assertEquals(Optional.of(row), dlq.get(gone.id()).await(), "the refused retry keeps its row, unchanged");
+        assertEquals(List.of("exists " + input), touched(blobs, mark, gone.id()), "asked whether the key exists, nothing read, opened or persisted");
+        assertEquals(c, cCalls.get(), "the parked step did not run");
+        assertEquals(List.of(), stepsOf("refused-retry"));
+        assertEquals(Optional.empty(), dlq.get("refused-retry").await(), "no DLQ row under the refused run's id");
+
+        assertEquals("yes", replay.retry(kept.id(), "kept-retry").header("sent").orElseThrow(), "witness: a stored parked body retries");
+        assertEquals(Optional.empty(), dlq.get(kept.id()).await(), "witness: and its row goes");
+        assertEquals(Optional.of(row), dlq.get(gone.id()).await(), "the removed one's row still stays");
+    }
+
+    /**
+     * The order (D-096): REMOVED_BY_RETENTION comes after METADATA_ONLY — a metadata-only row names no key, the store is not
+     * asked — and after STEP_BEYOND_FLOW for a retry, and before TOO_LARGE: a removed input above the byte budget is
+     * REMOVED_BY_RETENTION, a stored one of the same size TOO_LARGE (witness).
+     */
+    @Test
+    void removedByRetentionComesAfterMetadataOnlyAndBeforeTooLarge() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope meta = ingress(blobs, "<in/>");
+        over(blobs, reading()).build(FlowDefinition.from(flow("sync", Map.of("payload", "metadata-only"))), NO_FILES).apply(meta);
+        blobs.forget(BlobKey.body(meta.id(), 0));
+        Envelope gone = recordedOver(blobs);
+        Envelope kept = recordedOver(blobs);
+        blobs.forget(BlobKey.body(gone.id(), 0));
+        Envelope parkedGone = parkedOver(blobs);
+        Envelope parkedKept = parkedOver(blobs);
+        blobs.forget(BlobKey.body(parkedGone.id(), 0));
+
+        Replay wide = over(blobs, reading()).replay(FlowDefinition.from(flow("sync", null)), NO_FILES);
+        int mark = blobs.eventCount();
+        assertEquals(ReplayRefusedException.Reason.METADATA_ONLY, refusal(() -> wide.from(meta.id(), 2, "meta")).reason(), "metadata-only first");
+        assertEquals(List.of(), touched(blobs, mark, meta.id()), "a metadata-only row names no key: the store is not asked");
+
+        // a byte budget of 4: every 5-byte input is above it
+        Replay narrow = over(blobs, reading()).replay(FlowDefinition.from(shaped(flow("sync", null), List.of(step("a", "a"), step("b", "b"), step("c", "c")), 4, 1, 4L)),
+                NO_FILES);
+        assertEquals(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> narrow.from(kept.id(), 2, "kept-big")).reason(), "witness: a stored 5-byte input is too large");
+        ReplayRefusedException removedBig = refusal(() -> narrow.from(gone.id(), 2, "gone-big"));
+        assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, removedBig.reason(), "removed before too large: " + removedBig.getMessage());
+        assertEquals(removed(1, gone.id(), BlobKey.body(gone.id(), 0)), removedBig.getMessage());
+
+        Replay oneStep = over(blobs, reading()).replay(FlowDefinition.from(shaped(flow("at-least-once", null), List.of(step("a", "a")), 4096, 4, null)), NO_FILES);
+        int beyondMark = blobs.eventCount();
+        assertEquals(ReplayRefusedException.Reason.STEP_BEYOND_FLOW, refusal(() -> oneStep.retry(parkedGone.id(), "beyond")).reason(), "beyond the flow first");
+        assertEquals(List.of(), touched(blobs, beyondMark, parkedGone.id()), "a step beyond the flow: the store is not asked");
+        Replay narrowRetry = over(blobs, reading()).replay(FlowDefinition.from(shaped(flow("at-least-once", null), List.of(step("a", "a"), step("cr", "c")), 4, 1, 4L)),
+                NO_FILES);
+        assertEquals(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> narrowRetry.retry(parkedKept.id(), "parked-kept-big")).reason(),
+                "witness: a stored 5-byte parked input is too large");
+        assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> narrowRetry.retry(parkedGone.id(), "parked-gone-big")).reason(),
+                "a removed parked input: removed before too large");
+        for (String id : List.of("meta", "kept-big", "gone-big", "beyond", "parked-kept-big", "parked-gone-big")) assertEquals(List.of(), stepsOf(id), id);
+    }
+
+    /**
+     * A store that cannot say whether the body exists is no refusal: its failure is what the replay or retry throws — an
+     * IllegalStateException as is, and an IllegalArgumentException that is not the miss signal also as is, never a
+     * ReplayRefusedException — and nothing ran; a retry keeps its row.
+     */
+    @Test
+    void aStoreFailureCheckingTheBodyIsNotARefusal() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope recorded = recordedOver(blobs);
+        Envelope parked = parkedOver(blobs);
+        Parked row = dlq.get(parked.id()).await().orElseThrow();
+        Replay replay = over(blobs, reading()).replay(FlowDefinition.from(flow("sync", null)), NO_FILES);
+        Replay retries = over(blobs, reading()).replay(aThenC(), NO_FILES);
+        List<Integer> calls = List.of(aCalls.get(), bCalls.get(), cCalls.get());
+
+        blobs.failExists(new IllegalStateException("postgres down"));
+        IllegalStateException down = assertThrows(IllegalStateException.class, () -> replay.from(recorded.id(), 2, "down"));
+        assertEquals("postgres down", down.getMessage(), "the store's failure, as is");
+        IllegalStateException retryDown = assertThrows(IllegalStateException.class, () -> retries.retry(parked.id(), "retry-down"));
+        assertEquals("postgres down", retryDown.getMessage());
+        assertEquals(Optional.of(row), dlq.get(parked.id()).await(), "the retry keeps its row");
+
+        blobs.failExists(new IllegalArgumentException("a key the store cannot read"));
+        IllegalArgumentException odd = assertThrows(IllegalArgumentException.class, () -> replay.from(recorded.id(), 2, "odd"));
+        assertFalse(odd instanceof ReplayRefusedException, "a failure that is not the miss signal is no refusal: " + odd);
+        assertEquals("a key the store cannot read", odd.getMessage());
+
+        assertEquals(calls, List.of(aCalls.get(), bCalls.get(), cCalls.get()), "no step ran");
+        for (String id : List.of("down", "retry-down", "odd")) {
+            assertEquals(List.of(), stepsOf(id), id + ": no row");
+            assertEquals(Optional.empty(), dlq.get(id).await(), id + ": no DLQ row");
+        }
+    }
+
+    /**
+     * A body that is found by the check and gone by the time a step reads it fails the run — the run's own failure, the miss
+     * signal naming the key, never a refusal — and parks nothing: a retry's park finds nothing to persist and writes no row,
+     * the original row stays. Witness of the check: it said the key exists (no refusal), and the step that read it ran.
+     */
+    @Test
+    void aBodyRemovedAfterTheCheckFailsTheRunAndParksNothing() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope recorded = recordedOver(blobs);
+        Envelope parked = parkedOver(blobs);
+        Parked row = dlq.get(parked.id()).await().orElseThrow();
+        BlobKey recordedInput = BlobKey.body(recorded.id(), 0);
+        BlobKey parkedInput = BlobKey.body(parked.id(), 0);
+        Replay replay = over(blobs, reading()).replay(FlowDefinition.from(flow("sync", null)), NO_FILES);
+        Replay retries = over(blobs, reading()).replay(aThenC(), NO_FILES);
+
+        blobs.forgetAfterExists(recordedInput);
+        int b = bCalls.get(), c = cCalls.get();
+        Exception failed = assertThrows(Exception.class, () -> replay.from(recorded.id(), 2, "vanished"));
+        assertFalse(failed instanceof ReplayRefusedException, "the run's outcome, not a refusal: " + failed);
+        assertEquals(recordedInput, missSignal(failed).key(), "the run failed on the removed key: " + failed);
+        assertEquals(b + 1, bCalls.get(), "step b ran and read the gone body");
+        assertEquals(c, cCalls.get(), "step c never ran");
+
+        blobs.forgetAfterExists(parkedInput);
+        int mark = blobs.eventCount();
+        Exception retryFailed = assertThrows(Exception.class, () -> retries.retry(parked.id(), "vanished-retry"));
+        assertFalse(retryFailed instanceof ReplayRefusedException, "the run's outcome, not a refusal: " + retryFailed);
+        assertFalse(retryFailed instanceof ParkedException, "nothing parked: " + retryFailed);
+        assertEquals(parkedInput, missSignal(retryFailed).key(), String.valueOf(retryFailed));
+        assertTrue(blobs.eventsSince(mark).contains("persist " + parkedInput), "fixture: the retry's park tried to persist its input: " + blobs.eventsSince(mark));
+        assertEquals(Optional.empty(), dlq.get("vanished-retry").await(), "no DLQ row: a park finds no body to persist");
+        assertEquals(Optional.of(row), dlq.get(parked.id()).await(), "the original row stays");
+    }
+
+    /** The first BlobNotFoundException in {@code failure}'s cause chain or its suppressed ones. */
+    static io.flottila.api.BlobNotFoundException missSignal(Throwable failure) {
+        java.util.ArrayDeque<Throwable> todo = new java.util.ArrayDeque<>(List.of(failure));
+        java.util.Set<Throwable> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        while (!todo.isEmpty()) {
+            Throwable t = todo.poll();
+            if (!seen.add(t)) continue;
+            if (t instanceof io.flottila.api.BlobNotFoundException miss) return miss;
+            if (t.getCause() != null) todo.add(t.getCause());
+            todo.addAll(List.of(t.getSuppressed()));
+        }
+        throw new AssertionError("no BlobNotFoundException in " + failure, failure);
     }
 }

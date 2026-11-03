@@ -1,5 +1,6 @@
 package io.flottila.core.flow;
 
+import io.flottila.api.BlobKey;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Envelope;
@@ -34,12 +35,13 @@ import java.util.function.IntFunction;
  * {@link Trail} of its own: {@link #from} and {@link #retry} return once its step bodies are durable and its rows written.
  * Built by {@link FlowBuilder#replay}.
  *
- * <p>A run is first checked — the step, the message's snapshot or DLQ row, the input body against the flow's byte budget — then
- * takes a permit of the flow's {@link Admission} for one request and its input's bytes, without waiting, and gives it back once
- * its trail closed, whatever the run did (D-067). Every refusal before the run is a {@link ReplayRefusedException} naming its
- * {@link ReplayRefusedException.Reason}, in that order: the step out of range; the message unknown (no DLQ row); not recorded,
- * metadata-only (the parked step beyond the flow); too large; then, with the permit, closed or busy. What the run throws is its
- * outcome. A run blocks on its stores and its trail's close: call it on a virtual thread, never an event loop. {@link #close}
+ * <p>A run is first checked — the step, the message's snapshot or DLQ row, that its input body is still stored, that body
+ * against the flow's byte budget — then takes a permit of the flow's {@link Admission} for one request and its input's bytes,
+ * without waiting, and gives it back once its trail closed, whatever the run did (D-067). Every refusal before the run is a
+ * {@link ReplayRefusedException} naming its {@link ReplayRefusedException.Reason}, in that order: the step out of range; the
+ * message unknown (no DLQ row); not recorded, metadata-only (the parked step beyond the flow); removed by retention (D-096: the
+ * store is asked whether the input body exists; a store that cannot answer throws its own failure, which is no refusal); too
+ * large; then, with the permit, closed or busy. What the run throws is its outcome. A run blocks on its stores and its trail's close: call it on a virtual thread, never an event loop. {@link #close}
  * refuses new runs and closes the producers the replay's steps send through once the runs in flight ended.
  *
  * @since 0.1
@@ -102,6 +104,7 @@ public final class Replay {
         }
         Snapshot input = recorded.get();
         if (input.bodyKey().isEmpty()) throw refused(Reason.METADATA_ONLY, "step " + (step - 1) + " of message " + messageId + " was recorded metadata-only: no reachable body to replay");
+        requireStored(input.bodyKey().get(), step - 1, messageId);
         Admission.Permit permit = admit(input.bodySize());
         try {
             return run(tail.apply(step), rebuild(input, replayId.next(), flow.id(), replayOf(input.props(), messageId), blobs));
@@ -138,6 +141,7 @@ public final class Replay {
             throw refused(Reason.STEP_BEYOND_FLOW, "message " + messageId + " was parked at step " + parked.step() + ", beyond the " + n + " steps of flow '"
                     + flow.id() + "' as deployed now");
         }
+        requireStored(parked.bodyKey(), parked.step() - 1, messageId);
         Admission.Permit permit = admit(parked.bodySize());
         Envelope out;
         String id;
@@ -170,6 +174,16 @@ public final class Replay {
         }
         if (first) release(null);   // the replay's own hold
         return drained.future().compose(idle -> producers.close());
+    }
+
+    /**
+     * Refuses REMOVED_BY_RETENTION when nothing is stored under {@code key} any more (D-096), before any permit; a store that
+     * cannot answer throws its own failure, which is no refusal.
+     */
+    private void requireStored(BlobKey key, int step, String messageId) {
+        if (!blobs.exists(key).await()) {
+            throw refused(Reason.REMOVED_BY_RETENTION, "the body of step " + step + " of message " + messageId + " (" + key + ") was removed by retention");
+        }
     }
 
     /**
