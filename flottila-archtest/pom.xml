@@ -61,6 +61,12 @@
       <artifactId>flottila-cli</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- the simulation harness (F-25, D-101): its src/main is checked by SIM_DEPENDS_ON_API_CORE_TESTKIT and NOTHING_DEPENDS_ON_SIM -->
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-sim</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>com.tngtech.archunit</groupId>
       <artifactId>archunit-junit5</artifactId>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila</groupId>
+    <artifactId>flottila</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <relativePath>..</relativePath>
+  </parent>
+
+  <artifactId>flottila-sim</artifactId>
+  <packaging>jar</packaging>
+  <name>Flottila :: sim</name>
+  <description>Deterministic simulation of the real core over in-memory stores and SPI doubles (F-25, D-101): harness in src/main
+    (checked by the archtest), variants, self-tests and pinned seeds in src/test. Nothing depends on it; never shipped; floor 75 %
+    line and branch, no PIT.</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.flottila</groupId>
+      <artifactId>flottila-testkit</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>net.jqwik</groupId>
+      <artifactId>jqwik</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

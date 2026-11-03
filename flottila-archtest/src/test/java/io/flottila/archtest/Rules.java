@@ -29,6 +29,7 @@ final class Rules {
     static final String STEPS = "io.flottila.steps..";
     static final String TESTKIT = "io.flottila.testkit..";
     static final String CLI = "io.flottila.cli..";
+    static final String SIM = "io.flottila.sim..";
 
     /**
      * The whole Vert.x surface api and core may touch (D-020): the four types CLAUDE.md names
@@ -98,6 +99,15 @@ final class Rules {
             .and().resideOutsideOfPackage(CLI)
             .should().dependOnClassesThat().resideInAPackage(CLI)
             .because("cli is the outermost module: it may depend on every module and nothing depends on it (F-16, D-079)");
+
+    static final ArchRule SIM_DEPENDS_ON_API_CORE_TESTKIT = noClasses().that().resideInAPackage(SIM)
+            .should().dependOnClassesThat().resideInAnyPackage(RUNTIME, COMPONENTS, STEPS, CLI)
+            .because("the simulation runs the real core over api, core and testkit only (F-25, D-101)");
+
+    static final ArchRule NOTHING_DEPENDS_ON_SIM = noClasses().that().resideInAPackage("io.flottila..")
+            .and().resideOutsideOfPackage(SIM)
+            .should().dependOnClassesThat().resideInAPackage(SIM)
+            .because("flottila-sim is test infrastructure at the top beside cli: never shipped, nothing depends on it (F-25, D-101)");
 
     static final ArchRule ONLY_RUNTIME_TOUCHES_STORE_CLIENTS = noClasses().that().resideInAPackage("io.flottila..")
             .and().resideOutsideOfPackage(RUNTIME)

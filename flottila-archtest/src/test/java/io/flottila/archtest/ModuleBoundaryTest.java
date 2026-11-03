@@ -8,6 +8,7 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -33,6 +34,15 @@ class ModuleBoundaryTest {
     @Test void stepsDependOnApiOnly() { Rules.STEPS_DEPEND_ON_API_ONLY.check(tree); }
     @Test void testkitDoesNotDependOnRuntimeComponentsStepsOrCli() { Rules.TESTKIT_DEPENDS_ON_CORE_AND_API.check(tree); }
     @Test void nothingDependsOnCli() { Rules.NOTHING_DEPENDS_ON_CLI.check(tree); }
+    @Test void simDependsOnApiCoreTestkitOnly() { Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT.check(tree); }
+    @Test void nothingDependsOnSim() { Rules.NOTHING_DEPENDS_ON_SIM.check(tree); }
+
+    /** The two sim rules check the harness, not an empty set: its src/main is on the archtest classpath (F-25, DoNotIncludeTests). */
+    @Test void simIsOnTheArchtestClasspath() {
+        for (String harness : List.of("io.flottila.sim.Simulation", "io.flottila.sim.World", "io.flottila.sim.Verdict", "io.flottila.sim.SimSeed")) {
+            assertTrue(tree.contain(harness), "the production tree holds " + harness + " (flottila-sim is a test dependency of the archtest)");
+        }
+    }
     @Test void onlyRuntimeTouchesStoreClients() { Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS.check(tree); }
     @Test void flottilaPackagesAreFreeOfCycles() { Rules.NO_CYCLES.check(tree); }
     @Test void onlyMainWiresComponentsAndStepsInRuntime() { Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS.check(tree); }

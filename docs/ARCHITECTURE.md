@@ -56,6 +56,7 @@
 | 2026-11-03 | 3.4 | §4 concurrency per target system (requests only, held for the send, maxWait → retryable Nack); §7 Component gains `target` | P2-09a, D-099, F-24 |
 | 2026-11-03 | 3.4 | §4 the target limit is node-wide: one Targets per node from FLOTTILA_TARGET_MAX_CALLS/_MAX_WAIT/_LIMITS, shared across packages and versions; GET /admin/targets | P2-09b, D-099 |
 | 2026-11-03 | 3.4 | §4 MessageContext bound on every deployed pipeline (deadline = run start + `delivery.timeout`, default 30 s); the target wait takes the earlier of maxWait and the deadline; RequestScope per message still open (FIX-117) | FIX-115, D-100, F-24 |
+| 2026-11-03 | 3.4 | §11, §12: `flottila-sim` (deterministic simulation, P2-10), over api, core, testkit; nothing depends on it | F-25, D-101 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -415,6 +416,7 @@ Every flow is testable in milliseconds without infrastructure because outside ac
 | Golden tests from monitoring | "save as test case" on a monitored message → input = step 1 payload, expected output = last step, partner reply = recorded response; rerun hundreds after an XSLT change | seconds |
 | Integration / stack | Testcontainers for Postgres, Kafka, ClickHouse, Valkey, S3; nightly Compose; kill -9 ledger tests (sent = final-step rows, DLQ 0, work 0) | minutes |
 | Protocol doubles | embedded MINA SSHD, Artemis, GreenMail, WireMock, own XI/IDoc simulator | — |
+| Deterministic simulation | `flottila-sim`: the real core over in-memory stores and SPI doubles, seeded workload, faults and schedule, an oracle per tick and after the drain; a failing seed prints its replay command and is pinned (P2-10, D-101) | seconds per push, minutes nightly |
 
 Fake clock drives backoff, leases and deadlines; a blocked platform thread in tests is a failure. Benchmarks run natively on Linux (never through Docker Desktop on Windows, which the prototype showed is round-trip-bound) and are recorded in `bench/RESULTS.md` with machine, date and configuration.
 
@@ -463,6 +465,7 @@ One Maven monorepo (`~/flottila/`, Apache 2.0), dependency direction strictly do
 | `flottila-sap` | PO/CPI mapping facades, XI/IDoc simulator, migration converters | api, steps |
 | `flottila-testkit` | fake Runtime, contract suites, protocol doubles, fake clock and timer, in-memory BlobStore (the flow-test runner lives in `flottila-cli`, F-16) | api (F-1, 2026-10-18; was core) |
 | `flottila-cli` | validate, test, deploy, package, migrate | every module (runtime, components incl. the mock, steps); nothing depends on it (F-16) |
+| `flottila-sim` | deterministic simulation: the real FlowBuilder/Delivery/FlowWorker/admission (Replay from P2-10b) over in-memory stores and its own SPI doubles; seeded workload, faults, schedule; oracle; never shipped | api, core, testkit (runtime from P2-10d only, for `io.flottila.sim.pg`, with a rule change then); nothing depends on it (F-25) |
 | `flottila-control` | Quarkus admin API, React UI, MCP server, developer portal | talks to runtime over HTTP only; no Java dependency on runtime |
 | `flottila-schemas` | JSON Schemas for flow, package, partner, endpoint configs; published | — |
 | `bench/`, `docs/`, `deploy/` | benchmarks, architecture and ADRs, Compose/Helm/systemd | — |

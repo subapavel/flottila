@@ -70,6 +70,17 @@ class ModuleBoundaryViolationTest {
     @Test void cliTouchingAPostgresClientIsStillCaughtByTheClientRule() {
         assertFails(Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS, "CliUsesAPostgresClient");
     }
+    // --- flottila-sim (F-25, D-101): over api, core and testkit only; nothing depends on it
+    @Test void simDependingOnRuntimeIsCaught() { assertFails(Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT, "SimDependsOnRuntime"); }
+    @Test void coreDependingOnSimIsCaught() { assertFails(Rules.NOTHING_DEPENDS_ON_SIM, "CoreDependsOnSim"); }
+    @Test void simDependingOnApiCoreTestkitAndItselfIsAllowed() {
+        JavaClasses simOnly = new ClassFileImporter()
+                .withImportOption(new ImportOption.OnlyIncludeTests())
+                .importClasses(io.flottila.sim.violation.SimUsesApiCoreAndTestkit.class, io.flottila.sim.violation.SimFixture.class,
+                        io.flottila.core.violation.CoreFixture.class);
+        assertDoesNotThrow(() -> Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT.check(simOnly), "sim -> api, core, testkit and sim are allowed");
+        assertDoesNotThrow(() -> Rules.NOTHING_DEPENDS_ON_SIM.check(simOnly), "sim -> sim is allowed");
+    }
     @Test void packageCycleIsCaught() { assertFails(Rules.NO_CYCLES, "cyclea"); }
 
     @Test void runtimeDependingOnAComponentIsCaught() { assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "RuntimeDependsOnAComponent"); }

@@ -810,3 +810,48 @@ Postgres runs in Docker Desktop on Windows (WSL2). Its virtualized I/O path make
 round-trips both slow (tens of ms) and noisy (13–91 ms for identical single-row transactions),
 while reported per-sync WAL time stays ~1.4 ms. Absolute numbers in this file are only good
 for comparing configurations on this machine; do not read them as Flottila's performance.
+
+## P2-10 — deterministic simulation, per-push run (P2-10a landing)
+
+Machine: cloud VM, 4 vCPU Intel Xeon @ 2.10 GHz, 15 GB RAM, Linux 6.18. Date: 2026-11-03. Commit: f0d3a03→1b32585 plus the
+uncommitted P2-10a tree (review round 3). JDK: Java 25.0.5 LTS. Config: `SimConfig.V1`. Per push: the correct world on 32 seeds
+(0x1..0x20) × 1 000 ticks; each variant runs those seeds until one fails.
+
+What the 15 s VM budget (D-101 (c)) measures: the **sum of the flottila-sim surefire suite times** (the `time` attributes of
+`TEST-*.xml`), i.e. the tests themselves. The `mvn` wall time is listed beside it; it also includes Maven start-up, the
+up-to-date checks and the fork. flottila-sim has 61 cases. Three runs in a row:
+
+| run | sum of suite times (surefire XML) — the budgeted time | `mvn -B -ntp -q -o -pl flottila-sim test` wall |
+|---|---|---|
+| 1 | 12.15 s | 20.0 s |
+| 2 | 12.38 s | 18.3 s |
+| 3 | 11.66 s | 17.5 s |
+| **median** | **12.15 s** | 18.3 s |
+
+The median is under 15 s, so ticks stay at 1 000. Log: `agent/work/P2-10a-r3-walltime.log`. At the first landing measurement
+(57 cases) the median was 9.19 s (mvn wall 17.1 s, `agent/work/P2-10a-walltime.log`).
+
+Compared counts per check over the 32 correct seeds (per seed, min / max; unchanged in round 3). The floors in SimSelfTest are
+half the minimum:
+
+| check | min | max | floor |
+|---|---|---|---|
+| PREDICTED | 1 184 | 1 273 | 592 |
+| ADMISSION_BOUNDS | 319 | 568 | 159 |
+| KEY_ORDER | 1 388 | 1 603 | 694 |
+| ACKED_IS_FINAL | 626 | 718 | 313 |
+| SNAPSHOT_PER_STEP | 1 111 | 1 189 | 555 |
+| DRAINED | 1 248 | 1 362 | 624 |
+
+Detecting seed per broken world (1 000 ticks; first failing per-push seed, `agent/work/P2-10a-r3-detect.log`):
+
+| world | config | first failing seed | failed checks |
+|---|---|---|---|
+| ack-before-save | V1 | 0x1 | PREDICTED, ACKED_IS_FINAL |
+| reordering-fast-path | V1 | 0x1 | KEY_ORDER |
+| double-admission | V1 | 0x1 | ADMISSION_BOUNDS |
+| renumbered-ingress | V1 | 0x1 | SNAPSHOT_PER_STEP |
+| over-claim | V1 | 0x3 | ADMISSION_BOUNDS |
+| key-blind-claim | V1+DELAY=0.0 | 0x1 | KEY_ORDER |
+
+Golden trace digest of seed 0x1, V1, 1 000 ticks, correct world: `sha256-64:a2265034349a7816`.

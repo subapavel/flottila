@@ -1,7 +1,6 @@
 # implementer — durable facts (seeded from agent/HANDOFF.md at the role split; prune when you add)
 ## Build
-- Agent files (logs, diffs, scratch harnesses, the batch marker) live in `agent/work/` (FIX-111), outside every Maven
-  `target/`, so any `mvn clean` leaves them; P1-08 r2 lost them when they lived in the root `target/`.
+- Agent files (logs, diffs, scratch, the batch marker) live in `agent/work/` (FIX-111), outside every `target/` (`mvn clean`).
 - Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
   components need only `-pl flottila-api,flottila-testkit,<module>`.
 - Full check: `mvn -B -ntp -q verify -Pit > agent/work/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
@@ -114,7 +113,7 @@
 - Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp.
 - PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn (log_statement=all).
 - JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
-- Bench config, no seam: scratch Probe.java + reflection on private `nodeConfig` (P2-09b); sync c=64 uncapped answers ~6 % 503 (FIX-113).
+- Sim (P2-10a): FlowWorker.process's VT may end before its starter composes (sim gates each run); InMemoryMessageStore.timeline scans all rows.
 - Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
   `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).

@@ -1,0 +1,7 @@
+# Pinned simulation runs (D-101), replayed by PinnedSeedsTest. One tab-separated line per run:
+#   seed (0x hex) TAB config TAB ticks TAB world TAB PASS | FAIL:Check,... TAB # origin
+# A line is never edited to match a changed verdict: a moved verdict is a finding. Lines starting with # are comments.
+0x1	V1	1000	correct	PASS	# P2-10a landing: per-push seed 0x1, the golden digest of SimReproducibilityTest
+0x1	V1	1000	ack-before-save	FAIL:PREDICTED,ACKED_IS_FINAL	# P2-10a landing: the first per-push seed detecting ACK_BEFORE_SAVE
+0x1	V1	1000	reordering-fast-path	FAIL:KEY_ORDER	# P2-10a landing: the first per-push seed detecting REORDERING_FAST_PATH
+0x1	V1	1000	double-admission	FAIL:ADMISSION_BOUNDS	# P2-10a landing: the first per-push seed detecting DOUBLE_ADMISSION
