@@ -1,5 +1,45 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## FIX-108 — CPU sampling overhead (partial: round 1 only) — cloud VM, 4 vCPU
+
+Date: 2026-11-02. Commits: the FIX-108 working tree on 84b47f0 (records labelled `84b47f0+dirty`) and the parent 84b47f0 (a git
+worktree, records `node-cpu-<step>-c<c>-parent-r<round>`, n = 3; xslt c64 n = 2). Machine: Intel Xeon @ 2.80 GHz × 4 vCPU, kernel
+6.18.44-fc-v185, JDK 25.0.5, native Postgres. `BENCH_SCENARIOS=cpu bench/run.sh`: sync flow, 20 000 messages after 1 000 warm-up,
+default maxInFlight 64×c; exit 3 kept only with 0 errors (refusals are FIX-113). Logs: agent/work/FIX-108-bench6.log,
+-parent-bench6.log (not committed); records in bench/out/node-cpu-*.json (not committed).
+
+**The `off` rows predate the owner decision of 2026-11-03:** they ran with every step wrapped in a disabled `io.flottila.Step`; the committed code wraps no step with sampling off, so `off` is now the parent's stage list and these rows are not the commit's off configuration.
+
+**Not a complete measurement.** Round 1 only (n = 1 per tree row): the script stopped at `node-cpu-xslt-c64-pt0.004s-r1` with
+"writer backlog full … snapshotWriteFailures rose from 0 to 5366" (F-13 / FIX-66; the parent's xslt c64 r1 stopped the same way),
+and the first records ran beside a parent `mvn` build. No overhead claim is made from these rows; FIX-112 re-measures (3 rounds)
+before it decides default-on.
+
+| step, c | sampling | msg/s | p50 ms | p99 ms | process CPU ms per request sent | refused |
+|---|---|---|---|---|---|---|
+| passthrough, 1 | off | 668 | 0.78 | 6.9 | 1.39 | 5 350 |
+| passthrough, 1 | PT0.004S | 665 | 1.19 | 7.1 | 2.02 | 435 |
+| passthrough, 1 | PT0.002S | 660 | 1.38 | 4.4 | 2.16 | 0 |
+| passthrough, 1 | parent | 747 [707–769] | 1.23 [1.15–1.29] | 3.9 [3.8–4.0] | – | 108 |
+| passthrough, 64 | off | 988 | 18.09 | 62.8 | 0.92 | 13 456 |
+| passthrough, 64 | PT0.004S | 851 | 20.15 | 81.5 | 1.11 | 13 283 |
+| passthrough, 64 | PT0.002S | 872 | 19.31 | 79.3 | 1.06 | 13 200 |
+| passthrough, 64 | parent | 942 [933–1049] | 17.29 [16.77–18.59] | 64.5 [62.5–77.3] | – | 40 649 |
+| xslt, 1 | off | 82 | 10.14 | 30.8 | 13.42 | 2 637 |
+| xslt, 1 | PT0.004S | 85 | 9.95 | 25.0 | 12.89 | 2 749 |
+| xslt, 1 | PT0.002S | 93 | 9.24 | 24.0 | 12.33 | 2 662 |
+| xslt, 1 | parent | 86 [86–87] | 9.92 [9.85–10.04] | 21.9 [21.9–22.4] | – | 8 171 |
+| xslt, 64 | off | 229 | 249.53 | 611.5 | 10.64 | 1 833 |
+| xslt, 64 | PT0.004S / PT0.002S | no record (stopped, see above) | | | | |
+| xslt, 64 | parent | 235 [233–238] | 243.16 [240.99–245.33] | 654.4 [649.6–659.2] | – | 2 887 |
+
+Reading: one run per tree row; parent rows median [min–max] of its runs, refused summed over them (per run in the records —
+the parent's passthrough c1 runs refused 2, 20 and 86, the tree's sampling-off run 5 350: FIX-113). Process CPU is divided by every
+request sent, refusals included. The sampler's own columns (samples, lost) are left out: NodeBenchMain read the endpoint without
+waiting out the 5–10 s read lag (passthrough c64 shows the warm-up's 1 000 executions only), and `lost` is JVM-wide, so it must be
+divided by virtual plus platform samples (these records give 10.6–16.9 % passthrough, 4.1–4.3 % xslt, over a window that is not the
+measured one). FIX-112 waits two read cycles before it reads, then states lost.
+
 ## Hand-over gate (GATE) — commit fea6c5c — cloud VM, 4 vCPU
 
 Date: 2026-10-30. Commit: fea6c5c (FIX-107, the last commit before the gate review). Machine: Intel Xeon @ 2.80 GHz × 4 vCPU,

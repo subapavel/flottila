@@ -11,6 +11,7 @@ import io.flottila.api.Timer;
 import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
+import io.flottila.core.record.StepCpu;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
@@ -75,17 +76,19 @@ import java.util.stream.Stream;
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
  * refused node leaves its database untouched, migrates the database, opens the stores and the archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
- * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them, restores
+ * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them, starts the
+ * {@link CpuSampler} when {@code FLOTTILA_CPU_SAMPLING} sets a period (D-094), restores
  * what the pool's records name ({@link Deployments#restore}, D-070: rows that cannot be read or a data directory that cannot be
  * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts), builds the
  * {@link Retention} job over the pool, the clock and the timer ({@code FLOTTILA_RETENTION_*}, D-088) and only then starts the admin
- * server with the deploy, work, replay and retry routes and the health checks {@code postgres} and {@code deployments} (DOWN while
+ * server with the deploy, work, replay and retry routes, the flows' CPU (the sampler's aggregate, read every 5 s on the node's timer and failed once a read failed, or off) and the health checks
+ * {@code postgres} and {@code deployments} (DOWN while
  * anything is listed FAILED, {@link Deployments#health}), then the retention job, whose first run begins at once and does not hold
  * the start; when any of this fails, what was opened closes again — the deployments first (the
- * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the store,
+ * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the sampler, then the store,
  * the pool, the S3 client, the Valkey client — so nothing is left running, listening or pooled. {@code close} first closes the
  * deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
- * released, while the admin port still answers — then stops the admin server, then closes the retention job (no next run; the
+ * released, while the admin port still answers — then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
  * batch in flight commits or rolls back first), then flushes and closes the message store, then closes the pool, then the S3
  * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
  *
@@ -105,6 +108,8 @@ public final class Node implements AutoCloseable {
     private static final Set<String> SYNCHRONOUS_COMMIT = Set.of("on", "remote_write", "remote_apply");
 
     private final Deployments deployments;
+    /** The CPU sampler (D-094), when {@code FLOTTILA_CPU_SAMPLING} sets a period. */
+    private final Optional<CpuSampler> sampler;
     private final AdminServer admin;
     private final int adminPort;
     private final Retention retention;
@@ -115,9 +120,10 @@ public final class Node implements AutoCloseable {
     /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
     private final Runnable closeValkey;
 
-    private Node(Deployments deployments, AdminServer admin, int adminPort, Retention retention, PgMessageStore messages, Pool pool,
-                 Runnable closeS3, Runnable closeValkey) {
+    private Node(Deployments deployments, Optional<CpuSampler> sampler, AdminServer admin, int adminPort, Retention retention, PgMessageStore messages,
+                 Pool pool, Runnable closeS3, Runnable closeValkey) {
         this.deployments = deployments;
+        this.sampler = sampler;
         this.admin = admin;
         this.adminPort = adminPort;
         this.retention = retention;
@@ -157,6 +163,7 @@ public final class Node implements AutoCloseable {
         Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pool
         Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
+        Optional<CpuSampler> sampler = Optional.empty();   // once started: closed after the deployments
         try {
             TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
                     spool, spoolKey(), null, false), hasher, new PgBodies(pool, tiers.durableMax()));
@@ -195,15 +202,18 @@ public final class Node implements AutoCloseable {
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives, new PgIntake(pool, blobs, messages, work), leases);
             deployments = restored;
+            StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
+            // before the restore: the restored flows' steps are sampled from their first message on (D-094)
+            sampler = config.cpuSampling().map(period -> CpuSampler.start(period, cpu, clock, timer, CpuSampler.READ_EVERY));
             restored.restore();   // before the admin port opens: what the pool recorded runs before a deploy can be taken (D-070)
             Retention retention = new Retention(pool, clock, timer, config.retention());
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health())), messages::failed),
-                    Optional.of(restored), work, ids);
+                    Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)));
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
-            return new Node(restored, admin, port, retention, messages, pool, closeS3, closeValkey);
+            return new Node(restored, sampler, admin, port, retention, messages, pool, closeS3, closeValkey);
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -213,7 +223,11 @@ public final class Node implements AutoCloseable {
             } catch (Throwable unstopped) {
                 failure.addSuppressed(unstopped);
             } finally {
-                closeStores(messages, pool, closeS3, closeValkey);
+                try {
+                    sampler.ifPresent(CpuSampler::close);
+                } finally {
+                    closeStores(messages, pool, closeS3, closeValkey);
+                }
             }
             throw failure;
         }
@@ -269,7 +283,7 @@ public final class Node implements AutoCloseable {
     public MessageStore messages() { return messages; }
 
     /**
-     * Closes the deployments (every flow stopped, its lease released, deploys refused), then stops the admin server, then closes the
+     * Closes the deployments (every flow stopped, its lease released, deploys refused), then the CPU sampler (if one runs), then stops the admin server, then closes the
      * retention job (waits for its batch in flight), then flushes and closes the message store, then closes the pool, then the S3
      * client, then the Valkey client — each step even when the one before failed.
      */
@@ -279,12 +293,16 @@ public final class Node implements AutoCloseable {
             deployments.close();
         } finally {
             try {
-                admin.stop().await();
+                sampler.ifPresent(CpuSampler::close);   // after the deployments; it feeds nothing more, their last one to two read cycles unread (F-22)
             } finally {
                 try {
-                    retention.close().await();
+                    admin.stop().await();
                 } finally {
-                    closeStores(messages, pool, closeS3, closeValkey);
+                    try {
+                        retention.close().await();
+                    } finally {
+                        closeStores(messages, pool, closeS3, closeValkey);
+                    }
                 }
             }
         }

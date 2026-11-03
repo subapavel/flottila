@@ -2,15 +2,10 @@
 - Streams: a stream handed over paused that nobody resumes (TieredBlobStore, P1-06 round 2); an attach-time resume that undoes the store's own back-pressure pause (round 3). Look at every `pause()` / `resume()` pair across the component ↔ store boundary.
 - Bounds: an error-path body or reply buffered without a limit (http producer non-2xx, P1-06 round 1); a reply above the limit leaving the client response paused until the timeout.
 - Event loop: parsing untrusted input (`Long.parseLong` on content-length) or doing I/O on the event loop thread; the virtual-thread rule is per message, verticles own sockets only.
-- Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id generators making an identity assertion vacuous (P1-06 round 5); a mock answering every
-  endpoint from one handler (P1-06 round 1); `off`/`yes`/`no` read as YAML booleans (P1-03).
+- Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id generators making an identity assertion vacuous (P1-06 round 5); a mock answering every endpoint from one handler (P1-06 round 1); `off`/`yes`/`no` read as YAML booleans (P1-03).
 - Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06). Since FIX-7: failure recorded under the monitor before the pause and before the promise fails; check that order on every new catch.
-- A test that "covers" a branch is not a test that fails when the branch is wrong: name the
-  mutants (`sed -i '<line>d'`-style edits of the production file) and have the verifier run them
-  with the file restored by `cp`/`touch` (an `mv` restore leaves the mutant class compiled —
-  FIX-7 round 2). A PASS without a mutant or a PIT figure on the touched class is a weak PASS.
-- Ask first for: the scoped PIT report of the touched classes (a test that kills no mutant is
-  fake), the `git diff --stat`, and the packet's named red tests — check they are the ones in the diff.
+- A test that covers a branch is not one that fails when the branch is wrong: name `sed`-style mutants; the verifier restores by `cp`/`touch` (an `mv` restore leaves the mutant compiled, FIX-7 r2). A PASS without a mutant or a PIT figure on the touched class is weak.
+- Ask first for: the scoped PIT report of the touched classes (a test that kills no mutant is fake), the `git diff --stat`, and the packet's named red tests — check they are the ones in the diff.
 - Decision under the monitor, call after it: every post-monitor in.resume() (sink, re-check, start()) needs a
   post-check (`if (x && failed()) in.pause()`) and a "what lands in between" question (FIX-10 round 2).
 - Comments about failure precedence: check every entry point (fail()'s over() early return drops, FIX-10).
@@ -119,3 +114,4 @@
 - Retention (P2-07): keyset deletes by row split a multi-row entity across batches — check every "whole"/"only"/"never" claim against batch boundaries and against persist→reference protocols (Parking, Replay); an accepted limit goes beside the § sentence; the verifier writes cmp restores into the mutant's log
 - Command guardrails (WF-1, three FAIL rounds, hook dropped): a hook reading shell text fails on each new syntax class (`#` comments, heredocs, quotes, wrappers), on value-option sets (`mvn -e`), on `-am` pulling the root parent, and on dir/glob pathspecs; a condition mutation misses `or` arms — demand a case per arm. Prefer removing the cause (files out of `target/`) to guarding commands.
 - Installer one-liners: a `;` instead of `&&` after a backup lets the overwrite run when the backup failed; check every chained cp, test a failing backup (FIX-111). check-ignore evidence needs a name no older pattern (`*.log`) already ignores.
+- JFR consumers (FIX-108): `RecordedEvent.getThread()` can be null under load — handlers need null branches and `onError`; PIT cannot mutate a jdk.jfr.Event subclass (RUN_ERROR, 0 tests run — not a detection), so hand-mutate it and exclude RUN_ERROR from the score. An owner decision that flips a default (always → only when sampling): grep the § sentence, the changelog row, the D-row, the class javadoc, the packet lines and the RESULTS rows measured under the old default. A fluent setter documented as 'replaces an earlier call' needs a true-then-false case on one builder (M-STICKY, FIX-108 r5).

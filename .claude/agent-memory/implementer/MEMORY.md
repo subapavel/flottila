@@ -5,7 +5,8 @@
 - Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
   components need only `-pl flottila-api,flottila-testkit,<module>`.
 - Full check: `mvn -B -ntp -q verify -Pit > agent/work/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
-  Postgres (`sudo pg_ctlcluster 16 main start`), often up already (`docker info`, `pg_lsclusters`).
+  Postgres (`sudo pg_ctlcluster 16 main start`); both die between calls: start detached (NOTES "Build and VM"), check
+  `docker info` first — ~31 IT errors "Previous attempts to find a Docker environment failed" mean dockerd is down.
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
   Scoped PIT: `mvn -pl flottila-api,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage` (floor 80 %).
 - `-q` prints no "Tests run:" lines even on success: take counts from `**/target/{surefire,failsafe}-reports/TEST-*.xml`
@@ -85,14 +86,18 @@
   loadKeyPairIdentities: garbage → null, PKCS8 with an unknown OID → NoSuchAlgorithmException (a GSE). rename never overwrites.
 - vertx-redis-client 5.1.10 (javap, P2-02L; Apache-2.0/EPL-1.0, no NOTICE): `Redis.createClient(Vertx, String)` lazy, `close()` → Future;
   `RedisAPI.api(Redis).eval(List)` = [script, numkeys, keys.., args..]; `RedisAPI.close()` is void. Valkey IT image valkey/valkey:8.
-- Docker (P2-05a): native PG holds :5432 → compose `FLOTTILA_PG_HOST_PORT=55432`; temurin: bash, no curl. No rsync on the VM: cp.
 - `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
-- P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch (source); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
+- P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch, an interrupt sneaky-throws InterruptedException (source, FIX-108); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
 - Deployments.deploy refuses FORBIDDEN unless env is dev/ci; off-node `validate(name, dir, held)` holds folders without deploying (FIX-110).
-- Package.load stops at MAX_DEPTH 4 (a deeper tree still loads); Package.content walks all of it: a past-PATH_MAX chain → UncheckedIOException (FIX-110).
+- JFR, JDK 25.0.5 (src + probes, FIX-108): `-XX:-FlightRecorder` → `isAvailable()` false; `jdk.CPUTimeSample` (Linux) throttle `"<n>ms"`,
+  field `samplingPeriod`; `CPUTimeSamplesLost.lostSamples` int. A live RecordingStream hands vthread events with `getThread()` null (constant
+  written later); a dump read whole resolves all (F-22). `Recording.dump(p)` truncates p, rotates, works on STOPPED, IOException on CLOSED;
+  maxAge trims at each chunk append by the new chunk's end; in a multi-chunk dump all times shift by tens of us when its first chunk
+  changes: compare times within one dump only. CPU-bound VT bursts starve a VT reader 1.5-2.4 s (4 carriers). Harness cp: `dependency:build-classpath`.
+- `-Dit.test=X` runs X in BOTH failsafe executions (2nd -Xmx96m, its XML overwrites the 1st's).
 ## Findings that came back in review
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class
@@ -102,19 +107,14 @@
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
-- Before changing who resumes in `StreamingWrite`, grep blob fixtures for latches waiting on a sink resume (`TieredBlobStoreFailureTest.LatePauseStream`).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
-- Known flakes (never verify beside a mutant loop): FIX-30 `RecordingComponent.send` counts `awaitSent` down before `holds.pollFirst()`;
-  P2-02L TwoNodeSftpLeaseTest:192 (round tail outlasts the steps), LeasedConsumerTest#aHangingRenew cleanup (a hold after answerEveryOpenHold).
+- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew.
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
 - NodeConfig carries `Secrets` (P2-04): tests compare `from(env)` to the 11-arg ctor: a new component needs equality + a defaulting overload.
-- Compose/SFTP (P2-06, observed): the shipped MINA 2.20 client offers no ssh-ed25519 (atmoz sshd log "no matching host key type found") and
-  the image makes its own rsa key too: the stack pins the RSA fingerprint. A named volume mounted on /home/demo/inbox is root-owned
-  (create-sftp-user skips chown of an existing dir): chown in an entrypoint wrapper. Compose long syntax `volume: {subpath: <file>}` mounts one file.
-- PG 17 (P2-07 probe): `on conflict … do update … where <false>` returns 0 rows yet row-locks the tuple; vs an uncommitted delete it waits,
-  then inserts. vertx `withTransaction` COMMITs a succeeded fn (seen via `withCommand("postgres","-c","log_statement=all")` + `getLogs()`).
+- Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp.
+- PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn (log_statement=all).
 - JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
 - Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
   `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).

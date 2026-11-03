@@ -731,6 +731,197 @@ class NodeIT {
     }
 
     /**
+     * FIX-108 (D-094): a node with {@code FLOTTILA_CPU_SAMPLING=PT0.004S} runs the CPU sampler: after five invoices through the demo,
+     * {@code GET /admin/flows/demo%2Finvoice-sync/cpu} answers sampling on with its period and a row per step — validate, extractKey,
+     * route, toPartner, partner — each with five executions (the aggregate trails by one to two read cycles, 5–10 s, F-22: polled, bounded). Its close
+     * stops the sampler's stream. The same node started again without the key (it restores the demo) answers sampling off.
+     */
+    @Test
+    void aSamplingNodeShowsEachStepsCpuAndWithoutSamplingAnswersOff() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        io.vertx.core.http.HttpServer partner = partner(new CopyOnWriteArrayList<>(), Future.succeededFuture(), ack);
+        int messages = 5;
+        String cpuPath = "/admin/flows/demo%2Finvoice-sync/cpu";
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            Map<String, String> sampling = env("ci");
+            sampling.put("FLOTTILA_CPU_SAMPLING", "PT0.004S");
+            Node first = startDemoNode(sampling);
+            putOk(first.adminPort(), "demo", zip);
+            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+            for (int i = 0; i < messages; i++) {
+                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through: " + sent.body());
+            }
+
+            // the aggregate trails by one to two read cycles (5–10 s, F-22): asked again until every step shows every message, at most 30 s
+            JsonObject cpu;
+            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+            while (true) {
+                HttpResponse<String> r = get(first.adminPort(), cpuPath);
+                assertEquals(200, r.statusCode(), r.body());
+                cpu = new JsonObject(r.body());
+                JsonArray items = cpu.getJsonArray("items");
+                if (items != null && items.size() == 5 && items.stream().allMatch(i -> ((JsonObject) i).getLong("executions") == messages)) break;
+                if (System.nanoTime() - deadline > 0) fail("not within 30 s: a row per step, each with " + messages + " executions; last answer " + cpu.encode());
+                Thread.onSpinWait();
+            }
+            assertEquals("demo/invoice-sync", cpu.getString("flow"));
+            assertEquals("on", cpu.getString("sampling"));
+            assertEquals("PT0.004S", cpu.getString("period"));
+            Instant.parse(cpu.getString("since"));
+            Map<Integer, String> steps = new java.util.TreeMap<>();
+            cpu.getJsonArray("items").forEach(i -> steps.put(((JsonObject) i).getInteger("step"), ((JsonObject) i).getString("name")));
+            assertEquals(Map.of(1, "validate", 2, "extractKey", 3, "route", 4, "toPartner", 5, "partner"), steps, "every step of the flow: " + cpu);
+            assertEquals(Set.of("samples", "attributed", "pending", "unattributed", "platform", "lost", "dropped"), cpu.getJsonObject("totals").fieldNames(), cpu.encode());
+
+            closeNode(first);
+            node = null;
+            assertEquals(0, jdk.jfr.FlightRecorder.getFlightRecorder().getRecordings().stream()
+                    .filter(r -> r.getState() == jdk.jfr.RecordingState.RUNNING && "true".equals(r.getSettings().get("jdk.CPUTimeSample#enabled"))).count(),
+                    "the closed node's sampler stream is gone");
+
+            Node second = startDemoNode(env("ci"));
+            HttpResponse<String> off = get(second.adminPort(), cpuPath);
+            assertEquals(200, off.statusCode(), off.body());
+            assertEquals(new JsonObject().put("flow", "demo/invoice-sync").put("sampling", "off").put("items", new JsonArray()), new JsonObject(off.body()),
+                    "the same node without FLOTTILA_CPU_SAMPLING");
+        } finally {
+            partner.close().await();
+        }
+    }
+
+    /** A phase boundary the case commits between its two nodes: JFR times of one recording are ordered. */
+    @jdk.jfr.Name("io.flottila.test.NodeItPhase")
+    @jdk.jfr.Label("NodeIT phase")
+    @jdk.jfr.StackTrace(false)
+    static final class Phase extends jdk.jfr.Event {
+        @jdk.jfr.Label("Label") String label;
+    }
+
+    /**
+     * FIX-108 owner decision 2026-11-03 (sampling off costs nothing): a node without {@code FLOTTILA_CPU_SAMPLING} marks no step — an
+     * external recording that enables {@code io.flottila.Step} sees none of {@code demo/invoice-sync} over three invoices —, while the
+     * same node started again with sampling on (it restores the demo), under the same recording, marks each of the five steps once per
+     * invoice (the witness that the recording sees the event). A phase event the case commits between the two nodes splits the
+     * recording. The CPU rows of a sampling node: {@code aSamplingNodeShowsEachStepsCpuAndWithoutSamplingAnswersOff}.
+     */
+    @Test
+    void aNodeWithoutSamplingMarksNoStepAndASamplingNodeMarksEach() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        io.vertx.core.http.HttpServer partner = partner(new CopyOnWriteArrayList<>(), Future.succeededFuture(), ack);
+        int messages = 3;
+        Path file = data.resolve("external-steps.jfr");
+        try (HttpClient client = http(); jdk.jfr.Recording external = new jdk.jfr.Recording()) {
+            external.enable("io.flottila.Step");
+            external.enable(Phase.class);
+            external.start();
+            int inPort = freePort();
+            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+
+            Node off = startDemoNode(env("ci"));
+            putOk(off.adminPort(), "demo", zip);
+            for (int i = 0; i < messages; i++) {
+                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through the node without sampling: " + sent.body());
+            }
+            closeNode(off);
+            node = null;
+            Phase between = new Phase();
+            between.label = "sampling on from here";
+            between.commit();
+
+            Map<String, String> sampling = env("ci");
+            sampling.put("FLOTTILA_CPU_SAMPLING", "PT0.004S");
+            startDemoNode(sampling);
+            for (int i = 0; i < messages; i++) {
+                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through the sampling node: " + sent.body());
+            }
+            external.stop();
+            external.dump(file);
+        } finally {
+            partner.close().await();
+        }
+        List<jdk.jfr.consumer.RecordedEvent> all = jdk.jfr.consumer.RecordingFile.readAllEvents(file);
+        List<jdk.jfr.consumer.RecordedEvent> phases = all.stream().filter(e -> e.getEventType().getName().equals("io.flottila.test.NodeItPhase")).toList();
+        assertEquals(1, phases.size(), "fixture: the phase event was recorded");
+        Instant boundary = phases.get(0).getStartTime();
+        List<jdk.jfr.consumer.RecordedEvent> steps = all.stream()
+                .filter(e -> e.getEventType().getName().equals("io.flottila.Step") && e.getString("flow").endsWith("invoice-sync")).toList();
+        List<String> withoutSampling = steps.stream().filter(e -> e.getStartTime().isBefore(boundary))
+                .map(e -> e.getString("flow") + " " + e.getInt("step") + " " + e.getString("name")).toList();
+        Map<String, Long> withSampling = steps.stream().filter(e -> e.getStartTime().isAfter(boundary))
+                .collect(java.util.stream.Collectors.groupingBy(e -> e.getString("name"), java.util.TreeMap::new, java.util.stream.Collectors.counting()));
+        assertEquals(Map.of("validate", 3L, "extractKey", 3L, "route", 3L, "toPartner", 3L, "partner", 3L), withSampling,
+                "witness: with sampling on the node marks each step once per invoice, and the external recording sees it");
+        assertEquals(List.of(), withoutSampling, "a node without sampling marks no step: the external recording sees no io.flottila.Step of its invoices");
+    }
+
+    /**
+     * FIX-108 review r1, blocking 2: a sampling node whose sampler recording is stopped from outside while the node runs (noticed at its next read)
+     * answers {@code GET /admin/flows/demo%2Finvoice-sync/cpu} with {@code sampling:"failed"} and the last aggregate: the period, the
+     * since, a row per step with the executions it had. Before the end the same route answered "on" (polled, bounded).
+     */
+    @Test
+    void aSamplingNodeWhoseStreamEndsAnswersFailedWithTheLastAggregate() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        io.vertx.core.http.HttpServer partner = partner(new CopyOnWriteArrayList<>(), Future.succeededFuture(), ack);
+        int messages = 2;
+        String cpuPath = "/admin/flows/demo%2Finvoice-sync/cpu";
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, String> sampling = env("ci");
+            sampling.put("FLOTTILA_CPU_SAMPLING", "PT0.004S");
+            Node n = startDemoNode(sampling);
+            putOk(n.adminPort(), "demo", zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort())));
+            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+            for (int i = 0; i < messages; i++) {
+                HttpResponse<String> sent = send(client, "POST", inPort, "/in", invoice, "application/xml");
+                assertEquals(200, sent.statusCode(), "fixture: invoice " + i + " went through: " + sent.body());
+            }
+            JsonObject on = cpuUntil(n.adminPort(), cpuPath, a -> "on".equals(a.getString("sampling")) && a.getJsonArray("items").size() == 5
+                    && a.getJsonArray("items").stream().allMatch(i -> ((JsonObject) i).getLong("executions") == messages), "sampling on, every step with every message");
+
+            List<jdk.jfr.Recording> streams = jdk.jfr.FlightRecorder.getFlightRecorder().getRecordings().stream()
+                    .filter(r -> r.getState() == jdk.jfr.RecordingState.RUNNING && "true".equals(r.getSettings().get("jdk.CPUTimeSample#enabled"))).toList();
+            assertEquals(1, streams.size(), "fixture: the node's sampler stream is the one CPU-time recording");
+            assertTrue(streams.get(0).stop(), "fixture: the stream's recording stops");
+
+            JsonObject failed = cpuUntil(n.adminPort(), cpuPath, a -> "failed".equals(a.getString("sampling")), "sampling failed once the stream ended");
+            assertEquals("demo/invoice-sync", failed.getString("flow"));
+            assertEquals("PT0.004S", failed.getString("period"));
+            assertEquals(on.getString("since"), failed.getString("since"), "the same sampler's since");
+            Map<Integer, String> steps = new java.util.TreeMap<>();
+            for (Object i : failed.getJsonArray("items")) {
+                JsonObject item = (JsonObject) i;
+                steps.put(item.getInteger("step"), item.getString("name"));
+                assertEquals(messages, item.getLong("executions"), "the last aggregate: " + failed);
+            }
+            assertEquals(Map.of(1, "validate", 2, "extractKey", 3, "route", 4, "toPartner", 5, "partner"), steps, "every step of the flow: " + failed);
+            assertEquals(Set.of("samples", "attributed", "pending", "unattributed", "platform", "lost", "dropped"), failed.getJsonObject("totals").fieldNames(),
+                    failed.encode());
+        } finally {
+            partner.close().await();
+        }
+    }
+
+    /** {@code GET path} on {@code admin} until its 200 answer satisfies {@code done}, at most 30 s (the aggregate trails by one to two read cycles, 5–10 s, F-22). */
+    static JsonObject cpuUntil(int admin, String path, java.util.function.Predicate<JsonObject> done, String what) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (true) {
+            HttpResponse<String> r = get(admin, path);
+            assertEquals(200, r.statusCode(), r.body());
+            JsonObject answer = new JsonObject(r.body());
+            if (done.test(answer)) return answer;
+            if (System.nanoTime() - deadline > 0) fail("not within 30 s: " + what + "; last answer " + answer.encode());
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
      * P1-09c3a (D-070): a node with FLOTTILA_ARCHIVE_STORE s3 over Postgres and LocalStack. A PUT of the demo stores the archive's
      * bytes as the object {@code <prefix>/archives/<sha256>.zip} in the configured bucket — the node's S3 archive store, not its
      * disk — and writes the package's {@code deployments} row in the node's Postgres, naming that SHA-256.

@@ -15,6 +15,7 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
+import io.flottila.core.record.StepCpu;
 import io.flottila.runtime.deploy.DeployRefusedException;
 import io.flottila.runtime.deploy.DeployResult;
 import io.flottila.runtime.deploy.DeployedFlow;
@@ -46,6 +47,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +57,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -87,6 +91,13 @@ import java.util.function.Supplier;
  * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path, its {@code content} digest (null when FAILED) and its
  * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087). Without one these
  * routes do not exist (404).
+ *
+ * <p>With a {@link Deployments} it also shows a deployed flow's CPU by step (D-094): {@code GET /admin/flows/{flow}/cpu} — the flow's
+ * qualified id as one path segment, its slash percent-encoded — answers, with a {@link Sampling}, 200 {@code {flow, sampling:"on",
+ * period, since, items:[{step, name, executions, samples, cpuNanos}], totals:{samples, attributed, pending, unattributed, platform,
+ * lost, dropped}}}: the node's CPU-sampling aggregate since the sampler started, the items by CPU descending, the totals node-wide
+ * ({@link StepCpu}); never a per-message figure. Once the sampler's stream has failed, {@code sampling:"failed"} with the rest as the
+ * stream last fed it. Without one, 200 {@code {flow, sampling:"off", items:[]}}. A flow not deployed here is 404.
  *
  * <p>With a {@link WorkQueue} (D-067) it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
@@ -165,6 +176,23 @@ public final class AdminServer {
         }
     }
 
+    /**
+     * What {@code GET /admin/flows/{flow}/cpu} shows when the node runs a CPU sampler (D-094).
+     *
+     * @param period the sampling period
+     * @param since when the sampler started: the aggregate is cumulative since then
+     * @param cpu the sampler's aggregate
+     * @param failed whether the sampler's stream has failed, read at every request
+     */
+    public record Sampling(Duration period, Instant since, StepCpu cpu, BooleanSupplier failed) {
+        public Sampling {
+            Objects.requireNonNull(period, "period");
+            Objects.requireNonNull(since, "since");
+            Objects.requireNonNull(cpu, "cpu");
+            Objects.requireNonNull(failed, "failed");
+        }
+    }
+
     private final Config config;
     private final MessageStore messages;
     private final Dlq dlq;
@@ -173,6 +201,7 @@ public final class AdminServer {
     private final Optional<Deployments> deployments;
     private final Optional<WorkQueue> work;
     private final Optional<IdGenerator> ids;
+    private final Optional<Sampling> sampling;
     /** The ids whose DLQ retry runs on this node now: a second retry of one is 409 (node-local, D-067). */
     private final Set<String> retrying = ConcurrentHashMap.newKeySet();
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
@@ -184,13 +213,13 @@ public final class AdminServer {
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty());
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}; no replay routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty());
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty());
     }
 
     /**
@@ -199,11 +228,20 @@ public final class AdminServer {
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, IdGenerator ids) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids));
+        this(config, messages, dlq, blobs, health, deployments, work, ids, Optional.empty());
+    }
+
+    /**
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, replay and retry routes and
+     * the flows' CPU, sampled when {@code sampling} is there (D-094).
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, IdGenerator ids, Optional<Sampling> sampling) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids), sampling);
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                        Optional<WorkQueue> work, Optional<IdGenerator> ids) {
+                        Optional<WorkQueue> work, Optional<IdGenerator> ids, Optional<Sampling> sampling) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -212,6 +250,7 @@ public final class AdminServer {
         this.deployments = Objects.requireNonNull(deployments, "deployments");
         this.work = work;
         this.ids = ids;
+        this.sampling = Objects.requireNonNull(sampling, "sampling");
     }
 
     /** Deploys the listening verticle; completes with the bound port (the actual one when configured 0). */
@@ -249,6 +288,7 @@ public final class AdminServer {
                 router.put("/admin/packages/:name").handler(upload(d));
                 router.get("/admin/flows").handler(offload(c -> flows(d)));
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
+                router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
                 ids.ifPresent(minted -> {
                     router.post("/admin/messages/:id/replay").handler(offload(c -> replay(c, d, minted)));
                     router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, minted)));
@@ -587,6 +627,28 @@ public final class AdminServer {
                     .put("flowVersion", f.flowVersion()).put("delivery", f.delivery()).put("hash", f.hash()).put("state", f.state().name()));
         }
         return Json.of(200, new JsonObject().put("items", items));
+    }
+
+    /**
+     * {@code GET /admin/flows/{flow}/cpu}: 404 for a flow not deployed here; else the sampler's rows of the flow and its totals,
+     * sampling on or, once its stream failed, failed; or {@code sampling:"off"} without a sampler.
+     */
+    private Reply cpu(RoutingContext ctx, Deployments deployments) {
+        String flow = ctx.pathParam("flow");
+        if (deployments.flows().stream().noneMatch(f -> f.id().equals(flow))) return Json.of(404, error("no flow " + flow + " deployed on this node"));
+        JsonObject answer = new JsonObject().put("flow", flow);
+        if (sampling.isEmpty()) return Json.of(200, answer.put("sampling", "off").put("items", new JsonArray()));
+        StepCpu cpu = sampling.get().cpu();
+        JsonArray items = new JsonArray();
+        for (StepCpu.Row r : cpu.rows(flow)) {
+            items.add(new JsonObject().put("step", r.step()).put("name", r.name()).put("executions", r.executions()).put("samples", r.samples())
+                    .put("cpuNanos", r.cpuNanos()));
+        }
+        StepCpu.Totals t = cpu.totals();
+        JsonObject totals = new JsonObject().put("samples", t.samples()).put("attributed", t.attributed()).put("pending", t.pending())
+                .put("unattributed", t.unattributed()).put("platform", t.platform()).put("lost", t.lost()).put("dropped", t.dropped());
+        return Json.of(200, answer.put("sampling", sampling.get().failed().getAsBoolean() ? "failed" : "on").put("period", sampling.get().period().toString()).put("since", sampling.get().since().toString())
+                .put("items", items).put("totals", totals));
     }
 
     private static Reply packages(Deployments deployments) {

@@ -23,6 +23,7 @@ import io.vertx.sqlclient.Row;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -87,8 +88,14 @@ import java.util.zip.ZipOutputStream;
  * Flyway's history and, for {@code worker} only, installs the two triggers (any other run drops them). Arguments: BenchMain's
  * {@code --host --port --db --user --password --messages --warmup --concurrency --name --out --sync-commit --commit} plus
  * {@code --scenario sync|ack|worker} (required), {@code --recording keep|metadata-only} (keep), {@code --step passthrough|xslt}
- * (passthrough), {@code --max-in-flight} (a positive number). {@code --sync-commit} is on or off, and off is refused by the run; a {@code --db} whose name lacks "bench" is
+ * (passthrough), {@code --max-in-flight} (a positive number), {@code --cpu-sampling off|<ISO-8601 period>} (off: the node's
+ * {@code FLOTTILA_CPU_SAMPLING}, D-094, refused as the node refuses it). {@code --sync-commit} is on or off, and off is refused by the run; a {@code --db} whose name lacks "bench" is
  * refused before anything connects.
+ *
+ * <p>FIX-108: a sync or ack window also carries {@code processCpuMsPerMessage} (the bench process' CPU time over the window's load
+ * — the node, the client and the echo together — per message), and every record carries {@code cpuSampling} and {@code cpu}, the
+ * node's {@code GET /admin/flows/bench%2Fbench/cpu} answer once the window settled (cumulative since the node started: the
+ * warm-up included).
  *
  * @since 0.1
  */
@@ -106,7 +113,15 @@ public final class NodeBenchMain {
     /** One run's command line. */
     public record Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
                           String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
-                          String commit) {}
+                          String commit, String cpuSampling) {
+        /** A run without CPU sampling. */
+        public Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
+                       String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
+                       String commit) {
+            this(scenario, recording, step, messages, warmup, concurrency, maxInFlight, name, out, syncCommit, host, port, db, user, password,
+                    commit, "off");
+        }
+    }
 
     /** The flow's and the partner's max body. */
     static final long MAX_BODY_BYTES = 1024 * 1024;
@@ -211,7 +226,13 @@ public final class NodeBenchMain {
                 Path.of(a.getOrDefault("out", "bench/out/" + name + ".json")), syncCommit.equals("on"),
                 a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")), db,
                 a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
-                a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")));
+                a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")), cpuSampling(a.getOrDefault("cpu-sampling", "off")));
+    }
+
+    /** {@code raw} as the node's {@code FLOTTILA_CPU_SAMPLING}: off, or a period the node takes; refused as the node refuses it. */
+    static String cpuSampling(String raw) {
+        NodeConfig.from(Map.of("FLOTTILA_ENV", "dev", "FLOTTILA_NODE_ID", "node-bench", "FLOTTILA_CPU_SAMPLING", raw));
+        return raw;
     }
 
     /** The flow's in-flight limit when {@code --max-in-flight} is not given (see the class comment). */
@@ -291,13 +312,15 @@ public final class NodeBenchMain {
             int warmupFailed = h.load(in, "/in", o.warmup()).failed();
             int warmedUp = o.warmup() - warmupFailed;
             h.settle(warmedUp, failuresAtStart, DRAIN, h.probe(admin));
-            measured = h.measure(warmedUp, admin).put("warmupFailed", warmupFailed);   // settled too: the node stops with nothing in flight
+            measured = h.measure(warmedUp, admin).put("warmupFailed", warmupFailed)   // settled too: the node stops with nothing in flight
+                    .put("cpu", h.cpu(admin));
         } finally {
             node.close();   // flushes the message store: its rows are in before the record is written
         }
         Row server = pool.query("select current_setting('synchronous_commit'), current_setting('server_version')").execute().await().iterator().next();
         JsonObject json = new JsonObject().put("name", o.name()).put("scenario", cli(o.scenario())).put("recording", cli(o.recording()))
                 .put("step", cli(o.step())).put("warmup", o.warmup()).put("concurrency", o.concurrency()).put("maxInFlight", inFlight(o))
+                .put("cpuSampling", o.cpuSampling())
                 .mergeIn(measured)
                 // observed on a session opened as the node's were, not the flag
                 .put("syncCommit", "on".equals(server.getString(0))).put("postgres", server.getString(1))
@@ -335,7 +358,7 @@ public final class NodeBenchMain {
     private static NodeConfig nodeConfig(Options o, Path data) {
         return NodeConfig.from(Map.of("FLOTTILA_ENV", "dev", "FLOTTILA_NODE_ID", "node-bench", "FLOTTILA_ADMIN_PORT", "0",
                 "FLOTTILA_DATA_DIR", data.toString(), "FLOTTILA_PG_HOST", o.host(), "FLOTTILA_PG_PORT", String.valueOf(o.port()),
-                "FLOTTILA_PG_DATABASE", o.db(), "FLOTTILA_PG_USER", o.user(), "FLOTTILA_PG_PASSWORD", o.password()));
+                "FLOTTILA_PG_DATABASE", o.db(), "FLOTTILA_PG_USER", o.user(), "FLOTTILA_PG_PASSWORD", o.password(), "FLOTTILA_CPU_SAMPLING", o.cpuSampling()));
     }
 
     /** An invoice of at least one line, grown by lines until it holds {@code atLeast} bytes. */
@@ -483,10 +506,13 @@ public final class NodeBenchMain {
         private JsonObject window(int recorded, int admin) {
             long failuresAtStart = snapshotWriteFailures(admin);
             Snapshot before = snapshot();
+            long cpuBefore = processCpuNanos();
             Window w = load(in, "/in", o.messages(), accepted());
+            long cpuSpent = processCpuNanos() - cpuBefore;
             settle(recorded + o.messages() - w.failed(), failuresAtStart, DRAIN, probe(admin));
             Snapshot after = snapshot();
-            return w.toJson(o.messages()).mergeIn(rates(before, after, w.elapsedNanos()));
+            return w.toJson(o.messages()).mergeIn(rates(before, after, w.elapsedNanos()))
+                    .put("processCpuMsPerMessage", cpuSpent / 1_000_000.0 / o.messages());
         }
 
         /**
@@ -591,6 +617,16 @@ public final class NodeBenchMain {
 
         private void pause() {
             vertx.timer(5).await();
+        }
+
+        /** The node's CPU by step of the bench flow (D-094): its rows and totals with sampling on, {@code sampling:"off"} without. */
+        JsonObject cpu(int admin) {
+            return new JsonObject(exchange(HttpMethod.GET, admin, "/admin/flows/bench%2Fbench/cpu", "text/plain", Buffer.buffer()).body());
+        }
+
+        /** The bench process' CPU time so far, in nanoseconds: the node, the client and the echo together. */
+        static long processCpuNanos() {
+            return ManagementFactory.getPlatformMXBean(com.sun.management.OperatingSystemMXBean.class).getProcessCpuTime();
         }
 
         /** The node's /health {@code snapshotWriteFailures} (its body carries the counter whether the node is up or down). */

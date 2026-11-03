@@ -276,7 +276,7 @@ fail, run only through EngineTestKit) — name the two classes.
 ## Bench
 
 `bench/run.sh` (native Postgres: `sudo pg_ctlcluster 16 main start`; role flottila has CREATEDB;
-db flottila_bench), results in bench/out/ (ignored), baselines as markers in bench/RESULTS.md per
+db flottila_bench; a fresh container has no role: `sudo -n -u postgres psql -c "create role flottila login createdb password 'flottila'"`, as ci.yml), results in bench/out/ (ignored), baselines as markers in bench/RESULTS.md per
 machine label (D-037); on this VM run it as `BENCH_MACHINE="cloud VM, 4 vCPU" bench/run.sh`. The
 runner has its own throughput-only baseline (FIX-4/D-039; dispatch ci.yml after a bench change
 and read the job log via the MCP tool — the artifact's blob store is unreachable from the VM).
@@ -291,7 +291,7 @@ commit: `mvn -B -ntp verify -Pit`, then `python3 ci/coverage_check.py --write`. 
 (floor 80 %). New code must be covered to the module's level (FIX-3) — the band bit once.
 In the cloud session the services die with the tool call that started them unless detached:
 `sudo -n setsid nohup dockerd > /tmp/dockerd.log 2>&1 < /dev/null &` and
-`sudo -n setsid pg_ctlcluster 16 main start`. `-pl flottila-runtime` needs `-am` (no installed
+`sudo -n setsid pg_ctlcluster 16 main start`. JFR (FIX-108, D-094): the repository is java.io.tmpdir; a read-only root needs `-XX:FlightRecorderOptions:repository=<dir>`; `RecordedEvent.getThread()` can be null under load; PIT cannot mutate a jdk.jfr.Event subclass (RUN_ERROR, 0 tests) — hand-mutate it. `-pl flottila-runtime` needs `-am` (no installed
 snapshots). Mutant runs (a reviewer's "would this test fail if…"): after `sed -i` on a source,
 restore it with `cp` or `touch` it — `mv backup file` keeps the backup's older mtime, Maven's
 incremental compile then keeps the mutated class in `target/classes` and the next "clean" run

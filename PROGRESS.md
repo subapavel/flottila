@@ -1042,3 +1042,18 @@ Checks: verify -Pit VERIFIED_PASS 2651/0/0/0 on the final tree (target/FIX-110-v
 Review: PASS r1 (non-blocking: the checked-IOException arm has no root-constructible case; Files.isSameFile outside the try).
 D-054 data: class B (scout ×1, test-author ×2, implementer ×1, verifier ×1, reviewer ×1); review rounds 1.
 Next: stopped by the owner after FIX-110 (credits); FIX-108 waits for the owner's go.
+
+## 2026-11-03 — FIX-108 CPU per flow and step by JFR CPU-time sampling — done, review PASS r6 — Deviation: F-22
+Context compacted (once, mid-task); re-verified with git status / git log -3. Test first: StepCpuTest, StepCpuPropertyTest,
+FlowBuilderStepEventTest, CpuSamplerEventsTest, CpuSamplerIT, AdminServerCpuTest, NodeConfigTest/NodeIT/NodeBenchMainIT cases (red logs
+agent/work/FIX-108-red-*, -r4-red-*, -r6-red.log, -r9-red-*). Change: core StepEvent (`io.flottila.Step`, disabled) + StepCpu
+(pure matcher); FlowBuilder.stepEvents (only a sampling node marks steps — owner 2026-11-03); runtime CpuSampler reads completed
+recordings every 5 s through the injected Timer (F-22: the live stream loses virtual-thread constants), degrades on retention
+loss; `FLOTTILA_CPU_SAMPLING` off by default; `GET /admin/flows/:flow/cpu`. Docs: D-094, F-22, ARCHITECTURE §4/§8 + changelog.
+Checks: verify -Pit 2708/0/0/0 fresh XML (agent/work/FIX-108-verify12.log); coverage no decrease (-coverage12.log); CpuSamplerIT
+20/20 (-it-repeat9.log) and 10/10 (-it-repeat11.log); hand mutants SE1–SE8, R1–R5, M-* killed (r5/r6/r7/r8/r9/r10 logs), accepted
+survivors M-ID, R6, M-CUT2, M-FIN2, M-SKIPTRIM with reasons in the packet. Bench: round 1 only, stopped by F-13 (RESULTS partial).
+Review: FAIL r1 (NPE on null threads), r2 (bench limit, unpinned paths → designer fix spec), r3 (busy reference, lost % wrong),
+r4 (failed() unpinned, test name), r5 (docs after the owner decision, M-STICKY); PASS r6. New rows FIX-112, FIX-113.
+D-054 data: class C (designer ×3, test-author ×9, implementer ×10, verifier ×9, reviewer ×6); review rounds 6.
+Next: P2-02c.

@@ -126,6 +126,31 @@ class NodeBenchMainIT {
                 "the flow's requests went through the node, the raw baseline's went straight to the echo (else " + 2 * MESSAGES + ")");
     }
 
+    /**
+     * FIX-108: a run with {@code --cpu-sampling PT0.004S} records it and the node's CPU answer of the bench flow — sampling on, its
+     * period — and the process CPU per message; a run with {@code off} records off and the node's answer says off.
+     */
+    @Test
+    void aSamplingRunRecordsTheNodesCpuAnswerAndAnUnsampledOneRecordsOff() throws Exception {
+        Path sampled = dir.resolve("cpu-on.json");
+        assertEquals(0, NodeBenchMain.run(args(database(), "sync", "keep", 4, sampled, "--cpu-sampling", "PT0.004S")));
+        JsonObject on = new JsonObject(Files.readString(sampled));
+        assertEquals("PT0.004S", on.getString("cpuSampling"), on.encode());
+        JsonObject cpu = on.getJsonObject("cpu");
+        assertNotNull(cpu, "the record carries the node's CPU answer: " + on.encode());
+        assertEquals("bench/bench", cpu.getString("flow"), cpu.encode());
+        assertEquals("on", cpu.getString("sampling"), cpu.encode());
+        assertEquals("PT0.004S", cpu.getString("period"), cpu.encode());
+        assertNotNull(on.getDouble("processCpuMsPerMessage"), "the record carries processCpuMsPerMessage: " + on.encode());
+        assertTrue(on.getDouble("processCpuMsPerMessage") > 0, "the process spent CPU on the messages: " + on.encode());
+
+        Path unsampled = dir.resolve("cpu-off.json");
+        assertEquals(0, NodeBenchMain.run(args(database(), "sync", "keep", 4, unsampled, "--cpu-sampling", "off")));
+        JsonObject off = new JsonObject(Files.readString(unsampled));
+        assertEquals("off", off.getString("cpuSampling"), off.encode());
+        assertEquals("off", off.getJsonObject("cpu").getString("sampling"), off.encode());
+    }
+
     @Test
     void aSyncRunWithAnExplicitMaxInFlightRecordsItAndTheRawBaselinesCounts() throws Exception {
         String db = database();

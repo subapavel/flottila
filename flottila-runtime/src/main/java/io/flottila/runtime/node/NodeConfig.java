@@ -37,11 +37,13 @@ import java.util.regex.Pattern;
  * @param retention the retention job's keys (D-088): {@code FLOTTILA_RETENTION_MAX_AGE}, ISO-8601, PT1H to P366D (P7D): rows
  *                  older are deleted; {@code FLOTTILA_RETENTION_INTERVAL}, ISO-8601, PT1M to P1D (PT1H): from the end of a run to
  *                  the start of the next; {@code FLOTTILA_RETENTION_BATCH}, 1 to 10000 (1000): the rows one batch scans
+ * @param cpuSampling {@code FLOTTILA_CPU_SAMPLING} (D-094): {@code off} (the default, empty) or the CPU-time sampling period, an
+ *                    ISO-8601 duration in whole milliseconds from PT0.001S to PT0.1S; with a period the node runs a CPU sampler
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
-                         Retention.Config retention) {
+                         Retention.Config retention, Optional<Duration> cpuSampling) {
 
     /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
     public NodeConfig {
@@ -50,10 +52,17 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(secrets, "secrets");
         Objects.requireNonNull(leases, "leases");
         Objects.requireNonNull(retention, "retention");
+        Objects.requireNonNull(cpuSampling, "cpuSampling");
         if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+    }
+
+    /** A node without CPU sampling, as {@link #from} reads it by default (D-094). */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, Optional.empty());
     }
 
     /** A node with the retention job's defaults (P7D, PT1H, 1000 rows), as {@link #from} reads them by default. */
@@ -83,7 +92,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
-        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention);
+        return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
+                cpuSampling);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -209,6 +219,9 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Duration LEASE_MAX = Duration.ofMinutes(10);
     /** The retention job's defaults (D-088): a max age of P7D, an interval of PT1H, batches of 1000 rows. */
     private static final Retention.Config RETENTION_DEFAULTS = new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000);
+    /** The shortest and the longest CPU-time sampling period (D-094). */
+    private static final Duration CPU_SAMPLING_MIN = Duration.ofMillis(1);
+    private static final Duration CPU_SAMPLING_MAX = Duration.ofMillis(100);
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
@@ -238,7 +251,27 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
-                archives, s3, Secrets.fromEnv(env), leases(env), retention(env));
+                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env));
+    }
+
+    /**
+     * {@code FLOTTILA_CPU_SAMPLING}: {@code off} (also when absent) is empty; else an ISO-8601 duration in whole milliseconds from
+     * {@link #CPU_SAMPLING_MIN} to {@link #CPU_SAMPLING_MAX}; anything else is refused naming the key.
+     */
+    private static Optional<Duration> samplingPeriod(Map<String, String> env) {
+        String raw = env.getOrDefault("FLOTTILA_CPU_SAMPLING", "off");
+        if (raw.equals("off")) return Optional.empty();
+        Duration period;
+        try {
+            period = Duration.parse(raw);
+        } catch (DateTimeParseException notIso) {
+            period = Duration.ZERO;   // refused below, as any value out of range
+        }
+        if (period.compareTo(CPU_SAMPLING_MIN) < 0 || period.compareTo(CPU_SAMPLING_MAX) > 0 || period.getNano() % 1_000_000 != 0) {
+            throw new IllegalArgumentException("FLOTTILA_CPU_SAMPLING must be off or an ISO-8601 duration in whole milliseconds from " + CPU_SAMPLING_MIN
+                    + " to " + CPU_SAMPLING_MAX + " (the CPU-time sampling period, D-094), was '" + raw + "'");
+        }
+        return Optional.of(period);
     }
 
     /** The {@code FLOTTILA_RETENTION_*} keys; a refusal names the key and its bounds, never the value. */

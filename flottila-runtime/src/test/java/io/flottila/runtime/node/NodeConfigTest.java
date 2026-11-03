@@ -1,6 +1,7 @@
 package io.flottila.runtime.node;
 
 import io.flottila.runtime.admin.AdminServer;
+import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.store.Retention;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -569,5 +570,42 @@ class NodeConfigTest {
         } catch (java.time.format.DateTimeParseException notADuration) {
             assertTrue(notADuration.getMessage().contains("Text cannot be parsed"), "fixture: not a duration: " + notADuration.getMessage());
         }
+    }
+
+    /**
+     * FIX-108 (D-094): {@code FLOTTILA_CPU_SAMPLING} is {@code off} by default — absent, or {@code off} — and a configuration built
+     * through one of the constructors that existed before it samples nothing either. Shape assumed: {@code Optional<Duration>
+     * cpuSampling()}, empty when off.
+     */
+    @Test
+    void cpuSamplingIsOffByDefault() {
+        assertEquals(Optional.empty(), NodeConfig.from(minimal()).cpuSampling(), "absent: off");
+        assertEquals(Optional.empty(), NodeConfig.from(with(minimal(), "FLOTTILA_CPU_SAMPLING", "off")).cpuSampling(), "off");
+        NodeConfig built = new NodeConfig("node-1", "ci", new AdminServer.Config("127.0.0.1", 0, Optional.empty()), Path.of("/tmp/flottila"),
+                Duration.ofSeconds(10), 64 * MIB, new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 16),
+                new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), new NodeConfig.Archives(NodeConfig.Archives.Store.DIR, Path.of("/tmp/flottila/archives")),
+                Optional.empty(), Secrets.fromEnv(Map.of()), NodeConfig.Leases.DEFAULTS,
+                new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000));
+        assertEquals(Optional.empty(), built.cpuSampling(), "the constructor of every key before FIX-108 stays, sampling off");
+    }
+
+    /**
+     * {@code FLOTTILA_CPU_SAMPLING} takes an ISO-8601 duration in whole milliseconds from PT0.001S to PT0.1S, the sampling period;
+     * anything else is refused at start naming the key — below a millisecond, a fraction of one, above 100 ms, zero, negative, a
+     * value that is not a duration ({@code on}, {@code 4ms}). {@link NodeConfig#withSecrets} keeps it.
+     */
+    @Test
+    void cpuSamplingTakesWholeMillisFromOneToHundred() {
+        for (String accepted : List.of("PT0.001S", "PT0.004S", "PT0.1S")) {
+            assertEquals(Optional.of(Duration.parse(accepted)), NodeConfig.from(with(minimal(), "FLOTTILA_CPU_SAMPLING", accepted)).cpuSampling(), accepted);
+        }
+        assertEquals(Optional.of(Duration.ofMillis(100)), NodeConfig.from(with(minimal(), "FLOTTILA_CPU_SAMPLING", "PT0.1S")).cpuSampling(), "PT0.1S is 100 ms");
+        for (String refused : List.of("PT0.0005S", "PT0.0015S", "PT0.2S", "PT0.101S", "PT0S", "-PT0.004S", "on", "4ms")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                    () -> NodeConfig.from(with(minimal(), "FLOTTILA_CPU_SAMPLING", refused)), "refused: " + refused);
+            assertTrue(String.valueOf(e.getMessage()).contains("FLOTTILA_CPU_SAMPLING"), "the refusal of " + refused + " names the key: " + e.getMessage());
+        }
+        NodeConfig sampled = NodeConfig.from(with(minimal(), "FLOTTILA_CPU_SAMPLING", "PT0.002S"));
+        assertEquals(Optional.of(Duration.ofMillis(2)), sampled.withSecrets(Secrets.placeholder()).cpuSampling(), "withSecrets keeps the sampling period");
     }
 }

@@ -1314,12 +1314,16 @@ public final class Deployments {
         return problems;
     }
 
-    /** A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code revision}. */
+    /**
+     * A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code revision};
+     * it marks the steps with StepEvents only when the node samples CPU time (D-094, owner decision 2026-11-03).
+     */
     private FlowBuilder builder(String name, String version, Optional<String> revision, Map<String, EndpointConfig> endpoints) {
         Map<String, String> versions = new HashMap<>();
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
-        return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions);
+        return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
+                .stepEvents(config.cpuSampling().isPresent());
     }
 
     /**

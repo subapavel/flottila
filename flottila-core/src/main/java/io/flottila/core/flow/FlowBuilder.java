@@ -26,6 +26,7 @@ import io.flottila.core.record.Meter;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
+import io.flottila.core.record.StepEvent;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -53,6 +54,8 @@ import java.util.function.UnaryOperator;
  * is wrapped in the flow's {@link RetryPolicy} by {@link Retry}. With a {@link MessageStore} given through
  * {@link #recording(MessageStore, Meter)}, every step is also wrapped by a {@link Recorder} under the flow's
  * {@link RecordingPolicy} (a step's own {@code recording} overrides it) and the pipeline starts with the ingress snapshot.
+ * With {@link #stepEvents stepEvents(true)} every step, whatever else wraps it, is marked outermost by a {@link StepEvent} (D-094);
+ * the start stage is not. Without it no step is marked.
  * An at-least-once flow parks a failed message in the {@link Dlq} given through {@link #dlq(Dlq)} (ARCHITECTURE §4
  * lifecycle table: sync answers the caller, at-most-once drops) — without one it does not build. {@link #replay} gives
  * the flow's replay: steps {@code n..end} as a new message.
@@ -93,6 +96,7 @@ public final class FlowBuilder {
     private Map<String, String> extraVersions = Map.of();
     private Consumer<Path> reads = path -> { };
     private Map<String, Path> dependencies = Map.of();
+    private boolean stepEvents;   // false: no step is marked (D-094, owner decision 2026-11-03)
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -164,6 +168,16 @@ public final class FlowBuilder {
      */
     public FlowBuilder dependencies(Map<String, Path> dependencies) {
         this.dependencies = Map.copyOf(Objects.requireNonNull(dependencies, "dependencies"));
+        return this;
+    }
+
+    /**
+     * Marks every step of the flows built from now on outermost with a {@link StepEvent} when {@code on} (D-094: the node asks for
+     * it when it samples CPU time); it replaces the choice of an earlier call. Without a call, or with {@code false}, no step is
+     * marked: the stages are the steps and their wrappers alone.
+     */
+    public FlowBuilder stepEvents(boolean on) {
+        this.stepEvents = on;
         return this;
     }
 
@@ -356,8 +370,8 @@ public final class FlowBuilder {
     }
 
     /**
-     * The flow's steps as stages, wrapped (retry, numbering, recording, parking), without the start stage; the recorder (null
-     * without a store) and the producers the steps send through.
+     * The flow's steps as stages, wrapped (retry, numbering, recording, parking, then, with {@link #stepEvents}, the {@link StepEvent}
+     * outermost), without the start stage; the recorder (null without a store) and the producers the steps send through.
      */
     private record Built(FlowDefinition flow, List<Stage> steps, Recorder recorder, Producers producers) {
         /** The flow's pipeline: the ingress snapshot ({@code withIngress}, when recording), then the steps. */
@@ -411,7 +425,7 @@ public final class FlowBuilder {
                 stage = numbered(stage, step);
                 if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
                 if (parking != null) stage = parking.wrap(stage, step);
-                stages.add(stage);
+                stages.add(stepEvents ? StepEvent.marked(stage, flow.id(), step) : stage);   // outermost: a step's CPU includes its wrappers (D-094)
             }
             done = true;
         } finally {
