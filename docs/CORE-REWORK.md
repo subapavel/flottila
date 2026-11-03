@@ -90,25 +90,38 @@ The causes the owner accepts as design holes:
 Everything else waits until CORE-GATE: P2-10..P2-12, FIX-*, CONSIDER-*, the rest of Phase 2 and
 later phases. Exception: "fix main".
 
-## 5. Open questions for the brainstorm
+## 5. Questions for the brainstorm (answers of 2026-11-03 in **bold**; still open where marked)
 
-- **Q-1 Targets.** What latency and throughput must the core meet, and at what concurrency? E.g.
-  durable ACK p99 < 5 ms at c=1 (today's ARCHITECTURE target) and a sustained at-least-once rate
-  per node (ARCHITECTURE §7 promises 5–20k msg/s with persistence on 8 cores), sync overhead.
-- **Q-2 Reference machine.** Which machine decides the gate (cores, disk, network; client,
-  partner and Postgres on separate machines or pinned CPUs)? The 4 vCPU cloud VM shares
-  everything on one box.
-- **Q-3 ClickHouse ingest.** (a) runtime → Postgres → background move to ClickHouse (one write
-  path; Postgres carries all monitoring rows), or (b) state and the last N hours to Postgres,
-  history batched from the runtime straight to ClickHouse (Postgres relieved; history's source
-  is ClickHouse). Queries go through Postgres in both. The architect recommends (b).
-- **Q-4 Hot window.** How long do bodies stay in the journal before ClickHouse holds them
-  (hours, days)? It sets the journal disk size.
-- **Q-5 HA copy acknowledgement.** With 2 copies, does the ACK wait for the peer's `fdatasync`,
-  or for the peer's receipt only (lower latency, both machines must fail at once to lose it)?
-- **Q-6 Sync flows.** Request/reply records the steps too; do they use the same journal for step
-  bodies, with the same copy count?
-- **Q-7 In-doubt default.** Is `resend with the same id` the default for every flow, with `park`
-  opted in per flow — or the other way round?
-- **Q-8 ClickHouse availability.** If ClickHouse is down, the journal keeps bodies longer; is a
-  bounded journal that then refuses new messages (503) acceptable, or must it spill elsewhere?
+- **Q-1 Targets — open (architect's proposal, owner to confirm).** For the 4 vCPU VM, everything on
+  one box, small bodies (≤ 10 KB), metadata-only recording: at-least-once durable ACK p99 < 5 ms
+  at c=1; sustained at-least-once end to end ≥ 5 000 msg/s (open loop, flat backlog) with ACK
+  p99 < 50 ms at that rate; sync platform overhead p50 < 1 ms at c=1 and < 2 ms at c=8. The
+  numbers are confirmed or corrected once P2-14 has the baseline; the 8-core figure of
+  ARCHITECTURE §7 is checked on a dedicated machine later.
+- **Q-2 Reference machine: the 4 vCPU cloud VM for CORE-GATE**, with targets realistic for it; a
+  dedicated machine only in a later phase, at the owner's call.
+- **Q-3 ClickHouse ingest — open.** The owner asks whether a collector (Vector, Rust, MPL 2.0) or
+  an own mover is better than (a) / (b). Architect's view: the body journal already is a durable
+  local buffer, so a mover in the node (journal + Postgres references → batched ClickHouse
+  inserts, idempotent, marks what ClickHouse holds so segments can go) does what Vector's disk
+  buffer would, without a second copy of the data or a second process whose acknowledgement has
+  to be fed back. Vector stays a candidate for logs and metrics.
+- **Q-4 Hot window: until ClickHouse holds the bodies** (normally minutes to hours); the journal
+  disk is sized for the ClickHouse outage it must ride through.
+- **Q-5 HA copy: the ACK waits for the peer's receipt, not its fdatasync** (a message is lost only
+  if both machines fail before either flushes).
+- **Q-6 Sync flows — open**, owner: "probably not" the same journal for sync step bodies; tied to
+  Q-9.
+- **Q-7 Failed and in-doubt sends: as SAP PO** — retries at configurable intervals, a
+  configurable number of times, until a successful answer, then parked (error status, manual
+  restart). An in-doubt send (D-101 (4)) counts as a failed attempt and is resent with the same
+  message id. Long intervals are scheduled in the work queue (a not-before time), never slept on
+  a thread.
+- **Q-8 ClickHouse down and the journal full: refusing new messages (503) is allowed** — it is a
+  system error, alerted, to be fixed by the operator.
+- **Q-9 Retention and recording levels — open, own brainstorm.** Owner: like SAP PO, one global
+  setting for sync and one for async, overridable per flow. Because a flow is a free pipeline,
+  not fixed stages, the levels are of the kind "inputs only", "inputs + errors", "every change"
+  (a body stored only where a step changed it; see CONSIDER-2). It changes what is stored per
+  step (today `all | ends | errors | off` × `keep | metadata-only` per flow, D-064 every step
+  durable) and so the journal's load — to be settled before CORE-3.
