@@ -1,9 +1,9 @@
 # Handoff
 
-state: RUNNING (owner RESUME 2026-11-02, "until STOP"); P2-09a done (review PASS r3); next P2-09b [B]
-last commit: `Task: P2-09a` (this commit); f0ac87d `Task: FIX-109`; 78c2887 `Task: P2-07c`; b046743 `Task: GATE` (GATE_MET)
+state: RUNNING (owner RESUME 2026-11-02, "until STOP"); P2-09b done (review PASS r2); next FIX-115
+last commit: `Task: P2-09b` (this commit); 7fc652c `Task: P2-09a`; f0ac87d `Task: FIX-109`; b046743 `Task: GATE` (GATE_MET)
 branch: claude/dazzling-gauss-9x7tiw, pushed to main as well
-next exact action: P2-09b [B] (node Targets, env keys, /admin/targets, bench override; D-099) spec → red tests; then FIX-115, P2-10..13
+next exact action: FIX-115 [B] (bind MessageContext on deployed paths, F-24) spec → red tests; then P2-10..13 (P2-13 before FIX-95a/b); FIX-112..114
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

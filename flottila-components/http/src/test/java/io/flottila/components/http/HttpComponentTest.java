@@ -545,4 +545,25 @@ class HttpComponentTest {
             }
         }
     }
+
+    /**
+     * P2-09b (P2-09a r3 note): the refusal names what was read. Without a {@code url} option the target is read from the endpoint
+     * URI, and a URI the producer cannot send to is refused as "the endpoint URI" — not as option 'url', which the endpoint does
+     * not set; with a {@code url} option it is "option 'url'" and no endpoint URI. Neither message carries what was read.
+     */
+    @Test
+    void aBadEndpointUriWithoutAUrlOptionIsNamedAsTheEndpointUri() {
+        for (String uri : List.of("ftp://h/x", "https://u:Secret@h:abc/x")) {
+            EndpointConfig cfg = new EndpointConfig("partner-orders", URI.create(uri), Map.of());
+            String message = String.valueOf(assertThrows(IllegalArgumentException.class, () -> http.target(cfg), uri + ": refused").getMessage());
+            assertTrue(message.contains("partner-orders"), uri + ": names the endpoint: " + message);
+            assertTrue(message.contains("the endpoint URI"), uri + ": names the endpoint URI as what was read: " + message);
+            assertFalse(message.contains("option 'url'"), uri + ": not the url option, which is not set: " + message);
+            assertFalse(message.contains(uri) || message.contains("Secret"), uri + ": the URI itself is not in the message: " + message);
+        }
+        EndpointConfig withUrl = new EndpointConfig("partner-orders", URI.create("http://partner/x"), Map.of("url", "ftp://h/x"));
+        String message = String.valueOf(assertThrows(IllegalArgumentException.class, () -> http.target(withUrl), "a bad url: refused").getMessage());
+        assertTrue(message.contains("option 'url'"), "with a url option: names option 'url': " + message);
+        assertFalse(message.contains("endpoint URI"), "with a url option: not the endpoint URI, which was not read: " + message);
+    }
 }

@@ -1,5 +1,6 @@
 package io.flottila.runtime.node;
 
+import io.flottila.core.admission.Targets;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.store.Retention;
@@ -607,5 +608,112 @@ class NodeConfigTest {
         }
         NodeConfig sampled = NodeConfig.from(with(minimal(), "FLOTTILA_CPU_SAMPLING", "PT0.002S"));
         assertEquals(Optional.of(Duration.ofMillis(2)), sampled.withSecrets(Secrets.placeholder()).cpuSampling(), "withSecrets keeps the sampling period");
+    }
+
+    // --- P2-09b (D-099): the limits per target system
+
+    /** The refusal of {@code env}: an IllegalArgumentException whose message names {@code key} and holds every one of {@code named}. */
+    static void refusedNaming(Map<String, String> env, String key, String... named) {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(env), key + " refused: " + env.get(key));
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains(key), "the refusal of " + key + "=" + env.get(key) + " names the key: " + message);
+        for (String n : named) assertTrue(message.contains(n), "the refusal of " + key + "=" + env.get(key) + " names '" + n + "': " + message);
+    }
+
+    /**
+     * {@code FLOTTILA_TARGET_MAX_CALLS} (1..10000, default 16) and {@code FLOTTILA_TARGET_MAX_WAIT} (PT0.001S..PT5M, default PT5S) are
+     * the defaults of every target; {@code FLOTTILA_TARGET_LIMITS} = {@code <target>=<n>,...} the overrides (n in 1..10000), each
+     * key canonicalised as Component.target names a target — lower-cased, the default port of http (80), https (443) and sftp (22)
+     * filled in, an IPv6 literal kept in its brackets — and each carrying the default maxWait. Out of range, not a number, not a
+     * duration: refused naming the key. A malformed entry (no {@code =}, no key, no or a bad n, no scheme) or two entries with one key
+     * after canonicalisation: refused naming the key and the entry. {@code withSecrets} keeps the limits.
+     *
+     * <p>Shape assumed (P2-09b test-author): {@code NodeConfig.targets()}, a record {@code NodeConfig.TargetLimits(Targets.Limit
+     * defaults, Map<String, Targets.Limit> overrides)}.
+     */
+    @Test
+    void targetKeysParseCanonicaliseAndRefuseMalformed() {
+        NodeConfig.TargetLimits none = NodeConfig.from(minimal()).targets();
+        assertEquals(new Targets.Limit(16, Duration.ofSeconds(5)), none.defaults(), "16 calls, PT5S by default");
+        assertEquals(Map.of(), none.overrides(), "no override by default");
+
+        Map<String, String> env = minimal();
+        env.put("FLOTTILA_TARGET_MAX_CALLS", "40");
+        env.put("FLOTTILA_TARGET_MAX_WAIT", "PT2.5S");
+        env.put("FLOTTILA_TARGET_LIMITS", "HTTP://Partner.Example=4,https://Orders.example:8443=7,SFTP://Drop.Example=2,HTTPS://B.example=10000,"
+                + "http://c.example:81=1,http://[::1]=3");
+        NodeConfig read = NodeConfig.from(env);
+        Duration wait = Duration.ofMillis(2500);
+        assertEquals(new Targets.Limit(40, wait), read.targets().defaults(), "the defaults as set");
+        assertEquals(Map.of(
+                        "http://partner.example:80", new Targets.Limit(4, wait),
+                        "https://orders.example:8443", new Targets.Limit(7, wait),
+                        "sftp://drop.example:22", new Targets.Limit(2, wait),
+                        "https://b.example:443", new Targets.Limit(10000, wait),
+                        "http://c.example:81", new Targets.Limit(1, wait),
+                        "http://[::1]:80", new Targets.Limit(3, wait)),
+                read.targets().overrides(), "every key lower-cased with its scheme's default port, every override with the default maxWait");
+        assertEquals(read.targets(), read.withSecrets(Secrets.placeholder()).targets(), "withSecrets keeps the limits");
+
+        for (String calls : List.of("1", "10000")) {
+            assertEquals(Integer.parseInt(calls), NodeConfig.from(with(minimal(), "FLOTTILA_TARGET_MAX_CALLS", calls)).targets().defaults().maxCalls(), calls);
+        }
+        for (String calls : List.of("0", "10001", "-1", "many", "")) refusedNaming(with(minimal(), "FLOTTILA_TARGET_MAX_CALLS", calls), "FLOTTILA_TARGET_MAX_CALLS");
+        for (String w : List.of("PT0.001S", "PT5M")) {
+            assertEquals(Duration.parse(w), NodeConfig.from(with(minimal(), "FLOTTILA_TARGET_MAX_WAIT", w)).targets().defaults().maxWait(), w);
+        }
+        for (String w : List.of("PT0S", "PT0.0009S", "PT5M0.001S", "-PT1S", "5s", "")) refusedNaming(with(minimal(), "FLOTTILA_TARGET_MAX_WAIT", w), "FLOTTILA_TARGET_MAX_WAIT");
+
+        for (String bad : List.of("http://a.example", "http://a.example=", "=3", "http://a.example=0", "http://a.example=10001", "http://a.example=x",
+                "http://a.example=2.5", "partner.example=3")) {
+            refusedNaming(with(minimal(), "FLOTTILA_TARGET_LIMITS", "http://ok.example=5," + bad), "FLOTTILA_TARGET_LIMITS", bad);
+        }
+        refusedNaming(with(minimal(), "FLOTTILA_TARGET_LIMITS", "http://a.example=3,HTTP://A.Example:80=4"), "FLOTTILA_TARGET_LIMITS", "HTTP://A.Example:80=4");
+        refusedNaming(with(minimal(), "FLOTTILA_TARGET_LIMITS", "https://a.example:443=3,https://A.EXAMPLE=4"), "FLOTTILA_TARGET_LIMITS", "https://A.EXAMPLE=4");
+    }
+
+    /**
+     * P2-09b r2, amended r3 (D-099 amended: a refused value containing {@code @} names its entries by position only): a LIMITS
+     * entry with userinfo is refused at start — a target key never carries one — and the refusal names the entry by its position,
+     * never its text: neither user, password nor host, in the message or anywhere down its cause chain.
+     */
+    @Test
+    void aRefusedEntryNeverEchoesItsUserinfo() {
+        Map<String, String> env = with(minimal(), "FLOTTILA_TARGET_LIMITS", "http://ops:Secret@partner.example=4");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(env), "an entry with userinfo refuses the start");
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains("FLOTTILA_TARGET_LIMITS"), "names the key: " + message);
+        assertTrue(ENTRY_POSITION.matcher(message).find(), "names the entry by its position: " + message);
+        assertFalse(message.contains("partner.example"), "never the entry's text, its host neither: " + message);
+        assertFalse(message.contains("Secret"), "no password in the message: " + message);
+        assertFalse(message.contains("ops:"), "no user in the message: " + message);
+        for (Throwable c = e.getCause(); c != null; c = c.getCause()) {
+            assertFalse(String.valueOf(c.getMessage()).contains("Secret"), "no password down the cause chain: " + c);
+        }
+    }
+
+    /** "entry <n>": how a refusal of a LIMITS value holding {@code @} names an entry (D-099 amended, P2-09b r3). */
+    static final java.util.regex.Pattern ENTRY_POSITION = java.util.regex.Pattern.compile("entry \\d+");
+
+    /**
+     * P2-09b r3 (D-099 amended): a password holding a comma splits the value inside the userinfo — {@code http://ops:pa} and
+     * {@code ss@partner.example=4} — so no entry-wise redaction can hide it. The value contains {@code @}: the start is refused
+     * naming FLOTTILA_TARGET_LIMITS and an entry by its position only, no fragment of the user or the password in the message or
+     * down its cause chain.
+     */
+    @Test
+    void aPasswordWithACommaLeaksNoFragment() {
+        Map<String, String> env = with(minimal(), "FLOTTILA_TARGET_LIMITS", "http://ops:pa,ss@partner.example=4");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(env), "the value refuses the start");
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains("FLOTTILA_TARGET_LIMITS"), "names the key: " + message);
+        assertTrue(ENTRY_POSITION.matcher(message).find(), "names an entry by its position: " + message);
+        assertFalse(message.contains("ops"), "no user: " + message);
+        assertFalse(message.contains(":pa") || message.contains("pa,ss"), "no head of the password: " + message);
+        assertFalse(message.contains("ss@"), "no tail of the password: " + message);
+        for (Throwable c = e.getCause(); c != null; c = c.getCause()) {
+            String m = String.valueOf(c.getMessage());
+            assertFalse(m.contains("ops") || m.contains(":pa") || m.contains("ss@"), "no fragment down the cause chain: " + c);
+        }
     }
 }

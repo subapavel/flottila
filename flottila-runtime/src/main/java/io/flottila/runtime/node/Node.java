@@ -8,6 +8,7 @@ import io.flottila.api.IdGenerator;
 import io.flottila.api.Runtime;
 import io.flottila.api.StepFactory;
 import io.flottila.api.Timer;
+import io.flottila.core.admission.Targets;
 import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
@@ -76,7 +77,8 @@ import java.util.stream.Stream;
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
  * refused node leaves its database untouched, migrates the database, opens the stores and the archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
- * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them, starts the
+ * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them and the node's
+ * one {@link Targets} ({@code FLOTTILA_TARGET_*}, D-099: every flow it builds sends under it, across packages and versions), starts the
  * {@link CpuSampler} when {@code FLOTTILA_CPU_SAMPLING} sets a period (D-094), restores
  * what the pool's records name ({@link Deployments#restore}, D-070: rows that cannot be read or a data directory that cannot be
  * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts), builds the
@@ -200,7 +202,8 @@ public final class Node implements AutoCloseable {
             }
             // an at-least-once ingress saves its body, its record and its item in one transaction (D-082)
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
-                    Meter.system(), new PgDeploymentStore(pool), archives, new PgIntake(pool, blobs, messages, work), leases);
+                    Meter.system(), new PgDeploymentStore(pool), archives, new PgIntake(pool, blobs, messages, work), leases,
+                    new Targets(config.targets().defaults(), config.targets().overrides(), timer));   // the node's one, for every flow (D-099)
             deployments = restored;
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
             // before the restore: the restored flows' steps are sampled from their first message on (D-094)

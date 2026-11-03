@@ -6,6 +6,7 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
 import io.flottila.api.Health;
 import io.flottila.api.IdGenerator;
+import io.flottila.core.admission.TargetLimit;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
@@ -95,7 +96,9 @@ import java.util.function.Supplier;
  * {@code DELETE /admin/packages/{name}} undeploys (D-095) on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
  * (its flows' qualified ids, sorted), or a refusal by the deploy's status map — 400, 403, 409 (another deploy or undeploy runs on
  * the node, or another package's record pins it), 503 — and 404 for a package the node does not list; a record delete that fails
- * is 500. Without one these routes do not exist (404).
+ * is 500. {@code GET /admin/targets} lists the node's limits per target system (D-099), sorted by target: 200
+ * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
+ * component that names no target is not listed. Without one these routes do not exist (404).
  *
  * <p>With a {@link Deployments} it also shows a deployed flow's CPU by step (D-094): {@code GET /admin/flows/{flow}/cpu} — the flow's
  * qualified id as one path segment, its slash percent-encoded — answers, with a {@link Sampling}, 200 {@code {flow, sampling:"on",
@@ -295,6 +298,7 @@ public final class AdminServer {
                 router.delete("/admin/packages/:name").handler(offload(c -> undeployed(c, d)));
                 router.get("/admin/flows").handler(offload(c -> flows(d)));
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
+                router.get("/admin/targets").handler(offload(c -> targets(d)));
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
                 ids.ifPresent(minted -> {
                     router.post("/admin/messages/:id/replay").handler(offload(c -> replay(c, d, minted)));
@@ -656,6 +660,16 @@ public final class AdminServer {
                 .put("unattributed", t.unattributed()).put("platform", t.platform()).put("lost", t.lost()).put("dropped", t.dropped());
         return Json.of(200, answer.put("sampling", sampling.get().failed().getAsBoolean() ? "failed" : "on").put("period", sampling.get().period().toString()).put("since", sampling.get().since().toString())
                 .put("items", items).put("totals", totals));
+    }
+
+    /** {@code GET /admin/targets}: the gauge of every target the deployed flows named, sorted by target (D-099). */
+    private static Reply targets(Deployments deployments) {
+        JsonArray items = new JsonArray();
+        for (TargetLimit.Gauge g : deployments.targets()) {
+            items.add(new JsonObject().put("target", g.target()).put("maxCalls", g.maxCalls()).put("maxWaitMs", g.maxWait().toMillis())
+                    .put("inFlight", g.inFlight()).put("waiting", g.waiting()).put("refused", g.refused()));
+        }
+        return Json.of(200, new JsonObject().put("items", items));
     }
 
     private static Reply packages(Deployments deployments) {

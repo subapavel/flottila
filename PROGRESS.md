@@ -1135,3 +1135,15 @@ Review: FAIL r1 (5 s default unpinned from below; IPv6 no port; "node-wide" too 
 deploy problem), PASS r3.
 D-054 data: class C (designer ×1, test-author ×5, implementer ×4, reviewer ×3); review rounds 3.
 Next: P2-09b.
+
+## 2026-11-03 — P2-09b concurrency limit per target, runtime — done, review PASS r2
+Test first: NodeConfigTest target keys (+ redaction cases), DeploymentsTargetsTest (3), AdminServerTargetsTest (2), TargetLimitIT
+(two deployed flows on one local partner, limit 2, 503 + Retry-After past maxWait), HttpComponentTest endpoint-URI wording
+(red: agent/work/P2-09b-red.log, -red-it.log, -r2-red.log, -r3-red.log).
+Change: NodeConfig FLOTTILA_TARGET_MAX_CALLS/_MAX_WAIT/_LIMITS (bounds, canonical keys, a value with `@` names entries by position
+only); Node builds one Targets, Deployments' builder() hands it to every FlowBuilder; GET /admin/targets; NodeBenchMain echo override.
+Docs: D-099 settled points, ARCHITECTURE §4 + changelog; FIX-113 notes the uncapped sync bench now exits 3 (-bench-smoke.log).
+Checks: verify -Pit 2850/0/0/0, 283 fresh XML (agent/work/P2-09b-verify3-counts.txt); coverage no decrease; M1–M22 killed.
+Review: FAIL r1 (redaction after the split leaked a password fragment; D-099 not settled), PASS r2.
+D-054 data: class B (test-author ×3, implementer ×3, reviewer ×2); review rounds 2.
+Next: FIX-115.

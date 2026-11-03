@@ -131,16 +131,19 @@ public final class HttpComponent implements Component {
      * which takes a host {@code java.net.URI} reads none from (an underscore) and an unencoded space or {@code |} — lower-cased,
      * the scheme's default port filled in (443 for https, else 80), no userinfo, path, query or fragment. A url the producer
      * cannot send to (a scheme other than http/https, none, a port that is no number) refuses the build with an
-     * {@link IllegalArgumentException} naming the endpoint and the option, never the url — it may carry a password — and with no
-     * cause; one with an empty host names no target.
+     * {@link IllegalArgumentException} naming the endpoint and what was read — {@code option 'url'}, or {@code the endpoint URI}
+     * when the endpoint sets no url — never the url or the URI, either may carry a password, and with no cause; one with an empty
+     * host names no target.
      */
     @Override
     public Optional<String> target(EndpointConfig cfg) {
+        Object url = cfg.options().get("url");
         RequestOptions parsed;
         try {
-            parsed = new RequestOptions().setAbsoluteURI(string(cfg, "url", cfg.uri().toString()));
+            parsed = new RequestOptions().setAbsoluteURI(url == null ? cfg.uri().toString() : String.valueOf(url));
         } catch (RuntimeException unparsable) {   // VertxException "Invalid url: <url>" or a bare IAE: both would leak or say nothing
-            throw new IllegalArgumentException("endpoint '" + cfg.name() + "': option 'url' is no http(s) URL the producer can send to");
+            throw new IllegalArgumentException("endpoint '" + cfg.name() + "': " + (url == null ? "the endpoint URI" : "option 'url'")
+                    + " is no http(s) URL the producer can send to");
         }
         return Optional.of(parsed.getHost()).filter(host -> !host.isEmpty())
                 .map(host -> (parsed.isSsl() ? "https" : "http") + "://" + host.toLowerCase(Locale.ROOT) + ":" + parsed.getPort());

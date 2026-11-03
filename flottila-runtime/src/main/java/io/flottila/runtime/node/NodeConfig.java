@@ -1,5 +1,6 @@
 package io.flottila.runtime.node;
 
+import io.flottila.core.admission.Targets;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.store.Retention;
@@ -9,10 +10,13 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -39,11 +43,13 @@ import java.util.regex.Pattern;
  *                  the start of the next; {@code FLOTTILA_RETENTION_BATCH}, 1 to 10000 (1000): the rows one batch scans
  * @param cpuSampling {@code FLOTTILA_CPU_SAMPLING} (D-094): {@code off} (the default, empty) or the CPU-time sampling period, an
  *                    ISO-8601 duration in whole milliseconds from PT0.001S to PT0.1S; with a period the node runs a CPU sampler
+ * @param targets the limits per target system (D-099): {@code FLOTTILA_TARGET_MAX_CALLS}, {@code FLOTTILA_TARGET_MAX_WAIT} and
+ *                {@code FLOTTILA_TARGET_LIMITS} ({@link TargetLimits})
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
-                         Retention.Config retention, Optional<Duration> cpuSampling) {
+                         Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets) {
 
     /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
     public NodeConfig {
@@ -53,10 +59,19 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(leases, "leases");
         Objects.requireNonNull(retention, "retention");
         Objects.requireNonNull(cpuSampling, "cpuSampling");
+        Objects.requireNonNull(targets, "targets");
         if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+    }
+
+    /** A node whose targets have the default limits and no override, as {@link #from} reads them by default (D-099). */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling,
+                TargetLimits.DEFAULTS);
     }
 
     /** A node without CPU sampling, as {@link #from} reads it by default (D-094). */
@@ -93,7 +108,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling);
+                cpuSampling, targets);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -208,6 +223,28 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
     }
 
+    /**
+     * How many sends each target system may have in flight and how long a send waits for a permit (D-099), the node's one
+     * {@link Targets} is built from: the {@code defaults} of every target, and the {@code overrides} by target key, each with the
+     * default maxWait. Never unlimited: maxCalls 1 to 10000, maxWait PT0.001S to PT5M.
+     *
+     * @param defaults {@code FLOTTILA_TARGET_MAX_CALLS} (16) and {@code FLOTTILA_TARGET_MAX_WAIT} (PT5S)
+     * @param overrides {@code FLOTTILA_TARGET_LIMITS}, {@code <target>=<n>,...} (none): each key in the form
+     *                  {@link io.flottila.api.Component#target} names a target — {@code scheme://host:port}, lower-cased, the default
+     *                  port of http (80), https (443) and sftp (22) filled in, an IPv6 literal in its brackets; another scheme needs
+     *                  its port — so it matches what a component answers
+     * @since 0.1
+     */
+    public record TargetLimits(Targets.Limit defaults, Map<String, Targets.Limit> overrides) {
+        /** 16 calls, PT5S ({@link Targets#DEFAULTS}), no override. */
+        static final TargetLimits DEFAULTS = new TargetLimits(Targets.DEFAULTS, Map.of());
+
+        public TargetLimits {
+            Objects.requireNonNull(defaults, "defaults");
+            overrides = Map.copyOf(overrides);
+        }
+    }
+
     private static final long MIB = 1024L * 1024;
     private static final long GIB = 1024 * MIB;
     private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
@@ -217,6 +254,12 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Pattern DB = Pattern.compile("/\\d+");
     /** The longest ttl and renew period of a poller lease. */
     private static final Duration LEASE_MAX = Duration.ofMinutes(10);
+    /** The most calls in flight one target may be given (D-099). */
+    private static final int TARGET_MAX_CALLS = 10_000;
+    /** A target key: {@code scheme://host[:port]}, the host a name or a bracketed IPv6 literal; nothing after the authority. */
+    private static final Pattern TARGET = Pattern.compile("([a-z][a-z0-9+.-]*)://(\\[[0-9a-f:.]+]|[^\\[\\]/:?#@=,\\s]+)(?::([0-9]{1,5}))?");
+    /** The schemes whose target key may leave out the port, and the port it then names (Component.target, D-099). */
+    private static final Map<String, Integer> DEFAULT_PORTS = Map.of("http", 80, "https", 443, "sftp", 22);
     /** The retention job's defaults (D-088): a max age of P7D, an interval of PT1H, batches of 1000 rows. */
     private static final Retention.Config RETENTION_DEFAULTS = new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 1000);
     /** The shortest and the longest CPU-time sampling period (D-094). */
@@ -251,7 +294,62 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
-                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env));
+                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env));
+    }
+
+    /**
+     * The {@code FLOTTILA_TARGET_*} keys (D-099); a refusal names the key, and for a {@code FLOTTILA_TARGET_LIMITS} entry the entry —
+     * by its text, or by its position only when the value holds an {@code @} anywhere (D-099 amended): userinfo, a password among
+     * it, may hold a comma the split cuts at, so no entry's text is shown then, and neither is its target.
+     */
+    private static TargetLimits targets(Map<String, String> env) {
+        int maxCalls = (int) number(env, "FLOTTILA_TARGET_MAX_CALLS", Targets.DEFAULTS.maxCalls(), 1, TARGET_MAX_CALLS);
+        Duration maxWait = span(env, "FLOTTILA_TARGET_MAX_WAIT", Targets.DEFAULTS.maxWait(), "PT0.001S", "PT5M");
+        String raw = env.getOrDefault("FLOTTILA_TARGET_LIMITS", "");
+        Map<String, Targets.Limit> overrides = new LinkedHashMap<>();
+        boolean secret = raw.indexOf('@') >= 0;   // decided on the whole value, before the split
+        if (!raw.isBlank()) {
+            String[] entries = raw.split(",", -1);
+            for (int i = 0; i < entries.length; i++) {
+                String entry = entries[i];
+                String named = secret ? "entry " + (i + 1) + " of " + entries.length : "entry '" + entry + "'";
+                int eq = entry.indexOf('=');
+                String key = eq < 0 ? "" : canonicalTarget(entry.substring(0, eq).strip());
+                int calls = eq < 0 ? 0 : limitCalls(entry.substring(eq + 1).strip());
+                if (key.isEmpty() || calls == 0) {
+                    throw new IllegalArgumentException("FLOTTILA_TARGET_LIMITS " + named + " must be <target>=<n>: a target scheme://host[:port]"
+                            + " (a port for a scheme other than http, https and sftp) and n from 1 to " + TARGET_MAX_CALLS);
+                }
+                if (overrides.putIfAbsent(key, new Targets.Limit(calls, maxWait)) != null) {
+                    throw new IllegalArgumentException("FLOTTILA_TARGET_LIMITS " + named + " names " + (secret ? "the target of an earlier entry" : key) + " again");
+                }
+            }
+        }
+        return new TargetLimits(new Targets.Limit(maxCalls, maxWait), overrides);
+    }
+
+    /**
+     * {@code raw} as {@link io.flottila.api.Component#target} names a target — {@code scheme://host:port}, lower-cased, the default
+     * port of http, https and sftp filled in — or empty when it is none: no scheme, userinfo, a path, a query, no port where the
+     * scheme has no default, a port out of 1..65535.
+     */
+    private static String canonicalTarget(String raw) {
+        Matcher m = TARGET.matcher(raw.toLowerCase(Locale.ROOT));
+        if (!m.matches()) return "";
+        String scheme = m.group(1);
+        Integer port = m.group(3) == null ? DEFAULT_PORTS.get(scheme) : Integer.valueOf(m.group(3));
+        if (port == null || port < 1 || port > 65535) return "";
+        return scheme + "://" + m.group(2) + ":" + port;
+    }
+
+    /** {@code raw} as a target's maxCalls, 1 to {@link #TARGET_MAX_CALLS}; 0 when it is none. */
+    private static int limitCalls(String raw) {
+        try {
+            int calls = Integer.parseInt(raw);
+            return calls < 1 || calls > TARGET_MAX_CALLS ? 0 : calls;
+        } catch (NumberFormatException notAnInt) {
+            return 0;
+        }
     }
 
     /**
@@ -276,8 +374,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /** The {@code FLOTTILA_RETENTION_*} keys; a refusal names the key and its bounds, never the value. */
     private static Retention.Config retention(Map<String, String> env) {
-        Duration maxAge = retentionSpan(env, "FLOTTILA_RETENTION_MAX_AGE", RETENTION_DEFAULTS.maxAge(), "PT1H", "P366D");
-        Duration interval = retentionSpan(env, "FLOTTILA_RETENTION_INTERVAL", RETENTION_DEFAULTS.interval(), "PT1M", "P1D");
+        Duration maxAge = span(env, "FLOTTILA_RETENTION_MAX_AGE", RETENTION_DEFAULTS.maxAge(), "PT1H", "P366D");
+        Duration interval = span(env, "FLOTTILA_RETENTION_INTERVAL", RETENTION_DEFAULTS.interval(), "PT1M", "P1D");
         String raw = env.get("FLOTTILA_RETENTION_BATCH");
         int batch = RETENTION_DEFAULTS.batch();
         if (raw != null) {
@@ -297,7 +395,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * {@code key}'s ISO-8601 duration within [{@code min}, {@code max}] (ISO-8601 both), {@code fallback} when the key is absent; a
      * refusal names the key and the bounds, never the value.
      */
-    private static Duration retentionSpan(Map<String, String> env, String key, Duration fallback, String min, String max) {
+    private static Duration span(Map<String, String> env, String key, Duration fallback, String min, String max) {
         String raw = env.get(key);
         if (raw == null) return fallback;
         Duration value;

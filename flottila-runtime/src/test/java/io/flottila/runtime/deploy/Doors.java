@@ -57,6 +57,9 @@ import java.util.function.Function;
  * bound: absent unless the endpoint sets {@code port} (0..65535), then {@code host} (default {@code 127.0.0.1}) and that port,
  * unresolved and as configured. An endpoint whose options carry {@code listenRefuse} makes it throw with that text. Every call is
  * recorded by the endpoint's name ({@link #listensOnAsked()}). {@link #Doors(String)} serves another scheme than {@value #SCHEME}.
+ *
+ * <p>P2-09b (D-099): {@link #target} names no target unless a case sets a naming with {@link #targets} — then every {@code to}
+ * on this component sends under the node's limit of the key that naming answers.
  */
 public final class Doors implements Component {
 
@@ -87,6 +90,7 @@ public final class Doors implements Component {
     private volatile boolean closeFailsSends;
     private volatile java.util.function.Consumer<String> trace = e -> {};
     private volatile java.util.function.Consumer<EndpointConfig> onConsumer = c -> {};
+    private volatile Function<EndpointConfig, Optional<String>> naming = c -> Optional.empty();
     private int starts;   // guarded by this: start() calls so far
     private final Map<String, java.util.Queue<Gate>> startGates = new ConcurrentHashMap<>();
     private final Map<String, java.util.Queue<Gate>> stopGates = new ConcurrentHashMap<>();
@@ -232,6 +236,13 @@ public final class Doors implements Component {
         Object host = cfg.options().get("host");
         return Optional.of(InetSocketAddress.createUnresolved(host == null ? "127.0.0.1" : String.valueOf(host), n.intValue()));
     }
+
+    /** From now on {@link #target} answers {@code naming} applied to the endpoint's config (P2-09b); before, no target. */
+    public void targets(Function<EndpointConfig, Optional<String>> naming) { this.naming = Objects.requireNonNull(naming, "naming"); }
+
+    /** The target a producer of {@code cfg} calls: what the naming set by {@link #targets} answers, empty by default. */
+    @Override
+    public Optional<String> target(EndpointConfig cfg) { return naming.apply(cfg); }
 
     /** The name of the endpoint of every {@link #listensOn} call, in order. */
     public List<String> listensOnAsked() { return List.copyOf(listensOnAsked); }

@@ -70,7 +70,8 @@ import java.util.zip.ZipOutputStream;
  * ({@code refused}, the flow's admission) apart from its {@code errors} (any other status, a failed request); {@code failed} is
  * both, and the record adds the warm-up's ({@code warmupFailed}). A sync window's wait for its rows fails at once when the
  * node's /health {@code snapshotWriteFailures} rises above its value before the load. The partner's pool has
- * {@code --concurrency} connections. Every record carries
+ * {@code --concurrency} connections, and its target limit (D-099) as many calls as the run sends at once: {@code --concurrency}
+ * for sync, the flow's {@code maxInFlight} for at-least-once. Every record carries
  * {@code walBytesPerSecond} ({@code pg_current_wal_lsn} delta), {@code bodiesBytesPerSecond} ({@code pg_total_relation_size('bodies')}
  * delta) — both taken once what the window accepted landed (recorded, the work queue empty) and divided by the window's
  * {@code elapsedMs} — and {@code bodiesGrowthPerHour} (the latter × 3600). Every record also carries the server's commit settings
@@ -302,7 +303,7 @@ public final class NodeBenchMain {
         Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort());
         SaxonXml xml = new SaxonXml();
         JsonObject measured;
-        NodeConfig config = nodeConfig(o, data);
+        NodeConfig config = nodeConfig(o, data, echo.actualPort());
         Node node = Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(),
                 xml.languages());
         try {
@@ -355,10 +356,18 @@ public final class NodeBenchMain {
                 .setPassword(o.password())).with(new io.vertx.sqlclient.PoolOptions().setMaxSize(size)).using(vertx).build();
     }
 
-    private static NodeConfig nodeConfig(Options o, Path data) {
-        return NodeConfig.from(Map.of("FLOTTILA_ENV", "dev", "FLOTTILA_NODE_ID", "node-bench", "FLOTTILA_ADMIN_PORT", "0",
-                "FLOTTILA_DATA_DIR", data.toString(), "FLOTTILA_PG_HOST", o.host(), "FLOTTILA_PG_PORT", String.valueOf(o.port()),
-                "FLOTTILA_PG_DATABASE", o.db(), "FLOTTILA_PG_USER", o.user(), "FLOTTILA_PG_PASSWORD", o.password(), "FLOTTILA_CPU_SAMPLING", o.cpuSampling()));
+    /**
+     * The node's configuration; the echo's target ({@code http://127.0.0.1:<echo>}, D-099) may have as many calls in flight as the
+     * run can send at once, so its limit (16 by default) never caps the load the run asks for: {@code --concurrency} for sync (a
+     * client's next request follows its reply), the flow's {@code maxInFlight} for at-least-once (its worker runs at most that many
+     * items).
+     */
+    private static NodeConfig nodeConfig(Options o, Path data, int echo) {
+        return NodeConfig.from(Map.ofEntries(Map.entry("FLOTTILA_ENV", "dev"), Map.entry("FLOTTILA_NODE_ID", "node-bench"),
+                Map.entry("FLOTTILA_ADMIN_PORT", "0"), Map.entry("FLOTTILA_DATA_DIR", data.toString()), Map.entry("FLOTTILA_PG_HOST", o.host()),
+                Map.entry("FLOTTILA_PG_PORT", String.valueOf(o.port())), Map.entry("FLOTTILA_PG_DATABASE", o.db()), Map.entry("FLOTTILA_PG_USER", o.user()),
+                Map.entry("FLOTTILA_PG_PASSWORD", o.password()), Map.entry("FLOTTILA_CPU_SAMPLING", o.cpuSampling()),
+                Map.entry("FLOTTILA_TARGET_LIMITS", "http://127.0.0.1:" + echo + "=" + (o.scenario() == Scenario.SYNC ? o.concurrency() : inFlight(o)))));
     }
 
     /** An invoice of at least one line, grown by lines until it holds {@code atLeast} bytes. */

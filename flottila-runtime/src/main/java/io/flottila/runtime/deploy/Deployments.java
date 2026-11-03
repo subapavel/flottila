@@ -11,6 +11,8 @@ import io.flottila.api.Runtime;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.Timer;
+import io.flottila.core.admission.TargetLimit;
+import io.flottila.core.admission.Targets;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.flow.Delivery;
 import io.flottila.core.flow.FlowBuilder;
@@ -215,6 +217,7 @@ public final class Deployments {
     private final DeploymentStore records;
     private final ArchiveStore archives;
     private final PollerLeases leases;
+    private final Targets targets;
     /** Numbers the owners of the leased consumers built here: {@code <nodeId>#<n>}. */
     private final AtomicLong owners = new AtomicLong();
     /** One deploy, undeploy or restore at a time; {@link #close} takes it to wait for the one running. */
@@ -257,6 +260,17 @@ public final class Deployments {
     }
 
     /**
+     * Deployments whose flows send under limits of their own, built from {@code config}'s {@link NodeConfig#targets()} on
+     * {@code timer}: tests and tools; the node passes the one {@link Targets} it built (D-099).
+     */
+    public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                       ArchiveStore archives, Intake intake, PollerLeases leases) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases,
+                new Targets(config.targets().defaults(), config.targets().overrides(), timer));
+    }
+
+    /**
      * @param runtime handed to each deploy's {@code new FlowBuilder} and read nowhere else
      * @param components the node's components by scheme: the consumers, and the config schemas the endpoints are checked against
      * @param clock {@code deployedAt}, and the validity of a leased consumer's lease
@@ -267,10 +281,13 @@ public final class Deployments {
      * @param intake the durable save of every at-least-once flow's delivery (D-082): body, ingress record and item, over the
      *               same stores as {@code messages} and {@code queue}
      * @param leases where the consumer of a polling endpoint holds its lease (D-083)
+     * @param targets the node's limits per target system (D-099): every flow built here — deployed, swapped in by a redeploy,
+     *                rebuilt by a rollback, restored — sends under them, so flows naming one target share its limit across packages
+     *                and versions; {@link #targets()} lists their gauges
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake, PollerLeases leases) {
+                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets) {
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
@@ -286,6 +303,7 @@ public final class Deployments {
         this.records = Objects.requireNonNull(records, "records");
         this.archives = Objects.requireNonNull(archives, "archives");
         this.leases = Objects.requireNonNull(leases, "leases");
+        this.targets = Objects.requireNonNull(targets, "targets");
     }
 
     /**
@@ -387,6 +405,11 @@ public final class Deployments {
     /** {@code <dataDir>/.incoming}: uploads and unpacks land here, on the file system of the packages, so the move is atomic. */
     public Path incomingDir() {
         return config.dataDir().resolve(".incoming");
+    }
+
+    /** The gauge of every target the flows built here named so far (D-099), sorted by target; never an unshared limit. */
+    public List<TargetLimit.Gauge> targets() {
+        return targets.gauges();
     }
 
     /** Every flow of every package deployed, RUNNING or FAILED, sorted by its qualified id; during a deploy as before it. */
@@ -1373,14 +1396,15 @@ public final class Deployments {
 
     /**
      * A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code revision};
-     * it marks the steps with StepEvents only when the node samples CPU time (D-094, owner decision 2026-11-03).
+     * it marks the steps with StepEvents only when the node samples CPU time (D-094, owner decision 2026-11-03), and its {@code to}
+     * steps send under the node's {@link Targets} (D-099).
      */
     private FlowBuilder builder(String name, String version, Optional<String> revision, Map<String, EndpointConfig> endpoints) {
         Map<String, String> versions = new HashMap<>();
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
-                .stepEvents(config.cpuSampling().isPresent());
+                .stepEvents(config.cpuSampling().isPresent()).targets(targets);
     }
 
     /**

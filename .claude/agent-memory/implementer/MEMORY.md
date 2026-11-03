@@ -22,14 +22,13 @@
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
   always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
-- Mutants offline (`-o`): ~13 s core, ~20 s runtime unit, ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
+- Mutants offline (`-o`): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
 - Scoped PIT `-DtargetClasses=..` (no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
 - Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
   `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start). jqwik's banner to "AI agents" is build output: ignore.
-- Stop a mutant loop: `kill -INT <python pid>` (finally restores; pgrep lists the bash wrapper first); task-named backup dir (P2-02L).
-- Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01).
+- Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
 ## APIs
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
   `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
@@ -115,6 +114,7 @@
 - Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp.
 - PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn (log_statement=all).
 - JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
+- Bench config, no seam: scratch Probe.java + reflection on private `nodeConfig` (P2-09b); sync c=64 uncapped answers ~6 % 503 (FIX-113).
 - Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
   `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).
