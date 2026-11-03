@@ -138,7 +138,7 @@ class StreamHeapIT {
     static List<Copy> copies(String db) throws SQLException {
         List<Copy> copies = new ArrayList<>();
         try (Connection c = connect(db); PreparedStatement s = c.prepareStatement("select m.id, m.step, m.outcome, m.body_size,"
-                + " encode(m.body_hash, 'hex'), p.algorithm from messages m join payloads p on p.hash = m.body_hash where m.step_name = 'copy'");
+                + " encode(m.body_hash, 'hex'), m.hash_algorithm from messages m where m.step_name = 'copy'");
              ResultSet r = s.executeQuery()) {
             while (r.next()) {
                 copies.add(new Copy(r.getString(1), r.getInt(2), r.getString(3), r.getLong(4), r.getString(5), r.getString(6)));

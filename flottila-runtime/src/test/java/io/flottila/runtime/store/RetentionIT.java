@@ -74,7 +74,7 @@ class RetentionIT {
     static final Duration BOUND = Duration.ofSeconds(20);
     static final Duration DAY = Duration.ofDays(1);
     static final Duration MICRO = Duration.ofNanos(1000);
-    /** The payloads row every messages row references (V1's foreign key); retention leaves {@code payloads} alone (P2-07c). */
+    /** The body hash every seeded messages row carries (V11 dropped payloads and the foreign key to it: no row to seed, P2-07c). */
     static final Buffer HASH = Buffer.buffer(new byte[8]);
     static Vertx vertx;
     static Pool observer;   // on the container's own database: never a session of the case database
@@ -119,7 +119,6 @@ class RetentionIT {
         clock = FakeClock.at(Instant.now().plus(Duration.ofDays(400)).truncatedTo(ChronoUnit.SECONDS));
         timer = new FakeTimer(clock);
         cutoff = clock.instant().minus(MAX_AGE);
-        db.preparedQuery("insert into payloads(hash, size) values ($1, 0)").execute(Tuple.of(HASH)).await();
         logs.attach();
     }
 
@@ -395,6 +394,39 @@ class RetentionIT {
     }
 
     // --- the cases
+
+    /** Every {@code table.column} of type bytea in the case database holding {@code value} in some row, sorted. */
+    List<String> holding(Buffer value) {
+        List<String> found = new ArrayList<>();
+        for (Row c : db.query("select table_name, column_name from information_schema.columns where table_schema = 'public' and data_type = 'bytea' "
+                + "order by table_name, column_name").execute().await()) {
+            String table = c.getString(0), column = c.getString(1);
+            long n = db.preparedQuery("select count(*) from " + table + " where " + column + " = $1").execute(Tuple.of(value)).await().iterator().next().getLong(0);
+            if (n > 0) found.add(table + "." + column);
+        }
+        return found;
+    }
+
+    /**
+     * P2-07c (D-097, F-23): a message the store wrote — through its own snapshot write, at the server's now, aged under the case's
+     * clock — is deleted by a run, and nothing of its body hash is left in any table: the hash went with its messages row.
+     */
+    @Test
+    void aRunLeavesNothingOfAnAgedMessagesHash() {
+        long value = 0x0123456789abcdefL;
+        Buffer aged = Buffer.buffer(java.nio.ByteBuffer.allocate(Long.BYTES).putLong(value).array());
+        try (PgMessageStore store = new PgMessageStore(db, new io.flottila.runtime.time.VertxTimer(vertx),
+                new io.flottila.core.batch.BatchingWriter.Options(1, Duration.ZERO, 1, 10))) {
+            await(store.record(new io.flottila.core.record.Snapshot("m-aged", "shop/orders", 0, "ingress", io.flottila.core.record.Snapshot.Outcome.OK,
+                    java.util.Optional.empty(), clock.instant().minus(MAX_AGE).minus(DAY), 0, 0, io.flottila.api.Headers.empty(), io.flottila.api.Props.empty(),
+                    io.flottila.api.Keys.empty(), new io.flottila.api.Hash("sha256-64", value), 10, java.util.Optional.empty(), java.util.Map.of())), "the snapshot write");
+        }
+        assertTrue(holding(aged).contains("messages.body_hash"), "fixture: the store wrote the hash into messages: " + holding(aged));
+        Retention.Run run = run(job(1000));
+
+        assertEquals(List.of("DONE", "1"), List.of(outcome(run), Long.toString(run.messages())), "the run deleted the aged message: " + run);
+        assertEquals(List.of(), holding(aged), "nothing of the aged message's hash is left in any table");
+    }
 
     @Test
     void oneRunDeletesEveryRowOlderThanTheRetention() {

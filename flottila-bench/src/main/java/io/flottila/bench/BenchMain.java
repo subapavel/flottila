@@ -69,7 +69,7 @@ public final class BenchMain {
                             .onComplete(ar -> conn.close()))
                     .using(vertx).build();
             try {
-                pool.query("truncate messages, payloads").execute().await();
+                pool.query("truncate messages").execute().await();
                 PgBatchSink<BenchMessage> sink = new PgBatchSink<>(pool, V1MessageStatements.all());
                 VertxTimer timer = new VertxTimer(vertx);
                 Buffer body = Buffer.buffer("<invoice id=\"4711\"><customer>ACME</customer><amount currency=\"EUR\">1234.50</amount>"
@@ -78,7 +78,7 @@ public final class BenchMain {
                 if (warmup > 0) {
                     BenchRun.run(new BenchRun.Config(name + "-warmup", warmup, concurrency, batch), sink, timer,
                             i -> BenchMessage.of("w-" + i, 0, "invoice", body, hasher));
-                    pool.query("truncate messages, payloads").execute().await();
+                    pool.query("truncate messages").execute().await();
                 }
                 BenchRun.Report report = BenchRun.run(new BenchRun.Config(name, messages, concurrency, batch), sink, timer,
                         i -> BenchMessage.of("m-" + i, 0, "invoice", body, hasher));

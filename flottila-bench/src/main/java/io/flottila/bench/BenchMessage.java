@@ -7,8 +7,8 @@ import io.vertx.core.buffer.Buffer;
 import java.util.Objects;
 
 /**
- * One message row of the V1 schema as the prototype wrote it: id + step, flow, the payload bytes and
- * their content hash (dedup by hash in {@code payloads}).
+ * One message row as the prototype wrote it: id + step, flow, the payload bytes and their content hash (dedup visible as
+ * equal hash and algorithm across {@code messages} rows since V11, D-097).
  *
  * @since 0.1
  */
@@ -27,7 +27,7 @@ public record BenchMessage(String id, int step, String flow, Buffer body, Hash h
 
     public long size() { return body.length(); }
 
-    /** The hash as the 8-byte big-endian bytea the V1 schema keys payloads by. */
+    /** The hash as the 8-byte big-endian bytea {@code messages.body_hash} holds. */
     public byte[] hashBytes() {
         byte[] b = new byte[8];
         long v = hash.value();

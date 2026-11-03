@@ -107,7 +107,7 @@ class InvoiceSyncReplayIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate message_keys, messages, payloads, dlq, bodies").execute().await();
+        pool.query("truncate message_keys, messages, dlq, bodies").execute().await();
         store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
         dlq = new PgDlq(pool);
         parking = durableBodies(dlq);

@@ -156,10 +156,10 @@ class MainIT {
         OnVirtualThread.Call<Void> stopping;
         try {
             Transaction held = holder.begin().await();
-            // an uncommitted payload row with the snapshot's hash: the snapshot's batch waits on it, inside the node's close
-            holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, 1, 'sha256-64')").execute(Tuple.of(NodeIT.hashBytes(4711L))).await();
+            // an uncommitted messages row with the snapshot's (id, step): the snapshot's batch waits on it, inside the node's close (P2-07c)
+            holder.preparedQuery("insert into messages(id, step, flow, body_hash) values ('m-flushed', 0, 'node-it', $1)").execute(Tuple.of(NodeIT.hashBytes(4711L))).await();
             recorded = node.messages().record(NodeIT.snapshot("m-flushed", 4711L));
-            NodeIT.until(() -> lockWaiters() == 1, "the snapshot's batch waits on the held payload row");
+            NodeIT.until(() -> lockWaiters() == 1, "the snapshot's batch waits on the held messages row");
             Runnable stopper = Main.stopper(node, main);
             stopping = OnVirtualThread.start(stopper::run);
             NodeIT.until(() -> NodeIT.refuses(port), "the stopper closed the node's admin server: the port refuses");

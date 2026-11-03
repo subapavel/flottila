@@ -1095,3 +1095,15 @@ mutants M1–M10 killed (-mutants.log, -M10.log). An implementer run counted 253
 Review: FAIL r1 (evidence count; "no FK, never fails" text; D-096 rule too broad; Dlq contract), FAIL r2 (Dlq sentence Pg-only), PASS r3.
 D-054 data: class C (test-author ×1, implementer ×3, verifier ×1, reviewer ×3); review rounds 3.
 Next: P2-07c [C].
+
+## 2026-11-03 — P2-07c drop `payloads` — done, review PASS r2 — Deviation: F-23
+Designer draft → D-097 (draft — review at hand-over: persisted format, stop-all upgrade). Open points: stop-all, bench → FIX-114, default kept.
+Test first: MigrationsIT.v11MovesTheHashAlgorithmOntoMessagesAndDropsPayloads, PgMessageStoreIT.theTimelineAnswersEachRowsOwnHashAlgorithm
+(+ a guard green before and after), RetentionIT.aRunLeavesNothingOfAnAgedMessagesHash, V1MessageStatementsTest one statement
+(red: agent/work/P2-07c-red.log, -red-bench.log, -red-scratch-today.log); by-design expectation changes (version 11, plugs, truncates).
+Change: V11 adds messages.hash_algorithm (copied), drops messages_body_hash_fkey and payloads; PgMessageStore writes messages +
+message_keys, timeline reads m.hash_algorithm; bench one statement. Docs: F-23, D-097, D-044/D-088 amended, ARCH §5/§7 + changelog.
+Checks: verify -Pit 2788/0/0/0, 275 fresh XML (agent/work/P2-07c-verify-counts.txt); coverage no decrease; M1–M4 killed (-M1..4.log).
+Review: FAIL r1 (D-044 amendment placement; FIX-114 must name both bench marker pairs), PASS r2.
+D-054 data: class C (designer ×1, test-author ×1, implementer ×1, reviewer ×2); review rounds 2.
+Next: FIX-109.

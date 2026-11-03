@@ -304,10 +304,10 @@ class NodeIT {
         PgConnection holder = PgConnection.connect(vertx, options(database)).await();
         try {
             Transaction held = holder.begin().await();
-            // an uncommitted payload row with the snapshot's hash: the snapshot's batch waits on it, inside close's flush
-            holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, 1, 'sha256-64')").execute(Tuple.of(hashBytes(4711L))).await();
+            // an uncommitted messages row with the snapshot's (id, step): the snapshot's batch waits on it, inside close's flush (P2-07c)
+            holder.preparedQuery("insert into messages(id, step, flow, body_hash) values ('m-flushed', 0, 'node-it', $1)").execute(Tuple.of(hashBytes(4711L))).await();
             recorded = started.messages().record(snapshot("m-flushed", 4711L));
-            until(() -> lockWaiters() == 1, "the snapshot's batch waits on the held payload row");
+            until(() -> lockWaiters() == 1, "the snapshot's batch waits on the held messages row");
             closing = OnVirtualThread.start(started::close);
             until(() -> refuses(port), "the admin port refuses while close still waits for the store");
             assertFalse(closing.isDone(), "close waits for the store's flush: the snapshot is still held");
@@ -347,7 +347,6 @@ class NodeIT {
         flottila.addHandler(warnings);
         PgConnection holder = PgConnection.connect(vertx, options(database)).await();
         try {
-            holder.preparedQuery("insert into payloads(hash, size) values ($1, 0)").execute(Tuple.of(hashBytes(7L))).await();
             holder.preparedQuery("insert into messages(id, step, flow, body_hash, created_at) values ('m-aged', 0, 'shop/orders', $1, now() - interval '8 days'),"
                     + " ('m-fresh', 0, 'shop/orders', $1, now() - interval '6 days')").execute(Tuple.of(hashBytes(7L))).await();
             Transaction held = holder.begin().await();

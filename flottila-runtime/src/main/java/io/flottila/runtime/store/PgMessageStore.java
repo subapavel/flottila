@@ -37,28 +37,26 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The MessageStore over Postgres (ARCHITECTURE §7, §8). Every snapshot given to {@link #record} goes through the P0-06
- * {@link BatchingWriter} into one transaction per batch: {@code payloads} (hash, size, algorithm; {@code ON CONFLICT DO
- * NOTHING}, the bytes are the BlobStore's), {@code messages} (one row per message and step, the first wins) and
- * {@code message_keys} (one row per (name, value, message), numbered by V5's {@code seq} in the order the message first
- * carried the key — what {@link #findByKey} pages through its {@code (name, value, seq)} index; the cursor is the page's last
- * {@code seq}). Reads are plain queries. A failed commit fails the snapshot's future and counts in {@link #failed()}; the
- * message path does not wait for it. On the node, the at-least-once ingress row bypasses the writer: {@link #insert} writes
- * it with the same statements in the intake's transaction (D-082), and its failure fails that save, not counted here.
+ * {@link BatchingWriter} into one transaction per batch: {@code messages} (one row per message and step, the first wins; the
+ * body by reference: hash, hash algorithm, size, BlobStore key, D-097) and {@code message_keys} (one row per (name, value,
+ * message), numbered by V5's {@code seq} in the order the message first carried the key — what {@link #findByKey} pages through
+ * its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads are plain queries. A failed commit fails
+ * the snapshot's future and counts in {@link #failed()}; the message path does not wait for it. On the node, the at-least-once
+ * ingress row bypasses the writer: {@link #insert} writes it with the same statements in the intake's transaction (D-082).
  *
  * @since 0.1
  */
 public final class PgMessageStore implements MessageStore, AutoCloseable {
 
-    private static final String INSERT_PAYLOADS = "insert into payloads(hash, size, algorithm) select * from unnest($1::bytea[], $2::bigint[], $3::text[]) on conflict (hash) do nothing";
     private static final String INSERT_MESSAGES = """
-            insert into messages(id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, body_key, body_size, versions)
+            insert into messages(id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions)
             select * from unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[], $8::bigint[], $9::bigint[],
-                                 $10::jsonb[], $11::jsonb[], $12::jsonb[], $13::bytea[], $14::text[], $15::bigint[], $16::jsonb[])
+                                 $10::jsonb[], $11::jsonb[], $12::jsonb[], $13::bytea[], $14::text[], $15::text[], $16::bigint[], $17::jsonb[])
             on conflict (id, step) do nothing""";
     private static final String INSERT_KEYS = "insert into message_keys(name, value, message_id, step) select * from unnest($1::text[], $2::text[], $3::text[], $4::int[]) "
             + "on conflict (name, value, message_id) do nothing";
-    private static final String TIMELINE = "select id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, body_key, body_size, versions, "
-            + "(select algorithm from payloads p where p.hash = m.body_hash) as algorithm from messages m where id = $1 order by step";
+    private static final String TIMELINE = "select id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions "
+            + "from messages where id = $1 order by step";
     private static final String FIND_BY_KEY = "select message_id, seq from message_keys where name = $1 and value = $2 order by seq limit $3";
     private static final String FIND_BY_KEY_AFTER = "select message_id, seq from message_keys where name = $1 and value = $2 and seq > $3 order by seq limit $4";
     private static final Comparator<KeyRow> KEY_ORDER = Comparator.comparing(KeyRow::name).thenComparing(KeyRow::value).thenComparing(KeyRow::messageId);
@@ -73,7 +71,6 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     public PgMessageStore(Pool pool, Timer timer, BatchingWriter.Options options) {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.sink = new PgBatchSink<>(pool, List.of(
-                new PgBatchSink.Statement<>(INSERT_PAYLOADS, PgMessageStore::payloads),
                 new PgBatchSink.Statement<>(INSERT_MESSAGES, PgMessageStore::messages),
                 new PgBatchSink.Statement<>(INSERT_KEYS, PgMessageStore::keys)));
         this.writer = new BatchingWriter<>(sink, timer, options);
@@ -146,23 +143,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     // --- rows → arrays (one transaction per batch, PgBatchSink)
 
-    /** Rows go in one order in every transaction (payloads by hash, messages by id and step): concurrent batches sharing a hash never deadlock on it. */
-    private static Tuple payloads(List<Snapshot> batch) {
-        Map<Hash, Long> distinct = new TreeMap<>(Comparator.comparing(Hash::algorithm).thenComparingLong(Hash::value));
-        for (Snapshot s : batch) distinct.putIfAbsent(s.bodyHash(), s.bodySize());
-        Buffer[] hashes = new Buffer[distinct.size()];
-        Long[] sizes = new Long[distinct.size()];
-        String[] algorithms = new String[distinct.size()];
-        int i = 0;
-        for (Map.Entry<Hash, Long> e : distinct.entrySet()) {
-            hashes[i] = bytes(e.getKey());
-            sizes[i] = e.getValue();
-            algorithms[i] = e.getKey().algorithm();
-            i++;
-        }
-        return Tuple.wrap(new Object[] {hashes, sizes, algorithms});
-    }
-
+    /** Rows go in one order in every transaction (messages by id and step, D-044): concurrent batches never deadlock on a messages row. */
     private static Tuple messages(List<Snapshot> unordered) {
         List<Snapshot> batch = new ArrayList<>(unordered);
         batch.sort(Comparator.comparing(Snapshot::messageId).thenComparingInt(Snapshot::step));
@@ -173,6 +154,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
         Long[] walls = new Long[n], cpus = new Long[n], sizes = new Long[n];
         JsonObject[] headers = new JsonObject[n], props = new JsonObject[n], keys = new JsonObject[n], versions = new JsonObject[n];
         Buffer[] hashes = new Buffer[n];
+        String[] algorithms = new String[n];
         for (int i = 0; i < n; i++) {
             Snapshot s = batch.get(i);
             ids[i] = s.messageId();
@@ -188,11 +170,12 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
             props[i] = json(s.props().asMap());
             keys[i] = new JsonObject(new HashMap<>(s.keys().asMap()));
             hashes[i] = bytes(s.bodyHash());
+            algorithms[i] = s.bodyHash().algorithm();
             bodyKeys[i] = s.bodyKey().map(PgMessageStore::text).orElse(null);
             sizes[i] = s.bodySize();
             versions[i] = new JsonObject(new HashMap<>(s.versions()));
         }
-        return Tuple.wrap(new Object[] {ids, steps, flows, names, outcomes, errors, started, walls, cpus, headers, props, keys, hashes, bodyKeys, sizes, versions});
+        return Tuple.wrap(new Object[] {ids, steps, flows, names, outcomes, errors, started, walls, cpus, headers, props, keys, hashes, algorithms, bodyKeys, sizes, versions});
     }
 
     /**
@@ -236,7 +219,7 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
                 Snapshot.Outcome.valueOf(r.getString("outcome").toUpperCase(Locale.ROOT)), Optional.ofNullable(r.getString("error")),
                 r.getOffsetDateTime("started_at").toInstant(), r.getLong("wall_ns"), cpu == null ? Snapshot.CPU_UNKNOWN : cpu,
                 new Headers(strings(r.getJsonObject("headers"))), new Props(r.getJsonObject("props").getMap()), new Keys(strings(r.getJsonObject("keys"))),
-                new Hash(r.getString("algorithm"), r.getBuffer("body_hash").getLong(0)), r.getLong("body_size"),   // the FK guarantees the payloads row
+                new Hash(r.getString("hash_algorithm"), r.getBuffer("body_hash").getLong(0)), r.getLong("body_size"),
                 Optional.ofNullable(r.getString("body_key")).map(PgMessageStore::blobKey), strings(r.getJsonObject("versions")));
     }
 

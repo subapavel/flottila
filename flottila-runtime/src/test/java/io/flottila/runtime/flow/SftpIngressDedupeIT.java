@@ -150,7 +150,7 @@ class SftpIngressDedupeIT {
         try {
             if (consumer != null) consumer.stop().await();
             if (messages != null) messages.close();
-            pool.query("truncate message_keys, messages, payloads, dlq, work, bodies, processed_ids").execute().await();
+            pool.query("truncate message_keys, messages, dlq, work, bodies, processed_ids").execute().await();
         } finally {
             sftp.close();
         }

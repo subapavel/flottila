@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * P0-08: a fresh Postgres → migrated → the milestone-1 tables and indexes exist; migrating again changes nothing.
  * FIX-5: every case runs on a database of its own, created on the class's container before the case. P2-07: V10 indexes the
- * retention job's scans by age.
+ * retention job's scans by age. P2-07c (D-097, F-23): V11 moves the hash algorithm onto {@code messages} and drops {@code payloads}.
  */
 // the order that failed in P1-04 (FIX-5): the fresh case leaves V3 applied, the empty location then sees it as current and throws nothing
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -87,15 +87,16 @@ class MigrationsIT {
     @Test
     @Order(1)
     void freshDatabaseIsMigratedToV1AndASecondRunIsANoOp() {
-        Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "work");
+        Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "processed_ids", "work");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(10, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b), V10 (retention indexes, P2-07)");
-        assertEquals("10", first.schemaVersion());
-        assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "payloads", "processed_ids", "work"), tables());
+        assertEquals(11, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b), V10 (retention indexes, P2-07), V11 (payloads dropped, P2-07c)");
+        assertEquals("11", first.schemaVersion());
+        assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "processed_ids", "work"), tables(), "V11 dropped payloads (D-097)");
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
-        assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "dlq_parked_at", "messages_pkey", "payloads_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
+        assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "dlq_parked_at", "messages_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
+        assertTrue(!indexes.contains("payloads_pkey"), "V11: payloads' key went with the table: " + indexes);
         java.util.Map<String, String> defs = new java.util.HashMap<>();
         for (Row r : pool.query("select indexname, indexdef from pg_indexes where schemaname = 'public'").execute().await()) defs.put(r.getString(0), r.getString(1));
         assertTrue(defs.get("message_keys_name_value").endsWith("(name, value, seq)"), "V5: key search in seq order: " + defs.get("message_keys_name_value"));
@@ -104,10 +105,10 @@ class MigrationsIT {
         assertTrue(String.valueOf(defs.get("work_held")).endsWith("(seq) WHERE (held_at IS NOT NULL)"), "V5: held work rows, partial: " + defs.get("work_held"));
         assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V10");
-        assertEquals("10", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V11");
+        assertEquals("11", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(10, applied);
+        assertEquals(11, applied);
     }
 
     /**
@@ -169,8 +170,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(6, r.migrationsExecuted(), "V5, V6, V7, V8, V9 and V10 on top of V4");
-        assertEquals("10", r.schemaVersion());
+        assertEquals(7, r.migrationsExecuted(), "V5, V6, V7, V8, V9, V10 and V11 on top of V4");
+        assertEquals("11", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));
@@ -197,7 +198,7 @@ class MigrationsIT {
     @Order(5)
     void v7DeploymentsHoldsTheRecordAndNoBytes() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("10", r.schemaVersion());
+        assertEquals("11", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'deployments' order by ordinal_position").execute().await()) {
@@ -233,7 +234,7 @@ class MigrationsIT {
     @Order(6)
     void v8ProcessedIdsHoldsOneRowPerScopeAndKeyHash() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("10", r.schemaVersion());
+        assertEquals("11", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'processed_ids' order by ordinal_position").execute().await()) {
@@ -278,8 +279,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(2, r.migrationsExecuted(), "V9 and V10 on top of V8");
-        assertEquals("10", r.schemaVersion());
+        assertEquals(3, r.migrationsExecuted(), "V9, V10 and V11 on top of V8");
+        assertEquals("11", r.schemaVersion());
         Row column = pool.query("select column_default, is_nullable, data_type from information_schema.columns where table_schema = 'public' "
                 + "and table_name = 'deployments' and column_name = 'dependencies'").execute().await().iterator().next();
         assertEquals("'[]'::jsonb", column.getString(0), "V9: the default");
@@ -303,7 +304,7 @@ class MigrationsIT {
     @Order(8)
     void v10IndexesTheRetentionScansByAge() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("10", r.schemaVersion());
+        assertEquals("11", r.schemaVersion());
         java.util.Map<String, String> expected = java.util.Map.of(
                 "messages", " USING btree (created_at, id, step)",
                 "bodies", " USING btree (created_at, message_id, step, part)",
@@ -318,6 +319,52 @@ class MigrationsIT {
             assertEquals(1, byAge.size(), "V10: one index on " + e.getKey() + e.getValue() + ", among " + defs);
             assertTrue(byAge.get(0).startsWith("CREATE INDEX "), "a plain index, not unique, not partial: " + byAge.get(0));
         }
+    }
+
+    /**
+     * V11 (D-097, F-23, P2-07c) on a database at V10 holding payloads rows of two algorithms and messages rows naming each: every
+     * messages row keeps its own algorithm in {@code messages.hash_algorithm} (text, not null, default {@code 'sha256-64'}), its
+     * body_hash and body_size unchanged; {@code payloads} is gone, and with it the messages → payloads foreign key — a row naming
+     * a hash no table holds is written, one naming no algorithm gets the default, an explicit null is refused.
+     */
+    @Test
+    @Order(9)
+    void v11MovesTheHashAlgorithmOntoMessagesAndDropsPayloads() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("10").load().migrate();
+        pool.query("insert into payloads(hash, size, algorithm) values ('\\x0000000000000001'::bytea, 10, 'sha256-64'), ('\\x0000000000000002'::bytea, 20, 'xxh3-64')")
+                .execute().await();
+        pool.query("insert into messages(id, step, flow, body_hash, body_size) values "
+                + "('m-1', 0, 'shop/orders', '\\x0000000000000001'::bytea, 10), "
+                + "('m-2', 0, 'shop/orders', '\\x0000000000000002'::bytea, 20), "
+                + "('m-2', 1, 'shop/orders', '\\x0000000000000002'::bytea, 20), "
+                + "('m-3', 0, 'shop/orders', '\\x0000000000000001'::bytea, 10)").execute().await();
+        assertTrue(tables().contains("payloads"), "fixture: V10 still has payloads");
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(1, r.migrationsExecuted(), "V11 on top of V10");
+        assertEquals("11", r.schemaVersion());
+        List<String> rows = new java.util.ArrayList<>();
+        for (Row row : pool.query("select id, step, hash_algorithm, encode(body_hash, 'hex'), body_size from messages order by id, step").execute().await()) {
+            rows.add(row.getString(0) + "@" + row.getInteger(1) + " " + row.getString(2) + ":" + row.getString(3) + " " + row.getLong(4));
+        }
+        assertEquals(List.of("m-1@0 sha256-64:0000000000000001 10", "m-2@0 xxh3-64:0000000000000002 20", "m-2@1 xxh3-64:0000000000000002 20",
+                "m-3@0 sha256-64:0000000000000001 10"), rows, "each row keeps the algorithm its payloads row named; hash and size unchanged");
+        assertTrue(!tables().contains("payloads"), "V11 dropped payloads: " + tables());
+        List<String> foreign = new java.util.ArrayList<>();
+        for (Row c : pool.query("select conname, pg_get_constraintdef(oid) from pg_constraint where conrelid = 'messages'::regclass and contype = 'f'").execute().await()) {
+            foreign.add(c.getString(0) + " " + c.getString(1));
+        }
+        assertEquals(List.of(), foreign, "V11: no foreign key on messages");
+        Row column = pool.query("select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' "
+                + "and table_name = 'messages' and column_name = 'hash_algorithm'").execute().await().iterator().next();
+        assertEquals(List.of("text", "NO", "'sha256-64'::text"), List.of(column.getString(0), column.getString(1), column.getString(2)),
+                "V11: hash_algorithm text not null default 'sha256-64'");
+        pool.query("insert into messages(id, step, flow, body_hash) values ('m-4', 0, 'shop/orders', '\\x00000000000000ff'::bytea)").execute().await();
+        assertEquals("sha256-64", pool.query("select hash_algorithm from messages where id = 'm-4'").execute().await().iterator().next().getString(0),
+                "a row naming a hash no table holds is written (no foreign key) and, naming no algorithm, gets the default");
+        assertEquals("23502", sqlState(() -> pool.query("insert into messages(id, step, flow, body_hash, hash_algorithm) values "
+                + "('m-5', 0, 'shop/orders', '\\x0000000000000001'::bytea, null)").execute().await()), "an explicit null is refused: not null");
     }
 
     /** The SQLSTATE of the Postgres error {@code call} fails with. */

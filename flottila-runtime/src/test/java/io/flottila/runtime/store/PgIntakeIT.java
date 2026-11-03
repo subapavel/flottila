@@ -284,10 +284,9 @@ class PgIntakeIT {
         return chain;
     }
 
-    /** Nothing of message {@code id} in Postgres: no ingress row, no payload row, no body row, no item. */
+    /** Nothing of message {@code id} in Postgres: no ingress row (its hash with it: V11 dropped payloads, D-097), no body row, no item. */
     void nothingCommitted(String id) {
         assertEquals(0, count("messages", id), "no ingress row");
-        assertEquals(0, count("payloads"), "no payload row");
         assertEquals(0, count("bodies", id), "no body row");
         assertEquals(0, count("work", id), "no item");
     }
@@ -613,7 +612,8 @@ class PgIntakeIT {
         savedWhole("m-1");
         nothingOf("m-2");
         assertEquals(1, count("messages"), "one ingress row");
-        assertEquals(1, count("payloads"), "one payload row");
+        assertEquals("sha256-64", other.query("select hash_algorithm from messages where id = 'm-1'").execute().await().iterator().next().getString(0),
+                "the ingress row carries its hash's algorithm (V11, D-097): the store's sha256-64");
         assertEquals(1, count("bodies"), "one body row");
         assertEquals(List.of("m-1/K-1"), work(), "one item");
         assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-1", STARTED)), processed(),

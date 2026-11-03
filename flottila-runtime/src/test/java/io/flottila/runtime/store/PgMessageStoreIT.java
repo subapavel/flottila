@@ -12,6 +12,8 @@ import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.time.VertxTimer;
+import io.flottila.testkit.FakeClock;
+import io.flottila.testkit.FakeTimer;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -51,8 +53,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The Postgres MessageStore (ARCHITECTURE §5, §7, §8): snapshots through the P0-06 batcher into `messages` / `payloads` /
- * `message_keys` (V1 + V2), the timeline back by message id, messages by business key — every field round-trips.
+ * The Postgres MessageStore (ARCHITECTURE §5, §7, §8): snapshots through the P0-06 batcher into `messages` and
+ * `message_keys` (V1 + V2; V11 dropped `payloads`, the hash algorithm is a messages column, D-097), the timeline back by message
+ * id, messages by business key — every field round-trips. A "plug" is an uncommitted messages row another session holds with
+ * a snapshot's (id, step): the snapshot's batch waits on it in ON CONFLICT (id, step) until that session rolls back.
  */
 class PgMessageStoreIT {
 
@@ -69,7 +73,7 @@ class PgMessageStoreIT {
                 .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true);
         pool = PgBuilder.pool().connectingTo(connect).with(new PoolOptions().setMaxSize(8)).using(vertx).build();
         Migrations.Result r = Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
-        assertEquals("10", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087), V10 the retention indexes (P2-07, D-088)");
+        assertEquals("11", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087), V10 the retention indexes (P2-07, D-088), V11 payloads dropped (P2-07c, D-097)");
     }
 
     @AfterAll
@@ -81,7 +85,7 @@ class PgMessageStoreIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate message_keys, messages, payloads").execute().await();
+        pool.query("truncate message_keys, messages").execute().await();
         store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
     }
 
@@ -107,8 +111,6 @@ class PgMessageStoreIT {
         assertEquals(snap("m-1", 1, "validate", Snapshot.Outcome.FAILED, Optional.of("validation failed: /Invoice/Id"), keys, Optional.empty()), t.get(1), "metadata-only: no body key, hash and size kept; cpu unknown stays unknown");
         assertEquals(snap("m-1", 2, "route", Snapshot.Outcome.OK, Optional.empty(), keys, Optional.of(BlobKey.body("m-1", 0))), t.get(2));
         assertEquals(List.of(), store.timeline("nobody").await());
-        long payloads = pool.query("select count(*) from payloads").execute().await().iterator().next().getLong(0);
-        assertEquals(3, payloads, "one payloads row per distinct hash, no bytes in it");
         assertEquals(List.of("m-1"), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items(), "once, although two steps carry the key");
         Snapshot odd = new Snapshot("m-odd", "f", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Instant.EPOCH, 0, 0, Headers.empty(),
                 Props.empty().with(new Key<Duration>("deadline"), Duration.ofSeconds(3)), Keys.empty(), new Hash("sha256-64", 1), 1, Optional.empty(), Map.of());
@@ -230,12 +232,12 @@ class PgMessageStoreIT {
         Transaction held = holder.begin().await();
         List<Future<Void>> saves = new ArrayList<>();
         try {
-            holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, 1, 'sha256-64')").execute(Tuple.of(plugHash)).await();
+            plugRow(holder, "plug", plugHash);
             holder.query("insert into message_keys(name, value, message_id, step) values ('invoiceId', '4711', '" + id(n / 2) + "', 9)").execute().await();
             Snapshot plug = new Snapshot("plug", "invoice-sync", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Instant.EPOCH, 0, 0, Headers.empty(), Props.empty(),
                     Keys.empty(), new Hash("sha256-64", 999L), 1, Optional.empty(), Map.of());
             saves.add(store.record(plug));
-            until(() -> lockWaiters() == 1, "the plug batch waits on the held payload");
+            until(() -> lockWaiters() == 1, "the plug batch waits on the held plug row");
             for (int i = 1; i <= n; i++) saves.add(store.record(keyed(id(i), 0, "4711")));
             until(() -> lockWaiters() == 2, "batch A (" + n + " snapshots, keys ascending) waits on the held key row " + id(n / 2));
             for (int i = n; i >= 1; i--) saves.add(store.record(keyed(id(i), 1, "4711")));
@@ -272,10 +274,10 @@ class PgMessageStoreIT {
         Transaction held = holder.begin().await();
         Future<Void> plugged;
         try {
-            holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, 1, 'sha256-64')").execute(Tuple.of(plugHash)).await();
+            plugRow(holder, "plug", plugHash);
             plugged = store.record(new Snapshot("plug", "invoice-sync", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Instant.EPOCH, 0, 0, Headers.empty(),
                     Props.empty(), Keys.empty(), new Hash("sha256-64", 998L), 1, Optional.empty(), Map.of()));
-            until(() -> lockWaiters() == 1, "the plug batch waits on the held payload");
+            until(() -> lockWaiters() == 1, "the plug batch waits on the held plug row");
             Future<Void> later = store.record(keyed("m-1", 3, "4711"));
             Future<Void> earlier = store.record(keyed("m-1", 1, "4711"));
             Future.all(later, earlier).await(20, TimeUnit.SECONDS);   // one batch of two, committed while the plug still waits
@@ -293,7 +295,7 @@ class PgMessageStoreIT {
     }
 
     /**
-     * FIX-66 (F-13, D-071): a writer of one commit in flight and a backlog of two, its first commit held on a payloads row
+     * FIX-66 (F-13, D-071): a writer of one commit in flight and a backlog of two, its first commit held on a plug row
      * another session keeps uncommitted. 50 concurrent {@code recordWaiting} calls overflow the backlog: none fails while the
      * commit is held, and once it is let go every row lands and nothing is counted failed. {@code record} past the full backlog
      * still fails at once with {@link OverloadedException} and is counted; a waiting row whose commit fails is counted as well.
@@ -352,19 +354,96 @@ class PgMessageStoreIT {
         }
     }
 
+    /** An ingress snapshot of {@code id} whose body hash is {@code hash}. */
+    static Snapshot hashed(String id, Hash hash) {
+        return new Snapshot(id, "invoice-sync", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Instant.parse("2026-01-01T00:00:00.123456Z"), 0, 0,
+                Headers.empty(), Props.empty(), Keys.empty(), hash, 187, Optional.of(BlobKey.body(id, 0)), Map.of("flow", "invoice-sync@0.1.0"));
+    }
+
     /**
-     * Runs {@code staged} while another session holds an uncommitted payloads row of hash {@code plugHash} and a plug snapshot
-     * carrying it is this store's only commit, waiting on that row; then rolls the holder back. Returns the plug's save.
+     * P2-07c (D-097, F-23): two snapshots whose hashes have the same 64-bit value under two algorithms, written in one batch (a
+     * held plug holds the other commit slot, so the two form a batch of their own): the timeline answers each row its own
+     * algorithm — the algorithm is the row's, not the first writer's of that value.
+     */
+    @Test
+    void theTimelineAnswersEachRowsOwnHashAlgorithm() throws Throwable {
+        store.close();
+        store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(2, Duration.ofHours(1), 2, 10));
+        Snapshot sha = hashed("m-sha", new Hash("sha256-64", 4242L));
+        Snapshot xxh = hashed("m-xxh", new Hash("xxh3-64", 4242L));
+        Future<Void> plugged = held(995L, () -> {
+            Future<Void> first = store.record(xxh);
+            Future<Void> second = store.record(sha);
+            Future.all(first, second).await(20, TimeUnit.SECONDS);
+            assertEquals(1, lockWaiters(), "the plug is still held: the two snapshots went in one batch of their own");
+        });
+        plugged.await(20, TimeUnit.SECONDS);
+        assertEquals(new Hash("xxh3-64", 4242L), store.timeline("m-xxh").await().get(0).bodyHash(), "m-xxh's own algorithm");
+        assertEquals(new Hash("sha256-64", 4242L), store.timeline("m-sha").await().get(0).bodyHash(), "m-sha's own algorithm");
+        assertEquals(List.of(xxh), store.timeline("m-xxh").await());
+        assertEquals(List.of(sha), store.timeline("m-sha").await());
+        assertEquals(0, store.failed());
+    }
+
+    /**
+     * P2-07c guard (F-23): a retention batch has deleted an aged message whose body hash a new snapshot carries and holds that
+     * delete uncommitted (an AFTER DELETE trigger waits on an advisory lock this test holds); the new snapshot's batch commits
+     * meanwhile — it neither waits on the retention transaction nor fails — and the retention run then completes, the aged
+     * message gone and the new one whole.
+     */
+    @Test
+    void aBatchCommitsWhileARetentionBatchHoldsAnAgedMessageOfTheSameHash() throws Throwable {
+        Hash shared = new Hash("sha256-64", 4243L);
+        store.record(hashed("m-aged", shared)).await(20, TimeUnit.SECONDS);
+        pool.query("update messages set created_at = now() - interval '30 days' where id = 'm-aged'").execute().await();
+        FakeClock clock = FakeClock.at(Instant.now());   // the cutoff is P7D before now: m-aged is older, a row written now is not
+        Retention retention = new Retention(pool, clock, new FakeTimer(clock), new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 100));
+        pool.query("create function p207c_hold() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock(4243); return null; end $$")
+                .execute().await();
+        pool.query("create trigger p207c_hold after delete on messages for each row execute function p207c_hold()").execute().await();
+        SqlConnection gate = pool.getConnection().await();
+        Future<Retention.Run> run = null;
+        try {
+            gate.query("select pg_advisory_lock(4243)").execute().await();
+            run = retention.runOnce();
+            until(() -> advisoryWaiters() == 1, "the retention batch deleted m-aged and waits, uncommitted, in the trigger");
+            Future<Void> fresh = store.record(hashed("m-fresh", shared));
+            fresh.await(20, TimeUnit.SECONDS);
+            assertTrue(fresh.succeeded(), "the batch committed: " + fresh.cause());
+            assertFalse(run.isComplete(), "fixture: the retention batch still holds m-aged's delete");
+            assertEquals(1, lockWaiters(), "only the retention batch waits, on the test's advisory lock");
+        } finally {
+            gate.query("select pg_advisory_unlock(4243)").execute().await();
+            gate.close().await();
+            if (run != null) run.otherwiseEmpty().await(20, TimeUnit.SECONDS);   // let go above: the batch commits, the run ends
+            retention.close().await(20, TimeUnit.SECONDS);   // after the run: a close during it would end it SKIPPED
+            pool.query("drop trigger p207c_hold on messages").execute().await();
+            pool.query("drop function p207c_hold()").execute().await();
+        }
+        Retention.Run done = run.await(20, TimeUnit.SECONDS);
+        assertEquals(List.of("DONE", "1"), List.of(done.outcome().name(), Long.toString(done.messages())), "the run deleted m-aged: " + done);
+        assertEquals(List.of(), store.timeline("m-aged").await(), "m-aged is gone");
+        assertEquals(List.of(hashed("m-fresh", shared)), store.timeline("m-fresh").await(), "m-fresh is whole");
+        assertEquals(0, store.failed(), "no commit failed");
+    }
+
+    long advisoryWaiters() {
+        return pool.query("select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and wait_event = 'advisory'")
+                .execute().await().iterator().next().getLong(0);
+    }
+
+    /**
+     * Runs {@code staged} while another session holds an uncommitted messages row {@code plug-<plugHash>} at step 0 and the plug
+     * snapshot of that (id, step) is this store's only commit, waiting on that row; then rolls the holder back. Returns the plug's save.
      */
     Future<Void> held(long plugHash, org.junit.jupiter.api.function.Executable staged) throws Throwable {
         SqlConnection holder = pool.getConnection().await();
         Transaction tx = holder.begin().await();
         try {
-            holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, 1, 'sha256-64')")
-                    .execute(Tuple.of(Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(plugHash).array()))).await();
+            plugRow(holder, "plug-" + plugHash, Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(plugHash).array()));
             Future<Void> plug = store.record(new Snapshot("plug-" + plugHash, "invoice-sync", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Instant.EPOCH, 0, 0,
                     Headers.empty(), Props.empty(), Keys.empty(), new Hash("sha256-64", plugHash), 1, Optional.empty(), Map.of()));
-            until(() -> lockWaiters() == 1, "the plug commit waits on the held payload");
+            until(() -> lockWaiters() == 1, "the plug commit waits on the held plug row");
             assertFalse(plug.isComplete(), "fixture: the plug holds the only commit slot");
             staged.execute();
             return plug;
@@ -372,6 +451,11 @@ class PgMessageStoreIT {
             tx.rollback().await();
             holder.close().await();
         }
+    }
+
+    /** The plug: an uncommitted messages row {@code id} at step 0 on {@code holder}'s open transaction (P2-07c: no payloads row any more). */
+    static void plugRow(SqlConnection holder, String id, Buffer hash) {
+        holder.preparedQuery("insert into messages(id, step, flow, body_hash) values ($1, 0, 'invoice-sync', $2)").execute(Tuple.of(id, hash)).await();
     }
 
     static long count(String table) {

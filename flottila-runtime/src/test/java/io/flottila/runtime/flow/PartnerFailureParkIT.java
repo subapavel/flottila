@@ -138,7 +138,7 @@ class PartnerFailureParkIT {
 
     @BeforeEach
     void empty() {
-        admin.query("truncate message_keys, messages, payloads, dlq, work, bodies").execute().await();
+        admin.query("truncate message_keys, messages, dlq, work, bodies").execute().await();
         capture.setLevel(Level.ALL);
         core.addHandler(capture);
     }

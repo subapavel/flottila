@@ -551,6 +551,8 @@ of the STEP 1.5 / STEP 2 sections below.
 
 Run 2 is the median on all four baseline metrics and is the recorded baseline:
 
+These two markers measure the pre-V11 batch shape (payloads + messages, two statements); FIX-114 re-records them after P2-07c (D-097).
+
 <!-- baseline:batched-persistence-sync {"machine": "cloud VM, 4 vCPU", "throughputPerSecond": 11865, "p99Ms": 16.61} -->
 <!-- baseline:batched-persistence-async {"machine": "cloud VM, 4 vCPU", "throughputPerSecond": 14824, "p99Ms": 12.49} -->
 
@@ -590,6 +592,8 @@ more lenient of the two (floor 14 570 msg/s). Run 3 (CI run 39093734224, first w
 markers) had another ~100 ms stall and 15 % less sync throughput than run 1 — passed, as intended;
 the runner's spread (15.5–20.2k msg/s sync over four runs; run 4 is the gate run 39095635572) is the reason the band is as wide as it is. D-037's other remedy, a 3-run median, was not chosen:
 a median baseline does not absorb a per-run stall, it only moves the number the stall is compared with.
+
+These two markers measure the pre-V11 batch shape (two statements); FIX-114 re-records them after P2-07c (D-097).
 
 <!-- baseline:batched-persistence-sync {"machine": "github-hosted runner", "throughputPerSecond": 18212} -->
 <!-- baseline:batched-persistence-async {"machine": "github-hosted runner", "throughputPerSecond": 19032} -->

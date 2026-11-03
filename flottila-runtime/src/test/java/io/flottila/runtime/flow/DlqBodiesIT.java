@@ -140,7 +140,7 @@ class DlqBodiesIT {
 
     @BeforeEach
     void empty() {
-        admin.query("truncate message_keys, messages, payloads, dlq, work, bodies, dlq_audit").execute().await();
+        admin.query("truncate message_keys, messages, dlq, work, bodies, dlq_audit").execute().await();
     }
 
     @AfterEach

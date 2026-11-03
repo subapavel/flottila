@@ -137,7 +137,7 @@ class DeliveryModesIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate message_keys, messages, payloads, dlq, work, bodies").execute().await();
+        pool.query("truncate message_keys, messages, dlq, work, bodies").execute().await();
         store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
         queue = new PgWorkQueue(pool);
         dlq = new PgDlq(pool);
@@ -352,7 +352,8 @@ class DeliveryModesIT {
 
     /**
      * The node's message store with a writer backlog of two (one commit in flight, the default maxWait), its first commit held
-     * on the rows' payloads hash another session keeps uncommitted while 16 virtual threads send 200 requests: the runs' rows
+     * on the uncommitted step-0 messages rows sk-000..sk-199 another session keeps (each run's ingress row waits on its own in
+     * ON CONFLICT (id, step); P2-07c, D-097: no payloads row to hold) while 16 virtual threads send 200 requests: the runs' rows
      * overflow the backlog at once. A thread that is refused waits until the holder rolled back, then goes on. Every request
      * answered with a Reply has its ingress and partner rows; every other answer is a retryable Nack and left no row; no row
      * write failed and the trail logged no WARNING (the capture's witness: a row to a closed store does log one).
@@ -379,8 +380,9 @@ class DeliveryModesIT {
             PgConnection holder = PgConnection.connect(vertx, connectOptions()).await();
             try {
                 Transaction held = holder.begin().await();
-                holder.preparedQuery("insert into payloads(hash, size, algorithm) values ($1, $2, 'sha256-64')")
-                        .execute(Tuple.of(Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(probe.hash().value()).array()), probe.size())).await();
+                holder.preparedQuery("insert into messages(id, step, flow, body_hash) select format('sk-%s', lpad(g::text, 3, '0')), 0, 'orders', $1 "
+                        + "from generate_series(0, 199) g")
+                        .execute(Tuple.of(Buffer.buffer(ByteBuffer.allocate(Long.BYTES).putLong(probe.hash().value()).array()))).await();
                 for (int t = 0; t < 16; t++) {
                     senders.add(Thread.ofVirtual().name("sender-" + t).start(() -> {
                         try {

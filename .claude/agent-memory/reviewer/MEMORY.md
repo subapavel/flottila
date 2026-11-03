@@ -118,3 +118,4 @@
 - Undeploy/remove paths (P2-02c): a 'dropped from the listing after the stop' order needs a held-stop read (Doors.holdStopOf); a pin check over the node's listing is not 'any record' of a pool-shared table — check D-row wording and the pool-wide effect of deleting a shared row.
 - Split rows / helpers (P2-07b1): moving a private helper between a javadoc and its method detaches the javadoc; a split BACKLOG row leaves pointers in §, D-rows and findings — grep the old id.
 - Interface javadoc (P2-07b2 r2): a Pg-only store behaviour written on a core interface must name the implementation; check the in-memory twin against every new contract sentence.
+- Changed bench shape (P2-07c): it strands baselines for every machine label in RESULTS (VM and github-hosted runner); the re-baseline row must name each marker.
