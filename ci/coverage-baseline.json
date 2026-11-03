@@ -12,7 +12,7 @@
     "line": 99.0
   },
   "flottila-components/http": {
-    "branch": 93.3,
+    "branch": 93.6,
     "line": 99.3
   },
   "flottila-components/mock": {
@@ -20,7 +20,7 @@
     "line": 100.0
   },
   "flottila-components/sftp": {
-    "branch": 98.9,
+    "branch": 99.0,
     "line": 100.0
   },
   "flottila-core": {
@@ -44,7 +44,7 @@
     "line": 100.0
   },
   "flottila-testkit": {
-    "branch": 96.4,
+    "branch": 96.1,
     "line": 98.0
   }
 }

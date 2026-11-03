@@ -772,4 +772,53 @@ class SftpComponentTest {
         assertEquals("<second/>", sftp.read("/done/x.xml.m-first-saved"));
         assertEquals(Set.of(), sftp.files("/inbox"));
     }
+
+    // ---- P2-09a (D-099): the target a producer calls ------------------------------------------------------------------
+
+    /**
+     * The target of an sftp endpoint is {@code sftp://host:port} with the {@code host} / {@code port} options over the URI's
+     * parts (D-086: a deployed URI is only {@code sftp://<id>}), port 22 by default, lower-cased, never the user or the
+     * directory — two directories on one server name one target. Answered from the config alone: nothing connected.
+     */
+    @Test
+    void targetFollowsHostPortOptionsOverUri() {
+        SftpComponent component = component(rt);
+        Map<String, Object> creds = Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
+        java.util.function.BiFunction<String, Map<String, Object>, EndpointConfig> at = (uri, extra) -> {
+            Map<String, Object> options = new java.util.HashMap<>(creds);
+            options.putAll(extra);
+            return new EndpointConfig("sftp-in", URI.create(uri), options);
+        };
+
+        assertEquals(Optional.of("sftp://files.example:2222"), component.target(at.apply("sftp://flottila@Files.Example:2222/inbox", Map.of())), "the URI alone, user and path dropped");
+        assertEquals(Optional.of("sftp://files.example:22"), component.target(at.apply("sftp://files.example/inbox", Map.of())), "no port anywhere: 22");
+        assertEquals(Optional.of("sftp://sftp.partner.example:2200"), component.target(at.apply("sftp://partner-a", Map.of("host", "SFTP.Partner.Example", "port", 2200))),
+                "a deployed endpoint: sftp://<id>, host and port from the options");
+        assertEquals(Optional.of("sftp://other.example:2222"), component.target(at.apply("sftp://files.example:2222/inbox", Map.of("host", "other.example"))),
+                "the host option over the URI's host, the URI's port kept");
+        assertEquals(Optional.of("sftp://files.example:2022"), component.target(at.apply("sftp://files.example:2222/inbox", Map.of("port", 2022))),
+                "the port option over the URI's port");
+        assertEquals(component.target(at.apply("sftp://files.example:2222/inbox", Map.of())), component.target(at.apply("sftp://files.example:2222/outbox", Map.of("dir", "/elsewhere"))),
+                "two directories of one server: one target");
+        assertEquals(Optional.of("sftp://127.0.0.1:" + sftp.port()), component.target(inbox(Map.of())), "this server's endpoint");
+        assertEquals(0, sftp.sessionsCreated(), "answered from the config alone: nothing connected");
+    }
+
+    /** An IPv6 host option is bracketed in the target, as a URI writes it; a bracketed URI host is not bracketed twice (D-099). */
+    @Test
+    void anIpv6HostOptionIsBracketedInTheTarget() {
+        SftpComponent component = component(rt);
+        Map<String, Object> creds = Map.of("user", "flottila", "password", "x", "hostKey", EmbeddedSftp.fingerprint(EmbeddedSftp.HOST_KEY), "maxBodyBytes", 1024);
+        java.util.function.BiFunction<String, Map<String, Object>, EndpointConfig> at = (uri, extra) -> {
+            Map<String, Object> options = new java.util.HashMap<>(creds);
+            options.putAll(extra);
+            return new EndpointConfig("sftp-in", URI.create(uri), options);
+        };
+
+        assertEquals(Optional.of("sftp://[::1]:22"), component.target(at.apply("sftp://partner-a", Map.of("host", "::1"))), "host option ::1, default port");
+        assertEquals(Optional.of("sftp://[fe80::1]:2222"), component.target(at.apply("sftp://partner-a", Map.of("host", "FE80::1", "port", 2222))),
+                "lower-cased, the port option");
+        assertEquals(Optional.of("sftp://[::1]:2200"), component.target(at.apply("sftp://[::1]:2200/inbox", Map.of())), "a bracketed URI host is not bracketed twice");
+        assertEquals(0, sftp.sessionsCreated(), "answered from the config alone: nothing connected");
+    }
 }

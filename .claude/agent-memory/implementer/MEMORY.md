@@ -14,7 +14,7 @@
   `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
-- Packets miss: a Flyway migration bumps MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36 (P1-08b); a public api type, PublicTypesHaveSinceTest:105 (P2-07b1).
+- Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a).
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
 - Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`.
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
@@ -57,6 +57,7 @@
   the handler ran; `Future.await()` works on a virtual thread, sneaky-throws the cause.
 - AWS SDK 2.56.0 (javap): `RequestBody.fromFile(Path)` sizes the file at once (missing → UncheckedIOException); a client built without a credentialsProvider
   resolves `DefaultCredentialsProvider.builder()..build()` (`create()` is a static singleton); `serviceClientConfiguration()` shows region/endpoint/credentials.
+- JDK 25 AQS (P2-09a): parked in `CountDownLatch.await`, interrupt + countDown before it runs → IE; `CompletableFuture.get` returns the value, flag set.
 - JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
   `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
   FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
@@ -95,7 +96,6 @@
   written later); a dump read whole resolves all (F-22). `Recording.dump(p)` truncates p, rotates, works on STOPPED, IOException on CLOSED;
   maxAge trims at each chunk append by the new chunk's end; in a multi-chunk dump all times shift by tens of us when its first chunk
   changes: compare times within one dump only. CPU-bound VT bursts starve a VT reader 1.5-2.4 s (4 carriers). Harness cp: `dependency:build-classpath`.
-- AdminServer routes live in inner `Listener extends VerticleBase`: an outer `undeploy`/`deploy` is shadowed by VerticleBase's (P2-02c: `undeployed`).
 ## Findings that came back in review
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class

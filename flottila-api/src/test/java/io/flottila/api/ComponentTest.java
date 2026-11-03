@@ -61,4 +61,11 @@ class ComponentTest {
         Optional<Key<String>> dedupe = BARE.dedupeBy(cfg);
         assertEquals(Optional.empty(), dedupe, "by default no dedupe key, whatever the endpoint's options say");
     }
+
+    @Test
+    void targetIsEmptyByDefault() {
+        EndpointConfig cfg = new EndpointConfig("partner", URI.create("https://partner.example:443/orders"), Map.of("url", "https://partner.example/orders"));
+
+        assertEquals(Optional.empty(), BARE.target(cfg), "by default no target: the builder gives its sends a limit of their own");
+    }
 }

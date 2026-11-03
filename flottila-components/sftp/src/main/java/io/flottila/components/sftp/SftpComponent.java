@@ -46,6 +46,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -134,6 +135,19 @@ public final class SftpComponent implements Component {
         return new SftpConsumer(cfg, handler);
     }
 
+    /**
+     * The server an endpoint of {@code cfg} reaches (D-099): {@code sftp://host:port} by the {@code host} and {@code port} options
+     * over the URI's parts as a consumer connects (D-086), port 22 by default, lower-cased, never the user or the directory.
+     * An IPv6 host option is bracketed (a URI's host already is). Empty when neither names a host.
+     */
+    @Override
+    public Optional<String> target(EndpointConfig cfg) {
+        return Optional.ofNullable(hostOf(cfg)).map(host -> {
+            String literal = host.contains(":") && !host.startsWith("[") ? "[" + host + "]" : host;
+            return "sftp://" + literal.toLowerCase(Locale.ROOT) + ":" + portOf(cfg);
+        });
+    }
+
     /** Every sftp endpoint polls a directory other nodes may poll too: the node runs its consumer only under the endpoint's lease (D-083). */
     @Override
     public boolean polls(EndpointConfig cfg) {
@@ -166,6 +180,16 @@ public final class SftpComponent implements Component {
     private static String text(Map<String, Object> options, String key, String fallback) {
         Object v = options.get(key);
         return v == null ? fallback : String.valueOf(v);
+    }
+
+    /** The host to connect to: the {@code host} option over the URI's host (D-086: a deployed URI is only {@code sftp://<id>}). */
+    private static String hostOf(EndpointConfig cfg) {
+        return text(cfg.options(), "host", cfg.uri().getHost());
+    }
+
+    /** The port to connect to: the {@code port} option over the URI's port, else {@value #DEFAULT_PORT}. */
+    private static int portOf(EndpointConfig cfg) {
+        return (int) number(cfg.options(), "port", cfg.uri().getPort() < 0 ? DEFAULT_PORT : cfg.uri().getPort());
     }
 
     private static String required(EndpointConfig cfg, String key) {
@@ -232,8 +256,8 @@ public final class SftpComponent implements Component {
             this.name = cfg.name();
             URI uri = cfg.uri();
             // an option wins over the URI part (D-086): a deployed endpoint's URI is only sftp://<id>
-            this.host = text(o, "host", uri.getHost());
-            this.port = (int) number(o, "port", uri.getPort() < 0 ? DEFAULT_PORT : uri.getPort());
+            this.host = hostOf(cfg);
+            this.port = portOf(cfg);
             this.dir = text(o, "dir", uri.getPath());
             this.user = required(cfg, "user");
             this.password = text(o, "password", null);

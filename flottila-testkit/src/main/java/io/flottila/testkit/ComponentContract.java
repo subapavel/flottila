@@ -464,4 +464,45 @@ public abstract class ComponentContract {
             producer.close().await();
         }
     }
+
+    /**
+     * The target system a producer of an endpoint calls (D-099): {@code scheme://host:port}, lower-cased, the port filled in, no
+     * userinfo, path, query or fragment — or empty when the component names none. Answered from the config alone: the same
+     * answer twice, for an equal copy of the config, from a fresh component, and before, while and after a consumer of the
+     * endpoint runs; for the producer's endpoint of a started consumer the same while it runs and after it stopped.
+     */
+    @Test
+    public void targetIsAnsweredFromConfigAloneAndStable() {
+        Component component = component();
+        EndpointConfig cfg = endpoint();
+        Optional<String> before = component.target(cfg);
+        assertNotNull(before, "target answers an Optional, never null");
+        before.ifPresent(t -> assertTrue(TARGET.matcher(t).matches(),
+                "a target is scheme://host:port, lower-cased, without userinfo, path, query or fragment: '" + t + "'"));
+        assertEquals(before, component.target(cfg), "asked twice");
+        assertEquals(before, component.target(new EndpointConfig(cfg.name(), java.net.URI.create(cfg.uri().toString()), new java.util.HashMap<>(cfg.options()))),
+                "an equal copy of the config");
+        assertEquals(before, component().target(cfg), "a fresh component");
+
+        Consumer consumer = component.consumer(cfg, e -> Future.succeededFuture(new Ack.Accepted(e.id())));
+        consumer.start().await();
+        EndpointConfig where;
+        Optional<String> producing;
+        try {
+            assertEquals(before, component.target(cfg), "while a consumer of the endpoint runs");
+            where = producerEndpoint(consumer);
+            producing = component.target(where);
+            assertNotNull(producing, "target answers an Optional, never null");
+            producing.ifPresent(t -> assertTrue(TARGET.matcher(t).matches(),
+                    "a target is scheme://host:port, lower-cased, without userinfo, path, query or fragment: '" + t + "'"));
+        } finally {
+            consumer.stop().await();
+        }
+        assertEquals(before, component.target(cfg), "after the consumer stopped");
+        assertEquals(producing, component.target(where), "the producer's endpoint after the consumer stopped");
+    }
+
+    /** {@code scheme://host:port}: lower case, a bracketed IPv6 literal or a host without '@', '/', '?', '#', ':'; a port. */
+    private static final java.util.regex.Pattern TARGET =
+            java.util.regex.Pattern.compile("[a-z][a-z0-9+.-]*://(\\[[0-9a-f:.]+\\]|[a-z0-9._~%!$&'()*+,;=-]+):[0-9]{1,5}");
 }

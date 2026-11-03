@@ -15,6 +15,8 @@ import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
 import io.flottila.core.admission.Admission;
+import io.flottila.core.admission.TargetLimit;
+import io.flottila.core.admission.Targets;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parking;
 import io.flottila.core.pattern.Filter;
@@ -66,7 +68,12 @@ import java.util.function.UnaryOperator;
  * {@link FlowWorker} that runs what an at-least-once delivery accepted (ARCHITECTURE §4 lifecycle table, D-049, D-055). The steps
  * see every header; a producer receives only the headers the flow's {@code forwardHeaders} name (case-insensitive) plus
  * {@code content-type}, the body's media type, whatever set them — the {@code to} step filters at the producer boundary
- * (ARCHITECTURE Envelope table "nothing propagates implicitly", D-049 e).
+ * (ARCHITECTURE Envelope table "nothing propagates implicitly", D-049 e). Each {@code to} sends under the limit of the target
+ * its endpoint's component names ({@link Component#target}), from the {@link Targets} given through {@link #targets(Targets)} —
+ * an unshared limit with the defaults when the component names none (D-099); the limit wraps only the producer's send, inside
+ * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time), and a replay
+ * runs the same stage. A permit not granted within the limit's maxWait fails the send with a retryable
+ * {@link io.flottila.api.NackException}.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -97,6 +104,7 @@ public final class FlowBuilder {
     private Consumer<Path> reads = path -> { };
     private Map<String, Path> dependencies = Map.of();
     private boolean stepEvents;   // false: no step is marked (D-094, owner decision 2026-11-03)
+    private Targets targets;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -107,12 +115,23 @@ public final class FlowBuilder {
             if (this.languages.putIfAbsent(l.language(), l) != null) throw new IllegalArgumentException("two expression languages named '" + l.language() + "'");
         }
         this.endpoints = Map.copyOf(endpoints);
+        this.targets = new Targets(Targets.DEFAULTS, Map.of(), runtime.timer());
     }
 
     /** Records a snapshot per step into {@code store} (ARCHITECTURE §6); without this call nothing is recorded. */
     public FlowBuilder recording(MessageStore store, Meter meter) {
         this.store = Objects.requireNonNull(store, "store");
         this.meter = Objects.requireNonNull(meter, "meter");
+        return this;
+    }
+
+    /**
+     * Limits the sends of every {@code to} built from now on by the target its component names, through {@code targets} — the
+     * node's, shared by every flow it builds (D-099). Without this call the builder has a {@link Targets} of its own with the
+     * {@linkplain Targets#DEFAULTS defaults} on the Runtime's timer.
+     */
+    public FlowBuilder targets(Targets targets) {
+        this.targets = Objects.requireNonNull(targets, "targets");
         return this;
     }
 
@@ -500,29 +519,30 @@ public final class FlowBuilder {
 
     /**
      * The built-in {@code to}: {@code endpoint}, or {@code byProp} + {@code endpoints} (the route's decision picks the producer).
-     * The producer gets the envelope through {@code forward} (the flow's {@code forwardHeaders}); what goes on is its reply.
-     * Every producer created is added to {@code opened} at once.
+     * The producer gets the envelope through {@code forward} (the flow's {@code forwardHeaders}) under its target's limit;
+     * what goes on is its reply. Every producer created is added to {@code opened} at once.
      */
     private Stage to(StepConfig step, UnaryOperator<Envelope> forward, List<Producer> opened) {
         if (step.config().get("endpoint") != null) {
-            Producer producer = producer(step, step.requireString("endpoint"), opened);
-            return Stage.of(e -> producer.send(forward.apply(e)).await());
+            Send send = send(step, step.requireString("endpoint"), opened);
+            return Stage.of(e -> send.apply(forward.apply(e)));
         }
         Key<String> prop = new Key<>(step.requireString("byProp"));
         if (!(step.config().get("endpoints") instanceof Map<?, ?> choices) || choices.isEmpty()) {
             throw new IllegalArgumentException(step + ": 'endpoints' must map every value of " + prop.name() + " to an endpoint");
         }
-        Map<String, Producer> producers = new LinkedHashMap<>();
-        choices.forEach((choice, endpoint) -> producers.put(String.valueOf(choice), producer(step, String.valueOf(endpoint), opened)));
+        Map<String, Send> sends = new LinkedHashMap<>();
+        choices.forEach((choice, endpoint) -> sends.put(String.valueOf(choice), send(step, String.valueOf(endpoint), opened)));
         return Stage.of(e -> {
             String choice = e.get(prop).orElseThrow(() -> new IllegalStateException(step + ": prop " + prop.name() + " is not set; a route step before it decides"));
-            Producer producer = producers.get(choice);
-            if (producer == null) throw new IllegalStateException(step + ": no endpoint for " + prop.name() + " = '" + choice + "' (" + producers.keySet() + ")");
-            return producer.send(forward.apply(e)).await();
+            Send send = sends.get(choice);
+            if (send == null) throw new IllegalStateException(step + ": no endpoint for " + prop.name() + " = '" + choice + "' (" + sends.keySet() + ")");
+            return send.apply(forward.apply(e));
         });
     }
 
-    private Producer producer(StepConfig step, String endpoint, List<Producer> opened) {
+    /** The producer of {@code endpoint}, added to {@code opened} at once, and the limit of the target its component names. */
+    private Send send(StepConfig step, String endpoint, List<Producer> opened) {
         EndpointConfig cfg = endpoints.get(endpoint);
         if (cfg == null) throw new IllegalArgumentException(step + ": unknown endpoint '" + endpoint + "' (" + endpoints.keySet() + ")");
         Component component;
@@ -533,6 +553,23 @@ public final class FlowBuilder {
         }
         Producer producer = component.producer(cfg);
         opened.add(producer);
-        return producer;
+        return new Send(producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared));
+    }
+
+    /** A {@code to}'s send: the producer's, under the limit of its target; what the send fails with comes out as is. */
+    private record Send(Producer producer, TargetLimit limit) {
+        Envelope apply(Envelope e) {
+            try {
+                return limit.call(() -> producer.send(e));
+            } catch (Exception failure) {   // a checked one too, as the producer's future failed with it, or the interrupt
+                throw FlowBuilder.<RuntimeException>rethrown(failure);
+            }
+        }
+    }
+
+    /** {@code failure} thrown as it is, checked or not. */
+    @SuppressWarnings("unchecked")
+    private static <X extends Throwable> X rethrown(Throwable failure) throws X {
+        throw (X) failure;
     }
 }

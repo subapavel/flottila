@@ -1120,3 +1120,18 @@ Checks: verify -Pit 2792/0/0/0, 275 fresh XML (agent/work/FIX-109-verify-counts.
 Review: FAIL r1 (the never-re-sets half of D-098 unpinned), PASS r2.
 D-054 data: class B (test-author ×3, implementer ×1, verifier ×1, reviewer ×2); review rounds 2.
 Next: P2-09.
+
+## 2026-11-03 — P2-09a concurrency limit per target, core — done, review PASS r3 — Deviation: F-24
+Designer draft → D-099 (draft — review at hand-over); P2-09 split (b: runtime wiring); F-24 (no deployed path binds MessageContext)
+→ FIX-115; the limit is node config, not a component schema key (row wording).
+Test first: TargetLimitTest, TargetLimitPropertyTest (jqwik), TargetsTest, FlowBuilderTargetTest, Http/SftpComponentTest target cases,
+ComponentContract.targetIsAnsweredFromConfigAloneAndStable (red: agent/work/P2-09a-red-compile.log, -red-unit.log; r4-red.log).
+Change: api `Component.target`; core admission TargetLimit (FIFO, maxWait on the injected Timer → retryable Nack, permit held until
+the send settles, interrupt withdraws) and Targets; FlowBuilder wraps only the producer send inside Retry/Recorder; http target via
+the producer's own Vert.x parse (bad url refuses the build without echoing it); sftp from host/port options. ARCH §4/§7 + changelog.
+Checks: verify -Pit 2836/0/0/0, 279 fresh XML (agent/work/P2-09a-verify4-counts.txt); coverage no decrease; PIT 46/46; hand mutants
+r1 M1–M12, r2 M7–M16, r3 MA/MB/M1–M4, r4 M1–M3 killed.
+Review: FAIL r1 (5 s default unpinned from below; IPv6 no port; "node-wide" too early; strict URI parse), FAIL r2 (url/secret in the
+deploy problem), PASS r3.
+D-054 data: class C (designer ×1, test-author ×5, implementer ×4, reviewer ×3); review rounds 3.
+Next: P2-09b.

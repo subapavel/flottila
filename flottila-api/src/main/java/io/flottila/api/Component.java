@@ -68,4 +68,18 @@ public interface Component {
     default Optional<Key<String>> dedupeBy(EndpointConfig cfg) {
         return Optional.empty();
     }
+
+    /**
+     * The target system a producer of {@code cfg} calls, the key its sends are limited by (D-099): {@code scheme://host:port},
+     * lower-cased, the scheme's default port filled in, never userinfo, path, query or fragment — two endpoints on paths of one
+     * partner name one target, and flows naming it share its limit. Empty: the component names none, and each {@code to} on it
+     * gets a finite limit of its own. Answered from {@code cfg} alone — already valid against {@link #configSchema()} — nothing
+     * is opened and no name is resolved. The node calls it when it builds a flow's {@code to}, after {@link #producer}; a throw
+     * fails that build.
+     *
+     * @since 0.1
+     */
+    default Optional<String> target(EndpointConfig cfg) {
+        return Optional.empty();
+    }
 }

@@ -423,4 +423,126 @@ class HttpComponentTest {
         assertEquals("k", f.result().body().whole().toString());
         p.close().await(10, TimeUnit.SECONDS);
     }
+
+    // ---- P2-09a (D-099): the target a producer calls ------------------------------------------------------------------
+
+    static EndpointConfig out(String uri, Map<String, Object> options) {
+        return new EndpointConfig("partner", URI.create(uri), options);
+    }
+
+    /**
+     * The target of an http producer is {@code scheme://host:port} of its {@code url} (else of the endpoint URI): lower-cased,
+     * the scheme's default port filled in (https keeps 443), never userinfo, path, query or fragment — two endpoints on one
+     * partner's paths name one target. Answered from the config alone: a host nobody resolves is answered as written.
+     */
+    @Test
+    void targetIsSchemeHostPortFromUrlWithoutUserinfoPathQuery() {
+        assertEquals(Optional.of("https://partner.example.com:443"),
+                http.target(out("http://partner/x", Map.of("url", "https://User:Secret@Partner.Example.COM/orders/v1?draft=true#top"))),
+                "userinfo, path, query and fragment dropped, lower-cased, https default port");
+        assertEquals(Optional.of("http://partner.example:80"), http.target(out("http://partner/x", Map.of("url", "http://partner.example/in"))), "http default port");
+        assertEquals(Optional.of("http://partner.example:8080"), http.target(out("http://partner/x", Map.of("url", "http://partner.example:8080/in"))), "an explicit port");
+        assertEquals(Optional.of("https://partner.example:8443"), http.target(out("http://partner/x", Map.of("url", "HTTPS://PARTNER.example:8443"))), "an upper-case scheme, no path");
+        assertEquals(Optional.of("http://[::1]:9000"), http.target(out("http://partner/x", Map.of("url", "http://[::1]:9000/x"))), "an IPv6 literal keeps its brackets");
+        assertEquals(Optional.of("http://orders.example:7000"), http.target(out("http://Orders.Example:7000/in?a=b", Map.of())), "no url option: the endpoint URI");
+        assertEquals(Optional.of("https://orders.example:443"), http.target(out("https://orders.example/in", Map.of())), "no url option, https URI: 443");
+        assertEquals(http.target(out("http://partner/x", Map.of("url", "http://partner.example:8080/a"))),
+                http.target(out("http://partner/y", Map.of("url", "http://partner.example:8080/b/c?d=e"))), "two paths of one partner: one target");
+        assertEquals(Optional.of("https://partner.invalid:443"), http.target(out("http://partner/x", Map.of("url", "https://partner.invalid/never"))),
+                "a host that never resolves is answered as configured: no DNS");
+    }
+
+    /**
+     * A host java.net.URI cannot read as a server name (an underscore: its authority is registry-based, getHost() is null) still
+     * gets a key shared by every endpoint on that partner: from the raw authority, userinfo stripped, lower-cased, the scheme's
+     * default port filled in (D-099, architect 2026-11-03).
+     */
+    @Test
+    void aHostWithAnUnderscoreStillGetsASharedTarget() {
+        assertEquals(Optional.of("https://my_host.example:443"), http.target(out("http://partner/x", Map.of("url", "https://User@My_Host.example:443/x"))),
+                "userinfo stripped, lower-cased, the port as written");
+        assertEquals(Optional.of("https://my_host.example:443"), http.target(out("http://partner/x", Map.of("url", "https://u:pw@MY_HOST.example/y?q=1"))),
+                "the https default port filled in, path and query dropped");
+        assertEquals(Optional.of("http://my_host.example:80"), http.target(out("http://partner/x", Map.of("url", "HTTP://My_Host.example/z"))),
+                "the http default port, the scheme lower-cased");
+        assertEquals(Optional.of("http://my_host.example:8080"), http.target(out("http://My_Host.example:8080/in", Map.of())), "no url option: the endpoint URI");
+        assertEquals(http.target(out("http://partner/x", Map.of("url", "https://my_host.example/a"))),
+                http.target(out("http://partner/y", Map.of("url", "https://My_Host.example:443/b#c"))), "two paths of one partner: one target");
+    }
+
+    /** An IPv6 literal without a port: the colons inside its brackets are not a port; the scheme's default port is filled in. */
+    @Test
+    void anIpv6LiteralWithoutAPortGetsTheDefaultPort() {
+        assertEquals(Optional.of("http://[::1]:80"), http.target(out("http://partner/x", Map.of("url", "http://[::1]/x"))), "http, no port");
+        assertEquals(Optional.of("https://[::1]:443"), http.target(out("http://partner/x", Map.of("url", "https://[::1]"))), "https, no port, no path");
+        assertEquals(Optional.of("http://[fe80::1]:80"), http.target(out("http://[FE80::1]/in", Map.of())), "no url option: the endpoint URI, lower-cased");
+    }
+
+    /**
+     * Vert.x 5.1.10 parses the producer's url with {@code java.net.URL} (RequestOptions.setAbsoluteURI, agent/work/P2-09a-vertx-absuri.txt),
+     * which takes a query character {@code java.net.URI} refuses (an unencoded {@code |}) and a space: the producer sends to such a
+     * url, so the endpoint still deploys — its target is still {@code scheme://host:port}, answered without a throw.
+     */
+    @Test
+    void aUrlTheProducerAcceptsButURIRejectsStillDeploys() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> URI.create("http://127.0.0.1:1/in?x=a|b"), "fixture: java.net.URI refuses the url");
+        assertEquals(Optional.of("http://partner.example:8080"), http.target(out("http://partner/x", Map.of("url", "http://User@Partner.Example:8080/a b?q=1 2|3"))),
+                "a space and a | in path and query: userinfo stripped, lower-cased, the port as written");
+        assertEquals(Optional.of("https://partner.example:443"), http.target(out("http://partner/x", Map.of("url", "https://partner.example/in?x=a|b"))), "the https default port");
+
+        List<String> seen = new CopyOnWriteArrayList<>();
+        HttpServer partner = partner(req -> {
+            seen.add(req.uri());
+            req.response().end("ok");
+            return null;
+        });
+        String url = "http://127.0.0.1:" + partner.actualPort() + "/in?x=a|b";
+        EndpointConfig cfg = new EndpointConfig("partner", URI.create("http://127.0.0.1:" + partner.actualPort() + "/in"), Map.of("url", url, "maxBodyBytes", 4096));
+        assertEquals(Optional.of("http://127.0.0.1:" + partner.actualPort()), http.target(cfg), "the target of the url the producer sends to");
+        Producer p = http.producer(cfg);
+        try {
+            java.util.concurrent.CompletableFuture<Future<Envelope>> sent = new java.util.concurrent.CompletableFuture<>();
+            Thread.ofVirtual().name("message").start(() -> {
+                Future<Envelope> f = p.send(rt.ingress("f", Headers.empty(), Buffer.buffer("x")));
+                try {
+                    f.otherwiseEmpty().await(10, TimeUnit.SECONDS);
+                    sent.complete(f);
+                } catch (TimeoutException stuck) {
+                    sent.completeExceptionally(stuck);
+                }
+            });
+            Future<Envelope> f = sent.get(15, TimeUnit.SECONDS);
+            assertTrue(f.succeeded(), "the producer sends to the url java.net.URI refuses: " + f.cause());
+            assertEquals(List.of("/in?x=a|b"), seen, "the partner saw the request as the url names it");
+        } finally {
+            p.close().await(10, TimeUnit.SECONDS);
+        }
+    }
+
+    /** A url with an empty host (as the producer parses it) names no target: its sends get a limit of their own, never a key {@code http://:80}. */
+    @Test
+    void aUrlWithNoHostHasNoTarget() {
+        assertEquals(Optional.empty(), http.target(out("http://partner/x", Map.of("url", "http:///x"))), "http:///x has no host");
+    }
+
+    /**
+     * A url the producer cannot send to (a scheme other than http/https, no scheme, a port that is no number) refuses the build:
+     * an IllegalArgumentException naming the endpoint and its {@code url} option — never the url itself, which may carry a
+     * password, neither in its message nor anywhere down its cause chain.
+     */
+    @Test
+    void aUrlTheProducerCannotSendToRefusesTheBuildNamingTheEndpointNotTheUrl() {
+        for (String url : List.of("foo://x", "x:abc", "ftp://h/x", "https://u:Secret@h:abc/x")) {
+            EndpointConfig cfg = new EndpointConfig("partner-orders", URI.create("http://partner/x"), Map.of("url", url));
+            IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> http.target(cfg), url + ": refused");
+            String message = String.valueOf(refused.getMessage());
+            assertTrue(message.contains("partner-orders"), url + ": names the endpoint: " + message);
+            assertTrue(message.contains("url"), url + ": names the option: " + message);
+            assertFalse(message.contains(url), url + ": the url itself is not in the message: " + message);
+            assertFalse(message.contains("Secret") || message.contains("u:"), url + ": no userinfo in the message: " + message);
+            for (Throwable c = refused.getCause(); c != null; c = c.getCause()) {
+                assertFalse(String.valueOf(c.getMessage()).contains("Secret"), url + ": no password down the cause chain: " + c);
+            }
+        }
+    }
 }

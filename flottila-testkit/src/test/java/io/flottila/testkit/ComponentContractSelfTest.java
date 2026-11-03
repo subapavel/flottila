@@ -87,6 +87,20 @@ class ComponentContractSelfTest {
         /** With {@link #restoredReplies}: keyed by {@link Envelope#nextKey()}, the attempt kept, but the sender's props dropped. */
         boolean restoredWithoutProps;
         private final Set<Promise<Envelope>> waiting = ConcurrentHashMap.newKeySet();
+        /** What {@link #target} answers (D-099); the correct variant names no target. */
+        Function<EndpointConfig, java.util.Optional<String>> targetOf = cfg -> java.util.Optional.empty();
+
+        @Override public java.util.Optional<String> target(EndpointConfig cfg) { return targetOf.apply(cfg); }
+
+        /** {@link #target} answers {@code targetOf}. */
+        static Variant targeting(Function<EndpointConfig, java.util.Optional<String>> targetOf) { Variant v = correct(); v.targetOf = targetOf; return v; }
+
+        /** Broken (D-099): the target depends on whether a consumer runs — not answered from the config alone. */
+        static Variant targetWhileRunning() {
+            Variant v = correct();
+            v.targetOf = cfg -> java.util.Optional.of(v.handler != null ? "loopback://running:1" : "loopback://x:1");
+            return v;
+        }
 
         Variant(String scheme, String schema, boolean handlerSurvivesStop, boolean healthAlwaysUp, boolean ackBeforeHandler, boolean nackIsSuccess,
                 UnaryOperator<Envelope> deliveredAs, UnaryOperator<Envelope> repliedAs) {
@@ -476,5 +490,26 @@ class ComponentContractSelfTest {
         Map<String, Throwable> f = failures(Variant.repliedAs(e -> e.get(Envelope.ATTEMPT).isPresent() ? e : e.with(Envelope.ATTEMPT, 1)));
         assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
         ContractRun.caughtBy(f, ATTEMPT_REPLY, "the first attempt's reply runs on as no attempt in particular");
+    }
+
+    static final String TARGET = "targetIsAnsweredFromConfigAloneAndStable";
+
+    /** A well-formed target answered from the config alone passes the target case; each malformed or unstable answer fails exactly it. */
+    @Test
+    void theTargetCaseFailsAMalformedOrUnstableTarget() {
+        assertEquals(Set.of(), failing(Variant.targeting(cfg -> java.util.Optional.of("loopback://x:1"))), "scheme://host:port passes");
+        assertEquals(Set.of(), failing(Variant.targeting(cfg -> java.util.Optional.of("loopback://[::1]:7"))), "a bracketed IPv6 literal passes");
+        assertEquals(Set.of(), failing(Variant.targeting(cfg -> java.util.Optional.of(cfg.scheme() + "://" + cfg.uri().getHost() + ":0"))), "derived from the config passes");
+
+        java.util.concurrent.atomic.AtomicInteger asked = new java.util.concurrent.atomic.AtomicInteger();
+        assertEquals(Set.of(TARGET), failing(Variant.targeting(cfg -> java.util.Optional.of("loopback://x:" + asked.incrementAndGet()))), "another answer each time");
+        assertEquals(Set.of(TARGET), failing(Variant.targeting(cfg -> java.util.Optional.of(cfg == LOOP ? "loopback://x:1" : "loopback://copy:1"))),
+                "answered by the config object's identity, not its value");
+        assertEquals(Set.of(TARGET), failing(Variant.targetWhileRunning()), "depends on a running consumer");
+        assertEquals(Set.of(TARGET), failing(Variant.targeting(cfg -> null)), "null instead of an Optional");
+        for (String malformed : java.util.List.of("loopback://x:1/in", "loopback://x:1?q=1", "loopback://x:1#f", "loopback://u@x:1", "loopback://u:pw@x:1",
+                "loopback://X:1", "LOOPBACK://x:1", "loopback://x", "loopback://x:", "x:1", "loopback://:1", " loopback://x:1")) {
+            assertEquals(Set.of(TARGET), failing(Variant.targeting(cfg -> java.util.Optional.of(malformed))), "malformed: '" + malformed + "'");
+        }
     }
 }
