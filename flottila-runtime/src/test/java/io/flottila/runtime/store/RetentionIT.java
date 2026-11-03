@@ -1003,4 +1003,103 @@ class RetentionIT {
         assertEquals(1L, second.messages());
         assertEquals(List.of(), left());
     }
+
+    // --- P2-07b2 (D-096, F-20): a body a park holds is passed, never waited for; the delete re-checks under a later snapshot
+
+    /** A session of its own on the case database, closed (its locks with it) before the jobs close. */
+    PgConnection session() {
+        PgConnection s = PgConnection.connect(vertx, options(database)).await();
+        sessions.add(s);
+        return s;
+    }
+
+    /** The case database's backends waiting on a lock, each as "{@code wait_event}: {@code query}". */
+    List<String> lockWaits() {
+        List<String> waits = new ArrayList<>();
+        for (Row r : observer.preparedQuery("select wait_event, query from pg_stat_activity where datname = $1 and wait_event_type = 'Lock'")
+                .execute(Tuple.of(database)).await()) {
+            waits.add(r.getString(0) + ": " + r.getString(1).strip().replaceAll("\\s+", " "));
+        }
+        return waits;
+    }
+
+    /**
+     * One run of {@code r} that must never wait on a lock: spins (no sleep) until it ended and fails at once when a backend of
+     * the case database is seen waiting on a lock while it runs — a run that waited behind the park would end only with it.
+     */
+    Retention.Run runWithoutWaiting(Retention r, String what) {
+        Future<Retention.Run> running = r.runOnce();
+        long deadline = System.nanoTime() + BOUND.toNanos();
+        while (!running.isComplete()) {
+            List<String> waits = lockWaits();
+            if (!waits.isEmpty() && !running.isComplete()) fail(what + " waits on a lock instead of passing the locked row: " + waits);
+            if (System.nanoTime() > deadline) fail(what + " did not end within " + BOUND);
+            Thread.onSpinWait();
+            Thread.yield();
+        }
+        if (running.failed()) fail(what + " failed", running.cause());
+        return running.result();
+    }
+
+    /** {@code part 'body'} of {@code id} at step 0 can be locked {@code for key share} now, as a park would lock it (D-096). */
+    boolean keyShareable(String id) {
+        return db.preparedQuery("select 1 from bodies where message_id = $1 and step = 0 and part = 'body' for key share skip locked")
+                .execute(Tuple.of(id)).await().size() == 1;
+    }
+
+    @Test
+    void aBodyAParkHoldsIsPassedWhileHeldAndKeptOnceItsDlqRowCommits() {
+        body("before", 0, cutoff.minus(DAY.multipliedBy(3)));   // aged orphans, oldest first: before < held < after
+        body("held", 0, cutoff.minus(DAY.multipliedBy(2)));     // its original aged out; a replay's park is naming it
+        body("after", 0, cutoff.minus(DAY));
+        PgConnection park = session();   // stands for PgDlq.park's statement: it holds the body row for key share until it commits
+        Transaction tx = park.begin().await();
+        assertEquals(1, park.preparedQuery("select 1 from bodies where message_id = 'held' and step = 0 and part = 'body' for key share")
+                .execute().await().size(), "fixture: the park holds the body row");
+        Retention r = job(3);   // one batch scans the three aged bodies
+
+        Retention.Run first = runWithoutWaiting(r, "the run beside the park");
+
+        assertEquals("DONE", outcome(first));
+        assertEquals(seededWithout("body before/0/body", "body after/0/body"), left(),
+                "the held body is passed and kept; the batch's other aged bodies, either side of it, go");
+        assertEquals(List.of(2L, 20L), List.of(first.bodies(), first.bodyBytes()), "bodies, bodyBytes");
+        park.preparedQuery("insert into dlq(id, flow, stage, step, error, body_key, parked_at) values ('retry', 'shop/orders', 'map', 1, 'boom', 'held/0/body', $1)")
+                .execute(Tuple.of(at(cutoff.minus(DAY)))).await();
+        tx.commit().await();
+        seeded.add("dlq retry");
+
+        Retention.Run second = runWithoutWaiting(r, "the next run");
+
+        assertEquals("DONE", outcome(second));
+        assertEquals(0L, second.bodies(), "the committed DLQ row names the body: the next run keeps it");
+        assertEquals(seededWithout("body before/0/body", "body after/0/body"), left(), "the body stays with the DLQ row that names it");
+    }
+
+    @Test
+    void aBodyNamedByADlqRowCommittedAfterTheBatchSelectIsKept() {
+        body("named", 0, cutoff.minus(DAY.multipliedBy(2)));   // an aged orphan the DLQ row below names
+        body("other", 0, cutoff.minus(DAY));                   // an aged orphan nothing names
+        PgConnection writer = session();
+        Transaction tx = writer.begin().await();
+        // a DLQ row written without a lock on the body row; committed only once the batch selected its rows
+        writer.preparedQuery("insert into dlq(id, flow, stage, step, error, body_key, parked_at) values ('late', 'shop/orders', 'map', 1, 'boom', 'named/0/body', $1)")
+                .execute(Tuple.of(at(cutoff.minus(DAY)))).await();
+        // share mode admits the batch's select (row share) and stops its delete (row exclusive) before the delete's snapshot
+        writer.query("lock table bodies in share mode").execute().await();
+        Retention r = job(1000);
+        Future<Retention.Run> running = r.runOnce();
+        until(() -> waiting("relation") == 1, "the bodies batch waits on the bodies table the writer holds in share mode");
+        assertFalse(keyShareable("named"), "the batch select already holds the named body for update while its delete waits: "
+                + "the DLQ row commits after the batch selected it");
+        tx.commit().await();
+        seeded.add("dlq late");
+
+        Retention.Run run = await(running, "the run");
+
+        assertEquals("DONE", outcome(run));
+        assertEquals(seededWithout("body other/0/body"), left(),
+                "the delete checks the DLQ under a snapshot taken after the select: the body the late DLQ row names stays");
+        assertEquals(1L, run.bodies());
+    }
 }

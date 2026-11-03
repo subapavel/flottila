@@ -90,7 +90,6 @@
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- Deployments.deploy refuses FORBIDDEN unless env is dev/ci; off-node `validate(name, dir, held)` holds folders without deploying (FIX-110).
 - JFR, JDK 25.0.5 (src + probes, FIX-108): `-XX:-FlightRecorder` → `isAvailable()` false; `jdk.CPUTimeSample` (Linux) throttle `"<n>ms"`,
   field `samplingPeriod`; `CPUTimeSamplesLost.lostSamples` int. A live RecordingStream hands vthread events with `getThread()` null (constant
   written later); a dump read whole resolves all (F-22). `Recording.dump(p)` truncates p, rotates, works on STOPPED, IOException on CLOSED;
@@ -118,3 +117,4 @@
 - JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
 - Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
   `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).
+- PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).

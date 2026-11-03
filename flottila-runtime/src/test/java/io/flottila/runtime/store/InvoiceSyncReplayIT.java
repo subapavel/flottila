@@ -6,6 +6,7 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.api.Pipeline;
 import io.flottila.core.batch.BatchingWriter;
+import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.flow.FlowBuilder;
@@ -22,6 +23,7 @@ import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.RecordingComponent;
+import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
@@ -29,6 +31,7 @@ import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
+import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -72,6 +75,7 @@ class InvoiceSyncReplayIT {
     final RecordingComponent http = new RecordingComponent("http");
     PgMessageStore store;
     PgDlq dlq;
+    Dlq parking;   // what the flow parks through: PgDlq behind the durable copy of the parked body
 
     @BeforeAll
     static void start() throws IOException {
@@ -103,9 +107,10 @@ class InvoiceSyncReplayIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate message_keys, messages, payloads, dlq").execute().await();
+        pool.query("truncate message_keys, messages, payloads, dlq, bodies").execute().await();
         store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
         dlq = new PgDlq(pool);
+        parking = durableBodies(dlq);
         rt.withComponent(http);
     }
 
@@ -114,7 +119,35 @@ class InvoiceSyncReplayIT {
 
     FlowBuilder builder() {
         SaxonXml xml = new SaxonXml();
-        return new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).dlq(dlq);
+        return new FlowBuilder(rt.runtime(), Stream.concat(new XsdValidate().steps().stream(), xml.steps().stream()).toList(), xml.languages(), endpoints).recording(store, Meter.system()).dlq(parking);
+    }
+
+    /**
+     * Fixture change (P2-07b2, D-096): a DLQ row needs the bodies row its {@code body_key} names. The flow's bodies live in the
+     * FakeRuntime's in-memory store, whose persist writes no Postgres row; this DLQ copies a body the park persisted (D-062:
+     * persist, then the row) into Postgres {@code bodies} — what a node's TieredBlobStore persist writes — then parks in Postgres.
+     */
+    Dlq durableBodies(PgDlq pg) {
+        return new Dlq() {
+            @Override
+            public Future<Void> park(Parked p) {
+                BlobKey k = p.bodyKey();
+                if (!rt.blobs().persisted(k)) return pg.park(p);   // not persisted: no durable row, as on a node
+                return rt.blobs().read(k)
+                        .compose(bytes -> pool.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4) on conflict do nothing")
+                                .execute(Tuple.of(k.messageId(), k.step(), k.part(), bytes)))
+                        .compose(inserted -> pg.park(p));
+            }
+
+            @Override
+            public Future<Page<Parked>> list(Optional<String> after, int limit) { return pg.list(after, limit); }
+
+            @Override
+            public Future<Optional<Parked>> get(String messageId) { return pg.get(messageId); }
+
+            @Override
+            public Future<Void> remove(String messageId) { return pg.remove(messageId); }
+        };
     }
 
     /** Runs on a virtual thread (retries park it) and drives the fake clock through the backoff. */

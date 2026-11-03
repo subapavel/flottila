@@ -8,6 +8,8 @@ import java.util.Optional;
 /**
  * The dead letter queue: state whose loss loses messages, so Postgres in the runtime (CLAUDE.md), in memory for tests.
  * A park completes when the row is durable; a second park of the same message is ignored (the first wins).
+ * The Postgres DLQ (PgDlq) fails a park with {@link io.flottila.api.BlobNotFoundException} when no bodies row exists for its
+ * body key, even for an id already parked (D-096); the in-memory one checks no body.
  *
  * @since 0.1
  */

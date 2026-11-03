@@ -1,6 +1,7 @@
 package io.flottila.runtime.store;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.Hash;
 import io.flottila.api.Headers;
 import io.flottila.api.Keys;
@@ -31,17 +32,31 @@ import java.util.regex.Pattern;
 
 /**
  * The DLQ over Postgres (ARCHITECTURE §6, §7): one row per parked message in V1's {@code dlq} with V3's columns, written
- * at once — a park is rare and must be durable before the failure surfaces — and never behind a foreign key, so a park
- * never fails on write ordering. The first park of a message wins. Listed oldest first by V3's {@code (parked_at, id)}
- * index; the cursor is the page's last position — {@code parked_at} in microseconds, Postgres' precision, and the id — so
- * a removal before it skips nothing.
+ * at once — a park is rare and must be durable before the failure surfaces — with no foreign key to {@code messages} (a
+ * park never waits on the step rows), but its bodies row must be committed first (D-062 persist → park, D-096): without it
+ * the park fails with {@link BlobNotFoundException}. A park writes its row only while the bodies row its {@code body_key}
+ * names exists, and holds that row against retention's delete for its one statement (D-096), so a DLQ row implies a durable
+ * body (D-062). The first park
+ * of a message wins. Listed oldest first by V3's {@code (parked_at, id)} index; the cursor is the page's last position —
+ * {@code parked_at} in microseconds, Postgres' precision, and the id — so a removal before it skips nothing.
  *
  * @since 0.1
  */
 public final class PgDlq implements Dlq {
 
     private static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions";
-    private static final String PARK = "insert into dlq(" + COLUMNS + ") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) on conflict (id) do nothing";
+    /**
+     * The park, one statement (D-096): {@code b} holds the bodies row {@code body_key} names ({@code $15..$17}) for key share —
+     * retention's batch holds the rows it selects for update (it may keep some), so the park either waits for that batch and,
+     * after a delete, finds no row, or holds the row first and the batch passes it — and {@code ins} writes the DLQ row only
+     * from that row ({@code on conflict} skips an id parked already). Answers the rows found; {@code ins} runs to completion
+     * unread, as every data-modifying CTE does.
+     */
+    private static final String PARK = """
+            with b as materialized (select 1 from bodies where message_id = $15 and step = $16 and part = $17 for key share),
+            ins as (insert into dlq(%s) select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14 from b
+                    on conflict (id) do nothing)
+            select count(*) from b""".formatted(COLUMNS);
     private static final String LIST = "select " + COLUMNS + " from dlq order by parked_at, id limit $1";
     private static final String LIST_AFTER = "select " + COLUMNS + " from dlq where (parked_at, id) > ($1, $2) order by parked_at, id limit $3";
     private static final Pattern CURSOR = Pattern.compile("(-?\\d+):(.+)");
@@ -59,14 +74,24 @@ public final class PgDlq implements Dlq {
         this.pool = Objects.requireNonNull(pool, "pool");
     }
 
+    /**
+     * Writes {@code p}'s row unless its id is parked already, and only while the bodies row its {@code body_key} names exists:
+     * without one the park fails with {@link BlobNotFoundException} naming the key and writes nothing (D-062, D-096). A
+     * retention batch holding that row waits the park until it committed or rolled back.
+     */
     @Override
     public Future<Void> park(Parked p) {
         Objects.requireNonNull(p, "parked");
+        BlobKey body = p.bodyKey();
         return pool.preparedQuery(PARK).execute(Tuple.wrap(new Object[] {
                 p.messageId(), p.flow(), p.stepName(), p.step(), p.error(), p.parkedAt().atOffset(ZoneOffset.UTC),
                 new JsonObject(new HashMap<>(p.headers().asMap())), json(p.props().asMap()), new JsonObject(new HashMap<>(p.keys().asMap())),
-                PgMessageStore.bytes(p.bodyHash()), p.bodyHash().algorithm(), p.bodySize(), PgMessageStore.text(p.bodyKey()), new JsonObject(new HashMap<>(p.versions()))}))
-                .mapEmpty();
+                PgMessageStore.bytes(p.bodyHash()), p.bodyHash().algorithm(), p.bodySize(), PgMessageStore.text(body), new JsonObject(new HashMap<>(p.versions())),
+                body.messageId(), body.step(), body.part()}))
+                .map(rows -> {
+                    if (rows.iterator().next().getLong(0) == 0) throw new BlobNotFoundException(body);
+                    return null;
+                });
     }
 
     @Override

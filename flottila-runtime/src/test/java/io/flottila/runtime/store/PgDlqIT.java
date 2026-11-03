@@ -1,6 +1,7 @@
 package io.flottila.runtime.store;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.Hash;
 import io.flottila.api.Headers;
 import io.flottila.api.Key;
@@ -10,11 +11,16 @@ import io.flottila.core.dlq.Parked;
 import io.flottila.core.record.Page;
 import io.flottila.runtime.db.Migrations;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
+import io.vertx.pgclient.PgConnection;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
+import io.vertx.sqlclient.Transaction;
+import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,29 +29,41 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
-/** The Postgres DLQ: a row by reference per parked message, every field back, oldest first, the first park wins. */
+/**
+ * The Postgres DLQ: a row by reference per parked message, every field back, oldest first, the first park wins. A park writes
+ * its row only while the bodies row its {@code body_key} names exists, and holds that row against retention's delete for its
+ * statement (P2-07b2, D-096, F-20): a DLQ row implies its body is durable (D-062).
+ */
 class PgDlqIT {
 
     static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
     static Vertx vertx;
     static Pool pool;
+    static PgConnectOptions connect;
+    static final Duration BOUND = Duration.ofSeconds(20);
+    static final Instant T = Instant.parse("2026-01-01T00:00:00Z");
     PgDlq dlq;
+    final List<PgConnection> sessions = new ArrayList<>();
 
     @BeforeAll
     static void start() {
         pg.start();
         vertx = Vertx.vertx();
-        PgConnectOptions connect = new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432))
+        connect = new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432))
                 .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true);
         pool = PgBuilder.pool().connectingTo(connect).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
         Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
@@ -60,11 +78,34 @@ class PgDlqIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate dlq").execute().await();
+        pool.query("truncate dlq, bodies").execute().await();
         dlq = new PgDlq(pool);
     }
 
+    /** A session that holds a lock dies with its connection: a case that fails while it holds one leaves no park waiting. */
+    @AfterEach
+    void closeSessions() {
+        for (PgConnection s : sessions) s.close().await();
+    }
+
+    /**
+     * A parked message whose body row exists. Fixture change (P2-07b2, D-096): a DLQ row needs the bodies row its
+     * {@code body_key} names, so every fixture park has one; {@link #unstored} builds one without.
+     */
     static Parked parked(String id, int step, Instant at) {
+        return stored(unstored(id, step, at));
+    }
+
+    /** The bodies row of {@code p}'s body key, as {@code BlobStore.persist} writes it before a park (D-062); then {@code p}. */
+    static Parked stored(Parked p) {
+        BlobKey k = p.bodyKey();
+        pool.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4) on conflict do nothing")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part(), Buffer.buffer("<PartnerInvoice number=\"4711\"/>"))).await();
+        return p;
+    }
+
+    /** A parked message whose body key names no bodies row: never persisted, or removed by retention. */
+    static Parked unstored(String id, int step, Instant at) {
         return new Parked(id, "invoice-sync", step, "partner", "java.lang.IllegalStateException: 503 from partner", at,
                 Headers.empty().with("content-type", "application/xml"),
                 Props.empty().with(new Key<String>("PARTNER"), "domestic").with(new Key<Duration>("odd"), Duration.ofSeconds(2)).with(new Key<Boolean>("flag"), true).with(new Key<Integer>("n"), 7),
@@ -184,6 +225,155 @@ class PgDlqIT {
             refused(() -> dlq.list(Optional.of(wellFormed), 1).await(), "a cursor at " + micros + " µs");
         }
         assertEquals(List.of("m-1"), ids(dlq.list(Optional.empty(), 1).await()), "the store still answers");
+    }
+
+    // --- P2-07b2 (D-096, F-20): a park needs its body row and holds it against retention's delete
+
+    static long dlqRows() {
+        return pool.query("select count(*) from dlq").execute().await().iterator().next().getLong(0);
+    }
+
+    static boolean bodyRow(BlobKey k) {
+        return pool.preparedQuery("select 1 from bodies where message_id = $1 and step = $2 and part = $3")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().size() == 1;
+    }
+
+    /** {@code dlq.park(p)} on a virtual thread of its own, awaited there: the outcome completes with the park's. */
+    CompletableFuture<Void> parkOnAVirtualThread(Parked p) {
+        CompletableFuture<Void> outcome = new CompletableFuture<>();
+        Thread.ofVirtual().name("pg-dlq-it-park").start(() -> {
+            try {
+                dlq.park(p).await();
+                outcome.complete(null);
+            } catch (Throwable t) {
+                outcome.completeExceptionally(t);
+            }
+        });
+        return outcome;
+    }
+
+    /** Spins (yielding, never sleeping) until {@code outcome} is done; fails after {@link #BOUND} naming {@code what}. */
+    static void settled(CompletableFuture<Void> outcome, String what) {
+        long deadline = System.nanoTime() + BOUND.toNanos();
+        while (!outcome.isDone()) {
+            if (System.nanoTime() > deadline) fail(what + " did not end within " + BOUND);
+            Thread.onSpinWait();
+            Thread.yield();
+        }
+    }
+
+    static String describe(CompletableFuture<Void> done) {
+        return done.isCompletedExceptionally() ? "failed with " + done.exceptionNow() : "succeeded";
+    }
+
+    /** The cause {@code outcome} failed with; fails the case when it succeeded. */
+    static Throwable failure(CompletableFuture<Void> outcome, String what) {
+        settled(outcome, what);
+        if (!outcome.isCompletedExceptionally()) fail(what + " was expected to fail, it succeeded");
+        return outcome.exceptionNow();
+    }
+
+    /** A session of its own, closed after the case. */
+    PgConnection session() {
+        PgConnection s = PgConnection.connect(vertx, connect).await();
+        sessions.add(s);
+        return s;
+    }
+
+    static int pid(PgConnection s) {
+        return s.query("select pg_backend_pid()").execute().await().iterator().next().getInteger(0);
+    }
+
+    /** Backends of this database waiting on a lock that the session {@code holder} holds. */
+    static long blockedBy(int holder) {
+        return pool.preparedQuery("select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and $1 = any(pg_blocking_pids(pid))")
+                .execute(Tuple.of(holder)).await().iterator().next().getLong(0);
+    }
+
+    /**
+     * Waits (bounded, no sleep) until {@code park} is observed waiting on a lock {@code holder} holds; fails at once when the park
+     * ended first — it did not wait for the lock on its body row.
+     */
+    static void waitsBehind(int holder, CompletableFuture<Void> park) {
+        long deadline = System.nanoTime() + BOUND.toNanos();
+        while (blockedBy(holder) == 0) {
+            if (park.isDone()) fail("the park did not wait for the lock on its body row: it " + describe(park) + " while the row was locked for update");
+            if (System.nanoTime() > deadline) fail("the park was not seen waiting on the lock within " + BOUND);
+            Thread.onSpinWait();
+            Thread.yield();
+        }
+        assertEquals(1L, blockedBy(holder), "the park, and nothing else, waits behind the session holding the body row");
+    }
+
+    /** {@code holder} locks the bodies row of {@code k} for update, as retention's batch select does (D-096). */
+    static void lockForUpdate(PgConnection holder, BlobKey k) {
+        assertEquals(1, holder.preparedQuery("select 1 from bodies where message_id = $1 and step = $2 and part = $3 for update")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().size(), "fixture: the body row is there to lock");
+    }
+
+    @Test
+    void aParkWhoseBodyRowIsGoneFailsBlobNotFoundAndWritesNoDlqRow() {
+        Parked p = unstored("gone", 5, T);   // body key gone/4/body: no bodies row (never persisted, or retention removed it)
+
+        Throwable cause = failure(parkOnAVirtualThread(p), "the park of a body with no row");
+
+        BlobNotFoundException missing = assertInstanceOf(BlobNotFoundException.class, cause, "the park fails: " + cause);
+        assertEquals(p.bodyKey(), missing.key(), "it names the body key with nothing stored");
+        assertEquals(Optional.empty(), dlq.get("gone").await(), "no DLQ row: a row would name a body that is not durable (D-062)");
+        assertEquals(0L, dlqRows());
+    }
+
+    @Test
+    void aParkOfAnIdAlreadyParkedIsStillANoOp() {
+        Parked first = parked("twice", 5, T);
+        Parked again = parked("twice", 3, T.plusSeconds(1));   // its body row (twice/2/body) exists too
+        dlq.park(first).await();
+
+        CompletableFuture<Void> second = parkOnAVirtualThread(again);
+        settled(second, "the second park");
+
+        assertFalse(second.isCompletedExceptionally(), "the second park of a parked id succeeds without a row: " + describe(second));
+        assertEquals(1L, dlqRows(), "one row per id");
+        Parked kept = dlq.get("twice").await().orElseThrow();
+        assertEquals(List.of(5, first.bodyKey(), first.parkedAt()), List.of(kept.step(), kept.bodyKey(), kept.parkedAt()), "the first park's row stays");
+    }
+
+    @Test
+    void aParkWaitsForARetentionLockOnItsBodyAndFailsBlobNotFoundOnceTheDeleteCommits() {
+        Parked p = parked("raced", 4, T);
+        BlobKey k = p.bodyKey();
+        PgConnection retention = session();   // stands for a retention batch: its select holds the batch's rows for update
+        Transaction tx = retention.begin().await();
+        lockForUpdate(retention, k);
+
+        CompletableFuture<Void> park = parkOnAVirtualThread(p);
+        waitsBehind(pid(retention), park);
+        retention.preparedQuery("delete from bodies where message_id = $1 and step = $2 and part = $3").execute(Tuple.of(k.messageId(), k.step(), k.part())).await();
+        tx.commit().await();
+
+        Throwable cause = failure(park, "the park behind the delete");
+        BlobNotFoundException missing = assertInstanceOf(BlobNotFoundException.class, cause, "the body went while the park waited: " + cause);
+        assertEquals(k, missing.key());
+        assertEquals(Optional.empty(), dlq.get("raced").await(), "no DLQ row names the deleted body");
+        assertEquals(0L, dlqRows());
+    }
+
+    @Test
+    void aParkWaitsForARetentionLockOnItsBodyAndSucceedsOnceTheLockIsReleasedWithoutADelete() {
+        Parked p = parked("raced", 4, T);
+        BlobKey k = p.bodyKey();
+        PgConnection retention = session();
+        Transaction tx = retention.begin().await();
+        lockForUpdate(retention, k);
+
+        CompletableFuture<Void> park = parkOnAVirtualThread(p);
+        waitsBehind(pid(retention), park);
+        tx.rollback().await();   // the batch kept the row (a guard held, or it failed)
+
+        settled(park, "the park after the lock was released");
+        assertFalse(park.isCompletedExceptionally(), "the body row stayed: the park succeeds — " + describe(park));
+        assertEquals(Optional.of(k), dlq.get("raced").await().map(Parked::bodyKey), "the DLQ row names the body");
+        assertTrue(bodyRow(k), "the body row stays");
     }
 
     /** Refused with IllegalArgumentException (the admin API's 400), thrown at the call or as the failed future's cause. */

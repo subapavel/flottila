@@ -1083,3 +1083,15 @@ api 7/7; runtime mutants M1–M8 killed (-mutants.log, -M8.log), M9/M10 killed (
 Review: FAIL r1 (detached admit javadoc; BlobStore javadoc overclaims; stale P2-07b pointers; M9/M10 not run), PASS r2.
 D-054 data: class B (scout ×1, designer ×1, test-author ×2, implementer ×3, verifier ×3, reviewer ×2); review rounds 2.
 Next: P2-07b2 [C].
+
+## 2026-11-03 — P2-07b2 close the D-062 exception (park vs retention) — done, review PASS r3
+Test first: PgDlqIT 4 cases (gone row, already-parked no-op, waits-then-BlobNotFound, rollback twin), RetentionIT
+aBodyAParkHoldsIsPassed… and aBodyNamedByADlqRowCommittedAfterTheBatchSelectIsKept (red: agent/work/P2-07b2-red.log, 41/5).
+Change: PgDlq.park one statement holding its bodies row `for key share` (no row → BlobNotFoundException, no DLQ row);
+Retention bodies batch `for update skip locked` then a guarded delete under a later snapshot. Fixtures: PgDlqIT, InvoiceSyncReplayIT
+get bodies rows (a DLQ row needs one). Docs: D-096 b2 narrowed, D-045 + D-062 amended, F-20, ARCHITECTURE §7 + changelog.
+Checks: verify -Pit 2784/0/0/0, 275 fresh XML (agent/work/P2-07b2-verify3-counts.txt); coverage no decrease (-coverage3.log);
+mutants M1–M10 killed (-mutants.log, -M10.log). An implementer run counted 2539 (method error); verifier re-ran (-verify2.log).
+Review: FAIL r1 (evidence count; "no FK, never fails" text; D-096 rule too broad; Dlq contract), FAIL r2 (Dlq sentence Pg-only), PASS r3.
+D-054 data: class C (test-author ×1, implementer ×3, verifier ×1, reviewer ×3); review rounds 3.
+Next: P2-07c [C].
