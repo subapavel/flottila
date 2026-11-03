@@ -255,11 +255,16 @@ class DeploymentsRestoreTest {
         }
     }
 
-    /** A {@link DeploymentStore} whose rows cannot be read: list fails with {@code message}; it is never saved to. */
+    /** A {@link DeploymentStore} whose rows cannot be read: list fails with {@code message}; it is never saved to nor deleted from. */
     record Unreadable(String message) implements DeploymentStore {
         @Override
         public Future<Void> save(DeploymentRecord record) {
             return fail("a restore writes no row: " + record);
+        }
+
+        @Override
+        public Future<Void> delete(String name) {
+            return fail("a restore deletes no row: " + name);
         }
 
         @Override

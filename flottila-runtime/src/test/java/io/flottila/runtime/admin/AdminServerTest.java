@@ -28,6 +28,7 @@ import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
+import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
@@ -193,9 +194,14 @@ class AdminServerTest {
         return client.request(new RequestOptions().setMethod(method).setAbsoluteURI("http://127.0.0.1:" + port + path))
                 .compose(req -> {
                     if (authorization != null) req.putHeader("Authorization", authorization);
+                    req.response().onSuccess(HttpClientResponse::pause);   // FIX-21: the body may arrive before the compose below attaches to it
                     return req.send();
                 })
-                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b, res.getHeader("content-length"))));
+                .compose(res -> {
+                    Future<Buffer> all = res.body();
+                    res.resume();
+                    return all.map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b, res.getHeader("content-length")));
+                });
     }
 
     Answer get(String path, String authorization) throws Exception {
@@ -348,10 +354,15 @@ class AdminServerTest {
         blobs.failAfter.put(BlobKey.body("m-1", 2), big.slice(0, 65_536));
         AtomicInteger head = new AtomicInteger();
         Future<Buffer> body = client.request(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI("http://127.0.0.1:" + port + "/admin/messages/m-1/steps/2/body"))
-                .compose(req -> req.putHeader("Authorization", "Bearer " + TOKEN).send())
+                .compose(req -> {
+                    req.response().onSuccess(HttpClientResponse::pause);   // FIX-21: the body may arrive before the compose below attaches to it
+                    return req.putHeader("Authorization", "Bearer " + TOKEN).send();
+                })
                 .compose(res -> {
                     head.set(res.statusCode());
-                    return res.body();
+                    Future<Buffer> all = res.body();
+                    res.resume();
+                    return all;
                 });
         Throwable cut = assertThrows(Throwable.class, () -> body.await(10, TimeUnit.SECONDS), "a body that broke after the head is never a complete answer");
         assertFalse(cut instanceof TimeoutException, "the connection is reset or closed, the client does not hang: " + cut);
@@ -394,10 +405,15 @@ class AdminServerTest {
         blobs.illegalAfter.put(BlobKey.body("m-1", 2), big.slice(0, 65_536));
         AtomicInteger head = new AtomicInteger();
         Future<Buffer> body = client.request(new RequestOptions().setMethod(HttpMethod.GET).setAbsoluteURI("http://127.0.0.1:" + port + "/admin/messages/m-1/steps/2/body"))
-                .compose(req -> req.putHeader("Authorization", "Bearer " + TOKEN).send())
+                .compose(req -> {
+                    req.response().onSuccess(HttpClientResponse::pause);   // FIX-21: the body may arrive before the compose below attaches to it
+                    return req.putHeader("Authorization", "Bearer " + TOKEN).send();
+                })
                 .compose(res -> {
                     head.set(res.statusCode());
-                    return res.body();
+                    Future<Buffer> all = res.body();
+                    res.resume();
+                    return all;
                 });
         Throwable cut = assertThrows(Throwable.class, () -> body.await(10, TimeUnit.SECONDS), "a body that broke after the head is never a complete answer");
         assertFalse(cut instanceof TimeoutException, "the connection is reset or closed, the client does not hang: " + cut);

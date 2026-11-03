@@ -1051,6 +1051,93 @@ class NodeIT {
         }
     }
 
+    // --- P2-02c (D-095): DELETE /admin/packages/{name} over a node
+
+    /** The names in the case database's {@code deployments} table, sorted. */
+    List<String> recordedPackages() throws SQLException {
+        List<String> names = new java.util.ArrayList<>();
+        try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword());
+             Statement q = c.createStatement();
+             java.sql.ResultSet rows = q.executeQuery("select package from deployments order by package")) {
+            while (rows.next()) names.add(rows.getString(1));
+        }
+        return names;
+    }
+
+    static HttpResponse<String> delete(int port, String path) throws IOException, InterruptedException {
+        try (HttpClient client = http()) {
+            return client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path)).timeout(Duration.ofSeconds(20)).DELETE().build(),
+                    HttpResponse.BodyHandlers.ofString());
+        }
+    }
+
+    /** The status of an invoice POSTed to the demo's in endpoint on a fresh connection; -1 when the connection is refused. */
+    static int postInvoice(int inPort) throws IOException, InterruptedException {
+        try (HttpClient client = http()) {
+            return send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml").statusCode();
+        } catch (ConnectException refused) {
+            return -1;
+        }
+    }
+
+    /**
+     * PUT demo and a library {@code lib}, an invoice through demo's in endpoint reaches the partner; DELETE demo answers 200
+     * {name, version, flowsRemoved}, deletes its row in Postgres and its directories, and its endpoint no longer runs an invoice
+     * (refused or 404, the partner sees nothing more); its flow answers as unknown; a second DELETE is 404. The node restarted on
+     * its data directory and database restores lib, not demo.
+     */
+    @Test
+    void aPutThenDeleteUndeploysAndARestartDoesNotRestoreIt() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+        io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
+        try {
+            int inPort = freePort();
+            byte[] zip = zip(demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort()));
+            startDemoNode(env("ci"));
+            putOk(node.adminPort(), "demo", zip);
+            putOk(node.adminPort(), "lib", PackageDraft.of("lib", "1.0.0").file("xslt/lib.xsl", "<xsl:stylesheet/>").zip());
+            assertEquals(200, postInvoice(inPort), "fixture: the demo serves");
+            assertEquals(1, partnerSaw.size(), "fixture: the partner saw the invoice: " + partnerSaw);
+            assertEquals(List.of("demo", "lib"), recordedPackages(), "fixture: both are recorded");
+
+            HttpResponse<String> deleted = delete(node.adminPort(), "/admin/packages/demo");
+
+            assertEquals(200, deleted.statusCode(), deleted.body());
+            assertEquals(new JsonObject().put("name", "demo").put("version", "0.1.0").put("flowsRemoved", new JsonArray().add("demo/invoice-sync")),
+                    new JsonObject(deleted.body()), "the undeploy's answer");
+            assertEquals(List.of("lib"), recordedPackages(), "demo's row is deleted, lib's stays");
+            assertEquals(Set.of("lib"), listed(node.adminPort(), "packages", "name").keySet(), "GET /admin/packages lists lib only");
+            assertEquals(Set.of(), listed(node.adminPort(), "flows", "id").keySet(), "no flow is listed");
+            HttpResponse<String> cpu = get(node.adminPort(), "/admin/flows/demo%2Finvoice-sync/cpu");
+            assertEquals(404, cpu.statusCode(), "demo's flow answers as an unknown flow: " + cpu.body());
+            int after = postInvoice(inPort);
+            assertTrue(after == -1 || after == 404, "demo's in endpoint no longer runs an invoice (refused or 404): " + after);
+            assertEquals(1, partnerSaw.size(), "the partner saw nothing more: " + partnerSaw);
+            Path demoDir = data.resolve("packages").resolve("demo");
+            if (Files.exists(demoDir)) {
+                try (Stream<Path> left = Files.list(demoDir)) {
+                    assertEquals(List.of(), left.toList(), "demo's directories are pruned");
+                }
+            }
+            assertEquals(404, delete(node.adminPort(), "/admin/packages/demo").statusCode(), "a second DELETE: no package demo");
+
+            closeNode(node);
+            node = null;
+            startDemoNode(env("ci"));
+
+            assertEquals(Set.of("lib"), listed(node.adminPort(), "packages", "name").keySet(), "the restart restores lib, not demo");
+            assertEquals("RUNNING", itemOf(listed(node.adminPort(), "packages", "name"), "lib", "restored").getString("state"), "witness: the restore ran");
+            assertEquals(Set.of(), listed(node.adminPort(), "flows", "id").keySet(), "no flow runs");
+            int restarted = postInvoice(inPort);
+            assertTrue(restarted == -1 || restarted == 404, "demo's in endpoint does not run after the restart: " + restarted);
+            assertEquals(1, partnerSaw.size(), "the partner saw nothing more: " + partnerSaw);
+            assertEquals(List.of("lib"), recordedPackages());
+        } finally {
+            partner.close().await();
+        }
+    }
+
     /**
      * The restore runs inside {@code Node.start}, before the admin server: while the restore holds shop/a's start (a held consumer
      * start), the configured admin port refuses connections and the start has not returned; released, the start returns and

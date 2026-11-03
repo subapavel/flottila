@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Why {@link Deployments#deploy} refused a package (D-059): its {@link Kind} — the admin API answers each with its own status —
+ * Why {@link Deployments#deploy} refused a package (D-059), or {@link Deployments#undeploy} an undeploy (D-095): its {@link Kind} — the admin API answers each with its own status —
  * the error line, and for {@link Kind#INVALID} every problem found, one line each, none with an absolute path; for a redeploy that
  * did not start and rolled back ({@link Kind#FAILED}, D-063) every flow that did not start, build or start again.
  *
@@ -18,7 +18,10 @@ public final class DeployRefusedException extends Exception {
         BAD_REQUEST,
         /** The package does not pass validation: every problem in {@link #problems()} (422). */
         INVALID,
-        /** Another deploy runs on this node: one at a time per node, whatever the package (409). */
+        /**
+         * Another deploy or undeploy runs on this node: one at a time per node, whatever the package; or the package to undeploy is
+         * pinned by another package's record (409).
+         */
         CONFLICT,
         /** The node is closing (503). */
         STOPPING,
@@ -27,8 +30,10 @@ public final class DeployRefusedException extends Exception {
          * run again from the directories they ran from, or are listed FAILED (D-063).
          */
         FAILED,
-        /** A deployed environment: manual deploy is non-production only (403). */
-        FORBIDDEN
+        /** A deployed environment: manual deploy and undeploy are non-production only (403). */
+        FORBIDDEN,
+        /** The package to undeploy is not deployed on this node (404). */
+        NOT_FOUND
     }
 
     private final Kind kind;

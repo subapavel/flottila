@@ -25,6 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * whose database collates en_US.utf8 (the image's default): {@code listIsSortedByName} holds there too.
  *
  * <p>P2-02b (D-087): V9 adds {@code dependencies jsonb not null default '[]'::jsonb}; a row written before it reads as no pins.
+ *
+ * <p>P2-02c (D-095): the contract's {@code aDeleteRemovesOnlyThatPackagesRow} runs here too; {@link #aDeleteRemovesTheTableRow}
+ * reads the table itself, so a store that only hides the row from its own {@code list} shows.
  */
 class PgDeploymentStoreIT extends DeploymentStoreContract {
 
@@ -57,6 +60,20 @@ class PgDeploymentStoreIT extends DeploymentStoreContract {
     protected DeploymentStore emptyStore() {
         pool.query("truncate deployments").execute().await();
         return new PgDeploymentStore(pool);
+    }
+
+    /** delete removes the row from the {@code deployments} table, read with plain SQL: the other package's row stays. */
+    @Test
+    void aDeleteRemovesTheTableRow() {
+        DeploymentStore s = emptyStore();
+        s.save(record("shop", "1.0.0", SHA_1, List.of(new DeploymentRecord.Pin("common", "1.2.0", SHA_2)))).await();
+        s.save(record("common", "1.2.0", Optional.empty(), SHA_2, AT)).await();
+
+        s.delete("shop").await();
+
+        List<String> left = new java.util.ArrayList<>();
+        pool.query("select package from deployments order by package").execute().await().forEach(row -> left.add(row.getString(0)));
+        assertEquals(List.of("common"), left, "shop's row is deleted from the table, common's stays");
     }
 
     /** A row written at V8 (no dependencies column), then V9 applied: the store lists it with no pins, every other field as written. */

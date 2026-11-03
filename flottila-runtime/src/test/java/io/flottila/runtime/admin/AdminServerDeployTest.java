@@ -1,5 +1,7 @@
 package io.flottila.runtime.admin;
 
+import io.flottila.api.Ack;
+import io.flottila.api.Headers;
 import io.flottila.api.Health;
 import io.flottila.api.Runtime;
 import io.flottila.core.dlq.InMemoryDlq;
@@ -21,6 +23,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
+import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
@@ -54,6 +57,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -176,9 +180,14 @@ class AdminServerDeployTest {
         return client.request(new RequestOptions().setMethod(method).setAbsoluteURI("http://127.0.0.1:" + at + path))
                 .compose(req -> {
                     if (authorization != null) req.putHeader("Authorization", authorization);
+                    req.response().onSuccess(HttpClientResponse::pause);   // FIX-21: the body may arrive before the compose below attaches to it
                     return body == null ? req.send() : req.send(Buffer.buffer(body));
                 })
-                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b)));
+                .compose(res -> {
+                    Future<Buffer> all = res.body();
+                    res.resume();
+                    return all.map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b));
+                });
     }
 
     /**
@@ -783,6 +792,172 @@ class AdminServerDeployTest {
 
         JsonArray flows = request(at, HttpMethod.GET, "/admin/flows", AUTH, null).json().getJsonArray("items");
         assertEquals(List.of("alpha/orders"), flows.stream().map(i -> ((JsonObject) i).getString("id")).toList(), "only alpha's flow runs: " + flows.encode());
+    }
+
+    // --- P2-02c (D-095): DELETE /admin/packages/{name} undeploys; the PUT's guards, its status map plus 404
+
+    static final String UNDEPLOY_FORBIDDEN = "manual undeploy is non-production only (ARCHITECTURE §9)";
+
+    Answer delete(int at, String path, String authorization) throws Exception {
+        return request(at, HttpMethod.DELETE, path, authorization, null);
+    }
+
+    Answer delete(String path) throws Exception {
+        return delete(port, path, AUTH);
+    }
+
+    static List<String> names(Answer listing) {
+        return listing.json().getJsonArray("items").stream().map(i -> ((JsonObject) i).getString("name")).toList();
+    }
+
+    static List<String> ids(Answer listing) {
+        return listing.json().getJsonArray("items").stream().map(i -> ((JsonObject) i).getString("id")).toList();
+    }
+
+    /**
+     * DELETE of shop (two flows) answers 200 {name, version, flowsRemoved} with its flows by qualified id, sorted; shop's consumers
+     * are stopped, GET /admin/packages and GET /admin/flows no longer list it (store stays), its flow answers as an unknown flow.
+     */
+    @Test
+    void deleteUndeploysAndAnswers200WithTheFlowsRemoved() throws Exception {
+        assertJson(200, put("/admin/packages/shop", pkg("shop", "1.2.3", Map.of("orders", "sync", "audit", "at-least-once")).zip()), "fixture");
+        assertJson(200, put("/admin/packages/store", pkg("store", "1.0.0", Map.of("ping", "sync")).zip()), "fixture");
+        assertJson(200, get("/admin/flows/shop%2Forders/cpu"), "fixture: shop/orders is a flow of this node");
+
+        Answer a = delete("/admin/packages/shop");
+
+        assertJson(200, a, "an undeploy");
+        assertEquals(new JsonObject().put("name", "shop").put("version", "1.2.3").put("flowsRemoved", new JsonArray().add("shop/audit").add("shop/orders")),
+                a.json(), "the 200 body: the package, its version, its flows sorted");
+        assertTrue(doors.door("shop/orders").stopped() && doors.door("shop/audit").stopped(), "shop's consumers are stopped: " + doors.events());
+        assertTrue(!doors.door("store/ping").stopped(), "store's runs on");
+        assertEquals(List.of("store"), names(get("/admin/packages")), "GET /admin/packages no longer lists shop");
+        assertEquals(List.of("store/ping"), ids(get("/admin/flows")), "GET /admin/flows no longer lists its flows");
+        Answer unknown = get("/admin/flows/shop%2Forders/cpu");
+        assertError(404, unknown, "shop/orders after the undeploy");
+        assertEquals("no flow shop/orders deployed on this node", unknown.json().getString("error"), "it answers as an unknown flow");
+    }
+
+    /** DELETE of a package the node does not have — never deployed, or undeployed already — is 404 {error}. */
+    @Test
+    void deleteOfAPackageNotDeployedIs404() throws Exception {
+        Answer none = delete("/admin/packages/ghost");
+
+        assertError(404, none, "no package ghost");
+        assertEquals("no package 'ghost' is deployed", none.json().getString("error"));
+
+        assertJson(200, put("/admin/packages/shop", shop().zip()), "fixture");
+        assertJson(200, delete("/admin/packages/shop"), "fixture: shop undeploys");
+        Answer again = delete("/admin/packages/shop");
+        assertError(404, again, "shop undeployed already");
+        assertEquals("no package 'shop' is deployed", again.json().getString("error"));
+    }
+
+    /** base pinned by mid (direct) and top (through mid's lock): DELETE base is 409 {error} naming both, sorted; nothing changes. */
+    @Test
+    void deleteOfAPinnedPackageIs409NamingItsDependents() throws Exception {
+        PackageDraft base = PackageDraft.of("base", "1.0.0").file("xslt/base.xsl", "<xsl:stylesheet/>");
+        assertJson(200, put("/admin/packages/base", base.zip()), "fixture");
+        PackageDraft mid = PackageDraft.of("mid", "2.1.0").file("xslt/mid.xsl", "<xsl:stylesheet/>").dependingOn(base);
+        assertJson(200, put("/admin/packages/mid", mid.zip()), "fixture");
+        assertJson(200, put("/admin/packages/top", pkg("top", "1.0.0", Map.of("orders", "sync")).dependingOn(mid).zip()), "fixture");
+
+        Answer a = delete("/admin/packages/base");
+
+        assertError(409, a, "base is pinned");
+        assertEquals("base@1.0.0 is in use by mid, top", a.json().getString("error"));
+        assertEquals(List.of("base", "mid", "top"), names(get("/admin/packages")), "every package stays listed");
+        assertTrue(!doors.door("top/orders").stopped(), "top runs on");
+    }
+
+    /**
+     * shop's at-least-once flow audit holds an item (its send held at the partner): DELETE shop is 409 {error} with the flow's
+     * line, and shop stays listed and runs; the item done, DELETE undeploys (P2-02c r2).
+     */
+    @Test
+    void deleteOfAPackageWhoseAtLeastOnceFlowHasQueueItemsIs409() throws Exception {
+        assertJson(200, put("/admin/packages/shop", pkg("shop", "1.0.0", Map.of("orders", "sync", "audit", "at-least-once")).zip()), "fixture");
+        CountDownLatch release = doors.partner().holdNext(1);
+        try {
+            Ack accepted = doors.door("shop/audit").deliver(rt.ingress("shop/audit", Headers.empty(), Buffer.buffer("<order/>"))).await(20, TimeUnit.SECONDS);
+            assertTrue(accepted instanceof Ack.Accepted, "fixture: audit accepts: " + accepted);
+            doors.partner().awaitSent(1);
+
+            Answer a = delete("/admin/packages/shop");
+
+            assertError(409, a, "audit's item is in the work queue");
+            assertEquals("flow 'audit' runs at-least-once and the work queue holds items of it (queued, leased or held): undeploy it once they are done",
+                    a.json().getString("error"));
+            assertEquals(List.of("shop"), names(get("/admin/packages")), "shop stays listed");
+            assertTrue(!doors.door("shop/audit").stopped() && !doors.door("shop/orders").stopped(), "shop runs on: " + doors.events());
+        } finally {
+            release.countDown();
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        Answer done;
+        while ((done = delete("/admin/packages/shop")).status() == 409 && System.nanoTime() < deadline) {
+            Thread.onSpinWait();   // the item finishes on its worker once released: retried until it is gone, bounded
+        }
+        assertJson(200, done, "witness: the item done, DELETE undeploys");
+    }
+
+    /** A node in a deployed environment answers DELETE 403 {error}, as it answers a PUT. */
+    @Test
+    void deleteInADeployedEnvironmentIs403() throws Exception {
+        int prod = serve(Optional.of(deployments("prod")));
+
+        Answer a = delete(prod, "/admin/packages/shop", AUTH);
+
+        assertError(403, a, "FORBIDDEN");
+        assertEquals(UNDEPLOY_FORBIDDEN, a.json().getString("error"));
+    }
+
+    /** Without the token, or with a wrong one, DELETE is 401 and undeploys nothing; with it, 200. */
+    @Test
+    void deleteNeedsTheToken() throws Exception {
+        assertJson(200, put("/admin/packages/shop", shop().zip()), "fixture");
+
+        for (String auth : java.util.Arrays.asList(null, "Bearer wrong", TOKEN)) {
+            assertError(401, delete(port, "/admin/packages/shop", auth), "DELETE with Authorization " + auth);
+        }
+
+        assertEquals(List.of("shop"), names(get("/admin/packages")), "nothing was undeployed without the token");
+        assertTrue(!doors.door("shop/orders").stopped(), "shop runs on");
+        assertJson(200, delete("/admin/packages/shop"), "with the token it undeploys");
+        assertEquals(List.of(), names(get("/admin/packages")));
+    }
+
+    /**
+     * The refusals of an undeploy by the PUT's status map: a bad name 400, another deploy holding the node's lock 409, a closing
+     * node 503; a record delete that fails is the node's failure, 500 {error}, and the package stays listed.
+     */
+    @Test
+    void deleteRefusalsMapToTheirStatus() throws Exception {
+        assertError(400, delete("/admin/packages/Shop"), "BAD_REQUEST");
+
+        assertJson(200, put("/admin/packages/shop", shop().zip()), "fixture");
+        Running running = aDeployHoldingTheLock();
+        assertError(409, delete("/admin/packages/shop"), "CONFLICT: a deploy holds the node's lock");
+        running.gate().release();
+        assertJson(200, running.answer().await(20, TimeUnit.SECONDS), "fixture: the deploy that held the lock completes");
+        assertEquals(List.of("shop", "store"), names(get("/admin/packages")), "shop was not undeployed");
+
+        Deployments closed = deployments("dev");
+        OnVirtualThread.call(() -> { closed.close(); return null; });
+        assertError(503, delete(serve(Optional.of(closed)), "/admin/packages/shop", AUTH), "STOPPING");
+
+        InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
+        DeploymentStore failingDelete = new DeploymentStore() {
+            @Override public Future<Void> save(DeploymentRecord record) { return rows.save(record); }
+            @Override public Future<List<DeploymentRecord>> list() { return rows.list(); }
+            @Override public Future<Void> delete(String name) { return Future.failedFuture(new IllegalStateException("connection reset by peer")); }
+        };
+        Deployments failing = deployments(tmp.resolve("node-3"), failingDelete, new DirArchiveStore(tmp.resolve("bucket-3")));
+        OnVirtualThread.call(() -> failing.deploy("solo", Optional.empty(), PackageDraft.write(tmp.resolve("uploads"), pkg("solo", "1.0.0", Map.of("one", "sync")).zip())));
+        int at = serve(Optional.of(failing));
+
+        assertError(500, delete(at, "/admin/packages/solo", AUTH), "a record delete that fails");
+        assertEquals(List.of("solo"), names(request(at, HttpMethod.GET, "/admin/packages", AUTH, null)), "solo stays listed");
     }
 
     // --- P2-02b (D-087): every item lists its content digest and its dependencies, the closure, each marked direct or not

@@ -19,6 +19,12 @@ public final class InMemoryDeploymentStore implements DeploymentStore {
     }
 
     @Override
+    public Future<Void> delete(String name) {
+        rows.remove(name);
+        return Future.succeededFuture();
+    }
+
+    @Override
     public Future<List<DeploymentRecord>> list() {
         return Future.succeededFuture(List.copyOf(rows.values()));
     }

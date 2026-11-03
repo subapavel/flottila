@@ -18,6 +18,7 @@
   handler() (capture it there), never by wrapper state set in pause() — the sink can resume before pause() is entered (FIX-11).
 - Scratch classpath: `mvn -o -q -pl flottila-runtime -am test-compile dependency:build-classpath -Dmaven.compiler.failOnError=false -Dmdep.outputFile=… -Dmdep.includeScope=test` (`compile` misses the sftp test-jar); no console-standalone jar: a scratch `Run` main (LauncherFactory + SummaryGeneratingListener, launcher 1.14.4) runs an IT past a red test tree (javac writes NO runtime test class then).
 - P2-02b runtime test: `PackageDraft.content()` `locked()` `dependingOn(drafts)` `locking(LockEntry)` (D-087 digest + lock, computed in the fixture); `DeploymentsDependenciesTest.Node(id[, data])` over a shared Ledger + Shelf via Fetches, `Zipped` (zip once).
+  P2-02c: DeploymentStore impls in test trees (a new method needs each): Ledger (`failNextDelete`/`holdNextDelete`/`deletes`, trace "delete <name>"), DeploymentsRestoreTest.Unreadable, AdminServerDeployTest anonymous store; `DeploymentsUndeployTest.Node(id, env, data)`.
 - TieredBlobStore streaming write's sink-thread seam `afterSinkDecision(Runnable)` (FIX-10) + `HeldKey` (Backpressure test: spool key
   gated at getEncoded, `reached` latch, optional refusal) stage sink/attach orderings. A sink open failing at the cipher leaves a `.part`.
   Same class: `HeldStream(inner, Set<Integer>)` holds the Nth store pause (counted after handler()) via `pauseEntered(n)`/`pauseMayReturn(n)`

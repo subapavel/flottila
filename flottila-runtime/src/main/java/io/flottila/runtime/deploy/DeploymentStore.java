@@ -15,6 +15,9 @@ public interface DeploymentStore {
     /** Writes {@code record} as its package's one row: a row the package had is replaced whole. */
     Future<Void> save(DeploymentRecord record);
 
+    /** Deletes the row of the package {@code name}, and no other; none there is no failure. */
+    Future<Void> delete(String name);
+
     /** Every row, sorted by name as {@link String#compareTo} sorts ({@code Deployments} lists its packages so), whatever the database's collation. */
     Future<List<DeploymentRecord>> list();
 }

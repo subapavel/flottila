@@ -12,6 +12,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
+import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
@@ -118,9 +119,14 @@ class AdminServerWorkTest {
         return client.request(new RequestOptions().setMethod(method).setAbsoluteURI("http://127.0.0.1:" + port + path))
                 .compose(req -> {
                     if (authorization != null) req.putHeader("Authorization", authorization);
+                    req.response().onSuccess(HttpClientResponse::pause);   // FIX-21: the body may arrive before the compose below attaches to it
                     return req.send();
                 })
-                .compose(res -> res.body().map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b)))
+                .compose(res -> {
+                    Future<Buffer> all = res.body();
+                    res.resume();
+                    return all.map(b -> new Answer(res.statusCode(), res.getHeader("content-type"), b));
+                })
                 .await(10, TimeUnit.SECONDS);
     }
 

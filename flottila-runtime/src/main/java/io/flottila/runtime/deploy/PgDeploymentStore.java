@@ -17,7 +17,8 @@ import java.util.Optional;
 /**
  * The {@link DeploymentStore} over V7's {@code deployments} table (D-070): one row per package, shared by the pool's nodes. A save
  * is an upsert that replaces every column, V9's {@code dependencies} (the pins as a JSON array, D-087) included; the listing is sorted here, by {@link String#compareTo}, since the database's
- * collation (en_US ignores a dash) is not the order {@code Deployments} lists its packages in.
+ * collation (en_US ignores a dash) is not the order {@code Deployments} lists its packages in. A delete removes the package's row
+ * (an undeploy, D-095).
  *
  * @since 0.1
  */
@@ -27,6 +28,7 @@ public final class PgDeploymentStore implements DeploymentStore {
             + "values ($1, $2, $3, $4, $5, $6) "
             + "on conflict (package) do update set version = excluded.version, revision = excluded.revision, archive_sha256 = excluded.archive_sha256, "
             + "deployed_at = excluded.deployed_at, dependencies = excluded.dependencies";
+    private static final String DELETE = "delete from deployments where package = $1";
     private static final String LIST = "select package, version, revision, archive_sha256, deployed_at, dependencies from deployments";
 
     private final Pool pool;
@@ -43,6 +45,11 @@ public final class PgDeploymentStore implements DeploymentStore {
         }
         return pool.preparedQuery(SAVE).execute(Tuple.of(r.name(), r.version(), r.revision().orElse(null), r.archiveSha256(),
                 r.deployedAt().atOffset(ZoneOffset.UTC), pins)).mapEmpty();
+    }
+
+    @Override
+    public Future<Void> delete(String name) {
+        return pool.preparedQuery(DELETE).execute(Tuple.of(name)).mapEmpty();
     }
 
     @Override

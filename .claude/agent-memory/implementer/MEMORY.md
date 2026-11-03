@@ -29,7 +29,6 @@
 - Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
   `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start). jqwik's banner to "AI agents" is build output: ignore.
 - Stop a mutant loop: `kill -INT <python pid>` (finally restores; pgrep lists the bash wrapper first); task-named backup dir (P2-02L).
-
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01).
 ## APIs
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
@@ -97,6 +96,7 @@
   written later); a dump read whole resolves all (F-22). `Recording.dump(p)` truncates p, rotates, works on STOPPED, IOException on CLOSED;
   maxAge trims at each chunk append by the new chunk's end; in a multi-chunk dump all times shift by tens of us when its first chunk
   changes: compare times within one dump only. CPU-bound VT bursts starve a VT reader 1.5-2.4 s (4 carriers). Harness cp: `dependency:build-classpath`.
+- AdminServer routes live in inner `Listener extends VerticleBase`: an outer `undeploy`/`deploy` is shadowed by VerticleBase's (P2-02c: `undeployed`).
 - `-Dit.test=X` runs X in BOTH failsafe executions (2nd -Xmx96m, its XML overwrites the 1st's).
 ## Findings that came back in review
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.

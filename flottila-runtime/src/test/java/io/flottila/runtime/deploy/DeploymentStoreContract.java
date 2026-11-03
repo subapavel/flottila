@@ -136,4 +136,29 @@ public abstract class DeploymentStoreContract {
         save(record("invoice", "1.0.2", SHA_3, List.of()));
         assertEquals(List.of(), list().get(1).dependencies(), "a save without pins empties them: " + list());
     }
+
+    /**
+     * P2-02c (D-095): {@code delete(name)} removes that package's row, pins included, and no other — not one whose name it
+     * prefixes ({@code shop-eu}, {@code shopa}); a later save of the name is listed again, as saved.
+     */
+    @Test
+    void aDeleteRemovesOnlyThatPackagesRow() {
+        DeploymentRecord shop = record("shop", "1.0.0", SHA_1, List.of(new DeploymentRecord.Pin("common", "1.2.0", SHA_2)));
+        DeploymentRecord shopEu = record("shop-eu", "2.0.0", Optional.of("r2"), SHA_2, AT);
+        DeploymentRecord shopa = record("shopa", "3.0.0", Optional.empty(), SHA_3, AT);
+        DeploymentRecord common = record("common", "1.2.0", Optional.empty(), SHA_2, AT);
+        for (DeploymentRecord r : List.of(shop, shopEu, shopa, common)) save(r);
+
+        store.delete("shop").await();
+
+        assertEquals(List.of(common, shopEu, shopa), list(), "shop's row is gone, every other row as saved");
+
+        DeploymentRecord again = record("shop", "1.0.1", Optional.of("r3"), SHA_3, AT.plusSeconds(60));
+        save(again);
+        assertEquals(List.of(common, again, shopEu, shopa), list(), "a save after the delete is listed again, as saved, with no old pin");
+
+        store.delete("common").await();
+        store.delete("shop-eu").await();
+        assertEquals(List.of(again, shopa), list(), "each delete removes its own row");
+    }
 }

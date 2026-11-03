@@ -13,6 +13,9 @@ import java.util.function.Consumer;
  * A {@link DeploymentStore} at the SPI boundary of {@code Deployments} (P1-09c3a test fixture): an {@link InMemoryDeploymentStore}
  * that records every save call, traces it ({@code "save <name> <version>"} at the call, on the calling thread), and can be told to
  * fail or to hold the next save. A failed save writes nothing; a held one writes once it is released.
+ *
+ * <p>P2-02c: deletes likewise — traced {@code "delete <name>"} at the call, recorded, the next one failed ({@link #failNextDelete},
+ * deletes nothing) or held ({@link #holdNextDelete}, deletes once released).
  */
 final class Ledger implements DeploymentStore {
 
@@ -22,6 +25,9 @@ final class Ledger implements DeploymentStore {
     private final Consumer<String> trace;
     private volatile String failNext;
     private volatile Hold holdNext;
+    private final List<String> deletes = new CopyOnWriteArrayList<>();
+    private volatile String failNextDelete;
+    private volatile Hold holdNextDelete;
 
     Ledger(Consumer<String> trace) {
         this.trace = Objects.requireNonNull(trace, "trace");
@@ -52,6 +58,24 @@ final class Ledger implements DeploymentStore {
         return h;
     }
 
+    /** The next delete fails with an {@link IllegalStateException} carrying {@code message}, and deletes nothing. */
+    void failNextDelete(String message) {
+        failNextDelete = Objects.requireNonNull(message, "message");
+    }
+
+    /** The next delete waits for the hold; released, it deletes and succeeds. */
+    Hold holdNextDelete() {
+        Hold h = new Hold();
+        holds.add(h);
+        holdNextDelete = h;
+        return h;
+    }
+
+    /** The name of every delete call, in order, failed or held ones included. */
+    List<String> deletes() {
+        return List.copyOf(deletes);
+    }
+
     /** Every save call, in order, failed or held ones included. */
     List<DeploymentRecord> saves() {
         return List.copyOf(saves);
@@ -79,6 +103,20 @@ final class Ledger implements DeploymentStore {
         if (held == null) return rows.save(record);
         held.reached.countDown();
         return held.gate.future().compose(v -> rows.save(record));
+    }
+
+    @Override
+    public Future<Void> delete(String name) {
+        deletes.add(name);
+        trace.accept("delete " + name);
+        String failure = failNextDelete;
+        failNextDelete = null;
+        if (failure != null) return Future.failedFuture(new IllegalStateException(failure));
+        Hold held = holdNextDelete;
+        holdNextDelete = null;
+        if (held == null) return rows.delete(name);
+        held.reached.countDown();
+        return held.gate.future().compose(v -> rows.delete(name));
     }
 
     @Override

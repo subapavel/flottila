@@ -1057,3 +1057,16 @@ Review: FAIL r1 (NPE on null threads), r2 (bench limit, unpinned paths → desig
 r4 (failed() unpinned, test name), r5 (docs after the owner decision, M-STICKY); PASS r6. New rows FIX-112, FIX-113.
 D-054 data: class C (designer ×3, test-author ×9, implementer ×10, verifier ×9, reviewer ×6); review rounds 6.
 Next: P2-02c.
+
+## 2026-11-03 — P2-02c undeploy a package — done, review PASS r2
+Test first: runtime DeploymentsUndeployTest (21), AdminServerDeployTest DELETE cases (7), DeploymentStoreContract and
+PgDeploymentStoreIT delete, NodeIT PUT→DELETE→restart (red: agent/work/P2-02c-red-compile.log, -red-unit.log, -red-it.log, -r2-red.log).
+Change: `Deployments.undeploy` (checks: name, deployed env 403, lock, closing, NOT_FOUND 404, pinned 409, at-least-once flow with
+queue items 409; record delete is the commit point, then retire with recheck, listing drop, prune); `DeploymentStore.delete` (Pg,
+in-memory); `DELETE /admin/packages/:name`. Admin test helpers pause the response before send (pre-existing body-loss flake,
+2/20 on 11c77da). Docs: D-095, ARCHITECTURE §9 sentence + changelog row.
+Checks: verify -Pit 2740/0/0/0 fresh XML (agent/work/P2-02c-verify4.log); coverage no decrease (-coverage4.log); mutants all killed
+(-mutants.log, -mutants2.log, -mutant-list.log); flake fix 20/20 (-flake-fixed.log).
+Review: FAIL r1 (listing-after-stop order unpinned; D-095 pin scope and pool effect; ARCHITECTURE §9), PASS r2.
+D-054 data: class B (scout ×1, test-author ×4, implementer ×3, verifier ×2, reviewer ×2); review rounds 2.
+Next: P2-07b.

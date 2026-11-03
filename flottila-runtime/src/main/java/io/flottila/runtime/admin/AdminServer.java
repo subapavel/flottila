@@ -21,6 +21,7 @@ import io.flottila.runtime.deploy.DeployResult;
 import io.flottila.runtime.deploy.DeployedFlow;
 import io.flottila.runtime.deploy.DeployedPackage;
 import io.flottila.runtime.deploy.Deployments;
+import io.flottila.runtime.deploy.UndeployResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
@@ -89,8 +90,11 @@ import java.util.function.Supplier;
  * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
  * flows, no files, no folders and no artifacts) and its tree (D-078): {@code folders:[{path, namespace|null, description|null}]}
  * and {@code artifacts:[{path, kind, id|null}]}, each sorted by path, its {@code content} digest (null when FAILED) and its
- * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087). Without one these
- * routes do not exist (404).
+ * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087).
+ * {@code DELETE /admin/packages/{name}} undeploys (D-095) on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
+ * (its flows' qualified ids, sorted), or a refusal by the deploy's status map — 400, 403, 409 (another deploy or undeploy runs on
+ * the node, or another package's record pins it), 503 — and 404 for a package the node does not list; a record delete that fails
+ * is 500. Without one these routes do not exist (404).
  *
  * <p>With a {@link Deployments} it also shows a deployed flow's CPU by step (D-094): {@code GET /admin/flows/{flow}/cpu} — the flow's
  * qualified id as one path segment, its slash percent-encoded — answers, with a {@link Sampling}, 200 {@code {flow, sampling:"on",
@@ -286,6 +290,7 @@ public final class AdminServer {
             router.get("/admin/dlq").handler(offload(AdminServer.this::dlq));
             deployments.ifPresent(d -> {
                 router.put("/admin/packages/:name").handler(upload(d));
+                router.delete("/admin/packages/:name").handler(offload(c -> undeployed(c, d)));
                 router.get("/admin/flows").handler(offload(c -> flows(d)));
                 router.get("/admin/packages").handler(offload(c -> packages(d)));
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
@@ -672,7 +677,17 @@ public final class AdminServer {
         return Json.of(200, new JsonObject().put("items", items));
     }
 
-    /** A refusal by its kind: 400, 403, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503. */
+    /** {@code DELETE /admin/packages/{name}}: the undeploy's result, or its refusal; a record delete that fails throws, a 500. */
+    private static Reply undeployed(RoutingContext ctx, Deployments deployments) throws IOException {
+        try {
+            UndeployResult r = deployments.undeploy(ctx.pathParam("name"));
+            return Json.of(200, new JsonObject().put("name", r.name()).put("version", r.version()).put("flowsRemoved", new JsonArray(r.flowsRemoved())));
+        } catch (DeployRefusedException refused) {
+            return refusal(refused);
+        }
+    }
+
+    /** A refusal by its kind: 400, 403, 404, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503. */
     private static Reply refusal(DeployRefusedException refused) {
         int status = switch (refused.kind()) {
             case BAD_REQUEST -> 400;
@@ -681,6 +696,7 @@ public final class AdminServer {
             case INVALID -> 422;
             case FAILED -> 500;
             case STOPPING -> 503;
+            case NOT_FOUND -> 404;
         };
         JsonObject body = error(refused.error());
         if (!refused.problems().isEmpty()) body.put("problems", new JsonArray(refused.problems()));

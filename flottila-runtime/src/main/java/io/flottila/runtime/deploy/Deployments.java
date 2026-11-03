@@ -151,6 +151,19 @@ import java.util.stream.Stream;
  * whole is listed FAILED with its problems (one whose consumer would listen where a package restored before it does, D-072,
  * included). {@link #health} is DOWN while anything is listed FAILED.
  *
+ * <p>{@link #undeploy} (D-095) blocks too. Its order: a bad name ({@link Kind#BAD_REQUEST}); a deployed environment
+ * ({@link Kind#FORBIDDEN}: manual undeploy is non-production only); the node's lock held by a deploy, an undeploy or a restore
+ * ({@link Kind#CONFLICT}, or {@link Kind#STOPPING} while closing); a closing node ({@link Kind#STOPPING}); a package the node does
+ * not list ({@link Kind#NOT_FOUND}); a package another listed package's record pins, a FAILED one included
+ * ({@link Kind#CONFLICT} "&lt;name&gt;@&lt;version&gt; is in use by &lt;a&gt;, &lt;b&gt;", the dependents sorted); a running
+ * at-least-once flow of it whose items the work queue holds ({@link Kind#CONFLICT}, a line per such flow: they would never run;
+ * a queue that cannot answer is the node's {@link IOException}). Then, under the lock, its record is deleted: the commit point. A delete that fails is the node's {@link IOException} and changes nothing else.
+ * Then every flow of it that runs stops and closes as phase A stops a flow (a stop that fails is a WARNING and counts as settled;
+ * an at-least-once one is asked for queue items again once its worker drained, items that arrived meanwhile a WARNING),
+ * the listing drops it, and {@code packages/<name>/} is pruned of every directory no remaining record pins and no remaining flow
+ * reads (a failure is a WARNING, the undeploy stands). Its archives stay in the
+ * {@link ArchiveStore}: deploying it again is the rollback. A restore after it does not install it: its record is gone.
+ *
  * <p>A flow runs as {@code <package>/<flow>} (D-060 a): its snapshots, DLQ rows and queue items carry that id, and so does
  * the consumer option {@code flow}; the deploy also sets {@code maxBodyBytes}, the flow's limit. Every message carries the
  * versions {@code package=<name>@<version>} and, when the deploy names one, {@code revision}.
@@ -204,9 +217,12 @@ public final class Deployments {
     private final PollerLeases leases;
     /** Numbers the owners of the leased consumers built here: {@code <nodeId>#<n>}. */
     private final AtomicLong owners = new AtomicLong();
-    /** One deploy at a time; {@link #close} takes it to wait for the one running. */
+    /** One deploy, undeploy or restore at a time; {@link #close} takes it to wait for the one running. */
     private final ReentrantLock deploying = new ReentrantLock();
-    /** By name, so {@link #packages()} is sorted; written under {@link #deploying} — by a deploy once, as it returns or throws — read by anyone. */
+    /**
+     * By name, so {@link #packages()} is sorted; written under {@link #deploying} — by a deploy once, as it returns or throws, by an
+     * undeploy once its record is deleted — read by anyone.
+     */
     private final Map<String, Deployed> deployed = new ConcurrentSkipListMap<>();
     private volatile boolean closing;
     /** The rows a {@link #restore} installs, while it runs (under {@link #deploying}): what they pin is never pruned (D-087). */
@@ -402,19 +418,60 @@ public final class Deployments {
      */
     public DeployResult deploy(String name, Optional<String> revision, Path archive) throws DeployRefusedException, IOException {
         Objects.requireNonNull(archive, "archive");
-        if (!NAME.matcher(name).matches()) {
-            throw refused(Kind.BAD_REQUEST, "the package name '" + name + "' must be a lower-case letter, then at most 63 lower-case letters, digits and dashes");
-        }
+        if (!NAME.matcher(name).matches()) throw badName(name);
         if (revision.isPresent() && !REVISION.matcher(revision.get()).matches()) {
             throw refused(Kind.BAD_REQUEST, "the revision '" + revision.get() + "' must be 1 to 64 letters, digits, dots, underscores and dashes");
         }
         if (config.deployed()) throw refused(Kind.FORBIDDEN, "manual deploy is non-production only (ARCHITECTURE §9)");
         // closing is read where the lock decides: a close that holds the lock (stopping) or took it before this deploy (closed)
         // has set it first, so no deploy starts a flow after close stopped them all
-        if (!deploying.tryLock()) throw closing ? stopping() : refused(Kind.CONFLICT, "another deploy is running: try again once it is done");
+        if (!deploying.tryLock()) throw busy();
         try {
             if (closing) throw stopping();
             return install(name, revision, archive, null);
+        } finally {
+            deploying.unlock();
+        }
+    }
+
+    /**
+     * Undeploys the package {@code name} (D-095); see the class comment for the order. Blocking: on a virtual thread.
+     *
+     * @return the package undeployed, the version it was listed with and its flows, by qualified id
+     * @throws DeployRefusedException what the admin API answers with its own status
+     * @throws IOException the package's record could not be deleted: the node's failure, and nothing else changed
+     */
+    public UndeployResult undeploy(String name) throws DeployRefusedException, IOException {
+        if (!NAME.matcher(name).matches()) throw badName(name);
+        if (config.deployed()) throw refused(Kind.FORBIDDEN, "manual undeploy is non-production only (ARCHITECTURE §9)");
+        if (!deploying.tryLock()) throw busy();   // closing read where the lock decides, as a deploy reads it
+        try {
+            if (closing) throw stopping();
+            Deployed listed = deployed.get(name);
+            if (listed == null) throw refused(Kind.NOT_FOUND, "no package '" + name + "' is deployed");
+            String version = listed.pkg().version();
+            List<String> dependents = dependents(name);
+            if (!dependents.isEmpty()) throw refused(Kind.CONFLICT, name + "@" + version + " is in use by " + String.join(", ", dependents));
+            List<Flow> running = listed.flows().stream().filter(Flow::runs).toList();
+            Set<String> leaving = queued(running);
+            // the commit point (D-095): the record is deleted before anything stops; a delete that fails changes nothing else
+            Future<Void> deleted = Future.future(done -> records.delete(name).onComplete(done));
+            deleted.otherwiseEmpty().await();
+            if (deleted.failed()) {
+                throw new IOException("the deploy record of package '" + name + "' was not deleted: " + reason(deleted.cause()), deleted.cause());
+            }
+            try {
+                retire(running, leaving, "its package was undeployed; the undeploy goes on");
+            } finally {
+                deployed.remove(name);   // the record is gone: whatever the stop did, the package is no longer listed
+            }
+            Path packageDir = config.dataDir().resolve("packages").resolve(name);
+            if (Files.isDirectory(packageDir)) {   // a package listed FAILED by a restore on a fresh data directory has none
+                Set<String> keep = new HashSet<>(pinned(name));   // what a remaining record pins or a remaining flow reads
+                keep.addAll(read(name));
+                prune(name, packageDir, keep);
+            }
+            return new UndeployResult(name, version, listed.flows().stream().map(Flow::id).toList());
         } finally {
             deploying.unlock();
         }
@@ -712,7 +769,7 @@ public final class Deployments {
             DeployedPackage deployedPackage = new DeployedPackage(name, version, revision, sha256, now.stream().map(Flow::id).toList(), deployedAt, files(dir),
                     pkg.folders(), pkg.artifacts(), DeployedPackage.State.RUNNING, List.of(), Package.content(dir), checked.dependencies().listed());
             List<DeploymentRecord.Pin> pins = checked.dependencies().pins();
-            retire(retiring, checked.leaving());   // phase A, settled when it returns; it never throws
+            retire(retiring, checked.leaving(), "the redeploy replaced or removed it; the redeploy goes on");   // phase A, settled when it returns; it never throws
             stopped = retiring;
             built.clear();
             built.addAll(starting);   // phase B calls every start: from here on a refusal stops their consumers too
@@ -1413,19 +1470,19 @@ public final class Deployments {
     }
 
     /**
-     * Phase A of the swap (D-063): every flow of {@code retiring} at once — stopped with the node's stop deadline, then closed
-     * ({@link #stopAndClose}); a stop that fails, throws or does not complete in time is logged and counts as settled, and keeps
+     * Phase A of the swap (D-063), and the stop of an undeploy (D-095): every flow of {@code retiring} at once — stopped with the node's stop deadline, then closed
+     * ({@link #stopAndClose}); a stop that fails, throws or does not complete in time is logged ({@code why} it stopped) and counts as settled, and keeps
      * no other flow from its stop. Those whose id is in
      * {@code leaving} are asked for queue items once their worker drained ({@link #recheck}). Returns once every one has settled:
      * the barrier phase B waits behind. Never throws.
      */
-    private void retire(List<Flow> retiring, Set<String> leaving) {
+    private void retire(List<Flow> retiring, Set<String> leaving, String why) {
         List<Future<Void>> settled = new ArrayList<>(retiring.size());
         for (Flow f : retiring) {
             Future<Void> retired = stopAndClose(f, config.stopDeadline());
             if (leaving.contains(f.id())) recheck(f, retired);
-            settled.add(retired.onFailure(failed -> LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "' did not stop cleanly as the redeploy "
-                    + "replaced or removed it; the redeploy goes on: " + failed, failed)).otherwiseEmpty());
+            settled.add(retired.onFailure(failed -> LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "' did not stop cleanly as " + why + ": "
+                    + failed, failed)).otherwiseEmpty());
         }
         Future.join(settled).await();   // never fails: each settled one is otherwiseEmpty
     }
@@ -1607,8 +1664,45 @@ public final class Deployments {
         return new DeployRefusedException(kind, error, List.of());
     }
 
+    private static DeployRefusedException badName(String name) {
+        return refused(Kind.BAD_REQUEST, "the package name '" + name + "' must be a lower-case letter, then at most 63 lower-case letters, digits and dashes");
+    }
+
     private static DeployRefusedException stopping() {
-        return refused(Kind.STOPPING, "the node is closing: it takes no deploy");
+        return refused(Kind.STOPPING, "the node is closing: it takes no deploy or undeploy");
+    }
+
+    /** The refusal of a deploy or undeploy that finds the node's lock held: {@link #stopping} while closing, else {@link Kind#CONFLICT}. */
+    private DeployRefusedException busy() {
+        return closing ? stopping() : refused(Kind.CONFLICT, "another deploy or undeploy is running: try again once it is done");
+    }
+
+    /**
+     * The qualified ids of the at-least-once flows of {@code running}, once the work queue said it holds no item of any (D-095):
+     * items of one refuse the undeploy ({@link Kind#CONFLICT}, a line per such flow by its local id, sorted as the flows are), since they would
+     * never run; a question the queue fails is the node's {@link IOException}, naming the flow and the cause.
+     */
+    private Set<String> queued(List<Flow> running) throws DeployRefusedException, IOException {
+        Set<String> queued = new HashSet<>();
+        List<String> held = new ArrayList<>();
+        for (Flow f : running) {
+            if (!AT_LEAST_ONCE.equals(f.flow().delivery())) continue;
+            queued.add(f.id());
+            Future<Boolean> items = queue.hasItems(f.id());
+            if (Boolean.TRUE.equals(items.otherwiseEmpty().await())) {
+                held.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased or held): undeploy it once "
+                        + "they are done");
+            } else if (items.failed()) {
+                throw new IOException("the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause()), items.cause());
+            }
+        }
+        if (!held.isEmpty()) throw refused(Kind.CONFLICT, String.join("\n", held));
+        return queued;
+    }
+
+    /** The packages whose record pins a version of {@code name} (D-087), FAILED ones included, sorted by name, each once. */
+    private List<String> dependents(String name) {
+        return deployed.values().stream().filter(d -> d.pins().stream().anyMatch(p -> p.name().equals(name))).map(d -> d.pkg().name()).toList();
     }
 
     private static DeployRefusedException invalid(String name, List<String> problems) {
