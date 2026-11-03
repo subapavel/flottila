@@ -1,9 +1,9 @@
 # Handoff
 
-state: RUNNING (owner RESUME 2026-11-02, "until STOP"); P2-10a done (review PASS r2); next P2-10b [B]
-last commit: `Task: P2-10a` (this commit); 1b32585 `Task: FIX-115`; f0d3a03 `Task: P2-09b`; b046743 `Task: GATE` (GATE_MET)
+state: STOPPED by the owner 2026-11-03 ("zapiš stav a konec"); P2-10a done (dc6a683); P2-10b WIP (in-progress, not committed code)
+last commit: `Task: P2-10b` WIP state (this commit); dc6a683 `Task: P2-10a`; 1b32585 `Task: FIX-115`; b046743 `Task: GATE` (GATE_MET)
 branch: claude/dazzling-gauss-9x7tiw, pushed to main as well
-next exact action: P2-10b [B] spec (packet from D-101 + P2-10a.md) → red tests; then P2-11, P2-12 [C], P2-13; P2-10c..e; FIX-112..120
+next exact action: P2-10b — git apply agent/patches/P2-10b-wip.patch, read the packet WIP section, resume implementation; then P2-11, P2-12 [C], P2-13
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

@@ -1174,3 +1174,9 @@ Review: FAIL r1 (SimHarnessTest unapproved; probe blind to resumed runs; unteste
 final-tree evidence), PASS r2.
 D-054 data: class C (designer ×1, test-author ×3, implementer ×3, reviewer ×2); review rounds 2.
 Next: P2-10b.
+
+## 2026-11-03 — P2-10b simulation slice 2 — WIP, stopped by the owner
+Spec agent/packets/P2-10b.md; red tests approved (82 cases, agent/work/P2-10b-red.log, -red-r2.log); implementation partial.
+Red tests + partial code saved as agent/patches/P2-10b-wip.patch (unverified, not in the tree, so main stays green).
+Open: LostReplayBody under V2 is seen only through RETRY_DLQ (implementer's last trace) — decide the exact set before landing.
+Next: apply the patch and resume P2-10b.

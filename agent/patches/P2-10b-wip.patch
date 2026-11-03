@@ -1,0 +1,2459 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 578deba..4c7618b 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -3,7 +3,8 @@
+ # run nightly and on demand (workflow_dispatch).
+ # build: JaCoCo floors halt `mvn verify` (root pom), ci/coverage_check.py refuses a decrease beyond
+ # the 2 pp noise band (D-029) against the baseline committed at the previous main commit. bench: bench/run.sh (P0-10) exits
+-# non-zero on a > 20 % regression against bench/RESULTS.md. mutation: PIT on api + core.
++# non-zero on a > 20 % regression against bench/RESULTS.md. mutation: PIT on api + core. sim-fuzz (nightly, on demand):
++# fresh simulation seeds for 25 minutes under -Psim-fuzz, failures uploaded as pin lines (P2-10b).
+ name: ci
+ 
+ on:
+@@ -188,3 +189,28 @@ jobs:
+           name: pit-reports
+           path: '**/target/pit-reports/**'
+           if-no-files-found: ignore
++
++  sim-fuzz:
++    name: sim-fuzz (fresh simulation seeds, P2-10b)
++    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
++    needs: build
++    runs-on: ubuntu-latest
++    timeout-minutes: 40
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-java@v4
++        with:
++          distribution: temurin
++          java-version: ${{ env.JAVA_VERSION }}
++          cache: maven
++      - name: Build the simulation's modules
++        run: mvn -B -ntp -q install -DskipTests -pl flottila-sim -am
++      # SimFuzzTest runs only under -Psim-fuzz (excluded by default, never a skipped case); seeds from the run id, 25 minutes
++      - name: Fuzz the correct world
++        run: mvn -B -ntp -pl flottila-sim test -Psim-fuzz -Dsim.fuzz.base=${{ github.run_id }} -Dsim.fuzz.minutes=25 -Dsim.ticks=5000
++      - uses: actions/upload-artifact@v4
++        if: always()
++        with:
++          name: sim-failures
++          path: flottila-sim/target/sim-failures.tsv
++          if-no-files-found: ignore
+diff --git a/flottila-sim/pom.xml b/flottila-sim/pom.xml
+index 40bf9ad..22a0adc 100644
+--- a/flottila-sim/pom.xml
++++ b/flottila-sim/pom.xml
+@@ -36,4 +36,41 @@
+       <scope>test</scope>
+     </dependency>
+   </dependencies>
++
++  <build>
++    <plugins>
++      <!-- SimFuzzTest is the nightly sim-fuzz run: excluded here, never a skipped case; the sim-fuzz profile runs it alone (P2-10b) -->
++      <plugin>
++        <groupId>org.apache.maven.plugins</groupId>
++        <artifactId>maven-surefire-plugin</artifactId>
++        <configuration>
++          <excludes>
++            <exclude>**/SimFuzzTest.java</exclude>
++          </excludes>
++        </configuration>
++      </plugin>
++    </plugins>
++  </build>
++
++  <profiles>
++    <profile>
++      <!-- mvn -B -ntp -pl flottila-sim test -Psim-fuzz -Dsim.fuzz.base=<n> -Dsim.fuzz.minutes=<m> [-Dsim.ticks=<t>]: fresh seeds for m
++           minutes (a fraction too); failures in target/sim-failures.tsv as pin lines -->
++      <id>sim-fuzz</id>
++      <build>
++        <plugins>
++          <plugin>
++            <groupId>org.apache.maven.plugins</groupId>
++            <artifactId>maven-surefire-plugin</artifactId>
++            <configuration>
++              <includes>
++                <include>**/SimFuzzTest.java</include>
++              </includes>
++              <excludes combine.self="override"/>
++            </configuration>
++          </plugin>
++        </plugins>
++      </build>
++    </profile>
++  </profiles>
+ </project>
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/Action.java b/flottila-sim/src/main/java/io/flottila/sim/Action.java
+index 93ce1f2..b4e2a6e 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/Action.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/Action.java
+@@ -9,7 +9,21 @@ public enum Action {
+     /** A Nacked payload sent again some ticks later, under a new id. */
+     RESEND(3),
+     /** A poll by worker A or B of the at-least-once flow. */
+-    POLL(4);
++    POLL(4),
++    /** A send to the at-most-once flow: Accepted; the run happens once, no retry after the ACK (P2-10b). */
++    SEND_AMO(5),
++    /** A send to the at-least-once flow with a dedupe key: Accepted names the first id saved under that key (P2-10b). */
++    SEND_DEDUPED(6),
++    /** A lost ACK: an earlier dedupe-keyed send again, same key and payload; Accepted with the first id, no second effect (P2-10b). */
++    DUPLICATE(7),
++    /** {@code Replay.from(id, n, replayId)} of a recorded message: its last output hash equals the recorded one (P2-10b). */
++    REPLAY_FROM(8),
++    /** {@code Replay.retry} of a DLQ row: the row goes away and the new message is final (P2-10b). */
++    RETRY_DLQ(9),
++    /** A window of ticks in which every partner call is refused: retries, then a DLQ row at the {@code to} step (P2-10b). */
++    PARTNER_OUTAGE(10),
++    /** The next partner call's effect is done and its reply lost: the same id reruns, which ONE_ID allows (D-049 b, P2-10b). */
++    DROP_REPLY(11);
+ 
+     private final int code;
+ 
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/DedupingIntake.java b/flottila-sim/src/main/java/io/flottila/sim/DedupingIntake.java
+new file mode 100644
+index 0000000..3a1725d
+--- /dev/null
++++ b/flottila-sim/src/main/java/io/flottila/sim/DedupingIntake.java
+@@ -0,0 +1,42 @@
++package io.flottila.sim;
++
++import io.flottila.api.Envelope;
++import io.flottila.core.flow.Intake;
++import io.flottila.core.record.Snapshot;
++import io.vertx.core.Future;
++
++import java.util.HashMap;
++import java.util.Map;
++import java.util.function.BooleanSupplier;
++
++/**
++ * The at-least-once flow's dedupe as the simulation builds it (P2-10b, D-084): the sequential intake refuses a dedupe key, so
++ * this double keeps one: a save under a key already saved answers the id saved first and saves nothing; any other save goes to
++ * {@code intake} without the key, and its id becomes the key's first once it is saved. A save that fails leaves the key free.
++ * The durable processed-ids table of the Postgres intake comes in P2-10d; this one lives as long as the run.
++ */
++final class DedupingIntake implements Intake {
++
++    private final Intake intake;
++    private final Map<String, String> first = new HashMap<>();   // guarded by this: per flow and dedupe key, the id saved first
++
++    DedupingIntake(Intake intake) {
++        this.intake = intake;
++    }
++
++    @Override
++    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
++        if (dedupeKey == null) return intake.save(arrived, ingress, flow, partitionKey, null, abandoned);
++        String scoped = flow + "/" + dedupeKey;
++        String saved;
++        synchronized (this) {
++            saved = first.get(scoped);
++        }
++        if (saved != null) return Future.succeededFuture(saved);
++        return intake.save(arrived, ingress, flow, partitionKey, null, abandoned).onSuccess(id -> {
++            synchronized (this) {
++                first.putIfAbsent(scoped, id);
++            }
++        });
++    }
++}
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/Faults.java b/flottila-sim/src/main/java/io/flottila/sim/Faults.java
+index c3f096d..4a39b3d 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/Faults.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/Faults.java
+@@ -40,6 +40,11 @@ final class Faults {
+         return 1 + (int) Long.remainderUnsigned(Mix.splitMix64(draw(FaultKind.DELAY, messageId, attempt, callOrdinal)), config.maxHeldTicks());
+     }
+ 
++    /** Faults are on: before the drain. Outages and dropped replies stop with them. */
++    boolean on() {
++        return on;
++    }
++
+     /** No call draws a fault from now on. */
+     void off() {
+         on = false;
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/Oracle.java b/flottila-sim/src/main/java/io/flottila/sim/Oracle.java
+index fbe2b60..470772e 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/Oracle.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/Oracle.java
+@@ -1,8 +1,12 @@
+ package io.flottila.sim;
+ 
+ import io.flottila.api.Ack;
++import io.flottila.api.BlobKey;
++import io.flottila.api.Envelope;
+ import io.flottila.core.dlq.Dlq;
++import io.flottila.core.flow.ReplayRefusedException;
+ import io.flottila.sim.Verdict.Failure;
++import io.flottila.sim.World.Compared;
+ import io.vertx.core.AsyncResult;
+ import io.vertx.core.buffer.Buffer;
+ 
+@@ -12,88 +16,143 @@ import java.util.HashMap;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Optional;
++import java.util.Set;
++import java.util.TreeSet;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.function.LongSupplier;
+ import java.util.stream.Collectors;
+ 
+ /**
+- * The model of a run and its checks (D-101). Each comparison counts under its check; a comparison is one expected text against
+- * one observed text, so a check fails exactly when they differ.
++ * The model of a run and its checks (D-101). Each comparison is one expected text against one observed text, told to the world
++ * and counted under its check, so a check fails exactly when they differ.
+  * <ul>
+- * <li>PREDICTED: a send with room in its flow's admission answers as the model says — a sync send the Reply
+- * {@code ack:} + its payload reversed when a partner call delivered, else the failure after every call was refused; an
+- * at-least-once send Accepted under its own id, or a retryable Nack when its STORE_REFUSE draw (ingress or enqueue) hit.</li>
+- * <li>ADMISSION_BOUNDS, counted only at the limit: a send that finds its flow's requests or bytes full is refused with a
+- * retryable Nack in its own unit; after every unit no flow holds more than its maxInFlight requests and maxInFlightBytes
+- * bytes, and no worker runs more than its limit.</li>
++ * <li>PREDICTED: a send with room in its flow's admission answers as the model says — a sync send the Reply {@code ack:} + its
++ * payload reversed after as many partner calls as it took to the first one delivered, else the failure after every call was
++ * refused; an at-least-once send Accepted under its own id — or, with a dedupe key saved before, under the id saved first —
++ * or a retryable Nack when its STORE_REFUSE draw (ingress or enqueue) hit; an at-most-once send Accepted.</li>
++ * <li>ADMISSION_BOUNDS, counted only at the limit, in three parts: a send that finds its flow's requests (REQUESTS) or bytes
++ * (BYTES) full is refused with a retryable Nack in its own unit; after every unit no flow holds more than its maxInFlight
++ * requests and maxInFlightBytes bytes, and no worker runs more than its limit (WORKER_RUNS).</li>
+  * <li>KEY_ORDER: at most one message of a key is at the partner at a time (from its first call to its last), and the first
+- * receipts of a key come in the order its messages were sent.</li>
+- * <li>after the drain — ACKED_IS_FINAL: every Accepted message was delivered once, or parked at the {@code to} step after
+- * every call was refused; SNAPSHOT_PER_STEP: every message that ran has one snapshot per step, the last FAILED when it was
+- * refused throughout; DRAINED: no run, no held call, no wake, no item left, every send answered.</li>
++ * receipts of a key come in the order its messages were sent; replays and retries are no sends of a key.</li>
++ * <li>ONE_ID_PER_DEDUPE_KEY, at each answer and partner call of a message with a dedupe key: the messages that ran a step or
++ * reached the partner under that key are one at most — a rerun of the same id is the same one (D-049 b).</li>
++ * <li>REPLAY_YIELDS_RECORDED, at each replay and DLQ retry: none is refused REMOVED_BY_RETENTION, and a replay yields the hash
++ * its message recorded as its last output; a replay refused for its input's snapshot fails SNAPSHOT_PER_STEP instead.</li>
++ * <li>after the drain — ACKED_IS_FINAL: every Accepted at-least-once message and every retry that ran was delivered once, or
++ * parked at the {@code to} step after every call was refused and not retried since; every Accepted at-most-once message ran
++ * its first attempt alone, to its first delivered call; a retry's row went away exactly when it delivered. SNAPSHOT_PER_STEP:
++ * every message that ran has one snapshot per step, the last FAILED when nothing was delivered; DRAINED: no run, no held
++ * call, no wake, no item left, every send and replay answered.</li>
+  * </ul>
+- * Each check keeps its first {@value #KEPT_PER_CHECK} failures. Called from the driver and from the message threads, one at a time.
++ * A comparison's part names the action whose prediction it compares — a message whose every call met an outage counts as
++ * PARTNER_OUTAGE, one whose reply was dropped as DROP_REPLY. Each check keeps its first {@value #KEPT_PER_CHECK} failures.
++ * Called from the driver and from the message threads, one at a time.
+  */
+ final class Oracle {
+ 
+     static final int KEPT_PER_CHECK = 25;
+     private static final String RETRYABLE = "Nack retryable=true";
++    private static final String AT_MOST = "one id at most";
+ 
+-    /** One send: what was sent, what the model expects of it, what came back. */
++    /** What one partner call was. */
++    enum Call { DELIVERED, DROPPED, REFUSED, OUTAGE }
++
++    /** One run the oracle follows: a send, a replay or a DLQ retry; what it was given, what the model expects, what came back. */
+     static final class Send {
+         final String id;
+         final String flow;
++        final Action action;
+         final String key;
++        final String dedupe;
+         final Buffer payload;
+         final int seq;                   // its place among the sends of its key (1, 2, ...); 0 without a key
+         final boolean storeRefused;      // its STORE_REFUSE draw hit
+         final String atLimit;            // what was in flight when it came at the limit; null when it found room
++        final String limitPart;          // the ADMISSION_BOUNDS part it came at the limit by
++        final String first;              // the id its dedupe key was saved under before it; null when none
++        final Send origin;               // a replay's or retry's message
++        final int step;                  // a replay's first step
++        final String recorded;           // a replay's expectation: its message's last recorded output hash
++        final List<Call> calls = new ArrayList<>();
++        final Set<Integer> attempts = new TreeSet<>();
+         AsyncResult<Ack> answer;
++        boolean done;
+         boolean accepted;
+-        final List<Boolean> calls = new ArrayList<>();   // per partner call in order: delivered
++        boolean retriedOk;               // a retry of its DLQ row delivered: the row is gone
+ 
+-        Send(String id, String flow, String key, Buffer payload, int seq, boolean storeRefused, String atLimit) {
++        Send(String id, String flow, Action action, String key, String dedupe, Buffer payload, int seq, boolean storeRefused, String atLimit,
++             String limitPart, String first, Send origin, int step, String recorded) {
+             this.id = id;
+             this.flow = flow;
++            this.action = action;
+             this.key = key;
++            this.dedupe = dedupe;
+             this.payload = payload;
+             this.seq = seq;
+             this.storeRefused = storeRefused;
+             this.atLimit = atLimit;
++            this.limitPart = limitPart;
++            this.first = first;
++            this.origin = origin;
++            this.step = step;
++            this.recorded = recorded;
++        }
++
++        boolean isSend() {
++            return origin == null;
+         }
+     }
+ 
+     /** A payload Nacked at {@code tick}, to be sent again. */
+-    record Pending(String flow, String key, Buffer payload, long tick) {}
++    record Pending(String flow, String key, String dedupe, Buffer payload, long tick) {}
+ 
+     private final SimConfig config;
+     private final Trace trace;
+     private final LongSupplier tick;
++    private final World world;
++    private final SimStore store;
+     private final Map<String, Send> sends = new LinkedHashMap<>();
+-    private final Map<String, long[]> inFlight = new HashMap<>();          // per flow: requests, bytes of sends not answered
++    private final Map<String, long[]> inFlight = new HashMap<>();          // per flow: requests, bytes of sends holding a permit
++    private final Map<String, long[]> limits = new HashMap<>();            // per flow: maxInFlight, maxInFlightBytes
+     private final Map<String, Integer> sentOfKey = new HashMap<>();
+     private final Map<String, String> open = new HashMap<>();              // per key: the message at the partner
+     private final Map<String, Integer> firstReceived = new HashMap<>();    // per key: the highest seq received so far
++    private final Map<String, String> firstOf = new HashMap<>();           // per dedupe key: the id the model saved first
++    private final Map<String, Set<String>> atPartner = new HashMap<>();    // per dedupe key: the ids that reached the partner
++    private final Map<BlobKey, Buffer> replies = new ConcurrentHashMap<>(); // what the partner wrote, by key
++    private final List<Send> delivered = new ArrayList<>();                // sync and at-least-once sends, by first delivery
++    private final List<Send> deduped = new ArrayList<>();                  // dedupe-keyed sends Accepted under their own id
+     private final List<Pending> nacked = new ArrayList<>();
+     private final Map<Check, Long> compared = new EnumMap<>(Check.class);
+     private final Map<Check, Integer> failed = new EnumMap<>(Check.class);
+     private final List<Failure> failures = new ArrayList<>();
+ 
+-    Oracle(SimConfig config, Trace trace, LongSupplier tick) {
++    Oracle(SimConfig config, Trace trace, LongSupplier tick, World world, SimStore store) {
+         this.config = config;
+         this.trace = trace;
+         this.tick = tick;
+-        inFlight.put(SimRun.SYNC, new long[2]);
+-        inFlight.put(SimRun.ALO, new long[2]);
++        this.world = world;
++        this.store = store;
++        for (String flow : SimRun.FLOWS) inFlight.put(flow, new long[2]);
++        limits.put(SimRun.SYNC, new long[] {config.syncMaxInFlight(), config.syncMaxInFlightBytes()});
++        limits.put(SimRun.ALO, new long[] {config.aloMaxInFlight(), config.aloMaxInFlightBytes()});
++        limits.put(SimRun.AMO, new long[] {config.amoMaxInFlight(), config.amoMaxInFlightBytes()});
+     }
+ 
+     /** A send starts: judged at the limit or with room against what its flow has in flight. */
+-    synchronized Send started(String id, String flow, String key, Buffer payload, boolean storeRefused) {
++    synchronized Send started(String id, String flow, Action action, String key, String dedupe, Buffer payload, boolean storeRefused) {
+         long[] f = inFlight.get(flow);
+         long size = payload.length();
+-        boolean room = f[0] < maxRequests(flow) && f[1] + size <= maxBytes(flow);
++        boolean requests = f[0] < maxRequests(flow);
++        boolean room = requests && f[1] + size <= maxBytes(flow);
+         String state = f[0] + " of " + maxRequests(flow) + " requests, " + f[1] + " + " + size + " of " + maxBytes(flow) + " bytes in flight";
+         int seq = key == null ? 0 : sentOfKey.merge(key, 1, Integer::sum);
+-        Send s = new Send(id, flow, key, payload, seq, storeRefused, room ? null : state);
++        String first = dedupe == null ? null : firstOf.get(dedupe);
++        if (dedupe != null && first == null && room && !storeRefused) firstOf.put(dedupe, id);
++        Send s = new Send(id, flow, action, key, dedupe, payload, seq, storeRefused, room ? null : state,
++                requests ? Compared.BYTES : Compared.REQUESTS, first, null, 0, null);
+         f[0]++;
+         f[1] += size;
+         sends.put(id, s);
+@@ -104,67 +163,83 @@ final class Oracle {
+     /** The send's unit is over: one that came at the limit was refused in it. */
+     synchronized void startEnded(Send s) {
+         if (s.atLimit == null) return;
+-        count(Check.ADMISSION_BOUNDS, 1);
+         String got = s.answer == null ? "admitted (no answer within its unit)" : describe(s);
+-        if (!got.equals(RETRYABLE)) fail(Check.ADMISSION_BOUNDS, s.id + " came at the limit (" + s.atLimit + ") and was " + got);
++        compare(Check.ADMISSION_BOUNDS, s.limitPart, s.id, RETRYABLE, got, s.id + " came at the limit (" + s.atLimit + ") and was " + got);
+     }
+ 
+-    /** The send's answer: out of flight, to the resend pool when retryable, and as predicted when it had room. */
+-    synchronized void answered(Send s, AsyncResult<Ack> answer) {
++    /**
++     * The send's answer: out of flight — an Accepted at-most-once send once its run ended — to the resend pool when retryable,
++     * and as predicted when it had room. True when it started an at-most-once run.
++     */
++    synchronized boolean answered(Send s, AsyncResult<Ack> answer) {
+         s.answer = answer;
+-        long[] f = inFlight.get(s.flow);
+-        f[0]--;
+-        f[1] -= s.payload.length();
++        s.done = true;
++        boolean runs = SimRun.AMO.equals(s.flow) && answer.result() instanceof Ack.Accepted;   // a failed answer's result is null
++        if (!runs) leave(s);
+         String got = describe(s);
+         trace.add(tick.getAsLong(), s.id, "ANSWER " + got);
+-        if (got.equals(RETRYABLE)) nacked.add(new Pending(s.flow, s.key, s.payload, tick.getAsLong()));
++        if (got.equals(RETRYABLE)) nacked.add(new Pending(s.flow, s.key, s.dedupe, s.payload, tick.getAsLong()));
+         s.accepted = got.equals("Accepted " + s.id);   // an acked message is final, predicted or not
+-        if (s.atLimit != null) return;
+-        count(Check.PREDICTED, 1);
+-        String expected = expected(s);
+-        if (!got.equals(expected)) fail(Check.PREDICTED, s.id + ": expected " + expected + ", was " + got);
++        if (s.accepted && s.action == Action.SEND_DEDUPED) deduped.add(s);
++        if (s.dedupe != null) oneId(s);
++        if (s.atLimit == null) compare(Check.PREDICTED, part(s), s.id, expected(s), observed(s), s.id + ": expected " + expected(s) + ", was " + observed(s));
++        return runs;
++    }
++
++    /** The Accepted at-most-once send's run ended: its permit is back. */
++    synchronized void atMostOnceEnded(Send s) {
++        leave(s);
+     }
+ 
+-    /** A partner call of {@code id} starts: a keyed message checks its key's order. */
+-    synchronized void call(String id, String key, int ordinal) {
+-        if (key == null) return;
++    /** A partner call of {@code id} starts: a send of a key checks its key's order. */
++    synchronized void call(String id, int ordinal) {
+         Send s = sends.get(id);
+-        count(Check.KEY_ORDER, 1);
+-        String there = open.getOrDefault(key, id);
+-        if (!there.equals(id)) fail(Check.KEY_ORDER, id + " of key " + key + " reached the partner while " + there + " of that key is there");
++        if (s.key == null) return;   // a sync or at-most-once send, a replay, a retry
++        String part = s.action.name();
++        String there = open.getOrDefault(s.key, id);
++        told(Check.KEY_ORDER, part, id, there.equals(id), id + " of key " + s.key + " reached the partner while " + there + " of that key is there");
+         if (s.calls.isEmpty()) {
+-            count(Check.KEY_ORDER, 1);
+-            int highest = firstReceived.getOrDefault(key, 0);
+-            if (s.seq < highest) {
+-                fail(Check.KEY_ORDER, id + " (send #" + s.seq + " of key " + key + ") reached the partner after send #" + highest + " of that key");
+-            }
+-            firstReceived.put(key, Math.max(highest, s.seq));
++            int highest = firstReceived.getOrDefault(s.key, 0);
++            told(Check.KEY_ORDER, part, id, s.seq >= highest,
++                    id + " (send #" + s.seq + " of key " + s.key + ") reached the partner after send #" + highest + " of that key");
++            firstReceived.put(s.key, Math.max(highest, s.seq));
+         }
+-        open.put(key, id);
++        open.put(s.key, id);
++    }
++
++    /** The message {@code id}, no replay, reached the partner under {@code dedupe}. */
++    synchronized void reached(String id, String dedupe) {
++        atPartner.computeIfAbsent(dedupe, k -> new TreeSet<>()).add(id);
++        oneId(sends.get(id));
++    }
++
++    /** A partner call of {@code id} ended as {@code call}; a send of a key's last one closes it at the partner. */
++    synchronized void called(String id, int attempt, int ordinal, Call call) {
++        Send s = sends.get(id);
++        if (call == Call.DELIVERED && s.isSend() && !SimRun.AMO.equals(s.flow)) delivered.add(s);   // a send delivers once
++        s.calls.add(call);
++        s.attempts.add(attempt);
++        if (s.key != null && (call == Call.DELIVERED || ordinal == config.retries())) open.remove(s.key, id);
+     }
+ 
+-    /** A partner call of {@code id} ended, delivered or refused; its last one closes the message at the partner. */
+-    synchronized void called(String id, String key, int ordinal, boolean delivered) {
+-        sends.get(id).calls.add(delivered);
+-        if (key != null && (delivered || ordinal == config.retries())) open.remove(key, id);
++    /** The partner wrote {@code reply} under {@code key}: what a sync Reply's body reads as, whatever its store keeps. */
++    void wrote(BlobKey key, Buffer reply) {
++        replies.put(key, reply);
+     }
+ 
+     /** After a unit: no flow and no worker holds more than its limit; counted only at the limit. */
+     synchronized void bounds(Runs runs) {
+-        for (String flow : List.of(SimRun.SYNC, SimRun.ALO)) {
++        for (String flow : SimRun.FLOWS) {
+             long[] f = inFlight.get(flow);
+-            if (f[0] >= maxRequests(flow) || f[1] + config.minPayload() > maxBytes(flow)) {
+-                count(Check.ADMISSION_BOUNDS, 1);
+-                if (f[0] > maxRequests(flow) || f[1] > maxBytes(flow)) {
+-                    fail(Check.ADMISSION_BOUNDS, flow + " holds " + f[0] + " of " + maxRequests(flow) + " requests, " + f[1] + " of " + maxBytes(flow) + " bytes");
+-                }
+-            }
++            String holds = flow + " holds " + f[0] + " of " + maxRequests(flow) + " requests, " + f[1] + " of " + maxBytes(flow) + " bytes";
++            if (f[0] >= maxRequests(flow)) told(Check.ADMISSION_BOUNDS, Compared.REQUESTS, null, f[0] <= maxRequests(flow), holds);
++            if (f[1] + config.minPayload() > maxBytes(flow)) told(Check.ADMISSION_BOUNDS, Compared.BYTES, null, f[1] <= maxBytes(flow), holds);
+         }
+         for (String worker : SimRun.WORKERS) {
+             long runsOf = runs.ofWorker(worker);
+             if (runsOf >= config.aloMaxInFlight()) {
+-                count(Check.ADMISSION_BOUNDS, 1);
+-                if (runsOf > config.aloMaxInFlight()) fail(Check.ADMISSION_BOUNDS, "worker " + worker + " runs " + runsOf + " of " + config.aloMaxInFlight());
++                told(Check.ADMISSION_BOUNDS, Compared.WORKER_RUNS, null, runsOf <= config.aloMaxInFlight(),
++                        "worker " + worker + " runs " + runsOf + " of " + config.aloMaxInFlight());
+             }
+         }
+     }
+@@ -180,29 +255,104 @@ final class Oracle {
+         return null;
+     }
+ 
++    /** The {@code pick}-th (modulo) dedupe-keyed send Accepted under its own id: what a lost ACK sends again; null when none. */
++    synchronized Send duplicable(int pick) {
++        return deduped.isEmpty() ? null : deduped.get(pick % deduped.size());
++    }
++
++    /** The {@code pick}-th (modulo) sync or at-least-once send that delivered; null when none. */
++    synchronized Send replayable(int pick) {
++        return delivered.isEmpty() ? null : delivered.get(pick % delivered.size());
++    }
++
++    /** A DLQ row of {@code id} — every one is a run the oracle follows — may be retried: its reply was never dropped (its calls tell why it parked). */
++    synchronized boolean retryable(String id) {
++        return !sends.get(id).calls.contains(Call.DROPPED);
++    }
++
++    /** {@code id} has made no partner call yet: its next one is its first. */
++    synchronized boolean fresh(String id) {
++        return sends.get(id).calls.isEmpty();
++    }
++
++    /** The run the oracle follows as {@code id}; null for none. */
++    synchronized Send sent(String id) {
++        return sends.get(id);
++    }
++
++    /** A replay or retry of {@code flow} is under way: the flow's replay takes one at a time, never BUSY. */
++    synchronized boolean replaying(String flow) {
++        return sends.values().stream().anyMatch(s -> !s.isSend() && !s.done && s.flow.equals(flow));
++    }
++
++    /** A replay of {@code origin} from {@code step} as {@code id} starts, expected to yield {@code recorded}. */
++    synchronized Send replayStarted(String id, Send origin, int step, String recorded) {
++        Send r = new Send(id, origin.flow, Action.REPLAY_FROM, null, null, origin.payload, 0, false, null, null, null, origin, step, recorded);
++        sends.put(id, r);
++        trace.add(tick.getAsLong(), id, "REPLAY " + origin.id + " from " + step);
++        return r;
++    }
++
++    /** A retry of the DLQ row of {@code origin} as {@code id} starts. */
++    synchronized Send retryStarted(String id, Send origin) {
++        Send r = new Send(id, origin.flow, Action.RETRY_DLQ, null, null, origin.payload, 0, false, null, null, null, origin, 0, null);
++        sends.put(id, r);
++        trace.add(tick.getAsLong(), id, "RETRY " + origin.id);
++        return r;
++    }
++
++    /** The replay {@code r} returned {@code out}, or threw {@code failure} (null when it returned). */
++    synchronized void replayed(Send r, Envelope out, Throwable failure) {
++        r.done = true;
++        String got = outcome(out, failure);
++        trace.add(tick.getAsLong(), r.id, "REPLAYED " + got);
++        String about = r.id + ", the replay of " + r.origin.id + " from step " + r.step + ": ";
++        if (failure instanceof ReplayRefusedException refused && refused.reason() != ReplayRefusedException.Reason.REMOVED_BY_RETENTION) {
++            compare(Check.SNAPSHOT_PER_STEP, "", r.origin.id, "replayed", got, about + "its input was not recorded: " + got);
++            return;
++        }
++        String expected = r.calls.contains(Call.DELIVERED) ? "yields " + r.recorded : "failed";
++        compare(Check.REPLAY_YIELDS_RECORDED, Action.REPLAY_FROM.name(), r.origin.id, expected, got, about + "expected " + expected + ", was " + got);
++    }
++
++    /** The retry {@code r} returned or threw {@code failure} (null when it returned); its row is {@code kept} now. */
++    synchronized void retried(Send r, Throwable failure, boolean kept) {
++        r.done = true;
++        String part = Action.RETRY_DLQ.name();
++        String about = r.id + ", the retry of " + r.origin.id + "'s DLQ row: ";
++        String ran = failure instanceof ReplayRefusedException refused ? "refused " + refused.reason() : "ran";
++        trace.add(tick.getAsLong(), r.id, "RETRIED " + ran + (kept ? ", row kept" : ", row gone"));
++        compare(Check.REPLAY_YIELDS_RECORDED, part, r.origin.id, "ran", ran, about + ran);
++        if (!ran.equals("ran")) return;
++        r.accepted = true;   // a retry that ran is a message of its own: final as an Accepted one
++        boolean delivers = r.calls.contains(Call.DELIVERED);
++        if (delivers) r.origin.retriedOk = true;
++        String expected = delivers ? "row gone, 1 delivered of " + upToDelivered(r) + " calls" : "row kept, 0 delivered of " + (config.retries() + 1) + " calls";
++        String got = (kept ? "row kept, " : "row gone, ") + count(r, Call.DELIVERED) + " delivered of " + r.calls.size() + " calls";
++        compare(Check.ACKED_IS_FINAL, part, r.origin.id, expected, got, about + "expected " + expected + ", was " + got);
++    }
++
+     /** The checks after the drain, over the in-memory store and DLQ as the drain left them. */
+     synchronized void judge(SimStore records, Dlq dlq, Runs runs, int wakes, boolean itemsLeft) {
+         for (Send s : sends.values()) {
+-            if (s.accepted) {
+-                count(Check.ACKED_IS_FINAL, 1);
+-                long delivered = s.calls.stream().filter(d -> d).count();
+-                String got = delivered + " delivered of " + s.calls.size() + " calls, parked "
+-                        + dlq.get(s.id).await().map(p -> "at step " + p.step()).orElse("nowhere");
+-                String expected = delivered > 0 ? "1 delivered of " + s.calls.size() + " calls, parked nowhere"
+-                        : "0 delivered of " + (config.retries() + 1) + " calls, parked at step 3";
+-                if (!got.equals(expected)) fail(Check.ACKED_IS_FINAL, s.id + " was accepted: expected " + expected + ", was " + got);
+-            }
+-            if (!s.calls.isEmpty()) {
+-                count(Check.SNAPSHOT_PER_STEP, 1);
++            if (s.accepted) final_(s, dlq);
++            if (s.isSend() && !s.calls.isEmpty()) {
+                 String got = records.recorded(s.id).stream().map(x -> x.step() + ":" + x.stepName() + ":" + x.outcome())
+                         .collect(Collectors.joining(","));
+                 String expected = timeline(s);
+-                if (!got.equals(expected)) fail(Check.SNAPSHOT_PER_STEP, s.id + ": expected " + expected + ", was " + got);
++                compare(Check.SNAPSHOT_PER_STEP, s.action.name(), s.id, expected, got, s.id + ": expected " + expected + ", was " + got);
+             }
+         }
+-        List<String> unanswered = sends.values().stream().filter(s -> s.answer == null).map(s -> s.id).toList();
+-        count(Check.DRAINED, 4 + sends.size());
++        List<String> unanswered = new ArrayList<>();
++        for (Send s : sends.values()) {
++            told(Check.DRAINED, "", s.id, s.done, null);
++            if (!s.done) unanswered.add(s.id);
++        }
+         String got = "runs " + runs.active() + ", held " + runs.held() + ", wakes " + wakes + ", items left " + itemsLeft + ", unanswered " + unanswered;
++        told(Check.DRAINED, "", null, runs.active() == 0, null);
++        told(Check.DRAINED, "", null, runs.held() == 0, null);
++        told(Check.DRAINED, "", null, wakes == 0, null);
++        told(Check.DRAINED, "", null, !itemsLeft, null);
+         String drained = "runs 0, held 0, wakes 0, items left false, unanswered []";
+         if (!got.equals(drained)) fail(Check.DRAINED, "after the drain: " + got + "\n" + runs.unclassified());
+     }
+@@ -215,38 +365,112 @@ final class Oracle {
+         return Map.copyOf(compared);
+     }
+ 
++    /** ACKED_IS_FINAL of an Accepted at-least-once or at-most-once message, or of a retry that ran. */
++    private void final_(Send s, Dlq dlq) {
++        String parked = "parked " + dlq.get(s.id).await().map(p -> "at step " + p.step()).orElse("nowhere");
++        long delivers = count(s, Call.DELIVERED);
++        String expected;
++        String got;
++        if (SimRun.AMO.equals(s.flow)) {
++            expected = "attempts [1], " + upToDelivered(s) + " calls, " + Math.min(delivers, 1) + " delivered, parked nowhere";
++            got = "attempts " + s.attempts + ", " + s.calls.size() + " calls, " + delivers + " delivered, " + parked;
++        } else {
++            got = delivers + " delivered of " + s.calls.size() + " calls, " + parked;
++            expected = delivers > 0 ? "1 delivered of " + s.calls.size() + " calls, parked nowhere"
++                    : "0 delivered of " + (config.retries() + 1) + " calls, parked " + (s.retriedOk ? "nowhere" : "at step 3");
++        }
++        String part = s.isSend() ? part(s) : Action.RETRY_DLQ.name();
++        String id = s.isSend() ? s.id : s.origin.id;
++        compare(Check.ACKED_IS_FINAL, part, id, expected, got, s.id + " was accepted: expected " + expected + ", was " + got);
++    }
++
++    /** ONE_ID_PER_DEDUPE_KEY for {@code s}'s key: the messages that ran a step or reached the partner under it. */
++    private void oneId(Send s) {
++        Set<String> ids = new TreeSet<>(store.ran(s.dedupe));
++        ids.addAll(atPartner.getOrDefault(s.dedupe, Set.of()));
++        String got = ids.size() <= 1 ? AT_MOST : ids.size() + " ids " + ids;
++        compare(Check.ONE_ID_PER_DEDUPE_KEY, s.action.name(), s.id, AT_MOST, got, "dedupe key " + s.dedupe + " of " + s.id + ": " + got);
++    }
++
++    /** {@code s} gives its permit back: one request and its payload's bytes out of its flow's model. */
++    private void leave(Send s) {
++        long[] f = inFlight.get(s.flow);
++        f[0]--;
++        f[1] -= s.payload.length();
++    }
++
+     /** What the model expects of a send with room. */
+     private String expected(Send s) {
+-        if (SimRun.ALO.equals(s.flow)) return s.storeRefused ? RETRYABLE : "Accepted " + s.id;
+-        if (s.calls.contains(true)) return "Reply " + s.id + " " + Buffer.buffer(SimPartner.REPLY_PREFIX).appendBuffer(SimSteps.reversed(s.payload));
++        if (SimRun.AMO.equals(s.flow)) return "Accepted " + s.id;
++        if (SimRun.ALO.equals(s.flow)) return s.first != null ? "Accepted " + s.first : s.storeRefused ? RETRYABLE : "Accepted " + s.id;
++        if (s.calls.contains(Call.DELIVERED)) {
++            return "Reply " + s.id + " " + Buffer.buffer(SimPartner.REPLY_PREFIX).appendBuffer(SimSteps.reversed(s.payload)) + " after " + upToDelivered(s) + " calls";
++        }
+         return "Failed NackException after " + (config.retries() + 1) + " calls";
+     }
+ 
++    /** The answer as PREDICTED compares it: a Reply with the partner calls it took. */
++    private String observed(Send s) {
++        String d = describe(s);
++        return s.answer.succeeded() && s.answer.result() instanceof Ack.Reply ? d + " after " + s.calls.size() + " calls" : d;
++    }
++
++    /** The calls a run makes to its first delivered one, that one included; every one when none delivers. */
++    private int upToDelivered(Send s) {
++        int first = s.calls.indexOf(Call.DELIVERED);
++        return first < 0 ? config.retries() + 1 : first + 1;
++    }
++
++    /** The comparison's part: an outage met by every call, a dropped reply, else the send's own action. */
++    private static String part(Send s) {
++        if (!s.calls.isEmpty() && s.calls.stream().allMatch(c -> c == Call.OUTAGE)) return Action.PARTNER_OUTAGE.name();
++        if (s.calls.contains(Call.DROPPED)) return Action.DROP_REPLY.name();
++        return s.action.name();
++    }
++
++    private static long count(Send s, Call call) {
++        return s.calls.stream().filter(c -> c == call).count();
++    }
++
+     /** The timeline a message that ran leaves: a snapshot per step, the last FAILED when no call delivered. */
+-    private String timeline(Send s) {
+-        String steps = SimRun.SYNC.equals(s.flow) ? "0:ingress:OK,1:transform:OK,2:partner:" : "0:ingress:OK,1:key:OK,2:transform:OK,3:partner:";
+-        return steps + (s.calls.contains(true) ? "OK" : "FAILED");
++    private static String timeline(Send s) {
++        String steps = SimRun.ALO.equals(s.flow) ? "0:ingress:OK,1:key:OK,2:transform:OK,3:partner:" : "0:ingress:OK,1:transform:OK,2:partner:";
++        return steps + (s.calls.contains(Call.DELIVERED) ? "OK" : "FAILED");
++    }
++
++    /** A replay's outcome as REPLAY_YIELDS_RECORDED compares it. */
++    private static String outcome(Envelope out, Throwable failure) {
++        if (failure instanceof ReplayRefusedException refused) return "refused " + refused.reason();
++        return failure != null ? "failed" : "yields " + out.body().hash().hex();
+     }
+ 
+     /** The send's answer as the checks compare it; a failure names its cause's type and how many partner calls were made. */
+-    private static String describe(Send s) {
++    private String describe(Send s) {
+         if (s.answer.failed()) return "Failed " + s.answer.cause().getClass().getSimpleName() + " after " + s.calls.size() + " calls";
+         Ack ack = s.answer.result();
+-        if (ack instanceof Ack.Reply r) return "Reply " + r.reply().id() + " " + r.reply().body().whole();
++        if (ack instanceof Ack.Reply r) return "Reply " + r.reply().id() + " " + replies.get(r.reply().body().key());
+         if (ack instanceof Ack.Accepted a) return "Accepted " + a.messageId();
+         return "Nack retryable=" + ((Ack.Nack) ack).retryable();
+     }
+ 
+     private long maxRequests(String flow) {
+-        return SimRun.SYNC.equals(flow) ? config.syncMaxInFlight() : config.aloMaxInFlight();
++        return limits.get(flow)[0];
+     }
+ 
+     private long maxBytes(String flow) {
+-        return SimRun.SYNC.equals(flow) ? config.syncMaxInFlightBytes() : config.aloMaxInFlightBytes();
++        return limits.get(flow)[1];
++    }
++
++    /** One comparison: told and counted; a failure with {@code detail} when {@code got} is not {@code expected}. */
++    private void compare(Check check, String part, String id, String expected, String got, String detail) {
++        told(check, part, id, expected.equals(got), detail);
+     }
+ 
+-    private void count(Check check, long n) {
+-        compared.merge(check, n, Long::sum);
++    /** One comparison that {@code held} or not: told to the world, counted, a failure with {@code detail} when it did not hold. */
++    private void told(Check check, String part, String id, boolean held, String detail) {
++        compared.merge(check, 1L, Long::sum);
++        world.onCompared(new Compared(tick.getAsLong(), check, part, Optional.ofNullable(id), held));
++        if (!held && detail != null) fail(check, detail);
+     }
+ 
+     private void fail(Check check, String detail) {
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/Runs.java b/flottila-sim/src/main/java/io/flottila/sim/Runs.java
+index d1b17f6..937ca07 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/Runs.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/Runs.java
+@@ -31,20 +31,28 @@ final class Runs {
+      * ended — so the run's end is always heard on the run's own thread, never on the one that started it.
+      */
+     static final class Run {
++        final String key;      // its place among the runs: the message id; an at-most-once run's is the id and AT_MOST_ONCE
+         final String id;
+-        final String worker;   // null: a send's run
+-        final Thread starter;  // the thread the item was handed out on; null for a send's run
++        final String worker;   // null: a send's, a replay's or an at-most-once run
++        final Thread starter;  // the thread the item was handed out on, or the at-most-once send's; null for a send's run
++        final Runnable onEnd;  // told on the join helper once the thread ended, before the driver hears of it
+         final CompletableFuture<Void> gate = new CompletableFuture<>();
+         Thread thread;         // guarded by the lock; null until a worker run binds
+         State state = State.RUNNING;   // guarded by the lock
+ 
+-        Run(String id, String worker, Thread starter) {
++        Run(String key, String id, String worker, Thread starter, Runnable onEnd) {
++            this.key = key;
+             this.id = id;
+             this.worker = worker;
+             this.starter = starter;
++            this.onEnd = onEnd;
+         }
+     }
+ 
++    /** What an at-most-once run's key adds to its message id: the send's own run has the id alone. */
++    static final String AT_MOST_ONCE = "#at-most-once";
++    private static final Runnable NOTHING = () -> {};
++
+     /** A partner call held until its tick: the driver's RELEASE completes {@code released}. */
+     record Held(Run run, long releaseTick, CompletableFuture<Void> released) {}
+ 
+@@ -67,7 +75,7 @@ final class Runs {
+ 
+     /** A send's run on {@code thread}, not started yet: registered first, so its first call finds it. */
+     Run start(String id, Thread thread) {
+-        Run run = new Run(id, null, null);
++        Run run = new Run(id, id, null, null, NOTHING);
+         lock.lock();
+         try {
+             run.thread = thread;
+@@ -86,10 +94,47 @@ final class Runs {
+     void expect(String id, String worker) {
+         lock.lock();
+         try {
+-            active.put(id, new Run(id, worker, Thread.currentThread()));
++            active.put(id, new Run(id, id, worker, Thread.currentThread(), NOTHING));
++        } finally {
++            lock.unlock();
++        }
++    }
++
++    /**
++     * The at-most-once delivery the calling send thread made started the run of {@code id} on a thread of its own (D-101,
++     * P2-10b): registered, the calling thread waits until that thread bound at {@link #bindAtMostOnce} — so it is never
++     * unregistered once this thread ended — and the run goes on once this thread ended. {@code onEnd} is told as the run ends.
++     */
++    void expectAtMostOnce(String id, Runnable onEnd) {
++        Run run = new Run(id + AT_MOST_ONCE, id, null, Thread.currentThread(), onEnd);
++        lock.lock();
++        try {
++            active.put(run.key, run);
++            changed.signalAll();
++            while (run.thread == null) changed.awaitUninterruptibly();
++        } finally {
++            lock.unlock();
++        }
++    }
++
++    /**
++     * The calling thread runs the at-most-once message {@code id}'s transform, its first simulation call and its only one of
++     * this kind (the flow has one transform step, and Retry wraps the {@code to} alone): it waits until its send registered
++     * the run ({@link #expectAtMostOnce}), binds, and waits at the run's gate until the send's thread ended.
++     */
++    void bindAtMostOnce(String id) {
++        Run run;
++        lock.lock();
++        try {
++            while ((run = active.get(id + AT_MOST_ONCE)) == null) changed.awaitUninterruptibly();
++            run.thread = Thread.currentThread();
++            byThread.put(run.thread, run);
++            changed.signalAll();
+         } finally {
+             lock.unlock();
+         }
++        joinEnd(run);
++        run.gate.join();   // never fails, never interrupted
+     }
+ 
+     /** The runs whose items were handed out on {@code starter} may go on: it is past their start. */
+@@ -102,11 +147,15 @@ final class Runs {
+         }
+     }
+ 
+-    /** The calling thread is the expected worker run of {@code id}: bound, its end joined; it waits at the run's gate. */
++    /**
++     * The calling thread is the expected worker run of {@code id}: bound, its end joined; it waits at the run's gate. A thread
++     * that is a run already (a replay reading the timeline it replays) goes on.
++     */
+     void bind(String id) {
+         Run run;
+         lock.lock();
+         try {
++            if (byThread.containsKey(Thread.currentThread())) return;
+             run = active.get(id);
+             run.thread = Thread.currentThread();
+             byThread.put(run.thread, run);
+@@ -121,6 +170,7 @@ final class Runs {
+     void joinEnd(Run run) {
+         Thread.ofVirtual().name("sim-join-" + run.id).start(new FutureTask<Void>(() -> {
+             run.thread.join();
++            run.onEnd.run();
+             ended(run);
+             return null;
+         }) {
+@@ -253,7 +303,7 @@ final class Runs {
+     private void ended(Run run) {
+         lock.lock();
+         try {
+-            active.remove(run.id, run);
++            active.remove(run.key, run);
+             byThread.remove(run.thread, run);
+             open(run.thread);   // reentrant: the runs it handed items to may go on
+             changed.signalAll();
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/SimConfig.java b/flottila-sim/src/main/java/io/flottila/sim/SimConfig.java
+index 3766e3d..78887d9 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/SimConfig.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/SimConfig.java
+@@ -30,18 +30,35 @@ import java.util.SplittableRandom;
+  * @param resendAfter a Nacked payload is sent again no earlier than this many ticks after its Nack
+  * @param drainTicks the bound of the drain after the last tick
+  * @param tick how far the fake clock moves per tick
++ * @param amoMaxInFlight the at-most-once flow's {@code limits.maxInFlight} (P2-10b)
++ * @param amoMaxInFlightBytes the at-most-once flow's {@code limits.maxInFlightBytes} (P2-10b)
++ * @param outageTicks how many ticks a PARTNER_OUTAGE refuses every partner call, its own tick included (P2-10b)
+  */
+ public record SimConfig(String name, Map<Action, Integer> weights, Map<FaultKind, Double> rates, List<String> keys, int actionsPerTick,
+                         long minPayload, long maxPayload, long maxBodyBytes, long syncMaxInFlight, long syncMaxInFlightBytes,
+                         long aloMaxInFlight, long aloMaxInFlightBytes, int retries, Duration retryInitial, Duration retryMax,
+-                        double retryMultiplier, int maxHeldTicks, int resendAfter, int drainTicks, Duration tick) {
++                        double retryMultiplier, int maxHeldTicks, int resendAfter, int drainTicks, Duration tick, long amoMaxInFlight,
++                        long amoMaxInFlightBytes, int outageTicks) {
+ 
+     /** The per-push configuration, frozen since seeds are pinned under it (P2-10a, bench/RESULTS.md §P2-10). */
+     public static final SimConfig V1 = new SimConfig("V1",
+             Map.of(Action.SEND_SYNC, 3, Action.SEND_ALO, 4, Action.RESEND, 1, Action.POLL, 4),
+             Map.of(FaultKind.DELAY, 0.25, FaultKind.REFUSE, 0.2, FaultKind.STORE_REFUSE, 0.05),
+             List.of("k1", "k2", "k3", "k4"), 2, 16, 160, 256, 2, 256, 3, 768, 2, Duration.ofSeconds(1), Duration.ofSeconds(4), 2.0, 8, 3,
+-            400, Duration.ofSeconds(1));
++            400, Duration.ofSeconds(1), 2, 256, 4);
++
++    /**
++     * The per-push configuration from P2-10b on: V1's limits, faults and actions, and the P2-10b actions beside them (V1 draws
++     * none of them). Frozen since seeds are pinned under it (bench/RESULTS.md §P2-10).
++     */
++    public static final SimConfig V2 = new SimConfig("V2",
++            Map.ofEntries(Map.entry(Action.SEND_SYNC, 6), Map.entry(Action.SEND_ALO, 8), Map.entry(Action.RESEND, 2), Map.entry(Action.POLL, 4),
++                    Map.entry(Action.SEND_AMO, 4), Map.entry(Action.SEND_DEDUPED, 3), Map.entry(Action.DUPLICATE, 2),
++                    Map.entry(Action.REPLAY_FROM, 2), Map.entry(Action.RETRY_DLQ, 2), Map.entry(Action.PARTNER_OUTAGE, 1),
++                    Map.entry(Action.DROP_REPLY, 2)),
++            V1.rates, V1.keys, V1.actionsPerTick, V1.minPayload, V1.maxPayload, V1.maxBodyBytes, V1.syncMaxInFlight, V1.syncMaxInFlightBytes,
++            V1.aloMaxInFlight, V1.aloMaxInFlightBytes, V1.retries, V1.retryInitial, V1.retryMax, V1.retryMultiplier, V1.maxHeldTicks,
++            V1.resendAfter, V1.drainTicks, V1.tick, 2, 256, 4);
+ 
+     public SimConfig {
+         weights = Map.copyOf(weights);
+@@ -49,10 +66,10 @@ public record SimConfig(String name, Map<Action, Integer> weights, Map<FaultKind
+         keys = List.copyOf(keys);
+     }
+ 
+-    /** The configuration a failure line names ({@code config=V1}). */
++    /** The configuration a failure line names ({@code config=V1}, {@code config=V2}). */
+     public static SimConfig named(String name) {
+-        if (!V1.name.equals(name)) throw new IllegalArgumentException("no simulation config named '" + name + "'; known: [V1]");
+-        return V1;
++        for (SimConfig c : List.of(V1, V2)) if (c.name.equals(name)) return c;
++        throw new IllegalArgumentException("no simulation config named '" + name + "'; known: [V1, V2]");
+     }
+ 
+     /** The weight of {@code action} in the workload draw. */
+@@ -71,7 +88,7 @@ public record SimConfig(String name, Map<Action, Integer> weights, Map<FaultKind
+         w.put(action, weight);
+         return new SimConfig(name + "+" + action + "=" + weight, w, rates, keys, actionsPerTick, minPayload, maxPayload, maxBodyBytes,
+                 syncMaxInFlight, syncMaxInFlightBytes, aloMaxInFlight, aloMaxInFlightBytes, retries, retryInitial, retryMax, retryMultiplier,
+-                maxHeldTicks, resendAfter, drainTicks, tick);
++                maxHeldTicks, resendAfter, drainTicks, tick, amoMaxInFlight, amoMaxInFlightBytes, outageTicks);
+     }
+ 
+     /** This configuration with {@code kind} injected at {@code rate} (0..1 per call), under a name of its own. */
+@@ -80,7 +97,7 @@ public record SimConfig(String name, Map<Action, Integer> weights, Map<FaultKind
+         r.put(kind, rate);
+         return new SimConfig(name + "+" + kind + "=" + rate, weights, r, keys, actionsPerTick, minPayload, maxPayload, maxBodyBytes,
+                 syncMaxInFlight, syncMaxInFlightBytes, aloMaxInFlight, aloMaxInFlightBytes, retries, retryInitial, retryMax, retryMultiplier,
+-                maxHeldTicks, resendAfter, drainTicks, tick);
++                maxHeldTicks, resendAfter, drainTicks, tick, amoMaxInFlight, amoMaxInFlightBytes, outageTicks);
+     }
+ 
+     /** One action drawn by weight, the actions taken in their declared order (the last one takes what is left). */
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/SimFuzz.java b/flottila-sim/src/main/java/io/flottila/sim/SimFuzz.java
+new file mode 100644
+index 0000000..55092b2
+--- /dev/null
++++ b/flottila-sim/src/main/java/io/flottila/sim/SimFuzz.java
+@@ -0,0 +1,72 @@
++package io.flottila.sim;
++
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Map;
++import java.util.function.BooleanSupplier;
++import java.util.function.Function;
++import java.util.stream.Collectors;
++
++/**
++ * The nightly {@code sim-fuzz} job's run (P2-10b, D-101): fresh seeds from a base (the CI run id) for a wall-clock budget, every
++ * failing run written as a line of the pinned-seeds format.
++ */
++public final class SimFuzz {
++
++    /** What a fuzz base is mixed with before its seeds are drawn: no base's seeds are another's or the per-push ones. */
++    private static final long SALT = 0xa54ff53a5f1d36f1L;
++
++    private SimFuzz() {}
++
++    /**
++     * What a fuzz run is told by its system properties.
++     *
++     * @param base {@code sim.fuzz.base}: where its seeds come from
++     * @param budget {@code sim.fuzz.minutes}, a fraction accepted (0.05 = 3 s)
++     * @param ticks {@code sim.ticks}
++     * @param config {@code sim.config}
++     */
++    public record Settings(long base, Duration budget, int ticks, SimConfig config) {
++
++        /** The settings the properties name; defaults base 0, 25 minutes, 1 000 ticks, V2. */
++        public static Settings from(Map<String, String> properties) {
++            double minutes = Double.parseDouble(properties.getOrDefault("sim.fuzz.minutes", "25"));   // "abc", "": an IAE of its own
++            if (!(minutes > 0)) throw new IllegalArgumentException("sim.fuzz.minutes must be a positive number of minutes, was " + minutes);
++            return new Settings(Long.parseLong(properties.getOrDefault("sim.fuzz.base", "0")), Duration.ofMillis(Math.round(minutes * 60_000)),
++                    Integer.parseInt(properties.getOrDefault("sim.ticks", "1000")), SimConfig.named(properties.getOrDefault("sim.config", "V2")));
++        }
++    }
++
++    /**
++     * What a fuzz run did.
++     *
++     * @param ran the seeds it ran, in order
++     * @param failed the verdicts that did not pass, in order
++     */
++    public record Fuzzed(List<SimSeed> ran, List<Verdict> failed) {}
++
++    /** The {@code i}-th seed of a fuzz run from {@code base}. */
++    public static SimSeed seed(long base, long i) {
++        return new SimSeed(Mix.mix(Mix.splitMix64(base ^ SALT), i));
++    }
++
++    /** Runs seed 0, 1, … of {@code settings.base()} through {@code runner} while {@code timeLeft} says so. */
++    public static Fuzzed run(Settings settings, BooleanSupplier timeLeft, Function<SimSeed, Verdict> runner) {
++        List<SimSeed> ran = new ArrayList<>();
++        List<Verdict> failed = new ArrayList<>();
++        for (long i = 0; timeLeft.getAsBoolean(); i++) {
++            SimSeed seed = seed(settings.base(), i);
++            ran.add(seed);
++            Verdict v = runner.apply(seed);
++            if (!v.passed()) failed.add(v);
++        }
++        return new Fuzzed(ran, failed);
++    }
++
++    /** {@code failed} as a pinned-seeds line: {@code seed⇥config⇥ticks⇥world⇥FAIL:Check,…⇥# sim-fuzz base=<base>}. */
++    public static String pinLine(Verdict failed, long base) {
++        return failed.seed().hex() + "\t" + failed.config().name() + "\t" + failed.ticks() + "\t" + failed.world() + "\tFAIL:"
++                + failed.failedChecks().stream().map(Check::name).collect(Collectors.joining(",")) + "\t# sim-fuzz base=" + base;
++    }
++}
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/SimPartner.java b/flottila-sim/src/main/java/io/flottila/sim/SimPartner.java
+index 754fd9f..238b901 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/SimPartner.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/SimPartner.java
+@@ -15,14 +15,17 @@ import io.vertx.core.buffer.Buffer;
+ import java.util.Map;
+ import java.util.concurrent.CompletableFuture;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.atomic.AtomicInteger;
+ import java.util.function.Function;
+ import java.util.function.LongSupplier;
+ 
+ /**
+  * The partner every {@code to} sends to (scheme {@code sim}, D-101): it answers {@code ack:} and the body it got. Per call, in
+- * this order: REFUSE fails the call before any effect (a retryable {@link NackException}); DELAY holds it — the run is HELD
+- * until the driver's RELEASE at its tick, parked in {@code send} — and then answers. The oracle sees each call start and end.
+- * It names no target: each {@code to} gets an unshared limit above every flow's maxInFlight.
++ * this order: an outage refuses it (P2-10b: from a PARTNER_OUTAGE to its last tick); REFUSE fails it before any effect (a
++ * retryable {@link NackException}); DELAY holds it — the run is HELD until the driver's RELEASE at its tick, parked in
++ * {@code send} — and then it answers, unless a DROP_REPLY is armed and this is a send's first call: then the effect is done and
++ * the reply lost (a retryable failure). Outages and drops stop with the faults, at the drain. The oracle and the world see each
++ * call start and end. It names no target: each {@code to} gets an unshared limit above every flow's maxInFlight.
+  */
+ final class SimPartner implements Component, Producer {
+ 
+@@ -33,17 +36,33 @@ final class SimPartner implements Component, Producer {
+     private final Oracle oracle;
+     private final Runs runs;
+     private final Trace trace;
++    private final World world;
+     private final LongSupplier tick;
+     private final Map<String, Integer> ordinals = new ConcurrentHashMap<>();   // per message id and attempt: the next call's
++    private final AtomicInteger drops = new AtomicInteger();                    // DROP_REPLY armed, not yet spent
++    private volatile long outageEnd = Long.MIN_VALUE;                           // the first tick after the outage
+ 
+-    SimPartner(Faults faults, Oracle oracle, Runs runs, Trace trace, LongSupplier tick) {
++    SimPartner(Faults faults, Oracle oracle, Runs runs, Trace trace, World world, LongSupplier tick) {
+         this.faults = faults;
+         this.oracle = oracle;
+         this.runs = runs;
+         this.trace = trace;
++        this.world = world;
+         this.tick = tick;
+     }
+ 
++    /** Every call from {@code from} to the end of tick {@code to - 1} is refused. */
++    void outage(long from, long to) {
++        outageEnd = to;
++        trace.add(from, "", "OUTAGE until " + to);
++    }
++
++    /** The next first call of a send loses its reply. */
++    void dropNext(long at) {
++        drops.incrementAndGet();
++        trace.add(at, "", "DROP armed");
++    }
++
+     @Override public String scheme() { return SCHEME; }
+ 
+     @Override public String configSchema() { return "{}"; }
+@@ -61,12 +80,16 @@ final class SimPartner implements Component, Producer {
+         String id = e.id();
+         int attempt = e.get(Envelope.ATTEMPT).orElse(1);
+         int ordinal = ordinals.merge(id + "#" + attempt, 1, Integer::sum) - 1;
+-        String key = e.key(SimRun.KEY).orElse(null);
+-        oracle.call(id, key, ordinal);
++        boolean replay = e.get(Envelope.REPLAY_OF).isPresent();
++        oracle.call(id, ordinal);
++        if (!replay) e.get(SimRun.DEDUPE).ifPresent(dedupe -> oracle.reached(id, dedupe));
++        if (faults.on() && tick.getAsLong() < outageEnd) {
++            trace.add(tick.getAsLong(), id, "CALL " + attempt + "/" + ordinal + " outage");
++            return refused(id, attempt, ordinal, Oracle.Call.OUTAGE, "PARTNER_OUTAGE: the partner is down for call " + ordinal + " of " + id);
++        }
+         if (faults.hit(FaultKind.REFUSE, id, attempt, ordinal)) {
+             trace.add(tick.getAsLong(), id, "CALL " + attempt + "/" + ordinal + " refused");
+-            oracle.called(id, key, ordinal, false);
+-            return Future.failedFuture(new NackException("REFUSE: the partner refused call " + ordinal + " of " + id, true));
++            return refused(id, attempt, ordinal, Oracle.Call.REFUSED, "REFUSE: the partner refused call " + ordinal + " of " + id);
+         }
+         if (faults.hit(FaultKind.DELAY, id, attempt, ordinal)) {
+             int ticks = faults.heldTicks(id, attempt, ordinal);
+@@ -77,10 +100,24 @@ final class SimPartner implements Component, Producer {
+         }
+         Buffer reply = Buffer.buffer(REPLY_PREFIX).appendBuffer(e.body().whole());
+         Body body = e.body().store().write(e.nextKey(), reply, e.body().store().treeLimit()).await();
++        oracle.wrote(body.key(), reply);
+         trace.add(tick.getAsLong(), id, "CALL " + attempt + "/" + ordinal + " delivered " + body.hash().value());
+-        oracle.called(id, key, ordinal, true);
++        world.onCall(new World.PartnerCall(tick.getAsLong(), id, attempt, ordinal, true));
++        if (faults.on() && !replay && oracle.fresh(id) && drops.getAndUpdate(n -> Math.max(n - 1, 0)) > 0) {
++            trace.add(tick.getAsLong(), id, "CALL " + attempt + "/" + ordinal + " reply dropped");
++            oracle.called(id, attempt, ordinal, Oracle.Call.DROPPED);
++            return Future.failedFuture(new NackException("DROP_REPLY: the reply to call " + ordinal + " of " + id + " was lost", true));
++        }
++        oracle.called(id, attempt, ordinal, Oracle.Call.DELIVERED);
+         return Future.succeededFuture(e.next(body));
+     }
+ 
++    /** A call refused before any effect: told, and a retryable failure. */
++    private Future<Envelope> refused(String id, int attempt, int ordinal, Oracle.Call call, String why) {
++        world.onCall(new World.PartnerCall(tick.getAsLong(), id, attempt, ordinal, false));
++        oracle.called(id, attempt, ordinal, call);
++        return Future.failedFuture(new NackException(why, true));
++    }
++
+     @Override public Future<Void> close() { return Future.succeededFuture(); }
+ }
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/SimRun.java b/flottila-sim/src/main/java/io/flottila/sim/SimRun.java
+index 8659b30..c27bb47 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/SimRun.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/SimRun.java
+@@ -2,23 +2,28 @@ package io.flottila.sim;
+ 
+ import io.flottila.api.Ack;
+ import io.flottila.api.BlobKey;
++import io.flottila.api.BlobStore;
+ import io.flottila.api.Body;
+ import io.flottila.api.EndpointConfig;
+ import io.flottila.api.Envelope;
+ import io.flottila.api.Hasher;
+ import io.flottila.api.Headers;
++import io.flottila.api.Key;
+ import io.flottila.api.Runtime;
+ import io.flottila.api.StepConfig;
+ import io.flottila.core.dlq.InMemoryDlq;
++import io.flottila.core.dlq.Parked;
+ import io.flottila.core.flow.FlowBuilder;
+ import io.flottila.core.flow.FlowDefinition;
+ import io.flottila.core.flow.FlowWorker;
++import io.flottila.core.flow.Replay;
+ import io.flottila.core.flow.RetryPolicy;
+ import io.flottila.core.flow.SequentialIntake;
+ import io.flottila.core.flow.WorkerPolicy;
+ import io.flottila.core.queue.InMemoryWorkQueue;
+ import io.flottila.core.queue.WorkQueue;
+ import io.flottila.core.record.InMemoryMessageStore;
++import io.flottila.core.record.Page;
+ import io.flottila.core.record.RecordingPolicy;
+ import io.flottila.core.record.Snapshot;
+ import io.flottila.sim.World.Unit;
+@@ -40,13 +45,16 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.SplittableRandom;
++import java.util.concurrent.CompletableFuture;
+ import java.util.function.Function;
+ 
+ /**
+  * One run of one seed (D-101), on the driver thread: the real core — {@link FlowBuilder}, {@link io.flottila.core.flow.Delivery},
+- * {@link FlowWorker}, admission, Retry, the recorder and the DLQ — over in-memory stores, the fake clock and the run's doubles.
+- * Two flows: {@code sync} (transform, then the partner) and {@code alo}, at-least-once by key (extractKey, transform, the
+- * partner), run by workers A and B over one queue. Each tick draws its actions from the WORKLOAD stream, adds the RELEASE of
++ * {@link FlowWorker}, {@link Replay}, admission, Retry, the recorder and the DLQ — over in-memory stores, the fake clock and the
++ * run's doubles. Three flows: {@code sync} (transform, then the partner), {@code alo}, at-least-once by key (extractKey,
++ * transform, the partner) and deduped by the {@link #DEDUPE} prop over the sim's {@link DedupingIntake}, run by workers A and B
++ * over one queue, and {@code amo}, at-most-once (transform, the partner; P2-10b); sync and alo each with a replay that takes
++ * one run at a time. Each tick draws its actions from the WORKLOAD stream, adds the RELEASE of
+  * every held call due, orders them by the SCHEDULE stream, runs them one unit at a time — waiting after each until no run is
+  * RUNNING — then ADVANCEs the clock by one tick (to each due timer in turn by {@link FakeTimer#nextDelay()}) and runs the WAKE of
+  * every backoff that came due. After the last tick the faults are off and the run drains, at most drainTicks, polling until
+@@ -56,6 +64,10 @@ final class SimRun {
+ 
+     static final String SYNC = "sync";
+     static final String ALO = "alo";
++    static final String AMO = "amo";
++    static final List<String> FLOWS = List.of(SYNC, ALO, AMO);
++    /** The prop the at-least-once flow dedupes by (D-084): set on a dedupe-keyed send as it arrives. */
++    static final Key<String> DEDUPE = new Key<>("sim-dedupe");
+     static final String KEY = "k";
+     static final String KEY_HEADER = "sim-key";
+     static final List<String> WORKERS = List.of("A", "B");
+@@ -77,14 +89,17 @@ final class SimRun {
+     private final List<SimTimer.Wake> wakes = new ArrayList<>();
+     private final FakeClock clock = FakeClock.at(FakeRuntime.T0);
+     private final FakeTimer fake = new FakeTimer(clock);
+-    private final InMemoryBlobStore blobs = new InMemoryBlobStore(Hasher.sha256(), FakeRuntime.DEFAULT_TREE_LIMIT);
++    private final InMemoryBlobStore memory = new InMemoryBlobStore(Hasher.sha256(), FakeRuntime.DEFAULT_TREE_LIMIT);
+     private final SimStore store = new SimStore(new InMemoryMessageStore(), runs);
+     private final InMemoryDlq dlq = new InMemoryDlq();
+     private final Faults faults;
+     private final Oracle oracle;
+     private volatile long tick;
+     private String claimedInPoll;   // the driver's: the item the poll in progress claimed
++    private BlobStore blobs;
++    private SimPartner partner;
+     private WorkQueue queue;
++    private Map<String, Replay> replays;
+     private Map<String, Function<Envelope, Future<Ack>>> entries;
+     private Map<String, FlowWorker> workers;
+ 
+@@ -94,7 +109,7 @@ final class SimRun {
+         this.ticks = ticks;
+         this.world = world;
+         this.faults = new Faults(seed, config, world, () -> tick);
+-        this.oracle = new Oracle(config, trace, () -> tick);
++        this.oracle = new Oracle(config, trace, () -> tick, world, store);
+     }
+ 
+     /** The whole run, on the calling thread, which becomes the driver. */
+@@ -114,15 +129,16 @@ final class SimRun {
+     }
+ 
+     private void build() {
+-        SimPartner partner = new SimPartner(faults, oracle, runs, trace, () -> tick);
++        blobs = world.blobs(memory);
++        partner = new SimPartner(faults, oracle, runs, trace, world, () -> tick);
+         Runtime runtime = new Runtime(clock, new SimTimer(fake, runs, wakes), new FakeIds("sim"), blobs, Hasher.sha256(), Map.of(SimPartner.SCHEME, partner));
+         queue = new ClaimCap(world.queue(new InMemoryWorkQueue(clock), clock), runs, this::claimed, this::taken);
+-        FlowBuilder builder = new FlowBuilder(runtime, List.of(SimSteps.transform(world)), List.of(SimSteps.language()),
++        FlowBuilder builder = new FlowBuilder(runtime, List.of(SimSteps.transform(world, runs)), List.of(SimSteps.language()),
+                 Map.of(PARTNER, new EndpointConfig(PARTNER, URI.create(SimPartner.SCHEME + "://" + PARTNER), Map.of())))
+                 .recording(store, () -> Snapshot.CPU_UNKNOWN)
+                 .dlq(dlq)
+                 .queue(queue)
+-                .intake(world.intake(new SimIntake(new SequentialIntake(store, queue), faults)));
++                .intake(world.intake(new DedupingIntake(new SimIntake(new SequentialIntake(store, queue), faults))));
+         RetryPolicy retry = new RetryPolicy(config.retries(), config.retryInitial(), config.retryMax(), config.retryMultiplier());
+         StepConfig transform1 = new StepConfig(1, SimSteps.TRANSFORM, "transform", false, Map.of());
+         StepConfig transform2 = new StepConfig(2, SimSteps.TRANSFORM, "transform", false, Map.of());
+@@ -133,7 +149,13 @@ final class SimRun {
+                 Optional.of(config.aloMaxInFlight()), Optional.of(config.aloMaxInFlightBytes()), Optional.of(KEY), List.of(), retry,
+                 RecordingPolicy.DEFAULT, List.of(new StepConfig(1, "extractKey", "key", false,
+                         Map.of("key", KEY, "xpath", KEY_HEADER, "language", SimSteps.LANGUAGE)), transform2, to(3)));
+-        entries = Map.of(SYNC, world.entry(SYNC, () -> builder.delivery(sync, BASE)), ALO, world.entry(ALO, () -> builder.delivery(alo, BASE)));
++        FlowDefinition amo = new FlowDefinition(AMO, "1", "in", "at-most-once", FlowDefinition.DEFAULT_SAVE_TIMEOUT, config.maxBodyBytes(),
++                Optional.of(config.amoMaxInFlight()), Optional.of(config.amoMaxInFlightBytes()), Optional.empty(), List.of(), retry,
++                RecordingPolicy.DEFAULT, List.of(transform1, to(2)));
++        entries = Map.of(SYNC, world.entry(SYNC, () -> builder.delivery(sync, BASE)),
++                ALO, world.entry(ALO, () -> builder.delivery(alo, BASE, Optional.of(DEDUPE))),
++                AMO, world.entry(AMO, () -> builder.delivery(amo, BASE)));
++        replays = Map.of(SYNC, builder.replay(sync, BASE), ALO, builder.replay(alo, BASE));
+         WorkerPolicy policy = new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(1));
+         workers = Map.of(WORKERS.get(0), builder.worker(alo, BASE, WORKERS.get(0), policy), WORKERS.get(1), builder.worker(alo, BASE, WORKERS.get(1), policy));
+     }
+@@ -182,19 +204,34 @@ final class SimRun {
+         return runs.active() == 0 && !queue.hasItems(ALO).await();
+     }
+ 
++    /** The unit of {@code action}, its draws made now; what it picks among the run's state, when it runs. */
+     private Work action(Action action, SplittableRandom w, long t, int k) {
+         if (action == Action.SEND_SYNC) {
+             Buffer payload = payload(w);
+-            return () -> send(SYNC, SYNC + "-t" + t + "-" + k, null, payload);
++            return () -> send(SYNC, SYNC + "-t" + t + "-" + k, null, null, payload, action);
+         }
+-        if (action == Action.SEND_ALO) {
++        if (action == Action.SEND_ALO || action == Action.SEND_DEDUPED) {
+             String key = config.keys().get(w.nextInt(config.keys().size()));
+             Buffer payload = payload(w);
+-            return () -> send(ALO, ALO + "-t" + t + "-" + k, key, payload);
++            String dedupe = action == Action.SEND_DEDUPED ? "d-t" + t + "-" + k : null;
++            return () -> send(ALO, ALO + "-t" + t + "-" + k, key, dedupe, payload, action);
++        }
++        if (action == Action.SEND_AMO) {
++            Buffer payload = payload(w);
++            return () -> send(AMO, AMO + "-t" + t + "-" + k, null, null, payload, action);
+         }
+         if (action == Action.RESEND) return () -> resend(t, k);
+-        String worker = WORKERS.get(w.nextInt(WORKERS.size()));
+-        return () -> poll(worker);
++        if (action == Action.PARTNER_OUTAGE) return () -> partner.outage(t, t + config.outageTicks());
++        if (action == Action.DROP_REPLY) return () -> partner.dropNext(t);
++        if (action == Action.POLL) {
++            String worker = WORKERS.get(w.nextInt(WORKERS.size()));
++            return () -> poll(worker);
++        }
++        int pick = w.nextInt(Integer.MAX_VALUE);
++        if (action == Action.DUPLICATE) return () -> duplicate(t, k, pick);
++        int step = w.nextInt(Integer.MAX_VALUE);
++        if (action == Action.REPLAY_FROM) return () -> replayFrom(t, k, pick, step);
++        return () -> retryDlq(t, k, pick);
+     }
+ 
+     private Buffer payload(SplittableRandom w) {
+@@ -206,19 +243,79 @@ final class SimRun {
+ 
+     private void resend(long t, int k) throws InterruptedException {
+         Oracle.Pending p = oracle.resend(t);
+-        if (p != null) send(p.flow(), p.flow() + "-t" + t + "-" + k, p.key(), p.payload());
++        if (p != null) send(p.flow(), p.flow() + "-t" + t + "-" + k, p.key(), p.dedupe(), p.payload(), Action.RESEND);
++    }
++
++    /** DUPLICATE: a dedupe-keyed send whose ACK was lost, sent again — same key, dedupe key and payload, a new arrival's id. */
++    private void duplicate(long t, int k, int pick) throws InterruptedException {
++        Oracle.Send lost = oracle.duplicable(pick);
++        if (lost != null) send(ALO, ALO + "-t" + t + "-" + k, lost.key, lost.dedupe, lost.payload, Action.DUPLICATE);
++    }
++
++    /**
++     * REPLAY_FROM: a sync or at-least-once message that delivered, replayed from one of its steps as {@code <flow>-t<t>-<k>}
++     * on a thread of its own; expected to yield the last output hash its timeline recorded. None while its flow's replay runs.
++     */
++    private void replayFrom(long t, int k, int pick, int step) throws InterruptedException {
++        Oracle.Send origin = oracle.replayable(pick);
++        if (origin == null || oracle.replaying(origin.flow)) return;
++        int steps = SYNC.equals(origin.flow) ? 2 : 3;
++        int n = 1 + step % steps;
++        String recorded = store.recorded(origin.id).getLast().bodyHash().hex();   // a delivered message's last step: its output
++        String id = origin.flow + "-t" + t + "-" + k;
++        Oracle.Send r = oracle.replayStarted(id, origin, n, recorded);
++        Replay replay = replays.get(origin.flow);
++        run(id, () -> CompletableFuture.completedFuture(id).thenApply(rid -> replay.from(origin.id, n, rid))
++                .whenComplete((out, failure) -> oracle.replayed(r, out, cause(failure))));
++    }
++
++    /**
++     * RETRY_DLQ: an at-least-once DLQ row — of the first page, in the DLQ's order — retried as {@code alo-t<t>-<k>} on a thread
++     * of its own. None while a replay runs.
++     */
++    private void retryDlq(long t, int k, int pick) throws InterruptedException {
++        List<Parked> rows = new ArrayList<>();
++        for (Parked p : dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items()) if (oracle.retryable(p.messageId())) rows.add(p);
++        if (rows.isEmpty() || oracle.replaying(ALO)) return;
++        Parked row = rows.get(pick % rows.size());
++        String id = ALO + "-t" + t + "-" + k;
++        Oracle.Send r = oracle.retryStarted(id, oracle.sent(row.messageId()));
++        Replay replay = replays.get(ALO);
++        run(id, () -> CompletableFuture.completedFuture(id).thenApply(rid -> replay.retry(row.messageId(), rid))
++                .whenComplete((out, failure) -> oracle.retried(r, cause(failure), dlq.get(row.messageId()).await().isPresent())));
++    }
++
++    /** What a stage that threw failed with: its cause, without the completion's wrapper. */
++    private static Throwable cause(Throwable failure) {
++        return failure == null ? null : failure.getCause();
++    }
++
++    /** REPLAY: {@code body} on a virtual thread of its own, registered as the run of {@code id}; done once it is quiet. */
++    private void run(String id, Runnable body) throws InterruptedException {
++        world.onUnit(new Unit(tick, Unit.Kind.REPLAY, Optional.of(id)));
++        Thread thread = Thread.ofVirtual().name("sim-" + id).unstarted(body);
++        Runs.Run run = runs.start(id, thread);
++        thread.start();
++        runs.joinEnd(run);
++        runs.quiesce();
+     }
+ 
+-    /** START: the send on a virtual thread of its own, as a consumer would make it. */
+-    private void send(String flow, String id, String key, Buffer payload) throws InterruptedException {
++    /**
++     * START: the send on a virtual thread of its own, as a consumer would make it; an Accepted at-most-once send's run is
++     * expected on the thread its delivery starts, before the send's thread ends.
++     */
++    private void send(String flow, String id, String key, String dedupe, Buffer payload, Action action) throws InterruptedException {
+         world.onUnit(new Unit(tick, Unit.Kind.START, Optional.of(id)));
+         Body body = blobs.write(BlobKey.body(id, 0), payload, config.maxBodyBytes()).await();
+         Headers headers = key == null ? Headers.empty() : new Headers(Map.of(KEY_HEADER, key));
+-        Envelope e = Envelope.ingress(id, flow, headers, body);
++        Envelope arrived = Envelope.ingress(id, flow, headers, body);
++        Envelope e = dedupe == null ? arrived : arrived.with(DEDUPE, dedupe);
+         boolean refused = ALO.equals(flow) && (faults.wouldHit(FaultKind.STORE_REFUSE, id, 1, 0) || faults.wouldHit(FaultKind.STORE_REFUSE, id, 1, 1));
+-        Oracle.Send s = oracle.started(id, flow, key, payload, refused);
++        Oracle.Send s = oracle.started(id, flow, action, key, dedupe, payload, refused);
+         Function<Envelope, Future<Ack>> entry = entries.get(flow);
+-        Thread thread = Thread.ofVirtual().name("sim-" + id).unstarted(() -> entry.apply(e).onComplete(answer -> oracle.answered(s, answer)));
++        Thread thread = Thread.ofVirtual().name("sim-" + id).unstarted(() -> entry.apply(e).onComplete(answer -> {
++            if (oracle.answered(s, answer)) runs.expectAtMostOnce(id, () -> oracle.atMostOnceEnded(s));
++        }));
+         Runs.Run run = runs.start(id, thread);
+         thread.start();
+         runs.joinEnd(run);
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/SimSteps.java b/flottila-sim/src/main/java/io/flottila/sim/SimSteps.java
+index 4721b51..29485a7 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/SimSteps.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/SimSteps.java
+@@ -38,8 +38,11 @@ final class SimSteps {
+         return Buffer.buffer(b);
+     }
+ 
+-    /** The {@code sim-transform} step factory: each stage built is the world's view of the simulation's step. */
+-    static StepFactory transform(World world) {
++    /**
++     * The {@code sim-transform} step factory: each stage built is the world's view of the simulation's step, entered through
++     * the run registry — an at-most-once message's run binds there, at a call no world replaces (P2-10b).
++     */
++    static StepFactory transform(World world, Runs runs) {
+         return new StepFactory() {
+             @Override public String type() { return TRANSFORM; }
+ 
+@@ -50,7 +53,11 @@ final class SimSteps {
+                     Body body = resources.blobs().write(e.nextKey(), reversed(e.body().whole()), resources.maxBodyBytes()).await();
+                     return e.next(body);
+                 };
+-                return Stage.of(world.transform(sim));
++                Step seen = world.transform(sim);
++                return Stage.of(e -> {
++                    if (SimRun.AMO.equals(e.flow())) runs.bindAtMostOnce(e.id());   // the at-most-once run's first simulation call
++                    return seen.apply(e);
++                });
+             }
+         };
+     }
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/SimStore.java b/flottila-sim/src/main/java/io/flottila/sim/SimStore.java
+index c3b70f2..c48ead2 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/SimStore.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/SimStore.java
+@@ -1,7 +1,9 @@
+ package io.flottila.sim;
+ 
++import io.flottila.api.Envelope;
+ import io.flottila.core.record.MessageStore;
+ import io.flottila.core.record.Page;
++import io.flottila.core.record.Recorder;
+ import io.flottila.core.record.Snapshot;
+ import io.vertx.core.Future;
+ 
+@@ -9,18 +11,23 @@ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
++import java.util.Set;
+ import java.util.TreeMap;
++import java.util.TreeSet;
+ 
+ /**
+  * The message store as the flows see it (D-101): the in-memory one, its timelines kept per message as it keeps them — the
+  * first snapshot of each step, in step order — so a read does not scan every row of the run. A timeline read is a worker
+- * run's first simulation call: its thread binds to the run the queue handed out. The oracle reads {@link #recorded}.
++ * run's first simulation call: its thread binds to the run the queue handed out. The oracle reads {@link #recorded}, and
++ * {@link #ran}: the messages that recorded a step past their ingress under a dedupe key — a save abandoned before its enqueue
++ * leaves an ingress row that never runs — a replay's and a retry's own snapshots aside (P2-10b).
+  */
+ final class SimStore implements MessageStore {
+ 
+     private final MessageStore store;
+     private final Runs runs;
+     private final Map<String, TreeMap<Integer, Snapshot>> timelines = new HashMap<>();   // guarded by this
++    private final Map<String, Set<String>> byDedupeKey = new HashMap<>();                  // guarded by this
+ 
+     SimStore(MessageStore store, Runs runs) {
+         this.store = store;
+@@ -30,6 +37,11 @@ final class SimStore implements MessageStore {
+     @Override public Future<Void> record(Snapshot snapshot) {
+         synchronized (this) {
+             timelines.computeIfAbsent(snapshot.messageId(), id -> new TreeMap<>()).putIfAbsent(snapshot.step(), snapshot);
++            Optional<String> dedupe = snapshot.props().get(SimRun.DEDUPE);
++            boolean ran = !Recorder.INGRESS.equals(snapshot.stepName()) && snapshot.props().get(Envelope.REPLAY_OF).isEmpty();
++            if (dedupe.isPresent() && ran) {
++                byDedupeKey.computeIfAbsent(dedupe.get(), k -> new TreeSet<>()).add(snapshot.messageId());
++            }
+         }
+         return store.record(snapshot);
+     }
+@@ -43,6 +55,11 @@ final class SimStore implements MessageStore {
+         return store.findByKey(name, value, after, limit);
+     }
+ 
++    /** The messages that recorded a step past their ingress under {@code dedupeKey}, by id; a replay's and a retry's aside. */
++    synchronized Set<String> ran(String dedupeKey) {
++        return Set.copyOf(byDedupeKey.getOrDefault(dedupeKey, Set.of()));
++    }
++
+     /** The message's snapshots in step order, as recorded; empty for an unknown message. */
+     synchronized List<Snapshot> recorded(String messageId) {
+         return List.copyOf(timelines.getOrDefault(messageId, new TreeMap<>()).values());
+diff --git a/flottila-sim/src/main/java/io/flottila/sim/World.java b/flottila-sim/src/main/java/io/flottila/sim/World.java
+index 7794310..f7f2554 100644
+--- a/flottila-sim/src/main/java/io/flottila/sim/World.java
++++ b/flottila-sim/src/main/java/io/flottila/sim/World.java
+@@ -1,6 +1,7 @@
+ package io.flottila.sim;
+ 
+ import io.flottila.api.Ack;
++import io.flottila.api.BlobStore;
+ import io.flottila.api.Envelope;
+ import io.flottila.api.Step;
+ import io.flottila.core.flow.Delivery;
+@@ -49,6 +50,20 @@ public interface World {
+         return sim;
+     }
+ 
++    /**
++     * The blob store every body of the run is written to, read from and persisted in — the Runtime's — given the simulation's
++     * in-memory one (P2-10b).
++     */
++    default BlobStore blobs(BlobStore sim) {
++        return sim;
++    }
++
++    /** Called for each comparison the oracle makes, as it makes it (P2-10b). */
++    default void onCompared(Compared compared) {}
++
++    /** Called as each partner call ends, on the calling thread (P2-10b). */
++    default void onCall(PartnerCall call) {}
++
+     /** Called on the driver as each unit starts. */
+     default void onUnit(Unit unit) {}
+ 
+@@ -64,8 +79,8 @@ public interface World {
+      */
+     record Unit(long tick, Kind kind, Optional<String> messageId) {
+ 
+-        /** The driver's units (D-101). */
+-        public enum Kind { START, POLL, RELEASE, WAKE, ADVANCE }
++        /** The driver's units (D-101); REPLAY: a replay or a DLQ retry on a virtual thread of its own, named by its new id (P2-10b). */
++        public enum Kind { START, POLL, RELEASE, WAKE, ADVANCE, REPLAY }
+     }
+ 
+     /**
+@@ -79,4 +94,36 @@ public interface World {
+      * @param hit the fault is injected
+      */
+     record Draw(long tick, FaultKind kind, String messageId, int attempt, int callOrdinal, boolean hit) {}
++
++    /**
++     * One comparison of the oracle (P2-10b): {@link Verdict#compared()} counts them per check.
++     *
++     * @param tick the tick it was made at
++     * @param check the check it counts under
++     * @param part for {@link Check#ADMISSION_BOUNDS} one of {@link #REQUESTS}, {@link #BYTES}, {@link #WORKER_RUNS}; otherwise the
++     *             name of the {@link Action} whose prediction it compares, {@code ""} when none
++     * @param messageId the send it is about — the duplicate's own id, the parked message's id for a RETRY_DLQ — empty for a bound
++     *                  after a unit
++     * @param held expected and observed were equal
++     */
++    record Compared(long tick, Check check, String part, Optional<String> messageId, boolean held) {
++
++        /** ADMISSION_BOUNDS part: a flow's requests at maxInFlight. */
++        public static final String REQUESTS = "requests";
++        /** ADMISSION_BOUNDS part: a flow's bytes at maxInFlightBytes. */
++        public static final String BYTES = "bytes";
++        /** ADMISSION_BOUNDS part: a worker's runs at its limit. */
++        public static final String WORKER_RUNS = "worker-runs";
++    }
++
++    /**
++     * One partner call as it ended (P2-10b).
++     *
++     * @param tick the tick it ended in
++     * @param messageId the message calling
++     * @param attempt the message's attempt
++     * @param callOrdinal the call's ordinal within the attempt
++     * @param delivered its effect was done (a dropped reply included)
++     */
++    record PartnerCall(long tick, String messageId, int attempt, int callOrdinal, boolean delivered) {}
+ }
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/IdempotentCheckRemoved.java b/flottila-sim/src/test/java/io/flottila/sim/IdempotentCheckRemoved.java
+new file mode 100644
+index 0000000..cd82f7a
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/IdempotentCheckRemoved.java
+@@ -0,0 +1,18 @@
++package io.flottila.sim;
++
++import io.flottila.core.flow.Intake;
++
++/**
++ * Broken variant IDEMPOTENT_CHECK_REMOVED (P2-10b): the intake decorator passes every save on without its dedupe key, so a
++ * duplicate is saved as a message of its own. Built over the public {@link Intake} only.
++ */
++final class IdempotentCheckRemoved implements World {
++
++    static final String NAME = "idempotent-check-removed";
++
++    @Override public String name() { return NAME; }
++
++    @Override public Intake intake(Intake sim) {
++        return (arrived, ingress, flow, partitionKey, dedupeKey, abandoned) -> sim.save(arrived, ingress, flow, partitionKey, null, abandoned);
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/LostReplayBody.java b/flottila-sim/src/test/java/io/flottila/sim/LostReplayBody.java
+new file mode 100644
+index 0000000..a757d9b
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/LostReplayBody.java
+@@ -0,0 +1,47 @@
++package io.flottila.sim;
++
++import io.flottila.api.BlobKey;
++import io.flottila.api.BlobNotFoundException;
++import io.flottila.api.BlobStore;
++import io.flottila.api.Body;
++import io.vertx.core.Future;
++import io.vertx.core.buffer.Buffer;
++import io.vertx.core.streams.ReadStream;
++
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
++
++/**
++ * Broken variant LOST_REPLAY_BODY (P2-10b): the blob store acknowledges the persist of every key of step 1 or later and drops
++ * the object — from then on the key reads as never stored. Built over the public {@link BlobStore} only.
++ */
++final class LostReplayBody implements World {
++
++    static final String NAME = "lost-replay-body";
++
++    @Override public String name() { return NAME; }
++
++    @Override public BlobStore blobs(BlobStore sim) {
++        Set<BlobKey> dropped = ConcurrentHashMap.newKeySet();
++        return new BlobStore() {
++            @Override public long treeLimit() { return sim.treeLimit(); }
++            @Override public Future<Body> write(BlobKey key, Buffer whole, long maxSize) { return sim.write(key, whole, maxSize); }
++            @Override public Future<Body> write(BlobKey key, ReadStream<Buffer> in, long maxSize) { return sim.write(key, in, maxSize); }
++            @Override public ReadStream<Buffer> open(BlobKey key) {
++                if (dropped.contains(key)) throw new BlobNotFoundException(key);
++                return sim.open(key);
++            }
++            @Override public Future<Buffer> read(BlobKey key) {
++                return dropped.contains(key) ? Future.failedFuture(new BlobNotFoundException(key)) : sim.read(key);
++            }
++            @Override public Future<Boolean> exists(BlobKey key) {
++                return dropped.contains(key) ? Future.succeededFuture(false) : sim.exists(key);
++            }
++            @Override public Future<Void> persist(BlobKey key) {
++                if (key.step() < 1) return sim.persist(key);
++                dropped.add(key);   // THE DEFECT: acknowledged, never made durable, gone
++                return Future.succeededFuture();
++            }
++        };
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/PinnedSeedsTest.java b/flottila-sim/src/test/java/io/flottila/sim/PinnedSeedsTest.java
+index 5282c00..3a1518d 100644
+--- a/flottila-sim/src/test/java/io/flottila/sim/PinnedSeedsTest.java
++++ b/flottila-sim/src/test/java/io/flottila/sim/PinnedSeedsTest.java
+@@ -38,6 +38,9 @@ class PinnedSeedsTest {
+             });
+         }
+         assertAll("pinned seeds", replays);
++        assertTrue(pins.stream().anyMatch(p -> p.world().equals("correct") && p.config().equals(SimRuns.PER_PUSH_CONFIG.name()) && p.fails().isEmpty()),
++                () -> "PLACEHOLDER pinned-seeds.tsv pins no PASS of the correct world under the per-push config "
++                        + SimRuns.PER_PUSH_CONFIG.name() + ": the implementer pins one at landing (P2-10b)");
+         Set<String> pinnedWorlds = new TreeSet<>();
+         for (Pin p : pins) pinnedWorlds.add(p.world());
+         assertTrue(pinnedWorlds.containsAll(Worlds.NAMES), () -> "PLACEHOLDER pinned-seeds.tsv pins " + pinnedWorlds + ", not every world of "
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/ReplayFromLossTest.java b/flottila-sim/src/test/java/io/flottila/sim/ReplayFromLossTest.java
+new file mode 100644
+index 0000000..9f3725a
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/ReplayFromLossTest.java
+@@ -0,0 +1,24 @@
++package io.flottila.sim;
++
++import org.junit.jupiter.api.Test;
++
++import java.util.EnumSet;
++
++import static io.flottila.sim.SimRuns.firstFailing;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * P2-10b: a lost replay body is caught by REPLAY_FROM on its own. LostReplayBody's per-push seed also trips REPLAY_YIELDS_RECORDED
++ * through RETRY_DLQ, so with RETRY_DLQ never drawn only the replay's own comparison, its output against the recorded hash, can fail.
++ */
++class ReplayFromLossTest {
++
++    @Test
++    void aLostBodyFailsTheReplayItselfWithoutDlqRetries() {
++        Verdict v = firstFailing(new LostReplayBody(), SimRuns.PER_PUSH_CONFIG.withWeight(Action.RETRY_DLQ, 0));
++        assertEquals(EnumSet.of(Check.REPLAY_YIELDS_RECORDED), v.failedChecks(), v::report);
++        assertTrue(v.failures().stream().allMatch(f -> f.detail().contains(", the replay of ")),
++                () -> "a failure that is not a REPLAY_FROM comparison:\n" + v.report());
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/ScratchReplayProbeTest.java b/flottila-sim/src/test/java/io/flottila/sim/ScratchReplayProbeTest.java
+new file mode 100644
+index 0000000..a5eeeeb
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/ScratchReplayProbeTest.java
+@@ -0,0 +1,40 @@
++package io.flottila.sim;
++
++import io.flottila.api.*;
++import io.vertx.core.Future;
++import io.vertx.core.buffer.Buffer;
++import io.vertx.core.streams.ReadStream;
++import org.junit.jupiter.api.Test;
++import java.util.*;
++import java.util.concurrent.*;
++
++class ScratchReplayProbeTest {
++    @Test
++    void probe() {
++        LostReplayBody lost = new LostReplayBody();
++        ConcurrentLinkedQueue<String> log = new ConcurrentLinkedQueue<>();
++        World w = new World() {
++            @Override public String name() { return "probe"; }
++            @Override public BlobStore blobs(BlobStore sim) {
++                BlobStore b = lost.blobs(sim);
++                return new BlobStore() {
++                    @Override public long treeLimit() { return b.treeLimit(); }
++                    @Override public Future<Body> write(BlobKey key, Buffer whole, long maxSize) { return b.write(key, whole, maxSize); }
++                    @Override public Future<Body> write(BlobKey key, ReadStream<Buffer> in, long maxSize) { return b.write(key, in, maxSize); }
++                    @Override public ReadStream<Buffer> open(BlobKey key) { return b.open(key); }
++                    @Override public Future<Buffer> read(BlobKey key) { return b.read(key); }
++                    @Override public Future<Boolean> exists(BlobKey key) { Future<Boolean> f = b.exists(key); log.add("exists " + key + " " + f.result()); return f; }
++                    @Override public Future<Void> persist(BlobKey key) { log.add("persist " + key); return b.persist(key); }
++                };
++            }
++            @Override public void onCompared(Compared c) { if (c.check() == Check.REPLAY_YIELDS_RECORDED || (c.check() == Check.SNAPSHOT_PER_STEP && c.part().isEmpty())) log.add("cmp " + c); }
++        };
++        try {
++            java.lang.reflect.Method m = BlobStore.class.getMethod("persist", BlobKey.class);
++        } catch (Exception e) { throw new RuntimeException(e); }
++        Verdict v = SimRuns.run(new SimSeed(1), SimConfig.V2.withWeight(Action.RETRY_DLQ, 0), 200, w);
++        System.out.println("SCRATCH passed=" + v.passed());
++        log.stream().filter(s -> !s.startsWith("persist")).limit(40).forEach(s -> System.out.println("SCRATCH " + s));
++        System.out.println("SCRATCH persists=" + log.stream().filter(s -> s.startsWith("persist")).count() + " sample " + log.stream().filter(s -> s.startsWith("persist")).limit(6).toList());
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/Seen.java b/flottila-sim/src/test/java/io/flottila/sim/Seen.java
+new file mode 100644
+index 0000000..ae03676
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/Seen.java
+@@ -0,0 +1,37 @@
++package io.flottila.sim;
++
++import java.util.List;
++import java.util.Optional;
++import java.util.concurrent.ConcurrentLinkedQueue;
++
++/** The correct world, recording what the driver, the partner and the oracle tell it (P2-10b observers). */
++final class Seen implements World {
++
++    final ConcurrentLinkedQueue<Unit> units = new ConcurrentLinkedQueue<>();
++    final ConcurrentLinkedQueue<PartnerCall> calls = new ConcurrentLinkedQueue<>();
++    final ConcurrentLinkedQueue<Compared> compared = new ConcurrentLinkedQueue<>();
++
++    @Override public String name() { return "correct"; }
++
++    @Override public void onUnit(Unit unit) { units.add(unit); }
++
++    @Override public void onCall(PartnerCall call) { calls.add(call); }
++
++    @Override public void onCompared(Compared c) { compared.add(c); }
++
++    List<Compared> comparedAs(String part) {
++        return compared.stream().filter(c -> c.part().equals(part)).toList();
++    }
++
++    long comparedUnder(Check check) {
++        return compared.stream().filter(c -> c.check() == check).count();
++    }
++
++    List<PartnerCall> callsOf(String messageId) {
++        return calls.stream().filter(c -> c.messageId().equals(messageId)).toList();
++    }
++
++    List<Unit> unitsOf(String messageId) {
++        return units.stream().filter(u -> u.messageId().equals(Optional.of(messageId))).toList();
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimActionsTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimActionsTest.java
+new file mode 100644
+index 0000000..7dd5903
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimActionsTest.java
+@@ -0,0 +1,136 @@
++package io.flottila.sim;
++
++import io.flottila.sim.World.Compared;
++import io.flottila.sim.World.PartnerCall;
++import io.flottila.sim.World.Unit;
++import org.junit.jupiter.api.Test;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.Optional;
++import java.util.Set;
++import java.util.stream.Collectors;
++
++import static io.flottila.sim.SimRuns.PER_PUSH;
++import static io.flottila.sim.SimRuns.PER_PUSH_CONFIG;
++import static io.flottila.sim.SimRuns.TICKS;
++import static io.flottila.sim.SimRuns.run;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * P2-10b actions under the per-push config: each one's prediction is compared (counted under its action's name), holds, and
++ * leaves the trace its prediction says — seen through the partner calls and the driver's units, not through the oracle alone.
++ */
++class SimActionsTest {
++
++    /** The first per-push seeds a case runs. */
++    private static final List<SimSeed> SEEDS = PER_PUSH.subList(0, 4);
++
++    /** Every comparison under {@code action}'s name over {@link #SEEDS}, each run passing; the {@link Seen} of each run beside. */
++    private record Runs(List<Seen> seen, List<Compared> compared) {}
++
++    private static Runs runs(Action action) {
++        List<Seen> all = new ArrayList<>();
++        List<Compared> compared = new ArrayList<>();
++        for (SimSeed seed : SEEDS) {
++            Seen seen = new Seen();
++            Verdict v = run(seed, PER_PUSH_CONFIG, TICKS, seen);
++            assertTrue(v.passed(), v::report);
++            all.add(seen);
++            compared.addAll(seen.comparedAs(action.name()));
++        }
++        assertFalse(compared.isEmpty(), () -> action + " was never compared over " + SEEDS + " under " + PER_PUSH_CONFIG.name());
++        List<Compared> failed = compared.stream().filter(c -> !c.held()).toList();
++        assertEquals(List.of(), failed, () -> action + "'s prediction did not hold");
++        return new Runs(all, compared);
++    }
++
++    /** The message ids the comparisons are about, per run. */
++    private static Set<String> ids(Seen seen, Action action) {
++        return seen.comparedAs(action.name()).stream().map(Compared::messageId).flatMap(Optional::stream).collect(Collectors.toSet());
++    }
++
++    @Test
++    void anAtMostOnceSendRunsOnce() {
++        Runs r = runs(Action.SEND_AMO);
++        int called = 0;
++        for (Seen seen : r.seen()) {
++            for (String id : ids(seen, Action.SEND_AMO)) {
++                List<PartnerCall> calls = seen.callsOf(id);
++                if (!calls.isEmpty()) called++;
++                assertTrue(calls.stream().allMatch(c -> c.attempt() == 1), () -> id + " ran again after its ACK: " + calls);
++                List<Unit> polls = seen.unitsOf(id).stream().filter(u -> u.kind() == Unit.Kind.POLL).toList();
++                assertEquals(List.of(), polls, () -> id + " was queued: an at-most-once send saves nothing to run again");
++            }
++        }
++        assertTrue(called > 0, "no at-most-once send reached the partner: 'runs once' was never seen");
++    }
++
++    @Test
++    void aDuplicateNamesTheFirstId() {
++        Runs r = runs(Action.DUPLICATE);
++        for (Seen seen : r.seen()) {
++            for (String id : ids(seen, Action.DUPLICATE)) {
++                assertTrue(seen.unitsOf(id).stream().anyMatch(u -> u.kind() == Unit.Kind.START), () -> "the duplicate " + id + " was never sent");
++                assertEquals(List.of(), seen.callsOf(id), () -> "the duplicate " + id + " had an effect of its own");
++            }
++            assertTrue(seen.comparedUnder(Check.ONE_ID_PER_DEDUPE_KEY) > 0, "duplicates sent, ONE_ID_PER_DEDUPE_KEY never compared");
++        }
++    }
++
++    @Test
++    void aReplayYieldsTheRecordedOutput() {
++        Runs r = runs(Action.REPLAY_FROM);
++        assertTrue(r.compared().stream().allMatch(c -> c.check() == Check.REPLAY_YIELDS_RECORDED),
++                () -> "a REPLAY_FROM prediction counted under another check: " + r.compared());
++        boolean replayCalled = false;
++        for (Seen seen : r.seen()) {
++            Set<String> sent = seen.units.stream().filter(u -> u.kind() == Unit.Kind.START).map(Unit::messageId).flatMap(Optional::stream)
++                    .collect(Collectors.toSet());
++            replayCalled |= seen.calls.stream().anyMatch(c -> !sent.contains(c.messageId()));   // a replay's id is no send's
++        }
++        assertTrue(replayCalled, "no replay reached the partner under an id of its own: the replays ran nothing");
++    }
++
++    @Test
++    void aRetriedDlqRowIsFinal() {
++        Runs r = runs(Action.RETRY_DLQ);
++        int parkedAfter = PER_PUSH_CONFIG.retries() + 1;
++        for (Seen seen : r.seen()) {
++            for (String id : ids(seen, Action.RETRY_DLQ)) {
++                List<PartnerCall> calls = seen.callsOf(id);
++                long refused = calls.stream().filter(c -> !c.delivered()).count();
++                assertTrue(refused >= parkedAfter, () -> id + " was retried from the DLQ but never parked there: " + calls);
++            }
++        }
++    }
++
++    @Test
++    void anOutageParksAfterRetries() {
++        Runs r = runs(Action.PARTNER_OUTAGE);
++        int perMessage = PER_PUSH_CONFIG.retries() + 1;
++        for (Seen seen : r.seen()) {
++            for (String id : ids(seen, Action.PARTNER_OUTAGE)) {
++                List<PartnerCall> calls = seen.callsOf(id);
++                assertEquals(perMessage, calls.size(), () -> id + " in the outage: one call and " + PER_PUSH_CONFIG.retries() + " retries, was " + calls);
++                assertTrue(calls.stream().noneMatch(PartnerCall::delivered), () -> id + " got through the outage: " + calls);
++                List<Unit> units = seen.unitsOf(id);
++                assertTrue(units.stream().anyMatch(u -> u.kind() == Unit.Kind.WAKE), () -> id + " never backed off: " + units);
++            }
++        }
++    }
++
++    @Test
++    void aDroppedReplyRerunsTheSameId() {
++        Runs r = runs(Action.DROP_REPLY);
++        for (Seen seen : r.seen()) {
++            for (String id : ids(seen, Action.DROP_REPLY)) {
++                List<PartnerCall> calls = seen.callsOf(id);
++                assertTrue(calls.size() >= 2, () -> id + "'s reply was dropped but the same id never ran again: " + calls);
++                assertTrue(calls.getFirst().delivered(), () -> id + "'s first call had no effect: the drop lost nothing done");
++            }
++        }
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimComparedTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimComparedTest.java
+new file mode 100644
+index 0000000..27857b8
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimComparedTest.java
+@@ -0,0 +1,103 @@
++package io.flottila.sim;
++
++import io.flottila.sim.World.Compared;
++import io.flottila.api.Ack;
++import io.flottila.api.BlobStore;
++import io.flottila.api.Envelope;
++import io.flottila.api.Step;
++import io.flottila.core.flow.Delivery;
++import io.flottila.core.flow.Intake;
++import io.flottila.core.queue.WorkQueue;
++import io.vertx.core.Future;
++import org.junit.jupiter.api.Test;
++
++import java.time.Clock;
++import java.util.concurrent.ConcurrentLinkedQueue;
++import java.util.function.Function;
++import java.util.function.Supplier;
++
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.TreeMap;
++import java.util.stream.Collectors;
++
++import static io.flottila.sim.SimRuns.PER_PUSH_CONFIG;
++import static io.flottila.sim.SimRuns.TICKS;
++import static io.flottila.sim.SimRuns.run;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++import static org.junit.jupiter.api.Assertions.fail;
++
++/** P2-10b: every comparison is told to the world, and ADMISSION_BOUNDS counts its three parts apart. */
++class SimComparedTest {
++
++    private static final Set<String> PARTS = Set.of(Compared.REQUESTS, Compared.BYTES, Compared.WORKER_RUNS);
++
++    @Test
++    void everyComparisonIsToldToTheWorld() {
++        Seen seen = new Seen();
++        Verdict v = run(new SimSeed(1), PER_PUSH_CONFIG, TICKS, seen);
++        assertTrue(v.passed(), v::report);
++        Map<Check, Long> told = new TreeMap<>(seen.compared.stream().collect(Collectors.groupingBy(Compared::check, Collectors.counting())));
++        Map<Check, Long> counted = new TreeMap<>(v.compared());
++        counted.values().removeIf(n -> n == 0);
++        assertEquals(counted, told, "the verdict's compared counts and the comparisons the world was told");
++        assertTrue(seen.compared.stream().allMatch(Compared::held), "a passing run told a comparison that did not hold");
++    }
++
++    @Test
++    void admissionBoundsCountsEachPartApart() {
++        Seen seen = new Seen();
++        Verdict v = run(new SimSeed(1), PER_PUSH_CONFIG, TICKS, seen);
++        assertTrue(v.passed(), v::report);
++        List<Compared> bounds = seen.compared.stream().filter(c -> c.check() == Check.ADMISSION_BOUNDS).toList();
++        Map<String, Long> byPart = bounds.stream().collect(Collectors.groupingBy(Compared::part, Collectors.counting()));
++        assertEquals(PARTS, byPart.keySet(), "ADMISSION_BOUNDS parts compared: " + byPart);
++        assertEquals(v.compared().get(Check.ADMISSION_BOUNDS), byPart.values().stream().mapToLong(Long::longValue).sum(),
++                "the parts add up to ADMISSION_BOUNDS's count");
++    }
++
++    @Test
++    void aBrokenBoundFailsInItsOwnPart() {
++        assertEquals(Set.of(Compared.WORKER_RUNS), failedParts(new OverClaim()), "a worker running past its limit");
++        Set<String> doubled = failedParts(new DoubleAdmission());
++        assertTrue(Set.of(Compared.REQUESTS, Compared.BYTES).containsAll(doubled) && !doubled.isEmpty(),
++                () -> "a flow admitting twice its limits fails in requests or bytes, was " + doubled);
++    }
++
++    /** The ADMISSION_BOUNDS parts whose comparisons did not hold in {@code world}'s first failing per-push run. */
++    private static Set<String> failedParts(World world) {
++        for (SimSeed seed : SimRuns.PER_PUSH) {
++            Told told = new Told(world);
++            Verdict v = run(seed, PER_PUSH_CONFIG, TICKS, told);
++            if (v.passed()) continue;
++            assertEquals(Set.of(Check.ADMISSION_BOUNDS), v.failedChecks(), v::report);
++            return told.compared.stream().filter(c -> c.check() == Check.ADMISSION_BOUNDS && !c.held()).map(Compared::part)
++                    .collect(Collectors.toSet());
++        }
++        return fail("world " + world.name() + " passed every per-push seed");
++    }
++
++    /** {@code inner} with every seam as it is, the comparisons recorded. */
++    private static final class Told implements World {
++        final ConcurrentLinkedQueue<Compared> compared = new ConcurrentLinkedQueue<>();
++        private final World inner;
++
++        Told(World inner) { this.inner = inner; }
++
++        @Override public String name() { return inner.name(); }
++        @Override public Intake intake(Intake sim) { return inner.intake(sim); }
++        @Override public WorkQueue queue(WorkQueue sim, Clock clock) { return inner.queue(sim, clock); }
++        @Override public Function<Envelope, Future<Ack>> entry(String flow, Supplier<Delivery> deliveries) { return inner.entry(flow, deliveries); }
++        @Override public Step transform(Step sim) { return inner.transform(sim); }
++        @Override public BlobStore blobs(BlobStore sim) { return inner.blobs(sim); }
++        @Override public void onUnit(Unit unit) { inner.onUnit(unit); }
++        @Override public void onDraw(Draw draw) { inner.onDraw(draw); }
++        @Override public void onCall(PartnerCall call) { inner.onCall(call); }
++        @Override public void onCompared(Compared c) {
++            compared.add(c);
++            inner.onCompared(c);
++        }
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimFuzzProfileTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimFuzzProfileTest.java
+new file mode 100644
+index 0000000..87fbff8
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimFuzzProfileTest.java
+@@ -0,0 +1,52 @@
++package io.flottila.sim;
++
++import org.junit.jupiter.api.Test;
++import org.w3c.dom.Document;
++import org.w3c.dom.NodeList;
++
++import javax.xml.parsers.DocumentBuilderFactory;
++import javax.xml.xpath.XPath;
++import javax.xml.xpath.XPathConstants;
++import javax.xml.xpath.XPathFactory;
++import java.nio.file.Path;
++import java.util.ArrayList;
++import java.util.List;
++
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * P2-10b: SimFuzzTest runs only under the {@code sim-fuzz} profile — excluded from the default surefire run (never a skipped
++ * case) and included by the profile. Reads flottila-sim's pom (the tests run from the module directory).
++ */
++class SimFuzzProfileTest {
++
++    private static final String FUZZ = "SimFuzzTest";
++
++    @Test
++    void simFuzzTestRunsOnlyUnderItsProfile() throws Exception {
++        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
++        factory.setNamespaceAware(false);
++        Document pom = factory.newDocumentBuilder().parse(Path.of("pom.xml").toFile());
++        XPath x = XPathFactory.newInstance().newXPath();
++        String surefire = "plugin[artifactId='maven-surefire-plugin']/configuration";
++
++        List<String> defaultExcludes = texts(x, pom, "/project/build/plugins/" + surefire + "/excludes/exclude");
++        List<String> defaultIncludes = texts(x, pom, "/project/build/plugins/" + surefire + "/includes/include");
++        assertTrue(defaultExcludes.stream().anyMatch(e -> e.contains(FUZZ)), () -> "the default surefire run does not exclude " + FUZZ + ": " + defaultExcludes);
++        assertFalse(defaultIncludes.stream().anyMatch(e -> e.contains(FUZZ)), () -> "the default surefire run includes " + FUZZ + ": " + defaultIncludes);
++
++        String profile = "/project/profiles/profile[id='sim-fuzz']/build/plugins/" + surefire;
++        List<String> profileIncludes = texts(x, pom, profile + "/includes/include");
++        List<String> profileExcludes = texts(x, pom, profile + "/excludes/exclude");
++        assertTrue(profileIncludes.stream().anyMatch(e -> e.contains(FUZZ)), () -> "profile sim-fuzz does not include " + FUZZ + ": " + profileIncludes);
++        assertFalse(profileExcludes.stream().anyMatch(e -> e.contains(FUZZ)), () -> "profile sim-fuzz excludes " + FUZZ + ": " + profileExcludes);
++    }
++
++    private static List<String> texts(XPath x, Document doc, String path) throws Exception {
++        NodeList nodes = (NodeList) x.evaluate(path, doc, XPathConstants.NODESET);
++        List<String> out = new ArrayList<>();
++        for (int i = 0; i < nodes.getLength(); i++) out.add(nodes.item(i).getTextContent().trim());
++        return out;
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimFuzzSettingsTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimFuzzSettingsTest.java
+new file mode 100644
+index 0000000..54bfa22
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimFuzzSettingsTest.java
+@@ -0,0 +1,96 @@
++package io.flottila.sim;
++
++import io.flottila.sim.SimFuzz.Fuzzed;
++import io.flottila.sim.SimFuzz.Settings;
++import io.flottila.sim.Verdict.Failure;
++import org.junit.jupiter.api.Test;
++
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.HashSet;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.atomic.AtomicInteger;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/** P2-10b sim-fuzz: what its properties say, which seeds it runs while its budget lasts, and the pin line of a failure. */
++class SimFuzzSettingsTest {
++
++    @Test
++    void theBudgetTakesAFractionOfAMinute() {
++        assertEquals(Duration.ofSeconds(3), Settings.from(Map.of("sim.fuzz.minutes", "0.05")).budget());
++        assertEquals(Duration.ofSeconds(90), Settings.from(Map.of("sim.fuzz.minutes", "1.5")).budget());
++        assertEquals(Duration.ofMinutes(25), Settings.from(Map.of("sim.fuzz.minutes", "25")).budget());
++    }
++
++    @Test
++    void thePropertiesNameBaseTicksAndConfigAndDefaultOtherwise() {
++        assertEquals(new Settings(0, Duration.ofMinutes(25), 1_000, SimConfig.V2), Settings.from(Map.of()));
++        assertEquals(new Settings(9_876_543_210L, Duration.ofMinutes(25), 5_000, SimConfig.V1),
++                Settings.from(Map.of("sim.fuzz.base", "9876543210", "sim.ticks", "5000", "sim.config", "V1")));
++    }
++
++    @Test
++    void aBudgetThatIsNoPositiveNumberIsRefused() {
++        for (String minutes : List.of("0", "-1", "abc", "NaN", "")) {
++            assertThrows(IllegalArgumentException.class, () -> Settings.from(Map.of("sim.fuzz.minutes", minutes)), "sim.fuzz.minutes=" + minutes);
++        }
++    }
++
++    @Test
++    void aFuzzRunTakesFreshSeedsWhileTimeIsLeft() {
++        Settings settings = Settings.from(Map.of("sim.fuzz.base", "77"));
++        List<SimSeed> runner = new ArrayList<>();
++        AtomicInteger left = new AtomicInteger(5);
++        Fuzzed fuzzed = SimFuzz.run(settings, () -> left.getAndDecrement() > 0, seed -> {
++            runner.add(seed);
++            return verdict(seed, runner.size() == 2 ? List.of(new Failure(Check.KEY_ORDER, 3, "x")) : List.of());
++        });
++        assertEquals(5, fuzzed.ran().size(), "one seed per 'time left'");
++        assertEquals(runner, fuzzed.ran(), "the seeds handed to the runner, in order");
++        for (int i = 0; i < 5; i++) assertEquals(SimFuzz.seed(77, i), fuzzed.ran().get(i), "seed " + i + " of base 77");
++        assertEquals(5, new HashSet<>(fuzzed.ran()).size(), "a seed run twice: " + fuzzed.ran());
++        assertEquals(List.of(fuzzed.ran().get(1)), fuzzed.failed().stream().map(Verdict::seed).toList(), "the failing run, and it alone");
++
++        AtomicInteger none = new AtomicInteger();
++        Fuzzed spent = SimFuzz.run(settings, () -> false, seed -> { none.incrementAndGet(); return verdict(seed, List.of()); });
++        assertEquals(List.of(), spent.ran(), "a spent budget runs nothing");
++        assertEquals(0, none.get());
++    }
++
++    @Test
++    void seedsComeFromTheBaseAndMissThePerPushSet() {
++        Set<SimSeed> fromZero = new HashSet<>();
++        Set<SimSeed> fromOne = new HashSet<>();
++        for (long i = 0; i < 64; i++) {
++            fromZero.add(SimFuzz.seed(0, i));
++            fromOne.add(SimFuzz.seed(1, i));
++            assertEquals(SimFuzz.seed(0, i), SimFuzz.seed(0, i), "seed " + i + " of base 0 drawn twice");
++        }
++        assertEquals(64, fromZero.size());
++        Set<SimSeed> shared = new HashSet<>(fromZero);
++        shared.retainAll(fromOne);
++        assertEquals(Set.of(), shared, "bases 0 and 1 share seeds: base + i is no mix");
++        Set<SimSeed> perPush = new HashSet<>(fromZero);
++        perPush.retainAll(SimRuns.PER_PUSH);
++        assertEquals(Set.of(), perPush, "the fuzz re-runs per-push seeds");
++    }
++
++    @Test
++    void aFailureLineIsAPin() {
++        Verdict failed = new Verdict(new SimSeed(0x2aL), SimConfig.V2, 5_000, "correct",
++                List.of(new Failure(Check.KEY_ORDER, 3, "x"), new Failure(Check.PREDICTED, 9, "y")), Map.of(Check.KEY_ORDER, 4L), "d");
++        assertEquals("0x2a\tV2\t5000\tcorrect\tFAIL:PREDICTED,KEY_ORDER\t# sim-fuzz base=7", SimFuzz.pinLine(failed, 7));
++        assertFalse(SimFuzz.pinLine(failed, 7).contains("\n"), "one line");
++        assertTrue(SimFuzz.pinLine(failed, 123456789012L).endsWith("# sim-fuzz base=123456789012"));
++    }
++
++    private static Verdict verdict(SimSeed seed, List<Failure> failures) {
++        return new Verdict(seed, SimConfig.V2, 1_000, "correct", failures, Map.of(Check.PREDICTED, 1L), "d");
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimFuzzTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimFuzzTest.java
+new file mode 100644
+index 0000000..b28bce5
+--- /dev/null
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimFuzzTest.java
+@@ -0,0 +1,43 @@
++package io.flottila.sim;
++
++import io.flottila.sim.SimFuzz.Fuzzed;
++import io.flottila.sim.SimFuzz.Settings;
++import org.junit.jupiter.api.Test;
++
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.util.List;
++import java.util.Map;
++import java.util.TreeMap;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++
++/**
++ * The nightly sim-fuzz run (P2-10b): only under {@code -Psim-fuzz} (the default run excludes it, SimFuzzProfileTest). Fresh
++ * seeds from {@code -Dsim.fuzz.base} for {@code -Dsim.fuzz.minutes} of wall time, the correct world, every run under the per-seed
++ * hang guard; each failure goes to {@code target/sim-failures.tsv} as a pin line, then the case fails naming them all.
++ */
++class SimFuzzTest {
++
++    @Test
++    void fuzzedSeedsPassAndEveryFailureIsPinned() throws IOException {
++        Settings settings = Settings.from(simProperties());
++        long end = System.nanoTime() + settings.budget().toNanos();   // the budget, not a timing assertion
++        Fuzzed fuzzed = SimFuzz.run(settings, () -> System.nanoTime() < end,
++                seed -> SimRuns.run(seed, settings.config(), settings.ticks(), World.CORRECT));
++        Path failures = Path.of("target", "sim-failures.tsv");
++        Files.createDirectories(failures.getParent());
++        Files.write(failures, fuzzed.failed().stream().map(v -> SimFuzz.pinLine(v, settings.base())).toList());
++        assertFalse(fuzzed.ran().isEmpty(), "the budget " + settings.budget() + " ran no seed");
++        assertEquals(List.of(), fuzzed.failed().stream().map(Verdict::report).toList(),
++                () -> fuzzed.failed().size() + " of " + fuzzed.ran().size() + " fuzzed seeds failed; pinned in " + failures.toAbsolutePath());
++    }
++
++    private static Map<String, String> simProperties() {
++        Map<String, String> out = new TreeMap<>();
++        for (String name : System.getProperties().stringPropertyNames()) if (name.startsWith("sim.")) out.put(name, System.getProperty(name));
++        return out;
++    }
++}
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimHarnessTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimHarnessTest.java
+index 788619e..5710311 100644
+--- a/flottila-sim/src/test/java/io/flottila/sim/SimHarnessTest.java
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimHarnessTest.java
+@@ -89,7 +89,7 @@ class SimHarnessTest {
+     @Test
+     void onlyTheNamesPrintedReadBack() {
+         assertThrows(IllegalArgumentException.class, () -> SimSeed.parse("2a"), "a seed printed without 0x");
+-        assertThrows(IllegalArgumentException.class, () -> SimConfig.named("V2"), "a config never defined");
++        assertThrows(IllegalArgumentException.class, () -> SimConfig.named("V3"), "a config never defined");
+         assertThrows(IllegalArgumentException.class, () -> SimConfig.named(SimConfig.V1.withWeight(Action.POLL, 1).name()),
+                 "a config built in a test is not looked up by name");
+     }
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimReproducibilityTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimReproducibilityTest.java
+index ce032ee..79892b0 100644
+--- a/flottila-sim/src/test/java/io/flottila/sim/SimReproducibilityTest.java
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimReproducibilityTest.java
+@@ -5,6 +5,7 @@ import net.jqwik.api.Property;
+ import net.jqwik.api.ShrinkingMode;
+ import org.junit.jupiter.api.Test;
+ 
++import java.util.EnumSet;
+ import java.util.HashSet;
+ import java.util.Map;
+ import java.util.Set;
+@@ -28,9 +29,9 @@ class SimReproducibilityTest {
+     @Test
+     void sameSeedSameDigestAndVerdict() {
+         SimSeed one = new SimSeed(1);
+-        Verdict first = run(one, SimConfig.V1, TICKS, World.CORRECT);
+-        Verdict other = run(new SimSeed(2), SimConfig.V1, TICKS, World.CORRECT);   // between the two: nothing carries over
+-        Verdict again = run(one, SimConfig.V1, TICKS, World.CORRECT);
++        Verdict first = run(one, SimConfig.V1, GOLDEN_TICKS, World.CORRECT);
++        Verdict other = run(new SimSeed(2), SimConfig.V1, GOLDEN_TICKS, World.CORRECT);   // between the two: nothing carries over
++        Verdict again = run(one, SimConfig.V1, GOLDEN_TICKS, World.CORRECT);
+         assertEquals(first, again, "seed 0x1 run twice in one JVM");
+         assertTrue(total(first.compared()) > 0, "the digest of a run that compared nothing pins nothing");
+         assertNotEquals(first.traceDigest(), other.traceDigest(), "seeds 0x1 and 0x2 ran the same trace");
+@@ -38,6 +39,39 @@ class SimReproducibilityTest {
+                 "seed 0x1's trace moved: every pinned seed moves with it");
+     }
+ 
++    /** The ticks the golden digests are pinned at: the per-push ticks until P2-10b cut those to 500 (V1 stays frozen). */
++    private static final int GOLDEN_TICKS = 1_000;
++
++    /** PLACEHOLDER (P2-10b landing): the trace digest of seed 0x1, V2, 1 000 ticks, the correct world. */
++    private static final String GOLDEN_DIGEST_V2_SEED_1 = "sha256-64:34b94c619728e3ba";
++
++    /** The actions P2-10b added: V2 draws each of them, V1 none (V1 is frozen: its pins and golden digest stand). */
++    private static final Set<Action> ADDED_IN_10B = EnumSet.of(Action.SEND_AMO, Action.SEND_DEDUPED, Action.DUPLICATE, Action.REPLAY_FROM,
++            Action.RETRY_DLQ, Action.PARTNER_OUTAGE, Action.DROP_REPLY);
++
++    @Test
++    void v2AddsTheNewActionsAndV1StaysFrozen() {
++        for (Action a : ADDED_IN_10B) {
++            assertEquals(0, SimConfig.V1.weight(a), a + " in V1: every V1 pin moves");
++            assertTrue(SimConfig.V2.weight(a) > 0, a + " is never drawn under V2");
++        }
++        for (Action a : EnumSet.complementOf(EnumSet.copyOf(ADDED_IN_10B))) assertTrue(SimConfig.V1.weight(a) > 0, a + " left V1");
++        assertEquals("V2", SimConfig.V2.name());
++        assertEquals(SimConfig.V2, SimConfig.named("V2"));
++        assertEquals(SimConfig.V1, SimConfig.named("V1"));
++    }
++
++    @Test
++    void sameSeedSameDigestAndVerdictUnderV2() {
++        Verdict first = run(new SimSeed(1), SimConfig.V2, GOLDEN_TICKS, World.CORRECT);
++        Verdict again = run(new SimSeed(1), SimConfig.V2, GOLDEN_TICKS, World.CORRECT);
++        assertEquals(first, again, "seed 0x1 under V2 run twice in one JVM");
++        assertNotEquals(run(new SimSeed(1), SimConfig.V1, GOLDEN_TICKS, World.CORRECT).traceDigest(), first.traceDigest(),
++                "V2 ran V1's trace: the new actions were never drawn");
++        assertEquals(pinned(GOLDEN_DIGEST_V2_SEED_1, "trace digest of seed 0x1 V2 1000 ticks correct"), first.traceDigest(),
++                "seed 0x1's V2 trace moved: every V2 pin moves with it");
++    }
++
+     @Property(tries = 8, shrinking = ShrinkingMode.OFF)
+     void sameSeedSameDigestAndVerdictOverAnySeed(@ForAll long seed) {
+         Verdict first = run(new SimSeed(seed), SimConfig.V1, 250, World.CORRECT);
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimRuns.java b/flottila-sim/src/test/java/io/flottila/sim/SimRuns.java
+index 9c6dc3c..98901b7 100644
+--- a/flottila-sim/src/test/java/io/flottila/sim/SimRuns.java
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimRuns.java
+@@ -18,8 +18,11 @@ final class SimRuns {
+     /** The per-seed hang guard; a run that is not done by then names its seed, config, ticks and world. */
+     static final Duration PER_SEED = Duration.ofSeconds(30);
+ 
+-    /** Ticks of a per-push run. */
+-    static final int TICKS = 1_000;
++    /** Ticks of a per-push run: 1 000 until P2-10b, cut to 450 for the per-push budget of 15 s (bench/RESULTS.md §P2-10). */
++    static final int TICKS = 450;
++
++    /** The per-push configuration (P2-10b): V2; V1 stays frozen and reproducible for its pins. */
++    static final SimConfig PER_PUSH_CONFIG = SimConfig.V2;
+ 
+     /** The per-push seeds: 0x1 .. 0x20. */
+     static final List<SimSeed> PER_PUSH = LongStream.rangeClosed(1, 32).mapToObj(SimSeed::new).toList();
+@@ -30,9 +33,9 @@ final class SimRuns {
+                         + ": not done within " + PER_SEED);
+     }
+ 
+-    /** The verdict of the first per-push seed {@code world} fails under V1; a failed test when it passes all 32. */
++    /** The verdict of the first per-push seed {@code world} fails under the per-push config; a failed test when it passes all 32. */
+     static Verdict firstFailing(World world) {
+-        return firstFailing(world, SimConfig.V1);
++        return firstFailing(world, PER_PUSH_CONFIG);
+     }
+ 
+     /** The verdict of the first per-push seed {@code world} fails under {@code config}; a failed test when it passes all 32. */
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimSchedulerTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimSchedulerTest.java
+index ab9a830..2c89042 100644
+--- a/flottila-sim/src/test/java/io/flottila/sim/SimSchedulerTest.java
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimSchedulerTest.java
+@@ -107,6 +107,10 @@ class SimSchedulerTest {
+      * in its quiesce before it starts another unit; and at each unit start the driver waits until no run thread it has seen is
+      * RUNNABLE (a held call or a backoff parks without a sim call in between). A run at a sim call while a unit starts, or two
+      * runs at sim calls at once, is a violation. Every call yields to widen the window.
++     *
++     * <p>The probe spins on thread state on purpose — {@code getState()} and {@code Thread.yield()} loops, bounded by the
++     * per-seed hang guard — to see from outside what the harness decides from inside; the harness itself never does: it knows a
++     * run's state by registration and join (D-101).
+      */
+     static final class Probe implements World {
+         final AtomicInteger peak = new AtomicInteger();
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/SimSelfTest.java b/flottila-sim/src/test/java/io/flottila/sim/SimSelfTest.java
+index ce4bc70..9859f48 100644
+--- a/flottila-sim/src/test/java/io/flottila/sim/SimSelfTest.java
++++ b/flottila-sim/src/test/java/io/flottila/sim/SimSelfTest.java
+@@ -14,6 +14,8 @@ import static io.flottila.sim.Check.ACKED_IS_FINAL;
+ import static io.flottila.sim.Check.ADMISSION_BOUNDS;
+ import static io.flottila.sim.Check.DRAINED;
+ import static io.flottila.sim.Check.KEY_ORDER;
++import static io.flottila.sim.Check.ONE_ID_PER_DEDUPE_KEY;
++import static io.flottila.sim.Check.REPLAY_YIELDS_RECORDED;
+ import static io.flottila.sim.Check.PREDICTED;
+ import static io.flottila.sim.Check.SNAPSHOT_PER_STEP;
+ import static io.flottila.sim.Pins.pinned;
+@@ -29,15 +31,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
+  */
+ class SimSelfTest {
+ 
+-    /** The checks P2-10a's workload exercises (ONE_ID_PER_DEDUPE_KEY and REPLAY_YIELDS_RECORDED come with P2-10b). */
+-    static final Set<Check> CHECKED_IN_10A = EnumSet.of(PREDICTED, ADMISSION_BOUNDS, KEY_ORDER, ACKED_IS_FINAL, SNAPSHOT_PER_STEP, DRAINED);
++    /** The checks the per-push workload exercises (P2-10b: ONE_ID_PER_DEDUPE_KEY and REPLAY_YIELDS_RECORDED joined). */
++    static final Set<Check> CHECKED = EnumSet.of(PREDICTED, ADMISSION_BOUNDS, KEY_ORDER, ONE_ID_PER_DEDUPE_KEY, REPLAY_YIELDS_RECORDED,
++            ACKED_IS_FINAL, SNAPSHOT_PER_STEP, DRAINED);
+ 
+     /**
+-     * PLACEHOLDER (landing): per check, half the smallest per-seed compared count of the 32 per-push seeds at landing, as
+-     * recorded in bench/RESULTS.md §P2-10; lowering one needs a D-line.
++     * PLACEHOLDER (P2-10b landing): per check, half the smallest per-seed compared count of the 32 per-push seeds under V2, as
++     * recorded in bench/RESULTS.md §P2-10; lowering one needs a D-line. (V1's, P2-10a: PREDICTED 592, ADMISSION_BOUNDS 159,
++     * KEY_ORDER 694, ACKED_IS_FINAL 313, SNAPSHOT_PER_STEP 555, DRAINED 624.)
+      */
+-    static final Map<Check, Long> FLOORS = Map.of(PREDICTED, 592L, ADMISSION_BOUNDS, 159L, KEY_ORDER, 694L, ACKED_IS_FINAL, 313L,
+-            SNAPSHOT_PER_STEP, 555L, DRAINED, 624L);
++    static final Map<Check, Long> FLOORS = Map.of(PREDICTED, 278L, ADMISSION_BOUNDS, 98L, KEY_ORDER, 297L, ONE_ID_PER_DEDUPE_KEY, 94L,
++            REPLAY_YIELDS_RECORDED, 27L, ACKED_IS_FINAL, 185L, SNAPSHOT_PER_STEP, 241L, DRAINED, 331L);
++
++    /**
++     * PLACEHOLDER (P2-10b landing): per ADMISSION_BOUNDS part, half the smallest per-seed count under V2 — the floor proves that
++     * sends arrived at each limit, not only that the bound was compared. WORKER_RUNS: its smallest is 1, and the floor is rounded
++     * up to 1, since a floor of 0 proves nothing.
++     */
++    static final Map<String, Long> ADMISSION_PART_FLOORS = Map.of(World.Compared.REQUESTS, 90L, World.Compared.BYTES, 2L,
++            World.Compared.WORKER_RUNS, 1L);
++
++    static final List<String> ADMISSION_PARTS = List.of(World.Compared.REQUESTS, World.Compared.BYTES, World.Compared.WORKER_RUNS);
+ 
+     static List<SimSeed> perPush() {
+         return SimRuns.PER_PUSH;
+@@ -46,13 +60,19 @@ class SimSelfTest {
+     @ParameterizedTest(name = "{0}")
+     @MethodSource("perPush")
+     void correctWorldPassesEverySeedAboveEachFloor(SimSeed seed) {
+-        Verdict v = run(seed, SimConfig.V1, TICKS, World.CORRECT);
++        Seen seen = new Seen();
++        Verdict v = run(seed, SimRuns.PER_PUSH_CONFIG, TICKS, seen);
+         assertTrue(v.passed(), v::report);
+-        for (Check c : CHECKED_IN_10A) {
+-            long floor = pinned(FLOORS.get(c), "floor of " + c);
++        for (Check c : CHECKED) {
++            long floor = pinned(FLOORS.get(c), "V2 floor of " + c);
+             long compared = v.compared().getOrDefault(c, 0L);
+             assertTrue(compared >= floor, () -> seed + ": " + c + " compared " + compared + " times, below its floor " + floor + "\n" + v.report());
+         }
++        for (String part : ADMISSION_PARTS) {
++            long floor = pinned(ADMISSION_PART_FLOORS.get(part), "V2 floor of ADMISSION_BOUNDS part " + part);
++            long compared = seen.comparedAs(part).stream().filter(c -> c.check() == ADMISSION_BOUNDS).count();
++            assertTrue(compared >= floor, () -> seed + ": ADMISSION_BOUNDS " + part + " compared " + compared + " times, below its floor " + floor);
++        }
+     }
+ 
+     @Test
+@@ -96,4 +116,16 @@ class SimSelfTest {
+         Verdict v = firstFailing(new KeyBlindClaim(), SimConfig.V1.withRate(FaultKind.DELAY, 0.0));
+         assertEquals(EnumSet.of(KEY_ORDER), v.failedChecks(), v::report);
+     }
++
++    @Test
++    void idempotentCheckRemovedFailsPredictedAndOneId() {
++        Verdict v = firstFailing(new IdempotentCheckRemoved());
++        assertEquals(EnumSet.of(PREDICTED, ONE_ID_PER_DEDUPE_KEY), v.failedChecks(), v::report);
++    }
++
++    @Test
++    void lostReplayBodyFailsReplayYieldsRecorded() {
++        Verdict v = firstFailing(new LostReplayBody());
++        assertEquals(EnumSet.of(REPLAY_YIELDS_RECORDED), v.failedChecks(), v::report);
++    }
+ }
+diff --git a/flottila-sim/src/test/java/io/flottila/sim/Worlds.java b/flottila-sim/src/test/java/io/flottila/sim/Worlds.java
+index 9fc125a..82b8109 100644
+--- a/flottila-sim/src/test/java/io/flottila/sim/Worlds.java
++++ b/flottila-sim/src/test/java/io/flottila/sim/Worlds.java
+@@ -7,7 +7,8 @@ final class Worlds {
+ 
+     private Worlds() {}
+ 
+-    static final List<String> NAMES = List.of("correct", AckBeforeSave.NAME, ReorderingFastPath.NAME, DoubleAdmission.NAME);
++    static final List<String> NAMES = List.of("correct", AckBeforeSave.NAME, ReorderingFastPath.NAME, DoubleAdmission.NAME,
++            IdempotentCheckRemoved.NAME, LostReplayBody.NAME);
+ 
+     /** A fresh world of that name (a variant keeps per-run state). */
+     static World named(String name) {
+@@ -16,6 +17,8 @@ final class Worlds {
+             case AckBeforeSave.NAME -> new AckBeforeSave();
+             case ReorderingFastPath.NAME -> new ReorderingFastPath();
+             case DoubleAdmission.NAME -> new DoubleAdmission();
++            case IdempotentCheckRemoved.NAME -> new IdempotentCheckRemoved();
++            case LostReplayBody.NAME -> new LostReplayBody();
+             case RenumberedIngress.NAME -> new RenumberedIngress();   // replayable, not pinned (P2-10a r2)
+             case OverClaim.NAME -> new OverClaim();
+             case KeyBlindClaim.NAME -> new KeyBlindClaim();
+diff --git a/flottila-sim/src/test/resources/io/flottila/sim/pinned-seeds.tsv b/flottila-sim/src/test/resources/io/flottila/sim/pinned-seeds.tsv
+index 9bd0df2..04526fb 100644
+--- a/flottila-sim/src/test/resources/io/flottila/sim/pinned-seeds.tsv
++++ b/flottila-sim/src/test/resources/io/flottila/sim/pinned-seeds.tsv
+@@ -5,3 +5,6 @@
+ 0x1	V1	1000	ack-before-save	FAIL:PREDICTED,ACKED_IS_FINAL	# P2-10a landing: the first per-push seed detecting ACK_BEFORE_SAVE
+ 0x1	V1	1000	reordering-fast-path	FAIL:KEY_ORDER	# P2-10a landing: the first per-push seed detecting REORDERING_FAST_PATH
+ 0x1	V1	1000	double-admission	FAIL:ADMISSION_BOUNDS	# P2-10a landing: the first per-push seed detecting DOUBLE_ADMISSION
++0x1	V2	1000	correct	PASS	# P2-10b landing: per-push seed 0x1 under V2, the V2 golden digest of SimReproducibilityTest
++0x1	V2	1000	idempotent-check-removed	FAIL:PREDICTED,ONE_ID_PER_DEDUPE_KEY	# P2-10b landing: the first per-push seed detecting IDEMPOTENT_CHECK_REMOVED
++0x1	V2	1000	lost-replay-body	FAIL:REPLAY_YIELDS_RECORDED	# P2-10b landing: the first per-push seed detecting LOST_REPLAY_BODY
