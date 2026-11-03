@@ -92,20 +92,21 @@ later phases. Exception: "fix main".
 
 ## 5. Questions for the brainstorm (answers of 2026-11-03 in **bold**; still open where marked)
 
-- **Q-1 Targets — open (architect's proposal, owner to confirm).** For the 4 vCPU VM, everything on
-  one box, small bodies (≤ 10 KB), metadata-only recording: at-least-once durable ACK p99 < 5 ms
-  at c=1; sustained at-least-once end to end ≥ 5 000 msg/s (open loop, flat backlog) with ACK
-  p99 < 50 ms at that rate; sync platform overhead p50 < 1 ms at c=1 and < 2 ms at c=8. The
-  numbers are confirmed or corrected once P2-14 has the baseline; the 8-core figure of
-  ARCHITECTURE §7 is checked on a dedicated machine later.
+- **Q-1 Targets — confirmed by the owner as working targets**, re-checked once P2-14 has the
+  baseline. For the 4 vCPU VM, everything on one box, small bodies (≤ 10 KB), metadata-only
+  recording: at-least-once durable ACK p99 < 5 ms at c=1; sustained at-least-once end to end
+  ≥ 5 000 msg/s (open loop, flat backlog) with ACK p99 < 50 ms at that rate; sync platform
+  overhead p50 < 1 ms at c=1 and < 2 ms at c=8. Recording payloads is measured separately once
+  Q-9 is settled; the 8-core figure of ARCHITECTURE §7 is checked on a dedicated machine later.
 - **Q-2 Reference machine: the 4 vCPU cloud VM for CORE-GATE**, with targets realistic for it; a
   dedicated machine only in a later phase, at the owner's call.
-- **Q-3 ClickHouse ingest — open.** The owner asks whether a collector (Vector, Rust, MPL 2.0) or
-  an own mover is better than (a) / (b). Architect's view: the body journal already is a durable
-  local buffer, so a mover in the node (journal + Postgres references → batched ClickHouse
-  inserts, idempotent, marks what ClickHouse holds so segments can go) does what Vector's disk
-  buffer would, without a second copy of the data or a second process whose acknowledgement has
-  to be fed back. Vector stays a candidate for logs and metrics.
+- **Q-3 ClickHouse ingest: an own mover in the node.** The body journal is the durable local
+  buffer; the mover reads sealed segments with their Postgres references, writes batched,
+  idempotent ClickHouse inserts, marks what ClickHouse holds, and a segment nothing references
+  any more is deleted. A ClickHouse outage is ridden out by the journal (Q-8). Whether Postgres
+  keeps a short copy of the step metadata for the live UI view or the UI reads ClickHouse through
+  pg_clickhouse is the designer's call by measurement. Vector is a candidate for the platform's
+  logs and metrics only (CONSIDER-11), not for message data.
 - **Q-4 Hot window: until ClickHouse holds the bodies** (normally minutes to hours); the journal
   disk is sized for the ClickHouse outage it must ride through.
 - **Q-5 HA copy: the ACK waits for the peer's receipt, not its fdatasync** (a message is lost only
