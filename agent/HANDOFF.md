@@ -2,7 +2,7 @@
 
 state: RUNNING (owner RESUME 2026-11-02, "until STOP"); FIX-115 done (review PASS r2); next P2-10 [C]
 last commit: `Task: FIX-115` (this commit); f0d3a03 `Task: P2-09b`; 7fc652c `Task: P2-09a`; b046743 `Task: GATE` (GATE_MET)
-owner 2026-11-03: core rework in discussion (bodies off Pg, body journal, Kafka optional); D-101/P2-15 lease, P2-14, CONSIDER-10 written
+owner 2026-11-03: core rework in discussion (bodies off Pg, body journal, Kafka optional); D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10
 branch: claude/dazzling-gauss-9x7tiw, pushed to main as well
 next exact action: P2-10 [C] designer → spec → red tests; then P2-11, P2-12 [C], P2-13, P2-14 (before FIX-95a/b); FIX-112..114, FIX-116..119
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
