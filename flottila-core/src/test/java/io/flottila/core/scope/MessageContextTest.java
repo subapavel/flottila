@@ -1,18 +1,27 @@
 package io.flottila.core.scope;
 
+import io.flottila.api.Envelope;
+import io.flottila.api.Headers;
+import io.flottila.api.Pipeline;
 import io.flottila.testkit.FakeClock;
+import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.FakeTimer;
 import io.flottila.testkit.NoBlockedPlatformThreads;
+import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -108,5 +117,56 @@ class MessageContextTest {
             return null;
         }));
         assertFalse(MessageContext.isBound());
+    }
+
+    // ---- FIX-115 (D-100): the context of an envelope, and a pipeline applied under it ------------------------------------
+
+    /** D-100: a message's context is its envelope's id and flow, tenant "default" (no tenant exists yet), trace id = message id. */
+    @Test
+    void ofAnEnvelopeTakesItsIdAndFlowTheDefaultTenantAndTheIdAsTraceId() {
+        Envelope e = FakeRuntime.create().ingress("invoice-sync", Headers.empty(), Buffer.buffer("<x/>"));
+        Instant deadline = Instant.parse("2026-01-01T00:00:07Z");
+        assertEquals(new MessageContext(e.id(), "invoice-sync", "default", e.id(), deadline), MessageContext.of(e, deadline));
+        assertEquals("default", MessageContext.DEFAULT_TENANT);
+    }
+
+    /**
+     * {@code apply(rest, e)} runs {@code rest} on {@code e} with the context bound and returns what it returned; what it throws
+     * comes out as thrown — unchecked or a checked one thrown sneakily — and on every way out the binding is gone again.
+     */
+    @Test
+    void applyBindsForTheRestAndRethrowsWhatItThrowsAsThrown() throws Exception {
+        RequestScopeTest.onVirtual(() -> {
+            Envelope e = FakeRuntime.create().ingress("invoice-sync", Headers.empty(), Buffer.buffer("<x/>"));
+            List<String> seen = new ArrayList<>();
+            Pipeline reading = in -> {
+                seen.add(MessageContext.current().messageId() + " " + MessageContext.current().deadline());
+                return in.withHeader("seen", "yes");
+            };
+            Envelope out = ctx.apply(reading, e);
+            assertEquals("yes", out.header("seen").orElseThrow(), "what the rest returned");
+            assertEquals(List.of("m-1 2026-01-01T00:00:05Z"), seen, "the rest ran with the context bound");
+            assertFalse(MessageContext.isBound(), "unbound after the rest returned");
+
+            IllegalStateException unchecked = new IllegalStateException("step failed");
+            assertSame(unchecked, assertThrows(IllegalStateException.class, () -> ctx.apply(in -> { throw unchecked; }, e)), "unchecked, as thrown");
+            assertFalse(MessageContext.isBound(), "unbound after the rest threw");
+
+            IOException checked = new IOException("partner gone");
+            Throwable caught = null;
+            try {
+                ctx.apply(in -> sneaky(checked), e);
+            } catch (Throwable t) {
+                caught = t;
+            }
+            assertSame(checked, caught, "a checked one thrown sneakily comes out as thrown, not wrapped");
+            assertFalse(MessageContext.isBound(), "unbound after the rest threw a checked one");
+            return null;
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    static <X extends Throwable> Envelope sneaky(Throwable t) throws X {
+        throw (X) t;
     }
 }

@@ -55,6 +55,25 @@ class SchemasTest {
         assertTrue(r.problems().isEmpty());
     }
 
+    /** D-100: {@code delivery.timeout}, the time each run of a message has, is an optional duration in every delivery mode. */
+    @Test
+    void aFlowMayGiveItsMessagesADeliveryTimeout() {
+        for (String mode : List.of("sync", "at-least-once", "at-most-once")) {
+            Schemas.Report r = Schemas.FLOW.validate(Documents.yaml("""
+                    schemaVersion: 1
+                    kind: flow
+                    id: ping
+                    version: 1.0.0
+                    from: { endpoint: http-in }
+                    delivery: { mode: %s, timeout: 30s }
+                    limits: { maxBodyBytes: 1024 }
+                    steps:
+                      - { type: to, name: out, endpoint: echo }
+                    """.formatted(mode)));
+            assertTrue(r.valid(), mode + ": " + r);
+        }
+    }
+
     @Test
     void aFlowMayTurnRecordingOffWithTheWordTheDocumentUses() {
         Schemas.Report r = Schemas.FLOW.validate(Documents.yaml("""

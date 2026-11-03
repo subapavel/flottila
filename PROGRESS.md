@@ -1147,3 +1147,16 @@ Checks: verify -Pit 2850/0/0/0, 283 fresh XML (agent/work/P2-09b-verify3-counts.
 Review: FAIL r1 (redaction after the split leaked a password fragment; D-099 not settled), PASS r2.
 D-054 data: class B (test-author ×3, implementer ×3, reviewer ×2); review rounds 2.
 Next: FIX-115.
+
+## 2026-11-03 — FIX-115 a message deadline on every deployed path — done, review PASS r2
+Context compacted once (re-read HANDOFF, git status, git log -3 before changing anything).
+Test first: FlowBuilderContextTest (6), FlowBuilderTargetTest +3, TargetLimitTest +4, TargetLimitPropertyTest +1, FlowDefinitionTest +1,
+MessageContextTest +2, SchemasTest +1 (red: agent/work/FIX-115-red-compile.log, -red-unit.log).
+Change: FlowBuilder's head stage binds MessageContext (tenant default, trace = message id, deadline = run start + flow
+`delivery.timeout`, default 30 s, fresh per run, replay tail too); TargetLimit.call(within, send) waits min(maxWait, within).
+Deviation: F-24/D-100 — per-run `delivery.timeout` instead of the endpoint timeout / lease; ARCHITECTURE §4 + changelog, D-042 amended.
+Checks: verify 2868/0 (agent/work/FIX-115-verify-counts.txt), core r2 489/0 (-r2-core.log); coverage no decrease; PIT 239/242; M1–M12 killed.
+Review: FAIL r1 (FlowDefinition:20 "never fails here" vs 0s, D-042 amendment placement), PASS r2.
+Follow-ups: FIX-116..119 (FIX-117 RequestScope cancel; FIX-119 schema refuses 0s).
+D-054 data: class C (designer ×1, test-author ×2, implementer ×2, reviewer ×2); review rounds 2.
+Next: P2-10.

@@ -448,4 +448,134 @@ class TargetLimitTest {
         b.close();
         assertTrue(d.succeeded());
     }
+
+    // ---- FIX-115 (D-100): call(within, send) waits at most min(maxWait, within) -------------------------------------------
+
+    /** The FakeTimer, counting every schedule: the witness that a wait armed its bound, or did not. */
+    record CountingTimer(FakeTimer inner, AtomicInteger schedules) implements Timer {
+        CountingTimer(FakeTimer inner) { this(inner, new AtomicInteger()); }
+        @Override public Cancellable schedule(Duration delay, Runnable task) {
+            schedules.incrementAndGet();
+            return inner.schedule(delay, task);
+        }
+    }
+
+    /** A send that counts its runs and answers at once. */
+    static Supplier<Future<String>> counted(AtomicInteger sent, String reply) {
+        return () -> {
+            sent.incrementAndGet();
+            return Future.succeededFuture(reply);
+        };
+    }
+
+    /**
+     * A waiter whose message has 1.5 s left (maxWait 5 s) is refused at 1.5 s, not at maxWait: a retryable downstream Nack
+     * that says how long it waited and that the message's deadline bounded the wait; it sends nothing.
+     */
+    @Test
+    void aDeadlineEarlierThanMaxWaitRefusesTheWaiterAtTheDeadline() throws Exception {
+        TargetLimit limit = new TargetLimit(T, 1, WAIT, timer);
+        Promise<String> holder = heldSend();
+        onVirtualThread("holder", () -> limit.call(holder::future));
+        until(() -> limit.gauge().inFlight() == 1, () -> "the holder's send is in flight: " + limit.gauge());
+        AtomicInteger sent = new AtomicInteger();
+        CompletableFuture<String> waiting = onVirtualThread("waiter", () -> limit.call(Duration.ofMillis(1500), counted(sent, "sent")));
+        until(() -> limit.gauge().waiting() == 1 && timer.pending() == 1, () -> "the waiter is queued, its bound armed: " + limit.gauge() + ", pending " + timer.pending());
+
+        clock.advance(Duration.ofMillis(1499));
+        assertEquals(0, limit.gauge().refused(), "not refused before the deadline");
+        assertEquals(1, limit.gauge().waiting(), "still waiting at the deadline - 1 ms");
+        clock.advance(Duration.ofMillis(1));
+        assertEquals(1, limit.gauge().refused(), "refused at exactly the deadline, 3.5 s before maxWait");
+        assertEquals(0, timer.pending());
+
+        NackException busy = assertInstanceOf(NackException.class, failureOf(waiting), "past the deadline the call fails with a NackException");
+        assertTrue(busy.retryable(), "busy is a reason to come back later");
+        assertEquals(io.flottila.api.Fault.Kind.DOWNSTREAM, busy.kind());
+        assertTrue(busy.reason().startsWith("target " + T + " busy: 1 calls in flight, waited "), busy.reason());
+        assertTrue(busy.reason().endsWith("waited PT1.5S until the message's deadline"), busy.reason());
+        assertEquals(0, sent.get(), "a refused waiter sends nothing");
+        assertEquals(0, limit.gauge().waiting());
+        assertEquals(1, limit.gauge().inFlight(), "the holder's send is still out");
+    }
+
+    /** A waiter whose message has 60 s left waits maxWait (5 s), not 60 s, and is refused with the maxWait wording. */
+    @Test
+    void maxWaitEarlierThanTheDeadlineRefusesTheWaiterAtMaxWait() throws Exception {
+        TargetLimit limit = new TargetLimit(T, 1, WAIT, timer);
+        Promise<String> holder = heldSend();
+        onVirtualThread("holder", () -> limit.call(holder::future));
+        until(() -> limit.gauge().inFlight() == 1, () -> "the holder's send is in flight: " + limit.gauge());
+        AtomicInteger sent = new AtomicInteger();
+        CompletableFuture<String> waiting = onVirtualThread("waiter", () -> limit.call(Duration.ofSeconds(60), counted(sent, "sent")));
+        until(() -> limit.gauge().waiting() == 1 && timer.pending() == 1, () -> "the waiter is queued, its bound armed: " + limit.gauge() + ", pending " + timer.pending());
+
+        clock.advance(WAIT.minusMillis(1));
+        assertEquals(0, limit.gauge().refused(), "not refused before maxWait");
+        assertEquals(1, limit.gauge().waiting(), "still waiting at maxWait - 1 ms");
+        clock.advance(Duration.ofMillis(1));
+        assertEquals(1, limit.gauge().refused(), "refused at exactly maxWait, 55 s before the message's deadline");
+
+        NackException busy = assertInstanceOf(NackException.class, failureOf(waiting));
+        assertTrue(busy.retryable(), busy.reason());
+        assertTrue(busy.reason().startsWith("target " + T + " busy: 1 calls in flight, waited "), busy.reason());
+        assertTrue(busy.reason().endsWith("waited PT5S"), "maxWait bounded the wait: " + busy.reason());
+        assertEquals(0, sent.get());
+    }
+
+    /**
+     * A message whose deadline has passed (nothing left: zero, or less) and that would have to wait is refused at once, on the
+     * caller's thread, without the clock moving: a retryable Nack saying the deadline has passed, counted in refused, no bound
+     * armed on the timer, nothing queued or sent. The counting timer does see a wait that has time left (its witness).
+     */
+    @Test
+    void aPassedDeadlineRefusesAWaitAtOnceWithoutArmingATimer() throws Exception {
+        CountingTimer counting = new CountingTimer(timer);
+        TargetLimit limit = new TargetLimit(T, 1, WAIT, counting);
+        Promise<String> holder = heldSend();
+        onVirtualThread("holder", () -> limit.call(holder::future));
+        until(() -> limit.gauge().inFlight() == 1, () -> "the holder's send is in flight: " + limit.gauge());
+        AtomicInteger sent = new AtomicInteger();
+
+        int refusals = 0;
+        for (Duration within : List.of(Duration.ZERO, Duration.ofMillis(-1))) {
+            Throwable failure = failureOf(onVirtualThread("late", () -> limit.call(within, counted(sent, "sent"))));
+            refusals++;
+            NackException late = assertInstanceOf(NackException.class, failure, within + ": refused with a NackException");
+            assertTrue(late.retryable(), within + ": " + late.reason());
+            assertEquals(io.flottila.api.Fault.Kind.DOWNSTREAM, late.kind());
+            assertTrue(late.reason().startsWith("target " + T + " busy: 1 calls in flight"), late.reason());
+            assertTrue(late.reason().endsWith("the message's deadline has passed"), late.reason());
+            assertEquals(refusals, limit.gauge().refused(), within + ": counted in refused");
+            assertEquals(0, limit.gauge().waiting(), within + ": nothing queued");
+            assertEquals(0, counting.schedules().get(), within + ": no bound armed");
+            assertEquals(0, timer.pending(), within + ": nothing pending on the timer");
+        }
+        assertEquals(0, sent.get(), "nothing sent");
+
+        CompletableFuture<String> witness = onVirtualThread("witness", () -> limit.call(Duration.ofSeconds(1), counted(sent, "sent")));
+        until(() -> limit.gauge().waiting() == 1 && counting.schedules().get() == 1, () -> "witness: a wait with time left arms its bound: " + counting.schedules());
+        clock.advance(Duration.ofSeconds(1));
+        assertInstanceOf(NackException.class, failureOf(witness));
+        assertEquals(0, sent.get());
+    }
+
+    /** A free permit is still granted to a message whose deadline has passed (zero or less left): nothing to wait for, nothing refused. */
+    @Test
+    void aPassedDeadlineStillTakesAFreePermit() throws Exception {
+        CountingTimer counting = new CountingTimer(timer);
+        TargetLimit limit = new TargetLimit(T, 1, WAIT, counting);
+        for (Duration within : List.of(Duration.ZERO, Duration.ofMillis(-1))) {
+            AtomicInteger inFlightDuringSend = new AtomicInteger(-1);
+            String reply = onVirtualThread("late", () -> limit.call(within, () -> {
+                inFlightDuringSend.set(limit.gauge().inFlight());
+                return Future.succeededFuture("sent " + within);
+            })).get(5, TimeUnit.SECONDS);
+            assertEquals("sent " + within, reply, within + ": the free permit was taken and the send ran");
+            assertEquals(1, inFlightDuringSend.get(), within + ": under the permit");
+            assertEquals(0, limit.gauge().inFlight(), within + ": given back once the send settled");
+        }
+        assertEquals(0, limit.gauge().refused(), "nothing refused");
+        assertEquals(0, counting.schedules().get(), "nothing armed");
+    }
 }

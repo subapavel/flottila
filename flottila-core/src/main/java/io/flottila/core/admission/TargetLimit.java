@@ -23,8 +23,12 @@ import java.util.function.Supplier;
  * {@link Timer} with a retryable {@link NackException} ({@code target <t> busy: <n> calls in flight, waited <maxWait>}). A grant
  * only completes the waiter's future, on the thread that freed the permit; a refusal completes it on the timer's thread.
  *
- * <p>{@link #call} is the message's path: it waits on the calling virtual thread, runs the send there and holds the permit until
- * the send's future settles — not until the caller leaves, so a caller interrupted while its send is out still counts against
+ * <p>{@link #call(Duration, Supplier)} is the message's path (D-100): it waits at most the earlier of {@code maxWait} and the
+ * {@code within} left until the message's deadline — refused then with {@code ..., waited <within> until the message's deadline}
+ * when the deadline came first — and a request that would have to wait with nothing left ({@code within} zero or less) is
+ * refused at once with {@code ..., the message's deadline has passed}, counted in refused, no bound armed; a free permit is still
+ * granted to it. {@link #call(Supplier)} waits {@code maxWait}. Either waits on the calling virtual thread, runs the send there
+ * and holds the permit until the send's future settles — not until the caller leaves, so a caller interrupted while its send is out still counts against
  * the target. An interrupt while it waits withdraws the request: nothing is sent, and a grant that raced the interrupt is given
  * back at once.
  *
@@ -54,7 +58,7 @@ public final class TargetLimit {
 
     /** A permit: granted now, granted later in arrival order, or refused past {@code maxWait}. Never blocks. */
     public Future<Permit> acquire() {
-        return request().answer.future();
+        return request(maxWait).answer.future();
     }
 
     /**
@@ -64,8 +68,17 @@ public final class TargetLimit {
      * restored when interrupted while waiting — then nothing was sent and no permit is kept.
      */
     public <T> T call(Supplier<Future<T>> send) throws Exception {
+        return call(maxWait, send);
+    }
+
+    /**
+     * {@link #call(Supplier)} for a message with {@code within} left until its deadline: waits at most the earlier of
+     * {@code maxWait} and {@code within}; with nothing left a request that must wait is refused at once, a free permit is taken.
+     */
+    public <T> T call(Duration within, Supplier<Future<T>> send) throws Exception {
+        Objects.requireNonNull(within, "within");
         Objects.requireNonNull(send, "send");
-        Waiter request = request();
+        Waiter request = request(within);
         Future<Permit> answer = request.answer.future();
         if (!answer.isComplete()) {
             CountDownLatch answered = new CountDownLatch(1);
@@ -100,23 +113,39 @@ public final class TargetLimit {
         }
     }
 
-    /** A free permit taken now, or a place in the queue with its {@code maxWait} bound armed. */
-    private Waiter request() {
+    /**
+     * A free permit taken now; else, with nothing {@code within}, a refusal now; else a place in the queue with its bound armed,
+     * the earlier of {@code maxWait} and {@code within}.
+     */
+    private Waiter request(Duration within) {
         Waiter request = new Waiter();
         Permit now = null;
+        boolean late = false;   // refused at once: it must wait and has nothing left
+        int calls = 0;
         lock.lock();
         try {
             if (waiting.isEmpty() && inFlight < maxCalls) {
                 inFlight++;
                 now = new Permit();
+            } else if (!within.isPositive()) {
+                refused++;
+                late = true;
+                calls = inFlight;
             } else {
-                request.bound = timer.schedule(maxWait, () -> refuse(request));   // armed first: a timer that throws queues nothing
+                boolean deadlineFirst = within.compareTo(maxWait) < 0;
+                Duration bound = deadlineFirst ? within : maxWait;
+                String waited = deadlineFirst ? within + " until the message's deadline" : maxWait.toString();
+                request.bound = timer.schedule(bound, () -> refuse(request, waited));   // armed first: a timer that throws queues nothing
                 waiting.add(request);
             }
         } finally {
             lock.unlock();
         }
-        if (now != null) request.answer.complete(now);
+        if (now != null) {
+            request.answer.complete(now);
+        } else if (late) {
+            request.answer.fail(new NackException("target " + target + " busy: " + calls + " calls in flight, the message's deadline has passed", true));
+        }
         return request;
     }
 
@@ -140,8 +169,8 @@ public final class TargetLimit {
         next.answer.complete(handed);
     }
 
-    /** {@code maxWait} passed: a request still waiting is refused; one granted or withdrawn meanwhile is left alone. */
-    private void refuse(Waiter request) {
+    /** Its bound passed ({@code waited}): a request still waiting is refused; one granted or withdrawn meanwhile is left alone. */
+    private void refuse(Waiter request, String waited) {
         int calls;
         lock.lock();
         try {
@@ -151,7 +180,7 @@ public final class TargetLimit {
         } finally {
             lock.unlock();
         }
-        request.answer.fail(new NackException("target " + target + " busy: " + calls + " calls in flight, waited " + maxWait, true));
+        request.answer.fail(new NackException("target " + target + " busy: " + calls + " calls in flight, waited " + waited, true));
     }
 
     /** The waiter was interrupted: out of the queue, or — granted meanwhile — the permit it never used given back. */
@@ -170,7 +199,7 @@ public final class TargetLimit {
 
     private static final class Waiter {
         final Promise<Permit> answer = Promise.promise();
-        Timer.Cancellable bound;   // set under the lock before the waiter is queued, never changed
+        Timer.Cancellable bound;   // set under the lock before the waiter is queued, never changed; null when never queued
         Permit granted;            // guarded by lock: the permit a release handed over
     }
 

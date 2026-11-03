@@ -29,8 +29,11 @@ import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.StepEvent;
+import io.flottila.core.scope.MessageContext;
 
 import java.nio.file.Path;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -72,8 +75,14 @@ import java.util.function.UnaryOperator;
  * its endpoint's component names ({@link Component#target}), from the {@link Targets} given through {@link #targets(Targets)} —
  * an unshared limit with the defaults when the component names none (D-099); the limit wraps only the producer's send, inside
  * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time), and a replay
- * runs the same stage. A permit not granted within the limit's maxWait fails the send with a retryable
- * {@link io.flottila.api.NackException}.
+ * runs the same stage. A permit not granted within the earlier of the limit's maxWait and the time left until the message's
+ * deadline fails the send with a retryable {@link io.flottila.api.NackException}; a send where no {@link MessageContext} is bound
+ * waits maxWait.
+ *
+ * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s, a {@link #replay}'s
+ * {@code from} and {@code retry} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
+ * (D-100): its deadline is the run's start on the Runtime's clock, taken when the stage runs, plus the flow's
+ * {@code delivery.timeout} — fresh per run: each sync call, each at-least-once claim, each replay or retry.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -380,8 +389,10 @@ public final class FlowBuilder {
         List<Stage> steps = built.steps();
         Recorder recorder = built.recorder();
         RecordingPolicy policy = flow.recording();
+        Stage context = built.context();
         return new Replay(flow, from -> {
-            List<Stage> tail = new ArrayList<>(steps.size() - from + 2);
+            List<Stage> tail = new ArrayList<>(steps.size() - from + 3);
+            tail.add(context);
             tail.add(recorder.start(policy, Replay.REPLAY_INPUT));
             tail.addAll(steps.subList(from - 1, steps.size()));
             return Pipeline.of(tail);
@@ -390,12 +401,14 @@ public final class FlowBuilder {
 
     /**
      * The flow's steps as stages, wrapped (retry, numbering, recording, parking, then, with {@link #stepEvents}, the {@link StepEvent}
-     * outermost), without the start stage; the recorder (null without a store) and the producers the steps send through.
+     * outermost), without the start stage; the stage that binds the message's context, the recorder (null without a store) and
+     * the producers the steps send through.
      */
-    private record Built(FlowDefinition flow, List<Stage> steps, Recorder recorder, Producers producers) {
-        /** The flow's pipeline: the ingress snapshot ({@code withIngress}, when recording), then the steps. */
+    private record Built(FlowDefinition flow, Stage context, List<Stage> steps, Recorder recorder, Producers producers) {
+        /** The flow's pipeline: the context's binding, the ingress snapshot ({@code withIngress}, when recording), then the steps. */
         Pipeline pipeline(boolean withIngress) {
-            List<Stage> stages = new ArrayList<>(steps.size() + 1);
+            List<Stage> stages = new ArrayList<>(steps.size() + 2);
+            stages.add(context);
             if (withIngress && recorder != null) stages.add(recorder.start(flow.recording(), Recorder.INGRESS));
             stages.addAll(steps);
             return Pipeline.of(stages);
@@ -450,7 +463,15 @@ public final class FlowBuilder {
         } finally {
             if (!done) Producers.closeAll(flow.id(), opened);   // the flow does not build: nothing it created is left open
         }
-        return new Built(flow, List.copyOf(stages), recorder, new Producers(flow.id(), opened));
+        return new Built(flow, context(flow.timeout(), runtime.clock()), List.copyOf(stages), recorder, new Producers(flow.id(), opened));
+    }
+
+    /**
+     * The head of every pipeline built: binds the context of the message it runs for the rest of the run, its deadline the run's
+     * start on {@code clock} plus {@code timeout} (D-100).
+     */
+    private static Stage context(Duration timeout, Clock clock) {
+        return (e, rest) -> MessageContext.of(e, clock.instant().plus(timeout)).apply(rest, e);
     }
 
     /** What a step of {@code flow} is built with; the paths it reads go to the {@link #reads} sink. */
@@ -553,14 +574,19 @@ public final class FlowBuilder {
         }
         Producer producer = component.producer(cfg);
         opened.add(producer);
-        return new Send(producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared));
+        return new Send(producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock());
     }
 
-    /** A {@code to}'s send: the producer's, under the limit of its target; what the send fails with comes out as is. */
-    private record Send(Producer producer, TargetLimit limit) {
+    /**
+     * A {@code to}'s send: the producer's, under the limit of its target, waiting no longer than the time left on {@code clock}
+     * until the deadline of the message bound, maxWait when none is; what the send fails with comes out as is.
+     */
+    private record Send(Producer producer, TargetLimit limit, Clock clock) {
         Envelope apply(Envelope e) {
             try {
-                return limit.call(() -> producer.send(e));
+                return MessageContext.isBound()
+                        ? limit.call(MessageContext.current().remaining(clock), () -> producer.send(e))
+                        : limit.call(() -> producer.send(e));
             } catch (Exception failure) {   // a checked one too, as the producer's future failed with it, or the interrupt
                 throw FlowBuilder.<RuntimeException>rethrown(failure);
             }

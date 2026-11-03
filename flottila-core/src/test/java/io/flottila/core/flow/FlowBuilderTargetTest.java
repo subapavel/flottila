@@ -18,6 +18,7 @@ import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.core.scope.MessageContext;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
@@ -108,19 +109,26 @@ class FlowBuilderTargetTest {
 
         @Override public Producer producer(EndpointConfig cfg) {
             return new Producer() {
+                // what a test waits on (sent, inFlight) is published last: a held send is in `held` before it is seen (FIX-115:
+                // `until(sent.size() == n)` then `releaseAll()` missed a send whose promise was not yet added, under load)
                 @Override public Future<Envelope> send(Envelope e) {
-                    sent.add(e);
-                    if (failures.getAndUpdate(n -> n > 0 ? n - 1 : 0) > 0) return Future.failedFuture(new IllegalStateException("partner refused " + e.id()));
-                    peak.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+                    if (failures.getAndUpdate(n -> n > 0 ? n - 1 : 0) > 0) {
+                        sent.add(e);
+                        return Future.failedFuture(new IllegalStateException("partner refused " + e.id()));
+                    }
                     Envelope reply = e.withHeader("replied-by", cfg.name());
                     if (holds.getAndUpdate(n -> n > 0 ? n - 1 : 0) == 0) {
+                        peak.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
                         inFlight.decrementAndGet();
+                        sent.add(e);
                         return Future.succeededFuture(reply);
                     }
                     Promise<Envelope> answer = Promise.promise();
                     Future<Envelope> replied = answer.future().map(ignored -> reply);
-                    replied.onComplete(done -> inFlight.decrementAndGet());
                     held.add(answer);
+                    peak.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+                    replied.onComplete(done -> inFlight.decrementAndGet());
+                    sent.add(e);
                     return replied;
                 }
                 @Override public Future<Void> close() { return Future.succeededFuture(); }
@@ -143,8 +151,42 @@ class FlowBuilderTargetTest {
     FlowBuilder builder() {
         return new FlowBuilder(rt.withComponent(partner).withComponent(plain).runtime(),
                 List.of(factory("mark", s -> Stage.of(e -> e.withHeader("seen-" + s.name(), "yes"))),
-                        factory("choose", s -> Stage.of(e -> e.with(new Key<>("partner"), "shared")))),
+                        factory("choose", s -> Stage.of(e -> e.with(new Key<>("partner"), "shared"))),
+                        factory("tick", s -> Stage.of(e -> { rt.clock().advance(TICK); return e; })),
+                        factory("hop", s -> FlowBuilderTargetTest.this::hop)),
                 List.of(), ENDPOINTS);
+    }
+
+    /** What {@code tick} takes of the message's time: the clock moves on by this inside the step. */
+    static final Duration TICK = Duration.ofMillis(500);
+
+    /** Whether {@link MessageContext} was bound where {@code hop} ran: "before" on the message's thread, "after" on the hop's. */
+    final List<String> hopSaw = new CopyOnWriteArrayList<>();
+
+    /**
+     * {@code hop}: runs the rest of the pipeline on a plain virtual thread of its own and waits for it — a plain thread inherits
+     * no ScopedValue, so the rest runs with no message context bound.
+     */
+    Envelope hop(Envelope e, Pipeline rest) {
+        hopSaw.add("before " + MessageContext.isBound());
+        CompletableFuture<Envelope> out = new CompletableFuture<>();
+        Thread.ofVirtual().name("hopped").start(() -> {
+            hopSaw.add("after " + MessageContext.isBound());
+            try {
+                out.complete(rest.apply(e));
+            } catch (Throwable t) {
+                out.completeExceptionally(t);
+            }
+        });
+        try {
+            return out.get();
+        } catch (ExecutionException failed) {
+            if (failed.getCause() instanceof RuntimeException r) throw r;
+            throw new IllegalStateException(failed.getCause());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(interrupted);
+        }
     }
 
     static Map<String, Object> sendStep(String endpoint, boolean retryable) {
@@ -153,8 +195,17 @@ class FlowBuilderTargetTest {
 
     /** A flow {@code id} in {@code mode} with the given steps; retry 1 attempt after 1 s; room for 32 messages in flight. */
     static FlowDefinition flow(String id, String mode, List<Map<String, Object>> steps) {
+        return flow(id, mode, Map.of("mode", mode), steps);
+    }
+
+    /** {@link #flow(String, String, List)} whose {@code delivery.timeout} is {@code timeout}. */
+    static FlowDefinition flow(String id, String mode, String timeout, List<Map<String, Object>> steps) {
+        return flow(id, mode, Map.of("mode", mode, "timeout", timeout), steps);
+    }
+
+    private static FlowDefinition flow(String id, String mode, Map<String, Object> delivery, List<Map<String, Object>> steps) {
         Map<String, Object> doc = new HashMap<>(Map.of("schemaVersion", 1, "kind", "flow", "id", id, "version", "1.0.0", "from", Map.of("endpoint", "in"),
-                "delivery", Map.of("mode", mode), "limits", Map.of("maxBodyBytes", 4096, "maxInFlight", 32, "maxInFlightBytes", 32 * 4096),
+                "delivery", delivery, "limits", Map.of("maxBodyBytes", 4096, "maxInFlight", 32, "maxInFlightBytes", 32 * 4096),
                 "retry", Map.of("attempts", 1, "initial", "1s", "max", "1s"), "steps", steps));
         return FlowDefinition.from(doc);
     }
@@ -466,5 +517,102 @@ class FlowBuilderTargetTest {
         holding.get(5, TimeUnit.SECONDS);
         replay.close().await(5, TimeUnit.SECONDS);
         if (partner.peak.get() > 1) fail("more than the limit in flight: " + partner.peak.get());
+    }
+
+    // ---- FIX-115 (D-100): the send waits min(maxWait, the time left until the message's deadline) --------------------------
+
+    /**
+     * A sync message whose flow gives it 2 s ({@code delivery.timeout}), 500 ms of which a step before the {@code to} took, waits
+     * for a busy target (maxWait 5 s) only the 1.5 s left: refused at the message's deadline, not at maxWait, with a retryable
+     * downstream Nack that names the wait and the deadline; nothing of it reached the partner.
+     */
+    @Test
+    void aSyncSendToABusyTargetIsRefusedAtTheMessageDeadline() throws Exception {
+        Targets targets = targets(rt, 1);
+        FlowBuilder b = builder().targets(targets);
+        Pipeline holder = b.build(flow("holder", "sync", List.of(sendStep("a", false))), NO_FILES);
+        Delivery sync = b.delivery(flow("deadline", "sync", "2s", List.of(Map.of("type", "tick", "name", "slow"), sendStep("b", false))), NO_FILES);
+        partner.holdNext(1);
+        CompletableFuture<Envelope> holding = run(holder, message("holder"));
+        until(() -> partner.inFlight.get() == 1, () -> "the holder's send is out: " + partner.sentIds());
+
+        Envelope in = message("deadline");
+        CompletableFuture<Future<Ack>> answered = DeliveryTest.applyOnVirtualThread(sync, in);
+        until(() -> targets.of(SHARED).gauge().waiting() == 1 && rt.timer().pending() > 0,
+                () -> "the sync message waits for the target, its bound armed: " + targets.of(SHARED).gauge() + ", pending " + rt.timer().pending());
+        rt.clock().advance(Duration.ofMillis(1499));
+        // a due refusal runs on this thread, inside advance: checked synchronously, not through the message's thread
+        assertEquals(0, targets.of(SHARED).gauge().refused(), "not refused before the message's deadline");
+        assertEquals(1, targets.of(SHARED).gauge().waiting(), "still waiting 1 ms before the deadline");
+        rt.clock().advance(Duration.ofMillis(1));
+        assertEquals(1, targets.of(SHARED).gauge().refused(), "refused at the message's deadline (2 s after its start), 3.5 s before maxWait");
+
+        Future<Ack> answer = answered.get(5, TimeUnit.SECONDS);
+        assertTrue(answer.failed(), "a sync flow's failed step fails the answer: " + answer);
+        NackException busy = busy(answer.cause());
+        assertEquals(Fault.Kind.DOWNSTREAM, busy.kind());
+        assertTrue(busy.reason().startsWith("target " + SHARED + " busy: 1 calls in flight, waited "), busy.reason());
+        assertTrue(busy.reason().endsWith("waited PT1.5S until the message's deadline"), busy.reason());
+        assertFalse(partner.sentIds().contains(in.id()), "nothing of the refused message was sent");
+        partner.releaseAll();
+        assertTrue(holding.get(5, TimeUnit.SECONDS).header("replied-by").isPresent());
+    }
+
+    /**
+     * A send that runs where no message context is bound — a step handed the rest of the pipeline to a plain thread of its own —
+     * waits the target's maxWait (5 s), not the flow's 2 s: still waiting past the 2 s, refused at exactly 5 s with the maxWait
+     * wording. The pipeline itself had its context bound (the hop saw it before handing over, and not after).
+     */
+    @Test
+    void anUnboundPipelineStillWaitsMaxWait() throws Exception {
+        Targets targets = targets(rt, 1);
+        FlowBuilder b = builder().targets(targets);
+        Pipeline holder = b.build(flow("holder", "sync", List.of(sendStep("a", false))), NO_FILES);
+        Pipeline hopping = b.build(flow("hopping", "sync", "2s", List.of(Map.of("type", "hop", "name", "fork"), sendStep("b", false))), NO_FILES);
+        partner.holdNext(1);
+        CompletableFuture<Envelope> holding = run(holder, message("holder"));
+        until(() -> partner.inFlight.get() == 1, () -> "the holder's send is out: " + partner.sentIds());
+
+        Envelope in = message("hopping");
+        CompletableFuture<Envelope> running = run(hopping, in);
+        until(() -> targets.of(SHARED).gauge().waiting() == 1 && rt.timer().pending() > 0,
+                () -> "the hopped send waits for the target, its bound armed: " + targets.of(SHARED).gauge() + ", pending " + rt.timer().pending());
+        assertEquals(List.of("before true", "after false"), hopSaw, "the pipeline had its context bound; the hopped rest has none");
+
+        rt.clock().advance(Duration.ofSeconds(2));
+        assertEquals(0, targets.of(SHARED).gauge().refused(), "past the flow's 2 s the unbound send still waits");
+        rt.clock().advance(WAIT.minus(Duration.ofSeconds(2)).minusMillis(1));
+        assertEquals(1, targets.of(SHARED).gauge().waiting(), "still waiting at maxWait - 1 ms");
+        rt.clock().advance(Duration.ofMillis(1));
+        assertEquals(1, targets.of(SHARED).gauge().refused(), "refused at exactly maxWait");
+
+        NackException busy = busy(failureOf(running));
+        assertTrue(busy.reason().endsWith("waited PT5S"), "the maxWait wording: " + busy.reason());
+        assertFalse(partner.sentIds().contains(in.id()), "nothing of the refused message was sent");
+        partner.releaseAll();
+        holding.get(5, TimeUnit.SECONDS);
+    }
+
+    /**
+     * A send where no message context is bound (the {@code hop} ran the rest on a plain thread) to a free target goes out under
+     * the target's permit and its reply comes back to the pipeline; the permit is given back once the send settled.
+     */
+    @Test
+    void anUnboundPipelineSendsToAFreeTargetAndGetsTheReply() throws Exception {
+        Targets targets = targets(rt, 1);
+        FlowBuilder b = builder().targets(targets);
+        Pipeline hopping = b.build(flow("hopping", "sync", "2s", List.of(Map.of("type", "hop", "name", "fork"), sendStep("b", false))), NO_FILES);
+        Envelope in = message("hopping");
+
+        Envelope out = run(hopping, in).get(5, TimeUnit.SECONDS);
+
+        assertEquals(List.of("before true", "after false"), hopSaw, "fixture: the send ran where no context is bound");
+        assertTrue(out != null, "the pipeline got the send's reply, not nothing");
+        assertEquals(in.id(), out.id());
+        assertEquals("b", out.header("replied-by").orElseThrow(), "the partner's reply came back");
+        assertEquals(List.of(in.id()), partner.sentIds(), "sent once");
+        assertEquals(0, targets.of(SHARED).gauge().inFlight(), "the permit was given back");
+        assertEquals(0, targets.of(SHARED).gauge().waiting());
+        assertEquals(0, targets.of(SHARED).gauge().refused());
     }
 }

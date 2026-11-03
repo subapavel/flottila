@@ -132,6 +132,31 @@ class FlowDefinitionTest {
         }
     }
 
+    /**
+     * D-100: {@code delivery.timeout} is the time each run of a message has (its deadline = the run's start + it), in any delivery
+     * mode; 30 s when the flow names none, also through the old constructor without it; zero or less is refused naming the key.
+     */
+    @Test
+    void deliveryTimeoutIsReadAndANonPositiveOneRefused() {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("delivery", Map.of("mode", "sync", "timeout", "1500ms"));
+        assertEquals(Duration.ofMillis(1500), FlowDefinition.from(doc).timeout());
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "2m"));
+        assertEquals(Duration.ofMinutes(2), FlowDefinition.from(doc).timeout(), "any delivery mode");
+        assertEquals(Duration.ofSeconds(30), FlowDefinition.from(demo()).timeout(), "absent: PT30S");
+        FlowDefinition built = new FlowDefinition("f", "1.0.0", "in", "sync", Duration.ofSeconds(5), 1024L, Optional.empty(), Optional.empty(),
+                Optional.empty(), List.of(), RetryPolicy.NONE, io.flottila.core.record.RecordingPolicy.DEFAULT,
+                List.of(new StepConfig(1, "to", "out", false, Map.of("endpoint", "e"))));
+        assertEquals(Duration.ofSeconds(30), built.timeout(), "the constructor without a timeout gives PT30S");
+        for (String timeout : List.of("0s", "0ms", "-1s")) {
+            Map<String, Object> refused = new java.util.HashMap<>(demo());
+            refused.put("delivery", Map.of("mode", "sync", "timeout", timeout));
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(refused),
+                    "a message that may never take time would fail every send that waits: " + timeout);
+            assertTrue(e.getMessage().contains("delivery.timeout"), timeout + " -> " + e.getMessage());
+        }
+    }
+
     @Test
     void missingOrWrongPartsAreNamed() {
         Map<String, Object> noSteps = new java.util.HashMap<>(demo());

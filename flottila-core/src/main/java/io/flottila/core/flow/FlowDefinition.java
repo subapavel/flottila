@@ -17,15 +17,18 @@ import java.util.Set;
  * A flow file (schema v1, D-040) as core sees it: a plain map in (the YAML as {@code flottila-schemas}
  * parsed and validated it), a typed definition out. Core does not depend on the schema module, so the
  * parts it needs are checked again here with the same paths in the messages ({@code steps[2]}); a file
- * that passed the schema never fails here. {@code recording} is the flow's policy (default: all, keep); a step's own
+ * that passed the schema never fails here (except a zero {@code saveTimeout} or {@code timeout}, which the schema admits —
+ * FIX-119). {@code recording} is the flow's policy (default: all, keep); a step's own
  * {@code recording} stays in its config and overrides it in the builder. {@code saveTimeout} bounds an at-least-once
- * flow's durable save ({@code delivery.saveTimeout}, default {@link #DEFAULT_SAVE_TIMEOUT}); a body limit above the
+ * flow's durable save ({@code delivery.saveTimeout}, default {@link #DEFAULT_SAVE_TIMEOUT}); {@code timeout} is the time each run of
+ * a message has, in any delivery mode — its deadline is the run's start plus it ({@code delivery.timeout}, default
+ * {@link #DEFAULT_TIMEOUT}, D-100); a body limit above the
  * in-flight byte limit is refused, since such a body could never be admitted (D-049 f).
  *
  * @since 0.1
  */
-public record FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, Duration saveTimeout, long maxBodyBytes,
-                             Optional<Long> maxInFlight, Optional<Long> maxInFlightBytes, Optional<String> partitionBy,
+public record FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, Duration saveTimeout, Duration timeout,
+                             long maxBodyBytes, Optional<Long> maxInFlight, Optional<Long> maxInFlightBytes, Optional<String> partitionBy,
                              List<String> forwardHeaders, RetryPolicy retry, RecordingPolicy recording, List<StepConfig> steps) {
 
     /** Keys of a step entry that are the step's shape, not its configuration. */
@@ -34,6 +37,9 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
     /** How long an at-least-once save may take before the sender is told to retry, when the flow names nothing (ARCHITECTURE §4). */
     public static final Duration DEFAULT_SAVE_TIMEOUT = Duration.ofSeconds(5);
 
+    /** The time each run of a message has when the flow names none (D-100). */
+    public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+
     public FlowDefinition {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(version, "version");
@@ -41,6 +47,8 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         Objects.requireNonNull(deliveryMode, "delivery.mode");
         Objects.requireNonNull(saveTimeout, "delivery.saveTimeout");
         if (saveTimeout.compareTo(Duration.ZERO) <= 0) throw new IllegalArgumentException("delivery.saveTimeout must be positive, was " + saveTimeout);
+        Objects.requireNonNull(timeout, "delivery.timeout");
+        if (!timeout.isPositive()) throw new IllegalArgumentException("delivery.timeout must be positive, was " + timeout);
         Objects.requireNonNull(retry, "retry");
         Objects.requireNonNull(recording, "recording");
         if (maxBodyBytes <= 0) throw new IllegalArgumentException("limits.maxBodyBytes must be positive, was " + maxBodyBytes);
@@ -53,6 +61,14 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         if (steps.isEmpty()) throw new IllegalArgumentException("steps must name at least one step");
     }
 
+    /** A definition whose messages have the {@link #DEFAULT_TIMEOUT} per run. */
+    public FlowDefinition(String id, String version, String fromEndpoint, String deliveryMode, Duration saveTimeout, long maxBodyBytes,
+                          Optional<Long> maxInFlight, Optional<Long> maxInFlightBytes, Optional<String> partitionBy,
+                          List<String> forwardHeaders, RetryPolicy retry, RecordingPolicy recording, List<StepConfig> steps) {
+        this(id, version, fromEndpoint, deliveryMode, saveTimeout, DEFAULT_TIMEOUT, maxBodyBytes, maxInFlight, maxInFlightBytes, partitionBy,
+                forwardHeaders, retry, recording, steps);
+    }
+
     /** Builds the definition from the parsed flow document. */
     public static FlowDefinition from(Map<String, Object> doc) {
         Objects.requireNonNull(doc, "flow document");
@@ -62,6 +78,7 @@ public record FlowDefinition(String id, String version, String fromEndpoint, Str
         return new FlowDefinition(
                 string(doc, "id"), string(doc, "version"), string(from, "from.endpoint", "endpoint"), string(delivery, "delivery.mode", "mode"),
                 delivery.get("saveTimeout") == null ? DEFAULT_SAVE_TIMEOUT : duration(delivery, "delivery.saveTimeout", "saveTimeout"),
+                delivery.get("timeout") == null ? DEFAULT_TIMEOUT : duration(delivery, "delivery.timeout", "timeout"),
                 number(limits, "limits.maxBodyBytes", "maxBodyBytes").orElseThrow(() -> new IllegalArgumentException("limits.maxBodyBytes is required")),
                 number(limits, "limits.maxInFlight", "maxInFlight"), number(limits, "limits.maxInFlightBytes", "maxInFlightBytes"),
                 Optional.ofNullable(doc.get("partitionBy")).map(Object::toString),

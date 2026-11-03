@@ -184,4 +184,190 @@ class TargetLimitPropertyTest {
         a.closed = true;
         a.answer.result().close();
     }
+
+    // ---- FIX-115 (D-100): call(within, send), every waiter bounded by the earlier of maxWait and its own deadline -------------
+
+    sealed interface Move permits Call, Answer, Tick {}
+    /** A message of flow {@code flow} with {@code withinMillis} left until its deadline calls the target (zero or less: passed). */
+    record Call(int flow, long withinMillis) implements Move {}
+    /** The {@code k}-th send out at the partner (mod their number) is answered. */
+    record Answer(int k) implements Move {}
+    /** The clock moves on by {@code millis}. */
+    record Tick(long millis) implements Move {}
+
+    @Provide
+    Arbitrary<List<Move>> moves() {
+        Arbitrary<Move> call = net.jqwik.api.Combinators.combine(Arbitraries.integers().between(0, FLOWS - 1),
+                Arbitraries.of(-5L, 0L, 1L, 40L, 99L, 101L, 250L)).as((f, w) -> (Move) new Call(f, w));
+        Arbitrary<Move> answer = Arbitraries.integers().between(0, 7).map(k -> (Move) new Answer(k));
+        Arbitrary<Move> tick = Arbitraries.of(0L, 1L, 39L, 40L, 60L, 99L, 100L, 101L).map(ms -> (Move) new Tick(ms));
+        return Arbitraries.frequencyOf(
+                net.jqwik.api.Tuple.of(5, call),
+                net.jqwik.api.Tuple.of(3, answer),
+                net.jqwik.api.Tuple.of(3, tick)).list().ofMinSize(1).ofMaxSize(40);
+    }
+
+    /** One call on a virtual thread of its own: when, with how much time left, whether its send ran, and how the call ended. */
+    static final class Caller {
+        final int index;
+        final java.time.Instant at;
+        final long within;
+        final io.vertx.core.Promise<String> reply = io.vertx.core.Promise.promise();
+        final java.util.concurrent.CompletableFuture<String> outcome = new java.util.concurrent.CompletableFuture<>();
+        volatile boolean sent;
+        boolean answered;
+        Thread thread;
+        Caller(int index, java.time.Instant at, long within) { this.index = index; this.at = at; this.within = within; }
+        String state() { return sent ? "granted" : outcome.isCompletedExceptionally() ? "refused" : "waiting"; }
+        @Override public String toString() { return "#" + index + "@" + at + " within " + within + "ms " + state() + (answered ? " answered" : ""); }
+    }
+
+    /**
+     * A model of {@code call(within, send)} over random calls of several flows on one target, random answers of the sends out
+     * and random clock moves: a free permit goes to a caller only when nobody waits — whatever its deadline, a passed one too;
+     * a caller that must wait with no time left is refused at once with "the message's deadline has passed", no bound armed;
+     * every other waiter is refused exactly when the earlier of maxWait and its own deadline has passed since it called — not
+     * 1 ms earlier — and says which bounded it; a freed permit goes to the earliest waiter still waiting (FIFO across flows).
+     * After every move each caller's state, the gauge (in flight, waiting, refused) and the bounds pending on the timer equal the
+     * model's. Each call blocks its own virtual thread; the test waits for the limit to be quiet (every caller sent, refused or
+     * counted as waiting, and the permits out = the sends not answered) before it compares.
+     */
+    @Property(tries = 200)
+    void noWaiterWaitsPastTheEarlierOfMaxWaitAndItsDeadline(@ForAll @IntRange(min = 1, max = 3) int maxCalls, @ForAll("moves") List<Move> moves) throws Exception {
+        FakeClock clock = FakeClock.at(Instant.parse("2026-01-01T00:00:00Z"));
+        FakeTimer timer = new FakeTimer(clock);
+        Targets targets = new Targets(new Targets.Limit(maxCalls, WAIT), Map.of(), timer);
+        List<TargetLimit> flows = new ArrayList<>();
+        for (int f = 0; f < FLOWS; f++) flows.add(targets.of(T));
+        TargetLimit limit = flows.get(0);
+        List<Caller> callers = new ArrayList<>();
+        List<String> expected = new ArrayList<>();   // per caller: "waiting", "granted", "refused"
+        Map<Integer, String> refusedSays = new java.util.HashMap<>();   // per refused caller: how its reason ends
+        Deque<Integer> queue = new ArrayDeque<>();   // waiting callers, in call order
+        int held = 0;
+        int refused = 0;
+        try {
+            for (Move move : moves) {
+                switch (move) {
+                    case Call c -> {
+                        Caller x = new Caller(callers.size(), clock.instant(), c.withinMillis());
+                        callers.add(x);
+                        TargetLimit via = flows.get(c.flow());
+                        x.thread = Thread.ofVirtual().name("caller-" + x.index).start(() -> {
+                            try {
+                                x.outcome.complete(via.call(Duration.ofMillis(x.within), () -> {
+                                    x.sent = true;
+                                    return x.reply.future();
+                                }));
+                            } catch (Throwable t) {
+                                x.outcome.completeExceptionally(t);
+                            }
+                        });
+                        if (queue.isEmpty() && held < maxCalls) {
+                            expected.add("granted");
+                            held++;
+                        } else if (x.within <= 0) {
+                            expected.add("refused");
+                            refused++;
+                            refusedSays.put(x.index, "the message's deadline has passed");
+                        } else {
+                            expected.add("waiting");
+                            queue.addLast(x.index);
+                        }
+                    }
+                    case Answer a -> {
+                        List<Caller> out = callers.stream().filter(x -> x.sent && !x.answered).toList();
+                        if (!out.isEmpty()) {
+                            Caller x = out.get(a.k() % out.size());
+                            x.answered = true;
+                            x.reply.complete("reply " + x.index);
+                            held--;
+                            if (!queue.isEmpty()) {
+                                expected.set(queue.pollFirst(), "granted");
+                                held++;
+                            }
+                        }
+                    }
+                    case Tick t -> {
+                        clock.advance(Duration.ofMillis(t.millis()));
+                        Instant now = clock.instant();
+                        for (java.util.Iterator<Integer> it = queue.iterator(); it.hasNext(); ) {
+                            Caller x = callers.get(it.next());
+                            boolean deadlineFirst = x.within < WAIT.toMillis();
+                            Duration bound = deadlineFirst ? Duration.ofMillis(x.within) : WAIT;
+                            if (!x.at.plus(bound).isAfter(now)) {
+                                it.remove();
+                                expected.set(x.index, "refused");
+                                refused++;
+                                refusedSays.put(x.index, deadlineFirst ? "waited " + Duration.ofMillis(x.within) + " until the message's deadline" : "waited " + WAIT);
+                            }
+                        }
+                    }
+                }
+                quiet(limit, callers, move);
+                for (Caller x : callers) {
+                    assertEquals(expected.get(x.index), x.state(), "caller #" + x.index + " (at " + x.at + ", within " + x.within + " ms, now " + clock.instant()
+                            + ") after " + move + ": " + callers);
+                    if (x.outcome.isCompletedExceptionally()) {
+                        Throwable cause = x.outcome.handle((v, e) -> e).get();
+                        NackException busy = assertInstanceOf(NackException.class, cause, "a refusal is a NackException");
+                        assertTrue(busy.retryable(), "busy is retryable: " + busy.reason());
+                        assertTrue(busy.reason().startsWith("target " + T + " busy: "), busy.reason());
+                        assertTrue(busy.reason().endsWith(refusedSays.get(x.index)), "caller #" + x.index + " says '" + refusedSays.get(x.index) + "': " + busy.reason());
+                    }
+                }
+                var g = limit.gauge();
+                assertEquals(held, (long) g.inFlight(), "gauge in flight after " + move + ": " + callers);
+                assertEquals(queue.size(), (long) g.waiting(), "gauge waiting after " + move + ": " + callers);
+                assertEquals(refused, (long) g.refused(), "gauge refused after " + move + ": " + callers);
+                assertEquals(queue.size(), timer.pending(), "one bound pending per waiter, none for a caller refused at once or granted, after " + move + ": " + callers);
+            }
+        } finally {
+            drain(clock, limit, callers);
+        }
+        assertTrue(callers.stream().allMatch(x -> x.outcome.isDone()), "every caller answered: " + callers);
+        assertEquals(0, (long) limit.gauge().inFlight(), "nothing in flight at the end: " + callers);
+        assertEquals(0, (long) limit.gauge().waiting(), "nothing waiting at the end: " + callers);
+    }
+
+    /**
+     * Waits until the limit is quiet after {@code move}: every caller has sent, been refused or is counted as waiting, and the
+     * permits out are the sends not yet answered (an answered send's permit was given back or handed on, and the waiter handed
+     * it has sent). Never longer than 5 s.
+     */
+    static void quiet(TargetLimit limit, List<Caller> callers, Move move) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (true) {
+            var g = limit.gauge();
+            long sent = callers.stream().filter(x -> x.sent).count();
+            long failed = callers.stream().filter(x -> x.outcome.isCompletedExceptionally()).count();
+            long out = callers.stream().filter(x -> x.sent && !x.answered).count();
+            if (sent + failed + g.waiting() == callers.size() && g.inFlight() == out) return;
+            if (System.nanoTime() - deadline > 0) {
+                throw new AssertionError("not quiet within 5 s after " + move + ": sent " + sent + ", refused " + failed + ", " + g + ", out " + out + ": " + callers);
+            }
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * Best effort, at most 5 s in all, never throwing (a failed property keeps its own failure): answers every send out, moves
+     * the clock by maxWait until every caller has ended (each waiter's bound is at most maxWait), then interrupts any caller
+     * still alive and waits for its thread.
+     */
+    static void drain(FakeClock clock, TargetLimit limit, List<Caller> callers) throws InterruptedException {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() - deadline < 0 && !callers.stream().allMatch(x -> x.outcome.isDone())) {
+            callers.stream().filter(x -> x.sent).forEach(x -> x.reply.tryComplete("drained"));
+            long sent = callers.stream().filter(x -> x.sent).count();
+            long failed = callers.stream().filter(x -> x.outcome.isCompletedExceptionally()).count();
+            if (sent + failed + limit.gauge().waiting() == callers.size() && limit.gauge().inFlight() == 0) clock.advance(WAIT);
+            Thread.onSpinWait();
+        }
+        for (Caller x : callers) {
+            if (x.thread == null) continue;
+            if (!x.thread.join(Duration.ofMillis(100))) x.thread.interrupt();
+            x.thread.join(Duration.ofSeconds(1));
+        }
+    }
 }
