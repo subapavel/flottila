@@ -111,8 +111,10 @@ later phases. Exception: "fix main".
   disk is sized for the ClickHouse outage it must ride through.
 - **Q-5 HA copy: the ACK waits for the peer's receipt, not its fdatasync** (a message is lost only
   if both machines fail before either flushes).
-- **Q-6 Sync flows — open**, owner: "probably not" the same journal for sync step bodies; tied to
-  Q-9.
+- **Q-6 Sync flows: no fsync for their recordings.** A sync caller owns its retry, so sync step
+  records and bodies go batched to ClickHouse (through the mover's batches, not the durable
+  journal path) and the answer never waits for them; a node crash may lose the last few sync
+  records. Default for sync: bodies `none` + errors.
 - **Q-7 Failed and in-doubt sends: as SAP PO** — retries at configurable intervals, a
   configurable number of times, until a successful answer, then parked (error status, manual
   restart). An in-doubt send (D-101 (4)) counts as a failed attempt and is resent with the same
@@ -120,9 +122,21 @@ later phases. Exception: "fix main".
   a thread.
 - **Q-8 ClickHouse down and the journal full: refusing new messages (503) is allowed** — it is a
   system error, alerted, to be fixed by the operator.
-- **Q-9 Retention and recording levels — open, own brainstorm.** Owner: like SAP PO, one global
-  setting for sync and one for async, overridable per flow. Because a flow is a free pipeline,
-  not fixed stages, the levels are of the kind "inputs only", "inputs + errors", "every change"
-  (a body stored only where a step changed it; see CONSIDER-2). It changes what is stored per
-  step (today `all | ends | errors | off` × `keep | metadata-only` per flow, D-064 every step
-  durable) and so the journal's load — to be settled before CORE-3.
+- **Q-9 Recording and retention (owner 2026-11-03; details open where marked).**
+  - **Body levels: three** — `none`, `inputs` (the body as it arrived), `changes` (every body a
+    step changed; an unchanged one references the previous, CONSIDER-2) — **plus two switches**
+    combinable with any level: `errors` (also the body that entered a failing step) and `outputs`
+    (also what was sent to the partner — proof of what was sent).
+  - At-least-once keeps its arrived body in the journal until processed whatever the level; the
+    level decides whether it stays after processing and moves to ClickHouse.
+  - **Metadata of every step always** (time, duration, status, headers, props, keys); `ends` only
+    as an option for very busy sync flows — open whether to offer it at all.
+  - **Settings like SAP PO**: one global default for sync and one for async, overridable per flow.
+  - **Retention**: a global period for sync and for async, overridable per flow, **and a separate
+    period for messages that ended in error** (e.g. async 30 days, errors 90 days); applied as
+    ClickHouse TTL by flow and age, older parts to S3 by age, then deleted. Open: what counts as
+    "ended in error" (parked or failed at its end, also when later restarted manually?).
+  - **Per step — open, architect's proposal**: no full level per step, only a narrow override on
+    a step's body, `keep` (store it even when the flow's level would not) or `skip` (never store
+    it: sensitive data after a decrypt step, huge intermediates); a skipped body makes replay from
+    the next step impossible and the UI says so.
