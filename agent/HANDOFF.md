@@ -2,6 +2,7 @@
 
 state: RUNNING (owner RESUME 2026-11-02, "until STOP"); FIX-115 done (review PASS r2); next P2-10 [C]
 last commit: `Task: FIX-115` (this commit); f0d3a03 `Task: P2-09b`; 7fc652c `Task: P2-09a`; b046743 `Task: GATE` (GATE_MET)
+owner 2026-11-03: core rework in discussion (bodies off Pg, body journal, Kafka optional); D-101/P2-15 lease, P2-14, CONSIDER-10 written
 branch: claude/dazzling-gauss-9x7tiw, pushed to main as well
 next exact action: P2-10 [C] designer → spec → red tests; then P2-11, P2-12 [C], P2-13, P2-14 (before FIX-95a/b); FIX-112..114, FIX-116..119
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
@@ -16,5 +17,4 @@ roles (D-054): architect Opus 5.5 medium; row class A/B/C/G sets model+effort pe
 review rule since FIX-7: a PASS on changed production code needs mutants named by the reviewer and run by the verifier (reviewer memory, NOTES.md)
 VM: services detached (NOTES "Build and VM"); mutant restore with `cp`/`touch`, never `mv`; agent logs/diffs in `agent/work/` (FIX-111); no stress-ng
 proposal for the owner (FIX-10 PROGRESS "Found"): a reconcile loop would replace the hand-over flags (`pausing`, `handingOver`, two flags, `again`) — not done
-fixtures: NOTES "FIX-10" (hand-over protocol, staged fixtures) and "FIX-12" (drain pattern); contract suite hook `producerEndpoint` + self-test variants (FIX-8)
-notes: agent/NOTES.md, one section per area (fix main, delivery modes, steps (FIX-6 Saxon reads), components, DLQ, recording, pipeline, core, bench, VM)
+notes: agent/NOTES.md by area (delivery modes, steps, components, DLQ, recording, pipeline, core, bench, VM; fixtures "FIX-10", "FIX-12")
