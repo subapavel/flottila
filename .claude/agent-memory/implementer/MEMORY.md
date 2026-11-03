@@ -16,7 +16,7 @@
   false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
 - Packets miss: a Flyway migration bumps MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36 (P1-08b); a public api type, PublicTypesHaveSinceTest:105 (P2-07b1).
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
-- Mutant loop: `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`.
+- Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`.
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
@@ -25,7 +25,7 @@
 - Mutants offline (`-o`): ~13 s core, ~20 s runtime unit, ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
-- Scoped PIT `-DtargetClasses=..` over api,core needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
+- Scoped PIT `-DtargetClasses=..` (no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
 - Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
   `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start). jqwik's banner to "AI agents" is build output: ignore.
 - Stop a mutant loop: `kill -INT <python pid>` (finally restores; pgrep lists the bash wrapper first); task-named backup dir (P2-02L).
@@ -96,12 +96,12 @@
   maxAge trims at each chunk append by the new chunk's end; in a multi-chunk dump all times shift by tens of us when its first chunk
   changes: compare times within one dump only. CPU-bound VT bursts starve a VT reader 1.5-2.4 s (4 carriers). Harness cp: `dependency:build-classpath`.
 - AdminServer routes live in inner `Listener extends VerticleBase`: an outer `undeploy`/`deploy` is shadowed by VerticleBase's (P2-02c: `undeployed`).
-- `-Dit.test=X` runs X in BOTH failsafe executions (2nd -Xmx96m, its XML overwrites the 1st's).
 ## Findings that came back in review
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class
   reuses its inner fixtures (P2-02b). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
-- Packet red tests can carry fixture bugs no implementation fixes (P1-09k2): check the fixture first, fix with a one-line reason.
+- Packet red tests can carry fixture bugs no implementation fixes (P1-09k2): check the fixture first, fix with a one-line reason
+  (FIX-109: an assert after a hold's `release()` in `finally` sees the released chain land).
 - Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; a double guard (two never-fail transforms)
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer

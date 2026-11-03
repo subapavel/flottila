@@ -18,7 +18,10 @@ import java.util.Optional;
  * as a {@link ParkedException}; a park that fails, its persist included, leaves the original failure to surface with the
  * park's failure suppressed — a message is never dropped silently. A step's failure is any {@link Exception}, a checked one
  * too ({@code Future.await()} rethrows a failed future's checked cause as is, FIX-107), except an {@link InterruptedException}:
- * a cancelled run is not parked, it is rethrown with the interrupt flag restored. An {@link Error} is never caught.
+ * a cancelled run is not parked, it is rethrown with the interrupt flag restored. An interrupt during the park's own wait
+ * (the persist or the row) surfaces the original failure with the {@link InterruptedException} suppressed and the interrupt
+ * flag restored (D-098): the cancelling caller still sees its interrupt, and the park may still land. An {@link Error} is
+ * never caught.
  * A failure further down the pipeline passes through untouched: the step it happened at parked it. {@link #park} parks a
  * message outside any step's run — the worker's attempts bound (D-055) — and leaves its failure to the caller.
  *
@@ -53,7 +56,8 @@ public final class Parking {
                 Parked parked;
                 try {
                     parked = durable.await();
-                } catch (Exception parkFailure) {
+                } catch (Exception parkFailure) {   // an interrupted await throws InterruptedException, sneakily, flag cleared
+                    if (parkFailure instanceof InterruptedException) Thread.currentThread().interrupt();
                     failure.addSuppressed(parkFailure);
                     throw failure;
                 }

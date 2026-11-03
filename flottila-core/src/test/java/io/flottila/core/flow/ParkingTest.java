@@ -402,4 +402,73 @@ class ParkingTest {
         assertFalse(Thread.interrupted(), "a parked failure leaves the flag alone (read and cleared)");
         assertEquals(List.of(parked.parked()), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items());
     }
+
+    /**
+     * FIX-109 (D-098 (1)): an interrupt during the park's own await — here the parked body's persist, held by the store — is a
+     * park that did not complete: the step's original failure surfaces, not a {@link ParkedException}, with the await's
+     * {@link InterruptedException} suppressed on it, and the interrupt flag, cleared by that await, is set again for the
+     * caller (the cancelling caller still sees its interrupt). The step throws with the flag clear; the test interrupts the
+     * run's thread once the persist is held and the thread is parked in the await. Whether the park lands later is not pinned.
+     */
+    @Test
+    void anInterruptDuringTheParksOwnAwaitSurfacesTheOriginalFailureAndRestoresTheFlag() throws Exception {
+        HoldingBlobStore bodies = bodies();
+        WatchingDlq dlq = new WatchingDlq(bodies);
+        Envelope in = stepTwoInput(ingressIn(bodies), bodies);
+        IllegalStateException boom = new IllegalStateException("boom at x");
+        List<Boolean> flagWhenThrown = new CopyOnWriteArrayList<>();
+        Stage failing = parking(dlq).wrap(Stage.of(e -> {
+            flagWhenThrown.add(Thread.currentThread().isInterrupted());
+            throw boom;
+        }), STEP_X);
+        bodies.hold();
+        java.util.concurrent.atomic.AtomicReference<Throwable> outcome = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Boolean> flagAfter = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread t = Thread.ofVirtual().start(() -> {
+            try {
+                failing.apply(in, out -> out);
+            } catch (Throwable x) {
+                outcome.set(x);
+            } finally {
+                flagAfter.set(Thread.interrupted());   // read and cleared on the thread that ran the step
+            }
+        });
+        try {
+            while (bodies.held() == 0 && t.isAlive()) { Thread.onSpinWait(); Thread.yield(); }
+            assertEquals(1, bodies.held(), "fixture: the park's persist is held, outcome " + outcome.get());
+            while (t.getState() != Thread.State.WAITING && t.isAlive()) { Thread.onSpinWait(); Thread.yield(); }   // in durable.await()
+            t.interrupt();
+            assertTrue(t.join(java.time.Duration.ofSeconds(10)), "the interrupted await returned; the run sits at " + List.of(t.getStackTrace()));
+            assertEquals(List.of(), dlq.durableAtPark, "no row was written while the persist was held");
+        } finally {
+            bodies.release();
+        }
+        assertEquals(List.of(false), flagWhenThrown, "fixture: the step threw with the flag clear");
+        assertSame(boom, outcome.get(), "the step's original failure surfaces, not a ParkedException: " + outcome.get());
+        assertEquals(1, boom.getSuppressed().length, "one suppressed: " + List.of(boom.getSuppressed()));
+        assertInstanceOf(InterruptedException.class, boom.getSuppressed()[0], "the interrupted await, suppressed on the original failure");
+        assertTrue(flagAfter.get(), "the interrupt flag is set again for the caller");
+    }
+
+    /**
+     * FIX-109 (D-098 (1)), the other side of the interrupt edge: a park that fails for its own reason — the persist refused, no
+     * interrupt anywhere — surfaces the step's original failure with the park's failure suppressed and leaves the interrupt
+     * flag clear: only an interrupted await sets it again.
+     */
+    @Test
+    void aParkThatFailsWithoutAnInterruptLeavesTheFlagClear() {
+        HoldingBlobStore bodies = bodies();
+        WatchingDlq dlq = new WatchingDlq(bodies);
+        Envelope in = stepTwoInput(ingressIn(bodies), bodies);
+        IllegalStateException down = new IllegalStateException("pg down");
+        bodies.refuse(down);
+        IllegalStateException boom = new IllegalStateException("boom at x");
+        Stage failing = parking(dlq).wrap(Stage.of(e -> { throw boom; }), STEP_X);
+
+        IllegalStateException surfaced = assertThrows(IllegalStateException.class, () -> failing.apply(in, out -> out));
+        boolean flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the step
+        assertSame(boom, surfaced, "the step's original failure surfaces");
+        assertEquals(List.of(down), List.of(surfaced.getSuppressed()), "the park's failure, suppressed");
+        assertFalse(flagAfter, "a park that failed without an interrupt leaves the flag clear");
+    }
 }

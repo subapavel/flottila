@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -162,5 +163,61 @@ class RetryTest {
         assertEquals(0, cancelled.getSuppressed().length);
         assertTrue(flagAfter.get(), "the interrupt flag is set again for the caller");
         assertEquals(0, timer.pending());
+    }
+
+    /**
+     * FIX-109: an {@link InterruptedException} on a later attempt is still a cancelled run — rethrown at once with the interrupt
+     * flag restored (class javadoc) — and, as the pause-interrupt path does, it keeps the earlier attempts' failures suppressed
+     * on what is thrown: a cancelled run never drops them. Attempts 1 and 2 fail; attempt 3 awaits a future the test never
+     * completes (the gate) and the test interrupts the run's thread there, so the InterruptedException is the real one
+     * {@code Future.await()} throws, sneakily, with the flag cleared.
+     */
+    @Test
+    void anInterruptOnALaterAttemptKeepsTheEarlierFailuresSuppressed() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        List<Boolean> flagWhenEntered = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.CountDownLatch atGate = new java.util.concurrent.CountDownLatch(1);
+        io.vertx.core.Promise<Envelope> gate = io.vertx.core.Promise.promise();   // never completed: only the interrupt ends the wait
+        Step laterInterrupted = e -> {
+            int call = calls.incrementAndGet();
+            flagWhenEntered.add(Thread.currentThread().isInterrupted());
+            if (call < 3) throw new IllegalStateException("try " + call);
+            atGate.countDown();
+            return gate.future().await();
+        };
+        Step retried = Retry.step(laterInterrupted, policy, timer);
+        AtomicReference<Object> outcome = new AtomicReference<>();
+        AtomicReference<Boolean> flagAfter = new AtomicReference<>();
+        Thread t = Thread.ofVirtual().start(() -> {
+            try {
+                outcome.set(retried.apply(in));
+            } catch (Throwable x) {
+                outcome.set(x);
+            } finally {
+                flagAfter.set(Thread.interrupted());   // read and cleared on the thread that ran the step
+            }
+        });
+        List<Duration> waits = new ArrayList<>();
+        while (atGate.getCount() > 0 && t.isAlive()) {   // the backoffs, driven by the fake clock
+            if (timer.pending() > 0) {
+                Duration next = timer.nextDelay();
+                waits.add(next);
+                clock.advance(next);
+            }
+            Thread.onSpinWait();
+            Thread.yield();
+        }
+        assertEquals(0, atGate.getCount(), "fixture: attempt 3 reached the gate, outcome " + outcome.get());
+        while (t.getState() != Thread.State.WAITING && t.isAlive()) { Thread.onSpinWait(); Thread.yield(); }   // parked in await()
+        t.interrupt();
+        t.join();
+        assertEquals(List.of(Duration.ofMillis(100), Duration.ofMillis(200)), waits, "fixture: two backoffs before attempt 3");
+        assertEquals(3, calls.get(), "no attempt after the interrupt");
+        assertEquals(List.of(false, false, false), flagWhenEntered, "a step's ordinary failure leaves the flag alone");
+        Throwable thrown = assertInstanceOf(InterruptedException.class, outcome.get(), "the cancelled run's InterruptedException is rethrown");
+        assertEquals(List.of("try 1", "try 2"), java.util.Arrays.stream(thrown.getSuppressed()).map(Throwable::getMessage).toList(),
+                "the earlier attempts' failures, suppressed on the InterruptedException, in attempt order");
+        assertTrue(flagAfter.get(), "the interrupt flag is set again for the caller");
+        assertEquals(0, timer.pending(), "nothing scheduled after the interrupt");
     }
 }

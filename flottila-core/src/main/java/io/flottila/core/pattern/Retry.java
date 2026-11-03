@@ -20,8 +20,9 @@ import java.util.concurrent.CountDownLatch;
  *
  * <p>Any {@link Exception} is retried, a checked one too — {@code Future.await()} rethrows a failed future's checked cause
  * as is, a refused connection's {@link java.net.ConnectException} among them (FIX-107) — except an
- * {@link InterruptedException}: a cancelled run, rethrown at once with the interrupt flag restored. An {@link Error} is
- * not a transient failure and is never caught.
+ * {@link InterruptedException}: a cancelled run, rethrown at once with the interrupt flag restored and, on an attempt after
+ * the first, the earlier attempts' failures suppressed on it in attempt order (D-098). An {@link Error} is not a transient
+ * failure and is never caught.
  *
  * @since 0.1
  */
@@ -43,6 +44,7 @@ public final class Retry {
                 } catch (Exception failure) {   // a checked one too: await() rethrows a failed future's checked cause as is
                     if (failure instanceof InterruptedException) {   // a cancelled run, not the step's failure: never retried
                         Thread.currentThread().interrupt();
+                        earlier.forEach(failure::addSuppressed);
                         throw failure;
                     }
                     if (attempt > policy.attempts() || !pause(policy.delayBefore(attempt), timer)) {

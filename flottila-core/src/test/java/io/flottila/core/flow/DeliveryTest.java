@@ -1799,4 +1799,80 @@ class DeliveryTest {
         partner.awaitSent(1);
         assertEquals(List.of(), intake.saves, "no intake is asked: only at-least-once saves");
     }
+
+    /**
+     * FIX-109 (D-098 (2)): on the sync path only the deadline's own interrupt is cleared on the caller's thread. A run that
+     * ends with an {@link InterruptedException} the delivery did not cause — the caller's thread interrupted by someone else
+     * while the pipeline awaits, the flag restored by the pipeline as Retry and Parking do — fails the answer with that
+     * InterruptedException and leaves the caller's flag set: the consumer's thread may be reused, and its next blocking call is
+     * meant to see the interrupt. Sibling leg, same pipeline: the deadline's interrupt answers the cancel's Nack and leaves the
+     * flag clear (so clearing on every InterruptedException, or on none, fails one leg).
+     */
+    @Test
+    void aNonDeadlineInterruptOnTheSyncPathLeavesTheCallersFlagSet() throws InterruptedException {
+        Map<String, CountDownLatch> reached = new java.util.concurrent.ConcurrentHashMap<>();
+        Map<String, Thread> callers = new java.util.concurrent.ConcurrentHashMap<>();
+        List<Boolean> flagWhenThrown = new CopyOnWriteArrayList<>();
+        io.flottila.api.Pipeline restoring = e -> {   // awaits a future never completed; an interrupt: flag restored, IE rethrown
+            callers.put(e.id(), Thread.currentThread());
+            reached.get(e.id()).countDown();
+            try {
+                return Promise.<Envelope>promise().future().await();
+            } catch (Exception x) {
+                if (x instanceof InterruptedException) Thread.currentThread().interrupt();
+                flagWhenThrown.add(Thread.currentThread().isInterrupted());
+                throw x;
+            }
+        };
+
+        // the non-deadline interrupt: the caller's thread interrupted by the test while the pipeline awaits
+        Delivery delivery = Delivery.sync(roomy(), restoring, rt.timer());
+        Envelope in = ingress(ORDER);
+        reached.put(in.id(), new CountDownLatch(1));
+        CompletableFuture<Applied> applied = applyOn(delivery, in);
+        assertTrue(reached.get(in.id()).await(HeldPipeline.BOUND_SECONDS, TimeUnit.SECONDS), "fixture: the pipeline reached its await");
+        Thread caller = callers.get(in.id());
+        while (caller.getState() != Thread.State.WAITING && caller.isAlive()) { Thread.onSpinWait(); Thread.yield(); }
+        caller.interrupt();
+        Applied a = applied(applied);
+        assertEquals(List.of(true), flagWhenThrown, "fixture: the pipeline threw with the flag set");
+        assertTrue(a.ack().failed(), "a non-deadline interrupt is not the cancel's Nack: " + a.ack());
+        assertInstanceOf(InterruptedException.class, a.ack().cause(), "the failed future carries the InterruptedException");
+        assertTrue(a.interruptedAfter(), "an interrupt the delivery did not cause stays set on the caller's thread");
+
+        // sibling: the deadline's own interrupt, same pipeline, is cleared
+        Delivery stopping = Delivery.sync(roomy(), restoring, rt.timer());
+        Envelope cancelledIn = ingress(ORDER);
+        reached.put(cancelledIn.id(), new CountDownLatch(1));
+        CompletableFuture<Applied> cancelledApplied = applyOn(stopping, cancelledIn);
+        assertTrue(reached.get(cancelledIn.id()).await(HeldPipeline.BOUND_SECONDS, TimeUnit.SECONDS), "fixture: the pipeline reached its await");
+        Future<Void> stopped = stopping.stop(DEADLINE);
+        rt.clock().advance(DEADLINE);
+        Applied c = applied(cancelledApplied);
+        assertEquals(List.of(true, true), flagWhenThrown, "fixture: the pipeline threw with the flag set, the deadline's too");
+        cancelled(c.ack());
+        assertFalse(c.interruptedAfter(), "the deadline's interrupt does not leak to the caller's thread");
+        assertTrue(settled(stopped).succeeded());
+    }
+
+    /**
+     * FIX-109 (D-098 (2), amended): the delivery never re-sets a flag the pipeline cleared. A sync pipeline that throws an
+     * {@link InterruptedException} with the flag clear — no deadline, no stop — fails the answer with that same exception and
+     * leaves the caller's flag clear: only the run decides whether its interrupt stays set.
+     */
+    @Test
+    void aPipelineInterruptThatClearedTheFlagIsNotSetAgainByTheDelivery() {
+        InterruptedException notOurs = new InterruptedException("not ours");
+        List<Boolean> flagWhenThrown = new CopyOnWriteArrayList<>();
+        io.flottila.api.Pipeline clearing = e -> {
+            flagWhenThrown.add(Thread.currentThread().isInterrupted());
+            throw HeldPipeline.sneaky(notOurs);
+        };
+        Delivery delivery = Delivery.sync(roomy(), clearing, rt.timer());
+        Applied a = applied(applyOn(delivery, ingress(ORDER)));
+        assertEquals(List.of(false), flagWhenThrown, "fixture: the pipeline threw with the flag clear");
+        assertTrue(a.ack().failed(), "answered with the failure: " + a.ack());
+        assertSame(notOurs, a.ack().cause(), "the pipeline's InterruptedException, as thrown");
+        assertFalse(a.interruptedAfter(), "the delivery does not set a flag the pipeline left clear");
+    }
 }

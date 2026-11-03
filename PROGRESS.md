@@ -1107,3 +1107,16 @@ Checks: verify -Pit 2788/0/0/0, 275 fresh XML (agent/work/P2-07c-verify-counts.t
 Review: FAIL r1 (D-044 amendment placement; FIX-114 must name both bench marker pairs), PASS r2.
 D-054 data: class C (designer ×1, test-author ×1, implementer ×1, reviewer ×2); review rounds 2.
 Next: FIX-109.
+
+## 2026-11-03 — FIX-109 interrupt edges left by FIX-107 — done, review PASS r2
+Decisions: D-098 (Parking surfaces the original failure, IE suppressed, flag restored; Delivery clears only the deadline's own
+interrupt and never re-sets a cleared flag; Retry keeps earlier failures suppressed on an interrupt).
+Test first: RetryTest.anInterruptOnALaterAttemptKeepsTheEarlierFailuresSuppressed, ParkingTest.anInterruptDuringTheParksOwnAwait…
+RestoresTheFlag (red: agent/work/FIX-109-red.log); pins DeliveryTest …LeavesTheCallersFlagSet, …IsNotSetAgainByTheDelivery;
+implementer-added ParkingTest.aParkThatFailsWithoutAnInterruptLeavesTheFlagClear (kills M3).
+Change: Retry.java suppressed loop on the interrupt path; Parking.java flag restore; javadocs of all three (D-098).
+Checks: verify -Pit 2792/0/0/0, 275 fresh XML (agent/work/FIX-109-verify-counts.txt) + core 444/0 after the last pin
+(-core-r3.log); coverage no decrease; PIT 112/113 (survivor old Retry:73); M1–M7 killed (-M1..7.log).
+Review: FAIL r1 (the never-re-sets half of D-098 unpinned), PASS r2.
+D-054 data: class B (test-author ×3, implementer ×1, verifier ×1, reviewer ×2); review rounds 2.
+Next: P2-09.

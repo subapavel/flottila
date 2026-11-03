@@ -30,7 +30,10 @@ import java.util.function.Function;
  * <li><b>sync</b>: the pipeline runs on the caller's (virtual) thread; its result is the {@link Ack.Reply}, its failure fails
  * the returned future with the step's exception as thrown, a checked one included — the consumer maps it (by
  * {@link io.flottila.api.Fault.Kind}). The answer is returned as soon as the pipeline has returned or thrown; the permit is
- * released once the run's {@link Trail} closed (D-064, F-10).</li>
+ * released once the run's {@link Trail} closed (D-064, F-10). Only the stop deadline's own interrupt is cleared on the
+ * caller's thread; any other {@link InterruptedException} fails the future with it and leaves the flag as the pipeline left
+ * it — the delivery never sets a cleared flag again: steps and stages restore it before rethrowing, and the caller, whose
+ * thread may be reused, sees it on its next blocking call (D-098).</li>
  * <li><b>at-least-once</b>: the durable save is this handler's, never a stage (§4, F-2), and it is one call to the flow's
  * {@link Intake} (D-082): the ingress body made durable, the ingress snapshot with its payload recorded — whatever the
  * flow's recording level — and the message queued for its worker under its partition key; only when the intake's save

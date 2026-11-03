@@ -119,3 +119,4 @@
 - Split rows / helpers (P2-07b1): moving a private helper between a javadoc and its method detaches the javadoc; a split BACKLOG row leaves pointers in §, D-rows and findings — grep the old id.
 - Interface javadoc (P2-07b2 r2): a Pg-only store behaviour written on a core interface must name the implementation; check the in-memory twin against every new contract sentence.
 - Changed bench shape (P2-07c): it strands baselines for every machine label in RESULTS (VM and github-hosted runner); the re-baseline row must name each marker.
+- A 'leaves X as the callee left it' clause needs both callee states (set and clear); a green pin with the callee setting X leaves the 'never sets it' half untested (FIX-109, Delivery:180).
