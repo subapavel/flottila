@@ -1,10 +1,10 @@
 # Handoff
 
-state: HOLD for CORE-0 (owner 2026-11-03): core rework = priority 1, docs/CORE-REWORK.md; brainstorm open, nothing starts before CORE-0
-last commit: `docs: core rework brief` (this commit); 57c9253 D-102; 8bdf671 D-101; 1b32585 `Task: FIX-115`
+state: RUNNING core rework (priority 1, docs/CORE-REWORK.md, D-103/D-104); CORE-0, CORE-1 done; nothing else is taken until CORE-GATE
+last commit: `Task: CORE-1` (this commit); d91e142, 97ed4d2 brief; 57c9253 D-102; 8bdf671 D-101; 1b32585 `Task: FIX-115`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: owner answers CORE-REWORK §5 and approves (CORE-0); then CORE-1, P2-13, P2-14, CORE-2. All other rows wait (BACKLOG §Core rework)
+next exact action: CORE-3 [C] designer (body journal); then CORE-2, CORE-9, CORE-15 in parallel order; no old-core measurement (D-104)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

@@ -1,4 +1,12 @@
 
+## 2026-11-03 — CORE-0/CORE-1 core-rework brief approved, CORE-GATE conditions (D-103) — done, review PASS
+Test first: none (docs only); acceptance = the owner's approval (CORE-0) and a measurable GATE.md §CORE-GATE (CORE-1).
+Change: docs/CORE-REWORK.md (owner's brief, approved), GATE.md §CORE-GATE (VM, pass rule = median of 3, 7 conditions),
+D-101 (4) amended, D-102, D-103; BACKLOG §Core rework CORE-0..14 + CORE-GATE, P2-14..16, CONSIDER-10/11; ARCHITECTURE status note.
+Checks: ledger-only change, no build run (NOT_RUN).
+Review: FAIL r1 (18 points: no pass rule, gameable throughput condition, brief contradictions), FAIL r2 (5), PASS r3.
+D-054 data: class B (reviewer ×1, resumed ×2); review rounds 3.
+Next: D-104 (no measurement of the old core); CORE-3 [C] designer, CORE-2 [B], CORE-9 [B], CORE-15 [B].
 ## 2026-11-02 — FIX-111 agent work files out of target/ (D-093) — done, review PASS
 Test first: none (docs and workflow only); acceptance observed by the verifier (below).
 Change: `agent/work/` (gitignored, `.gitkeep`) replaces `target/` for logs, diffs, harnesses, bisect worktrees and `.batch-in-review` in CLAUDE.md, AGENTS.md, WORKFLOW §1/§10, NOTES, HANDOFF, verifier/reviewer/implementer/test-author definitions, memories, diagnosing-bugs, the gated Stop hook; SessionStart install checks the new marker path and keeps the original's backup (owner-sanctioned §10 D exception).

@@ -60,3 +60,37 @@ the tests; every deviation from `docs/ARCHITECTURE.md` with its finding id; deci
 - A ClickHouse Kafka-engine table consuming that topic.
 
 HANDOVER.md states which stretch items were reached.
+
+## CORE-GATE — the core rework (owner 2026-11-03, `docs/CORE-REWORK.md`, CORE-1)
+
+**Machine and settings.** The 4 vCPU cloud VM of `bench/RESULTS.md` §GATE (Intel Xeon @ 2.80 GHz
+× 4 vCPU, 15–16 GiB, PostgreSQL 16, Java 25; a reprovisioned VM of another shape is not the
+reference), client, node, partner and Postgres on the one box, no CPU pinning, **one node for conditions 1–3
+(two nodes for condition 4), journal copies 1**, body level `none` with no switches and no step `keep`. Conditions 1–4 hold
+at both body sizes, 132 B and 10 KB. **Pass rule:** each cell is 3 runs on the CORE-GATE commit;
+a target is met when the **median** meets it; min–max is reported beside it. Numbers go to
+`bench/RESULTS.md` §CORE-GATE with date, configuration and commit. The targets are working targets
+(Q-1). No measurement of the old core comes first (D-104): if the CORE-GATE measurement misses
+a target, the steps are measured (P2-13, P2-14 (a)) before anything changes; a change of target
+is the owner's and goes into this section with its date.
+
+1. **Durable ACK latency.** At-least-once HTTP → 202 after the durable save, closed loop, c=1,
+   20 000 messages after 1 000 warm-up (`NodeBenchMain --scenario ack`): p99 < 5 ms.
+2. **Sustained throughput.** Open loop (CORE-15 harness), at-least-once end to end (ingress →
+   passthrough → partner): offered 5 000 msg/s for 10 min after a 1 min ramp; every request
+   answered 202 (no 503, no timeout); backlog = accepted − partner receipts, its growth over the
+   10 min < 1 % of the accepted; ACK p99 < 50 ms, timed from each request's scheduled send time.
+3. **Sync overhead.** The P1-10 harness, HTTP → passthrough → raw Vert.x echo partner, 20 000
+   requests after 1 000 warm-up, overhead = p50(flow) − p50(raw) with the same client: < 1 ms at
+   c=1 and < 2 ms at c=8.
+4. **No loss.** The kill -9 ledger (2 000 messages, concurrency 8, node 1 killed mid-run and
+   restarted, journal copies 1 on each node — node 1's items wait for its restart): sent =
+   final-step rows, DLQ 0, work 0, in 3 of 3 runs, with the body journal as the only body store.
+5. **No body in Postgres.** A schema test: no `bytea` or large-object column outside a named
+   allow-list; and a `pg_dump` taken after a condition-4 run contains no body marker of that run.
+6. **No Kafka in the core.** With the compose `kafka` profile off: sync, async, replay and DLQ retry
+   pass their end-to-end tests; nothing the `/xi` door will need (hand-over, ingest, replay)
+   depends on Kafka; no core module has a Kafka client on its
+   classpath (ArchUnit or dependency test).
+7. **Floors and rows.** Coverage and PIT floors of CLAUDE.md on the gate commit; CORE-0..CORE-15,
+   P2-15 and P2-16 `done` with `review: PASS`.
