@@ -106,7 +106,7 @@ rule; core `Intake.save(keepInput, Future abandoned)`; the persist javadoc; the 
 ## Architect's decisions on the designer's open points (draft — review at hand-over)
 - Tenant: every record uses tenant `default` until the tenant source is decided (D-100 context); the key id field is there.
 - `FLOTTILA_JOURNAL_KEY` (base64, 256 bit) required in every environment (no random default, never in the repo);
-  ISSUE-4 for the owner; CORE-4a/4b need no key source (tests pass keys), CORE-4c waits for ISSUE-4.
+  ISSUE-4 for the owner; CORE-4a/4b need no key source (tests pass keys), CORE-4c implements D-106 (ISSUE-4 answered 2026-11-04).
 - A journal gone (id mismatch or a pinned segment missing) refuses the start; the operator override is an explicit
   `FLOTTILA_JOURNAL_ACCEPT_LOSS=<journal id>:<digest>` that logs ERROR with the pinned items it gives up (designed in CORE-4c).
 - Defaults: MAX_BYTES 16 GiB; the durable body ceiling stays 64 MiB until CORE-2's bound; kept refs pin for KEEP_MAX_AGE
