@@ -1,4 +1,15 @@
 
+## 2026-11-04 — CORE-6a intake round trips: prepared-statement cache, pipelined turns (D-109, F-26, FIX-95b) — done, review PASS
+Deviation: F-26 (the node pool did not cache prepared statements as §4 Writer says; code brought to the document).
+Test first: PgIntakeRoundTripIT (8), NodeConnectOptionsTest, AtLeastOnceIntakeIT.theNodesPoolParsesEachIntakeStatementOncePerConnection,
+PgWire turn counting (test-author; red agent/work/CORE-6a-red.log); implementer's NodeConnectOptionsCacheLimitTest.
+Change: Node.connectOptions (cache on, SQL limit 8192: KEEP is 2514 chars); PgIntake turns BEGIN | claim + first-id | rows | abandoned
+check | COMMIT alone; PgBatchSink pipelined write(SqlClient, List). Warm connection: unkeyed 3 waits, keyed 4 (was 8+).
+Checks: reactor verify -Pit exit 0 (3310 testcases); coverage no decrease; mutants M1..M12, V1..V3 killed, M8/M9 equivalent.
+Review: FAIL r1 (claim turn's own cause and the sink's statement order unpinned), PASS r2.
+D-054 data: class B (designer ×1 for CORE-6, test-author ×1 resumed ×1, implementer ×1, verifier ×1, reviewer ×1 resumed ×1); rounds 2.
+Next: CORE-6b [C] packet (group commit, D-109).
+
 ## 2026-11-04 — CORE-4d segment sweeper, journal bound with 503, open-save outcomes, 4c carries (D-105) — done, review PASS
 context compacted; re-verified with git status / git log before changing anything.
 Test first: SegmentSweepIT (+r1/r2 cases), JournalBoundIT, IntakeAppendWaitIT, GiveUpRaceIT, LargeBodyCrashTest, JournalSpillBoundTest,

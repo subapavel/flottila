@@ -6,6 +6,7 @@ import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -15,7 +16,7 @@ import java.util.function.Function;
  * is fixed-shape SQL over {@code unnest} arrays, so the statement text never changes with the batch
  * size and the client's prepared-statement cache applies (ARCHITECTURE §4 "Writer"); statements
  * run in order inside the transaction and a failure rolls the whole batch back. {@link #write(SqlClient, List)} runs the same
- * statements inside a transaction the caller holds (D-082).
+ * statements inside a transaction the caller holds (D-082), all sent before the first reply (D-109).
  *
  * @param <T> the item type
  * @since 0.1
@@ -46,15 +47,20 @@ public final class PgBatchSink<T> implements BatchSink<T> {
 
     @Override public Future<Void> write(List<T> batch) {
         if (batch.isEmpty()) return Future.succeededFuture();
-        return pool.withTransaction(conn -> write(conn, batch));
+        return pool.withTransaction(conn -> run(conn, batch, 0));
     }
 
     /**
-     * Runs the statements over {@code batch}, in order, on {@code client} — a transaction's connection the caller commits or
-     * rolls back; the first failure fails the future and runs no later statement.
+     * Sends the statements over {@code batch}, in order, on {@code client} — a transaction's connection the caller commits or
+     * rolls back — each before any reply (pipelined, D-109); answers once every reply came: failed with the first failed
+     * statement's cause in statement order, so a statement refused after an earlier one failed (the transaction aborted) never
+     * names the failure. Every statement's arrays are built before any is sent.
      */
     public Future<Void> write(SqlClient client, List<T> batch) {
-        return run(client, batch, 0);
+        List<Tuple> arrays = statements.stream().map(s -> s.arrays().apply(batch)).toList();
+        List<Future<?>> replies = new ArrayList<>(statements.size());
+        for (int i = 0; i < statements.size(); i++) replies.add(client.preparedQuery(statements.get(i).sql()).execute(arrays.get(i)));
+        return Future.join(replies).mapEmpty();
     }
 
     private Future<Void> run(SqlClient conn, List<T> batch, int index) {

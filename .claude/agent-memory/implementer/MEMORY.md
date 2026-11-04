@@ -45,6 +45,7 @@
 - vertx-sql-client 5.1.10 (javap -c Pool): `Pool`, `SqlConnection` extend `SqlClient`; `withTransaction(fn)` = getConnection → begin →
   fn.apply(conn) called directly (a sync throw skips the rollback: start fn's chain from a completed future) → commit, or rollback
   then fail with fn's cause → close. A statement on the pool is autocommit; on the tx conn it commits with the tx.
+  SqlConnectOptions (javap, CORE-6a): no SQL-limit getter, `setPreparedStatementCacheSqlLimit(n)` = filter `sql.length() <= n` (default 2048, cache off).
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
   connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
@@ -59,7 +60,6 @@
   the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause.
 - AWS SDK 2.56.0 (javap): `RequestBody.fromFile(Path)` sizes the file at once (missing → UncheckedIOException); a client built without a credentialsProvider
   resolves `DefaultCredentialsProvider.builder()..build()` (`create()` is a static singleton); `serviceClientConfiguration()` shows region/endpoint/credentials.
-- JDK 25 AQS (P2-09a): parked in `CountDownLatch.await`, interrupt + countDown before it runs → IE; `CompletableFuture.get` returns the value, flag set.
 - JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
   `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
   FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.

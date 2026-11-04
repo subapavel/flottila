@@ -26,11 +26,23 @@ import java.util.function.Predicate;
  * ({@code 'E'}, the SQL its portal's Bind named by the Parse of that statement name). A <b>round trip</b> is a message the
  * server answers with a ReadyForQuery of its own: every Query and every Sync ({@code 'S'}). Bytes are forwarded unchanged,
  * one message at a time; the server's answers are copied back as they come.
+ *
+ * <p><b>Turns</b> (CORE-6a): each message records its connection and the number of ReadyForQuery messages ({@code 'Z'}) the
+ * relay had forwarded to the client on that connection when it read the message — a message the client could only send once it
+ * had a reply carries a higher number than every message it sent before that reply, so the save's messages fall into one group
+ * per wait ({@link #turnsSince}). With {@link #countTurns()} a reply carrying a ReadyForQuery is forwarded only once the relay has
+ * read everything the client sent before it (the client's side idle, nothing unread), so a pipelined message is never counted in
+ * a later turn because the relay read it late.
  */
 public final class PgWire implements AutoCloseable {
 
-    /** One frontend message: its type and, for a Query or an Execute, the SQL it runs. */
-    public record Sent(char type, String sql) {
+    /**
+     * One frontend message: its type, for a Query, a Parse or an Execute the SQL it runs, the relayed connection it came on (1, 2,
+     * … in accept order) and its turn: the ReadyForQuery messages forwarded to the client on that connection before it was read.
+     */
+    public record Sent(char type, String sql, int conn, long turn) {
+        public Sent(char type, String sql) { this(type, sql, 0, 0); }
+
         boolean statement() { return type == 'Q' || type == 'E'; }
         boolean roundTrip() { return type == 'Q' || type == 'S'; }
     }
@@ -46,6 +58,9 @@ public final class PgWire implements AutoCloseable {
     private final List<Held> armed = new CopyOnWriteArrayList<>();
     private final List<Held> everyHold = new CopyOnWriteArrayList<>();
     private volatile boolean closed;
+    private volatile boolean countTurns;
+    private final java.util.concurrent.atomic.AtomicInteger connections = new java.util.concurrent.atomic.AtomicInteger();
+    private final List<Conn> conns = new CopyOnWriteArrayList<>();
 
     /**
      * A frontend message held before it is forwarded (CORE-4d): the first message after {@link #holdNext} whose {@link Sent}
@@ -111,7 +126,63 @@ public final class PgWire implements AutoCloseable {
 
     /** One relayed connection's state shared by its two threads. */
     private static final class Conn {
+        final int id;
+        final Socket client;
         volatile HeldReply replyHold;
+        /** ReadyForQuery messages forwarded to the client: the turn of the next message read. */
+        volatile long delivered;
+        /** SSL or GSS requests forwarded whose one-byte answer the server has not sent yet. */
+        final java.util.concurrent.atomic.AtomicInteger negotiations = new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        private final java.util.concurrent.locks.Condition changed = lock.newCondition();
+        private boolean idle;      // the client's side waits for bytes and had none unread when it began to
+        private boolean held;      // the client's side waits on a held message (Held): it reads nothing until decided
+        private boolean ended;
+
+        Conn(int id, Socket client) {
+            this.id = id;
+            this.client = client;
+        }
+
+        void idle(boolean now) { set(() -> idle = now); }
+
+        void held(boolean now) { set(() -> held = now); }
+
+        void ended() { set(() -> ended = true); }
+
+        private void set(Runnable change) {
+            lock.lock();
+            try {
+                change.run();
+                changed.signalAll();
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        /** Bytes the client sent that the relay has not read. */
+        int unread() {
+            try {
+                return client.getInputStream().available();
+            } catch (IOException gone) {
+                return 0;
+            }
+        }
+
+        /** Waits (bounded) until the relay has read everything the client sent so far, or the client's side waits on a hold. */
+        void awaitDrained() throws InterruptedException {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+            lock.lock();
+            try {
+                while (!(ended || held || (idle && unread() == 0))) {
+                    long left = deadline - System.nanoTime();
+                    if (left <= 0) throw new AssertionError("the relay did not read what connection " + id + " sent within 20 s");
+                    changed.awaitNanos(left);   // every change of the client's side signals; unread bytes wake it, so it signals
+                }
+            } finally {
+                lock.unlock();
+            }
+        }
     }
 
     private final List<HeldReply> replyHolds = new CopyOnWriteArrayList<>();
@@ -199,10 +270,46 @@ public final class PgWire implements AutoCloseable {
     public int port() { return server.getLocalPort(); }
 
     /** A point in what was sent so far: {@link #since} lists what came after it. */
-    int mark() { return sent.size(); }
+    public int mark() { return sent.size(); }
 
     /** Every message sent after {@code mark}, in the order the relay read them (one connection: send order). */
-    List<Sent> since(int mark) { return List.copyOf(sent.subList(mark, sent.size())); }
+    public List<Sent> since(int mark) { return List.copyOf(sent.subList(mark, sent.size())); }
+
+    /**
+     * From now on a server reply carrying a ReadyForQuery reaches the client only once the relay has read everything the client
+     * sent before it (CORE-6a): the turns {@link #turnsSince} counts are the client's waits, never the relay's lag.
+     */
+    void countTurns() { countTurns = true; }
+
+    /**
+     * The messages sent after {@code mark}, on one connection, grouped by turn — one group per wait of the client, in order: each
+     * group lists its Queries and Executes by their SQL (trimmed, on one line) and its Parses as {@code "parse " + sql}; a group of
+     * other messages only is an empty list. Messages of more than one connection fail: turns are a connection's.
+     */
+    List<List<String>> turnsSince(int mark) {
+        List<Sent> messages = since(mark);
+        if (messages.stream().map(Sent::conn).distinct().count() > 1) throw new AssertionError("turns are counted on one connection: " + messages);
+        List<List<String>> turns = new ArrayList<>();
+        long turn = Long.MIN_VALUE;
+        for (Sent s : messages) {
+            if (turns.isEmpty() || s.turn() != turn) {
+                turns.add(new ArrayList<>());
+                turn = s.turn();
+            }
+            if (s.statement()) turns.getLast().add(oneLine(s.sql()));
+            else if (s.type() == 'P') turns.getLast().add("parse " + oneLine(s.sql()));
+        }
+        return turns.stream().map(List::copyOf).toList();
+    }
+
+    /** Waits (bounded) until, on every connection, the relay has read everything the client sent (or the client waits on a hold). */
+    void awaitQuiet() throws InterruptedException {
+        for (Conn c : conns) c.awaitDrained();
+    }
+
+    private static String oneLine(String sql) {
+        return sql.strip().replaceAll("\\s+", " ");
+    }
 
     /** The SQL of every statement sent after {@code mark}, trimmed and on one line. */
     List<String> statementsSince(int mark) {
@@ -228,7 +335,8 @@ public final class PgWire implements AutoCloseable {
                 Socket upstream = new Socket(host, port);
                 sockets.add(client);
                 sockets.add(upstream);
-                Conn conn = new Conn();
+                Conn conn = new Conn(connections.incrementAndGet(), client);
+                conns.add(conn);
                 Thread.ofVirtual().name("pg-wire-up").start(() -> frontend(client, upstream, conn));
                 Thread.ofVirtual().name("pg-wire-down").start(() -> copy(upstream, client, conn));
             } catch (IOException e) {
@@ -249,18 +357,21 @@ public final class PgWire implements AutoCloseable {
                 byte[] body = new byte[length - 4];
                 in.readFully(body);
                 int code = ((body[0] & 0xff) << 24) | ((body[1] & 0xff) << 16) | ((body[2] & 0xff) << 8) | (body[3] & 0xff);
+                started = code != SSL_REQUEST && code != GSS_REQUEST;
+                if (!started) conn.negotiations.incrementAndGet();   // before it goes: the server's one-byte answer is no message
                 writeInt(out, length);
                 out.write(body);
                 out.flush();
-                started = code != SSL_REQUEST && code != GSS_REQUEST;
             }
             while (true) {
+                if (in.available() == 0) conn.idle(true);
                 int type = in.read();
+                conn.idle(false);
                 if (type < 0) return;
                 int length = in.readInt();
                 byte[] body = new byte[length - 4];
                 in.readFully(body);
-                Sent recorded = record((char) type, body, statements, portals);
+                Sent recorded = record((char) type, body, statements, portals, conn);
                 if (!replyHolds.isEmpty()) {
                     for (HeldReply r : replyHolds) {
                         if (r.matches.test(recorded) && replyHolds.remove(r)) {
@@ -273,7 +384,9 @@ public final class PgWire implements AutoCloseable {
                 if (held != null) {
                     held.sql = recorded.sql();
                     held.reached.countDown();
+                    conn.held(true);
                     held.decided.await();
+                    conn.held(false);
                     if ("cut".equals(held.how)) {
                         closeQuietly(client);
                         held.cutDone.countDown();
@@ -301,12 +414,13 @@ public final class PgWire implements AutoCloseable {
         } catch (IOException e) {
             if (!closed) throw new IllegalStateException("the relay lost a connection", e);
         } finally {
+            conn.ended();
             closeQuietly(client);
             closeQuietly(upstream);
         }
     }
 
-    private Sent record(char type, byte[] body, Map<String, String> statements, Map<String, String> portals) {
+    private Sent record(char type, byte[] body, Map<String, String> statements, Map<String, String> portals, Conn conn) {
         Sent last;
         switch (type) {
             case 'Q' -> last = (new Sent(type, cstring(body, 0)));
@@ -325,6 +439,7 @@ public final class PgWire implements AutoCloseable {
             case 'E' -> last = (new Sent(type, portals.getOrDefault(cstring(body, 0), "?")));
             default -> last = (new Sent(type, null));
         }
+        last = new Sent(last.type(), last.sql(), conn.id, conn.delivered);
         sent.add(last);
         return last;
     }
@@ -344,6 +459,9 @@ public final class PgWire implements AutoCloseable {
 
     private void copy(Socket from, Socket to, Conn conn) {
         byte[] buffer = new byte[16 * 1024];
+        byte[] header = new byte[5];   // a backend message's type and length, as far as read
+        int headerFill = 0;
+        long payloadLeft = 0;          // bytes of the current message's payload still to come
         try (InputStream in = from.getInputStream(); OutputStream out = to.getOutputStream()) {
             for (int n; (n = in.read(buffer)) >= 0; ) {
                 HeldReply r = conn.replyHold;
@@ -351,6 +469,28 @@ public final class PgWire implements AutoCloseable {
                     conn.replyHold = null;
                     r.reached.countDown();
                     r.go.await();
+                }
+                int ready = 0;   // ReadyForQuery messages that start in this chunk
+                for (int i = 0; i < n; ) {
+                    if (payloadLeft > 0) {
+                        int skip = (int) Math.min(payloadLeft, n - i);
+                        i += skip;
+                        payloadLeft -= skip;
+                    } else if (headerFill == 0 && conn.negotiations.get() > 0) {
+                        conn.negotiations.decrementAndGet();   // the one-byte answer to an SSL or GSS request
+                        i++;
+                    } else {
+                        header[headerFill++] = buffer[i++];
+                        if (headerFill == header.length) {
+                            if (header[0] == 'Z') ready++;
+                            payloadLeft = (((header[1] & 0xffL) << 24) | ((header[2] & 0xff) << 16) | ((header[3] & 0xff) << 8) | (header[4] & 0xff)) - 4;
+                            headerFill = 0;
+                        }
+                    }
+                }
+                if (ready > 0) {
+                    if (countTurns) conn.awaitDrained();
+                    conn.delivered += ready;   // before the client can answer it: what it sends next is of a later turn
                 }
                 out.write(buffer, 0, n);
                 out.flush();

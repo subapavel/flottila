@@ -180,6 +180,48 @@ class AtLeastOnceIntakeIT {
         }
     }
 
+    /**
+     * CORE-6a (F-26): the node's own pool caches prepared statements — on each of its connections an intake statement is parsed
+     * at most once however many saves run it. Nine at-least-once saves on a pool of four: some connection runs the intake's work
+     * insert more than once (the witness), and no connection parses it, or the record's inserts, a second time.
+     */
+    @Test
+    void theNodesPoolParsesEachIntakeStatementOncePerConnection() throws Exception {
+        int partnerPort = partner();
+        try (PgWire wire = new PgWire(pg.getHost(), pg.getMappedPort(5432)); HttpClient client = NodeIT.http()) {
+            Map<String, String> env = env("node-a");
+            env.put("FLOTTILA_PG_HOST", "127.0.0.1");
+            env.put("FLOTTILA_PG_PORT", String.valueOf(wire.port()));
+            Node node = startNode(env);
+            int inPort = NodeIT.freePort();
+            try {
+                InvoiceAsyncIT.deploy(client, node, NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partnerPort)));
+
+                int mark = wire.mark();
+                for (int i = 1; i <= 9; i++) {
+                    HttpResponse<String> accepted = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-P" + i, "S1"), "application/xml");
+                    assertEquals(202, accepted.statusCode(), "fixture: save " + i + " accepted: " + accepted.body());
+                }
+                List<PgWire.Sent> sent = wire.since(mark);
+                Map<String, Long> workInserts = new HashMap<>();   // by connection and SQL text
+                Map<String, Long> parses = new HashMap<>();
+                for (PgWire.Sent s : sent) {
+                    String sql = s.sql() == null ? "" : s.sql().strip();
+                    boolean intake = sql.startsWith("insert into work(") || sql.startsWith("insert into messages(") || sql.startsWith("insert into message_keys(");
+                    if (s.type() == 'E' && sql.startsWith("insert into work(")) workInserts.merge(s.conn() + ": " + sql, 1L, Long::sum);
+                    if (s.type() == 'P' && intake) parses.merge(s.conn() + ": " + sql, 1L, Long::sum);
+                }
+                assertTrue(workInserts.values().stream().anyMatch(n -> n >= 2),
+                        "witness: some connection ran one work insert at least twice (9 saves, a pool of 4): " + workInserts);
+                assertEquals(List.of(), parses.entrySet().stream().filter(e -> e.getValue() > 1).map(String::valueOf).toList(),
+                        "no connection parses an intake statement twice: the node's pool caches prepared statements (F-26); parses " + parses);
+            } finally {
+                nodes.remove(node);   // closed while the relay is up: its pool's connections end cleanly
+                OnVirtualThread.call(() -> { node.close(); return null; });
+            }
+        }
+    }
+
     // ------------------------------------------------------------------------------------------------- the node's sweeper (CORE-4d r1 (3))
 
     /** Bounded wait for {@code condition} (20 s): the node runs on the system clock and a real timer, which no case can drive. */

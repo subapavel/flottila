@@ -10,6 +10,7 @@ import io.flottila.runtime.queue.PgWorkQueue;
 import io.vertx.core.Future;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.SqlConnection;
 import io.vertx.sqlclient.Tuple;
@@ -33,7 +34,11 @@ import java.util.function.Function;
  * leaves none of them, only bytes in the journal no row references. {@code abandoned} — the delivery's answer — is asked once,
  * after the rows' inserts and just before the commit: complete rolls everything back; its completion also ends the wait of the
  * body's record for room under {@code FLOTTILA_JOURNAL_PENDING_BYTES} ({@link TieredBlobStore#forced(io.flottila.api.BlobKey,
- * Future)}: retryable, nothing reserved). A body durable already (no local copy) adds no record and no kept ref: its
+ * Future)}: retryable, nothing reserved). The transaction's statements go in turns on its one connection (D-109), a turn's
+ * statements sent together and the next turn sent only once every reply of this one came: BEGIN alone; the rows — the record's
+ * inserts, the item, and the kept ref when the input is kept — together; then, after the {@code abandoned} check, COMMIT alone. A
+ * failed statement of a turn fails the save with its own cause (the first failed in the turn's order, never a later statement's
+ * aborted transaction) and the transaction rolls back. A body durable already (no local copy) adds no record and no kept ref: its
  * item copies the key's kept ref ({@link PgWorkQueue#enqueue(SqlClient, String, String, int, String, io.flottila.api.BlobKey)}).
  * A body of another store is persisted there first, before the transaction (the node's ingress bodies are this store's), its item
  * naming no ref. Once the commit is acknowledged the body's ref is indexed and its local copy goes, before the save's future
@@ -43,15 +48,16 @@ import java.util.function.Function;
  * {@code pg_xact_status} of that id is known — asked at each {@link #openSaves} — or the node restarts. Any failure — of the force, a statement, the
  * commit or the body's own store — fails the save; nothing here throws.
  *
- * <p>A save with a dedupe key (D-084) runs one more statement, first in its transaction: the key's row in {@code processed_ids}
+ * <p>A save with a dedupe key (D-084) runs two more statements, in a turn of their own after BEGIN: the key's row in {@code processed_ids}
  * — scope {@code flow}, the SHA-256 of the key's UTF-8 bytes, the arrival's id, the ingress snapshot's start — {@code on
  * conflict do nothing}. A row inserted is the arrival's: the save goes on and commits it with the rest, so a save that fails or
  * is abandoned leaves the key free. None inserted is a key taken — by a committed save, or by an open one this statement waited
- * for (READ COMMITTED) and that committed: the second statement reads that message's id, the transaction rolls back with
+ * for (READ COMMITTED) and that committed: the second statement, sent with the first and run after it, reads the id the key's row
+ * names (the arrival's own when it claimed the key), the transaction rolls back with
  * nothing of the arrival written, {@code abandoned} is never asked, this store's copy of the arrival's body is evicted (its
  * record, forced already, stays unreferenced in the journal; a body of another store keeps what its persist made durable) and the
  * future succeeds with the first message's id. A taken key whose row is gone when read (the retention job) fails the save.
- * A save without a key runs no extra statement.
+ * A save without a key runs no extra statement and no extra turn.
  *
  * @since 0.1
  */
@@ -139,10 +145,8 @@ public final class PgIntake implements Intake {
                 .compose(durable -> {
                     AtomicReference<String> xid = new AtomicReference<>();   // the item's transaction, once its insert answered it
                     return transaction(xid, tx -> claim(tx, arrived.id(), ingress, flow, dedupeKey)
-                                    .compose(claimed -> messages.insert(tx, ingress))
-                                    .compose(recorded -> enqueue(tx, arrived, flow, partitionKey, durable, xid))
-                                    .compose(queued -> keepInput && durable != null ? durable.keepIn(tx) : Future.<Void>succeededFuture())
-                                    .compose(kept -> abandoned.isComplete()
+                                    .compose(claimed -> rows(tx, arrived, ingress, flow, partitionKey, keepInput, durable, xid))
+                                    .compose(written -> abandoned.isComplete()
                                             ? Future.<Void>failedFuture(new IllegalStateException("the save of " + arrived.id()
                                                     + " was abandoned before its commit: its answer was decided; rolled back"))
                                             : Future.<Void>succeededFuture()))
@@ -173,6 +177,18 @@ public final class PgIntake implements Intake {
     }
 
     /**
+     * The rows turn: the ingress record's inserts, the item, and — {@code keepInput}, a body of this store — the body's kept ref,
+     * each sent before any reply; answers once every reply came, failed with the first failed statement's cause in that order.
+     */
+    private Future<Void> rows(SqlClient tx, Envelope arrived, Snapshot ingress, String flow, String partitionKey, boolean keepInput,
+                              TieredBlobStore.Durable durable, AtomicReference<String> xid) {
+        Future<Void> recorded = messages.insert(tx, ingress);
+        Future<Void> queued = enqueue(tx, arrived, flow, partitionKey, durable, xid);
+        Future<Void> kept = keepInput && durable != null ? durable.keepIn(tx) : Future.succeededFuture();
+        return Future.join(recorded, queued, kept).mapEmpty();
+    }
+
+    /**
      * The item: naming the record forced for it (its insert answering the transaction's id, into {@code xid}); taking the kept ref of
      * a body durable already; naming nothing for another store's body.
      */
@@ -187,17 +203,20 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The arrival's key row in {@code tx} — nothing to do without a key; a key taken fails with the {@link Duplicate} naming the
-     * first message, or, its row gone, with an {@link IllegalStateException}.
+     * The arrival's key row in {@code tx} — nothing to do without a key: the claim and the read of the id the key's row names, sent
+     * together (one turn), answered once both replied. The claim's row inserted is the key claimed; a key taken fails with the
+     * {@link Duplicate} naming the message the read found, or, its row gone, with an {@link IllegalStateException}.
      */
     private static Future<Void> claim(SqlClient tx, String id, Snapshot ingress, String flow, String key) {
         if (key == null) return Future.succeededFuture();
-        return tx.preparedQuery(CLAIM_KEY).execute(Tuple.of(flow, key, id, ingress.startedAt().atOffset(ZoneOffset.UTC)))
-                .compose(inserted -> inserted.rowCount() == 1 ? Future.<Void>succeededFuture() : tx.preparedQuery(FIRST_ID).execute(Tuple.of(flow, key))
-                        .compose(first -> first.size() == 0
-                                ? Future.failedFuture(new IllegalStateException("the dedupe key of " + id + " is taken in flow " + flow
-                                        + " by a row that is gone (retention): no message to name; not saved"))
-                                : Future.failedFuture(new Duplicate(first.iterator().next().getString(0)))));
+        Future<RowSet<Row>> inserted = tx.preparedQuery(CLAIM_KEY).execute(Tuple.of(flow, key, id, ingress.startedAt().atOffset(ZoneOffset.UTC)));
+        Future<RowSet<Row>> first = tx.preparedQuery(FIRST_ID).execute(Tuple.of(flow, key));
+        return Future.join(inserted, first).compose(replied -> {
+            if (inserted.result().rowCount() == 1) return Future.<Void>succeededFuture();
+            if (first.result().size() == 0) return Future.failedFuture(new IllegalStateException("the dedupe key of " + id + " is taken in flow "
+                    + flow + " by a row that is gone (retention): no message to name; not saved"));
+            return Future.failedFuture(new Duplicate(first.result().iterator().next().getString(0)));
+        });
     }
 
     /**

@@ -172,7 +172,7 @@ public final class Node implements AutoCloseable {
         // building the pool connects nowhere (connections open on the first query), so the refusals below still come before
         // anything touches Postgres; from here on every failed start closes it again
         Pool pool = PgBuilder.pool()
-                .connectingTo(new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password()))
+                .connectingTo(connectOptions(pg))
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
         PgMessageStore messages = null;
         Journal journal = null;   // once open: closed after the deployments, before the store and the pool its rows go through
@@ -260,6 +260,19 @@ public final class Node implements AutoCloseable {
             }
             throw failure;
         }
+    }
+
+    /** The longest SQL text a connection caches prepared (characters): above the client's 2048, so the intake's KEEP (2514) is cached too. */
+    static final int STATEMENT_CACHE_SQL_LIMIT = 8192;
+
+    /**
+     * The node's Postgres connect options (F-26): the server and credentials of {@code pg}, and the prepared-statement cache on
+     * (ARCHITECTURE §4 Writer) for every SQL text up to {@value #STATEMENT_CACHE_SQL_LIMIT} characters, so a connection parses a
+     * statement once; pipelining stays at the client's default (D-109: a turn's statements are sent together).
+     */
+    public static PgConnectOptions connectOptions(NodeConfig.Pg pg) {
+        return new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password())
+                .setCachePreparedStatements(true).setPreparedStatementCacheSqlLimit(STATEMENT_CACHE_SQL_LIMIT);
     }
 
     /**

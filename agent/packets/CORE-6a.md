@@ -38,3 +38,27 @@ pg client, never memory; no sleeps (held replies); floors no decrease.
 
 ## Checks
 `mvn -B -ntp -q -pl flottila-runtime -am verify`, reactor `verify -Pit`, coverage check; logs agent/work/CORE-6a-*.log.
+
+## Red approved (architect 2026-11-04)
+Red observed: test-compile 4 errors on `Node.connectOptions`; semantic reds against a shimmed scratch copy (agent/work/CORE-6a-red.log).
+Tests: journal/PgIntakeRoundTripIT (6: unkeyed rows before any row reply, kept input joins the rows turn, keyed claim turn,
+duplicate, parse once, failed row rolls back), node/NodeConnectOptionsTest (3), AtLeastOnceIntakeIT.theNodesPoolParsesEachIntakeStatementOncePerConnection;
+PgWire fixture gains turns (`countTurns`, `turnsSince`, `awaitQuiet`, public `mark`/`since`), other ITs green with it.
+Evidence (javap vertx-sql-client-codec 5.1.10 + probe): a borrowed connection pipelines (limit 256), but an uncached statement
+pauses the pipeline until its Parse answers; a failed statement's ROLLBACK goes only after every pending reply.
+Architect decisions: (1) KEEP's SQL (2514 chars) exceeds the 2048 cache SQL limit → `connectOptions` sets
+`setPreparedStatementCacheSqlLimit(8192)` (a finite constant; a NodeConfigConnectOptions case asserts it by value); KEEP's text is
+not shortened here. (2) The 3/4 wait counts are for a warm connection; a connection's first save pays its Parses (accepted).
+(3) "A failed BEGIN sends nothing more" is held by structure (BEGIN alone, awaited), not by a case (accepted).
+Architect (implementer handback): the claim's rowCount decides "claimed", as today; FIRST_ID is always sent and read only when
+the claim inserted nothing (scope 2's "own id = claimed" was shorthand; today's mapping keeps a re-save of an in-doubt arrival
+a duplicate answering its own id instead of failing on the messages key). M8/M9 (`Future.join` → `Future.all`) judged
+equivalent by the implementer — for the reviewer.
+
+## Review r1 FAIL (2026-11-04) — architect decisions
+Two pins missing, code expected right (mutant-pinned cases, test-author): (1) the claim turn's own cause — a BEFORE INSERT
+trigger raising on processed_ids: the save fails with the trigger's text (never 25P02), wire BEGIN, claim, first-id, ROLLBACK
+only, key free, no messages/work row; kills PgIntake:214 `Future.join(first, inserted)`. (2) The sink's statement order — a
+trigger refusing `insert into messages`, keepInput true: the cause is the trigger's text; kills PgBatchSink:63 reversed.
+Verifier mutants after: those two, PgIntake:188 `join(recorded, kept, queued)` and `join(queued, recorded, kept)`, Node.java:176
+inline PgConnectOptions. Accepted: M8/M9 equivalent (join kept). Evidence next round: XML testcase count, no stale reports, git status.
