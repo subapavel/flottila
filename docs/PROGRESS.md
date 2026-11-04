@@ -1,4 +1,14 @@
 
+## 2026-11-03 — CORE-3 body journal design (D-105) — done, review PASS — Deviation: F-25
+Test first: none (design packet); the red tests of CORE-4a..4d are named in agent/packets/CORE-3.md.
+Change: agent/packets/CORE-3.md (segments, per-record AEAD, one group-fsync writer, fail-stop, refs in V12, retention by
+reference, disk bound, ACCEPT_LOSS per digest); D-105; F-25; ISSUE-4 (journal key, blocks CORE-4c); CORE-4 split 4a..4d.
+Checks: ledger-only change, no build run (NOT_RUN).
+Review: FAIL r1 (12: write-order hole, fsyncgate, sweep races, unbounded wait, FIX-35 compare, start checks, tests), FAIL r2
+(large-body grace, sealer hand-off), FAIL r3 (ACCEPT_LOSS), FAIL r4 (wording), PASS r5.
+D-054 data: class C (designer ×1 resumed ×1, reviewer ×1 resumed ×4); review rounds 5.
+Next: CORE-4a [C] — acceptance spec, test-author red tests.
+
 ## 2026-11-03 — CORE-0/CORE-1 core-rework brief approved, CORE-GATE conditions (D-103) — done, review PASS
 Test first: none (docs only); acceptance = the owner's approval (CORE-0) and a measurable GATE.md §CORE-GATE (CORE-1).
 Change: docs/CORE-REWORK.md (owner's brief, approved), GATE.md §CORE-GATE (VM, pass rule = median of 3, 7 conditions),
