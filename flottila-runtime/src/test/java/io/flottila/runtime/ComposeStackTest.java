@@ -377,9 +377,12 @@ class ComposeStackTest {
         assertFalse(environment(node).containsKey("FLOTTILA_SECRET_SFTP_HOST_KEY"),
                 "the fingerprint is unknown until the key exists: it is not a fixed value of the compose file");
         List<Mount> mounted = mounts(node);
-        assertEquals(List.of("sftp-fingerprint"), mounted.stream().map(Mount::source).toList(),
-                "the node mounts the fingerprint volume and no other (in particular none that holds a host key): " + mounted);
-        assertTrue(mounted.get(0).readOnly(), "and only reads it: " + mounted);
+        // CORE-4c1 r1 (architect): the node's data directory is a named volume too, so a recreated container keeps its journal
+        assertEquals(List.of("sftp-fingerprint", "flottila-data"), mounted.stream().map(Mount::source).toList(),
+                "the node mounts the fingerprint volume and its data volume, no other (in particular none that holds a host key): " + mounted);
+        assertTrue(mounted.get(0).readOnly(), "and only reads the fingerprint: " + mounted);
+        assertEquals(new Mount("flottila-data", "/var/lib/flottila", false), mounted.get(1), "the data volume is the node's data directory, written");
+        assertTrue(new ObjectMapper(new YAMLFactory()).readTree(FILE.toFile()).path("volumes").has("flottila-data"), "flottila-data is a declared volume");
         String wrapper = script(node) + " " + environment(node);
         assertFalse(wrapper.contains("ssh_host"), "nothing the node runs names a host key file, public or private, of any type: " + wrapper);
         String assigned = script(node);

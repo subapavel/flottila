@@ -3,6 +3,7 @@ package io.flottila.runtime.journal;
 import io.flottila.api.BlobKey;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Hash;
+import io.flottila.api.Health;
 import io.flottila.api.Hasher;
 import io.flottila.api.Timer;
 import io.vertx.core.Future;
@@ -24,6 +25,7 @@ import java.nio.file.StandardOpenOption;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -40,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -61,15 +64,20 @@ import java.util.stream.Stream;
  *
  * <p><b>Segments.</b> A segment rolls before the record that would take it past {@code FLOTTILA_JOURNAL_SEGMENT_BYTES},
  * once it holds {@code FLOTTILA_JOURNAL_SEGMENT_RECORDS}, and {@code FLOTTILA_JOURNAL_SEGMENT_AGE} after its first record
- * (the injected timer, and the next append once the clock passed it); an empty segment never rolls. The next segment is
- * pre-opened off the hot path (file, header, force, directory force on a virtual thread). Segment n goes to a sealer
+ * (the injected timer, and the next append once the clock passed it); an empty segment never rolls. Every segment has its
+ * {@link SegmentRows row} inserted before its file is created. The next segment is pre-opened off the hot path (row, file,
+ * header, force, directory force on a virtual thread); a pre-open whose row insert fails tries it again on the injected
+ * timer ({@value #FIRST_RETRY_MS} ms doubling to {@value #LAST_RETRY_S} s) while {@link #health()} answers DEGRADED and the
+ * writer waits for that segment (appends meanwhile fail retryable at the append wait); a close stops trying. Segment n goes to a sealer
  * virtual thread only after the writer's last write and force on n returned, and the writer never touches n again; the
  * sealer writes n's footer index and trailer and forces it; only then does {@link #index(long)} answer for n. No
  * acknowledged record waits for a footer. A close seals the open segment.
  *
- * <p><b>Fail-stop.</b> Any write or force error fails the journal: the channel it failed on is never forced again, the
- * round's appends, every queued and every later append fail {@link JournalFailedException}, one ERROR is logged; reads go
- * on; only a restart's scan recovers the journal.
+ * <p><b>Fail-stop.</b> Any write or force error of the writer, a sealer or a large body's persist (its footer, or the
+ * directory force after its move) fails the journal: the channel it failed on is never forced again, the round's appends,
+ * every queued and every later append, spill and persist fail {@link JournalFailedException}, one ERROR is logged and
+ * {@link #isFailed()} answers true ({@link #health()} DOWN); reads go on; only a restart's scan recovers the journal. A
+ * failed segment row insert is no write or force error: it fails no journal.
  *
  * <p><b>Read.</b> A record is read by its ref with a pread on a channel of its own, checked by CRC32C (a failure is
  * {@link JournalCorruptException} and an ERROR, never "not found"), then decrypted under its tenant key.
@@ -174,11 +182,24 @@ public final class Journal implements AutoCloseable {
         }
     }
 
+    /** A write or force of a spill's persist. */
+    @FunctionalInterface
+    private interface Forcing<T> {
+        T run() throws IOException;
+    }
+
     /** A pre-open's outcome: the segment file, or why it could not be made. */
     private record Opened(SegmentFile file, Throwable failure) { }
 
-    /** The rows of a journal without Postgres (CORE-4a's tests): every insert succeeds at once. */
+    /** The rows of a journal without Postgres (CORE-4a's tests): every insert succeeds at once, no row is kept. */
     private static final SegmentRows NO_ROWS = (node, segment) -> Future.succeededFuture();
+    /** The journal ids of the opens that are given no id source (tests without a node): a fresh random one. */
+    private static final Supplier<UUID> RANDOM_IDS = UUID::randomUUID;
+    /** A pre-open's failed row insert is tried again after this, the wait doubling up to {@link #LAST_RETRY}. */
+    private static final long FIRST_RETRY_MS = 100;
+    private static final long LAST_RETRY_S = 5;
+    static final Duration FIRST_RETRY = Duration.ofMillis(FIRST_RETRY_MS);
+    static final Duration LAST_RETRY = Duration.ofSeconds(LAST_RETRY_S);
 
     private final JournalConfig config;
     private final Clock clock;
@@ -207,8 +228,12 @@ public final class Journal implements AutoCloseable {
     private volatile boolean closing;
     private boolean writerDone;
     private int sealing;
+    private int inFlight;      // spills and persists running: close() waits for them
     private long nextNumber;   // the next segment number nothing has taken
     private long upcoming;     // the number the next roll gives the writer, taken already
+    private Throwable outage;  // the last failure of the pre-open row insert being retried (DEGRADED), else null
+    private Timer.Cancellable retry;               // the pending retry of that insert (a fired one cancels to false)
+    private CompletableFuture<Opened> retrying;   // the pre-open it completes
 
     // writer-owned (handed over by Thread.start, read by close after the writer is done)
     private SegmentFile writing;
@@ -246,33 +271,73 @@ public final class Journal implements AutoCloseable {
         return open(config, clock, timer, keys, files, NO_ROWS);
     }
 
-    /**
-     * Opens the journal in {@code config.dir()}: takes the {@code LOCK} (held elsewhere → refused), reads or writes the
-     * {@code NODE} identity, clears {@code spill/}, recovers every segment (no tenant key is asked for) and starts a new
-     * segment after the highest number seen.
-     *
-     * @param keys the tenant key of a key id, or null when there is none
-     * @param rows where a large body's persist inserts its segment row
-     */
+    /** {@link #open(JournalConfig, Clock, Timer, IntFunction, JournalFiles, SegmentRows, Supplier)} with a random journal id for a first start. */
     public static Journal open(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files,
                                SegmentRows rows) throws IOException {
+        return open(config, clock, timer, keys, files, rows, RANDOM_IDS);
+    }
+
+    /**
+     * Opens the journal in {@code config.dir()}: takes the {@code LOCK} (held elsewhere → refused); checks the identity
+     * ({@code NODE} against the node's {@code journal_nodes} row: a first start writes {@code NODE} with the id
+     * {@code journalIds} gives, then the row; a {@code NODE} without its row registers it; a row without {@code NODE}, or
+     * naming another journal, is refused and nothing is changed); clears {@code spill/}; unlinks every segment file without
+     * its row; recovers every segment (no tenant key is asked for); drops every row whose file is not there; and starts a new
+     * segment, its row first, numbered above every number a file or a row named (a number is never used twice).
+     *
+     * @param keys       the tenant key of a key id, or null when there is none
+     * @param rows       the journal's rows: its identity and its segments
+     * @param journalIds the journal id of a first start (asked for nothing when {@code NODE} is there)
+     * @throws IllegalStateException the {@code LOCK} is held, or the identity is refused
+     */
+    public static Journal open(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files,
+                               SegmentRows rows, Supplier<UUID> journalIds) throws IOException {
         Objects.requireNonNull(rows, "rows");
+        Objects.requireNonNull(journalIds, "journalIds");
         Path dir = config.dir();
+        String node = config.node();
         Files.createDirectories(dir);
         try (JournalIo.Owned lockChannel = new JournalIo.Owned(files.open(dir.resolve("LOCK"),
                 Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE)))) {
             takeLock(lockChannel.get(), dir);
-            SegmentFormat format = new SegmentFormat(identity(dir, config.node(), files), config.node());
+            Set<Long> registered = rows.segments(node).await();   // null: no rows are kept
+            SegmentFormat format = new SegmentFormat(identity(dir, node, files, rows, registered != null, journalIds), node);
             clearSpill(dir.resolve("spill"));
             Path segments = dir.resolve("segments");
             if (!Files.isDirectory(segments)) {
                 Files.createDirectories(segments);
                 JournalIo.forceDir(files, dir);
             }
+            long highest = registered == null ? 0 : unlinkUnregistered(segments, registered);
             Recovery.Result recovered = Recovery.recover(segments, format, files, clock);
-            SegmentFile first = create(recovered.next(), files, segments, format, clock);
+            if (registered != null) dropUnfiled(rows, node, registered, recovered.extents().keySet());
+            SegmentFile first = create(Math.max(recovered.next(), highest + 1), node, rows, files, segments, format, clock);
             return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered.extents(), first);
         }
+    }
+
+    /**
+     * Unlinks every segment file without its row (before any read of it); answers the highest number a file or a row
+     * named, the unlinked files and the rows of no file included.
+     */
+    private static long unlinkUnregistered(Path segments, Set<Long> registered) throws IOException {
+        long highest = 0;
+        for (long n : Recovery.numbers(segments)) {
+            highest = Math.max(highest, n);
+            if (!registered.contains(n)) {
+                Files.delete(segments.resolve(n + ".seg"));
+                LOG.log(System.Logger.Level.WARNING, "journal segment {0} had no journal_segments row: unlinked", n);
+            }
+        }
+        for (long n : registered) highest = Math.max(highest, n);
+        return highest;
+    }
+
+    /** Drops the rows whose segment has no file after recovery (none was there, or it held no record and went). */
+    private static void dropUnfiled(SegmentRows rows, String node, Set<Long> registered, Set<Long> filed) {
+        Set<Long> unfiled = new java.util.HashSet<>(registered);
+        unfiled.removeAll(filed);
+        if (!unfiled.isEmpty()) rows.drop(node, unfiled).await();
     }
 
     /** Unlinks whatever an earlier run left under {@code spill/}: a spill never persisted nor abandoned is no one's. */
@@ -293,31 +358,78 @@ public final class Journal implements AutoCloseable {
         if (held == null) throw new IllegalStateException("the journal in " + dir + " is open elsewhere (its LOCK is held): refused");
     }
 
-    /** The journal id of {@code NODE}; a first start writes it (tmp, force, atomic move, directory force). */
-    private static UUID identity(Path dir, String node, JournalFiles files) throws IOException {
+    /**
+     * The journal id: {@code NODE}'s, checked against the node's registered one. A first start (neither) writes {@code NODE}
+     * (tmp, force, atomic move, directory force) with the id {@code journalIds} gives, then registers it; a {@code NODE}
+     * without its row registers its id while {@code segments/} holds no segment file; with one, when rows are kept, the start
+     * is refused (a wrong or re-provisioned database must never erase a journal). A row without {@code NODE}, or one naming another journal,
+     * refuses too; a refusal comes before anything is written. A write, force or move of {@code NODE} that fails unlinks its
+     * tmp and registers nothing.
+     */
+    private static UUID identity(Path dir, String node, JournalFiles files, SegmentRows rows, boolean rowsKept, Supplier<UUID> journalIds)
+            throws IOException {
         Path file = dir.resolve("NODE");
-        if (Files.exists(file)) {
-            byte[] found = Files.readAllBytes(file);
-            UUID id = SegmentFormat.journalOf(found);
-            if (id == null || !Arrays.equals(found, new SegmentFormat(id, node).identity())) {
-                throw new IllegalStateException("the NODE file in " + dir + " is not the journal identity of node " + node
-                        + " (another node's, or damaged): refused");
+        UUID found = Files.exists(file) ? identityOf(file, dir, node) : null;
+        UUID registered = rows.journalOf(node).await();
+        if (registered != null && !registered.equals(found)) {
+            throw new IllegalStateException(found == null
+                    ? "journal_nodes names journal " + registered + " for node " + node + ", but its NODE file is not in " + dir
+                            + " (a journal lost or moved): refused"
+                    : "the NODE file in " + dir + " names journal " + found + ", journal_nodes names journal " + registered + " for node " + node
+                            + " (another journal): refused");
+        }
+        if (found != null && registered == null && rowsKept) {
+            Path segments = dir.resolve("segments");
+            int filed = Files.isDirectory(segments) ? Recovery.numbers(segments).size() : 0;
+            if (filed > 0) {
+                throw new IllegalStateException("the NODE file in " + dir + " names journal " + found + ", which journal_nodes does not register for node "
+                        + node + ", and segments/ holds " + filed + " segment file(s): refused, nothing changed (a wrong or re-provisioned database? "
+                        + "start the node on the database of its journal)");
             }
-            return id;
         }
-        UUID id = UUID.randomUUID();
-        Path tmp = dir.resolve("NODE.tmp");
-        try (FileChannel ch = files.open(tmp, Set.of(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE))) {
-            JournalIo.writeFully(ch, ByteBuffer.wrap(new SegmentFormat(id, node).identity()));
-            ch.force(false);
+        UUID id = found;
+        if (id == null) {
+            id = Objects.requireNonNull(journalIds.get(), "the journal id source answered null");
+            Path tmp = dir.resolve("NODE.tmp");
+            try {
+                try (FileChannel ch = files.open(tmp, Set.of(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE))) {
+                    JournalIo.writeFully(ch, ByteBuffer.wrap(new SegmentFormat(id, node).identity()));
+                    ch.force(false);
+                }
+                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException | RuntimeException | Error e) {
+                JournalIo.unlinkAfter(tmp, e);   // no NODE and no row: the next start begins the journal again
+                throw e;
+            }
+            JournalIo.forceDir(files, dir);
         }
-        Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE);
-        JournalIo.forceDir(files, dir);
+        if (registered == null) rows.register(node, id).await();
         return id;
     }
 
-    /** Creates segment {@code n}: the file, its header, a force, a directory force. A failure part-way closes the channel. */
-    private static SegmentFile create(long n, JournalFiles files, Path segments, SegmentFormat format, Clock clock) throws IOException {
+    /** The journal id {@code file} names, once it is this node's identity file. */
+    private static UUID identityOf(Path file, Path dir, String node) throws IOException {
+        byte[] found = Files.readAllBytes(file);
+        UUID id = SegmentFormat.journalOf(found);
+        if (id == null || !Arrays.equals(found, new SegmentFormat(id, node).identity())) {
+            throw new IllegalStateException("the NODE file in " + dir + " is not the journal identity of node " + node
+                    + " (another node's, or damaged): refused");
+        }
+        return id;
+    }
+
+    /**
+     * Creates segment {@code n}: its row (the insert answered), then the file, its header, a force, a directory force. A
+     * failure part-way closes the channel; a failed insert creates no file.
+     */
+    private static SegmentFile create(long n, String node, SegmentRows rows, JournalFiles files, Path segments, SegmentFormat format, Clock clock)
+            throws IOException {
+        rows.insert(node, n).await();
+        return createFile(n, files, segments, format, clock);
+    }
+
+    /** The file of segment {@code n}, whose row is in: created, its header written and forced, the directory forced. */
+    private static SegmentFile createFile(long n, JournalFiles files, Path segments, SegmentFormat format, Clock clock) throws IOException {
         try (JournalIo.Owned ch = new JournalIo.Owned(files.open(segments.resolve(n + ".seg"),
                 Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)))) {
             JournalIo.writeFully(ch.get(), format.header(n, clock.millis()));
@@ -470,6 +582,56 @@ public final class Journal implements AutoCloseable {
         return new IllegalStateException("the journal is closed");
     }
 
+    /** True once the journal failed and stopped (fail-stop): the admin health reports it DOWN. */
+    public boolean isFailed() {
+        lock.lock();
+        try {
+            return failure != null;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * The admin health of the journal: DOWN once it failed (fail-stop); else DEGRADED while a pre-open's segment row insert
+     * is retried (appends wait for that segment meanwhile); else UP.
+     */
+    public Health health() {
+        lock.lock();
+        try {
+            if (failure != null) return Health.down("the journal failed and stopped (fail-stop): every append is refused until a restart recovers it");
+            if (outage != null) {
+                return Health.degraded("a journal_segments insert failed and is retried (appends wait for the segment meanwhile): " + outage);
+            }
+            return Health.up();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** A spill or a persist begins: refused once the journal failed or its close began, else counted until {@link #leave()}. */
+    private void enter() {
+        lock.lock();
+        try {
+            if (failure != null) throw failed();
+            if (closing) throw closed();
+            inFlight++;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** A spill or a persist is over: close() may stop waiting for it. */
+    private void leave() {
+        lock.lock();
+        try {
+            inFlight--;
+            done.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     // ---------------------------------------------------------------------------------------------------- writer
 
     private void runWriter() {
@@ -552,16 +714,68 @@ public final class Journal implements AutoCloseable {
 
     private CompletableFuture<Opened> preopen(long n) {
         CompletableFuture<Opened> f = new CompletableFuture<>();
+        attempt(n, f, FIRST_RETRY);
+        return f;
+    }
+
+    /**
+     * One try of segment {@code n}'s pre-open, on a virtual thread of its own: its row, then its file. A failed row insert
+     * is no fail-stop (no file exists): it is tried again {@code backoff} later on the timer (CORE-3 item 3, CORE-4c1 r1);
+     * a failed file creation completes {@code f} with its failure, which fails the journal when the writer moves on.
+     */
+    private void attempt(long n, CompletableFuture<Opened> f, Duration backoff) {
         Thread.ofVirtual().name("journal-open-" + n).start(() -> {
             try {
-                SegmentFile file = create(n, files, segments, format, clock);
+                rows.insert(config.node(), n).await();
+            } catch (Throwable e) {   // the row insert's await throws its future's cause, checked or not
+                retryLater(n, f, backoff, e);
+                return;
+            }
+            try {
+                SegmentFile file = createFile(n, files, segments, format, clock);
                 extents.put(n, file.extent);
+                rowIn(n);
                 f.complete(new Opened(file, null));
-            } catch (IOException | RuntimeException | Error e) {
+            } catch (Throwable e) {
                 f.complete(new Opened(null, e));
             }
         });
-        return f;
+    }
+
+    /** Schedules the next try of segment {@code n}'s row insert, the journal DEGRADED meanwhile; a closing journal stops trying. */
+    private void retryLater(long n, CompletableFuture<Opened> f, Duration backoff, Throwable cause) {
+        boolean began;
+        lock.lock();
+        try {
+            if (closing) {
+                f.complete(new Opened(null, cause));
+                return;
+            }
+            began = outage == null;
+            outage = cause;
+            Duration later = backoff.multipliedBy(2).compareTo(LAST_RETRY) > 0 ? LAST_RETRY : backoff.multipliedBy(2);
+            retrying = f;
+            retry = timer.schedule(backoff, () -> attempt(n, f, later));
+        } finally {
+            lock.unlock();
+        }
+        if (began) {
+            LOG.log(System.Logger.Level.WARNING, "the journal_segments row of segment " + n + " could not be inserted: journal " + config.dir()
+                    + " is DEGRADED, its appends wait for the segment; tried again from " + FIRST_RETRY + " to every " + LAST_RETRY, cause);
+        }
+    }
+
+    /** Segment {@code n}'s row is in: the journal is no longer DEGRADED. */
+    private void rowIn(long n) {
+        boolean ended;
+        lock.lock();
+        try {
+            ended = outage != null;
+            outage = null;
+        } finally {
+            lock.unlock();
+        }
+        if (ended) LOG.log(System.Logger.Level.INFO, "the journal_segments row of segment {0} is in: journal {1} is UP again", n, config.dir());
     }
 
     /** Hands {@code f} to a sealer virtual thread: the writer's last write and force on it have returned. */
@@ -783,7 +997,8 @@ public final class Journal implements AutoCloseable {
      * @throws IllegalArgumentException {@code maxSize} out of range (before a byte is read), a name above 65 535 bytes, or a
      *                                  tenant key that is not there or cannot encrypt
      * @throws BodyTooLargeException    the body goes past {@code maxSize}; it was read no further than one chunk beyond it
-     * @throws IllegalStateException    the journal is closed
+     * @throws JournalFailedException   the journal failed (retryable); nothing read
+     * @throws IllegalStateException    the journal is closed (a close waits for every spill already running)
      * @throws IOException              the body could not be read, or the spill not written
      */
     public Spill spill(BlobKey key, int tenantKeyId, InputStream body, long maxSize, Hasher hasher) throws IOException {
@@ -793,7 +1008,15 @@ public final class Journal implements AutoCloseable {
         if (maxSize < 0 || maxSize > RecordFormat.MAX_PLAIN) {
             throw new IllegalArgumentException("maxSize must lie in 0.." + RecordFormat.MAX_PLAIN + ", was " + maxSize);
         }
-        if (closing) throw closed();
+        enter();
+        try {
+            return spilled(key, tenantKeyId, body, maxSize, hasher);
+        } finally {
+            leave();
+        }
+    }
+
+    private Spill spilled(BlobKey key, int tenantKeyId, InputStream body, long maxSize, Hasher hasher) throws IOException {
         SecretKey tenantKey = keys.apply(tenantKeyId);
         if (tenantKey == null) throw new IllegalArgumentException("no tenant key " + tenantKeyId);
         byte[] salt = new byte[ChunkedAead.SALT_BYTES];
@@ -813,16 +1036,7 @@ public final class Journal implements AutoCloseable {
             failure = e;
             throw e;
         } finally {
-            if (failure != null) unlinkAfter(file, failure);
-        }
-    }
-
-    /** Unlinks {@code file} after {@code failure}; an unlink that fails rides on it as suppressed. */
-    private static void unlinkAfter(Path file, Throwable failure) {
-        try {
-            Files.deleteIfExists(file);
-        } catch (IOException x) {
-            failure.addSuppressed(x);
+            if (failure != null) JournalIo.unlinkAfter(file, failure);
         }
     }
 
@@ -875,31 +1089,53 @@ public final class Journal implements AutoCloseable {
          * Makes the segment durable and part of the journal: writes its footer index and trailer (sealed ms on the injected
          * clock) and forces it, once; inserts its segment row; moves the file into {@code segments/}; forces that directory.
          * A failed insert or move leaves no file in {@code segments/} and the spill in place: persist again (the footer is not
-         * written twice, the row is inserted again) or {@link #abandon()}. A footer whose write or force failed is never
-         * written or forced again: every later persist fails, the spill can only be abandoned. A persisted spill not abandoned
-         * since answers its ref again.
+         * written twice, the row is inserted again) or {@link #abandon()}. A failed footer (its write or force) or a failed
+         * directory force after the move fails the journal (fail-stop) and breaks the spill: it is never written, forced or
+         * answered as persisted again, it can only be abandoned. A persisted spill not abandoned since answers its ref again
+         * while the journal is open and has not failed; a failed journal refuses it ({@link JournalFailedException}), a closed
+         * one too ({@link IllegalStateException}), though the segment stays durable and readable after a restart.
          *
          * @return the ref of its record
-         * @throws IllegalStateException the journal is closed, the spill was abandoned, or its footer failed before
+         * @throws IllegalStateException  the journal is closed (a close waits for every persist already running), the spill
+         *                                was abandoned, or it broke before
+         * @throws JournalFailedException the journal failed (retryable); nothing written
          */
         public synchronized JournalRef persist() throws IOException {
-            if (closing) throw closed();
             if (abandoned) throw new IllegalStateException("the spill of segment " + segment() + " was abandoned: it is never persisted");
             if (broken != null) {
-                throw new IllegalStateException("the footer of the spill of segment " + segment() + " failed (" + broken
-                        + "): it is never written or forced again; abandon the spill", broken);
+                throw new IllegalStateException("the spill of segment " + segment() + " failed (" + broken
+                        + "): it is never written, forced or persisted again; abandon the spill", broken);
             }
-            if (persisted) return entry.ref();
-            if (index == null) index = seal();
-            rows.insert(config.node(), segment()).await();
-            Files.move(file, segmentFile(segment()), StandardCopyOption.ATOMIC_MOVE);
-            JournalIo.forceDir(files, segments);
-            extents.put(segment(), Extent.sealed(entry.ref().position() + entry.ref().length(), index));
-            persisted = true;
-            return entry.ref();
+            enter();
+            try {
+                if (persisted) return entry.ref();
+                if (index == null) index = durably(this::seal);
+                rows.insert(config.node(), segment()).await();
+                Files.move(file, segmentFile(segment()), StandardCopyOption.ATOMIC_MOVE);
+                durably(() -> {
+                    JournalIo.forceDir(files, segments);
+                    return null;
+                });
+                extents.put(segment(), Extent.sealed(entry.ref().position() + entry.ref().length(), index));
+                persisted = true;
+                return entry.ref();
+            } finally {
+                leave();
+            }
         }
 
-        /** Writes the footer index and trailer after the record and forces the file; a failure breaks the spill for good. */
+        /** A write or force of the spill: its failure breaks the spill for good and fails the journal (fail-stop). */
+        private <T> T durably(Forcing<T> step) throws IOException {
+            try {
+                return step.run();
+            } catch (IOException | RuntimeException | Error e) {
+                broken = e;
+                fail(e, List.of());
+                throw e;
+            }
+        }
+
+        /** Writes the footer index and trailer after the record and forces the file. */
         private Index seal() throws IOException {
             long end = entry.ref().position() + entry.ref().length();
             SegmentFormat.Footer footer = SegmentFormat.footer(List.of(entry), end, clock.millis());
@@ -907,9 +1143,6 @@ public final class Journal implements AutoCloseable {
                 ch.position(end);
                 JournalIo.writeFully(ch, footer.bytes());
                 ch.force(false);
-            } catch (IOException | RuntimeException | Error e) {
-                broken = e;
-                throw e;
             }
             return new Index(footer.indexLength(), footer.indexCrc(), 1);
         }
@@ -927,19 +1160,22 @@ public final class Journal implements AutoCloseable {
     // ---------------------------------------------------------------------------------------------------- close
 
     /**
-     * Stops taking appends, lets the writer write and force every append already taken, seals the open segment, waits for
-     * every sealer, then closes the channels and gives the {@code LOCK} up. A failed journal closes too, forcing nothing.
-     * A second close finds nothing to write, seal or close.
+     * Stops taking appends, spills and persists, lets the writer write and force every append already taken, seals the open
+     * segment, waits for every sealer and every spill and persist already running, then closes the channels and gives the
+     * {@code LOCK} up. A failed journal closes too, forcing nothing. A second close finds nothing to write, seal or close.
      */
     @Override
     public void close() throws IOException {
         lock.lock();
         try {
             closing = true;
+            if (retry != null && retry.cancel()) {   // a pending retry of a pre-open's row: the close does not wait for Postgres
+                retrying.complete(new Opened(null, new IllegalStateException("the journal closed while the row of its next segment was retried")));
+            }
             if (current.records > 0) roll();
             work.signalAll();
             room.signalAll();
-            while (!writerDone || sealing > 0) done.awaitUninterruptibly();
+            while (!writerDone || sealing > 0 || inFlight > 0) done.awaitUninterruptibly();
         } finally {
             lock.unlock();
         }

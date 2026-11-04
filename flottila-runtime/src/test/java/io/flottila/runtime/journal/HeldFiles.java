@@ -169,6 +169,20 @@ final class HeldFiles implements JournalFiles {
                 op -> op.kind == Kind.FORCE && op.file.equals(at) && op.thread == thread && op.entered > after);
     }
 
+    /**
+     * Holds the first force on {@code file} that any thread enters after the sequence point {@code after} (CORE-4c1: a force
+     * whose thread the case cannot know before it starts the call, the master key's directory force).
+     */
+    Hold holdForceOn(Path file, long after) {
+        Path at = file.toAbsolutePath().normalize();
+        return arm("force on " + at + " after #" + after, op -> op.kind == Kind.FORCE && op.file.equals(at) && op.entered > after);
+    }
+
+    /** Holds the first write on a file whose path {@code which} accepts (CORE-4c1: the master key's temporary file, any name). */
+    Hold holdFirstWriteOn(String what, Predicate<Path> which) {
+        return arm("first write on " + what, op -> op.kind == Kind.WRITE && which.test(op.file));
+    }
+
     /** Holds the first force on the file that carries {@code marker}, entered after that write returned. */
     Hold holdForceAfter(String marker) {
         return arm("force after " + marker, op -> {

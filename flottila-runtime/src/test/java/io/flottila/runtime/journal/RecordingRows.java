@@ -4,6 +4,7 @@ import io.vertx.core.Future;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -23,6 +24,7 @@ final class RecordingRows implements SegmentRows {
     private final List<Insert> inserts = new CopyOnWriteArrayList<>();
     private final Map<Long, Consumer<Insert>> hooks = new ConcurrentHashMap<>();
     private final Map<Long, Throwable> failures = new ConcurrentHashMap<>();
+    private final Set<Long> answered = ConcurrentHashMap.newKeySet();
 
     @Override public Future<Void> insert(String node, long segment) {
         Insert i = new Insert(node, segment, Thread.currentThread());
@@ -30,8 +32,13 @@ final class RecordingRows implements SegmentRows {
         Consumer<Insert> hook = hooks.remove(segment);
         if (hook != null) hook.accept(i);
         Throwable f = failures.remove(segment);
-        return f == null ? Future.succeededFuture() : Future.failedFuture(f);
+        if (f != null) return Future.failedFuture(f);
+        answered.add(segment);
+        return Future.succeededFuture();
     }
+
+    /** True once an insert of {@code segment} answered success (CORE-4c1: no segment file before its row is in). */
+    boolean inserted(long segment) { return answered.contains(segment); }
 
     /** Runs {@code hook} inside the next insert of {@code segment}, before it answers. */
     void onInsert(long segment, Consumer<Insert> hook) { hooks.put(segment, hook); }

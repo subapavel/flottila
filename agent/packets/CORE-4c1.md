@@ -52,3 +52,20 @@ held seams); javap on JDK 25 and the resolved Vert.x pg client jar for APIs. Flo
 
 ## Checks
 `mvn -B -ntp -q -pl flottila-runtime -am verify`, reactor `verify -Pit`, coverage check; logs agent/work/CORE-4c1-*.log.
+
+## Red approved (architect 2026-11-04)
+Red observed: test-compile exit 1 on the missing API (agent/work/CORE-4c1-red.log); semantic reds against scratch stubs.
+Tests: journal/MasterKeySourceTest, JournalLifecycleTest, JournalSegmentRowsTest, JournalKeysIT, PgSegmentRowsIT, NodeJournalIT
+(+ JournalLockHolderChild, CaseDatabase), node/NodeConfigJournalTest; MigrationsIT V12 cases; counts 11 → 12 (MigrationsIT,
+PgMessageStoreIT:76, PgDeploymentStoreIT:100). The signatures and SQL shapes in the handback are the contract:
+`MasterKeySource.fromEnv(Map).load(Path journalDir, JournalFiles)`; `JournalKeys.load(Pool, SecretKey)`, `keyOf(tenant)`,
+`apply(int)`; `new PgSegmentRows(Pool)`; `Journal.isFailed()`; `Journal.open(…, SegmentRows, Supplier<UUID>)`; `Node.journal()`;
+`NodeConfig.journal()`; admin health check "journal"; the V12 column sets pinned by MigrationsIT.
+Assumptions accepted: next n counts unlinked files and dropped rows; an in-flight persist that close waits for succeeds; a
+refused identity changes nothing on disk or in Postgres; the broken-spill check runs before the failed-journal check.
+Architect decisions: FLOTTILA_JOURNAL_KEY_GENERATE=true beside a given key is refused like both sources set. The ripple:
+every existing node start in tests, cli, bench and the quickstart/compose dev setup needs a key source — the implementer
+adds one centrally (a test fixture helper or the shared test config, FLOTTILA_JOURNAL_KEY_GENERATE=true or a test-only key
+generated per run, never a key committed in the repo); the compose dev stack uses GENERATE=true with its notice. Each test
+file touched for this is named in the handback and in the commit body as a required configuration change, not an expectation
+change. The broken-spill mark after a failed directory force has no killing case (the failed journal refuses first): accepted.

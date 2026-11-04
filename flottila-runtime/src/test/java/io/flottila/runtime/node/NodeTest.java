@@ -108,6 +108,7 @@ class NodeTest {
         Map<String, String> m = new java.util.HashMap<>(Map.of(
                 "FLOTTILA_ENV", env, "FLOTTILA_NODE_ID", "node-1", "FLOTTILA_ADMIN_PORT", "0", "FLOTTILA_DATA_DIR", data.toString(),
                 "FLOTTILA_PG_HOST", "127.0.0.1", "FLOTTILA_PG_PORT", String.valueOf(closedPort())));
+        TestJournalKey.with(m);   // the master key is loaded before Postgres (CORE-4c1 r1, D-106): a required configuration
         return m;
     }
 

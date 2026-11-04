@@ -303,6 +303,9 @@ final class JournalFixture {
 
         long count(Level level) { return records.stream().filter(r -> r.getLevel().equals(level)).count(); }
 
+        /** The records captured so far, in the order they were published (CORE-4c1: formatted with their parameters). */
+        List<LogRecord> records() { return List.copyOf(records); }
+
         List<String> lines() {
             List<String> l = new ArrayList<>();
             for (LogRecord r : records) l.add(r.getLevel() + " " + r.getLoggerName() + ": " + r.getMessage());

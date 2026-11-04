@@ -4,6 +4,7 @@ import io.flottila.components.http.HttpComponent;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.vertx.core.Promise;
@@ -184,6 +185,7 @@ class OrderedDeliveryIT {
         env.put("FLOTTILA_PG_USER", pg.getUsername());
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
+        TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         return env;
     }
 

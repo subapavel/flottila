@@ -137,6 +137,9 @@ services:
     environment:
       FLOTTILA_ENV: dev
       FLOTTILA_NODE_ID: stack
+      # the body journal's master key, generated once into <data dir>/journal/MASTER beside the data it protects: a dev stack of
+      # one node only; the node logs a WARNING about it at every start (D-106). Any other node takes FLOTTILA_JOURNAL_KEY_FILE
+      FLOTTILA_JOURNAL_KEY_GENERATE: "true"
       FLOTTILA_PG_HOST: postgres
       FLOTTILA_PG_PASSWORD: ${FLOTTILA_PG_PASSWORD:-flottila}
       FLOTTILA_ARCHIVE_STORE: s3
@@ -158,6 +161,9 @@ services:
       - 'FLOTTILA_SECRET_SFTP_HOST_KEY=$$(cat /sftp-fingerprint/host-key.fingerprint) && export FLOTTILA_SECRET_SFTP_HOST_KEY && exec java -jar /opt/flottila/flottila-runtime.jar'
     volumes:
       - sftp-fingerprint:/sftp-fingerprint:ro
+      # the node's data directory (the body journal with its NODE, segments and generated MASTER, the deployment archives) is a
+      # named volume: a recreated container finds its journal again; `docker compose down -v` removes it together with pg-data
+      - flottila-data:/var/lib/flottila
     depends_on:
       netns:
         condition: service_healthy
@@ -223,6 +229,7 @@ services:
 
 volumes:
   pg-data:
+  flottila-data:
   s3-data:
   sftp-hostkeys:
   sftp-fingerprint:

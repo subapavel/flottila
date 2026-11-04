@@ -1,5 +1,6 @@
 package io.flottila.runtime;
 
+import io.flottila.runtime.node.TestJournalKey;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -229,6 +230,7 @@ class MainProcessIT {
         env.put("FLOTTILA_PG_USER", pg.getUsername());
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
+        TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         return env;
     }
 

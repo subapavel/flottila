@@ -12,11 +12,11 @@
   nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start.
 - A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
   `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
-- flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
-  false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
-- Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a).
+- flottila-runtime `verify` without `-Pit` passed its floor at CORE-4c1 (failed ~73 % before); runtime figures need `-Pit`; a `-Dtest=` verify fails the floor: read surefire XML.
+- Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36 (schema count); public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
+  a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
-- Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`.
+- Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`. Pass `-Dsurefire.timeout` on hand runs too (CORE-4c1 r1: a hung @AfterEach close blocked a run 15 min).
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
@@ -95,6 +95,7 @@
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
 - JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; live RecordingStream vthread `getThread()` null, a whole dump resolves all (F-22); `dump(p)` truncates p, works on STOPPED; one dump per comparison; cp: `dependency:build-classpath`.
 ## Findings that came back in review
+- Journal SegmentRows without rows (NO_ROWS, RecordingRows) answer journalOf null for every node: a rule on "no row" checks rows kept (`segments()` non-null); a seam hold armed before an async first try is taken by it (CORE-4c1 r1).
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class
   reuses its inner fixtures (P2-02b). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
@@ -111,8 +112,7 @@
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
 - NodeConfig carries `Secrets` (P2-04): tests compare `from(env)` to the 11-arg ctor: a new component needs equality + a defaulting overload.
-- Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp.
-- PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn (log_statement=all).
+- Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp. PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn.
 - JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
 - Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
   `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).

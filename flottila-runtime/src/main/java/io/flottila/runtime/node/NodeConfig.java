@@ -3,6 +3,8 @@ package io.flottila.runtime.node;
 import io.flottila.core.admission.Targets;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
+import io.flottila.runtime.journal.JournalConfig;
+import io.flottila.runtime.journal.MasterKeySource;
 import io.flottila.runtime.store.Retention;
 
 import java.net.URI;
@@ -23,7 +25,8 @@ import java.util.regex.Pattern;
  * A node's whole configuration, read from its environment (D-057 b). Every key has a default except {@code FLOTTILA_ENV};
  * every refusal is an {@link IllegalArgumentException} whose message names the key. No {@code toString} here carries a secret:
  * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, {@link Leases} prints of
- * the Valkey URI its scheme, host, port and database only, {@link Secrets} names its variables only, and this record's prints theirs.
+ * the Valkey URI its scheme, host, port and database only, {@link Secrets} names its variables only, {@link MasterKeySource} names
+ * its source only, and this record's prints theirs.
  *
  * @param nodeId {@code FLOTTILA_NODE_ID}, else {@code $HOSTNAME}: a DNS label (lower-case letters, digits and inner dashes, at most 63)
  * @param env {@code FLOTTILA_ENV}, required
@@ -45,13 +48,24 @@ import java.util.regex.Pattern;
  *                    ISO-8601 duration in whole milliseconds from PT0.001S to PT0.1S; with a period the node runs a CPU sampler
  * @param targets the limits per target system (D-099): {@code FLOTTILA_TARGET_MAX_CALLS}, {@code FLOTTILA_TARGET_MAX_WAIT} and
  *                {@code FLOTTILA_TARGET_LIMITS} ({@link TargetLimits})
+ * @param journal the body journal's keys (CORE-3, D-105): {@code FLOTTILA_JOURNAL_DIR} ({@code <dataDir>/journal}),
+ *                {@code FLOTTILA_JOURNAL_SEGMENT_BYTES} (64 MiB), {@code FLOTTILA_JOURNAL_SEGMENT_RECORDS} (65 536, at most
+ *                2^31 - 1), {@code FLOTTILA_JOURNAL_SEGMENT_AGE} (PT1S), {@code FLOTTILA_JOURNAL_PENDING_BYTES} (16 MiB),
+ *                {@code FLOTTILA_JOURNAL_APPEND_WAIT} (PT5S), {@code FLOTTILA_JOURNAL_RECORD_MAX} (256 KiB or
+ *                {@code FLOTTILA_BLOB_MEMORY_TIER} when that is smaller; at most the tier), each range-checked as {@link JournalConfig} says; the node id is the journal's
+ * @param journalKey the journal's master key source (D-106): {@code FLOTTILA_JOURNAL_KEY_FILE}, {@code FLOTTILA_JOURNAL_KEY} or
+ *                   {@code FLOTTILA_JOURNAL_KEY_GENERATE}; a node without one is refused at start, not here
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
-                         Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets) {
+                         Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
+                         MasterKeySource journalKey) {
 
-    /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
+    /**
+     * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
+     * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5).
+     */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
         Objects.requireNonNull(s3, "s3");
@@ -60,10 +74,27 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(retention, "retention");
         Objects.requireNonNull(cpuSampling, "cpuSampling");
         Objects.requireNonNull(targets, "targets");
+        Objects.requireNonNull(journal, "journal");
+        Objects.requireNonNull(journalKey, "journalKey");
+        if (journal.recordMax() > blobs.memoryTier()) {
+            throw new IllegalArgumentException("FLOTTILA_JOURNAL_RECORD_MAX " + journal.recordMax() + " is above FLOTTILA_BLOB_MEMORY_TIER "
+                    + blobs.memoryTier() + ": a journal record is held in memory whole");
+        }
         if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+    }
+
+    /**
+     * A node whose journal has the default keys in {@code <dataDir>/journal} and no master key source (its start is refused
+     * until one is given), as {@link #from} reads an env without the {@code FLOTTILA_JOURNAL_*} keys.
+     */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal(Map.of(), dataDir, nodeId, blobs.memoryTier()), MasterKeySource.fromEnv(Map.of()));
     }
 
     /** A node whose targets have the default limits and no override, as {@link #from} reads them by default (D-099). */
@@ -108,7 +139,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets);
+                cpuSampling, targets, journal, journalKey);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -140,7 +171,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * {@link Integer#MAX_VALUE}; the memory tier is never above the budget.
      *
      * @param treeLimit {@code FLOTTILA_BLOB_TREE_LIMIT} (8 MiB)
-     * @param memoryTier {@code FLOTTILA_BLOB_MEMORY_TIER} (1 MiB)
+     * @param memoryTier {@code FLOTTILA_BLOB_MEMORY_TIER} (1 MiB, at least 4096)
      * @param memoryBudget {@code FLOTTILA_BLOB_MEMORY_BUDGET} (256 MiB)
      * @param durableMax {@code FLOTTILA_BLOB_DURABLE_MAX} (1 MiB, at most 64 MiB): the largest max body an at-least-once flow
      *                   may declare (D-058, D-059)
@@ -246,6 +277,10 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     private static final long MIB = 1024L * 1024;
+    /** The least FLOTTILA_BLOB_MEMORY_TIER: the least FLOTTILA_JOURNAL_RECORD_MAX, which is at most the tier (CORE-4c1 r1). */
+    private static final long MEMORY_TIER_MIN = 4096;
+    /** FLOTTILA_JOURNAL_RECORD_MAX by default, or the memory tier when that is smaller. */
+    private static final long RECORD_MAX_DEFAULT = 256 * 1024;
     private static final long GIB = 1024 * MIB;
     private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
     private static final Set<String> HTTP = Set.of("http", "https");
@@ -268,7 +303,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
-     * {@code FLOTTILA_SECRET_*} variables are the node's secrets ({@link Secrets#fromEnv}).
+     * {@code FLOTTILA_SECRET_*} variables are the node's secrets ({@link Secrets#fromEnv}), its {@code FLOTTILA_JOURNAL_KEY*}
+     * variables its master key source ({@link MasterKeySource#fromEnv}).
      */
     public static NodeConfig from(Map<String, String> env) {
         String name = env.get("FLOTTILA_ENV");
@@ -283,7 +319,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Pg pg = new Pg(env.getOrDefault("FLOTTILA_PG_HOST", "localhost"), (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
                 env.getOrDefault("FLOTTILA_PG_DATABASE", "flottila"), env.getOrDefault("FLOTTILA_PG_USER", "flottila"),
                 env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), (int) number(env, "FLOTTILA_PG_POOL_SIZE", 16, 1, 1024));
-        long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, 0, Integer.MAX_VALUE);
+        long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, MEMORY_TIER_MIN, Integer.MAX_VALUE);
         long memoryBudget = number(env, "FLOTTILA_BLOB_MEMORY_BUDGET", 256 * MIB, 1, Long.MAX_VALUE);
         if (memoryTier > memoryBudget) {
             throw new IllegalArgumentException("FLOTTILA_BLOB_MEMORY_TIER " + memoryTier + " is above FLOTTILA_BLOB_MEMORY_BUDGET " + memoryBudget);
@@ -294,7 +330,33 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
-                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env));
+                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
+                MasterKeySource.fromEnv(env));
+    }
+
+    /**
+     * The {@code FLOTTILA_JOURNAL_*} limits and directory, each with its design default (CORE-3); a value that is no number or
+     * no ISO-8601 duration is refused here naming its key, a range by {@link JournalConfig} naming its key.
+     */
+    private static JournalConfig journal(Map<String, String> env, Path dataDir, String nodeId, long memoryTier) {
+        Path dir = Path.of(env.getOrDefault("FLOTTILA_JOURNAL_DIR", dataDir.resolve("journal").toString()));
+        return new JournalConfig(dir, number(env, "FLOTTILA_JOURNAL_SEGMENT_BYTES", 64 * MIB, Long.MIN_VALUE, Long.MAX_VALUE),
+                (int) number(env, "FLOTTILA_JOURNAL_SEGMENT_RECORDS", 65_536, 1, Integer.MAX_VALUE),
+                duration(env, "FLOTTILA_JOURNAL_SEGMENT_AGE", Duration.ofSeconds(1)),
+                number(env, "FLOTTILA_JOURNAL_PENDING_BYTES", 16 * MIB, Long.MIN_VALUE, Long.MAX_VALUE),
+                duration(env, "FLOTTILA_JOURNAL_APPEND_WAIT", Duration.ofSeconds(5)),
+                number(env, "FLOTTILA_JOURNAL_RECORD_MAX", Math.min(RECORD_MAX_DEFAULT, memoryTier), Long.MIN_VALUE, Long.MAX_VALUE), nodeId);
+    }
+
+    /** {@code key}'s ISO-8601 duration, {@code fallback} when the key is absent; its range is the caller's to check. */
+    private static Duration duration(Map<String, String> env, String key, Duration fallback) {
+        String raw = env.get(key);
+        if (raw == null) return fallback;
+        try {
+            return Duration.parse(raw);
+        } catch (DateTimeParseException notIso) {
+            throw new IllegalArgumentException(key + " must be an ISO-8601 duration such as " + fallback + ", was '" + raw + "'");
+        }
     }
 
     /**

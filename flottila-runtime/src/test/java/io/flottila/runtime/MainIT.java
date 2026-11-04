@@ -2,6 +2,7 @@ package io.flottila.runtime;
 
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.node.TestJournalKey;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -126,6 +127,7 @@ class MainIT {
         env.put("FLOTTILA_PG_USER", pg.getUsername());
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
+        TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         return env;
     }
 

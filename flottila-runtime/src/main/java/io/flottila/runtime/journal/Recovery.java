@@ -38,15 +38,18 @@ final class Recovery {
 
     private Recovery() { }
 
-    static Result recover(Path segments, SegmentFormat format, JournalFiles files, Clock clock) throws IOException {
-        List<Long> numbers;
+    /** The numbers of the segment files in {@code segments} ({@code <n>.seg}), in ascending order; any other file is left alone. */
+    static List<Long> numbers(Path segments) throws IOException {
         try (Stream<Path> list = Files.list(segments)) {
-            numbers = list.map(p -> p.getFileName().toString()).filter(name -> NAME.matcher(name).matches())
+            return list.map(p -> p.getFileName().toString()).filter(name -> NAME.matcher(name).matches())
                     .map(name -> Long.parseLong(name.substring(0, name.length() - 4))).sorted().toList();
         }
+    }
+
+    static Result recover(Path segments, SegmentFormat format, JournalFiles files, Clock clock) throws IOException {
         Map<Long, Journal.Extent> extents = new HashMap<>();
         long max = 0;
-        for (long n : numbers) {
+        for (long n : numbers(segments)) {
             max = n;
             Path file = segments.resolve(n + ".seg");
             Journal.Extent e = recover(file, n, format, files, clock);

@@ -202,3 +202,18 @@ listener stalls the round); P7D in the journal before CORE-10 (2.7 TB at 4.5 MB/
   fails the journal (item 3: any force error) and whether a failed journal refuses spill and persist; close() waits for or
   refuses in-flight spills and persists before releasing LOCK; rows without a file dropped before the first row insert (spill
   numbers reused after a restart); Spill.abandon() unlinks off the hot path when wired into the store.
+
+## Added in CORE-4c1 (architect 2026-11-04, review r1)
+- Item 9: NODE without its `journal_nodes` row registers the row only when `segments/` holds no segment file; with segment
+  files the start is refused and nothing changes (a wrong or re-provisioned database must never erase a journal).
+- Item 9: the generated master (D-106) is published without replacing (per-process tmp, hard link); concurrent first starts
+  end with one key. The master key is loaded before any Postgres statement, so a keyless node migrates nothing.
+- Item 3: a failed `journal_segments` insert at pre-open is not fail-stop (no file exists): retried on the injected timer with
+  a bounded backoff; appends meanwhile fail retryable at the append wait; health DEGRADED until the row is in.
+- NodeConfig: FLOTTILA_BLOB_MEMORY_TIER ≥ 4096; FLOTTILA_JOURNAL_RECORD_MAX defaults to min(256 KiB, tier).
+- Compose: the node's data dir is a named volume (`down -v` removes it with pg-data).
+- Carried into CORE-4c2: the admin notice for a generated key (D-106); after a fail-stop caused by a dir force re-check
+  `failure` after any later force of that dir; the segment-row insert shares the node pool (a saturated pool stalls the writer).
+- Carried into CORE-4c2 (review r2): the item-9 guard also when NODE is lost (`registered == null && filed > 0` refuses
+  whether NODE is present or not); a close during an outage logs a fail-stop ERROR (cosmetic, make it quiet); a crashed
+  generation's `MASTER.*.tmp` is removed at the next start under LOCK; PIT on flottila-api before CORE-GATE (D-107).

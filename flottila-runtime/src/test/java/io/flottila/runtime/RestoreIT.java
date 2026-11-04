@@ -4,6 +4,7 @@ import io.flottila.components.http.HttpComponent;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.vertx.core.Vertx;
@@ -164,6 +165,7 @@ class RestoreIT {
         env.put("FLOTTILA_S3_PREFIX", prefix);
         env.put("FLOTTILA_S3_ACCESS_KEY", localstack.getAccessKey());
         env.put("FLOTTILA_S3_SECRET_KEY", localstack.getSecretKey());
+        TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         return env;
     }
 

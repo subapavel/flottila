@@ -220,11 +220,13 @@ public final class StreamHeapMain {
                 StreamHeapNode.class.getName());
     }
 
-    /** The node's environment: env dev, the run's database, admin on 127.0.0.1:{@code admin}, its data directory. */
+    /** The node's environment: env dev, the run's database, admin on 127.0.0.1:{@code admin}, its data directory, the run's journal key. */
     static Map<String, String> nodeEnv(Options o, Path data, int admin) {
-        return Map.of("FLOTTILA_ENV", "dev", "FLOTTILA_NODE_ID", "stream-heap-node", "FLOTTILA_ADMIN_PORT", String.valueOf(admin),
-                "FLOTTILA_DATA_DIR", data.toString(), "FLOTTILA_PG_HOST", o.host(), "FLOTTILA_PG_PORT", String.valueOf(o.port()),
-                "FLOTTILA_PG_DATABASE", o.db(), "FLOTTILA_PG_USER", o.user(), "FLOTTILA_PG_PASSWORD", o.password());
+        return Map.ofEntries(Map.entry("FLOTTILA_ENV", "dev"), Map.entry("FLOTTILA_NODE_ID", "stream-heap-node"),
+                Map.entry("FLOTTILA_ADMIN_PORT", String.valueOf(admin)), Map.entry("FLOTTILA_DATA_DIR", data.toString()),
+                Map.entry("FLOTTILA_PG_HOST", o.host()), Map.entry("FLOTTILA_PG_PORT", String.valueOf(o.port())), Map.entry("FLOTTILA_PG_DATABASE", o.db()),
+                Map.entry("FLOTTILA_PG_USER", o.user()), Map.entry("FLOTTILA_PG_PASSWORD", o.password()),
+                Map.entry("FLOTTILA_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY));
     }
 
     /**

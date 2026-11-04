@@ -46,6 +46,9 @@ services:
     environment:
       FLOTTILA_ENV: dev
       FLOTTILA_NODE_ID: quickstart
+      # the body journal's master key, generated once into <data dir>/journal/MASTER beside the data it protects: a dev stack of
+      # one node only; the node logs a WARNING about it at every start (D-106). Any other node takes FLOTTILA_JOURNAL_KEY_FILE
+      FLOTTILA_JOURNAL_KEY_GENERATE: "true"
       FLOTTILA_PG_HOST: postgres
       FLOTTILA_PG_PASSWORD: flottila
       FLOTTILA_ADMIN_HOST: 0.0.0.0

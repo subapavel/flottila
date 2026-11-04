@@ -22,6 +22,10 @@ import io.flottila.runtime.deploy.Deployments;
 import io.flottila.runtime.deploy.DirArchiveStore;
 import io.flottila.runtime.deploy.PgDeploymentStore;
 import io.flottila.runtime.deploy.S3ArchiveStore;
+import io.flottila.runtime.journal.Journal;
+import io.flottila.runtime.journal.JournalFiles;
+import io.flottila.runtime.journal.JournalKeys;
+import io.flottila.runtime.journal.PgSegmentRows;
 import io.flottila.runtime.lease.InMemoryPollerLeases;
 import io.flottila.runtime.lease.PollerLeases;
 import io.flottila.runtime.lease.ValkeyPollerLeases;
@@ -48,6 +52,7 @@ import software.amazon.awssdk.services.s3.S3ClientBuilder;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -73,9 +78,13 @@ import java.util.stream.Stream;
  * {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), the timer, ids and clock, builds the components from them, refuses two components
  * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
  * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — and, in a deployed environment, the dir archive
- * store and an S3 endpoint over plain http (D-070) before it touches Postgres. It then refuses a
+ * store and an S3 endpoint over plain http (D-070) before it touches Postgres, and loads the body journal's master key (D-106:
+ * from {@code FLOTTILA_JOURNAL_KEY_FILE}, {@code FLOTTILA_JOURNAL_KEY} or the opted-in generated one; none refuses the start, so a
+ * keyless node migrates nothing). It then refuses a
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
- * refused node leaves its database untouched, migrates the database, opens the stores and the archive store (an s3 store over
+ * refused node leaves its database untouched, migrates the database, opens the body journal in {@code FLOTTILA_JOURNAL_DIR} (D-105:
+ * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows;
+ * the intake does not write to it yet, CORE-4c2), opens the stores and the archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
  * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them and the node's
  * one {@link Targets} ({@code FLOTTILA_TARGET_*}, D-099: every flow it builds sends under it, across packages and versions), starts the
@@ -84,14 +93,17 @@ import java.util.stream.Stream;
  * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts), builds the
  * {@link Retention} job over the pool, the clock and the timer ({@code FLOTTILA_RETENTION_*}, D-088) and only then starts the admin
  * server with the deploy, work, replay and retry routes, the flows' CPU (the sampler's aggregate, read every 5 s on the node's timer and failed once a read failed, or off) and the health checks
- * {@code postgres} and {@code deployments} (DOWN while
- * anything is listed FAILED, {@link Deployments#health}), then the retention job, whose first run begins at once and does not hold
+ * {@code postgres}, {@code deployments} (DOWN while
+ * anything is listed FAILED, {@link Deployments#health}) and {@code journal} ({@link Journal#health}: DOWN once it failed and
+ * stopped, DEGRADED while a segment row is retried), then the
+ * retention job, whose first run begins at once and does not hold
  * the start; when any of this fails, what was opened closes again — the deployments first (the
- * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the sampler, then the store,
- * the pool, the S3 client, the Valkey client — so nothing is left running, listening or pooled. {@code close} first closes the
- * deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
+ * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the sampler, then the
+ * journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening or pooled. {@code close} first
+ * closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
  * released, while the admin port still answers — then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
- * batch in flight commits or rolls back first), then flushes and closes the message store, then closes the pool, then the S3
+ * batch in flight commits or rolls back first), then closes the journal (its spills and persists in flight first; its {@code LOCK}
+ * given up), then flushes and closes the message store, then closes the pool, then the S3
  * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
  *
  * @since 0.1
@@ -115,6 +127,7 @@ public final class Node implements AutoCloseable {
     private final AdminServer admin;
     private final int adminPort;
     private final Retention retention;
+    private final Journal journal;
     private final PgMessageStore messages;
     private final Pool pool;
     /** Closes the S3 client of an s3 archive store; nothing for a dir store. */
@@ -122,13 +135,14 @@ public final class Node implements AutoCloseable {
     /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
     private final Runnable closeValkey;
 
-    private Node(Deployments deployments, Optional<CpuSampler> sampler, AdminServer admin, int adminPort, Retention retention, PgMessageStore messages,
-                 Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private Node(Deployments deployments, Optional<CpuSampler> sampler, AdminServer admin, int adminPort, Retention retention, Journal journal,
+                 PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
         this.deployments = deployments;
         this.sampler = sampler;
         this.admin = admin;
         this.adminPort = adminPort;
         this.retention = retention;
+        this.journal = journal;
         this.messages = messages;
         this.pool = pool;
         this.closeS3 = closeS3;
@@ -142,7 +156,9 @@ public final class Node implements AutoCloseable {
      * @throws IllegalStateException two components for one scheme, a deployed environment and a mock binding among the components,
      *                               the dir archive store or an S3 endpoint over plain http, or a {@code synchronous_commit} other than on, remote_write or remote_apply ({@code off} does
      *                               not wait for the WAL flush, {@code local} for a synchronous standby)
-     * @throws IOException the spool a previous run left cannot be cleared, or the restore's data directory cannot be written
+     * @throws IllegalArgumentException no journal master key, or one that is no base64 of 256 bits
+     * @throws IOException the spool a previous run left cannot be cleared, the restore's data directory cannot be written, a
+     *                     {@code journal_keys} row cannot be unwrapped (named by its key id), or the journal cannot be opened
      */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
                              List<Expressions> languages) throws IOException {
@@ -162,6 +178,7 @@ public final class Node implements AutoCloseable {
                 .connectingTo(new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password()))
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
         PgMessageStore messages = null;
+        Journal journal = null;   // once open: closed after the deployments, before the store and the pool its rows go through
         Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pool
         Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
@@ -176,8 +193,13 @@ public final class Node implements AutoCloseable {
                 refuseArchiveStore(config);
             }
 
+            // the master key before any Postgres statement: a node without one migrates nothing (D-106)
+            SecretKey master = config.journalKey().load(config.journal().dir(), JournalFiles.real());
             requireSynchronousCommit(pool);   // before the migration: a refused node leaves its database untouched
             Migrations.migrate("jdbc:postgresql://" + pg.host() + ":" + pg.port() + "/" + pg.database(), pg.user(), pg.password());
+            JournalKeys keys = JournalKeys.load(pool, master);
+            Journal opened = Journal.open(config.journal(), clock, timer, keys, JournalFiles.real(), new PgSegmentRows(pool), UUID::randomUUID);
+            journal = opened;
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
@@ -212,11 +234,12 @@ public final class Node implements AutoCloseable {
             Retention retention = new Retention(pool, clock, timer, config.retention());
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
-                            "deployments", () -> Future.succeededFuture(restored.health())), messages::failed),
+                            "deployments", () -> Future.succeededFuture(restored.health()),
+                            "journal", () -> Future.succeededFuture(opened.health())), messages::failed),
                     Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)));
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
-            return new Node(restored, sampler, admin, port, retention, messages, pool, closeS3, closeValkey);
+            return new Node(restored, sampler, admin, port, retention, opened, messages, pool, closeS3, closeValkey);
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -229,7 +252,7 @@ public final class Node implements AutoCloseable {
                 try {
                     sampler.ifPresent(CpuSampler::close);
                 } finally {
-                    closeStores(messages, pool, closeS3, closeValkey);
+                    closeStores(journal, messages, pool, closeS3, closeValkey);
                 }
             }
             throw failure;
@@ -285,10 +308,13 @@ public final class Node implements AutoCloseable {
     /** The node's message store over Postgres. */
     public MessageStore messages() { return messages; }
 
+    /** The node's body journal (CORE-4c2's store writes through it). */
+    public Journal journal() { return journal; }
+
     /**
      * Closes the deployments (every flow stopped, its lease released, deploys refused), then the CPU sampler (if one runs), then stops the admin server, then closes the
-     * retention job (waits for its batch in flight), then flushes and closes the message store, then closes the pool, then the S3
-     * client, then the Valkey client — each step even when the one before failed.
+     * retention job (waits for its batch in flight), then closes the journal, then flushes and closes the message store, then closes
+     * the pool, then the S3 client, then the Valkey client — each step even when the one before failed.
      */
     @Override
     public void close() {
@@ -304,7 +330,7 @@ public final class Node implements AutoCloseable {
                     try {
                         retention.close().await();
                     } finally {
-                        closeStores(messages, pool, closeS3, closeValkey);
+                        closeStores(journal, messages, pool, closeS3, closeValkey);
                     }
                 }
             }
@@ -312,9 +338,21 @@ public final class Node implements AutoCloseable {
     }
 
     /**
-     * Flushes and closes the store (none yet: nothing to flush), then closes the pool, then the S3 client (none: nothing), then the
+     * Closes the journal (none yet: nothing to close; a failed close is thrown unchecked once the rest is closed, unless a later
+     * close throws too: that one is thrown, as between the others), then
+     * flushes and closes the store (none yet: nothing to flush), then closes the pool, then the S3 client (none: nothing), then the
      * Valkey client (none: nothing) — each even when the one before failed.
      */
+    private static void closeStores(Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
+        try {
+            if (journal != null) journal.close();
+        } catch (IOException e) {
+            throw new UncheckedIOException("the journal did not close", e);
+        } finally {
+            closeStores(messages, pool, closeS3, closeValkey);
+        }
+    }
+
     private static void closeStores(PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
         try {
             if (messages != null) messages.close();

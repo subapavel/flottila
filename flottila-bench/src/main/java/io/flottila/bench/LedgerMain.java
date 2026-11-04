@@ -189,13 +189,14 @@ public final class LedgerMain {
 
     /**
      * A node's environment: env dev, the run's database, admin on 127.0.0.1:{@code adminPort} (0: any free port) and its data
-     * directory; the archive store is S3 (path-style) when the run has S3 options, else the directory {@code archives}, which
-     * both nodes are given.
+     * directory, the run's journal master key; the archive store is S3 (path-style) when the run has S3 options, else the
+     * directory {@code archives}, which both nodes are given.
      */
     static Map<String, String> nodeEnv(Options o, String nodeId, Path data, Path archives, int adminPort) {
         Map<String, String> env = new HashMap<>(Map.of("FLOTTILA_ENV", "dev", "FLOTTILA_NODE_ID", nodeId, "FLOTTILA_ADMIN_PORT", String.valueOf(adminPort),
                 "FLOTTILA_DATA_DIR", data.toString(), "FLOTTILA_PG_HOST", o.host(), "FLOTTILA_PG_PORT", String.valueOf(o.port()),
                 "FLOTTILA_PG_DATABASE", o.db(), "FLOTTILA_PG_USER", o.user(), "FLOTTILA_PG_PASSWORD", o.password()));
+        env.put("FLOTTILA_JOURNAL_KEY", NodeBenchMain.JOURNAL_KEY);   // one key for both nodes: they share journal_keys (D-106)
         if (o.s3().isEmpty()) {
             env.put("FLOTTILA_ARCHIVE_DIR", archives.toString());
         } else {

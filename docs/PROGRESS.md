@@ -1,4 +1,16 @@
 
+## 2026-11-04 — CORE-4c1 V12, journal master and tenant keys, identity, segment rows, node wiring (D-106, D-107) — done, review PASS
+Test first: MasterKeySourceTest, JournalLifecycleTest, JournalSegmentRowsTest, JournalKeysIT, PgSegmentRowsIT, NodeJournalIT,
+NodeConfigJournalTest, MigrationsIT V12 (test-author; red = test-compile exit 1, agent/work/CORE-4c1-red.log). CORE-4c split in 4c1/4c2.
+Change: deploy/postgres/V12__journal.sql; MasterKeySource (file/env/opt-in generate, hard-link publish), JournalKeys (GCM wrap),
+PgSegmentRows, Journal (row before every file, injected id, identity refusal incl. fresh database, close waits, fail-stop for
+spill/persist, pre-open insert retried, health); NodeConfig keys; Node loads the key first; compose data volume; api DEGRADED (D-107).
+Checks: runtime verify exit 0 (2326); reactor verify -Pit exit 0 (3102); coverage no decrease; 74 + 29 hand mutants killed; PIT api NOT_RUN.
+Review: FAIL r1 (fresh database erased the journal; compose without data volume; MASTER generation race; tier < 4096 unstartable;
+one failed row insert fail-stopped the journal), PASS r2. Additions in CORE-3 "Added in CORE-4c1".
+D-054 data: class C (scout ×1, test-author ×1, implementer ×1 resumed ×1, reviewer ×1 resumed ×1); rounds 2.
+Next: CORE-4c2 [C] packet (store on refs, intake, DLQ, reads, claim, ACCEPT_LOSS, ledger; carries in CORE-3).
+
 ## 2026-11-04 — CORE-4b large bodies in journal format; S3 blob tier removed (D-105 amended) — done, review PASS — Deviation: format
 Test first: LargeBodyTest (12), LargeBodyHeapTest (-Xmx48m), JournalStartTest.spillIsClearedAtStart (test-author; red =
 test-compile exit 1, 70 errors, agent/work/CORE-4b-red.log); S3TierIT/S3HeapIT and S3 cases deleted with the tier.

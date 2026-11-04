@@ -364,6 +364,7 @@ public final class NodeBenchMain {
      */
     private static NodeConfig nodeConfig(Options o, Path data, int echo) {
         return NodeConfig.from(Map.ofEntries(Map.entry("FLOTTILA_ENV", "dev"), Map.entry("FLOTTILA_NODE_ID", "node-bench"),
+                Map.entry("FLOTTILA_JOURNAL_KEY", JOURNAL_KEY),
                 Map.entry("FLOTTILA_ADMIN_PORT", "0"), Map.entry("FLOTTILA_DATA_DIR", data.toString()), Map.entry("FLOTTILA_PG_HOST", o.host()),
                 Map.entry("FLOTTILA_PG_PORT", String.valueOf(o.port())), Map.entry("FLOTTILA_PG_DATABASE", o.db()), Map.entry("FLOTTILA_PG_USER", o.user()),
                 Map.entry("FLOTTILA_PG_PASSWORD", o.password()), Map.entry("FLOTTILA_CPU_SAMPLING", o.cpuSampling()),
@@ -426,6 +427,19 @@ public final class NodeBenchMain {
     /** A document as JSON, which every YAML reader reads. */
     static byte[] yaml(JsonObject doc) {
         return doc.encodePrettily().getBytes(StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The journal master key of every node this bench JVM starts (D-106: a node needs one), the ledger's two included and the
+     * children it hands it to in their environment: 256 bits made per run, never stored, never printed; a run's journal goes
+     * with its data directory.
+     */
+    static final String JOURNAL_KEY = journalKey();
+
+    private static String journalKey() {
+        byte[] key = new byte[32];
+        new java.security.SecureRandom().nextBytes(key);
+        return java.util.Base64.getEncoder().encodeToString(key);
     }
 
     static int freePort() throws IOException {

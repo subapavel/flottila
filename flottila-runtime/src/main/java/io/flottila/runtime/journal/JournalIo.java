@@ -5,6 +5,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
@@ -48,6 +49,15 @@ final class JournalIo {
     static void forceDir(JournalFiles files, Path dir) throws IOException {
         try (FileChannel d = files.open(dir, Set.of(StandardOpenOption.READ))) {
             d.force(true);
+        }
+    }
+
+    /** Unlinks {@code file} after {@code failure}; an unlink that fails rides on it as suppressed. */
+    static void unlinkAfter(Path file, Throwable failure) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException x) {
+            failure.addSuppressed(x);
         }
     }
 
