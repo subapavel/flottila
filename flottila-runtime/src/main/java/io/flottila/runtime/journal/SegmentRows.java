@@ -2,6 +2,8 @@ package io.flottila.runtime.journal;
 
 import io.vertx.core.Future;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -11,7 +13,9 @@ import java.util.UUID;
  * {@link Journal.Spill#persist() persist} — has its row inserted before its file appears in {@code segments/}, so no segment
  * file lies there without its row. At start the journal reads its node's journal id and segment rows through here. The
  * Postgres implementation is {@link PgSegmentRows}; a journal without Postgres (CORE-4a/4b's, their tests) keeps no rows:
- * only {@link #insert} is its own, every other method answers as no row were kept.
+ * only {@link #insert} is its own, every other method answers as no row were kept. The start also reads the committed
+ * {@link Pin pins} into the journal through here and, once an operator accepted a loss ({@code FLOTTILA_JOURNAL_ACCEPT_LOSS}),
+ * {@link #giveUp gives} them up.
  *
  * @since 0.1
  */
@@ -46,6 +50,58 @@ public interface SegmentRows {
 
     /** Deletes the rows of {@code segments} of {@code node}: segments whose file is not there. */
     default Future<Void> drop(String node, Set<Long> segments) {
+        return Future.succeededFuture();
+    }
+
+    /**
+     * A committed pin of a node's journal (CORE-3 item 9): a work row ({@code seq} at least 1, its message's ingress body) or a
+     * kept ref ({@code seq} {@value #REF}, its key) that is not lost — a ref also not archived — naming the record at
+     * {@code segment, position, length}.
+     *
+     * @since 0.1
+     */
+    record Pin(long seq, String messageId, int step, String part, long segment, long position, long length) {
+
+        /** The {@code seq} of a kept ref's pin: no work row. */
+        public static final long REF = -1;
+
+        /** A kept ref's pin, not a work row's. */
+        public boolean kept() { return seq == REF; }
+
+        /** What is given up, as the refusal names it and the digest covers it: the row, the key and the record. */
+        public String item() {
+            return (kept() ? "ref " + messageId + "/" + step + "/" + part : "work item " + seq + " of message " + messageId)
+                    + " at segment " + segment + " " + position + "+" + length;
+        }
+    }
+
+    /**
+     * The replacement of a journal given up whole: {@code registered} (null: {@code node} has no {@code journal_nodes} row) is
+     * replaced by {@code now}, and every segment row of the node goes.
+     *
+     * @since 0.1
+     */
+    record Replacement(UUID registered, UUID now) { }
+
+    /**
+     * The pins of {@code node}'s journal that no record held now holds: a pin is held when {@code ends} names its segment and it
+     * ends at or before the end of that segment's records; an empty {@code ends} holds none (every pin). In no order.
+     */
+    default Future<List<Pin>> pinsBeyond(String node, Map<Long, Long> ends) {
+        return Future.succeededFuture(List.of());
+    }
+
+    /** Whether {@code value} is a {@code <journal id>:<digest>} of {@code node} accepted already ({@code journal_losses}). */
+    default Future<Boolean> accepted(String node, String value) {
+        return Future.succeededFuture(Boolean.FALSE);
+    }
+
+    /**
+     * Gives {@code pins} up in one transaction: their work rows and kept refs get {@code lost_at} (one instant, the record's),
+     * {@code <journal>:<digest>} is recorded as accepted at that instant, and with a {@code replacement} the node's journal is
+     * replaced as it says. Nothing is deleted but the replaced journal's segment rows.
+     */
+    default Future<Void> giveUp(String node, UUID journal, String digest, List<Pin> pins, Replacement replacement) {
         return Future.succeededFuture();
     }
 }

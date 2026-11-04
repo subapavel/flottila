@@ -2,6 +2,7 @@ package io.flottila.runtime.admin;
 
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
+import io.flottila.api.BodyLostException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
@@ -174,15 +175,24 @@ public final class AdminServer {
     }
 
     /**
-     * What {@code /health} reports: each check by name (a check that fails is DOWN) and the snapshot writes that failed.
+     * What {@code /health} reports: each check by name (a check that fails is DOWN), the snapshot writes that failed, and —
+     * only when there is one — the node's {@code notices}: facts an operator should act on that fail nothing (D-106: a
+     * generated master key), never a key or a check's detail.
      *
      * @param checks the checks, by name
      * @param snapshotWriteFailures read on every request
+     * @param notices shown as the answer's {@code notices} array when not empty
      */
-    public record HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures) {
+    public record HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures, List<String> notices) {
         public HealthProbe {
             checks = Map.copyOf(checks);
             Objects.requireNonNull(snapshotWriteFailures, "snapshotWriteFailures");
+            notices = List.copyOf(notices);
+        }
+
+        /** No notices. */
+        public HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures) {
+            this(checks, snapshotWriteFailures, List.of());
         }
     }
 
@@ -478,8 +488,10 @@ public final class AdminServer {
         JsonObject checks = new JsonObject();
         pending.forEach((name, answer) -> checks.put(name, answer.await().status().name()));
         boolean up = !checks.getMap().containsValue(Health.Status.DOWN.name());
-        return Json.of(up ? 200 : 503, new JsonObject().put("status", (up ? Health.Status.UP : Health.Status.DOWN).name()).put("checks", checks)
-                .put("snapshotWriteFailures", health.snapshotWriteFailures().getAsLong()));
+        JsonObject answer = new JsonObject().put("status", (up ? Health.Status.UP : Health.Status.DOWN).name()).put("checks", checks)
+                .put("snapshotWriteFailures", health.snapshotWriteFailures().getAsLong());
+        if (!health.notices().isEmpty()) answer.put("notices", new JsonArray(health.notices()));
+        return Json.of(up ? 200 : 503, answer);
     }
 
     private Reply timeline(RoutingContext ctx) {
@@ -504,7 +516,13 @@ public final class AdminServer {
         // existence as Postgres names it, never a node's location index (CORE-4c2 r1): no object is retention's removal (D-096);
         // bytes that go after this check are gone too — an open that throws (a store that finds the key synchronously) or a
         // stream that fails before its first chunk (a store that opens lazily) answers the same 404
-        if (!blobs.exists(key).await()) return Json.of(404, error(gone));
+        boolean stored;
+        try {
+            stored = blobs.exists(key).await();
+        } catch (BodyLostException lost) {   // given up by an accepted loss: stored once, never readable again (D-105)
+            return Json.of(410, error("the bytes of step " + n + " of message " + id + " are gone for good: " + lost.getMessage()));
+        }
+        if (!stored) return Json.of(404, error(gone));
         ReadStream<Buffer> bytes;
         try {
             bytes = blobs.open(key);
@@ -612,7 +630,7 @@ public final class AdminServer {
         return switch (refused.reason()) {
             case STEP_OUT_OF_RANGE -> Json.of(400, error("bad request: " + why));
             case UNKNOWN_MESSAGE, NO_DLQ_ROW -> Json.of(404, error(why));
-            case CLOSED, REMOVED_BY_RETENTION -> Json.of(409, error(why));
+            case CLOSED, REMOVED_BY_RETENTION, BODY_LOST -> Json.of(409, error(why));
             case NOT_RECORDED, METADATA_ONLY, STEP_BEYOND_FLOW, TOO_LARGE -> Json.of(422, error(why));
             case BUSY -> {
                 Json busy = Json.of(429, error(why));

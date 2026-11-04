@@ -65,6 +65,9 @@ final class JournalFixture {
         Duration appendWait = Duration.ofSeconds(5);
         long recordMax = 256L << 10;
         String node = "node-1";
+        /** CORE-4c3: {@code FLOTTILA_JOURNAL_MAX_BYTES} (16 GiB, CORE-3 item 11) and {@code FLOTTILA_JOURNAL_READ_CHANNELS} (64). */
+        long maxBytes = 16L << 30;
+        int readChannels = 64;
 
         Settings(Path dir) { this.dir = dir; }
 
@@ -75,9 +78,11 @@ final class JournalFixture {
         Settings appendWait(Duration v) { appendWait = v; return this; }
         Settings recordMax(long v) { recordMax = v; return this; }
         Settings at(Path v) { dir = v; return this; }
+        Settings maxBytes(long v) { maxBytes = v; return this; }
+        Settings readChannels(int v) { readChannels = v; return this; }
 
         JournalConfig config() {
-            return new JournalConfig(dir, segmentBytes, segmentRecords, segmentAge, pendingBytes, appendWait, recordMax, node);
+            return new JournalConfig(dir, segmentBytes, segmentRecords, segmentAge, pendingBytes, appendWait, recordMax, node, maxBytes, readChannels);
         }
     }
 

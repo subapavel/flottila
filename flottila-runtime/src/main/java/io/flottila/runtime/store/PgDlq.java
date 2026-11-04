@@ -2,6 +2,7 @@ package io.flottila.runtime.store;
 
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
+import io.flottila.api.BodyLostException;
 import io.flottila.api.Hash;
 import io.flottila.api.Headers;
 import io.flottila.api.Keys;
@@ -55,10 +56,11 @@ public final class PgDlq implements Dlq {
      */
     private static final String PARK = """
             with b as materialized (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
-                                     where r.message_id = $15 and r.step = $16 and r.part = $17 for key share),
+                                     where r.message_id = $15 and r.step = $16 and r.part = $17 and r.lost_at is null for key share),
             ins as (insert into dlq(%s) select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14 from b
                     on conflict (id) do nothing)
-            select count(*) from b""".formatted(COLUMNS);
+            select (select count(*) from b),
+                   exists (select 1 from body_refs where message_id = $15 and step = $16 and part = $17 and lost_at is not null)""".formatted(COLUMNS);
     private static final String LIST = "select " + COLUMNS + " from dlq order by parked_at, id limit $1";
     private static final String LIST_AFTER = "select " + COLUMNS + " from dlq where (parked_at, id) > ($1, $2) order by parked_at, id limit $3";
     private static final Pattern CURSOR = Pattern.compile("(-?\\d+):(.+)");
@@ -79,7 +81,8 @@ public final class PgDlq implements Dlq {
     /**
      * Writes {@code p}'s row unless its id is parked already, and only while the kept ref its {@code body_key} names exists with
      * its segment row: without one (a pre-V12 {@code bodies} row admits none) the park fails with {@link BlobNotFoundException}
-     * naming the key and writes nothing (D-062, D-096, CORE-4c2). A retention batch holding that ref waits the park until it
+     * naming the key and writes nothing (D-062, D-096, CORE-4c2) — with {@link BodyLostException} when an accepted loss gave that
+     * ref up ({@code lost_at}, CORE-4c3). A retention batch holding that ref waits the park until it
      * committed or rolled back.
      */
     @Override
@@ -92,7 +95,8 @@ public final class PgDlq implements Dlq {
                 PgMessageStore.bytes(p.bodyHash()), p.bodyHash().algorithm(), p.bodySize(), PgMessageStore.text(body), new JsonObject(new HashMap<>(p.versions())),
                 body.messageId(), body.step(), body.part()}))
                 .map(rows -> {
-                    if (rows.iterator().next().getLong(0) == 0) throw new BlobNotFoundException(body);
+                    Row r = rows.iterator().next();
+                    if (r.getLong(0) == 0) throw r.getBoolean(1) ? new BodyLostException(body) : new BlobNotFoundException(body);
                     return null;
                 });
     }

@@ -51,3 +51,30 @@ finite; fake clock/timer, held seams, no sleeps; javap for FileStore/FileChannel
 
 ## Checks
 `mvn -B -ntp -q -pl flottila-runtime -am verify`, reactor `verify -Pit`, coverage check; logs agent/work/CORE-4c3-*.log.
+
+## Red approved (architect 2026-11-04)
+Red observed: test-compile api 5 / core 5 / runtime 13 errors on the assumed API; semantic reds against a shimmed scratch copy
+(agent/work/CORE-4c3-red.log, state agent/work/CORE-4c3-state.md). Tests: api BodyLostExceptionTest; core ReplayTest (+2);
+runtime journal/JournalReadChannelsTest, StoreReadKeyCheckTest, JournalFreeSpaceTest, JournalCloseAndDirForceTest,
+StoreAppendWaitTest, LostBodyReadIT, NodeJournalIT (+13), admin/LostBodyAdminIT, node/NodeConfigJournalLimitsTest, MigrationsIT V13;
+counts 12 → 13 (MigrationsIT, PgDeploymentStoreIT, PgMessageStoreIT, BenchMainIT). Contract = the handback's signatures:
+`api.BodyLostException(BlobKey)` (RuntimeException, key(), not a BlobNotFoundException; an additive api type — PIT on api before
+the gate covers it); `ReplayRefusedException.Reason.BODY_LOST` (409 replay/retry); admin GET of a lost body 410;
+`JournalConfig(…, long maxBytes, int readChannels)` (8-arg kept, defaults 16 GiB / 64); `default FileStore JournalFiles.fileStore(Path)`;
+`TieredBlobStore.forced(BlobKey, Future<?> abandoned)`; env FLOTTILA_JOURNAL_MAX_BYTES, _READ_CHANNELS (1..1024), _ACCEPT_LOSS;
+start refusals ISE; V13 shapes; health "notices" array.
+Assumptions accepted: 410 (stored once, can never be read again — unlike retention's 404); the retried-insert close case is a guard;
+exists() on a lost body fails BodyLostException; journal bytes = its segment files. Left open (not pinned here): an archived ref
+with a DLQ row (CORE-3 item 10 counts only unarchived refs; sweeper CORE-4d), dropping the lost segment's row after acceptance.
+
+## Review r1 FAIL (2026-11-04) — architect decisions
+(1) durably()'s append wait ending with the answer: store overload only; core Intake.save takes a BooleanSupplier (P2-08a), so
+the production wiring needs a core signature change. Deferred to CORE-4d (with the sweeper's open-save consumer), recorded in
+its BACKLOG row; scope 8's last clause is amended to "store overload only".
+(2) Lost sources feed new pins: REFERENCE (`kept`, `src`) TieredBlobStore.java:176-180, ENQUEUE_FROM PgWorkQueue.java:53-55 and PARK
+PgDlq.java:57 get `lost_at is null` on their sources; a lost source counts as no source and fails BodyLostException (never a
+success, never BlobNotFound). Red: an IT that marks a ref / work row lost, then persist with no local copy, enqueueFrom and park
+each insert nothing and fail BodyLostException.
+(3) The digest's sort: a JournalStartLossTest case with a SegmentRows fake returning the same ≥ 4 pins in two orders prints one value.
+Also (implementer, non-blocking): Journal.open javadoc names the first-start/registration exception; JournalStart.digest javadoc
+says "first 64 bits of SHA-256".

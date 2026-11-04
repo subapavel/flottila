@@ -8,7 +8,10 @@ import io.flottila.runtime.node.OnVirtualThread;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.flottila.core.queue.WorkQueue;
+import io.flottila.runtime.queue.PgWorkQueue;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
@@ -31,12 +34,16 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +57,7 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -580,5 +588,501 @@ class NodeJournalIT {
         JsonObject checks = new JsonObject(down.body()).getJsonObject("checks");
         assertEquals("DOWN", checks.getString("journal"), down.body());
         assertEquals("UP", checks.getString("postgres"), "only the journal is down: " + down.body());
+    }
+
+    // ------------------------------------------------------------------------------------------------- pins at start, ACCEPT_LOSS (CORE-4c3)
+    //
+    // CORE-4c3 packet items 1-3, 5, 8 (CORE-3 item 9, "Review r2 additions", "Added in CORE-4c1"). The API these cases assume is
+    // the env only: FLOTTILA_JOURNAL_ACCEPT_LOSS, FLOTTILA_JOURNAL_MAX_BYTES; V13's work.lost_at and journal_losses; the health
+    // JSON's "notices" array. A refusal prints <journal id>:<digest>; the digest's form is the implementer's (hex or base64url).
+
+    static final String ACCEPT = "FLOTTILA_JOURNAL_ACCEPT_LOSS";
+    static final Pattern PRINTED = Pattern.compile("([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9A-Za-z_-]{8,})");
+    static final Duration LEASE = Duration.ofSeconds(30);
+
+    /** A dev node whose segments never roll by age (the real timer) and roll after {@code segmentRecords} records. */
+    Map<String, String> pinned(int segmentRecords) {
+        Map<String, String> env = env("dev");
+        env.put("FLOTTILA_JOURNAL_SEGMENT_AGE", "PT1H");
+        env.put("FLOTTILA_JOURNAL_SEGMENT_RECORDS", String.valueOf(segmentRecords));
+        return env;
+    }
+
+    /** A first run on {@code env} that appended one forced 200-byte record per id (step 0, part body), then closed: the refs. */
+    Map<String, JournalRef> firstRun(Map<String, String> env, String... ids) throws Exception {
+        int keyId = defaultTenantKey(MASTER_A);
+        Node n = start(env);
+        Map<String, JournalRef> refs = new LinkedHashMap<>();
+        for (String id : ids) {
+            Journal.Appended a = n.journal().append(new JournalRecord(id, 0, BlobKey.BODY, keyId, JournalFixture.body(id, 200)), Promise.<Void>promise().future());
+            JournalFixture.await(a.forced());
+            refs.put(id, a.ref());
+        }
+        close(n);
+        return refs;
+    }
+
+    Path segmentFile(Path journalDir, long n) { return journalDir.resolve("segments").resolve(n + ".seg"); }
+
+    void sql(String statement, Object... params) {
+        db.pool().preparedQuery(statement).execute(Tuple.wrap(params)).await();
+    }
+
+    /** A work row of flow orders at step 1 naming {@code ref} on {@code node}, its own partition key. */
+    void workRow(String id, String node, JournalRef ref) {
+        sql("insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length) values ($1, 'orders', 1, $1, $2, $3, $4, $5)",
+                id, node, ref.segment(), ref.position(), ref.length());
+    }
+
+    /** A kept ref of {@code (id, 0, body)} naming {@code ref} on this node; archived when said. */
+    void keptRef(String id, JournalRef ref, boolean archived) {
+        sql("insert into body_refs(message_id, step, part, node, segment, position, length, archived_at) values ($1, 0, 'body', $2, $3, $4, $5, "
+                + (archived ? "now()" : "null") + ")", id, NODE_ID, ref.segment(), ref.position(), ref.length());
+    }
+
+    /** A DLQ row of {@code id} whose body is {@code (id, 0, body)}. */
+    void parked(String id) {
+        sql("insert into dlq(id, flow, stage, step, error, body_key, body_size) values ($1, 'orders', 'a', 1, 'partner down (test)', $2, 200)", id, id + "/0/body");
+    }
+
+    /** Every row of the tables a start may touch, whole (to_jsonb: every column, whatever the version). */
+    List<String> pgState() {
+        List<String> rows = new ArrayList<>();
+        for (String t : List.of("journal_nodes", "journal_segments", "work", "body_refs", "dlq", "journal_losses")) {
+            boolean there = db.pool().preparedQuery("select to_regclass($1) is not null").execute(Tuple.of(t)).await().iterator().next().getBoolean(0);
+            if (!there) continue;
+            for (Row r : db.pool().query("select to_jsonb(x)::text from " + t + " x order by 1").execute().await()) rows.add(t + " " + r.getString(0));
+        }
+        return rows;
+    }
+
+    /** Which of {@code ids} are marked lost: work rows by id, body_refs by message id (null: no such row). */
+    Map<String, Boolean> lost(String table, String column, List<String> ids) {
+        Map<String, Boolean> m = new TreeMap<>();
+        for (String id : ids) {
+            for (Row r : db.pool().preparedQuery("select lost_at is not null from " + table + " where " + column + " = $1").execute(Tuple.of(id)).await()) m.put(id, r.getBoolean(0));
+        }
+        return m;
+    }
+
+    List<String> losses() {
+        List<String> rows = new ArrayList<>();
+        for (Row r : db.pool().query("select node, journal_id, digest, accepted_at is not null from journal_losses order by digest").execute().await()) {
+            rows.add(r.getString(0) + " " + r.getUUID(1) + ":" + r.getString(2) + " " + r.getBoolean(3));
+        }
+        return rows;
+    }
+
+    /** The {@code <journal id>:<digest>} a refusal prints. */
+    static String printed(Throwable e) {
+        Matcher m = PRINTED.matcher(text(e));
+        assertTrue(m.find(), "the refusal prints <journal id>:<digest>: " + text(e));
+        return m.group();
+    }
+
+    List<String> severeNaming(String id) {
+        return logs.lines.stream().filter(l -> l.startsWith("SEVERE ") && l.contains(id)).toList();
+    }
+
+    /**
+     * A committed pin into a segment whose file is gone — a work row, an unarchived kept ref, a DLQ row with its kept ref —
+     * refuses the start naming those messages and printing {@code <this journal's id>:<digest>}; rows into it that pin nothing
+     * (an archived ref, another node's work row) and pins elsewhere are not named. Nothing changes on disk or in Postgres; a
+     * second refusal prints the same value (a stable digest).
+     */
+    @Test
+    void aPinnedMissingSegmentRefusesStart() throws Exception {
+        Map<String, String> env = pinned(3);
+        Map<String, JournalRef> refs = firstRun(env, "pin-work", "pin-kept", "pin-parked", "live-1", "live-2");
+        long gone = refs.get("pin-work").segment();
+        assertEquals(List.of(gone, gone), List.of(refs.get("pin-kept").segment(), refs.get("pin-parked").segment()), "fixture: three records in one segment " + refs);
+        assertNotEquals(gone, refs.get("live-1").segment(), "fixture: the live ones in another");
+        workRow("pin-work", NODE_ID, refs.get("pin-work"));
+        keptRef("pin-kept", refs.get("pin-kept"), false);
+        keptRef("pin-parked", refs.get("pin-parked"), false);
+        parked("pin-parked");
+        keptRef("archived", refs.get("pin-work"), true);
+        workRow("other-node", "node-other", refs.get("pin-work"));
+        workRow("live-1", NODE_ID, refs.get("live-1"));
+        Files.delete(segmentFile(journal(), gone));
+        Map<String, String> files = filesUnder(journal());
+        List<String> rows = pgState();
+
+        Throwable e = refused(env, "a committed pin into a missing segment");
+
+        String text = text(e);
+        for (String id : List.of("pin-work", "pin-kept", "pin-parked")) assertTrue(text.contains(id), "names " + id + ": " + text);
+        for (String id : List.of("archived", "other-node", "live-1")) assertFalse(text.contains(id), id + " pins nothing there: not named: " + text);
+        String value = printed(e);
+        assertEquals(journalIdOf(journal()).toString(), value.substring(0, 36), "the journal id is this journal's: " + value);
+        assertEquals(files, filesUnder(journal()), "nothing changed on disk");
+        assertEquals(rows, pgState(), "nothing changed in Postgres (the pinned segment's row is kept)");
+        assertEquals(value, printed(refused(env, "the same loss again")), "the same loss prints the same value");
+    }
+
+    /** At most a bounded list of the given-up items is named, and their count: 257 pins name fewer than 257 ids and say 257. */
+    @Test
+    void aRefusalNamesABoundedListOfItemsAndTheirCount() throws Exception {
+        Map<String, String> env = pinned(1);
+        Map<String, JournalRef> refs = firstRun(env, "bulk", "live");
+        JournalRef r = refs.get("bulk");
+        sql("insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length) select 'bulk-' || lpad(g::text, 3, '0'), "
+                + "'orders', 1, 'bulk-' || g, $1, $2, $3, $4 from generate_series(1, 257) g", NODE_ID, r.segment(), r.position(), r.length());
+        Files.delete(segmentFile(journal(), r.segment()));
+
+        Throwable e = refused(env, "257 pins into a missing segment");
+
+        Throwable carrier = e;
+        for (Throwable t = e; t != null; t = t.getCause()) if (t.getMessage() != null && PRINTED.matcher(t.getMessage()).find()) carrier = t;
+        String message = String.valueOf(carrier.getMessage());
+        long named = Pattern.compile("bulk-\\d{3}").matcher(message).results().map(m -> m.group()).distinct().count();
+        assertTrue(named >= 1 && named < 257, "a bounded list, not every id (" + named + " named): " + message.length() + " chars");
+        assertTrue(Pattern.compile("(?<![0-9A-Za-z_-])257(?![0-9A-Za-z_-])").matcher(message).find(), "and the count 257: " + message);
+        assertTrue(message.length() < 16 * 1024, "the refusal stays readable: " + message.length() + " chars");
+    }
+
+    /**
+     * A segment without a valid trailer (a crash mid-record cut its footer off with the record's tail) is cut at its first bad
+     * record: a pin at the cut (its first byte) or past it refuses the start; a pin ending exactly at the cut does not and is
+     * not named. Nothing changes — the file keeps its length. Witness: without those two pins the start goes on and the record
+     * before the cut reads.
+     */
+    @Test
+    void aPinAtOrPastTheCutRefusesStart() throws Exception {
+        Map<String, String> env = pinned(65_536);
+        Map<String, JournalRef> refs = firstRun(env, "before-cut", "at-cut", "past-cut");
+        JournalRef before = refs.get("before-cut"), at = refs.get("at-cut"), past = refs.get("past-cut");
+        assertEquals(List.of(before.segment(), before.segment()), List.of(at.segment(), past.segment()), "fixture: one segment " + refs);
+        assertEquals(before.position() + before.length(), at.position(), "fixture: back to back");
+        workRow("before-cut", NODE_ID, before);
+        workRow("at-cut", NODE_ID, at);
+        keptRef("past-cut", past, false);
+        try (FileChannel ch = FileChannel.open(segmentFile(journal(), at.segment()), StandardOpenOption.WRITE)) {
+            ch.truncate(at.position() + 7);   // the trailer, the footer and all but 7 bytes of at-cut gone
+        }
+        Map<String, String> files = filesUnder(journal());
+        List<String> rows = pgState();
+
+        Throwable e = refused(env, "pins at and past the cut");
+
+        String text = text(e);
+        assertTrue(text.contains("at-cut") && text.contains("past-cut"), "names the pins at and past the cut: " + text);
+        assertFalse(text.contains("before-cut"), "a record ending at the cut is whole: " + text);
+        printed(e);
+        assertEquals(files, filesUnder(journal()), "nothing changed on disk: the segment is not cut on a refusal");
+        assertEquals(rows, pgState(), "nothing changed in Postgres");
+
+        sql("delete from work where id = 'at-cut'");
+        sql("delete from body_refs where message_id = 'past-cut'");
+        Node n = start(env);
+        assertArrayEquals(JournalFixture.body("before-cut", 200), n.journal().read(before), "witness: the start goes on, the record before the cut reads");
+    }
+
+    /**
+     * A row whose segment file is gone is dropped when nothing pins it: an archived ref, a lost ref, a lost work row, a DLQ row
+     * whose ref is lost. The node starts; the rows naming the bodies stay; a segment that still has its file keeps its row.
+     */
+    @Test
+    void anUnpinnedRowWithoutAFileIsDropped() throws Exception {
+        Map<String, String> env = pinned(1);
+        Map<String, JournalRef> refs = firstRun(env, "archived", "lost-ref", "lost-work", "lost-parked", "live");
+        keptRef("archived", refs.get("archived"), true);
+        keptRef("lost-ref", refs.get("lost-ref"), false);
+        workRow("lost-work", NODE_ID, refs.get("lost-work"));
+        keptRef("lost-parked", refs.get("lost-parked"), false);
+        parked("lost-parked");
+        workRow("live", NODE_ID, refs.get("live"));
+        sql("update body_refs set lost_at = now() where message_id in ('lost-ref', 'lost-parked')");
+        sql("update work set lost_at = now() where id = 'lost-work'");
+        List<Long> unpinned = new ArrayList<>();
+        for (String id : List.of("archived", "lost-ref", "lost-work", "lost-parked")) {
+            unpinned.add(refs.get(id).segment());
+            Files.delete(segmentFile(journal(), refs.get(id).segment()));
+        }
+        assertEquals(4, unpinned.stream().distinct().count(), "fixture: a segment each " + refs);
+
+        Node n = start(env);
+
+        assertEquals(200, health(n).statusCode());
+        TreeSet<Long> rows = segmentRows(NODE_ID);
+        for (long seg : unpinned) assertFalse(rows.contains(seg), "the row of unpinned segment " + seg + " is dropped: " + rows);
+        assertTrue(rows.contains(refs.get("live").segment()), "a segment with its file keeps its row: " + rows);
+        assertEquals(3, db.count("select count(*) from body_refs"), "the refs stay");
+        assertEquals(2, db.count("select count(*) from work"), "the work rows stay");
+        assertEquals(1, db.count("select count(*) from dlq"), "the DLQ row stays");
+    }
+
+    /**
+     * FLOTTILA_JOURNAL_ACCEPT_LOSS = the printed value starts the node and gives the loss up in one transaction: the lost work
+     * rows and refs get lost_at (one instant, the accepted_at of the journal_losses row), nothing is deleted, each item is an
+     * ERROR, and a held work row is never claimed. The live ones are untouched and claimed.
+     */
+    @Test
+    void acceptLossWithThisJournalIdHoldsTheLostItems() throws Exception {
+        Map<String, String> env = pinned(3);
+        Map<String, JournalRef> refs = firstRun(env, "lost-work", "lost-kept", "lost-parked", "live-work", "live-kept");
+        workRow("lost-work", NODE_ID, refs.get("lost-work"));
+        keptRef("lost-kept", refs.get("lost-kept"), false);
+        keptRef("lost-parked", refs.get("lost-parked"), false);
+        parked("lost-parked");
+        workRow("live-work", NODE_ID, refs.get("live-work"));
+        keptRef("live-kept", refs.get("live-kept"), false);
+        Files.delete(segmentFile(journal(), refs.get("lost-work").segment()));
+        String value = printed(refused(env, "the loss is not accepted yet"));
+        UUID journalId = journalIdOf(journal());
+
+        env.put(ACCEPT, value);
+        Node n = start(env);
+
+        assertEquals(200, health(n).statusCode(), "the accepted loss starts the node");
+        assertEquals(Map.of("lost-work", true, "live-work", false), lost("work", "id", List.of("lost-work", "live-work")));
+        assertEquals(Map.of("lost-kept", true, "lost-parked", true, "live-kept", false), lost("body_refs", "message_id", List.of("lost-kept", "lost-parked", "live-kept")));
+        assertEquals(1, db.count("select count(*) from dlq where id = 'lost-parked'"), "the DLQ row is not deleted");
+        assertEquals(List.of(NODE_ID + " " + value + " true"), losses(), "the accepted digest is recorded: " + journalId);
+        assertEquals(1, db.count("select count(distinct t) from (select lost_at t from work where lost_at is not null union all "
+                + "select lost_at from body_refs where lost_at is not null union all select accepted_at from journal_losses) x"),
+                "one transaction: every mark and the record carry one instant");
+        for (String id : List.of("lost-work", "lost-kept", "lost-parked")) assertFalse(severeNaming(id).isEmpty(), "an ERROR names " + id + ": " + logs.all());
+        for (String id : List.of("live-work", "live-kept")) assertEquals(List.of(), severeNaming(id), "no ERROR names " + id);
+        List<WorkQueue.Item> claimed = new PgWorkQueue(db.pool(), NODE_ID).claim("w-test", "orders", 10, LEASE).await();
+        assertEquals(List.of("live-work"), claimed.stream().map(WorkQueue.Item::messageId).toList(), "a held item is never claimed; the live one is");
+    }
+
+    /** Any value but exactly the printed one refuses and changes nothing; the accepted value again, with no new loss, accepts nothing new (WARNING). */
+    @Test
+    void aWrongOrStaleAcceptLossAcceptsNothing() throws Exception {
+        Map<String, String> env = pinned(2);
+        Map<String, JournalRef> refs = firstRun(env, "lost-a", "lost-b", "live");
+        workRow("lost-a", NODE_ID, refs.get("lost-a"));
+        keptRef("lost-b", refs.get("lost-b"), false);
+        workRow("live", NODE_ID, refs.get("live"));
+        Files.delete(segmentFile(journal(), refs.get("lost-a").segment()));
+        String value = printed(refused(env, "not accepted"));
+        String digest = value.substring(37);
+        String flipped = digest.substring(0, digest.length() - 1) + (digest.endsWith("0") ? "1" : "0");
+        Map<String, String> files = filesUnder(journal());
+        List<String> rows = pgState();
+
+        for (String wrong : List.of(value.substring(0, 37) + flipped, UUID.randomUUID() + ":" + digest, value + " ", " " + value,
+                value.toUpperCase(java.util.Locale.ROOT), value.substring(0, 36), "true", "")) {
+            env.put(ACCEPT, wrong);
+            Throwable e = refused(env, "'" + wrong + "' is not the printed value");
+            assertEquals(value, printed(e), "the refusal prints the loss's value again");
+            assertEquals(files, filesUnder(journal()), "'" + wrong + "': nothing changed on disk");
+            assertEquals(rows, pgState(), "'" + wrong + "': nothing changed in Postgres");
+        }
+
+        env.put(ACCEPT, value);
+        close(start(env));
+        List<String> accepted = losses();
+        Map<String, Boolean> marks = lost("work", "id", List.of("lost-a", "live"));
+        String instants = String.valueOf(db.count("select count(*) from body_refs where lost_at is not null")) + losses();
+        int warnings = logs.warningsNaming(value).size();
+
+        Node again = start(env);
+
+        assertEquals(200, health(again).statusCode(), "no new loss: the node starts");
+        assertEquals(accepted, losses(), "a value already recorded accepts nothing new");
+        assertEquals(marks, lost("work", "id", List.of("lost-a", "live")));
+        assertEquals(instants, String.valueOf(db.count("select count(*) from body_refs where lost_at is not null")) + losses());
+        assertEquals(warnings + 1, logs.warningsNaming(value).size(), "a WARNING names the stale value: " + logs.all());
+    }
+
+    /** A later loss is refused under the first value (WARNING), prints its own, and is accepted only by that one. */
+    @Test
+    void aSecondLossNeedsItsOwnAcceptance() throws Exception {
+        Map<String, String> env = pinned(2);
+        Map<String, JournalRef> refs = firstRun(env, "first-a", "first-b", "second-a", "second-b", "live");
+        assertNotEquals(refs.get("first-a").segment(), refs.get("second-a").segment(), "fixture: two segments " + refs);
+        workRow("first-a", NODE_ID, refs.get("first-a"));
+        keptRef("first-b", refs.get("first-b"), false);
+        workRow("second-a", NODE_ID, refs.get("second-a"));
+        keptRef("second-b", refs.get("second-b"), false);
+        workRow("live", NODE_ID, refs.get("live"));
+        Files.delete(segmentFile(journal(), refs.get("first-a").segment()));
+        String v1 = printed(refused(env, "the first loss"));
+        env.put(ACCEPT, v1);
+        close(start(env));
+        List<String> firstLost = new ArrayList<>();
+        for (Row r : db.pool().query("select message_id, lost_at::text from body_refs where lost_at is not null union all select id, lost_at::text from work "
+                + "where lost_at is not null order by 1").execute().await()) firstLost.add(r.getString(0) + " " + r.getString(1));
+        Files.delete(segmentFile(journal(), refs.get("second-a").segment()));
+        int warnings = logs.warningsNaming(v1).size();
+
+        Throwable e = refused(env, "a later loss under the first value");
+
+        String v2 = printed(e);
+        assertNotEquals(v1, v2, "another loss, another digest");
+        assertEquals(v1.substring(0, 36), v2.substring(0, 36), "of the same journal");
+        assertTrue(text(e).contains("second-a") && text(e).contains("second-b"), "names the new loss: " + text(e));
+        assertFalse(text(e).contains("first-a") || text(e).contains("first-b"), "lost items pin nothing: " + text(e));
+        assertEquals(warnings + 1, logs.warningsNaming(v1).size(), "a WARNING: the value set is recorded already: " + logs.all());
+        assertEquals(Map.of("second-a", false), lost("work", "id", List.of("second-a")), "the new loss is not given up");
+        assertEquals(1, losses().size());
+
+        env.put(ACCEPT, v2);
+        assertEquals(200, health(start(env)).statusCode(), "its own value accepts it");
+        assertEquals(Map.of("second-a", true), lost("work", "id", List.of("second-a")));
+        assertEquals(Map.of("second-b", true), lost("body_refs", "message_id", List.of("second-b")));
+        assertEquals(2, losses().size(), "each accepted digest is recorded: " + losses());
+        List<String> stillFirst = new ArrayList<>();
+        for (Row r : db.pool().query("select message_id, lost_at::text from body_refs where message_id like 'first-%' and lost_at is not null union all "
+                + "select id, lost_at::text from work where id like 'first-%' and lost_at is not null order by 1").execute().await()) stillFirst.add(r.getString(0) + " " + r.getString(1));
+        assertEquals(firstLost, stillFirst, "the first loss's marks are unchanged");
+    }
+
+    /**
+     * The NODE-lost guard (carried from CORE-4c1 r2): no NODE and no journal_nodes row, but segment files — the start is refused
+     * (a lost NODE on a fresh database must not begin a journal over one), nothing changed, and the printed value accepts it.
+     */
+    @Test
+    void aLostNodeFileWithSegmentFilesRefuses() throws Exception {
+        close(start(env("dev")));
+        assertFalse(segmentFiles(journal()).isEmpty(), "fixture: segment files");
+        Files.delete(journal().resolve("NODE"));
+        try (CaseDatabase fresh = CaseDatabase.create(pg, vertx, "node_journal_lost_")) {
+            Map<String, String> env = env("dev");
+            env.put("FLOTTILA_PG_DATABASE", fresh.name());
+            Map<String, String> files = filesUnder(journal());
+
+            Throwable e = refused(env, "no NODE, no row, segment files");
+
+            String value = printed(e);
+            assertEquals(files, filesUnder(journal()), "no NODE written, no segment file unlinked");
+            assertEquals(0, fresh.count("select count(*) from journal_nodes"), "no row registered");
+            assertEquals(0, fresh.count("select count(*) from journal_segments"));
+
+            env.put(ACCEPT, value);
+            assertEquals(200, health(start(env)).statusCode(), "the printed value accepts the loss");
+            UUID now = journalIdOf(journal());
+            assertEquals(now, fresh.pool().preparedQuery("select journal_id from journal_nodes where node = $1").execute(Tuple.of(NODE_ID)).await()
+                    .iterator().next().getUUID(0), "NODE and its row name one journal");
+        }
+    }
+
+    /**
+     * A journal gone by identity — the journal directory without NODE, or with another journal's NODE — is refused printing the
+     * registered journal's id; its printed value starts the node on a journal id other than the old one, NODE and its row agree,
+     * and every pin into the old journal is given up (lost_at, recorded under the old id).
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"no NODE file", "another journal's NODE"})
+    void anIdentityLossIsAcceptedByItsPrintedValue(String variant) throws Exception {
+        Map<String, String> env = pinned(65_536);
+        Map<String, JournalRef> refs = firstRun(env, "old-work", "old-kept");
+        UUID old = journalIdOf(journal());
+        workRow("old-work", NODE_ID, refs.get("old-work"));
+        keptRef("old-kept", refs.get("old-kept"), false);
+        Path dir = journal();
+        if (variant.equals("no NODE file")) {
+            dir = data.resolve("new-journal");
+            env.put("FLOTTILA_JOURNAL_DIR", dir.toString());
+        } else {
+            Path otherJournal = data.resolve("other-journal");
+            try (CaseDatabase other = CaseDatabase.create(pg, vertx, "other_identity_")) {
+                Map<String, String> elsewhere = env("dev");
+                elsewhere.put("FLOTTILA_PG_DATABASE", other.name());
+                elsewhere.put("FLOTTILA_DATA_DIR", Files.createDirectories(data.resolve("other-data")).toString());
+                elsewhere.put("FLOTTILA_JOURNAL_DIR", otherJournal.toString());
+                close(start(elsewhere));
+            }
+            Files.copy(otherJournal.resolve("NODE"), journal().resolve("NODE"), StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        Throwable e = refused(env, variant);
+
+        String value = printed(e);
+        assertEquals(old.toString(), value.substring(0, 36), "the journal given up is the registered one");
+        assertTrue(text(e).contains("old-work") && text(e).contains("old-kept"), "names its pins: " + text(e));
+
+        env.put(ACCEPT, value);
+        assertEquals(200, health(start(env)).statusCode(), "the printed value accepts the identity loss");
+        UUID now = journalIdOf(dir);
+        assertNotEquals(old, now, "a journal id other than the old one");
+        assertEquals(Map.of(NODE_ID, now), journalNodes(), "replaces the old row; NODE and row agree");
+        assertEquals(Map.of("old-work", true), lost("work", "id", List.of("old-work")));
+        assertEquals(Map.of("old-kept", true), lost("body_refs", "message_id", List.of("old-kept")));
+        assertEquals(List.of(NODE_ID + " " + value + " true"), losses());
+    }
+
+    /** Usable space + journal bytes below FLOTTILA_JOURNAL_MAX_BYTES (1 PiB here, a real file system) refuses the start, naming it; nothing changes. */
+    @Test
+    void tooLittleFreeSpaceRefusesStart() throws Exception {
+        close(start(env("dev")));
+        long max = 1L << 50;
+        assertTrue(Files.getFileStore(journal()).getUsableSpace() < max / 2, "fixture: this file system holds far less than 1 PiB");
+        Map<String, String> files = filesUnder(journal());
+        List<String> rows = pgState();
+        Map<String, String> env = env("dev");
+        env.put("FLOTTILA_JOURNAL_MAX_BYTES", String.valueOf(max));
+
+        Throwable e = refused(env, "MAX_BYTES above what the file system can hold");
+
+        assertTrue(text(e).contains("FLOTTILA_JOURNAL_MAX_BYTES") && text(e).contains(String.valueOf(max)), "names the key and its value: " + text(e));
+        assertEquals(files, filesUnder(journal()), "nothing changed on disk");
+        assertEquals(rows, pgState(), "nothing changed in Postgres");
+        assertEquals(200, health(start(env("dev"))).statusCode(), "witness: the default MAX_BYTES starts");
+    }
+
+    /** A child JVM holding {@code <journal>/LOCK} until its stdin closes. */
+    Process lockHolder() throws Exception {
+        List<String> command = List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(), "-cp",
+                System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")), JournalLockHolderChild.class.getName(), journal().toString());
+        ProcessBuilder builder = new ProcessBuilder(command).redirectError(data.resolve("child-stderr.txt").toFile());
+        builder.environment().clear();
+        Process child = builder.start();
+        children.add(child);
+        BufferedReader out = new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8));
+        OnVirtualThread.Call<String> firstLine = OnVirtualThread.start((java.util.concurrent.Callable<String>) out::readLine);
+        assertEquals("locked", OnVirtualThread.join(firstLine), "the child holds <journal>/LOCK: " + Files.readString(data.resolve("child-stderr.txt")));
+        return child;
+    }
+
+    /** A crashed generation's MASTER.*.tmp is removed at the next start, under LOCK: not while another process holds it. MASTER and other files stay. */
+    @Test
+    void aCrashedMasterTmpIsRemoved() throws Exception {
+        Map<String, String> env = env("dev");
+        env.remove(KEY);
+        env.put(GENERATE, "true");
+        close(start(env));
+        byte[] master = Files.readAllBytes(journal().resolve("MASTER"));
+        Path tmp = Files.writeString(journal().resolve("MASTER.4242017.tmp"), "half a key a crashed start left (test)");
+        Path other = Files.writeString(journal().resolve("MASTER.keep"), "not a generation's tmp");
+
+        Process child = lockHolder();
+        refused(env, "another process holds the LOCK");
+        assertTrue(Files.exists(tmp), "not removed without the LOCK (another start's generation may be in use)");
+        child.getOutputStream().close();
+        assertTrue(child.waitFor(60, TimeUnit.SECONDS), "the child lets the lock go");
+
+        assertEquals(200, health(start(env)).statusCode());
+        assertFalse(Files.exists(tmp), "the crashed generation's tmp is removed under LOCK");
+        assertArrayEquals(master, Files.readAllBytes(journal().resolve("MASTER")), "MASTER is kept");
+        assertTrue(Files.exists(other), "a file that is no MASTER.*.tmp is kept");
+    }
+
+    /** D-106: the admin health names a generated master key in its notices (no key bytes); a configured key has none. */
+    @Test
+    void theAdminHealthNamesAGeneratedKey() throws Exception {
+        Node configured = start(env("dev"));
+        HttpResponse<String> plain = health(configured);
+        assertEquals(200, plain.statusCode(), plain.body());
+        assertTrue(new JsonObject(plain.body()).getJsonArray("notices", new JsonArray()).isEmpty(), "a configured key: no notice: " + plain.body());
+        close(configured);
+
+        try (CaseDatabase fresh = CaseDatabase.create(pg, vertx, "node_journal_generated_")) {
+            Map<String, String> env = env("dev");
+            env.remove(KEY);
+            env.put(GENERATE, "true");
+            env.put("FLOTTILA_PG_DATABASE", fresh.name());
+            env.put("FLOTTILA_DATA_DIR", Files.createDirectories(data.resolve("generated-data")).toString());
+            HttpResponse<String> h = health(start(env));
+
+            assertEquals(200, h.statusCode(), "a notice is no failure: " + h.body());
+            JsonArray notices = new JsonObject(h.body()).getJsonArray("notices", new JsonArray());
+            assertTrue(notices.stream().anyMatch(n -> String.valueOf(n).contains(GENERATE)), "a notice names " + GENERATE + ": " + h.body());
+            byte[] master = Files.readAllBytes(data.resolve("generated-data").resolve("journal").resolve("MASTER"));
+            assertCarriesNoKey(h.body(), List.of(new String(master, StandardCharsets.ISO_8859_1).strip()), master);
+        }
     }
 }

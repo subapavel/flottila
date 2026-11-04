@@ -33,7 +33,7 @@ class BenchMainIT {
         assertEquals(500, json.getInteger("saved"));
         assertEquals(0, json.getInteger("failed"));
         assertEquals(500L, json.getLong("rowsInMessages"));
-        assertEquals("12", json.getString("schemaVersion"), "V1 m1 schema + V2 snapshot columns (P1-04) + V3 DLQ by reference (P1-05) + V4 work attempts (P1-08b) + V5 admin paging (P1-09a) + V6 bodies (P1-09h) + V7 deployments (P1-09c3a) + V8 processed_ids (P2-02D) + V9 deployment dependencies (P2-02b) + V10 retention indexes (P2-07) + V11 payloads dropped (P2-07c) + V12 body journal (CORE-4c1)");
+        assertEquals("13", json.getString("schemaVersion"), "V1 m1 schema + V2 snapshot columns (P1-04) + V3 DLQ by reference (P1-05) + V4 work attempts (P1-08b) + V5 admin paging (P1-09a) + V6 bodies (P1-09h) + V7 deployments (P1-09c3a) + V8 processed_ids (P2-02D) + V9 deployment dependencies (P2-02b) + V10 retention indexes (P2-07) + V11 payloads dropped (P2-07c) + V12 body journal (CORE-4c1) + V13 journal losses (CORE-4c3)");
         assertEquals(false, json.getBoolean("syncCommit"), "observed with show synchronous_commit on a pooled connection, not echoed from the flag");
         assertTrue(json.getString("postgres").startsWith("17."), "server_version of the container: " + json.getString("postgres"));
         assertEquals("test", json.getString("commit"));

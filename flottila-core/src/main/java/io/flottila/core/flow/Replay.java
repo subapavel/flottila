@@ -3,6 +3,7 @@ package io.flottila.core.flow;
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
+import io.flottila.api.BodyLostException;
 import io.flottila.api.Envelope;
 import io.flottila.api.IdGenerator;
 import io.flottila.api.Pipeline;
@@ -177,11 +178,18 @@ public final class Replay {
     }
 
     /**
-     * Refuses REMOVED_BY_RETENTION when nothing is stored under {@code key} any more (D-096), before any permit; a store that
-     * cannot answer throws its own failure, which is no refusal.
+     * Refuses REMOVED_BY_RETENTION when nothing is stored under {@code key} any more (D-096), and BODY_LOST when the store says
+     * its body was given up ({@link BodyLostException}), before any permit; a store that cannot answer throws its own failure,
+     * which is no refusal.
      */
     private void requireStored(BlobKey key, int step, String messageId) {
-        if (!blobs.exists(key).await()) {
+        boolean stored;
+        try {
+            stored = blobs.exists(key).await();
+        } catch (BodyLostException lost) {
+            throw refused(Reason.BODY_LOST, "the body of step " + step + " of message " + messageId + " cannot be replayed: " + lost.getMessage());
+        }
+        if (!stored) {
             throw refused(Reason.REMOVED_BY_RETENTION, "the body of step " + step + " of message " + messageId + " (" + key + ") was removed by retention");
         }
     }

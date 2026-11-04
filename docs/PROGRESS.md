@@ -1,4 +1,16 @@
 
+## 2026-11-04 — CORE-4c3 pinned-cut start refusal, ACCEPT_LOSS, read channels, start carries (D-105) — done, review PASS
+Test first: api BodyLostExceptionTest, core ReplayTest (+2), JournalReadChannelsTest, StoreReadKeyCheckTest, JournalFreeSpaceTest,
+JournalCloseAndDirForceTest, StoreAppendWaitTest, LostBodyReadIT, NodeJournalIT (+13), LostBodyAdminIT, NodeConfigJournalLimitsTest,
+MigrationsIT V13 (test-author; red = test-compile + shimmed semantic reds, agent/work/CORE-4c3-red.log).
+Change: V13 (work.lost_at, journal_losses); JournalStart (room, identity, pins, digest; refusal changes nothing), Recovery plan/apply,
+ReadChannels (LRU), record key check, ACCEPT_LOSS give-up in one tx, lost reads (BodyLostException, 409 BODY_LOST, GET 410),
+lost sources feed no reference/enqueue/park, MASTER tmp cleanup, generated-key notice, quiet close, dir-force re-check.
+Checks: reactor verify -Pit exit 0 (3194); coverage no decrease; 41 + 10 hand mutants killed.
+Review: FAIL r1 (append-wait wiring store-only → deferred to CORE-4d; lost sources fed new pins; digest sort unpinned), PASS r2.
+D-054 data: class C (test-author ×1 resumed ×2, implementer ×1 resumed ×1, reviewer ×1 resumed ×1); rounds 2.
+Next: CORE-4d [C] packet (sweeper, disk bound 503, pg_xact_status, carries in its BACKLOG row).
+
 ## 2026-11-04 — CORE-4c2 body store on journal references: intake, DLQ, reads, claim, ledger (D-105) — done, review PASS
 context compacted (twice); re-verified with git status / git log before changing anything.
 Test first: JournalBlobStoreIT, PgIntakeJournalIT, JournalReadIT, PgDlqJournalIT, PgBodyRefsIT, WorkClaimIT, SchemaIT,

@@ -29,6 +29,8 @@ final class SegmentFormat {
     static final int TRAILER = 32;
     private static final int TRAILER_CRC_AT = 24;
     private static final int UUID_AT = 5;
+    /** The bytes of an identity file or a segment header up to the end of its journal id. */
+    static final int ID_END = UUID_AT + 16;
 
     /** A trailer whose magic and CRC held: where the index lies, how many entries it has and its CRC. */
     record Trailer(long indexPosition, int count, long sealedMs, int indexCrc) { }

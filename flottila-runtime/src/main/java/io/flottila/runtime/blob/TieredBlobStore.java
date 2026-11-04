@@ -4,6 +4,7 @@ import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
+import io.flottila.api.BodyLostException;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Hasher;
 import io.flottila.api.InputStreamReadStream;
@@ -54,7 +55,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link IllegalStateException} and change nothing; a row whose segment row is gone (swept) is replaced in the same statement.
  * A persist of a key held nowhere locally adds no record: one statement holds its source row — the key's {@code body_refs} row,
  * or for an ingress key the work row of its message — and that row's segment row {@code for key share}, inserting the
- * {@code body_refs} row from them; no source is a {@link BlobNotFoundException}. No body byte goes to Postgres; {@code bodies}
+ * {@code body_refs} row from them; no source is a {@link BlobNotFoundException}, a given-up one ({@code lost_at}) a
+ * {@link BodyLostException}. No body byte goes to Postgres; {@code bodies}
  * rows (pre-V12) are only read. The intake makes its body durable with {@link #forced} and commits the rows itself (D-082).
  *
  * <p><b>Reads</b> (CORE-3 item 8): the local copy; then the in-memory location index of the hot path — filled when an intake's
@@ -169,25 +171,31 @@ public final class TieredBlobStore implements BlobStore {
     /**
      * A persist of a key held nowhere locally (CORE-3 item 10, last sentence): its source — the key's ref row, or for an ingress
      * key ($4) its message's work row — with that row's segment row, both {@code for key share}; a work row's ref is inserted as
-     * the key's. Answers the sources found (or the key's pre-V12 {@code bodies} row): none is no body.
+     * the key's. A source an accepted loss gave up ({@code lost_at}) is no source. Answers the sources found (or the key's pre-V12
+     * {@code bodies} row) — none is no body — and whether a given-up source is there (then the body is lost, CORE-4c3 r1).
      */
     private static final String REFERENCE = """
             with kept as (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
-                           where r.message_id = $1 and r.step = $2 and r.part = $3 for key share),
+                           where r.message_id = $1 and r.step = $2 and r.part = $3 and r.lost_at is null for key share),
             src as (select w.body_node, w.body_segment, w.body_position, w.body_length from work w
                       join journal_segments s on s.node = w.body_node and s.segment = w.body_segment
-                     where $4 and w.id = $1 and not exists (select 1 from kept) limit 1 for key share),
+                     where $4 and w.id = $1 and w.lost_at is null and not exists (select 1 from kept) limit 1 for key share),
             ins as (insert into body_refs(message_id, step, part, node, segment, position, length)
                     select $1, $2, $3, body_node, body_segment, body_position, body_length from src on conflict do nothing returning 1)
             select (select count(*) from kept) + (select count(*) from ins)
-                 + (select count(*) from bodies where message_id = $1 and step = $2 and part = $3)""";
-    /** Where a key's body lies, as Postgres names it: its ref row first, then (an ingress key, $4) its message's work row. */
+                 + (select count(*) from bodies where message_id = $1 and step = $2 and part = $3),
+                   exists (select 1 from body_refs where message_id = $1 and step = $2 and part = $3 and lost_at is not null)
+                or exists (select 1 from work where $4 and id = $1 and lost_at is not null)""";
+    /**
+     * Where a key's body lies, as Postgres names it: its ref row first, then (an ingress key, $4) its message's work row; whether
+     * its segment row is there, and whether an accepted loss gave it up (V12/V13 {@code lost_at}).
+     */
     private static final String FIND = """
-            select 0 as o, r.node, r.segment, r.position, r.length, s.node is not null as live from body_refs r
+            select 0 as o, r.node, r.segment, r.position, r.length, s.node is not null as live, r.lost_at is not null as lost from body_refs r
               left join journal_segments s on s.node = r.node and s.segment = r.segment
              where r.message_id = $1 and r.step = $2 and r.part = $3
             union all
-            select 1, w.body_node, w.body_segment, w.body_position, w.body_length, s.node is not null from work w
+            select 1, w.body_node, w.body_segment, w.body_position, w.body_length, s.node is not null, w.lost_at is not null from work w
               left join journal_segments s on s.node = w.body_node and s.segment = w.body_segment
              where $4 and w.id = $1 and w.body_node is not null
             order by o limit 1""";
@@ -361,7 +369,7 @@ public final class TieredBlobStore implements BlobStore {
         Stored s = objects.get(key);
         if (s != null) return s.location() == Location.MEMORY ? new BufferReadStream(s.bytes) : new InputStreamReadStream(s::stream);
         JournalRef ref = index.get(key);
-        if (ref != null) return new InputStreamReadStream(() -> journal.stream(ref));
+        if (ref != null) return new InputStreamReadStream(() -> journal.stream(ref, key));
         return pool == null ? null : new InputStreamReadStream(() -> stored(key));
     }
 
@@ -383,7 +391,8 @@ public final class TieredBlobStore implements BlobStore {
     public Future<Boolean> exists(BlobKey key) {
         if (objects.containsKey(key)) return Future.succeededFuture(Boolean.TRUE);   // a local copy, in flight; never the index (CORE-4c2 r1)
         if (pool == null) return Future.succeededFuture(Boolean.FALSE);
-        return find(key).compose(found -> found.isPresent() ? Future.succeededFuture(found.get().live()) : bodies.exists(pool, key));
+        return find(key).compose(found -> found.isEmpty() ? bodies.exists(pool, key)
+                : found.get().lost() ? Future.failedFuture(new BodyLostException(key)) : Future.succeededFuture(found.get().live()));
     }
 
     /** A durable body the index misses, on the stream's virtual thread: by its rows in Postgres; none is a {@link BlobNotFoundException}. */
@@ -394,22 +403,26 @@ public final class TieredBlobStore implements BlobStore {
             if (row.isEmpty()) throw noObject(key);
             return new ByteArrayInputStream(row.get().getBytes());
         }
-        return journal.stream(readable(key, found.get()));
+        return journal.stream(readable(key, found.get()), key);
     }
 
-    /** {@code found}'s ref when this node can read it: a ref whose segment row is gone is removed, another node's is elsewhere. */
+    /**
+     * {@code found}'s ref when this node can read it: a ref an accepted loss gave up is lost (whether its segment row is there or
+     * not), one whose segment row is gone is removed, another node's is elsewhere.
+     */
     private JournalRef readable(BlobKey key, Found found) {
+        if (found.lost()) throw new BodyLostException(key);
         if (!found.live()) throw noObject(key);
         if (!node.equals(found.node())) throw new RemoteBodyException(key, found.node(), node);
         return found.ref();
     }
 
-    /** A ref Postgres names for a key, and whether its segment row is there. */
-    private record Found(String node, JournalRef ref, boolean live) { }
+    /** A ref Postgres names for a key, whether its segment row is there, and whether it was given up. */
+    private record Found(String node, JournalRef ref, boolean live, boolean lost) { }
 
     private Future<Optional<Found>> find(BlobKey key) {
         return pool.preparedQuery(FIND).execute(Tuple.of(key.messageId(), key.step(), key.part(), ingress(key))).map(rows -> {
-            for (Row r : rows) return Optional.of(new Found(r.getString(1), new JournalRef(r.getLong(2), r.getLong(3), r.getLong(4)), r.getBoolean(5)));
+            for (Row r : rows) return Optional.of(new Found(r.getString(1), new JournalRef(r.getLong(2), r.getLong(3), r.getLong(4)), r.getBoolean(5), r.getBoolean(6)));
             return Optional.empty();
         });
     }
@@ -425,7 +438,8 @@ public final class TieredBlobStore implements BlobStore {
      * fails with {@link BodyTooLargeException} and stays where it is; one whose key's row names other bytes fails with an
      * {@link IllegalStateException} naming the key and stays local; once the row names these bytes the local copy goes before the
      * future completes. A key held nowhere locally is done when its source row and that row's segment row are there (or its
-     * pre-V12 row), else refused with a {@link BlobNotFoundException}.
+     * pre-V12 row), else refused with a {@link BlobNotFoundException} — with a {@link BodyLostException} when an accepted loss
+     * gave its source up ({@code lost_at}, CORE-4c3).
      */
     @Override
     public Future<Void> persist(BlobKey key) {
@@ -433,11 +447,15 @@ public final class TieredBlobStore implements BlobStore {
         Stored s = objects.get(key);
         if (s == null) {
             return pool.preparedQuery(REFERENCE).execute(Tuple.of(key.messageId(), key.step(), key.part(), ingress(key)))
-                    .compose(rows -> rows.iterator().next().getLong(0) > 0 ? Future.<Void>succeededFuture() : Future.failedFuture(noObject(key)));
+                    .compose(rows -> {
+                        Row r = rows.iterator().next();
+                        if (r.getLong(0) > 0) return Future.<Void>succeededFuture();
+                        return Future.failedFuture(r.getBoolean(1) ? new BodyLostException(key) : noObject(key));
+                    });
         }
         if (s.size() > config.durableMaxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), config.durableMaxBytes()));
         return blocking(() -> {
-            Save save = durably(key, s);
+            Save save = durably(key, s, Promise.promise().future());
             try {
                 keep(pool, key, s, save.ref).await();
             } finally {
@@ -455,16 +473,29 @@ public final class TieredBlobStore implements BlobStore {
      * already: its {@link Durable} has no ref. Fails as {@link #persist} does, nothing reserved after a failure.
      */
     public Future<Durable> forced(BlobKey key) {
+        return forced(key, Promise.promise().future());
+    }
+
+    /**
+     * {@link #forced(BlobKey)} for a save whose answer is {@code abandoned} (CORE-3 item 6): a memory body's append that waits for
+     * room under {@code FLOTTILA_JOURNAL_PENDING_BYTES} ends when it completes — retryable, nothing reserved, the body still local
+     * — not only at {@code FLOTTILA_JOURNAL_APPEND_WAIT}.
+     */
+    public Future<Durable> forced(BlobKey key, Future<?> abandoned) {
+        Objects.requireNonNull(abandoned, "abandoned");
         Stored s = objects.get(key);
         if (s == null) return Future.succeededFuture(new Durable(key, null, null));
         if (s.size() > config.durableMaxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), config.durableMaxBytes()));
-        return blocking(() -> new Durable(key, s, durably(key, s)));
+        return blocking(() -> new Durable(key, s, durably(key, s, abandoned)));
     }
 
-    /** {@code s} forced in the journal, on this (virtual) thread: an open save from its reservation on, out of the set again if it fails. */
-    private Save durably(BlobKey key, Stored s) throws IOException {
+    /**
+     * {@code s} forced in the journal, on this (virtual) thread: an open save from its reservation on, out of the set again if it
+     * fails; an append's wait for room ends when {@code abandoned} completes.
+     */
+    private Save durably(BlobKey key, Stored s, Future<?> abandoned) throws IOException {
         if (s.location() == Location.MEMORY) {
-            Journal.Appended a = journal.append(new JournalRecord(key.messageId(), key.step(), key.part(), tenant, s.bytes.getBytes()), Promise.promise().future());
+            Journal.Appended a = journal.append(new JournalRecord(key.messageId(), key.step(), key.part(), tenant, s.bytes.getBytes()), abandoned);
             Save save = opened(a.ref());
             try {
                 a.forced().await();
@@ -505,7 +536,7 @@ public final class TieredBlobStore implements BlobStore {
                     JournalRef named = new JournalRef(r.getLong(1), r.getLong(2), r.getLong(3));
                     if (named.equals(ref)) return Future.succeededFuture();
                     return blocking(() -> {
-                        try (InputStream stored = journal.stream(named); InputStream mine = s.stream()) {
+                        try (InputStream stored = journal.stream(named, key); InputStream mine = s.stream()) {
                             if (sameBytes(stored, mine)) return null;
                         }
                         throw new IllegalStateException("the durable body under " + key + " holds other bytes than these " + s.size()

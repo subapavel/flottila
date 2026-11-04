@@ -11,6 +11,7 @@ import java.nio.channels.WritableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -21,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -128,11 +130,45 @@ final class HeldFiles implements JournalFiles {
     private final List<Hold> holds = new CopyOnWriteArrayList<>();
     private final Set<Path> opened = ConcurrentHashMap.newKeySet();
     private final Map<Path, AtomicLong> reads = new ConcurrentHashMap<>();
+    // CORE-4c3 (the open-channel cache): read-only channels opened and closed per file, how many are open at once, and
+    // files whose next read call fails
+    private final Map<Path, AtomicLong> readOpens = new ConcurrentHashMap<>();
+    private final Map<Path, AtomicLong> readCloses = new ConcurrentHashMap<>();
+    private final AtomicInteger readChannelsOpen = new AtomicInteger();
+    private final AtomicInteger readChannelsPeak = new AtomicInteger();
+    private final Set<Path> failNextRead = ConcurrentHashMap.newKeySet();
 
     @Override public FileChannel open(Path file, Set<? extends OpenOption> options) throws IOException {
         Path at = file.toAbsolutePath().normalize();
         opened.add(at);   // before the file can exist: a crash image never copies a file it does not know about yet
-        return new HeldChannel(at, FileChannel.open(file, options));
+        boolean readOnly = options.contains(StandardOpenOption.READ) && !options.contains(StandardOpenOption.WRITE)
+                && !options.contains(StandardOpenOption.APPEND) && !java.nio.file.Files.isDirectory(at);   // a directory is opened to be forced
+        HeldChannel ch = new HeldChannel(at, FileChannel.open(file, options), readOnly);
+        if (readOnly) {
+            readOpens.computeIfAbsent(at, f -> new AtomicLong()).incrementAndGet();
+            readChannelsPeak.accumulateAndGet(readChannelsOpen.incrementAndGet(), Math::max);
+        }
+        return ch;
+    }
+
+    /** Read-only channels opened on {@code file} through the seam so far (CORE-4c3). */
+    long readOpensOf(Path file) { return count(readOpens, file); }
+
+    /** Read-only channels of {@code file} closed so far (CORE-4c3). */
+    long readClosesOf(Path file) { return count(readCloses, file); }
+
+    /** Read-only channels open now, over every file (CORE-4c3). */
+    int readChannelsOpen() { return readChannelsOpen.get(); }
+
+    /** The most read-only channels that were open at once so far (CORE-4c3). */
+    int readChannelsPeak() { return readChannelsPeak.get(); }
+
+    /** The next read call on any channel of {@code file} throws an {@link IOException} instead of reading (CORE-4c3). */
+    void failNextReadOn(Path file) { failNextRead.add(file.toAbsolutePath().normalize()); }
+
+    private static long count(Map<Path, AtomicLong> m, Path file) {
+        AtomicLong n = m.get(file.toAbsolutePath().normalize());
+        return n == null ? 0 : n.get();
     }
 
     /** Holds the first write (any file) whose bytes carry every marker. */
@@ -341,8 +377,9 @@ final class HeldFiles implements JournalFiles {
     private final class HeldChannel extends FileChannel {
         private final Path file;
         private final FileChannel inner;
+        private final boolean readOnly;
 
-        HeldChannel(Path file, FileChannel inner) { this.file = file; this.inner = inner; }
+        HeldChannel(Path file, FileChannel inner, boolean readOnly) { this.file = file; this.inner = inner; this.readOnly = readOnly; }
 
         private interface Call<T> { T run() throws IOException; }
 
@@ -383,7 +420,10 @@ final class HeldFiles implements JournalFiles {
             return this;
         }
 
-        private void counted() { reads.computeIfAbsent(file, f -> new AtomicLong()).incrementAndGet(); }
+        private void counted() throws IOException {
+            reads.computeIfAbsent(file, f -> new AtomicLong()).incrementAndGet();
+            if (failNextRead.remove(file)) throw new IOException("the read of " + file + " failed (test)");
+        }
 
         @Override public int read(ByteBuffer dst) throws IOException {
             counted();
@@ -426,6 +466,12 @@ final class HeldFiles implements JournalFiles {
 
         @Override public FileLock tryLock(long position, long size, boolean shared) throws IOException { return inner.tryLock(position, size, shared); }
 
-        @Override protected void implCloseChannel() throws IOException { inner.close(); }
+        @Override protected void implCloseChannel() throws IOException {
+            if (readOnly) {
+                readCloses.computeIfAbsent(file, f -> new AtomicLong()).incrementAndGet();
+                readChannelsOpen.decrementAndGet();
+            }
+            inner.close();
+        }
     }
 }

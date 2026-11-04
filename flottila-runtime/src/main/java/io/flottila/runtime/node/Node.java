@@ -231,7 +231,7 @@ public final class Node implements AutoCloseable {
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health()),
-                            "journal", () -> Future.succeededFuture(opened.health())), messages::failed),
+                            "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices(config)),
                     Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)));
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
@@ -303,6 +303,13 @@ public final class Node implements AutoCloseable {
 
     /** The node's message store over Postgres. */
     public MessageStore messages() { return messages; }
+
+    /** What the admin health names beside its checks (D-106): a generated master key, which lies beside the data it protects. */
+    private static List<String> notices(NodeConfig config) {
+        if (!config.journalKey().generates()) return List.of();
+        return List.of("the journal's master key is generated (FLOTTILA_JOURNAL_KEY_GENERATE=true) and lies beside the data it protects: "
+                + "for a single dev node only; give every other node FLOTTILA_JOURNAL_KEY_FILE (D-106)");
+    }
 
     /** The node's body journal (CORE-4c2's store writes through it). */
     public Journal journal() { return journal; }

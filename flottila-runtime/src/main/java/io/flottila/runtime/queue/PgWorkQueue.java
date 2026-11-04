@@ -2,6 +2,7 @@ package io.flottila.runtime.queue;
 
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
+import io.flottila.api.BodyLostException;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Page;
 import io.flottila.runtime.blob.TieredBlobStore;
@@ -37,7 +38,8 @@ import java.util.Optional;
  * its own node); a queue without a node claims any. A queue given the node's store tells it the ref of every item it claims
  * (its location index, the hot path's reads) and that a completed item's body is read no more. An enqueue that adds no record
  * (a replay's or a DLQ retry's) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
- * share — in one statement: no source is a {@link BlobNotFoundException}.
+ * share — in one statement: no source is a {@link BlobNotFoundException}. An item whose body an accepted
+ * {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} gave up ({@code lost_at}, V13) is held for good: never claimed, so never run or parked.
  *
  * @since 0.1
  */
@@ -51,16 +53,18 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String ENQUEUE_FROM = """
             with src as (select r.node, r.segment, r.position, r.length from body_refs r
                            join journal_segments s on s.node = r.node and s.segment = r.segment
-                          where r.message_id = $5 and r.step = $6 and r.part = $7 for key share),
+                          where r.message_id = $5 and r.step = $6 and r.part = $7 and r.lost_at is null for key share),
             ins as (insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length)
                     select $1, $2, $3, $4, node, segment, position, length from src)
-            select count(*) from src""";
+            select (select count(*) from src),
+                   exists (select 1 from body_refs where message_id = $5 and step = $6 and part = $7 and lost_at is not null)""";
 
     private static final String ELIGIBLE = """
             select w1.seq from work w1
             where w1.flow = $2
               and w1.available_at <= now()
               and w1.held_at is null
+              and w1.lost_at is null
               and (w1.locked_until is null or w1.locked_until < now())
               and ($5::text is null or w1.body_node is null or w1.body_node = $5)
               and (w1.partition_key is null or (
@@ -144,11 +148,15 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * The item on {@code client} taking the ref of {@code body}'s kept row (a replay's input, a DLQ retry's parked body): one
      * statement holding that row and its segment row for key share; without them it fails {@link BlobNotFoundException} naming
-     * {@code body} and inserts nothing.
+     * {@code body} and inserts nothing — {@link BodyLostException} when an accepted loss gave that row up ({@code lost_at}).
      */
     public Future<Void> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, BlobKey body) {
         return client.preparedQuery(ENQUEUE_FROM).execute(Tuple.wrap(new Object[] {messageId, flow, step, partitionKey, body.messageId(), body.step(),
-                body.part()})).compose(rows -> rows.iterator().next().getLong(0) == 1 ? Future.<Void>succeededFuture() : Future.failedFuture(new BlobNotFoundException(body)));
+                body.part()})).compose(rows -> {
+                    Row r = rows.iterator().next();
+                    if (r.getLong(0) == 1) return Future.<Void>succeededFuture();
+                    return Future.failedFuture(r.getBoolean(1) ? new BodyLostException(body) : new BlobNotFoundException(body));
+                });
     }
 
     @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {

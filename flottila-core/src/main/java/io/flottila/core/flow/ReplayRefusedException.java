@@ -27,6 +27,11 @@ public final class ReplayRefusedException extends IllegalArgumentException {
         STEP_BEYOND_FLOW,
         /** The input body is no longer stored: the retention job removed it (D-096). */
         REMOVED_BY_RETENTION,
+        /**
+         * The input body was given up by an accepted {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} (D-105): "body lost by ACCEPT_LOSS",
+         * never readable again — D-062's exception, a DLQ row whose body is not durable.
+         */
+        BODY_LOST,
         /** The input body is above the flow's in-flight byte budget: it can never be admitted. */
         TOO_LARGE,
         /** The flow's admission has no room for the run now. */

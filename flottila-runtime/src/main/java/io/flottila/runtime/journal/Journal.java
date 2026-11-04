@@ -77,9 +77,13 @@ import java.util.stream.Stream;
  * directory force after its move) fails the journal: the channel it failed on is never forced again, the round's appends,
  * every queued and every later append, spill and persist fail {@link JournalFailedException}, one ERROR is logged and
  * {@link #isFailed()} answers true ({@link #health()} DOWN); reads go on; only a restart's scan recovers the journal. A
- * failed segment row insert is no write or force error: it fails no journal.
+ * persist whose directory force returns after the journal failed fails too (a later force proves nothing for earlier
+ * writes). A failed segment row insert is no write or force error: it fails no journal, and a close while it is retried
+ * stops the writer without a fail-stop ERROR.
  *
- * <p><b>Read.</b> A record is read by its ref with a pread on a channel of its own, checked by CRC32C (a failure is
+ * <p><b>Read.</b> A record is read by its ref with a pread on its segment's read channel — at most
+ * {@code FLOTTILA_JOURNAL_READ_CHANNELS} kept open, the least recently used closed first, one whose read failed dropped
+ * ({@link ReadChannels}) — checked by CRC32C and, read for a key, against the key its header names (a failure is
  * {@link JournalCorruptException} and an ERROR, never "not found"), then decrypted under its tenant key.
  *
  * <p><b>Large bodies</b> (CORE-3 item 4). A body above {@code FLOTTILA_JOURNAL_RECORD_MAX} is {@link #spill spilled}: written
@@ -193,6 +197,17 @@ public final class Journal implements AutoCloseable {
     /** A pre-open's outcome: the segment file, or why it could not be made. */
     private record Opened(SegmentFile file, Throwable failure) { }
 
+    /**
+     * A pre-open given up because the journal closed while its row insert was retried (CORE-4c3): the writer stops on it like
+     * on any failed pre-open — the records waiting for that segment fail retryable — but no write or force failed, so it logs
+     * no fail-stop ERROR.
+     */
+    private static final class ClosedBeforeOpen extends IllegalStateException {
+        ClosedBeforeOpen(Throwable insert) {
+            super("the journal closed while the journal_segments row of its next segment was retried", insert);
+        }
+    }
+
     /** The rows of a journal without Postgres (CORE-4a's tests): every insert succeeds at once, no row is kept. */
     private static final SegmentRows NO_ROWS = (node, segment) -> Future.succeededFuture();
     /** The journal ids of the opens that are given no id source (tests without a node): a fresh random one. */
@@ -217,6 +232,7 @@ public final class Journal implements AutoCloseable {
     private final FileChannel lockChannel;
     private final SecureRandom random = new SecureRandom();
     private final Map<Long, Extent> extents = new ConcurrentHashMap<>();
+    private final ReadChannels channels;
 
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition work = lock.newCondition();
@@ -256,6 +272,7 @@ public final class Journal implements AutoCloseable {
         this.spills = dir.resolve("spill");
         this.longestRecord = RecordFormat.MAX_HEADER + config.recordMax() + (long) RecordFormat.chunks(config.recordMax()) * ChunkedAead.TAG_BYTES;
         this.lockChannel = lockChannel;
+        this.channels = new ReadChannels(files, config.readChannels());
         extents.putAll(recovered);
         extents.put(first.n, first.extent);
         current = new Open(first.n, format.headerLength());
@@ -280,17 +297,25 @@ public final class Journal implements AutoCloseable {
     }
 
     /**
-     * Opens the journal in {@code config.dir()}: takes the {@code LOCK} (held elsewhere → refused); checks the identity
-     * ({@code NODE} against the node's {@code journal_nodes} row: a first start writes {@code NODE} with the id
-     * {@code journalIds} gives, then the row; a {@code NODE} without its row registers it; a row without {@code NODE}, or
-     * naming another journal, is refused and nothing is changed); clears {@code spill/}; unlinks every segment file without
-     * its row; recovers every segment (no tenant key is asked for); drops every row whose file is not there; and starts a new
-     * segment, its row first, numbered above every number a file or a row named (a number is never used twice).
+     * Opens the journal in {@code config.dir()} (CORE-3 item 9). It takes the {@code LOCK} (held elsewhere → refused), then
+     * only reads until every check passed: the file system's room for {@code FLOTTILA_JOURNAL_MAX_BYTES}; the identity
+     * ({@code NODE} against the node's {@code journal_nodes} row, {@link JournalStart#identity}: a first start writes
+     * {@code NODE} with the id {@code journalIds} gives, then the row; a {@code NODE} without its row and no segment file
+     * registers it; a journal lost by identity is refused unless its loss is accepted); the segment files with their row (every
+     * one when no rows are kept), each one's records read by CRC32C (no tenant key is asked for); and the committed pins into
+     * records no longer held — a segment file gone, or past a scanned segment's cut —, refused unless that loss is accepted
+     * ({@code FLOTTILA_JOURNAL_ACCEPT_LOSS}, {@link JournalStart}). A refusal changes nothing on disk or in Postgres, with one
+     * exception: a first start, or the registration of a {@code NODE} without its row while no segment file is there, has written
+     * {@code NODE} and the {@code journal_nodes} row before a pins refusal (the identity check comes first). Then it
+     * clears {@code spill/}, removes a crashed generation's {@code MASTER.*.tmp}, unlinks every segment file without its row,
+     * cuts and seals what the scan found, drops every row whose file is not there, and starts a new segment, its row first,
+     * numbered above every number a file or a row named (a number is never used twice).
      *
      * @param keys       the tenant key of a key id, or null when there is none
-     * @param rows       the journal's rows: its identity and its segments
-     * @param journalIds the journal id of a first start (asked for nothing when {@code NODE} is there)
-     * @throws IllegalStateException the {@code LOCK} is held, or the identity is refused
+     * @param rows       the journal's rows: its identity, its segments, its pins and its accepted losses
+     * @param journalIds the journal id of a first start, or of the journal that replaces one given up (asked for nothing else)
+     * @throws IllegalStateException the {@code LOCK} is held, the file system has too little room, the identity is refused, or
+     *                               committed pins name records the journal does not hold
      */
     public static Journal open(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files,
                                SegmentRows rows, Supplier<UUID> journalIds) throws IOException {
@@ -302,37 +327,49 @@ public final class Journal implements AutoCloseable {
         try (JournalIo.Owned lockChannel = new JournalIo.Owned(files.open(dir.resolve("LOCK"),
                 Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE)))) {
             takeLock(lockChannel.get(), dir);
-            Set<Long> registered = rows.segments(node).await();   // null: no rows are kept
-            SegmentFormat format = new SegmentFormat(identity(dir, node, files, rows, registered != null, journalIds), node);
-            clearSpill(dir.resolve("spill"));
             Path segments = dir.resolve("segments");
+            List<Long> numbers = Files.isDirectory(segments) ? Recovery.numbers(segments) : List.of();
+            JournalStart start = new JournalStart(config, files, rows);
+            start.requireRoom(segments, numbers);
+            Set<Long> registered = rows.segments(node).await();   // null: no rows are kept
+            JournalStart.Identity identity = start.identity(numbers, registered != null, journalIds);
+            SegmentFormat format = new SegmentFormat(identity.id(), node);
+            // the files of the journal: every one when no rows are kept, else those with their row; none of one given up whole
+            List<Long> kept = identity.replaced() ? List.of() : registered == null ? numbers : numbers.stream().filter(registered::contains).toList();
+            Recovery.Plan plan = Recovery.plan(segments, format, files, kept);
+            if (!identity.replaced()) start.pins(identity.id(), plan.ends());
+            clearSpill(dir.resolve("spill"));
             if (!Files.isDirectory(segments)) {
                 Files.createDirectories(segments);
                 JournalIo.forceDir(files, dir);
             }
-            long highest = registered == null ? 0 : unlinkUnregistered(segments, registered);
-            Recovery.Result recovered = Recovery.recover(segments, format, files, clock);
-            if (registered != null) dropUnfiled(rows, node, registered, recovered.extents().keySet());
-            SegmentFile first = create(Math.max(recovered.next(), highest + 1), node, rows, files, segments, format, clock);
-            return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered.extents(), first);
+            MasterKeySource.removeCrashedTmps(dir);
+            long highest = highest(numbers, registered);
+            unlinkOthers(segments, numbers, kept);
+            Map<Long, Extent> recovered = Recovery.apply(plan, files, clock);
+            if (registered != null) dropUnfiled(rows, node, identity.replaced() ? Set.of() : registered, recovered.keySet());
+            SegmentFile first = create(highest + 1, node, rows, files, segments, format, clock);
+            return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered, first);
         }
     }
 
-    /**
-     * Unlinks every segment file without its row (before any read of it); answers the highest number a file or a row
-     * named, the unlinked files and the rows of no file included.
-     */
-    private static long unlinkUnregistered(Path segments, Set<Long> registered) throws IOException {
+    /** The highest number a segment file or a row named (0: none). */
+    private static long highest(List<Long> numbers, Set<Long> registered) {
         long highest = 0;
-        for (long n : Recovery.numbers(segments)) {
-            highest = Math.max(highest, n);
-            if (!registered.contains(n)) {
+        for (long n : numbers) highest = Math.max(highest, n);
+        if (registered != null) for (long n : registered) highest = Math.max(highest, n);
+        return highest;
+    }
+
+    /** Unlinks every segment file of {@code numbers} that is not one of the journal's {@code kept} (before any read of its records). */
+    private static void unlinkOthers(Path segments, List<Long> numbers, List<Long> kept) throws IOException {
+        Set<Long> journal = new java.util.HashSet<>(kept);
+        for (long n : numbers) {
+            if (!journal.contains(n)) {
                 Files.delete(segments.resolve(n + ".seg"));
-                LOG.log(System.Logger.Level.WARNING, "journal segment {0} had no journal_segments row: unlinked", n);
+                LOG.log(System.Logger.Level.WARNING, "journal segment {0} had no journal_segments row of this journal: unlinked", n);
             }
         }
-        for (long n : registered) highest = Math.max(highest, n);
-        return highest;
     }
 
     /** Drops the rows whose segment has no file after recovery (none was there, or it held no record and went). */
@@ -358,66 +395,6 @@ public final class Journal implements AutoCloseable {
             held = null;
         }
         if (held == null) throw new IllegalStateException("the journal in " + dir + " is open elsewhere (its LOCK is held): refused");
-    }
-
-    /**
-     * The journal id: {@code NODE}'s, checked against the node's registered one. A first start (neither) writes {@code NODE}
-     * (tmp, force, atomic move, directory force) with the id {@code journalIds} gives, then registers it; a {@code NODE}
-     * without its row registers its id while {@code segments/} holds no segment file; with one, when rows are kept, the start
-     * is refused (a wrong or re-provisioned database must never erase a journal). A row without {@code NODE}, or one naming another journal,
-     * refuses too; a refusal comes before anything is written. A write, force or move of {@code NODE} that fails unlinks its
-     * tmp and registers nothing.
-     */
-    private static UUID identity(Path dir, String node, JournalFiles files, SegmentRows rows, boolean rowsKept, Supplier<UUID> journalIds)
-            throws IOException {
-        Path file = dir.resolve("NODE");
-        UUID found = Files.exists(file) ? identityOf(file, dir, node) : null;
-        UUID registered = rows.journalOf(node).await();
-        if (registered != null && !registered.equals(found)) {
-            throw new IllegalStateException(found == null
-                    ? "journal_nodes names journal " + registered + " for node " + node + ", but its NODE file is not in " + dir
-                            + " (a journal lost or moved): refused"
-                    : "the NODE file in " + dir + " names journal " + found + ", journal_nodes names journal " + registered + " for node " + node
-                            + " (another journal): refused");
-        }
-        if (found != null && registered == null && rowsKept) {
-            Path segments = dir.resolve("segments");
-            int filed = Files.isDirectory(segments) ? Recovery.numbers(segments).size() : 0;
-            if (filed > 0) {
-                throw new IllegalStateException("the NODE file in " + dir + " names journal " + found + ", which journal_nodes does not register for node "
-                        + node + ", and segments/ holds " + filed + " segment file(s): refused, nothing changed (a wrong or re-provisioned database? "
-                        + "start the node on the database of its journal)");
-            }
-        }
-        UUID id = found;
-        if (id == null) {
-            id = Objects.requireNonNull(journalIds.get(), "the journal id source answered null");
-            Path tmp = dir.resolve("NODE.tmp");
-            try {
-                try (FileChannel ch = files.open(tmp, Set.of(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE))) {
-                    JournalIo.writeFully(ch, ByteBuffer.wrap(new SegmentFormat(id, node).identity()));
-                    ch.force(false);
-                }
-                Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException | RuntimeException | Error e) {
-                JournalIo.unlinkAfter(tmp, e);   // no NODE and no row: the next start begins the journal again
-                throw e;
-            }
-            JournalIo.forceDir(files, dir);
-        }
-        if (registered == null) rows.register(node, id).await();
-        return id;
-    }
-
-    /** The journal id {@code file} names, once it is this node's identity file. */
-    private static UUID identityOf(Path file, Path dir, String node) throws IOException {
-        byte[] found = Files.readAllBytes(file);
-        UUID id = SegmentFormat.journalOf(found);
-        if (id == null || !Arrays.equals(found, new SegmentFormat(id, node).identity())) {
-            throw new IllegalStateException("the NODE file in " + dir + " is not the journal identity of node " + node
-                    + " (another node's, or damaged): refused");
-        }
-        return id;
     }
 
     /**
@@ -718,6 +695,7 @@ public final class Journal implements AutoCloseable {
     /** The pre-opened next segment (waited for), and the pre-open of the one after it (its number from the last End). */
     private SegmentFile moveOn() throws IOException {
         Opened o = next.join();
+        if (o.failure() instanceof ClosedBeforeOpen closed) throw closed;
         if (o.failure() != null) throw new IOException("the pre-open of the next journal segment failed", o.failure());
         held.add(o.file());
         next = preopen(afterNext);
@@ -760,7 +738,7 @@ public final class Journal implements AutoCloseable {
         lock.lock();
         try {
             if (closing) {
-                f.complete(new Opened(null, cause));
+                f.complete(new Opened(null, new ClosedBeforeOpen(cause)));
                 return;
             }
             began = outage == null;
@@ -874,7 +852,7 @@ public final class Journal implements AutoCloseable {
         } finally {
             lock.unlock();
         }
-        if (first) {
+        if (first && !(cause instanceof ClosedBeforeOpen)) {
             LOG.log(System.Logger.Level.ERROR, "journal " + config.dir() + " failed and stopped (fail-stop): no write or force is"
                     + " retried, every append fails until a restart recovers it; reads go on", cause);
         }
@@ -895,16 +873,21 @@ public final class Journal implements AutoCloseable {
      *                                  last record written and forced), or the read failed
      */
     public byte[] read(JournalRef ref) throws IOException {
+        return read(ref, null);
+    }
+
+    /**
+     * {@link #read(JournalRef)} of the body under {@code key}: a record whose header names another message id, step or part
+     * fails as {@link JournalCorruptException} (ERROR) — a misaddressed ref never answers another body's bytes.
+     */
+    public byte[] read(JournalRef ref, BlobKey key) throws IOException {
         Path file = located(ref);
         if (ref.length() > longestRecord) {
             throw new IllegalArgumentException("the record at " + ref + " is longer than any segment record (FLOTTILA_JOURNAL_RECORD_MAX "
                     + config.recordMax() + "): a large body is read with stream()");
         }
-        byte[] rec = new byte[(int) ref.length()];
-        try (FileChannel ch = files.open(file, Set.of(StandardOpenOption.READ))) {
-            JournalIo.read(ch, ref.position(), rec, rec.length);
-        }
-        RecordFormat.Header h = checked(ref, rec, rec.length);
+        byte[] rec = channels.pread(ref.segment(), file, ref.position(), (int) ref.length());
+        RecordFormat.Header h = checked(ref, rec, rec.length, key);
         SecretKey recordKey = recordKey(ref, h);
         try {
             return RecordFormat.decrypt(rec, h, recordKey);
@@ -920,9 +903,14 @@ public final class Journal implements AutoCloseable {
      * fails the stream's read as {@link JournalCorruptException}.
      */
     public InputStream stream(JournalRef ref) throws IOException {
+        return stream(ref, null);
+    }
+
+    /** {@link #stream(JournalRef)} of the body under {@code key}, its header checked against it as {@link #read(JournalRef, BlobKey)} checks it. */
+    public InputStream stream(JournalRef ref, BlobKey key) throws IOException {
         Path file = located(ref);
-        if (ref.length() <= longestRecord) return new ByteArrayInputStream(read(ref));
-        return chunks(file, ref);
+        if (ref.length() <= longestRecord) return new ByteArrayInputStream(read(ref, key));
+        return chunks(file, ref, key);
     }
 
     /** The file of {@code ref}'s segment, once it is a place a record can lie at; else an {@link IOException}. */
@@ -937,21 +925,27 @@ public final class Journal implements AutoCloseable {
     }
 
     /** The large record at {@code ref} in {@code file}, read one chunk at a time on a channel the stream closes. */
-    private InputStream chunks(Path file, JournalRef ref) throws IOException {
+    private InputStream chunks(Path file, JournalRef ref, BlobKey key) throws IOException {
         try (JournalIo.Owned ch = new JournalIo.Owned(files.open(file, Set.of(StandardOpenOption.READ)))) {
             int available = (int) Math.min(ref.length(), RecordFormat.MAX_HEADER);
             byte[] head = JournalIo.read(ch.get(), ref.position(), available);
-            RecordFormat.Header h = checked(ref, head, available);
+            RecordFormat.Header h = checked(ref, head, available, key);
             SecretKey recordKey = recordKey(ref, h);
             return LargeRecord.reader(ch.handOn(), ref, h, recordKey, head);
         }
     }
 
-    /** The header of the record at {@code ref} from its first {@code available} bytes, once its CRC32C and its sizes hold. */
-    private static RecordFormat.Header checked(JournalRef ref, byte[] b, int available) throws JournalCorruptException {
+    /**
+     * The header of the record at {@code ref} from its first {@code available} bytes, once its CRC32C and its sizes hold and it
+     * is the record of {@code key} (null: any key).
+     */
+    private static RecordFormat.Header checked(JournalRef ref, byte[] b, int available, BlobKey key) throws JournalCorruptException {
         if (!RecordFormat.crcHolds(b, available)) throw corrupt(ref, "fails its CRC32C", null);
         RecordFormat.Header h = RecordFormat.header(b, available);
         if (h == null || h.length() != ref.length()) throw corrupt(ref, "is not a v1 journal record of " + ref.length() + " bytes", null);
+        if (key != null && !key.equals(new BlobKey(h.messageId(), h.step(), h.part()))) {
+            throw corrupt(ref, "is the record of " + new BlobKey(h.messageId(), h.step(), h.part()) + ", not of " + key + " (a misaddressed ref)", null);
+        }
         return h;
     }
 
@@ -977,10 +971,7 @@ public final class Journal implements AutoCloseable {
         Extent e = extents.get(n);
         Index idx = e == null ? null : e.index;
         if (idx == null) return Optional.empty();
-        byte[] bytes;
-        try (FileChannel ch = files.open(segmentFile(n), Set.of(StandardOpenOption.READ))) {
-            bytes = JournalIo.read(ch, e.end, idx.length());
-        }
+        byte[] bytes = channels.pread(n, segmentFile(n), e.end, idx.length());
         if (JournalIo.crc(bytes, 0, bytes.length) != idx.crc()) {
             throw corrupt(new JournalRef(n, e.end, idx.length()), "(the footer index of segment " + n + ") fails its CRC32C", null);
         }
@@ -1097,7 +1088,7 @@ public final class Journal implements AutoCloseable {
          */
         public synchronized InputStream open() throws IOException {
             if (closing) throw closed();
-            return chunks(persisted ? segmentFile(segment()) : file, entry.ref());
+            return chunks(persisted ? segmentFile(segment()) : file, entry.ref(), null);
         }
 
         /**
@@ -1131,6 +1122,9 @@ public final class Journal implements AutoCloseable {
                     JournalIo.forceDir(files, segments);
                     return null;
                 });
+                // a force that succeeds after a failed one proves nothing for what was written before it (fsyncgate): a journal
+                // failed meanwhile — by another persist's force of this directory too — fails this persist, never persisted
+                if (isFailed()) throw failed();
                 extents.put(segment(), Extent.sealed(entry.ref().position() + entry.ref().length(), index));
                 persisted = true;
                 return entry.ref();
@@ -1185,7 +1179,7 @@ public final class Journal implements AutoCloseable {
         try {
             closing = true;
             if (retry != null && retry.cancel()) {   // a pending retry of a pre-open's row: the close does not wait for Postgres
-                retrying.complete(new Opened(null, new IllegalStateException("the journal closed while the row of its next segment was retried")));
+                retrying.complete(new Opened(null, new ClosedBeforeOpen(outage)));
             }
             if (current.records > 0) roll();
             work.signalAll();
@@ -1196,6 +1190,7 @@ public final class Journal implements AutoCloseable {
         }
         List<Closeable> open = new ArrayList<>();
         open.add(lockChannel);
+        open.add(channels);
         Opened o = next.join();
         if (o.file() != null) open.add(o.file().channel);
         for (SegmentFile f : held) open.add(f.channel);

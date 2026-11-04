@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * The journal's settings (CORE-3 items 1, 3 and 4); every limit is finite and range-checked, a refusal names its key.
@@ -21,10 +22,22 @@ import java.util.Objects;
  * @param recordMax      {@code FLOTTILA_JOURNAL_RECORD_MAX} (256 KiB, 4 KiB..2 147 319 755, where the longest segment record
  *                       still fits a Java array): the largest body a segment record takes
  * @param node           {@code FLOTTILA_NODE_ID}: written into every segment header and the identity file
+ * @param maxBytes       {@code FLOTTILA_JOURNAL_MAX_BYTES} (16 GiB, positive): the journal's bound; a start refuses when its
+ *                       file system's usable space and the journal's bytes together are less (CORE-3 item 11, review r2)
+ * @param readChannels   {@code FLOTTILA_JOURNAL_READ_CHANNELS} (64, 1..1024): the read channels kept open at once, one file
+ *                       descriptor each; the least recently used is closed first (CORE-3 item 8)
+ * @param acceptLoss     {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} (none): the {@code <journal id>:<digest>} a start refused with,
+ *                       which gives exactly that loss up (CORE-3 item 9); taken as given, never trimmed
  * @since 0.1
  */
 public record JournalConfig(Path dir, long segmentBytes, int segmentRecords, Duration segmentAge, long pendingBytes,
-                            Duration appendWait, long recordMax, String node) {
+                            Duration appendWait, long recordMax, String node, long maxBytes, int readChannels, Optional<String> acceptLoss) {
+
+    /** {@code FLOTTILA_JOURNAL_MAX_BYTES} by default (CORE-3 item 11). */
+    public static final long MAX_BYTES = 16L << 30;
+    /** {@code FLOTTILA_JOURNAL_READ_CHANNELS} by default, and its range. */
+    public static final int READ_CHANNELS = 64;
+    private static final int READ_CHANNELS_MAX = 1024;
 
     private static final Duration WAIT_MIN = Duration.ofMillis(100);
     private static final Duration WAIT_MAX = Duration.ofMinutes(1);
@@ -38,6 +51,7 @@ public record JournalConfig(Path dir, long segmentBytes, int segmentRecords, Dur
         Objects.requireNonNull(segmentAge, "segmentAge");
         Objects.requireNonNull(appendWait, "appendWait");
         Objects.requireNonNull(node, "node");
+        Objects.requireNonNull(acceptLoss, "acceptLoss");
         positive("FLOTTILA_JOURNAL_SEGMENT_BYTES", segmentBytes);
         positive("FLOTTILA_JOURNAL_SEGMENT_RECORDS", segmentRecords);
         if (!segmentAge.isPositive() || segmentAge.compareTo(AGE_MAX) > 0) {
@@ -55,6 +69,22 @@ public record JournalConfig(Path dir, long segmentBytes, int segmentRecords, Dur
         }
         int nodeBytes = node.getBytes(StandardCharsets.UTF_8).length;
         if (nodeBytes == 0 || nodeBytes > 255) throw refused("FLOTTILA_NODE_ID", "must be 1..255 UTF-8 bytes", node);
+        positive("FLOTTILA_JOURNAL_MAX_BYTES", maxBytes);
+        if (readChannels < 1 || readChannels > READ_CHANNELS_MAX) {
+            throw refused("FLOTTILA_JOURNAL_READ_CHANNELS", "must lie in 1.." + READ_CHANNELS_MAX, readChannels);
+        }
+    }
+
+    /** No loss accepted. */
+    public JournalConfig(Path dir, long segmentBytes, int segmentRecords, Duration segmentAge, long pendingBytes,
+                         Duration appendWait, long recordMax, String node, long maxBytes, int readChannels) {
+        this(dir, segmentBytes, segmentRecords, segmentAge, pendingBytes, appendWait, recordMax, node, maxBytes, readChannels, Optional.empty());
+    }
+
+    /** The default bound and read channels, no loss accepted. */
+    public JournalConfig(Path dir, long segmentBytes, int segmentRecords, Duration segmentAge, long pendingBytes,
+                         Duration appendWait, long recordMax, String node) {
+        this(dir, segmentBytes, segmentRecords, segmentAge, pendingBytes, appendWait, recordMax, node, MAX_BYTES, READ_CHANNELS);
     }
 
     /** The most plain bytes whose record, after the longest header, ends within {@code Integer.MAX_VALUE - 8} (a JVM's array bound). */

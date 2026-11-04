@@ -14,9 +14,12 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Where the journal's master key comes from (D-106): the key every tenant key is wrapped under ({@link JournalKeys}). One
@@ -37,6 +40,8 @@ public final class MasterKeySource {
     static final String GENERATE = "FLOTTILA_JOURNAL_KEY_GENERATE";
     /** The generated key's file in the journal directory. */
     static final String MASTER = "MASTER";
+    /** A generation's temporary file, as {@code Files.createTempFile(dir, "MASTER.", ".tmp")} names it. */
+    private static final Pattern CRASHED_TMP = Pattern.compile("MASTER\\..+\\.tmp");
 
     private static final System.Logger LOG = System.getLogger(MasterKeySource.class.getName());
     private static final int KEY_BYTES = 32;
@@ -115,13 +120,34 @@ public final class MasterKeySource {
         return key;
     }
 
+    /** Whether the key is generated ({@value #GENERATE}{@code =true}): the admin health names it in its notices (D-106). */
+    public boolean generates() {
+        return generate;
+    }
+
+    /**
+     * Removes the {@code MASTER.<n>.tmp} files a crashed generation left in {@code journalDir}: called by the journal's start
+     * under its {@code LOCK}, after this node's own load, so no generation of a start of this journal is under way.
+     */
+    static void removeCrashedTmps(Path journalDir) throws IOException {
+        List<Path> crashed;
+        try (Stream<Path> files = Files.list(journalDir)) {
+            crashed = files.filter(p -> CRASHED_TMP.matcher(p.getFileName().toString()).matches()).toList();
+        }
+        for (Path p : crashed) {
+            Files.deleteIfExists(p);
+            LOG.log(System.Logger.Level.INFO, "removed {0}, which a crashed generation of the master key left (no key of the journal)", p);
+        }
+    }
+
     /**
      * The key of {@code master} once a fresh one was published there: written into a temporary file of this load's own
      * (0600 from its creation), forced, then published without replacing — a hard link named {@code MASTER} — so of two
      * first starts at once one key wins and both answer it: a load whose link finds {@code MASTER} there takes that one. The
      * tmp is unlinked, the directory forced, and the key read back from {@code MASTER}. A failure before the link is made
      * unlinks the tmp (an unlink that fails rides on it as suppressed); a failed directory force leaves {@code MASTER},
-     * which the next start reads. A tmp a crashed start left stays (another start's may be in use): it is no key of the journal.
+     * which the next start reads. A tmp a crashed start left stays here (another start's may be in use): it is no key of the
+     * journal, and the journal's start removes it under its {@code LOCK} ({@link #removeCrashedTmps}).
      */
     private static SecretKey generated(Path dir, Path master, JournalFiles files) throws IOException {
         byte[] material = new byte[KEY_BYTES];

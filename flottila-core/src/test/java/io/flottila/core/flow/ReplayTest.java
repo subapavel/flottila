@@ -530,6 +530,9 @@ class ReplayTest {
             seen.put(ReplayRefusedException.Reason.NOT_RECORDED, refusal(() -> replay.from(ends.id(), 3, "refused-ends")));
             seen.put(ReplayRefusedException.Reason.METADATA_ONLY, refusal(() -> replay.from(meta.id(), 2, "refused-meta")));
             seen.put(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.from(removed.id(), 2, "refused-removed")));
+            retained.failExists(new io.flottila.api.BodyLostException(BlobKey.body(removed.id(), 0)));   // CORE-4c3: the store says the body was given up
+            seen.put(ReplayRefusedException.Reason.BODY_LOST, refusal(() -> replay.from(removed.id(), 2, "refused-lost")));
+            retained.failExists(null);
             assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.retry(parkedRemoved.id(), "refused-removed-retry")).reason(),
                     "a parked body taken by retention, refused while the permit is held: never BUSY");
             seen.put(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> replay.from(big.id(), 3, "refused-big")));
@@ -945,6 +948,67 @@ class ReplayTest {
             assertEquals(List.of(), stepsOf(id), id + ": no row");
             assertEquals(Optional.empty(), dlq.get(id).await(), id + ": no DLQ row");
         }
+    }
+
+    // --- CORE-4c3 (D-105, D-062's exception): a body given up by an accepted FLOTTILA_JOURNAL_ACCEPT_LOSS is refused BODY_LOST
+
+    static final String LOST = "body lost by ACCEPT_LOSS";
+
+    /**
+     * A replay whose input body the store reports lost ({@code exists} fails with the store's {@link io.flottila.api.BodyLostException}
+     * naming the key) is refused BODY_LOST — never REMOVED_BY_RETENTION, never the store's failure as is — saying "body lost by
+     * ACCEPT_LOSS" and naming the message, before anything ran: no step, no row under the given id. Witness: once the store
+     * answers again the same replay runs.
+     */
+    @Test
+    void aReplayFromALostBodyIsRefusedBodyLostBeforeAnythingRan() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope lost = recordedOver(blobs);
+        BlobKey input = BlobKey.body(lost.id(), 0);
+        Replay replay = over(blobs, reading()).replay(FlowDefinition.from(flow("sync", null)), NO_FILES);
+        List<Integer> calls = List.of(aCalls.get(), bCalls.get(), cCalls.get());
+        blobs.failExists(new io.flottila.api.BodyLostException(input));
+
+        ReplayRefusedException refused = refusal(() -> replay.from(lost.id(), 2, "refused-lost"));
+
+        assertEquals(ReplayRefusedException.Reason.BODY_LOST, refused.reason(), refused.getMessage());
+        assertTrue(refused.getMessage().contains(LOST) && refused.getMessage().contains(lost.id()), "says why and names the message: " + refused.getMessage());
+        assertEquals(calls, List.of(aCalls.get(), bCalls.get(), cCalls.get()), "no step ran");
+        assertEquals(List.of(), stepsOf("refused-lost"), "no row under the refused run's id");
+        assertEquals(ReplayRefusedException.Reason.BODY_LOST, refusal(() -> replay.from(lost.id(), 1, "refused-lost-1")).reason(),
+                "from step 1 the ingress row names the same lost key");
+
+        blobs.failExists(null);
+        assertEquals("after", replay.from(lost.id(), 2, "after").id(), "witness: with the body there the replay runs");
+    }
+
+    /**
+     * A DLQ retry of a message whose parked input the store reports lost is refused BODY_LOST saying "body lost by ACCEPT_LOSS"
+     * (D-062's exception: this DLQ row has no durable body), the parked step did not run, and the row stays as it was, for the
+     * operator. Witness: once the store answers again the same row retries and goes.
+     */
+    @Test
+    void aRetryOfALostParkedBodyIsRefusedBodyLostAndItsRowStays() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope lost = parkedOver(blobs);
+        BlobKey input = BlobKey.body(lost.id(), 0);
+        Parked row = dlq.get(lost.id()).await().orElseThrow();
+        Replay replay = over(blobs, reading()).replay(aThenC(), NO_FILES);
+        int c = cCalls.get();
+        blobs.failExists(new io.flottila.api.BodyLostException(input));
+
+        ReplayRefusedException refused = refusal(() -> replay.retry(lost.id(), "refused-lost-retry"));
+
+        assertEquals(ReplayRefusedException.Reason.BODY_LOST, refused.reason(), refused.getMessage());
+        assertTrue(refused.getMessage().contains(LOST) && refused.getMessage().contains(lost.id()), "says why and names the message: " + refused.getMessage());
+        assertEquals(Optional.of(row), dlq.get(lost.id()).await(), "the refused retry keeps its row, unchanged");
+        assertEquals(c, cCalls.get(), "the parked step did not run");
+        assertEquals(List.of(), stepsOf("refused-lost-retry"));
+        assertEquals(Optional.empty(), dlq.get("refused-lost-retry").await(), "no DLQ row under the refused run's id");
+
+        blobs.failExists(null);
+        assertEquals("yes", replay.retry(lost.id(), "lost-retry").header("sent").orElseThrow(), "witness: with the body there the row retries");
+        assertEquals(Optional.empty(), dlq.get(lost.id()).await(), "witness: and goes");
     }
 
     /**

@@ -52,7 +52,9 @@ import java.util.regex.Pattern;
  *                {@code FLOTTILA_JOURNAL_SEGMENT_BYTES} (64 MiB), {@code FLOTTILA_JOURNAL_SEGMENT_RECORDS} (65 536, at most
  *                2^31 - 1), {@code FLOTTILA_JOURNAL_SEGMENT_AGE} (PT1S), {@code FLOTTILA_JOURNAL_PENDING_BYTES} (16 MiB),
  *                {@code FLOTTILA_JOURNAL_APPEND_WAIT} (PT5S), {@code FLOTTILA_JOURNAL_RECORD_MAX} (256 KiB or
- *                {@code FLOTTILA_BLOB_MEMORY_TIER} when that is smaller; at most the tier), each range-checked as {@link JournalConfig} says; the node id is the journal's
+ *                {@code FLOTTILA_BLOB_MEMORY_TIER} when that is smaller; at most the tier), {@code FLOTTILA_JOURNAL_MAX_BYTES} (16 GiB),
+ *                {@code FLOTTILA_JOURNAL_READ_CHANNELS} (64, 1..1024), {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} (none, taken as given),
+ *                each range-checked as {@link JournalConfig} says; the node id is the journal's
  * @param journalKey the journal's master key source (D-106): {@code FLOTTILA_JOURNAL_KEY_FILE}, {@code FLOTTILA_JOURNAL_KEY} or
  *                   {@code FLOTTILA_JOURNAL_KEY_GENERATE}; a node without one is refused at start, not here
  * @since 0.1
@@ -345,7 +347,10 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 duration(env, "FLOTTILA_JOURNAL_SEGMENT_AGE", Duration.ofSeconds(1)),
                 number(env, "FLOTTILA_JOURNAL_PENDING_BYTES", 16 * MIB, Long.MIN_VALUE, Long.MAX_VALUE),
                 duration(env, "FLOTTILA_JOURNAL_APPEND_WAIT", Duration.ofSeconds(5)),
-                number(env, "FLOTTILA_JOURNAL_RECORD_MAX", Math.min(RECORD_MAX_DEFAULT, memoryTier), Long.MIN_VALUE, Long.MAX_VALUE), nodeId);
+                number(env, "FLOTTILA_JOURNAL_RECORD_MAX", Math.min(RECORD_MAX_DEFAULT, memoryTier), Long.MIN_VALUE, Long.MAX_VALUE), nodeId,
+                number(env, "FLOTTILA_JOURNAL_MAX_BYTES", JournalConfig.MAX_BYTES, Long.MIN_VALUE, Long.MAX_VALUE),
+                (int) number(env, "FLOTTILA_JOURNAL_READ_CHANNELS", JournalConfig.READ_CHANNELS, Integer.MIN_VALUE, Integer.MAX_VALUE),
+                Optional.ofNullable(env.get("FLOTTILA_JOURNAL_ACCEPT_LOSS")));
     }
 
     /** {@code key}'s ISO-8601 duration, {@code fallback} when the key is absent; its range is the caller's to check. */
