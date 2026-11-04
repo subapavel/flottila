@@ -153,7 +153,7 @@ class PgBodiesIT {
 
     /** A store over {@code spool} with a fresh spool key, a memory tier of {@code memoryTier} bytes and the Postgres tier over {@code p}. */
     static TieredBlobStore store(Path spool, long memoryTier, Pool p) {
-        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, memoryTier, 1L << 20, spool, TieredBlobStoreTest.key(), null, false), HASHER,
+        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, memoryTier, 1L << 20, spool, TieredBlobStoreTest.key()), HASHER,
                 new PgBodies(p, BOUND));
     }
 

@@ -1,12 +1,18 @@
 package io.flottila.runtime.journal;
 
+import io.flottila.api.BlobKey;
+import io.flottila.api.BodyTooLargeException;
+import io.flottila.api.Hash;
+import io.flottila.api.Hasher;
 import io.flottila.api.Timer;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
 import javax.crypto.SecretKey;
+import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -22,6 +28,7 @@ import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntFunction;
+import java.util.stream.Stream;
 
 /**
  * The body journal of one node (CORE-3 items 1–3, 8, 9 file part; D-105): segment files {@code segments/<n>.seg} of
@@ -65,6 +73,15 @@ import java.util.function.IntFunction;
  *
  * <p><b>Read.</b> A record is read by its ref with a pread on a channel of its own, checked by CRC32C (a failure is
  * {@link JournalCorruptException} and an ERROR, never "not found"), then decrypted under its tenant key.
+ *
+ * <p><b>Large bodies</b> (CORE-3 item 4). A body above {@code FLOTTILA_JOURNAL_RECORD_MAX} is {@link #spill spilled}: written
+ * from its first byte, on the caller's thread, as a one-record segment of its own under {@code spill/} (a large record,
+ * {@link RecordFormat}), hashed once while it streams. Its number comes from the one sequence the writer's segments take
+ * theirs from, so it never names a segment the writer has or will have. It reads back from the spill any number of times;
+ * {@link Spill#persist() persist} writes its footer and trailer (sealed ms on the injected clock), forces it, inserts its
+ * {@link SegmentRows segment row}, moves it into {@code segments/} (the same inode: no byte is copied) and forces that
+ * directory; {@link Spill#abandon() abandon} unlinks it. A start clears {@code spill/}. A persisted large segment is a
+ * sealed segment like any other; {@link #stream(JournalRef)} reads it one chunk at a time.
  *
  * @since 0.1
  */
@@ -108,8 +125,8 @@ public final class Journal implements AutoCloseable {
     /** A record reserved: its index entry (with its ref), its bytes and the promise of its force. */
     private record Rec(JournalIndexEntry entry, ByteBuffer bytes, Promise<Void> promise) implements Item { }
 
-    /** Segment {@code n} takes no more records. */
-    private record End(long n) implements Item { }
+    /** Segment {@code n} takes no more records; the segment after the writer's next one is {@code following}. */
+    private record End(long n, long following) implements Item { }
 
     /** The reservation side of the segment taking records. Guarded by {@link #lock}. */
     private static final class Open {
@@ -160,13 +177,20 @@ public final class Journal implements AutoCloseable {
     /** A pre-open's outcome: the segment file, or why it could not be made. */
     private record Opened(SegmentFile file, Throwable failure) { }
 
+    /** The rows of a journal without Postgres (CORE-4a's tests): every insert succeeds at once. */
+    private static final SegmentRows NO_ROWS = (node, segment) -> Future.succeededFuture();
+
     private final JournalConfig config;
     private final Clock clock;
     private final Timer timer;
     private final IntFunction<SecretKey> keys;
     private final JournalFiles files;
+    private final SegmentRows rows;
     private final SegmentFormat format;
     private final Path segments;
+    private final Path spills;
+    /** The longest record a segment takes: a longer ref is a large body's, read by {@link #stream}. */
+    private final long longestRecord;
     private final FileChannel lockChannel;
     private final SecureRandom random = new SecureRandom();
     private final Map<Long, Extent> extents = new ConcurrentHashMap<>();
@@ -183,46 +207,63 @@ public final class Journal implements AutoCloseable {
     private volatile boolean closing;
     private boolean writerDone;
     private int sealing;
+    private long nextNumber;   // the next segment number nothing has taken
+    private long upcoming;     // the number the next roll gives the writer, taken already
 
     // writer-owned (handed over by Thread.start, read by close after the writer is done)
     private SegmentFile writing;
     private CompletableFuture<Opened> next;
+    private long afterNext;   // the number of the segment after the pre-opened one, from the last End
     private final List<SegmentFile> held = new ArrayList<>();
 
-    private Journal(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files,
-                    SegmentFormat format, Path segments, FileChannel lockChannel, Map<Long, Extent> recovered, SegmentFile first) {
+    private Journal(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files, SegmentRows rows,
+                    SegmentFormat format, Path dir, FileChannel lockChannel, Map<Long, Extent> recovered, SegmentFile first) {
         this.config = config;
         this.clock = clock;
         this.timer = timer;
         this.keys = keys;
         this.files = files;
+        this.rows = rows;
         this.format = format;
-        this.segments = segments;
+        this.segments = dir.resolve("segments");
+        this.spills = dir.resolve("spill");
+        this.longestRecord = RecordFormat.MAX_HEADER + config.recordMax() + (long) RecordFormat.chunks(config.recordMax()) * ChunkedAead.TAG_BYTES;
         this.lockChannel = lockChannel;
         extents.putAll(recovered);
         extents.put(first.n, first.extent);
         current = new Open(first.n, format.headerLength());
+        upcoming = first.n + 1;
+        nextNumber = first.n + 2;
         writing = first;
         held.add(first);
-        next = preopen(first.n + 1);
+        next = preopen(upcoming);
         Thread.ofVirtual().name("journal-writer-" + config.node()).start(this::runWriter);
+    }
+
+    /** A journal without segment rows (no Postgres): {@link #open(JournalConfig, Clock, Timer, IntFunction, JournalFiles, SegmentRows)}. */
+    public static Journal open(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files)
+            throws IOException {
+        return open(config, clock, timer, keys, files, NO_ROWS);
     }
 
     /**
      * Opens the journal in {@code config.dir()}: takes the {@code LOCK} (held elsewhere → refused), reads or writes the
-     * {@code NODE} identity, recovers every segment (no tenant key is asked for) and starts a new segment after the
-     * highest number seen.
+     * {@code NODE} identity, clears {@code spill/}, recovers every segment (no tenant key is asked for) and starts a new
+     * segment after the highest number seen.
      *
      * @param keys the tenant key of a key id, or null when there is none
+     * @param rows where a large body's persist inserts its segment row
      */
-    public static Journal open(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files)
-            throws IOException {
+    public static Journal open(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files,
+                               SegmentRows rows) throws IOException {
+        Objects.requireNonNull(rows, "rows");
         Path dir = config.dir();
         Files.createDirectories(dir);
         try (JournalIo.Owned lockChannel = new JournalIo.Owned(files.open(dir.resolve("LOCK"),
                 Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE)))) {
             takeLock(lockChannel.get(), dir);
             SegmentFormat format = new SegmentFormat(identity(dir, config.node(), files), config.node());
+            clearSpill(dir.resolve("spill"));
             Path segments = dir.resolve("segments");
             if (!Files.isDirectory(segments)) {
                 Files.createDirectories(segments);
@@ -230,7 +271,15 @@ public final class Journal implements AutoCloseable {
             }
             Recovery.Result recovered = Recovery.recover(segments, format, files, clock);
             SegmentFile first = create(recovered.next(), files, segments, format, clock);
-            return new Journal(config, clock, timer, keys, files, format, segments, lockChannel.handOn(), recovered.extents(), first);
+            return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered.extents(), first);
+        }
+    }
+
+    /** Unlinks whatever an earlier run left under {@code spill/}: a spill never persisted nor abandoned is no one's. */
+    private static void clearSpill(Path spill) throws IOException {
+        Files.createDirectories(spill);
+        try (Stream<Path> left = Files.list(spill)) {
+            for (Iterator<Path> it = left.iterator(); it.hasNext(); ) Files.delete(it.next());
         }
     }
 
@@ -322,7 +371,7 @@ public final class Journal implements AutoCloseable {
     private ByteBuffer encode(JournalRecord record) {
         if (record.body().length > config.recordMax()) {
             throw new IllegalArgumentException("a body of " + record.body().length + " bytes is above FLOTTILA_JOURNAL_RECORD_MAX "
-                    + config.recordMax() + " (a large body is a segment of its own: CORE-4b)");
+                    + config.recordMax() + " (a large body is spilled as a segment of its own: spill())");
         }
         SecretKey key = keys.apply(record.tenantKeyId());
         if (key == null) throw new IllegalArgumentException("no tenant key " + record.tenantKeyId());
@@ -356,11 +405,26 @@ public final class Journal implements AutoCloseable {
         return new Appended(ref, promise.future());
     }
 
-    /** Ends the segment taking records; the next one takes the following record. Under the lock. */
+    /**
+     * Ends the segment taking records; the next one, whose number was taken already, takes the following record, and the
+     * number after it is taken now (the writer pre-opens that one once it moves on). Under the lock.
+     */
     private void roll() {
-        queue.add(new End(current.n));
-        current = new Open(current.n + 1, format.headerLength());
+        long following = nextNumber++;
+        queue.add(new End(current.n, following));
+        current = new Open(upcoming, format.headerLength());
+        upcoming = following;
         work.signal();
+    }
+
+    /** A segment number of the journal's one sequence, for a large body's segment. */
+    private long number() {
+        lock.lock();
+        try {
+            return nextNumber++;
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** The age timer of {@code seg}: rolls it if it still takes records (a roll by bytes or count may have come first). */
@@ -444,7 +508,7 @@ public final class Journal implements AutoCloseable {
             long bytes = 0;
             for (Item item; (item = queue.peek()) != null; ) {
                 if (item instanceof Rec r) {
-                    int length = r.entry().ref().length();
+                    long length = r.entry().ref().length();
                     if (records > 0 && (records == ROUND_RECORDS || bytes + length > ROUND_BYTES)) break;
                     records++;
                     bytes += length;
@@ -469,6 +533,7 @@ public final class Journal implements AutoCloseable {
             } else {
                 ended.add(writing);
                 writing = null;
+                afterNext = ((End) item).following();
             }
         }
         for (SegmentFile f : wrote) f.write();
@@ -476,12 +541,12 @@ public final class Journal implements AutoCloseable {
         for (SegmentFile f : ended) seal(f);
     }
 
-    /** The pre-opened next segment (waited for), and the pre-open of the one after it. */
+    /** The pre-opened next segment (waited for), and the pre-open of the one after it (its number from the last End). */
     private SegmentFile moveOn() throws IOException {
         Opened o = next.join();
         if (o.failure() != null) throw new IOException("the pre-open of the next journal segment failed", o.failure());
         held.add(o.file());
-        next = preopen(o.file().n + 1);
+        next = preopen(afterNext);
         return o.file();
     }
 
@@ -593,40 +658,85 @@ public final class Journal implements AutoCloseable {
     // ---------------------------------------------------------------------------------------------------- read
 
     /**
-     * The plaintext of the record at {@code ref}: read with a pread, checked by CRC32C, decrypted under its tenant key.
+     * The plaintext of the record at {@code ref}: read with a pread, checked by CRC32C, decrypted under its tenant key. A
+     * record no longer than a segment record can be is read whole, a large one too.
      *
-     * @throws JournalCorruptException the bytes fail their CRC32C, are not a v1 record of that length, or fail
-     *                                 authentication (logged at ERROR)
-     * @throws JournalKeyException     the record's tenant key is not there or cannot be used
-     * @throws IOException             no record can lie at {@code ref} (a segment this journal does not hold, or past the
-     *                                 last record written and forced), or the read failed
+     * @throws IllegalArgumentException {@code ref} is longer than any segment record: a large body, read with {@link #stream}
+     * @throws JournalCorruptException  the bytes fail their CRC32C, are not a v1 record of that length, or fail
+     *                                  authentication (logged at ERROR)
+     * @throws JournalKeyException      the record's tenant key is not there or cannot be used
+     * @throws IOException              no record can lie at {@code ref} (a segment this journal does not hold, or past the
+     *                                  last record written and forced), or the read failed
      */
     public byte[] read(JournalRef ref) throws IOException {
+        Path file = located(ref);
+        if (ref.length() > longestRecord) {
+            throw new IllegalArgumentException("the record at " + ref + " is longer than any segment record (FLOTTILA_JOURNAL_RECORD_MAX "
+                    + config.recordMax() + "): a large body is read with stream()");
+        }
+        byte[] rec = new byte[(int) ref.length()];
+        try (FileChannel ch = files.open(file, Set.of(StandardOpenOption.READ))) {
+            JournalIo.read(ch, ref.position(), rec, rec.length);
+        }
+        RecordFormat.Header h = checked(ref, rec, rec.length);
+        SecretKey recordKey = recordKey(ref, h);
+        try {
+            return RecordFormat.decrypt(rec, h, recordKey);
+        } catch (GeneralSecurityException x) {
+            throw corrupt(ref, "fails authentication", x);
+        }
+    }
+
+    /**
+     * The plaintext of the record at {@code ref} as a stream of its own: a large body's one chunk at a time (its header
+     * checked by CRC32C, each chunk authenticated by its tag before a byte of it is given), any other record as
+     * {@link #read} reads it. The checks and failures are {@link #read}'s; a large chunk cut off, out of place or edited
+     * fails the stream's read as {@link JournalCorruptException}.
+     */
+    public InputStream stream(JournalRef ref) throws IOException {
+        Path file = located(ref);
+        if (ref.length() <= longestRecord) return new ByteArrayInputStream(read(ref));
+        return chunks(file, ref);
+    }
+
+    /** The file of {@code ref}'s segment, once it is a place a record can lie at; else an {@link IOException}. */
+    private Path located(JournalRef ref) throws IOException {
         if (closing) throw closed();
         Extent e = extents.get(ref.segment());
         long end = e == null ? format.headerLength() : e.end;
         if (ref.length() < RecordFormat.MIN_LENGTH || ref.position() < format.headerLength() || ref.position() > end - ref.length()) {
             throw new IOException("no journal record can lie at " + ref + ": segment " + ref.segment() + " holds records up to " + end);
         }
-        byte[] rec = new byte[ref.length()];
-        try (FileChannel ch = files.open(segmentFile(ref.segment()), Set.of(StandardOpenOption.READ))) {
-            JournalIo.read(ch, ref.position(), rec, rec.length);
+        return segmentFile(ref.segment());
+    }
+
+    /** The large record at {@code ref} in {@code file}, read one chunk at a time on a channel the stream closes. */
+    private InputStream chunks(Path file, JournalRef ref) throws IOException {
+        try (JournalIo.Owned ch = new JournalIo.Owned(files.open(file, Set.of(StandardOpenOption.READ)))) {
+            int available = (int) Math.min(ref.length(), RecordFormat.MAX_HEADER);
+            byte[] head = JournalIo.read(ch.get(), ref.position(), available);
+            RecordFormat.Header h = checked(ref, head, available);
+            SecretKey recordKey = recordKey(ref, h);
+            return LargeRecord.reader(ch.handOn(), ref, h, recordKey, head);
         }
-        if (!RecordFormat.crcHolds(rec)) throw corrupt(ref, "fails its CRC32C", null);
-        RecordFormat.Header h = RecordFormat.header(rec, rec.length, rec.length);
-        if (h == null) throw corrupt(ref, "is not a v1 journal record of " + rec.length + " bytes", null);
+    }
+
+    /** The header of the record at {@code ref} from its first {@code available} bytes, once its CRC32C and its sizes hold. */
+    private static RecordFormat.Header checked(JournalRef ref, byte[] b, int available) throws JournalCorruptException {
+        if (!RecordFormat.crcHolds(b, available)) throw corrupt(ref, "fails its CRC32C", null);
+        RecordFormat.Header h = RecordFormat.header(b, available);
+        if (h == null || h.length() != ref.length()) throw corrupt(ref, "is not a v1 journal record of " + ref.length() + " bytes", null);
+        return h;
+    }
+
+    /** The record's own key under its tenant key. */
+    private SecretKey recordKey(JournalRef ref, RecordFormat.Header h) throws JournalKeyException {
         SecretKey key = keys.apply(h.keyId());
         if (key == null) throw new JournalKeyException("the tenant key " + h.keyId() + " of the journal record at " + ref + " is not there", null);
-        SecretKey recordKey;
         try {
-            recordKey = RecordFormat.recordKey(key, h.salt(), h.keyId());
+            return RecordFormat.recordKey(key, h.salt(), h.keyId());
         } catch (GeneralSecurityException x) {
             throw new JournalKeyException("the tenant key " + h.keyId() + " of the journal record at " + ref + " cannot be used", x);
-        }
-        try {
-            return RecordFormat.decrypt(rec, h, recordKey);
-        } catch (GeneralSecurityException x) {
-            throw corrupt(ref, "fails authentication", x);
         }
     }
 
@@ -655,10 +765,163 @@ public final class Journal implements AutoCloseable {
         return segments.resolve(n + ".seg");
     }
 
-    private static JournalCorruptException corrupt(JournalRef ref, String what, Throwable cause) {
+    static JournalCorruptException corrupt(JournalRef ref, String what, Throwable cause) {
         JournalCorruptException e = new JournalCorruptException("the journal record at " + ref + " " + what, cause);
         LOG.log(System.Logger.Level.ERROR, e.getMessage(), e);
         return e;
+    }
+
+    // ---------------------------------------------------------------------------------------------------- large bodies
+
+    /**
+     * Spills {@code body} under {@code key}: reads it to its end on this thread and writes it, from its first byte, as the
+     * one large record of a segment of its own under {@code spill/}, encrypted under the tenant key {@code tenantKeyId} and
+     * hashed by {@code hasher} once while it streams. Nothing is forced, nothing is in {@code segments/} and no segment row
+     * exists until {@link Spill#persist()}. Any failure leaves no file behind.
+     *
+     * @param maxSize the largest body taken, in {@code 0..(2^31 - 1) MiB} (the chunk counter's range)
+     * @throws IllegalArgumentException {@code maxSize} out of range (before a byte is read), a name above 65 535 bytes, or a
+     *                                  tenant key that is not there or cannot encrypt
+     * @throws BodyTooLargeException    the body goes past {@code maxSize}; it was read no further than one chunk beyond it
+     * @throws IllegalStateException    the journal is closed
+     * @throws IOException              the body could not be read, or the spill not written
+     */
+    public Spill spill(BlobKey key, int tenantKeyId, InputStream body, long maxSize, Hasher hasher) throws IOException {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(body, "body");
+        Objects.requireNonNull(hasher, "hasher");
+        if (maxSize < 0 || maxSize > RecordFormat.MAX_PLAIN) {
+            throw new IllegalArgumentException("maxSize must lie in 0.." + RecordFormat.MAX_PLAIN + ", was " + maxSize);
+        }
+        if (closing) throw closed();
+        SecretKey tenantKey = keys.apply(tenantKeyId);
+        if (tenantKey == null) throw new IllegalArgumentException("no tenant key " + tenantKeyId);
+        byte[] salt = new byte[ChunkedAead.SALT_BYTES];
+        random.nextBytes(salt);
+        long n = number();
+        Path file = spills.resolve(n + ".seg");
+        Throwable failure = null;   // set by every failure: the finally then unlinks what was written
+        try (FileChannel ch = files.open(file, Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
+            JournalIo.writeFully(ch, format.header(n, clock.millis()));
+            LargeRecord.Written w = LargeRecord.write(ch, key, tenantKeyId, tenantKey, salt, body, maxSize, hasher);
+            JournalRef ref = new JournalRef(n, format.headerLength(), w.length());
+            return new Spill(file, new JournalIndexEntry(key.messageId(), key.step(), key.part(), ref), w.size(), w.hash());
+        } catch (GeneralSecurityException e) {
+            failure = new IllegalArgumentException("tenant key " + tenantKeyId + " cannot encrypt a large body", e);
+            throw (IllegalArgumentException) failure;
+        } catch (IOException | RuntimeException | Error e) {
+            failure = e;
+            throw e;
+        } finally {
+            if (failure != null) unlinkAfter(file, failure);
+        }
+    }
+
+    /** Unlinks {@code file} after {@code failure}; an unlink that fails rides on it as suppressed. */
+    private static void unlinkAfter(Path file, Throwable failure) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException x) {
+            failure.addSuppressed(x);
+        }
+    }
+
+    /**
+     * A large body spilled (CORE-3 item 4): a one-record segment of its own under {@code spill/}, until it is persisted into
+     * {@code segments/} or abandoned. Its ref is known from the start.
+     *
+     * @since 0.1
+     */
+    public final class Spill {
+        private final Path file;
+        private final JournalIndexEntry entry;
+        private final long size;
+        private final Hash hash;
+        // guarded by this
+        private Index index;          // the footer, once written and forced
+        private Throwable broken;     // a write or force of the footer failed: it is never retried
+        private boolean persisted;
+        private boolean abandoned;
+
+        private Spill(Path file, JournalIndexEntry entry, long size, Hash hash) {
+            this.file = file;
+            this.entry = entry;
+            this.size = size;
+            this.hash = hash;
+        }
+
+        /** The segment number: from the journal's one sequence, the writer's segments never take it. */
+        public long segment() { return entry.ref().segment(); }
+
+        /** The body's size in bytes. */
+        public long size() { return size; }
+
+        /** The body's hash, computed once while it streamed in. */
+        public Hash hash() { return hash; }
+
+        /**
+         * A fresh stream of the body, from its first byte, read from where the segment lies (the spill, or {@code segments/}
+         * once persisted); each chunk is authenticated before a byte of it is given.
+         *
+         * @throws IllegalStateException the journal is closed
+         * @throws IOException           the file is not there (abandoned), or it is not what was spilled
+         */
+        public synchronized InputStream open() throws IOException {
+            if (closing) throw closed();
+            return chunks(persisted ? segmentFile(segment()) : file, entry.ref());
+        }
+
+        /**
+         * Makes the segment durable and part of the journal: writes its footer index and trailer (sealed ms on the injected
+         * clock) and forces it, once; inserts its segment row; moves the file into {@code segments/}; forces that directory.
+         * A failed insert or move leaves no file in {@code segments/} and the spill in place: persist again (the footer is not
+         * written twice, the row is inserted again) or {@link #abandon()}. A footer whose write or force failed is never
+         * written or forced again: every later persist fails, the spill can only be abandoned. A persisted spill not abandoned
+         * since answers its ref again.
+         *
+         * @return the ref of its record
+         * @throws IllegalStateException the journal is closed, the spill was abandoned, or its footer failed before
+         */
+        public synchronized JournalRef persist() throws IOException {
+            if (closing) throw closed();
+            if (abandoned) throw new IllegalStateException("the spill of segment " + segment() + " was abandoned: it is never persisted");
+            if (broken != null) {
+                throw new IllegalStateException("the footer of the spill of segment " + segment() + " failed (" + broken
+                        + "): it is never written or forced again; abandon the spill", broken);
+            }
+            if (persisted) return entry.ref();
+            if (index == null) index = seal();
+            rows.insert(config.node(), segment()).await();
+            Files.move(file, segmentFile(segment()), StandardCopyOption.ATOMIC_MOVE);
+            JournalIo.forceDir(files, segments);
+            extents.put(segment(), Extent.sealed(entry.ref().position() + entry.ref().length(), index));
+            persisted = true;
+            return entry.ref();
+        }
+
+        /** Writes the footer index and trailer after the record and forces the file; a failure breaks the spill for good. */
+        private Index seal() throws IOException {
+            long end = entry.ref().position() + entry.ref().length();
+            SegmentFormat.Footer footer = SegmentFormat.footer(List.of(entry), end, clock.millis());
+            try (FileChannel ch = files.open(file, Set.of(StandardOpenOption.WRITE))) {
+                ch.position(end);
+                JournalIo.writeFully(ch, footer.bytes());
+                ch.force(false);
+            } catch (IOException | RuntimeException | Error e) {
+                broken = e;
+                throw e;
+            }
+            return new Index(footer.indexLength(), footer.indexCrc(), 1);
+        }
+
+        /**
+         * Gives the spill up: unlinks its file under {@code spill/} (nothing once it was moved into {@code segments/}); it is
+         * never persisted afterwards.
+         */
+        public synchronized void abandon() throws IOException {
+            abandoned = true;
+            Files.deleteIfExists(file);
+        }
     }
 
     // ---------------------------------------------------------------------------------------------------- close

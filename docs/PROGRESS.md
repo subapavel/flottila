@@ -1,4 +1,15 @@
 
+## 2026-11-04 — CORE-4b large bodies in journal format; S3 blob tier removed (D-105 amended) — done, review PASS — Deviation: format
+Test first: LargeBodyTest (12), LargeBodyHeapTest (-Xmx48m), JournalStartTest.spillIsClearedAtStart (test-author; red =
+test-compile exit 1, 70 errors, agent/work/CORE-4b-red.log); S3TierIT/S3HeapIT and S3 cases deleted with the tier.
+Change: journal Spill (streamed 1 MiB AEAD chunks, hashed once, persist = trailer → force → SegmentRows.insert → ATOMIC_MOVE →
+force dir), Journal.stream, JournalRef.length long, LargeRecord, SegmentRows; blob S3 tier, S3Sink, Sink, preferS3 gone;
+runtime pom `it` profile (empty heap-bounded-it) removed. Format deviation: index length u64, kind-2 record (CORE-3 "Added in 4b").
+Checks: runtime verify exit 0; reactor verify -Pit exit 0 (2988 tests); coverage no decrease (runtime 99.5/99.6); 64+18 hand mutants.
+Review: FAIL r1 (int cut of a long ref length; no outside decrypt of kind 2; format changes unrecorded), PASS r2.
+D-054 data: class C (scout ×1, test-author ×1 resumed ×1, implementer ×1 resumed ×2, reviewer ×1 resumed ×2); rounds 2.
+Next: CORE-4c [C] packet (store over Postgres V12, D-106 key, the 4b/4a carries in CORE-3 "Added in" sections).
+
 ## 2026-11-04 — CORE-4a body journal core, no Postgres (D-105) — done, review PASS
 Test first: JournalWriterTest, JournalSegmentTest, JournalRecoveryTest, JournalCipherTest, JournalRecordPropertiesTest,
 JournalConfigTest, JournalKill9IT (test-author; red = test-compile exit 1, agent/work/CORE-4a-red.log). Container restart mid-task.

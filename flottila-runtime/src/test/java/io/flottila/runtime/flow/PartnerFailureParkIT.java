@@ -261,7 +261,7 @@ class PartnerFailureParkIT {
         Node(URI partnerUri) {
             Pool pool = PgBuilder.pool().connectingTo(connectOptions()).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
             pools.add(pool);
-            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 1024, 16 * MIB, spool.resolve("node"), DeliveryModesIT.freshKey(), null, false),
+            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 1024, 16 * MIB, spool.resolve("node"), DeliveryModesIT.freshKey()),
                     Hasher.sha256(), new PgBodies(pool, 4096));
             PgMessageStore messages = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
             messageStores.add(messages);

@@ -47,20 +47,19 @@ class TieredBlobStoreTest {
     }
 
     static TieredBlobStore store(Path spool, long memoryTier, long budget) {
-        return new TieredBlobStore(new TieredBlobStore.Config(BlobStoreContract.TREE_LIMIT, memoryTier, budget, spool, key(), null, false), HASHER);
+        return new TieredBlobStore(new TieredBlobStore.Config(BlobStoreContract.TREE_LIMIT, memoryTier, budget, spool, key()), HASHER);
     }
 
     @Test
     void limitsAreFiniteAndPositiveAndTheSpoolDirIsRequired(@TempDir Path dir) {
         SecretKey k = key();
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(0, 1024, 4096, dir, k, null, false));
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, -1, 4096, dir, k, null, false));
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, 1024, 0, dir, k, null, false));
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, 8192, 4096, dir, k, null, false), "a memory tier above the budget could never be used");
-        assertThrows(NullPointerException.class, () -> new TieredBlobStore.Config(4096, 1024, 4096, null, k, null, false));
-        assertThrows(NullPointerException.class, () -> new TieredBlobStore.Config(4096, 1024, 4096, dir, null, null, false));
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, 1024, 4096, dir, k, null, true), "S3 preferred but not configured");
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, 1L << 31, 1L << 32, dir, k, null, false), "one in-memory body is one buffer: the tier cannot exceed an int");
+        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(0, 1024, 4096, dir, k));
+        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, -1, 4096, dir, k));
+        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, 1024, 0, dir, k));
+        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, 8192, 4096, dir, k), "a memory tier above the budget could never be used");
+        assertThrows(NullPointerException.class, () -> new TieredBlobStore.Config(4096, 1024, 4096, null, k));
+        assertThrows(NullPointerException.class, () -> new TieredBlobStore.Config(4096, 1024, 4096, dir, null));
+        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore.Config(4096, 1L << 31, 1L << 32, dir, k), "one in-memory body is one buffer: the tier cannot exceed an int");
     }
 
     @Test

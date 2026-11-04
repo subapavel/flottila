@@ -7,8 +7,11 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** One encrypted spool file, written to a temporary name and moved into place on finish. */
-final class SpoolSink implements Sink {
+/**
+ * Where spilled bytes go, written from one virtual thread in order: one encrypted spool file, written to a temporary name
+ * and moved into place on {@link #finish()}; {@link #abort()} leaves nothing behind.
+ */
+final class SpoolSink {
 
     private final Path target;
     private final Path temp;
@@ -21,14 +24,14 @@ final class SpoolSink implements Sink {
         this.out = cipher.encrypting(temp);
     }
 
-    @Override public void write(Buffer chunk) throws IOException { out.write(chunk.getBytes()); }
+    void write(Buffer chunk) throws IOException { out.write(chunk.getBytes()); }
 
-    @Override public void finish() throws IOException {
+    void finish() throws IOException {
         out.close();
         Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
     }
 
-    @Override public void abort() {
+    void abort() {
         try { out.close(); } catch (IOException ignored) { /* the file is deleted next */ }
         try { Files.deleteIfExists(temp); } catch (IOException ignored) { /* best effort: a .part file is never read */ }
     }

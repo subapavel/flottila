@@ -65,7 +65,9 @@ class JournalConfigTest {
     @Test
     void recordMaxIsTakenFrom4KiBToItsU32Length() {
         accepted(s -> s.recordMax(4096));
-        accepted(s -> s.recordMax(Integer.MAX_VALUE).segmentBytes(Integer.MAX_VALUE + 1L).pendingBytes(Integer.MAX_VALUE + 1L));
+        // CORE-4b review r1: the bound is where the longest record still fits a Java array (LargeBodyEdgeTest works it out)
+        accepted(s -> s.recordMax(2_147_319_755L).segmentBytes(Integer.MAX_VALUE + 1L).pendingBytes(Integer.MAX_VALUE + 1L));
+        refused("FLOTTILA_JOURNAL_RECORD_MAX", s -> s.recordMax(2_147_319_756L).segmentBytes(Integer.MAX_VALUE + 1L).pendingBytes(Integer.MAX_VALUE + 1L));
         refused("FLOTTILA_JOURNAL_RECORD_MAX", s -> s.recordMax(4095));
         refused("FLOTTILA_JOURNAL_RECORD_MAX", s -> s.recordMax(Integer.MAX_VALUE + 1L).segmentBytes(Integer.MAX_VALUE + 1L).pendingBytes(Integer.MAX_VALUE + 1L));
     }

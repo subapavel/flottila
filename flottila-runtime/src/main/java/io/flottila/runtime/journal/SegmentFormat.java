@@ -12,9 +12,10 @@ import java.util.UUID;
  * {@code journal id (UUID)} · {@code node id (u16 length, UTF-8)} · {@code n u64} · {@code created ms u64} ·
  * {@code crc32c u32} (over the header's other bytes); then records; at seal a footer index of one entry per record,
  * {@code message id (u16 length)} · {@code step u32} · {@code part (u16 length)} · {@code position u64} ·
- * {@code length u32}, and a {@value #TRAILER}-byte trailer: {@code index position u64} · {@code count u32} ·
- * {@code sealed ms u64} · {@code index crc32c u32} · {@code crc32c u32} (over the trailer's first 24 bytes) ·
- * {@code magic FJSE}. Neither CRC covers the records: each record carries its own.
+ * {@code length u64} (a large record, CORE-3 item 4, may be longer than a u32 says), and a {@value #TRAILER}-byte
+ * trailer: {@code index position u64} · {@code count u32} · {@code sealed ms u64} · {@code index crc32c u32} ·
+ * {@code crc32c u32} (over the trailer's first 24 bytes) · {@code magic FJSE}. Neither CRC covers the records: each
+ * record carries its own.
  *
  * <p>The identity file {@code NODE}: {@code magic FJN1} · {@code version u8} · {@code journal id} · {@code node id
  * (u16 length)} · {@code crc32c u32}.
@@ -92,7 +93,7 @@ final class SegmentFormat {
             byte[] part = e.part().getBytes(StandardCharsets.UTF_8);
             names.add(id);
             names.add(part);
-            length += 2 + id.length + 4 + 2 + part.length + 8 + 4;
+            length += 2 + id.length + 4 + 2 + part.length + 8 + 8;
         }
         ByteBuffer b = ByteBuffer.allocate(length + TRAILER);
         for (int i = 0; i < entries.size(); i++) {
@@ -100,7 +101,7 @@ final class SegmentFormat {
             byte[] id = names.get(2 * i);
             byte[] part = names.get(2 * i + 1);
             b.putShort((short) id.length).put(id).putInt(e.step()).putShort((short) part.length).put(part)
-                    .putLong(e.ref().position()).putInt(e.ref().length());
+                    .putLong(e.ref().position()).putLong(e.ref().length());
         }
         int indexCrc = JournalIo.crc(b.array(), 0, length);
         b.putLong(indexPosition).putInt(entries.size()).putLong(sealedMs).putInt(indexCrc);
@@ -123,7 +124,7 @@ final class SegmentFormat {
             String id = name(b);
             int step = b.getInt();
             String part = name(b);
-            out.add(new JournalIndexEntry(id, step, part, new JournalRef(segment, b.getLong(), b.getInt())));
+            out.add(new JournalIndexEntry(id, step, part, new JournalRef(segment, b.getLong(), b.getLong())));
         }
         return out;
     }

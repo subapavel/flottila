@@ -12,9 +12,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.ReadStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import software.amazon.awssdk.services.s3.S3Client;
 
-import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -27,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** What the tiers do when the world misbehaves: unwritable spool, failing S3, sources that ignore pause, spill by budget. */
+/** What the tiers do when the world misbehaves: unwritable spool, sources that ignore pause, spill by budget. */
 class TieredBlobStoreFailureTest {
 
     static TieredBlobStore store(Path spool, long tier, long budget) { return TieredBlobStoreTest.store(spool, tier, budget); }
@@ -104,7 +102,7 @@ class TieredBlobStoreFailureTest {
 
     @Test
     void aSlowSinkPausesTheSourceAtTheHighWaterMarkAndResumesItBelowHalf(@TempDir Path dir) {
-        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 100);
+        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key()), TieredBlobStoreTest.HASHER, 100);
         CountingStream source = new CountingStream(new GeneratedReadStream(5000, 60));
         Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), source, 10_000));
         assertEquals(5000, body.size());
@@ -112,7 +110,7 @@ class TieredBlobStoreFailureTest {
         assertTrue(source.pauses.get() >= 1, "60-byte chunks against a 100-byte high-water mark: the source was paused");
         assertEquals(source.pauses.get(), source.resumes.get(), "every pause was followed by a resume: " + source.pauses + " / " + source.resumes);
         assertTrue(s.peakQueuedBytes() <= 100 + 60, "the queue never held more than the high-water mark plus one chunk — a resume that undid the store's own pause would let the whole body in: " + s.peakQueuedBytes());
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 1));
+        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key()), TieredBlobStoreTest.HASHER, 1));
     }
 
     @Test
@@ -121,7 +119,7 @@ class TieredBlobStoreFailureTest {
         // completed only the attach thread may resume it (the sink thread clears the flag and leaves the resume to whoever comes
         // second), so no resume ever undoes a pause and no pause is left without its resume — whichever way the two threads interleave.
         for (int round = 0; round < 20; round++) {
-            TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(), null, false), TieredBlobStoreTest.HASHER, 100);
+            TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key()), TieredBlobStoreTest.HASHER, 100);
             CountingStream source = new CountingStream(new GeneratedReadStream(5000, 60));
             Body body = BlobStoreContract.await(s.write(BlobKey.body("m-" + round, 0), source, 10_000));
             assertEquals(5000, body.size());
@@ -141,7 +139,7 @@ class TieredBlobStoreFailureTest {
         // its pause land only once the sink has made its decision (the store's afterSinkDecision seam, call 2: chunk 2 polled, queued 0).
         // The write runs on its own virtual thread (Attach): the attach thread is the one held inside pause(), never a platform thread.
         TieredBlobStoreBackpressureTest.HeldKey key = new TieredBlobStoreBackpressureTest.HeldKey(false);
-        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, key, null, false), TieredBlobStoreTest.HASHER, 100);
+        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, key), TieredBlobStoreTest.HASHER, 100);
         java.util.concurrent.CountDownLatch sinkDecided = new java.util.concurrent.CountDownLatch(1);
         AtomicInteger hookCalls = new AtomicInteger();
         s.afterSinkDecision(() -> {
@@ -189,32 +187,6 @@ class TieredBlobStoreFailureTest {
         Future<Void> evicted = s.evict(body.key());
         assertTrue(BlobStoreContract.awaitOutcome(evicted).failed());
         assertInstanceOf(java.io.IOException.class, evicted.cause());
-    }
-
-    @Test
-    void aFailingS3FailsWholeAndMultipartWritesAndAbortsQuietly(@TempDir Path dir) {
-        AtomicInteger aborts = new AtomicInteger();
-        S3Client broken = (S3Client) Proxy.newProxyInstance(S3Client.class.getClassLoader(), new Class<?>[] {S3Client.class}, (proxy, method, args) -> {
-            switch (method.getName()) {
-                case "serviceName": return "s3";
-                case "close": return null;
-                case "createMultipartUpload": return software.amazon.awssdk.services.s3.model.CreateMultipartUploadResponse.builder().uploadId("u-1").build();
-                case "abortMultipartUpload": aborts.incrementAndGet(); throw new IllegalStateException("abort also fails");
-                default: throw new IllegalStateException("S3 down: " + method.getName());
-            }
-        });
-        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key(),
-                new TieredBlobStore.S3Target(broken, "b", "p"), true), TieredBlobStoreTest.HASHER);
-        Future<Body> whole = s.write(BlobKey.body("m-1", 0), Buffer.buffer("small"), 4096);
-        assertTrue(BlobStoreContract.awaitOutcome(whole).failed());
-        assertTrue(whole.cause().getMessage().contains("putObject"), String.valueOf(whole.cause()));
-        long size = 6L << 20;   // above one part: createMultipartUpload succeeds, uploadPart fails, abort is attempted
-        Future<Body> multipart = s.write(BlobKey.body("m-2", 0), new GeneratedReadStream(size, 65536), size);
-        assertTrue(BlobStoreContract.awaitOutcome(multipart).failed());
-        assertTrue(multipart.cause().getMessage().contains("uploadPart"), String.valueOf(multipart.cause()));
-        assertEquals(1, aborts.get(), "the multipart upload was aborted even though the abort itself failed");
-        assertEquals(Optional.empty(), s.location(BlobKey.body("m-2", 0)));
-        assertEquals("p/m-2/0/body", s.objectKey(BlobKey.body("m-2", 0)));
     }
 
     /**

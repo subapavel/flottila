@@ -19,8 +19,9 @@ import java.util.zip.CRC32C;
 /**
  * The file part of a start (CORE-3 item 9), by CRC32C alone — no tenant key is asked for. A segment with a valid trailer
  * is taken as sealed, never rewritten; when its index fails its CRC it is read without the index (WARNING). A segment
- * without one (unsealed, or a torn seal) is scanned record by record (length bounds, CRC32C, a v1 header), cut at its
- * first bad record and sealed over what survived. A segment holding no record (a pre-open, or a tail torn at its first
+ * without one (unsealed, or a torn seal) is scanned record by record (length bounds, CRC32C, a v1 header; a large
+ * record, whose CRC32C covers its header alone, must have its every chunk in the file), cut at its first bad record and
+ * sealed over what survived. A segment holding no record (a pre-open, or a tail torn at its first
  * record) is removed. A header that fails its CRC over records, or another journal's header, refuses the start.
  */
 final class Recovery {
@@ -107,7 +108,10 @@ final class Recovery {
         return Journal.Extent.sealed(t.indexPosition(), null);
     }
 
-    /** Whole records from the header on, up to the first that runs past the file, fails its CRC32C or is not a v1 record. */
+    /**
+     * Whole records from the header on, up to the first that runs past the file, fails its CRC32C or is not a v1 record.
+     * The CRC32C covers what a record's {@code length} field says: a body record whole, a large record's header.
+     */
     private static Scan scan(FileChannel ch, long n, int headerLength, long size) throws IOException {
         List<JournalIndexEntry> entries = new ArrayList<>();
         byte[] piece = new byte[PIECE];
@@ -115,22 +119,22 @@ final class Recovery {
         while (size - at >= RecordFormat.MIN_LENGTH) {
             ByteBuffer head = ByteBuffer.wrap(JournalIo.read(ch, at, 8));
             int stored = head.getInt(0);
-            long length = Integer.toUnsignedLong(head.getInt(4));
-            if (length < RecordFormat.MIN_LENGTH || length > size - at) break;
-            int first = (int) Math.min(length, PIECE);
+            long covered = Integer.toUnsignedLong(head.getInt(4));
+            if (covered < RecordFormat.FIXED || covered > size - at) break;
+            int first = (int) Math.min(covered, PIECE);
             JournalIo.read(ch, at, piece, first);
-            RecordFormat.Header h = RecordFormat.header(piece, first, length);
+            RecordFormat.Header h = RecordFormat.header(piece, first);
             CRC32C crc = new CRC32C();
             crc.update(piece, 4, first - 4);
-            for (long off = first; off < length; ) {
-                int k = (int) Math.min(PIECE, length - off);
+            for (long off = first; off < covered; ) {
+                int k = (int) Math.min(PIECE, covered - off);
                 JournalIo.read(ch, at + off, piece, k);
                 crc.update(piece, 0, k);
                 off += k;
             }
-            if ((int) crc.getValue() != stored || h == null) break;
-            entries.add(new JournalIndexEntry(h.messageId(), h.step(), h.part(), new JournalRef(n, at, (int) length)));
-            at += length;
+            if ((int) crc.getValue() != stored || h == null || h.length() > size - at) break;
+            entries.add(new JournalIndexEntry(h.messageId(), h.step(), h.part(), new JournalRef(n, at, h.length())));
+            at += h.length();
         }
         return new Scan(entries, at);
     }

@@ -125,7 +125,7 @@ class ReplayRetentionIT {
             throw new IllegalStateException(e);
         }
         aes.init(256);
-        blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, tmp.resolve("spool"), aes.generateKey(), null, false), Hasher.sha256(),
+        blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, tmp.resolve("spool"), aes.generateKey()), Hasher.sha256(),
                 new PgBodies(pool, MIB));
         messages = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
         Map<String, String> env = new HashMap<>();

@@ -91,7 +91,7 @@ class JournalSegmentTest {
         Journal byBytes = open(in("bytes").recordMax(4096).segmentBytes(bound), seam());
         List<JournalRef> refs = new ArrayList<>();
         for (int i = 0; i < 14; i++) refs.add(appendForced(byBytes, JournalFixture.record("rb-" + String.format("%02d", i), 3000)));
-        int length = refs.getFirst().length();
+        long length = refs.getFirst().length();
         for (JournalRef r : refs) assertEquals(length, r.length(), "equal records encode to equal lengths: " + refs);
         long header = refs.getFirst().position();
         long fit = (bound - header) / length;

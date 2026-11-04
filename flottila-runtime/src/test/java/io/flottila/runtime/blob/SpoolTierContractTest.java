@@ -11,7 +11,7 @@ class SpoolTierContractTest extends BlobStoreContract {
     @TempDir Path spool;
 
     @Override protected BlobStore store() {
-        return new TieredBlobStore(new TieredBlobStore.Config(TREE_LIMIT, 0, 1L << 20, spool, TieredBlobStoreTest.key(), null, false), hasher());
+        return new TieredBlobStore(new TieredBlobStore.Config(TREE_LIMIT, 0, 1L << 20, spool, TieredBlobStoreTest.key()), hasher());
     }
 
     @Override protected long bigSize() { return 12L * 1024 * 1024; }

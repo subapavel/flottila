@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * P1-09c3a (D-070): the S3 archive store against an S3 API in a container (LocalStack 4, as {@code S3TierIT}) passes the archive
+ * P1-09c3a (D-070): the S3 archive store against an S3 API in a container (LocalStack 4) passes the archive
  * store contract; the archive of a key is the object {@code <prefix>/archives/<sha256>.zip}; and every SDK failure that is not a
  * missing object — an endpoint nothing listens on, a bucket that does not exist — is an {@link IOException} naming the bucket and
  * the key, never a {@link NoSuchFileException}.
@@ -57,7 +57,7 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
         localstack.stop();
     }
 
-    /** A client as S3TierIT builds it, to {@code endpoint}. */
+    /** An S3 client of the LocalStack container at {@code endpoint}. */
     static S3Client client(URI endpoint) {
         return S3Client.builder()
                 .endpointOverride(endpoint)

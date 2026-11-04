@@ -171,7 +171,7 @@ class DeliveryModesIT {
 
     /** The runtime's store as a node builds it: memory and spool (a fresh key per start) and the Postgres tier over {@code p}. */
     static TieredBlobStore tiered(Path spoolDir, Pool p) {
-        return new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, spoolDir, freshKey(), null, false), io.flottila.api.Hasher.sha256(),
+        return new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, spoolDir, freshKey()), io.flottila.api.Hasher.sha256(),
                 new PgBodies(p, MIB));
     }
 

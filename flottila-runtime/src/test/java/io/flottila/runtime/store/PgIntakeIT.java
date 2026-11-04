@@ -157,7 +157,7 @@ class PgIntakeIT {
 
     /** The node's body store over {@code spool}: a 1 MiB memory tier and budget, the Postgres tier over {@code pool} bounded by {@link #BOUND}. */
     static TieredBlobStore blobs(Path spool, Pool pool) {
-        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, 1L << 20, 1L << 20, spool, spoolKey(), null, false), Hasher.sha256(),
+        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, 1L << 20, 1L << 20, spool, spoolKey()), Hasher.sha256(),
                 new PgBodies(pool, BOUND));
     }
 
@@ -729,7 +729,7 @@ class PgIntakeIT {
     void aDuplicateWhoseEvictionFailsStillAnswersTheFirstId() throws java.io.IOException {
         // a store whose memory tier takes nothing: every body spills to its spool file
         Path dir = java.nio.file.Files.createDirectories(spool.resolve("spilling"));
-        TieredBlobStore spilling = new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, 0, 1L << 20, dir, spoolKey(), null, false), Hasher.sha256(),
+        TieredBlobStore spilling = new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, 0, 1L << 20, dir, spoolKey()), Hasher.sha256(),
                 new PgBodies(pool, BOUND));
         PgIntake through = new PgIntake(pool, spilling, messages, new PgWorkQueue(pool));
         assertEquals("m-1", settled(saveKeyed(intake, arrive("m-1", bytes(300, 28)), SCOPE, KEY, () -> false)).result());

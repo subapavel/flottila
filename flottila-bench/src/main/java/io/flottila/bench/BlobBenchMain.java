@@ -49,7 +49,7 @@ public final class BlobBenchMain {
         boolean ok = true;
         for (String tier : new String[] {"memory", "spool"}) {
             long memoryTier = tier.equals("memory") ? size : 0;
-            TieredBlobStore store = new TieredBlobStore(new TieredBlobStore.Config(size + 1, memoryTier, size + 1, spool, key(), null, false), hasher);
+            TieredBlobStore store = new TieredBlobStore(new TieredBlobStore.Config(size + 1, memoryTier, size + 1, spool, key()), hasher);
             long[] writeNanos = new long[rounds];
             long[] readNanos = new long[rounds];
             for (int r = 0; r < rounds; r++) {

@@ -51,3 +51,18 @@ runtime 75 %, no decrease (baseline runtime 99.5/99.6, bench 97.4/96.6).
 ## Checks
 `mvn -B -ntp -q -pl flottila-runtime -am verify`, the `-Pit` reactor without bench (S3 tests removed, the rest green), and
 `mvn -B -ntp -q -pl flottila-bench -am verify` (BlobBenchMain call site); coverage check; output to agent/work/CORE-4b-*.log.
+
+## Red approved (architect 2026-11-04)
+Red observed: test-compile exit 1 (agent/work/CORE-4b-red.log), 70 errors on the new types, the 6-arg open, JournalRef.length
+long and the 5-arg TieredBlobStore.Config. Tests: journal/LargeBodyTest (12), LargeBodyHeapTest (-Xmx48m fork),
+JournalStartTest.spillIsClearedAtStart, fixtures RecordingRows, GeneratedInput, HeldFiles additions; S3TierIT, S3HeapIT and the
+S3 cases deleted; Config call sites adapted. The signatures they compile against are the contract:
+`Journal.open(config, clock, timer, keys, files, SegmentRows rows)` (5-arg kept); `Journal.Spill spill(BlobKey, int tenantKeyId,
+InputStream, long maxSize, Hasher)`; Spill `segment() size() hash() open() persist() abandon()`; `InputStream stream(JournalRef)`;
+`SegmentRows { Future<Void> insert(String node, long segment); }`; `JournalRef(long, long, long)`.
+Assumptions accepted: two entry points (append ≤ recordMax, spill > recordMax; spill of a small body is CORE-4c's call); maxSize
+per call, no FLOTTILA_JOURNAL_LARGE_MAX key (the flow's finite max body size bounds it); AEAD chunks are the record's last bytes,
+plain size u64 BE in the header, standard 32-byte trailer; spill files opened through JournalFiles; the dir force at persist on
+the calling thread. Architect: a large record's CRC32C covers its header only; its chunks are authenticated by the AEAD (no
+whole-record CRC pre-read). Implementer also: Node.java and BlobBenchMain drop `null, false`; the runtime pom's heap-bounded-it
+execution with no *HeapIT left is removed or proven to pass with zero tests.

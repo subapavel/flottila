@@ -190,3 +190,15 @@ listener stalls the round); P7D in the journal before CORE-10 (2.7 TB at 4.5 MB/
 - Carried into CORE-4c: the bounded open-channel cache (item 8, not built in 4a; each read opens its channel); a store read checks
   the record header's message id, step and part against its key, so a misaddressed ref fails; the journal id is injected
   (4a uses UUID.randomUUID()); the fail-stop gauge and admin health.
+
+## Added in CORE-4b (architect 2026-11-04, review r1) — on-disk format v1, draft with D-105
+- The footer index entry length is u64 in every segment (item 1 said u32): a large body may exceed 4 GiB; JournalRef.length is long.
+- A large record is kind 2: its u32 `length` field holds the header length, its CRC32C covers the header only; the body follows
+  as 1 MiB AES-256-GCM chunks under the record key (nonce salt[0..8) ‖ counter, LAST flag on the final chunk). Chunks before
+  the last authenticate the header with plain size 0, the last with the real plain size (STREAM-like: a cut, swap, extra
+  chunk or edited size fails a tag or ends in EOF → JournalCorruptException).
+- FLOTTILA_JOURNAL_RECORD_MAX is capped so a record's longest encoding fits an int read buffer; spill maxSize ≤ (2^31−1) MiB.
+- Carried into CORE-4c: a failed directory force after the move marks the spill broken; whether a spill/persist force failure
+  fails the journal (item 3: any force error) and whether a failed journal refuses spill and persist; close() waits for or
+  refuses in-flight spills and persists before releasing LOCK; rows without a file dropped before the first row insert (spill
+  numbers reused after a restart); Spill.abandon() unlinks off the hot path when wired into the store.

@@ -168,7 +168,7 @@ public final class Node implements AutoCloseable {
         Optional<CpuSampler> sampler = Optional.empty();   // once started: closed after the deployments
         try {
             TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
-                    spool, spoolKey(), null, false), hasher, new PgBodies(pool, tiers.durableMax()));
+                    spool, spoolKey()), hasher, new PgBodies(pool, tiers.durableMax()));
             List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, blobs, ids, timer, clock)));
             Map<String, Component> byScheme = byScheme(built);
             if (config.deployed()) {

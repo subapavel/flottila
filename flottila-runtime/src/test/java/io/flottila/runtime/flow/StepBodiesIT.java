@@ -236,7 +236,7 @@ class StepBodiesIT {
         NodeStores(String name) {
             pool = PgBuilder.pool().connectingTo(connectOptions()).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
             spoolDir = spool.resolve(name);
-            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, MEMORY_TIER, 16 * MIB, spoolDir, DeliveryModesIT.freshKey(), null, false),
+            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, MEMORY_TIER, 16 * MIB, spoolDir, DeliveryModesIT.freshKey()),
                     Hasher.sha256(), new PgBodies(pool, DURABLE_BOUND));
             messages = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), blobs, rt.hasher(), Map.of(partner.scheme(), partner));

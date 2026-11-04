@@ -58,7 +58,7 @@ class PgTierContractIT {
         @TempDir Path spool;
 
         @Override protected BlobStore store() {
-            return new TieredBlobStore(new TieredBlobStore.Config(TREE_LIMIT, 8 * MIB, 64 * MIB, spool, TieredBlobStoreTest.key(), null, false), hasher(),
+            return new TieredBlobStore(new TieredBlobStore.Config(TREE_LIMIT, 8 * MIB, 64 * MIB, spool, TieredBlobStoreTest.key()), hasher(),
                     new PgBodies(pool, MIB));
         }
     }
@@ -69,7 +69,7 @@ class PgTierContractIT {
         @TempDir Path spool;
 
         @Override protected BlobStore store() {
-            return new TieredBlobStore(new TieredBlobStore.Config(TREE_LIMIT, 0, MIB, spool, TieredBlobStoreTest.key(), null, false), hasher(),
+            return new TieredBlobStore(new TieredBlobStore.Config(TREE_LIMIT, 0, MIB, spool, TieredBlobStoreTest.key()), hasher(),
                     new PgBodies(pool, MIB));
         }
 

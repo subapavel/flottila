@@ -56,7 +56,7 @@ class TieredBlobStoreHandoverTest {
 
     /** No memory tier: the first non-empty chunk spills and starts the sink, as SpoolTierContractTest configures it. */
     private static TieredBlobStore store(Path spool, SecretKey key) {
-        return new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, spool, key, null, false), TieredBlobStoreTest.HASHER, MARK);
+        return new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, spool, key), TieredBlobStoreTest.HASHER, MARK);
     }
 
     private static Buffer bytes(int n) {

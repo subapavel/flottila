@@ -62,8 +62,8 @@
         </executions>
       </plugin>
       <plugin>
-        <!-- *HeapTest / *HeapIT run in their own JVM with a heap far below the body they stream: a store that holds the
-             body at once fails with OutOfMemoryError, deterministically, instead of a GC heuristic deciding (P1-01 review). -->
+        <!-- *HeapTest run in their own JVM with a heap far below the body they stream: a store that holds the body at once
+             fails with OutOfMemoryError, deterministically, instead of a GC heuristic deciding (P1-01 review). -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
@@ -234,33 +234,4 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-
-  <profiles>
-    <profile>
-      <!-- the heap-bounded IT needs Docker like every IT: only under -Pit, as the parent binds failsafe -->
-      <id>it</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-failsafe-plugin</artifactId>
-            <configuration>
-              <excludes><exclude>**/*HeapIT.java</exclude></excludes>
-            </configuration>
-            <executions>
-              <execution>
-                <id>heap-bounded-it</id>
-                <goals><goal>integration-test</goal><goal>verify</goal></goals>
-                <configuration>
-                  <excludes><exclude>none</exclude></excludes>
-                  <includes><include>**/*HeapIT.java</include></includes>
-                  <argLine>@{argLine} -Xmx96m</argLine>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-  </profiles>
 </project>

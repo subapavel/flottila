@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -126,6 +127,7 @@ final class HeldFiles implements JournalFiles {
     private final List<Hold> armed = new ArrayList<>();          // guarded by this
     private final List<Hold> holds = new CopyOnWriteArrayList<>();
     private final Set<Path> opened = ConcurrentHashMap.newKeySet();
+    private final Map<Path, AtomicLong> reads = new ConcurrentHashMap<>();
 
     @Override public FileChannel open(Path file, Set<? extends OpenOption> options) throws IOException {
         Path at = file.toAbsolutePath().normalize();
@@ -155,6 +157,16 @@ final class HeldFiles implements JournalFiles {
             for (String m : recordsOfN) if (firstWrite(m) == op) return false;
             return true;
         });
+    }
+
+    /**
+     * Holds the first force on {@code file} that {@code thread} enters after the sequence point {@code after} (CORE-4b: the
+     * persisting thread's directory force; a pre-open's force runs on a thread of its own and is let through).
+     */
+    Hold holdForceOn(Path file, long after, Thread thread) {
+        Path at = file.toAbsolutePath().normalize();
+        return arm("force on " + at + " by " + thread.getName() + " after #" + after,
+                op -> op.kind == Kind.FORCE && op.file.equals(at) && op.thread == thread && op.entered > after);
     }
 
     /** Holds the first force on the file that carries {@code marker}, entered after that write returned. */
@@ -236,6 +248,28 @@ final class HeldFiles implements JournalFiles {
             if (f.kind == Kind.FORCE && f.file.equals(w.file) && f.thread == w.thread && f.entered > w.returned && f.returnedOk()) return true;
         }
         return false;
+    }
+
+    /**
+     * True when {@code file} was written, its last write returned, and a force on it entered after that returned
+     * successfully: every byte written to it so far is durable.
+     */
+    boolean forcedAfterItsLastWrite(Path file) {
+        Path at = file.toAbsolutePath().normalize();
+        Op last = null;
+        for (Op op : ops) if (op.kind == Kind.WRITE && op.file.equals(at)) last = op;
+        if (last == null || !last.returnedOk()) return false;
+        for (Op f : ops) if (f.kind == Kind.FORCE && f.file.equals(at) && f.entered > last.returned && f.returnedOk()) return true;
+        return false;
+    }
+
+    /**
+     * Read calls made on {@code file} through the seam (CORE-4b). Kept apart from {@link #ops()}: the CORE-4a cases count
+     * and list the writes, forces and truncates of a file, never its reads.
+     */
+    long readsOn(Path file) {
+        AtomicLong n = reads.get(file.toAbsolutePath().normalize());
+        return n == null ? 0 : n.get();
     }
 
     /** Files opened through the seam whose every force so far failed or that were never forced (a pre-open in flight). */
@@ -335,11 +369,22 @@ final class HeldFiles implements JournalFiles {
             return this;
         }
 
-        @Override public int read(ByteBuffer dst) throws IOException { return inner.read(dst); }
+        private void counted() { reads.computeIfAbsent(file, f -> new AtomicLong()).incrementAndGet(); }
 
-        @Override public long read(ByteBuffer[] dsts, int offset, int length) throws IOException { return inner.read(dsts, offset, length); }
+        @Override public int read(ByteBuffer dst) throws IOException {
+            counted();
+            return inner.read(dst);
+        }
 
-        @Override public int read(ByteBuffer dst, long position) throws IOException { return inner.read(dst, position); }
+        @Override public long read(ByteBuffer[] dsts, int offset, int length) throws IOException {
+            counted();
+            return inner.read(dsts, offset, length);
+        }
+
+        @Override public int read(ByteBuffer dst, long position) throws IOException {
+            counted();
+            return inner.read(dst, position);
+        }
 
         @Override public long position() throws IOException { return inner.position(); }
 
@@ -351,6 +396,7 @@ final class HeldFiles implements JournalFiles {
         @Override public long size() throws IOException { return inner.size(); }
 
         @Override public long transferTo(long position, long count, WritableByteChannel target) throws IOException {
+            counted();
             return inner.transferTo(position, count, target);
         }
 

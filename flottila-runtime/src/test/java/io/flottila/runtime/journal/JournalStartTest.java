@@ -168,6 +168,35 @@ class JournalStartTest {
         assertDoesNotThrow(s::config);
     }
 
+    /**
+     * CORE-3 item 9, CORE-4b: a large body's spill a crash left behind (never persisted, never abandoned) is gone after the
+     * next start, whatever its name; the start does not take it for a segment and leaves the segments alone.
+     */
+    @Test
+    void spillIsClearedAtStart() throws Exception {
+        Path dir = dir("spill");
+        Journal first = open(in(dir));
+        JournalRef kept = appendForced(first, record("sp-1", 100));
+        close(first);
+        Path spill = Files.createDirectories(dir.resolve("spill"));
+        Files.write(spill.resolve("9.seg"), body("sp-left", 5000));
+        Files.writeString(spill.resolve("leftover"), "not a journal file");
+        assertEquals(2, regularFilesIn(spill).size(), "two files are left under spill/ before the start");
+
+        Journal back = open(in(dir));
+
+        assertEquals(List.of(), regularFilesIn(spill), "the start cleared spill/");
+        assertFalse(Files.exists(dir.resolve("segments").resolve("9.seg")), "a spill is not taken for a segment");
+        assertArrayEquals(body("sp-1", 100), back.read(kept), "the segments were left alone");
+    }
+
+    private static List<Path> regularFilesIn(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return List.of();
+        try (var listed = Files.list(dir)) {
+            return listed.filter(Files::isRegularFile).sorted().toList();
+        }
+    }
+
     @Test
     void aHeaderThatFailsItsCrcOverRecordsRefusesTheStartAndCutsNothing() throws Exception {
         Path dir = dir("header");
@@ -355,7 +384,7 @@ class JournalStartTest {
         CRC32C crc = new CRC32C();
         crc.update(rec, 4, rec.length - 4);
         b.putInt(0, (int) crc.getValue());
-        byte[] edited = new byte[all.length - v2.length() + rec.length];
+        byte[] edited = new byte[(int) (all.length - v2.length() + rec.length)];
         System.arraycopy(all, 0, edited, 0, (int) v2.position());
         System.arraycopy(rec, 0, edited, (int) v2.position(), rec.length);
         System.arraycopy(all, (int) (v2.position() + v2.length()), edited, (int) v2.position() + rec.length,

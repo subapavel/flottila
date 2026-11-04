@@ -56,7 +56,7 @@
   `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
 - Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()
   .join()` waits uninterruptibly (no catch), for a never-failing close in a finally (P1-09k2). `andThen(Handler<AsyncResult>)` completes after
-  the handler ran; `Future.await()` works on a virtual thread, sneaky-throws the cause.
+  the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause.
 - AWS SDK 2.56.0 (javap): `RequestBody.fromFile(Path)` sizes the file at once (missing → UncheckedIOException); a client built without a credentialsProvider
   resolves `DefaultCredentialsProvider.builder()..build()` (`create()` is a static singleton); `serviceClientConfiguration()` shows region/endpoint/credentials.
 - JDK 25 AQS (P2-09a): parked in `CountDownLatch.await`, interrupt + countDown before it runs → IE; `CompletableFuture.get` returns the value, flag set.
@@ -93,15 +93,15 @@
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; a live RecordingStream gives vthread events `getThread()` null, a dump
-  read whole resolves all (F-22); `Recording.dump(p)` truncates p, works on STOPPED; compare times within one dump only. Harness cp: `dependency:build-classpath`.
+- JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; live RecordingStream vthread `getThread()` null, a whole dump resolves all (F-22); `dump(p)` truncates p, works on STOPPED; one dump per comparison; cp: `dependency:build-classpath`.
 ## Findings that came back in review
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class
   reuses its inner fixtures (P2-02b). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
 - Packet red tests can carry fixture bugs no implementation fixes (P1-09k2): check the fixture first, fix with a one-line reason
   (FIX-109: an assert after a hold's `release()` in `finally` sees the released chain land).
-- Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; a double guard (two never-fail transforms)
+- Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; runtime (CORE-4b, ~13 s): `-pl flottila-runtime -am -o
+  test-compile surefire:test@default-test -Djacoco.skip=true -Dtest=...` skips heap-bounded-test; a double guard (two never-fail transforms)
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
 - A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
