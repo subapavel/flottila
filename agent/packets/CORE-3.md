@@ -182,3 +182,11 @@ listener stalls the round); P7D in the journal before CORE-10 (2.7 TB at 4.5 MB/
 - The not-before (CORE-14) and in-doubt (P2-15) pin cases are red tests of those rows.
 - CORE-6: with a pipelined COMMIT whose xid is unknown when the connection drops, the save stays in the open-save set until
   the node restarts.
+
+## Added in CORE-4a (architect 2026-11-04, review PASS r2)
+- JournalConfig: FLOTTILA_JOURNAL_SEGMENT_AGE in (0, PT1H]; FLOTTILA_JOURNAL_PENDING_BYTES ≥ FLOTTILA_JOURNAL_RECORD_MAX (IAE naming
+  both). An append that finds nothing pending is always taken, so the bound is overshot by at most one record (≤ RECORD_MAX).
+- A missing or unusable tenant key on read fails `JournalKeyException`, not corruption; after close every call throws ISE.
+- Carried into CORE-4c: the bounded open-channel cache (item 8, not built in 4a; each read opens its channel); a store read checks
+  the record header's message id, step and part against its key, so a misaddressed ref fails; the journal id is injected
+  (4a uses UUID.randomUUID()); the fail-stop gauge and admin health.

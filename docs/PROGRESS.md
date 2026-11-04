@@ -1,4 +1,16 @@
 
+## 2026-11-04 — CORE-4a body journal core, no Postgres (D-105) — done, review PASS
+Test first: JournalWriterTest, JournalSegmentTest, JournalRecoveryTest, JournalCipherTest, JournalRecordPropertiesTest,
+JournalConfigTest, JournalKill9IT (test-author; red = test-compile exit 1, agent/work/CORE-4a-red.log). Container restart mid-task.
+Change: flottila-runtime io.flottila.runtime.journal (17 main files: Journal, Recovery, Record/SegmentFormat, ChunkedAead, …);
+blob/SpoolCipher delegates to ChunkedAead, behaviour unchanged; implementer's JournalStart/Read/Append/RecordFormatTest.
+Checks: runtime verify exit 0 (2206), journal 84/0/0/0, JournalKill9IT exit 0, reactor verify -Pit (no bench) exit 0, coverage
+runtime 99.5/99.6 (baseline written for runtime); 69 hand mutants (results.txt), 2 unkillable without a seam (commented).
+Review: FAIL r1 (reserve() changed state before Timer.schedule → position hole and close hang; per-record key derivation unpinned),
+PASS r2. Design additions in agent/packets/CORE-3.md "Added in CORE-4a".
+D-054 data: class C (test-author ×1, implementer ×1 resumed ×2, reviewer ×1 resumed ×1); review rounds 2.
+Next: CORE-4b [C] packet (large bodies, sealer index read paths per CORE-3); owner: CORE-2 inline bound.
+
 ## 2026-11-04 — CORE-2 ClickHouse payload compression and size bound — done, review PASS — Deviation: parallel worktree
 Test first: InvoiceGeneratorTest (generator) and ClickHouseCompressionMainIT (harness on the pinned image); a measurement row.
 Change: flottila-bench ClickHouseCompressionMain, ClickHouseHttp, InvoiceGenerator; bench/run.sh `BENCH_SCENARIOS=clickhouse`;

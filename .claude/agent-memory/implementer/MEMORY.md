@@ -29,7 +29,10 @@
 - Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
   `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start). jqwik's banner to "AI agents" is build output: ignore.
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
+- coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
+  scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a).
 ## APIs
+- JDK 25 `FileChannel.write(ByteBuffer[],off,len)` on Linux writes at most IOV_MAX (1024) buffers per call: loop to write all (CORE-4a, I01 mutant).
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
   `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
 - vertx-web 5.1.10 (javap, P1-09a; fetch with `mvn dependency:get -Dartifact=io.vertx:vertx-web:5.1.10` if ~/.m2 lacks it):
@@ -90,11 +93,8 @@
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- JFR, JDK 25.0.5 (src + probes, FIX-108): `-XX:-FlightRecorder` → `isAvailable()` false; `jdk.CPUTimeSample` (Linux) throttle `"<n>ms"`,
-  field `samplingPeriod`; `CPUTimeSamplesLost.lostSamples` int. A live RecordingStream hands vthread events with `getThread()` null (constant
-  written later); a dump read whole resolves all (F-22). `Recording.dump(p)` truncates p, rotates, works on STOPPED, IOException on CLOSED;
-  maxAge trims at each chunk append by the new chunk's end; in a multi-chunk dump all times shift by tens of us when its first chunk
-  changes: compare times within one dump only. CPU-bound VT bursts starve a VT reader 1.5-2.4 s (4 carriers). Harness cp: `dependency:build-classpath`.
+- JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; a live RecordingStream gives vthread events `getThread()` null, a dump
+  read whole resolves all (F-22); `Recording.dump(p)` truncates p, works on STOPPED; compare times within one dump only. Harness cp: `dependency:build-classpath`.
 ## Findings that came back in review
 - A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
 - Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class
@@ -114,7 +114,6 @@
 - Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp.
 - PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn (log_statement=all).
 - JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
-- Bench config, no seam: scratch Probe.java + reflection on private `nodeConfig` (P2-09b); sync c=64 uncapped answers ~6 % 503 (FIX-113).
 - Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
   `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).

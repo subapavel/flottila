@@ -59,3 +59,13 @@ Floors: runtime 75 % line/branch, no decrease. ArchUnit green.
 ## Checks
 `mvn -B -ntp -q -pl flottila-runtime -am verify` (unit) and the JournalKill9IT with `-Pit` scoped to it; output to
 agent/work/CORE-4a-*.log.
+
+## Red approved (architect 2026-11-04)
+Red observed: `test-compile` exit 1 on the missing journal types (agent/work/CORE-4a-red.log); the rest of runtime compiles
+(agent/work/CORE-4a-baseline.log). Test files: flottila-runtime/src/test/java/io/flottila/runtime/journal/ (HeldFiles,
+JournalFixture, JournalKill9Child, JournalWriterTest, JournalSegmentTest, JournalRecoveryTest, JournalCipherTest,
+JournalRecordPropertiesTest (renamed: Surefire includes), JournalConfigTest, JournalKill9IT). The signatures they compile
+against are the contract. The test-author's assumptions are accepted as the design: segments numbered n+1; an age roll
+applies to the next append once the clock advanced; pending bytes include the held round; a failed journal closes without
+throwing; trailer and index CRC do not cover records; message id and part plain UTF-8, step u32, CRC32C at offset 0 over the
+rest; a read of a cut ref or of a missing key throws (the missing key not as JournalCorruptException).
