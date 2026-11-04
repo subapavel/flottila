@@ -1,4 +1,15 @@
 
+## 2026-11-04 — CORE-2 ClickHouse payload compression and size bound — done, review PASS — Deviation: parallel worktree
+Test first: InvoiceGeneratorTest (generator) and ClickHouseCompressionMainIT (harness on the pinned image); a measurement row.
+Change: flottila-bench ClickHouseCompressionMain, ClickHouseHttp, InvoiceGenerator; bench/run.sh `BENCH_SCENARIOS=clickhouse`;
+bench/RESULTS.md §CORE-2 (48 cells × 3 runs, 0 failures; proposal inline ≤ 10 MiB, ZSTD(1), merge memory decides; fan-in limit).
+Run in a git worktree beside CORE-4a on the owner's order (one-writer rule of AGENTS.md set aside, disjoint paths). Container
+restart mid-run: 5 cells re-run on the new VM (2.10 GHz, marked †); recheck with the committed harness reproduced ratio and merge peak.
+Checks: verify -Pit exit 0 (2 572 tests), coverage bench 97.4/96.6 (baseline written for bench only), mutant 'MergeParts' red.
+Review: FAIL r1 (harness edited after the run, IT did not pin merge/insert numbers, fan-in limit, restart wording), PASS r2.
+D-054 data: class B (implementer ×1 resumed ×3, reviewer ×1 resumed ×1); review rounds 2.
+Next: the owner decides the inline bound; CORE-4a review r2.
+
 ## 2026-11-03 — CORE-3 body journal design (D-105) — done, review PASS — Deviation: F-25
 Test first: none (design packet); the red tests of CORE-4a..4d are named in agent/packets/CORE-3.md.
 Change: agent/packets/CORE-3.md (segments, per-record AEAD, one group-fsync writer, fail-stop, refs in V12, retention by

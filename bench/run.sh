@@ -23,6 +23,10 @@
 # counts no error (errors 0: every failure is the flow's admission refusing, 503) stands — refusals occur even at 1 in flight against
 # the default limit 64×c, a permit outliving its reply (FIX-113), and FIX-112 judges their share. Every node run's summary names its
 # refused and warm-up failures ("refused R of M", "warm-up failed W"); the flow's limit stays NodeBenchMain's default (no --max-in-flight).
+# `clickhouse` (CORE-2, needs Docker, not Postgres): ClickHouseCompressionMain against clickhouse/clickhouse-server:25.8.33.6 (the compose
+# pin) started with `docker run` on 127.0.0.1:BENCH_CH_PORT (18123), default server settings, data inside the container on the host's
+# disk; stopped and removed with its data when the scenario ends, failed or not. BENCH_CH_ARGS (unset: the full matrix) passes harness
+# arguments, e.g. "--sizes 100 --counts 50 --levels 1 --runs 1". Writes bench/out/clickhouse-compression.{json,log}, prints the table.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
@@ -40,7 +44,11 @@ if [[ -n "${BENCH_COMMIT_DELAY:-}" ]]; then
   ack_suffix="-cd$BENCH_COMMIT_DELAY"
 fi
 
-if ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "select 1 from pg_database where datname = '$BENCH_DB'" | grep -q 1; then
+needs_pg=0   # every scenario but clickhouse runs against Postgres
+for scenario in $BENCH_SCENARIOS; do
+  if [[ "$scenario" != clickhouse ]]; then needs_pg=1; fi
+done
+if (( needs_pg )) && ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "select 1 from pg_database where datname = '$BENCH_DB'" | grep -q 1; then
   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -v ON_ERROR_STOP=1 -c "create database $BENCH_DB"
 fi
 
@@ -68,6 +76,21 @@ set_commit_delay() { # µs — in force for every later run of the script, reset
   done
   echo "commit_delay did not become $1 after pg_reload_conf()" >&2
   exit 4
+}
+
+clickhouse_run() { # CORE-2, in a subshell: its EXIT trap stops and removes the container (and its data) however the run ends
+  local image="clickhouse/clickhouse-server:25.8.33.6" name="flottila-bench-clickhouse" port="${BENCH_CH_PORT:-18123}" password="flottila-bench"
+  trap "docker rm -f -v $name > /dev/null" EXIT
+  docker run -d --name "$name" -p "127.0.0.1:$port:8123" -e CLICKHOUSE_PASSWORD="$password" "$image" > /dev/null
+  for _ in $(seq 120); do
+    if curl -sf "http://127.0.0.1:$port/ping" > /dev/null; then break; fi
+    sleep 0.5
+  done
+  curl -sf "http://127.0.0.1:$port/ping" > /dev/null || { echo "ClickHouse ($image) did not answer on port $port" >&2; exit 5; }
+  # shellcheck disable=SC2086 # BENCH_CH_ARGS is a list of harness arguments, split on purpose
+  java -Xmx2g -cp "$cp" io.flottila.bench.ClickHouseCompressionMain --url "http://127.0.0.1:$port" --password "$password" --image "$image" \
+    --out bench/out/clickhouse-compression.json --commit "$commit" ${BENCH_CH_ARGS:-} > bench/out/clickhouse-compression.log
+  grep '^|' bench/out/clickhouse-compression.log
 }
 
 summary() { # name
@@ -126,8 +149,10 @@ for scenario in $BENCH_SCENARIOS; do
           done
         done
       done ;;
+    clickhouse)
+      (clickhouse_run) ;;
     *)
-      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu)" >&2
+      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu, clickhouse)" >&2
       exit 2 ;;
   esac
 done

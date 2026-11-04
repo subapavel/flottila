@@ -1,5 +1,134 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## CORE-2 — ClickHouse payload compression — cloud VM, 4 vCPU
+
+Date: 2026-11-04. Commit: the CORE-2 working tree on d2e2845 (records labelled `d2e2845+dirty`). Machine: Intel Xeon @ 2.80 GHz
+× 4 vCPU, 15.7 GiB, kernel 6.18.44-fc-v230, JDK 25.0.5, Docker 29.9.2. ClickHouse `clickhouse/clickhouse-server:25.8.33.6` (the
+compose pin) started by `BENCH_SCENARIOS=clickhouse bench/run.sh` with `docker run`, default server settings (only
+`CLICKHOUSE_PASSWORD` set), data inside the container on the VM disk, removed with the container after the run. Observed server
+settings: max_server_memory_usage 14.1 GiB (0.9 × RAM), index_granularity_bytes 10 MiB, max_compress_block_size 1 MiB.
+Harness `ClickHouseCompressionMain` (JDK HttpClient, ClickHouse HTTP interface): per cell a fresh table
+`(flow LowCardinality(String), created_at DateTime64(3), id String, payload String CODEC(ZSTD(n)))`, MergeTree `ORDER BY (flow,
+created_at, id)`; payloads generated (`InvoiceGenerator`, seed 20261104: the demo invoice shape plus dates, partner, line text,
+amounts and total; lines appended to the target size; `mixed` = 200 partners with own catalogs and 8 flows, `similar` = one
+partner's template and one flow; JSON = the same content, compact); inserted in RowBinary batches of at most 64 MiB (100 KiB: 4
+inserts, 1 MiB: 8, 10 MiB: 17, 50 MiB: one payload per insert, 20), then `OPTIMIZE TABLE … FINAL`; then 50 warm-up and 200 timed
+random reads `SELECT payload … WHERE id = {id} FORMAT RawBLOB` (client-side to the last byte; every read checked against the
+inserted length and CRC32C: 0 mismatches). Counts: 100 KiB × 2 000, 1 MiB × 500, 10 MiB × 100, 50 MiB × 20 (200 MiB to 1 GiB raw
+per cell; 33.9 GB raw per pass of 48 cells). Every run took < 5 min (max 122 s), so every cell ran 3 times; median [min–max].
+Raw JSON agent/work/CORE-2-run.json (merged), parts and logs agent/work/CORE-2-run-part{1,2,3}.json, CORE-2-run.log,
+CORE-2-resume.log (not committed). Other load on the VM during the first 43 cells was not recorded.
+
+**Harness edits after the run (review, for the IT `ClickHouseCompressionMainIT`):** arguments checked up front (size against the
+batch, counts, zstd level 1..22, runs); the batching moved into an inner class (same rule: a row that would overflow 64 MiB
+starts the next insert); the read check compares one value (length and CRC32C together); the memory sampler runs until it is
+interrupted and reports `serverMemorySamples`; two dead empty/`\N` guards in the TSV parsing removed; the merge fan-in
+(`length(merged_from)` in `system.part_log`: `mergeFanInMax`, `mergePeakFanIn`, `finalMergeFanIn`) added. **Recheck with the
+edited harness** (2026-11-04, the 2.10 GHz VM; `BENCH_CH_ARGS="--sizes 100,51200 --counts 2000,20 --mixes similar --formats xml
+--levels 1 --runs 1"`, agent/work/CORE-2-recheck.log/.json): 100 KiB similar xml zstd 1 ratio 8.53 and merge peak 123 MiB (table:
+8.53 / 123), one merge of 4 parts; 50 MiB similar xml zstd 1 ratio 8.62 and merge peak 582 MiB (table: 8.62 / 582), 4 merges, the
+peak one (the final OPTIMIZE merge) of 5 parts, the largest of 6. Ratio and merge peak reproduced; times not compared (other CPU).
+
+**Five cells ran after a restart, on another VM (marked †).** The whole VM restarted during 50 MiB similar xml zstd 3 run 3
+(runs 1 and 2 were logged, the cell's record was not written); the five missing cells (50 MiB similar: xml zstd 3, 9; json zstd 1,
+3, 9) were re-run with the same seed after the restart, on a VM that had changed: kernel 6.18.44-fc-v230 → **v233**, Intel Xeon
+@ 2.80 GHz → **2.10 GHz**, while another session's Maven build ran (load 1.8–5.1). As a
+control, the completed cell 50 MiB similar xml zstd 1 was run again there: ratio 8.62 (same), merge peak 582 MiB (same), insert
+4.1 s (4.0 s before), OPTIMIZE 4.4 s (5.5 s), read p50 137.6 ms (199.0 ms), p99 198.2 ms (350.2 ms). The † rows' ratios and
+memory are comparable with the others; their times are not (reads ran 31 % faster in the control, zstd 9 inserts 37–44 % faster
+than in the other 50 MiB zstd 9 rows).
+
+Columns: ratio (part) = `system.parts_columns` data_uncompressed_bytes / data_compressed_bytes of the one active part after
+OPTIMIZE (the whole part; the payload column alone, column_data_*, differs by ≤ 0.04); insert s = sum of the inserts'
+query_duration_ms (`system.query_log`); insert peak = max memory_usage of one insert; OPTIMIZE s = its query_duration_ms;
+merge peak = max peak_memory_usage over all merges of the table (`system.part_log`; the OPTIMIZE query's own memory_usage is
+~1.2 MiB, the merge is not accounted to it); server peak = `system.metrics` MemoryTracking sampled every 100 ms during inserts
+and OPTIMIZE (it includes caches and grows over the session: idle 67 MiB at the start, so it is an upper bound, not the cell's
+cost); read bytes = average read_bytes per timed read on the server; failed = insert, merge or OPTIMIZE errors, query
+exceptions and read mismatches over all runs.
+
+| size × count | mix | format | zstd | runs | ratio (part) | ratio (payload col) | insert s (server, sum) | insert peak MiB | OPTIMIZE FINAL s | merge peak MiB (part_log) | server peak MiB | read p50 ms | read p99 ms | read server p50 ms | read bytes/read MiB | failed |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 100 KiB × 2000 | mixed | xml | 1 | 3 | 7.09 [7.08–7.09] | 7.10 [7.10–7.11] | 1.1 [1.0–1.5] | 141 | 1.0 [0.9–1.2] | 145 | 229 [210–236] | 16.0 [15.2–16.9] | 43.3 [42.1–45.8] | 13 [11–14] | 6.4 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | xml | 3 | 3 | 6.89 [6.88–6.89] | 6.91 [6.90–6.91] | 1.1 [1.1–1.3] | 141 | 1.1 [1.1–1.2] | 145 | 247 [238–250] | 16.6 [16.2–17.1] | 35.0 [32.0–35.2] | 14 | 6.4 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | xml | 9 | 3 | 8.15 [8.14–8.15] | 8.17 [8.16–8.17] | 5.1 [4.5–5.1] | 155 | 5.3 [4.7–5.3] | 145 | 291 [284–293] | 14.7 [14.5–14.8] | 38.4 [31.4–43.0] | 13 | 6.4 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | json | 1 | 3 | 5.59 [5.59–5.60] | 5.60 [5.60–5.61] | 1.1 [1.0–1.2] | 141 | 1.2 [1.1–1.3] | 145 | 298 [291–300] | 16.2 [16.1–16.3] | 33.0 [31.4–43.0] | 14 | 6.3 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | json | 3 | 3 | 5.39 [5.38–5.39] | 5.40 [5.39–5.40] | 1.4 [1.3–1.5] | 141 | 1.6 [1.6–1.7] | 145 | 317 [307–325] | 16.9 [16.6–17.7] | 39.2 [35.6–39.5] | 15 [15–16] | 6.3 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | json | 9 | 3 | 6.28 [6.27–6.28] | 6.29 | 5.4 [5.3–6.5] | 155 | 6.2 [5.5–6.8] | 145 | 376 [352–387] | 17.2 [15.9–17.8] | 35.4 [34.0–45.5] | 15 [14–16] | 6.3 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | similar | xml | 1 | 3 | 8.53 | 8.56 | 1.0 [0.8–1.3] | 98 | 1.4 [0.8–1.6] | 123 | 356 [352–358] | 14.1 [13.6–15.8] | 34.2 [27.3–61.0] | 12 [12–13] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | xml | 3 | 3 | 8.52 | 8.55 | 0.9 [0.9–1.6] | 98 | 0.9 [0.8–0.9] | 123 | 359 [359–366] | 15.2 [12.4–16.0] | 31.4 [28.5–37.8] | 13 [10–14] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | xml | 9 | 3 | 9.94 | 9.98 | 4.6 [4.1–4.7] | 98 | 4.4 [4.1–5.4] | 123 | 390 [384–760] | 12.6 [11.8–13.9] | 32.4 [24.5–34.3] | 11 [10–12] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | json | 1 | 3 | 6.53 | 6.55 | 1.0 [0.9–1.0] | 98 | 0.9 [0.9–1.2] | 123 | 403 [397–416] | 16.6 [14.5–16.6] | 42.8 [40.2–43.1] | 15 [12–15] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | json | 3 | 3 | 6.51 | 6.52 | 1.1 [1.0–1.1] | 98 | 1.1 | 123 | 415 [411–430] | 16.4 [16.1–16.5] | 36.1 [33.2–50.5] | 14 [14–15] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | json | 9 | 3 | 7.57 | 7.59 | 5.0 [5.0–5.3] | 98 | 4.8 [4.6–4.9] | 123 | 526 [510–817] | 14.7 [13.5–16.0] | 37.8 [35.3–43.5] | 13 [12–14] | 6.7 [6.3–6.8] | 0 |
+| 1 MiB × 500 | mixed | xml | 1 | 3 | 8.32 | 8.32 | 2.9 [2.8–3.0] | 141 | 3.5 [3.2–3.8] | 200 | 706 [685–843] | 18.9 [18.2–19.6] | 43.4 [41.4–45.7] | 16 [15–17] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | xml | 3 | 3 | 8.26 | 8.26 | 3.1 [2.8–4.0] | 141 | 4.7 [4.7–4.8] | 200 | 712 [700–727] | 19.1 [19.1–20.1] | 43.5 [41.2–46.8] | 16 [16–17] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | xml | 9 | 3 | 9.67 [9.66–9.67] | 9.67 | 12.5 [12.4–13.7] | 155 | 17.4 [17.3–17.9] | 200 | 807 [800–829] | 18.7 [17.4–19.3] | 40.9 [39.3–47.4] | 16 [14–16] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | json | 1 | 3 | 6.42 | 6.42 | 2.6 [2.5–2.8] | 141 | 4.5 [3.9–4.6] | 200 | 776 [775–788] | 20.2 [20.0–20.4] | 40.0 [38.7–44.2] | 17 | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | json | 3 | 3 | 6.35 | 6.35 | 3.2 [3.0–3.4] | 141 | 5.0 [4.9–5.1] | 200 | 767 [759–821] | 21.0 [19.1–21.5] | 54.2 [36.6–54.2] | 18 [16–18] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | json | 9 | 3 | 7.40 | 7.40 | 14.3 [13.8–14.5] | 155 | 22.4 [21.9–22.8] | 200 | 802 [774–837] | 19.5 [19.2–19.6] | 39.1 [38.1–43.0] | 16 | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | similar | xml | 1 | 3 | 8.52 | 8.52 | 2.0 [1.9–2.2] | 98 | 2.8 [2.6–3.0] | 178 | 683 [675–692] | 20.2 [19.3–20.9] | 44.2 [37.7–51.9] | 17 [16–17] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | xml | 3 | 3 | 8.44 | 8.45 | 2.6 [2.5–2.6] | 98 | 3.1 [3.0–3.2] | 178 | 660 [657–679] | 21.3 [20.2–22.1] | 46.1 [45.1–50.8] | 18 [17–18] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | xml | 9 | 3 | 9.85 | 9.85 | 12.0 [11.4–12.2] | 98 | 17.0 [16.0–18.2] | 178 | 692 [687–693] | 19.0 [18.4–19.3] | 41.3 [35.8–45.0] | 16 [15–16] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | json | 1 | 3 | 6.55 | 6.55 | 2.5 [2.3–2.5] | 98 | 3.6 [3.5–3.7] | 178 | 657 [643–669] | 20.9 [20.2–22.0] | 48.5 [39.1–48.5] | 18 [17–19] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | json | 3 | 3 | 6.47 | 6.47 | 2.7 [2.7–2.9] | 98 | 4.7 [4.2–4.8] | 178 | 662 [655–667] | 21.1 [20.1–21.4] | 40.5 [38.5–41.4] | 18 [17–18] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | json | 9 | 3 | 7.52 | 7.52 | 13.1 [12.7–13.9] | 98 | 21.8 [19.8–22.0] | 178 | 690 [687–701] | 21.0 [20.2–22.5] | 49.8 [39.5–60.2] | 18 [17–19] | 7.4 [6.9–7.6] | 0 |
+| 10 MiB × 100 | mixed | xml | 1 | 3 | 8.43 | 8.43 | 4.9 [4.8–5.2] | 141 | 4.4 [4.3–4.4] | 199 | 732 [722–739] | 49.3 [48.2–49.6] | 68.2 [64.9–71.9] | 29 [28–29] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | xml | 3 | 3 | 8.38 | 8.38 | 5.8 [5.5–6.5] | 141 | 5.2 [5.2–5.4] | 199 | 726 [714–1091] | 51.0 [50.2–51.7] | 68.9 [67.6–81.3] | 30 | 10.0 | 0 |
+| 10 MiB × 100 | mixed | xml | 9 | 3 | 9.82 | 9.82 | 24.3 [24.0–25.3] | 155 | 26.0 [25.8–27.6] | 199 | 748 [736–750] | 48.6 [47.0–49.4] | 73.3 [62.0–80.3] | 29 [28–30] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | json | 1 | 3 | 6.52 | 6.52 | 5.9 [5.7–6.0] | 141 | 5.6 [5.5–5.9] | 200 | 707 [703–772] | 48.2 [47.2–48.3] | 71.2 [71.2–71.3] | 30 [29–30] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | json | 3 | 3 | 6.44 | 6.44 | 7.0 [6.4–7.1] | 141 | 6.7 [6.1–7.0] | 200 | 735 [734–765] | 49.0 [48.1–49.0] | 69.2 [66.1–69.4] | 31 [29–32] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | json | 9 | 3 | 7.53 | 7.53 | 28.7 [26.3–30.3] | 155 | 30.6 [27.8–33.3] | 200 | 724 [723–796] | 49.8 [47.2–50.1] | 67.5 [66.8–73.9] | 31 [29–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | xml | 1 | 3 | 8.57 | 8.57 | 4.7 [4.2–4.8] | 98 | 5.0 [4.3–5.1] | 199 | 622 [615–637] | 51.0 [47.1–52.1] | 74.2 [69.4–75.5] | 31 [29–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | xml | 3 | 3 | 8.47 | 8.47 | 5.2 [4.8–5.4] | 98 | 5.1 [5.1–5.5] | 199 | 617 [606–638] | 48.0 [47.5–49.1] | 68.2 [65.2–75.2] | 30 [29–30] | 10.0 | 0 |
+| 10 MiB × 100 | similar | xml | 9 | 3 | 9.92 | 9.92 | 25.4 [25.0–26.2] | 98 | 23.2 [22.9–25.1] | 199 | 668 [654–676] | 49.3 [44.5–50.2] | 80.2 [57.4–96.1] | 31 [28–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | json | 1 | 3 | 6.62 | 6.62 | 4.8 [4.7–4.9] | 98 | 5.3 [5.2–5.3] | 200 | 647 [638–652] | 47.9 [46.4–49.3] | 69.0 [68.0–72.3] | 29 [29–33] | 10.0 | 0 |
+| 10 MiB × 100 | similar | json | 3 | 3 | 6.52 | 6.52 | 5.6 [5.5–5.7] | 98 | 6.1 [6.0–6.4] | 200 | 639 [628–641] | 47.9 [47.6–48.5] | 65.3 [62.6–71.4] | 32 [31–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | json | 9 | 3 | 7.60 | 7.60 | 27.0 [25.4–28.0] | 98 | 27.2 [26.5–29.6] | 200 | 955 [853–1037] | 49.7 [46.5–50.1] | 76.0 [70.9–77.2] | 33 [30–33] | 10.0 | 0 |
+| 50 MiB × 20 | mixed | xml | 1 | 3 | 8.49 | 8.49 | 5.6 [4.4–5.9] | 79 | 6.7 [4.5–6.8] | 582 [580–582] | 940 [913–1115] | 222.0 [218.5–226.9] | 333.9 [330.8–340.6] | 161 [159–165] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | xml | 3 | 3 | 8.42 | 8.42 | 5.7 [4.5–5.8] | 79 | 6.0 [4.9–6.3] | 582 [580–582] | 891 [877–912] | 221.4 [212.7–221.7] | 349.4 [296.9–550.9] | 159 [151–166] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | xml | 9 | 3 | 9.87 | 9.87 | 24.8 [24.7–26.3] | 91 | 27.2 [26.4–29.8] | 582 [580–582] | 1037 [891–1190] | 219.4 [219.1–227.7] | 529.0 [356.0–600.6] | 156 [155–161] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | json | 1 | 3 | 6.56 | 6.56 | 5.2 [4.4–5.4] | 79 | 5.9 [5.6–7.3] | 582 [580–582] | 897 [888–900] | 216.2 [206.6–216.8] | 307.1 [285.1–333.0] | 160 [154–161] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | json | 3 | 3 | 6.50 | 6.50 | 5.2 [5.2–5.4] | 79 | 7.0 [6.8–7.6] | 582 [580–582] | 877 [876–887] | 209.0 [203.8–209.5] | 263.4 [256.4–268.4] | 153 [151–155] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | json | 9 | 3 | 7.60 | 7.60 | 25.1 [21.4–25.2] | 91 | 29.7 [26.0–29.8] | 582 [580–582] | 904 [895–962] | 203.0 [195.1–206.1] | 260.4 [249.2–338.8] | 150 [142–150] | 50.0 | 0 |
+| 50 MiB × 20 | similar | xml | 1 | 3 | 8.62 | 8.62 | 4.0 [3.4–4.7] | 79 | 5.5 [4.8–5.8] | 582 | 890 [883–891] | 199.0 [195.9–206.8] | 350.2 [254.8–365.9] | 147 [142–152] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | xml | 3 | 3 | 8.51 | 8.51 | 3.4 [3.1–3.4] | 79 | 4.7 [4.6–5.0] | 582 | 712 [691–754] | 136.1 [132.7–136.9] | 176.0 [170.1–184.2] | 98 [95–99] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | xml | 9 | 3 | 9.97 | 9.97 | 13.9 [12.6–15.1] | 91 | 15.2 [14.4–15.8] | 582 | 806 [767–909] | 129.3 [129.2–135.5] | 173.5 [173.0–245.7] | 92 [92–94] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | json | 1 | 3 | 6.66 | 6.66 | 3.4 [3.4–3.5] | 79 | 5.1 [5.0–5.7] | 582 | 757 [716–779] | 146.0 [143.1–147.1] | 186.3 [176.4–192.2] | 112 [108–112] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | json | 3 | 3 | 6.57 | 6.57 | 3.8 [3.6–4.2] | 79 | 6.2 [5.0–6.4] | 582 | 828 [805–855] | 146.0 [134.3–155.3] | 213.6 [178.1–233.3] | 108 [101–114] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | json | 9 | 3 | 7.67 | 7.67 | 15.7 [15.6–15.9] | 91 | 18.3 [17.4–22.8] | 582 | 928 [888–961] | 143.7 [129.8–144.9] | 192.3 [191.0–220.2] | 105 [98–106] | 50.0 | 0 |
+
+- **Nothing failed.** 144 runs, 0 insert, merge or OPTIMIZE errors, 0 query exceptions, 0 read mismatches; every table ended in
+  one Wide part. 50 MiB payloads in one 1 GiB table fit the default server limits on this VM.
+- **The ratio depends on the format and the level, hardly on the size.** zstd 1: XML 7.1–8.6 (100 KiB mixed is the low end), JSON
+  5.6–6.7. zstd 9 is 12–17 % better than zstd 1 in every cell; zstd 3 is 0.1–3.6 % *worse* than zstd 1 in every cell (observed,
+  not explained here). `similar` beats `mixed` by 1–24 %, most at 100 KiB.
+- **zstd 9 costs 4.3–6.0× the insert time and 3.0–6.1× the OPTIMIZE time of zstd 1** (non-† cells): e.g. 10 MiB mixed XML ingests
+  at 215 MB/s raw with zstd 1 and 43 MB/s with zstd 9 (one insert stream, raw bytes / server insert time).
+- **Insert memory follows the batch, not the payload**: 98–155 MiB per 64 MiB batch for 100 KiB–10 MiB payloads, 79–91 MiB for
+  a single 50 MiB payload.
+- **Merge memory follows the payload from 10 MiB on**: 123–145 MiB (100 KiB), 178–200 MiB (1 MiB), 199–200 MiB (10 MiB),
+  **582 MiB (50 MiB)** peak per merge, the same for every level, format and mix. A table here holds one cell's parts only: 4
+  inserts (100 KiB), 8 (1 MiB), 17 (10 MiB) or 20 (50 MiB), so a merge combined at most that many parts; the fan-in observed in
+  the recheck was 4 (100 KiB) and 5 at the 50 MiB peak (6 the largest). The harness runs one table at a time; how many such
+  merges run at once in production (background pool) was not measured.
+- **A small payload is not a small read**: a read by id reads its whole granule (index_granularity_bytes 10 MiB): 6.3–7.4 MiB per
+  read for 100 KiB and 1 MiB payloads, so p50 is 13–21 ms at both sizes; 10 MiB reads take 48–51 ms p50 (65–80 ms p99), 50 MiB
+  reads 199–222 ms p50 (260–529 ms p99; non-† rows). Reads filter on id only (the third key column) over at most 2 000 rows per
+  table; a production table with millions of rows was not measured.
+
+**Proposal for the owner (CORE-2):** store payloads inline in ClickHouse up to **10 MiB**, column codec **ZSTD(1)**.
+- Size, decided by merge memory: a 50 MiB payload costs **582 MiB per merge** against 199–200 MiB for 10 MiB (part_log
+  peak_memory_usage, every cell), and its read takes 199–222 ms p50 against 48–51 ms. Nothing failed at 50 MiB on this VM, so 50 MiB
+  is a possible bound if the owner accepts ~0.6 GiB per concurrent merge of such parts.
+- **Limit of this evidence**: the merge peaks were measured at the fan-in observed here (4 parts at 100 KiB, 5 at the 50 MiB
+  peak, at most 20 parts per table); a long-lived table's merges may combine more parts, and their peak was not measured. The
+  10 MiB bound and the ~0.6 GiB per 50 MiB merge hold for the observed fan-in only; concurrent merges were not measured either.
+- Level, decided by ingest time: ZSTD(9) gains 12–17 % ratio for 4.3–6.0× the insert time (43 vs 215 MB/s per stream at 10 MiB);
+  ZSTD(3) is not better than ZSTD(1) on these payloads.
+
+---
+
 ## FIX-108 — CPU sampling overhead (partial: round 1 only) — cloud VM, 4 vCPU
 
 Date: 2026-11-02. Commits: the FIX-108 working tree on 84b47f0 (records labelled `84b47f0+dirty`) and the parent 84b47f0 (a git
