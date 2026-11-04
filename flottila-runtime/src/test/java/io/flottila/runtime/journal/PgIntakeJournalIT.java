@@ -3,6 +3,7 @@ package io.flottila.runtime.journal;
 import io.flottila.api.BlobKey;
 import io.flottila.api.Envelope;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.pgclient.PgBuilder;
@@ -101,6 +102,30 @@ class PgIntakeJournalIT {
         return r.getBoolean(1) ? r.getLong(0) : 0;
     }
 
+    /**
+     * The save of {@code in} with {@code answer}, decided while its transaction is open: a session holds {@code work} in SHARE
+     * mode so the item's insert waits; once it waits, {@code atTheDecision} runs, {@code answer} completes and the session lets go.
+     */
+    Future<String> decidedInItsTransaction(JournalWorld a, Envelope in, Promise<Void> answer, Runnable atTheDecision) {
+        io.vertx.pgclient.PgConnection holder = io.vertx.pgclient.PgConnection.connect(vertx, db.options()).await();
+        try {
+            io.vertx.sqlclient.Transaction tx = holder.begin().await();
+            holder.query("lock table work in share mode").execute().await();
+            Future<String> pending = a.start(in, true, answer.future());
+            long deadline = System.nanoTime() + java.time.Duration.ofSeconds(20).toNanos();
+            while (count(db.pool(), "select count(*) from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'") == 0) {
+                if (System.nanoTime() > deadline) throw new AssertionError("the save's item insert never waited on the held table");
+                Thread.onSpinWait();
+            }
+            atTheDecision.run();
+            answer.complete();
+            tx.rollback().await();
+            return settled(pending);
+        } finally {
+            holder.close().await();
+        }
+    }
+
     JournalWorld world() throws Exception {
         JournalWorld w = JournalWorld.open(vertx, db.pool(), db.pool(), Files.createDirectories(tmp.resolve("journal")), "node-a");
         closing.add(w);
@@ -133,14 +158,11 @@ class PgIntakeJournalIT {
         counted.query("select 1").execute().await();   // the one connection is open before the count starts
         Buffer bytes = bytes(3_000, 1);
         Envelope in = a.arrive("m-held", bytes);
-        AtomicReference<Boolean> forcedAtTheCommit = new AtomicReference<>();
         HeldFiles.Hold force = a.files.holdForceAfter("m-held");
+        PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
 
         int mark = wire.mark();
-        Future<String> saved = a.start(in, true, () -> {
-            forcedAtTheCommit.set(a.files.forcedPast("m-held"));   // asked just before the commit: the record must be forced by then
-            return false;
-        });
+        Future<String> saved = a.start(in, true, JournalWorld.undecided());
         force.awaitReached();
         assertFalse(saved.isComplete(), "the save waits for its record's force");
         assertEquals(List.of(), wire.since(mark), "no message, BEGIN included, was sent while the record is not forced");
@@ -148,8 +170,10 @@ class PgIntakeJournalIT {
         nothingCommitted("m-held");
 
         force.release();
+        commit.awaitReached();
+        assertTrue(a.files.forcedPast("m-held"), "the commit came after the record's force (D-082 restated, CORE-3 item 6)");
+        commit.release();
         assertTrue(settled(saved).succeeded(), "saved once the force returned: " + saved.cause());
-        assertEquals(Boolean.TRUE, forcedAtTheCommit.get(), "the commit came after the record's force (D-082 restated, CORE-3 item 6)");
         List<String> sent = wire.statementsSince(mark).stream().map(PgIntakeJournalIT::head).toList();
         assertEquals("BEGIN", sent.getFirst(), "witness: the wire counts the save's statements once the force returned: " + sent);
         assertEquals("COMMIT", sent.getLast(), sent.toString());
@@ -162,19 +186,14 @@ class PgIntakeJournalIT {
         long before = inserts();
         Envelope lost = a.arrive("m-unforced", bytes(3_000, 2));
         HeldFiles.Hold failing = a.files.holdForceAfter("m-unforced");
-        AtomicInteger asked = new AtomicInteger();
         int failedMark = wire.mark();
-        Future<String> refused = a.start(lost, true, () -> {
-            asked.incrementAndGet();
-            return false;
-        });
+        Future<String> refused = a.start(lost, true, JournalWorld.undecided());
         failing.awaitReached();
         failing.fail(new IOException("EIO by the test"));
         assertTrue(settled(refused).failed(), "a record never forced is no save");
         assertTrue(causes(refused.cause()).stream().anyMatch(c -> c.contains(JournalFailedException.class.getSimpleName())),
                 "failed retryable, with the journal's failure (503 for the sender): " + causes(refused.cause()));
-        assertEquals(0, asked.get(), "it never reached its commit: abandoned is not asked");
-        assertEquals(List.of(), wire.since(failedMark), "and sent no message");
+        assertEquals(List.of(), wire.since(failedMark), "it never reached its transaction: it sent no message");
         assertEquals(before, inserts(), "no insert");
         nothingCommitted("m-unforced");
     }
@@ -206,7 +225,7 @@ class PgIntakeJournalIT {
             Envelope in = a.arrive("m-none", bytes);
 
             int mark = wire.mark();
-            Future<String> saved = a.save(in, false, () -> false);
+            Future<String> saved = a.save(in, false, JournalWorld.undecided());
             assertTrue(saved.succeeded(), "saved: " + saved.cause());
             List<String> sent = wire.statementsSince(mark).stream().map(PgIntakeJournalIT::head).toList();
             long roundTrips = wire.roundTripsSince(mark);
@@ -235,7 +254,7 @@ class PgIntakeJournalIT {
         Buffer bytes = bytes(3_000, 4);
         Envelope in = a.arrive("m-kept", bytes);
 
-        Future<String> saved = a.save(in, true, () -> false);
+        Future<String> saved = a.save(in, true, JournalWorld.undecided());
         assertTrue(saved.succeeded(), "saved: " + saved.cause());
         JournalWorld.Ref kept = bodyRef(db.pool(), BlobKey.body("m-kept", 0));
         assertNotNull(kept, "keepInput: the ingress body's ref is kept in body_refs, under (id, 0, body)");
@@ -260,14 +279,10 @@ class PgIntakeJournalIT {
         JournalWorld a = world();
         Buffer bytes = bytes(3_000, 5);
         Envelope in = a.arrive("m-rolled", bytes);
-        AtomicInteger asked = new AtomicInteger();
+        Promise<Void> answer = Promise.promise();
 
-        Future<String> abandoned = a.save(in, true, () -> {
-            asked.incrementAndGet();
-            return true;   // the answer was decided meanwhile: roll back
-        });
+        Future<String> abandoned = decidedInItsTransaction(a, in, answer, () -> { });   // the answer was decided meanwhile: roll back
         assertTrue(abandoned.failed(), "an abandoned save fails");
-        assertEquals(1, asked.get(), "asked once, just before the commit");
         assertTrue(inserts() > 0, "fixture: the transaction ran its inserts, then rolled back");
         nothingCommitted("m-rolled");
         assertTrue(a.files.forcedPast("m-rolled"), "the record was appended and forced before the transaction: its bytes are in the journal");
@@ -276,7 +291,7 @@ class PgIntakeJournalIT {
         assertEquals(bytes.length(), a.blobs.memoryInUse(), "the body stays local with its budget: no commit, no release");
         assertEquals(bytes, settled(a.blobs.read(in.body().key())).result(), "and readable");
 
-        Future<String> retry = a.save(in, true, () -> false);
+        Future<String> retry = a.save(in, true, JournalWorld.undecided());
         assertTrue(retry.succeeded(), "the sender's retry saves: " + retry.cause());
         JournalWorld.Ref ref = workRef(db.pool(), "m-rolled");
         assertNotNull(ref);
@@ -322,7 +337,7 @@ class PgIntakeJournalIT {
         HeldFiles.Hold force = a.files.holdForceAfter("m-open");
         PgConnection gate = commitGate();
 
-        Future<String> saved = a.start(in, true, () -> false);
+        Future<String> saved = a.start(in, true, JournalWorld.undecided());
         force.awaitReached();
         List<JournalRef> whileForcing = openSaves(a);   // appended, not yet forced: reserved and written
         force.release();
@@ -342,18 +357,15 @@ class PgIntakeJournalIT {
     void aSaveLeavesTheOpenSavesOnceItsRollbackIsAcknowledgedOrItsForceFailed() throws Exception {
         JournalWorld a = world();
         Envelope rolled = a.arrive("m-rolled-open", bytes(3_000, 8));
-        AtomicReference<List<JournalRef>> atTheCheck = new AtomicReference<>();
-        Future<String> abandoned = a.save(rolled, true, () -> {
-            atTheCheck.set(openSaves(a));   // the abandoned check, just before the commit: still open
-            return true;
-        });
+        AtomicReference<List<JournalRef>> atTheDecision = new AtomicReference<>();
+        Future<String> abandoned = decidedInItsTransaction(a, rolled, Promise.promise(), () -> atTheDecision.set(openSaves(a)));
         assertTrue(abandoned.failed(), "fixture: an abandoned save fails");
-        assertEquals(1, atTheCheck.get().size(), "an open save at its abandoned check: " + atTheCheck.get());
+        assertEquals(1, atTheDecision.get().size(), "an open save while its transaction runs: " + atTheDecision.get());
         assertEquals(List.of(), openSaves(a), "out of the set once its rollback is acknowledged");
 
         Envelope lost = a.arrive("m-unforced-open", bytes(3_000, 9));
         HeldFiles.Hold failing = a.files.holdForceAfter("m-unforced-open");
-        Future<String> refused = a.start(lost, true, () -> false);
+        Future<String> refused = a.start(lost, true, JournalWorld.undecided());
         failing.awaitReached();
         assertEquals(1, openSaves(a).size(), "an open save while its record waits for the force");
         failing.fail(new IOException("EIO by the test"));
@@ -374,17 +386,11 @@ class PgIntakeJournalIT {
                 "fixture: above RECORD_MAX, a spill");
         sql("create function refuse_segment() returns trigger language plpgsql as $$ begin raise exception 'segment row refused by the test'; end $$");
         sql("create trigger refuse_segment before insert on journal_segments for each row execute function refuse_segment()");
-        AtomicInteger asked = new AtomicInteger();
-
-        Future<String> refused = a.save(in, true, () -> {
-            asked.incrementAndGet();
-            return false;
-        });
+        Future<String> refused = a.save(in, true, JournalWorld.undecided());
         assertTrue(refused.failed(), "a spill whose segment row is refused is no save");
         assertTrue(causes(refused.cause()).stream().anyMatch(c -> c.contains("segment row refused by the test")),
                 "failed by the refused insert: " + causes(refused.cause()));
         assertEquals(List.of(), openSaves(a), "and out of the open saves again");
-        assertEquals(0, asked.get(), "it never reached its commit");
         nothingCommitted("m-spilled");
         assertEquals(java.util.Optional.of(io.flottila.runtime.blob.TieredBlobStore.Location.SPILL), a.blobs.location(in.body().key()),
                 "its body stays local");

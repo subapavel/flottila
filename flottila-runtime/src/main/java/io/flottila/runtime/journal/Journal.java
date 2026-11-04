@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,6 +63,15 @@ import java.util.stream.Stream;
  * {@code FLOTTILA_JOURNAL_APPEND_WAIT} passes on the injected timer, then fails {@link JournalBusyException} with nothing
  * reserved. An append that finds nothing pending is always taken.
  *
+ * <p><b>Journal bound</b> (CORE-3 item 11). The journal's bytes — every segment file (header, records, footer), every spill
+ * file and every record reserved and not yet written — are counted against {@code FLOTTILA_JOURNAL_MAX_BYTES} (max). An
+ * {@link Bound#INTAKE intake}'s record is taken while the bytes and its record stay at or below max − max/16 and refused one
+ * byte above it; a {@link Bound#RESERVE step body} (a park's included) may use the reserve up to max. A refused record is a
+ * {@link JournalFullException} (retryable: 503 for an intake), nothing reserved or written; a spill's footer is checked so at
+ * its persist (the spill's own bytes counted already). A WARNING is logged when the bytes cross 80 % of max upward, an ERROR
+ * when the refusals of a bound start; each again only after the bytes fell below 80 % (the sweeper's unlinks) and crossed or
+ * were refused again.
+ *
  * <p><b>Segments.</b> A segment rolls before the record that would take it past {@code FLOTTILA_JOURNAL_SEGMENT_BYTES},
  * once it holds {@code FLOTTILA_JOURNAL_SEGMENT_RECORDS}, and {@code FLOTTILA_JOURNAL_SEGMENT_AGE} after its first record
  * (the injected timer, and the next append once the clock passed it); an empty segment never rolls. Every segment has its
@@ -76,9 +86,10 @@ import java.util.stream.Stream;
  * <p><b>Fail-stop.</b> Any write or force error of the writer, a sealer or a large body's persist (its footer, or the
  * directory force after its move) fails the journal: the channel it failed on is never forced again, the round's appends,
  * every queued and every later append, spill and persist fail {@link JournalFailedException}, one ERROR is logged and
- * {@link #isFailed()} answers true ({@link #health()} DOWN); reads go on; only a restart's scan recovers the journal. A
- * persist whose directory force returns after the journal failed fails too (a later force proves nothing for earlier
- * writes). A failed segment row insert is no write or force error: it fails no journal, and a close while it is retried
+ * {@link #isFailed()} answers true ({@link #health()} DOWN); reads go on; only a restart's scan recovers the journal. Every
+ * force of {@code segments/} (a pre-open's, a persist's) has a generation: a persist whose own directory force returned waits
+ * for every one begun before it to end and fails when one of them failed (a later force proves nothing for earlier writes,
+ * and one failing while it ran may have dropped its move). A failed segment row insert is no write or force error: it fails no journal, and a close while it is retried
  * stops the writer without a fail-stop ERROR.
  *
  * <p><b>Read.</b> A record is read by its ref with a pread on its segment's read channel — at most
@@ -122,8 +133,14 @@ public final class Journal implements AutoCloseable {
 
     /** What a read may reach in a segment: the records below {@code end}; the footer index once sealed with a sound one. */
     static final class Extent {
+        /** The {@link #sealedMs} of a segment not sealed yet. */
+        static final long OPEN = Long.MAX_VALUE;
         volatile long end;
         volatile Index index;
+        /** The ms it was sealed at (its trailer's; a segment found at start: the start's), or {@link #OPEN}. */
+        volatile long sealedMs = OPEN;
+        /** The journal bytes its file counts for once sealed (its size at start for one found then): what its unlink gives back. */
+        volatile long bytes;
 
         Extent(long end) { this.end = end; }
 
@@ -188,6 +205,24 @@ public final class Journal implements AutoCloseable {
         }
     }
 
+    /**
+     * What a record may use of {@code FLOTTILA_JOURNAL_MAX_BYTES} (CORE-3 item 11).
+     *
+     * @since 0.1
+     */
+    public enum Bound {
+        /** An intake's record: up to max − max/16. */
+        INTAKE,
+        /** A step body or a park's body: the reserve, up to max. */
+        RESERVE
+    }
+
+    /** The force of a directory (a segment file's creation). */
+    @FunctionalInterface
+    private interface DirForce {
+        void run() throws IOException;
+    }
+
     /** A write or force of a spill's persist. */
     @FunctionalInterface
     private interface Forcing<T> {
@@ -232,7 +267,12 @@ public final class Journal implements AutoCloseable {
     private final FileChannel lockChannel;
     private final SecureRandom random = new SecureRandom();
     private final Map<Long, Extent> extents = new ConcurrentHashMap<>();
+    private final Map<Long, Long> unlinking = new ConcurrentHashMap<>();   // swept segments whose file is not unlinked yet: their bytes
     private final ReadChannels channels;
+    /** The most journal bytes each {@link Bound} may reach, by ordinal: max − max/16, max. */
+    private final long[] limits;
+    /** 80 % of max, rounded up: the WARNING's mark. */
+    private final long warnAt;
 
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition work = lock.newCondition();
@@ -252,6 +292,12 @@ public final class Journal implements AutoCloseable {
     private Throwable outage;  // the last failure of the pre-open row insert being retried (DEGRADED), else null
     private Timer.Cancellable retry;               // the pending retry of that insert (a fired one cancels to false)
     private CompletableFuture<Opened> retrying;   // the pre-open it completes
+    private long bytes;        // the journal's bytes: segment and spill files, reservations (CORE-3 item 11)
+    private boolean warned;    // the bytes crossed 80 % and did not fall below since
+    private final boolean[] refusing = new boolean[Bound.values().length];   // by ordinal: refusals began, not fallen below 80 % since
+    private long dirForces;    // forces of segments/ begun by this journal: the last one's generation
+    private final TreeSet<Long> dirForcing = new TreeSet<>();   // the generations of those not ended
+    private long dirFailedAt = Long.MAX_VALUE;   // the least generation whose force failed
 
     // writer-owned (handed over by Thread.start, read by close after the writer is done)
     private SegmentFile writing;
@@ -260,7 +306,7 @@ public final class Journal implements AutoCloseable {
     private final List<SegmentFile> held = new ArrayList<>();
 
     private Journal(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files, SegmentRows rows,
-                    SegmentFormat format, Path dir, FileChannel lockChannel, Map<Long, Extent> recovered, SegmentFile first) {
+                    SegmentFormat format, Path dir, FileChannel lockChannel, Map<Long, Extent> recovered, SegmentFile first, long heldBytes) {
         this.config = config;
         this.clock = clock;
         this.timer = timer;
@@ -273,6 +319,11 @@ public final class Journal implements AutoCloseable {
         this.longestRecord = RecordFormat.MAX_HEADER + config.recordMax() + (long) RecordFormat.chunks(config.recordMax()) * ChunkedAead.TAG_BYTES;
         this.lockChannel = lockChannel;
         this.channels = new ReadChannels(files, config.readChannels());
+        long max = config.maxBytes();
+        this.limits = new long[] {max - max / 16, max};
+        this.warnAt = max - max / 5;
+        long start = clock.millis();
+        for (Extent e : recovered.values()) e.sealedMs = start;   // after a restart the grace counts from the start
         extents.putAll(recovered);
         extents.put(first.n, first.extent);
         current = new Open(first.n, format.headerLength());
@@ -280,6 +331,7 @@ public final class Journal implements AutoCloseable {
         nextNumber = first.n + 2;
         writing = first;
         held.add(first);
+        grown(heldBytes);
         next = preopen(upcoming);
         Thread.ofVirtual().name("journal-writer-" + config.node()).start(this::runWriter);
     }
@@ -348,8 +400,9 @@ public final class Journal implements AutoCloseable {
             unlinkOthers(segments, numbers, kept);
             Map<Long, Extent> recovered = Recovery.apply(plan, files, clock);
             if (registered != null) dropUnfiled(rows, node, identity.replaced() ? Set.of() : registered, recovered.keySet());
+            for (Map.Entry<Long, Extent> e : recovered.entrySet()) e.getValue().bytes = Files.size(segments.resolve(e.getKey() + ".seg"));
             SegmentFile first = create(highest + 1, node, rows, files, segments, format, clock);
-            return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered, first);
+            return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered, first, sizes(segments));
         }
     }
 
@@ -379,6 +432,15 @@ public final class Journal implements AutoCloseable {
         if (!unfiled.isEmpty()) rows.drop(node, unfiled).await();
     }
 
+    /** The bytes of the files in {@code segments/}: the journal's bytes at the start (its spill was cleared). */
+    private static long sizes(Path segments) throws IOException {
+        long sum = 0;
+        try (Stream<Path> files = Files.list(segments)) {
+            for (Iterator<Path> it = files.iterator(); it.hasNext(); ) sum += Files.size(it.next());
+        }
+        return sum;
+    }
+
     /** Unlinks whatever an earlier run left under {@code spill/}: a spill never persisted nor abandoned is no one's. */
     private static void clearSpill(Path spill) throws IOException {
         Files.createDirectories(spill);
@@ -404,16 +466,17 @@ public final class Journal implements AutoCloseable {
     private static SegmentFile create(long n, String node, SegmentRows rows, JournalFiles files, Path segments, SegmentFormat format, Clock clock)
             throws IOException {
         rows.insert(node, n).await();
-        return createFile(n, files, segments, format, clock);
+        return createFile(n, files, segments, format, clock, () -> JournalIo.forceDir(files, segments));
     }
 
-    /** The file of segment {@code n}, whose row is in: created, its header written and forced, the directory forced. */
-    private static SegmentFile createFile(long n, JournalFiles files, Path segments, SegmentFormat format, Clock clock) throws IOException {
+    /** The file of segment {@code n}, whose row is in: created, its header written and forced, the directory forced by {@code dirForce}. */
+    private static SegmentFile createFile(long n, JournalFiles files, Path segments, SegmentFormat format, Clock clock, DirForce dirForce)
+            throws IOException {
         try (JournalIo.Owned ch = new JournalIo.Owned(files.open(segments.resolve(n + ".seg"),
                 Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)))) {
             JournalIo.writeFully(ch.get(), format.header(n, clock.millis()));
             ch.get().force(false);
-            JournalIo.forceDir(files, segments);
+            dirForce.run();
             return new SegmentFile(n, ch.handOn(), new Extent(format.headerLength()));
         }
     }
@@ -432,7 +495,17 @@ public final class Journal implements AutoCloseable {
      * @throws IllegalStateException    the journal is closed
      */
     public Appended append(JournalRecord record, Future<?> abandoned) {
+        return append(record, abandoned, Bound.INTAKE);
+    }
+
+    /**
+     * {@link #append(JournalRecord, Future)} of a record that may use {@code bound} of {@code FLOTTILA_JOURNAL_MAX_BYTES}.
+     *
+     * @throws JournalFullException the journal's bytes and this record would pass {@code bound}'s limit; nothing reserved
+     */
+    public Appended append(JournalRecord record, Future<?> abandoned, Bound bound) {
         Objects.requireNonNull(abandoned, "abandoned");
+        Objects.requireNonNull(bound, "bound");
         ByteBuffer bytes = encode(record);
         int length = bytes.remaining();
         Room wait = null;
@@ -441,6 +514,7 @@ public final class Journal implements AutoCloseable {
             while (true) {
                 if (failure != null) throw failed();
                 if (closing) throw closed();
+                if (this.bytes + length > limits[bound.ordinal()]) throw full(length, bound);
                 if (pending == 0 || pending + length <= config.pendingBytes()) return reserve(record, bytes);
                 if (wait == null) wait = new Room(abandoned);
                 if (wait.over()) {
@@ -491,6 +565,7 @@ public final class Journal implements AutoCloseable {
         Promise<Void> promise = Promise.promise();
         queue.add(new Rec(new JournalIndexEntry(record.messageId(), record.step(), record.part(), ref), bytes, promise));
         pending += length;
+        grow(length);
         if (seg.records == config.segmentRecords()) roll();
         work.signal();
         return new Appended(ref, promise.future());
@@ -561,6 +636,64 @@ public final class Journal implements AutoCloseable {
         return new IllegalStateException("the journal is closed");
     }
 
+    /** {@code n} more journal bytes; a WARNING once they cross 80 % of max upward. Under the lock. */
+    private void grow(long n) {
+        bytes += n;
+        if (!warned && bytes >= warnAt) {
+            warned = true;
+            LOG.log(System.Logger.Level.WARNING, "journal " + config.dir() + " holds " + bytes + " bytes, 80 % of FLOTTILA_JOURNAL_MAX_BYTES "
+                    + config.maxBytes() + " or more: intakes are refused above " + limits[0] + " (segments go once no row pins them)");
+        }
+    }
+
+    /** {@link #grow} under the lock. */
+    private void grown(long n) {
+        lock.lock();
+        try {
+            grow(n);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** {@code n} journal bytes fewer (a segment swept, a spill abandoned); below 80 % the alerts may log again. */
+    private void shrunk(long n) {
+        lock.lock();
+        try {
+            bytes -= n;
+            if (bytes < warnAt) {
+                warned = false;
+                Arrays.fill(refusing, false);
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** {@code length} more bytes of {@code bound}, counted, or refused when they do not fit. */
+    private void reserveRoom(long length, Bound bound) {
+        lock.lock();
+        try {
+            if (bytes + length > limits[bound.ordinal()]) throw full(length, bound);
+            grow(length);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** The refusal of {@code length} bytes of {@code bound}; an ERROR when the refusals of that bound start. Under the lock. */
+    private JournalFullException full(long length, Bound bound) {
+        String what = bound == Bound.INTAKE
+                ? "intakes are refused (retryable, 503) above FLOTTILA_JOURNAL_MAX_BYTES − 1/16 = " + limits[0]
+                : "step bodies are refused (recorded metadata-only, parks hold) above FLOTTILA_JOURNAL_MAX_BYTES " + config.maxBytes();
+        String message = "journal " + config.dir() + " is full: " + bytes + " bytes and a record of " + length + "; " + what;
+        if (!refusing[bound.ordinal()]) {
+            refusing[bound.ordinal()] = true;
+            LOG.log(System.Logger.Level.ERROR, message + " (logged again once the bytes fell below 80 % and refusals start again)");
+        }
+        return new JournalFullException(message);
+    }
+
     /** The node whose journal this is ({@code FLOTTILA_NODE_ID}): its refs name it. */
     public String node() {
         return config.node();
@@ -569,6 +702,21 @@ public final class Journal implements AutoCloseable {
     /** {@code FLOTTILA_JOURNAL_RECORD_MAX}: the largest body {@link #append} takes; a longer one is {@link #spill spilled}. */
     public long recordMax() {
         return config.recordMax();
+    }
+
+    /** Whether segment {@code n} is one this journal holds now: not swept, not given up. */
+    public boolean holds(long n) {
+        return extents.containsKey(n);
+    }
+
+    /** The journal's bytes now (CORE-3 item 11): its segment and spill files and the records reserved and not yet written. */
+    public long bytes() {
+        lock.lock();
+        try {
+            return bytes;
+        } finally {
+            lock.unlock();
+        }
     }
 
     /** True once the journal failed and stopped (fail-stop): the admin health reports it DOWN. */
@@ -702,8 +850,14 @@ public final class Journal implements AutoCloseable {
         return o.file();
     }
 
+    /**
+     * Begins segment {@code n}'s pre-open; its header counts from now, before its file exists (a reservation, as an append's), so
+     * the bytes a writer's move on adds are counted when the move returns. A pre-open that ends without its file keeps them: it
+     * fails the journal (fail-stop) or ends with its close, and neither takes a byte again.
+     */
     private CompletableFuture<Opened> preopen(long n) {
         CompletableFuture<Opened> f = new CompletableFuture<>();
+        grown(format.headerLength());
         attempt(n, f, FIRST_RETRY);
         return f;
     }
@@ -722,7 +876,7 @@ public final class Journal implements AutoCloseable {
                 return;
             }
             try {
-                SegmentFile file = createFile(n, files, segments, format, clock);
+                SegmentFile file = createFile(n, files, segments, format, clock, this::forceSegments);
                 extents.put(n, file.extent);
                 rowIn(n);
                 f.complete(new Opened(file, null));
@@ -768,13 +922,68 @@ public final class Journal implements AutoCloseable {
         if (ended) LOG.log(System.Logger.Level.INFO, "the journal_segments row of segment {0} is in: journal {1} is UP again", n, config.dir());
     }
 
+    /**
+     * Forces {@code segments/} as one generation of its forces (a pre-open's, a persist's): the generation is taken before the
+     * force and ended after it, a failure recorded with its generation before the end is (CORE-4c3 r1 carry).
+     *
+     * @return the force's generation
+     */
+    private long forceSegments() throws IOException {
+        long gen;
+        lock.lock();
+        try {
+            gen = ++dirForces;
+            dirForcing.add(gen);
+        } finally {
+            lock.unlock();
+        }
+        boolean ok = false;
+        try {
+            JournalIo.forceDir(files, segments);
+            ok = true;
+            return gen;
+        } finally {
+            lock.lock();
+            try {
+                if (!ok) dirFailedAt = Math.min(dirFailedAt, gen);
+                dirForcing.remove(gen);
+                done.signalAll();
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    /**
+     * After the force of generation {@code gen} returned: waits until every force of {@code segments/} begun before it ended, and
+     * refuses when one of those failed — a force that succeeds after a failed one proves nothing for what was written before it
+     * (fsyncgate), and one that failed while this force ran may have dropped this persist's move.
+     */
+    private void requireNoEarlierDirFailure(long gen) {
+        lock.lock();
+        try {
+            while (!dirForcing.isEmpty() && dirForcing.first() < gen) done.awaitUninterruptibly();
+            if (dirFailedAt < gen) {
+                throw new JournalFailedException("a force of " + segments + " begun before this persist's own (generation " + gen + ") failed (generation "
+                        + dirFailedAt + "): its move into segments/ is not known to be durable", failure);
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Hands {@code f} to a sealer virtual thread: the writer's last write and force on it have returned. */
     private void seal(SegmentFile f) {
         Thread sealer = Thread.ofVirtual().name("journal-sealer-" + f.n).unstarted(() -> {
             try (FileChannel ch = f.channel) {
-                SegmentFormat.Footer footer = SegmentFormat.footer(f.entries, f.end, clock.millis());
+                long sealedMs = clock.millis();
+                SegmentFormat.Footer footer = SegmentFormat.footer(f.entries, f.end, sealedMs);
+                int length = footer.bytes().remaining();
                 JournalIo.writeFully(ch, footer.bytes());
+                grown(length);
                 ch.force(false);
+                f.extent.bytes = f.end + length;   // the file: its header and records, then the footer
+                f.extent.sealedMs = sealedMs;
                 f.extent.index = new Index(footer.indexLength(), footer.indexCrc(), f.entries.size());
             } catch (IOException | RuntimeException | Error e) {
                 fail(e, List.of());
@@ -994,7 +1203,8 @@ public final class Journal implements AutoCloseable {
      * Spills {@code body} under {@code key}: reads it to its end on this thread and writes it, from its first byte, as the
      * one large record of a segment of its own under {@code spill/}, encrypted under the tenant key {@code tenantKeyId} and
      * hashed by {@code hasher} once while it streams. Nothing is forced, nothing is in {@code segments/} and no segment row
-     * exists until {@link Spill#persist()}. Any failure leaves no file behind.
+     * exists until {@link Spill#persist()}. Any failure leaves no file behind. The spill is bounded by
+     * {@link Bound#RESERVE}: see {@link #spill(BlobKey, int, InputStream, long, Hasher, Bound)}.
      *
      * @param maxSize the largest body taken, in {@code 0..(2^31 - 1) MiB} (the chunk counter's range)
      * @throws IllegalArgumentException {@code maxSize} out of range (before a byte is read), a name above 65 535 bytes, or a
@@ -1003,8 +1213,21 @@ public final class Journal implements AutoCloseable {
      * @throws JournalFailedException   the journal failed (retryable); nothing read
      * @throws IllegalStateException    the journal is closed (a close waits for every spill already running)
      * @throws IOException              the body could not be read, or the spill not written
+     * @throws JournalFullException     the spill would pass {@code FLOTTILA_JOURNAL_MAX_BYTES}
      */
     public Spill spill(BlobKey key, int tenantKeyId, InputStream body, long maxSize, Hasher hasher) throws IOException {
+        return spill(key, tenantKeyId, body, maxSize, hasher, Bound.RESERVE);
+    }
+
+    /**
+     * {@link #spill(BlobKey, int, InputStream, long, Hasher)} of a spill bounded while it streams (CORE-4d r1): its segment
+     * header is refused ({@link JournalFullException}, no file, nothing read) when it does not fit under {@code bound}'s limit —
+     * an intake's spill past {@code FLOTTILA_JOURNAL_MAX_BYTES − 1/16} writes no chunk only to be answered 503 —, then each
+     * write is counted as it is made and one that would pass max fails the spill with a {@link JournalFullException}; its file
+     * is then unlinked on a virtual thread of its own (off the hot path), its bytes counted until it is gone.
+     */
+    public Spill spill(BlobKey key, int tenantKeyId, InputStream body, long maxSize, Hasher hasher, Bound bound) throws IOException {
+        Objects.requireNonNull(bound, "bound");
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(body, "body");
         Objects.requireNonNull(hasher, "hasher");
@@ -1013,25 +1236,31 @@ public final class Journal implements AutoCloseable {
         }
         enter();
         try {
-            return spilled(key, tenantKeyId, body, maxSize, hasher);
+            return spilled(key, tenantKeyId, body, maxSize, hasher, bound);
         } finally {
             leave();
         }
     }
 
-    private Spill spilled(BlobKey key, int tenantKeyId, InputStream body, long maxSize, Hasher hasher) throws IOException {
+    private Spill spilled(BlobKey key, int tenantKeyId, InputStream body, long maxSize, Hasher hasher, Bound bound) throws IOException {
         SecretKey tenantKey = keys.apply(tenantKeyId);
         if (tenantKey == null) throw new IllegalArgumentException("no tenant key " + tenantKeyId);
         byte[] salt = new byte[ChunkedAead.SALT_BYTES];
         random.nextBytes(salt);
+        long header = format.headerLength();
+        reserveRoom(header, bound);   // before the file: a spill refused here writes nothing
         long n = number();
         Path file = spills.resolve(n + ".seg");
-        Throwable failure = null;   // set by every failure: the finally then unlinks what was written
+        long[] counted = {header};    // the bytes taken so far, the header's first
+        Throwable failure = null;     // set by every failure: the finally then unlinks what was written
         try (FileChannel ch = files.open(file, Set.of(StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
             JournalIo.writeFully(ch, format.header(n, clock.millis()));
-            LargeRecord.Written w = LargeRecord.write(ch, key, tenantKeyId, tenantKey, salt, body, maxSize, hasher);
-            JournalRef ref = new JournalRef(n, format.headerLength(), w.length());
-            return new Spill(file, new JournalIndexEntry(key.messageId(), key.step(), key.part(), ref), w.size(), w.hash());
+            LargeRecord.Written w = LargeRecord.write(ch, key, tenantKeyId, tenantKey, salt, body, maxSize, hasher, length -> {
+                reserveRoom(length, Bound.RESERVE);
+                counted[0] += length;
+            });
+            JournalRef ref = new JournalRef(n, header, w.length());
+            return new Spill(file, new JournalIndexEntry(key.messageId(), key.step(), key.part(), ref), w.size(), w.hash(), counted[0]);
         } catch (GeneralSecurityException e) {
             failure = new IllegalArgumentException("tenant key " + tenantKeyId + " cannot encrypt a large body", e);
             throw (IllegalArgumentException) failure;
@@ -1039,8 +1268,25 @@ public final class Journal implements AutoCloseable {
             failure = e;
             throw e;
         } finally {
-            if (failure != null) JournalIo.unlinkAfter(file, failure);
+            if (failure instanceof JournalFullException) {
+                unlinkLater(file, counted[0]);
+            } else if (failure != null) {
+                JournalIo.unlinkAfter(file, failure);
+                shrunk(counted[0]);
+            }
         }
+    }
+
+    /** Unlinks a spill refused while it streamed on a virtual thread of its own, its {@code n} bytes counted until it is gone. */
+    private void unlinkLater(Path file, long n) {
+        Thread.ofVirtual().name("journal-unlink-" + file.getFileName()).start(() -> {
+            try {
+                Files.deleteIfExists(file);
+                shrunk(n);
+            } catch (IOException e) {   // the file stays (a start unlinks what spill/ holds): its bytes stay counted
+                LOG.log(System.Logger.Level.WARNING, "the refused spill " + file + " could not be unlinked; a restart unlinks it", e);
+            }
+        });
     }
 
     /**
@@ -1055,16 +1301,19 @@ public final class Journal implements AutoCloseable {
         private final long size;
         private final Hash hash;
         // guarded by this
+        private long counted;         // the journal bytes its file is counted for
+        private long sealedMs;        // its footer's sealed ms, once written
         private Index index;          // the footer, once written and forced
         private Throwable broken;     // a write or force of the footer failed: it is never retried
         private boolean persisted;
         private boolean abandoned;
 
-        private Spill(Path file, JournalIndexEntry entry, long size, Hash hash) {
+        private Spill(Path file, JournalIndexEntry entry, long size, Hash hash, long counted) {
             this.file = file;
             this.entry = entry;
             this.size = size;
             this.hash = hash;
+            this.counted = counted;
         }
 
         /** The segment number: from the journal's one sequence, the writer's segments never take it. */
@@ -1105,8 +1354,20 @@ public final class Journal implements AutoCloseable {
          * @throws IllegalStateException  the journal is closed (a close waits for every persist already running), the spill
          *                                was abandoned, or it broke before
          * @throws JournalFailedException the journal failed (retryable); nothing written
+         * @throws JournalFullException   its footer does not fit under {@link Bound#INTAKE}'s limit; nothing written
          */
-        public synchronized JournalRef persist() throws IOException {
+        public JournalRef persist() throws IOException {
+            return persist(Bound.INTAKE);
+        }
+
+        /**
+         * {@link #persist()} of a spill that may use {@code bound} of {@code FLOTTILA_JOURNAL_MAX_BYTES}: its footer is refused
+         * ({@link JournalFullException}, nothing written) when the journal's bytes — this spill's counted already — and the footer
+         * would pass the bound's limit. A force of {@code segments/} that failed while — or before — its own directory force ran
+         * fails it ({@link JournalFailedException}): it waits for every such force begun before its own to end, then asks.
+         */
+        public synchronized JournalRef persist(Bound bound) throws IOException {
+            Objects.requireNonNull(bound, "bound");
             if (abandoned) throw new IllegalStateException("the spill of segment " + segment() + " was abandoned: it is never persisted");
             if (broken != null) {
                 throw new IllegalStateException("the spill of segment " + segment() + " failed (" + broken
@@ -1115,17 +1376,26 @@ public final class Journal implements AutoCloseable {
             enter();
             try {
                 if (persisted) return entry.ref();
-                if (index == null) index = durably(this::seal);
+                if (index == null) {
+                    long end = entry.ref().position() + entry.ref().length();
+                    long ms = clock.millis();
+                    SegmentFormat.Footer footer = SegmentFormat.footer(List.of(entry), end, ms);
+                    int length = footer.bytes().remaining();
+                    reserveRoom(length, bound);
+                    counted += length;
+                    index = durably(() -> seal(end, footer));
+                    sealedMs = ms;
+                }
                 rows.insert(config.node(), segment()).await();
                 Files.move(file, segmentFile(segment()), StandardCopyOption.ATOMIC_MOVE);
-                durably(() -> {
-                    JournalIo.forceDir(files, segments);
-                    return null;
-                });
-                // a force that succeeds after a failed one proves nothing for what was written before it (fsyncgate): a journal
-                // failed meanwhile — by another persist's force of this directory too — fails this persist, never persisted
-                if (isFailed()) throw failed();
-                extents.put(segment(), Extent.sealed(entry.ref().position() + entry.ref().length(), index));
+                long gen = durably(Journal.this::forceSegments);
+                // a force that succeeds after a failed one proves nothing for what was written before it (fsyncgate): a force of
+                // this directory begun before this one — another persist's, a pre-open's — that failed fails this persist
+                requireNoEarlierDirFailure(gen);
+                Extent sealed = Extent.sealed(entry.ref().position() + entry.ref().length(), index);
+                sealed.bytes = counted;
+                sealed.sealedMs = sealedMs;
+                extents.put(segment(), sealed);
                 persisted = true;
                 return entry.ref();
             } finally {
@@ -1144,10 +1414,8 @@ public final class Journal implements AutoCloseable {
             }
         }
 
-        /** Writes the footer index and trailer after the record and forces the file. */
-        private Index seal() throws IOException {
-            long end = entry.ref().position() + entry.ref().length();
-            SegmentFormat.Footer footer = SegmentFormat.footer(List.of(entry), end, clock.millis());
+        /** Writes {@code footer} (index and trailer) after the record, which ends at {@code end}, and forces the file. */
+        private Index seal(long end, SegmentFormat.Footer footer) throws IOException {
             try (FileChannel ch = files.open(file, Set.of(StandardOpenOption.WRITE))) {
                 ch.position(end);
                 JournalIo.writeFully(ch, footer.bytes());
@@ -1162,8 +1430,43 @@ public final class Journal implements AutoCloseable {
          */
         public synchronized void abandon() throws IOException {
             abandoned = true;
-            Files.deleteIfExists(file);
+            if (Files.deleteIfExists(file)) shrunk(counted);
         }
+    }
+
+    // ---------------------------------------------------------------------------------------------------- sweep
+
+    /** The segments this journal holds that were sealed at or before {@code ms} (a segment found at start: at the start). */
+    Set<Long> sealedBy(long ms) {
+        Set<Long> out = new TreeSet<>();
+        for (Map.Entry<Long, Extent> e : extents.entrySet()) if (e.getValue().sealedMs <= ms) out.add(e.getKey());
+        return out;
+    }
+
+    /**
+     * Segment {@code n}, sealed, has lost its row to the sweeper (CORE-3 item 10): the journal holds it no more (a read of it
+     * fails as of a segment it does not hold), its cached read channel is dropped — closed now or by its last read — and its file
+     * unlinked, its bytes out of the bound. On the sweeper's thread, never on the hot path.
+     */
+    void swept(long n) throws IOException {
+        unlinking.put(n, extents.remove(n).bytes);   // a candidate of this journal's: held until now
+        channels.drop(n);
+        unlink(n);
+    }
+
+    /**
+     * Unlinks swept segment {@code n}'s file, the bytes the journal counted for it out of the bound once it is gone; one that
+     * fails stays counted, and the sweeper tries it again ({@link SegmentSweeper}). A file already gone counts as unlinked.
+     */
+    void unlink(long n) throws IOException {
+        long size = unlinking.get(n);
+        try {
+            Files.delete(segmentFile(n));
+        } catch (java.nio.file.NoSuchFileException gone) {
+            // gone already (by hand, or a restart's leftovers): unlinked all the same, nothing left to retry
+        }
+        unlinking.remove(n);
+        shrunk(size);
     }
 
     // ---------------------------------------------------------------------------------------------------- close

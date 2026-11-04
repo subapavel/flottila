@@ -14,6 +14,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 /**
  * A loopback TCP relay in front of a Postgres server that reads what each client sends, at the client's side of the wire
@@ -24,10 +27,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * server answers with a ReadyForQuery of its own: every Query and every Sync ({@code 'S'}). Bytes are forwarded unchanged,
  * one message at a time; the server's answers are copied back as they come.
  */
-final class PgWire implements AutoCloseable {
+public final class PgWire implements AutoCloseable {
 
     /** One frontend message: its type and, for a Query or an Execute, the SQL it runs. */
-    record Sent(char type, String sql) {
+    public record Sent(char type, String sql) {
         boolean statement() { return type == 'Q' || type == 'E'; }
         boolean roundTrip() { return type == 'Q' || type == 'S'; }
     }
@@ -40,10 +43,152 @@ final class PgWire implements AutoCloseable {
     private final ServerSocket server;
     private final List<Sent> sent = new CopyOnWriteArrayList<>();
     private final List<Socket> sockets = new CopyOnWriteArrayList<>();
+    private final List<Held> armed = new CopyOnWriteArrayList<>();
+    private final List<Held> everyHold = new CopyOnWriteArrayList<>();
     private volatile boolean closed;
 
+    /**
+     * A frontend message held before it is forwarded (CORE-4d): the first message after {@link #holdNext} whose {@link Sent}
+     * the predicate accepts. {@link #release()} forwards it and the connection goes on; {@link #cut()} never forwards it and
+     * closes the client's side at once — the client loses its connection with the message's answer unknown — while the
+     * server's session stays open, its transaction in progress, until {@link #abort()} closes it (the server rolls back) or
+     * {@link #commitAfterCut()} forwards the held message, then closes it (a COMMIT held so commits).
+     */
+    public static final class Held {
+        private final Predicate<Sent> matches;
+        private Predicate<Sent> after;   // null: any connection; else only on a connection that sent a message it accepts first
+        private final CountDownLatch reached = new CountDownLatch(1);
+        private final CountDownLatch decided = new CountDownLatch(1);
+        private final CountDownLatch cutDone = new CountDownLatch(1);
+        private final CountDownLatch upstreamGone = new CountDownLatch(1);
+        private volatile String how;   // "release", "cut"; after a cut: "abort", "commit"
+        private final CountDownLatch afterCut = new CountDownLatch(1);
+        private volatile String sql;
+
+        private Held(Predicate<Sent> matches) { this.matches = matches; }
+
+        /** Waits (bounded) until the held message arrived at the relay. */
+        public void awaitReached() throws InterruptedException {
+            if (!reached.await(20, TimeUnit.SECONDS)) throw new AssertionError("no matching message reached the relay within 20 s");
+        }
+
+        boolean isReached() { return reached.getCount() == 0; }
+
+        /** The SQL of the held message. */
+        String sql() { return sql; }
+
+        void release() { how = "release"; decided.countDown(); }
+
+        /** Never forwards it; the client's side closed before this returns. */
+        public void cut() throws InterruptedException {
+            how = "cut";
+            decided.countDown();
+            if (!cutDone.await(20, TimeUnit.SECONDS)) throw new AssertionError("the relay did not cut the client within 20 s");
+        }
+
+        /** After {@link #cut()}: closes the server's session without the message (its transaction rolls back); returns once closed. */
+        void abort() throws InterruptedException {
+            how = "abort";
+            afterCut.countDown();
+            if (!upstreamGone.await(20, TimeUnit.SECONDS)) throw new AssertionError("the relay did not close the session within 20 s");
+        }
+
+        /** After {@link #cut()}: forwards the held message, then closes the server's session; returns once closed. */
+        void commitAfterCut() throws InterruptedException {
+            how = "commit";
+            afterCut.countDown();
+            if (!upstreamGone.await(20, TimeUnit.SECONDS)) throw new AssertionError("the relay did not close the session within 20 s");
+        }
+
+        /** Lets a held relay thread go at the end of a case, whatever was decided. */
+        public void releaseQuietly() {
+            if (how == null) how = "release";
+            decided.countDown();
+            if (how.equals("cut")) how = "abort";
+            afterCut.countDown();
+        }
+    }
+
+    /** One relayed connection's state shared by its two threads. */
+    private static final class Conn {
+        volatile HeldReply replyHold;
+    }
+
+    private final List<HeldReply> replyHolds = new CopyOnWriteArrayList<>();
+    private final List<HeldReply> everyReplyHold = new CopyOnWriteArrayList<>();
+
+    /**
+     * The server's answer to a frontend message held before the client gets it (CORE-4d r1): once the first message
+     * {@code matches} accepts is forwarded, the next bytes the server sends on that connection — its answer and what follows — wait
+     * until {@link #release()}. The statement has run; only its reply is late.
+     */
+    static final class HeldReply {
+        private final Predicate<Sent> matches;
+        private final CountDownLatch reached = new CountDownLatch(1);
+        private final CountDownLatch go = new CountDownLatch(1);
+
+        private HeldReply(Predicate<Sent> matches) { this.matches = matches; }
+
+        /** Waits (bounded) until the reply arrived at the relay and is held. */
+        void awaitReached() throws InterruptedException {
+            if (!reached.await(20, TimeUnit.SECONDS)) throw new AssertionError("no reply to a matching message reached the relay within 20 s");
+        }
+
+        void release() { go.countDown(); }
+    }
+
+    /** Holds the reply to the next frontend message {@code matches} accepts ({@link HeldReply}). */
+    HeldReply holdReplyTo(Predicate<Sent> matches) {
+        HeldReply r = new HeldReply(matches);
+        everyReplyHold.add(r);
+        replyHolds.add(r);
+        return r;
+    }
+
+    /** Holds the next frontend message {@code matches} accepts, on whichever connection it comes ({@link Held}). */
+    Held holdNext(Predicate<Sent> matches) {
+        Held h = new Held(matches);
+        everyHold.add(h);
+        armed.add(h);
+        return h;
+    }
+
+    /**
+     * As {@link #holdNext}, but only on a connection that sent a message {@code after} accepts before (CORE-4d r1: the COMMIT of
+     * the intake's transaction — the one that inserted the work item — among a node's other transactions).
+     */
+    public Held holdNextAfter(Predicate<Sent> after, Predicate<Sent> matches) {
+        Held h = new Held(matches);
+        h.after = after;
+        everyHold.add(h);
+        armed.add(h);
+        return h;
+    }
+
+    /** A simple Query of exactly {@code sql} (case and surrounding blanks ignored): Vert.x sends BEGIN and COMMIT so. */
+    public static Predicate<Sent> query(String sql) {
+        return s -> s.type() == 'Q' && s.sql() != null && s.sql().trim().equalsIgnoreCase(sql);
+    }
+
+    /** A statement (Query or Parse) whose SQL starts with {@code prefix}, case ignored. */
+    static Predicate<Sent> statementStarting(String prefix) {
+        return s -> (s.type() == 'Q' || s.type() == 'P') && s.sql() != null && s.sql().trim().toLowerCase(java.util.Locale.ROOT).startsWith(prefix.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /** The first armed hold that accepts the message just recorded, disarmed; null when none does. */
+    private Held heldFor(Sent last, java.util.Set<Held> primed) {
+        for (Held h : armed) {
+            if (h.after != null && !primed.contains(h)) {
+                if (h.after.test(last)) primed.add(h);
+                continue;
+            }
+            if (h.matches.test(last) && armed.remove(h)) return h;
+        }
+        return null;
+    }
+
     /** Listens on 127.0.0.1, an ephemeral port, relaying every connection to {@code host:port}. */
-    PgWire(String host, int port) throws IOException {
+    public PgWire(String host, int port) throws IOException {
         this.host = host;
         this.port = port;
         this.server = new ServerSocket(0, 50, InetAddress.getLoopbackAddress());
@@ -51,7 +196,7 @@ final class PgWire implements AutoCloseable {
     }
 
     /** The relay's port: a client connects here instead of to the server. */
-    int port() { return server.getLocalPort(); }
+    public int port() { return server.getLocalPort(); }
 
     /** A point in what was sent so far: {@link #since} lists what came after it. */
     int mark() { return sent.size(); }
@@ -83,8 +228,9 @@ final class PgWire implements AutoCloseable {
                 Socket upstream = new Socket(host, port);
                 sockets.add(client);
                 sockets.add(upstream);
-                Thread.ofVirtual().name("pg-wire-up").start(() -> frontend(client, upstream));
-                Thread.ofVirtual().name("pg-wire-down").start(() -> copy(upstream, client));
+                Conn conn = new Conn();
+                Thread.ofVirtual().name("pg-wire-up").start(() -> frontend(client, upstream, conn));
+                Thread.ofVirtual().name("pg-wire-down").start(() -> copy(upstream, client, conn));
             } catch (IOException e) {
                 closeQuietly(client);
             }
@@ -92,9 +238,10 @@ final class PgWire implements AutoCloseable {
     }
 
     /** Client → server: message by message, each recorded before it is forwarded. */
-    private void frontend(Socket client, Socket upstream) {
+    private void frontend(Socket client, Socket upstream, Conn conn) {
         Map<String, String> statements = new ConcurrentHashMap<>();   // statement name → SQL (per connection)
         Map<String, String> portals = new ConcurrentHashMap<>();      // portal name → SQL
+        java.util.Set<Held> primed = new java.util.HashSet<>();       // holds whose `after` this connection met
         try (DataInputStream in = new DataInputStream(client.getInputStream()); OutputStream out = upstream.getOutputStream()) {
             boolean started = false;
             while (!started) {
@@ -113,7 +260,35 @@ final class PgWire implements AutoCloseable {
                 int length = in.readInt();
                 byte[] body = new byte[length - 4];
                 in.readFully(body);
-                record((char) type, body, statements, portals);
+                Sent recorded = record((char) type, body, statements, portals);
+                if (!replyHolds.isEmpty()) {
+                    for (HeldReply r : replyHolds) {
+                        if (r.matches.test(recorded) && replyHolds.remove(r)) {
+                            conn.replyHold = r;   // set before the message goes: its answer is held
+                            break;                // one hold per message: a second waits for the next match
+                        }
+                    }
+                }
+                Held held = armed.isEmpty() ? null : heldFor(recorded, primed);
+                if (held != null) {
+                    held.sql = recorded.sql();
+                    held.reached.countDown();
+                    held.decided.await();
+                    if ("cut".equals(held.how)) {
+                        closeQuietly(client);
+                        held.cutDone.countDown();
+                        held.afterCut.await();
+                        if ("commit".equals(held.how)) {
+                            out.write(type);
+                            writeInt(out, length);
+                            out.write(body);
+                            out.flush();
+                        }
+                        closeQuietly(upstream);
+                        held.upstreamGone.countDown();
+                        return;
+                    }
+                }
                 out.write(type);
                 writeInt(out, length);
                 out.write(body);
@@ -121,6 +296,8 @@ final class PgWire implements AutoCloseable {
             }
         } catch (EOFException end) {
             // the client closed its connection
+        } catch (InterruptedException stop) {
+            Thread.currentThread().interrupt();
         } catch (IOException e) {
             if (!closed) throw new IllegalStateException("the relay lost a connection", e);
         } finally {
@@ -129,24 +306,27 @@ final class PgWire implements AutoCloseable {
         }
     }
 
-    private void record(char type, byte[] body, Map<String, String> statements, Map<String, String> portals) {
+    private Sent record(char type, byte[] body, Map<String, String> statements, Map<String, String> portals) {
+        Sent last;
         switch (type) {
-            case 'Q' -> sent.add(new Sent(type, cstring(body, 0)));
+            case 'Q' -> last = (new Sent(type, cstring(body, 0)));
             case 'P' -> {
                 String name = cstring(body, 0);
                 String sql = cstring(body, name.getBytes(StandardCharsets.UTF_8).length + 1);
                 statements.put(name, sql);
-                sent.add(new Sent(type, sql));
+                last = (new Sent(type, sql));
             }
             case 'B' -> {
                 String portal = cstring(body, 0);
                 String statement = cstring(body, portal.getBytes(StandardCharsets.UTF_8).length + 1);
                 portals.put(portal, statements.getOrDefault(statement, "?" + statement));
-                sent.add(new Sent(type, null));
+                last = (new Sent(type, null));
             }
-            case 'E' -> sent.add(new Sent(type, portals.getOrDefault(cstring(body, 0), "?")));
-            default -> sent.add(new Sent(type, null));
+            case 'E' -> last = (new Sent(type, portals.getOrDefault(cstring(body, 0), "?")));
+            default -> last = (new Sent(type, null));
         }
+        sent.add(last);
+        return last;
     }
 
     private static String cstring(byte[] b, int from) {
@@ -162,15 +342,23 @@ final class PgWire implements AutoCloseable {
         out.write(v);
     }
 
-    private void copy(Socket from, Socket to) {
+    private void copy(Socket from, Socket to, Conn conn) {
         byte[] buffer = new byte[16 * 1024];
         try (InputStream in = from.getInputStream(); OutputStream out = to.getOutputStream()) {
             for (int n; (n = in.read(buffer)) >= 0; ) {
+                HeldReply r = conn.replyHold;
+                if (r != null) {
+                    conn.replyHold = null;
+                    r.reached.countDown();
+                    r.go.await();
+                }
                 out.write(buffer, 0, n);
                 out.flush();
             }
         } catch (IOException e) {
             // either side closed
+        } catch (InterruptedException stop) {
+            Thread.currentThread().interrupt();
         } finally {
             closeQuietly(from);
             closeQuietly(to);
@@ -187,6 +375,8 @@ final class PgWire implements AutoCloseable {
 
     @Override public void close() throws IOException {
         closed = true;
+        for (Held h : everyHold) h.releaseQuietly();
+        for (HeldReply r : everyReplyHold) r.release();
         server.close();
         for (Socket s : sockets) closeQuietly(s);
     }

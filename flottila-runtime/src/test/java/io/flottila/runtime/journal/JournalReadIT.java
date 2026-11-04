@@ -93,7 +93,7 @@ class JournalReadIT {
     /** {@code id} saved through the intake: committed, its memory copy released. */
     Envelope saved(String id, Buffer bytes, boolean keepInput) {
         Envelope in = a.arrive(id, bytes);
-        Future<String> saved = a.save(in, keepInput, () -> false);
+        Future<String> saved = a.save(in, keepInput, JournalWorld.undecided());
         assertTrue(saved.succeeded(), "fixture: saved " + saved.cause());
         return in;
     }

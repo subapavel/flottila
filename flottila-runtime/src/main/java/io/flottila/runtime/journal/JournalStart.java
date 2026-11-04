@@ -107,7 +107,7 @@ final class JournalStart {
             String digest = settle(given, pins, lost);
             UUID now = Objects.requireNonNull(journalIds.get(), "the journal id source answered null");
             writeNode(file, now);
-            rows.giveUp(node, given, digest, pins, new Replacement(registered, now)).await();
+            rows.giveUp(node, given, digest, pins, Map.of(), new Replacement(registered, now)).await();   // the whole journal: from 0
             gaveUp(given + ":" + digest, pins);
             LOG.log(System.Logger.Level.ERROR, "journal " + given + " of node " + node + " was given up by " + ACCEPT + ": journal " + now
                     + " replaces it in " + dir);
@@ -134,7 +134,7 @@ final class JournalStart {
         }
         String digest = settle(id, pins, "the journal in " + dir + " of node " + node + " does not hold every record its committed rows name "
                 + "(a segment file gone, or a record at or past a segment's cut)");
-        rows.giveUp(node, id, digest, pins, null).await();
+        rows.giveUp(node, id, digest, pins, ends, null).await();
         gaveUp(id + ":" + digest, pins);
     }
 

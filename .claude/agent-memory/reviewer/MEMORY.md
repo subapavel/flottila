@@ -120,3 +120,4 @@
 - Timing (P2-09a): `isDone` right after a FakeTimer advance does not pin 'not before T' (refusal synchronous, completion on another thread) — assert timer.pending or a gauge; finite defaults asserted by value (PIT does not mutate constants). Redaction in list-valued config must run before the separator split (P2-09b). A schema gap deferred to a FIX row also falsifies FlowDefinition's 'never fails here' — check it on every new flow key (FIX-115).
 - A state change before an injected Timer.schedule in a reservation leaves a position hole (CORE-4a reserve).
 - Round-trip crypto tests are symmetric: demand an outside-the-code decrypt per persisted format (CORE-4a RecordFormat:93).
+- A byte bound must count a stream while it writes, not at its seal (CORE-4d r0 spill). A swept-segment fallback is not equivalent on the rows path: corrupt or shredded-key reads must never become BlobNotFound (CORE-4d r2).

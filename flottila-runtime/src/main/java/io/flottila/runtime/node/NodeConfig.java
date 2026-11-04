@@ -5,6 +5,7 @@ import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.journal.JournalConfig;
 import io.flottila.runtime.journal.MasterKeySource;
+import io.flottila.runtime.journal.SweepConfig;
 import io.flottila.runtime.store.Retention;
 
 import java.net.URI;
@@ -57,12 +58,15 @@ import java.util.regex.Pattern;
  *                each range-checked as {@link JournalConfig} says; the node id is the journal's
  * @param journalKey the journal's master key source (D-106): {@code FLOTTILA_JOURNAL_KEY_FILE}, {@code FLOTTILA_JOURNAL_KEY} or
  *                   {@code FLOTTILA_JOURNAL_KEY_GENERATE}; a node without one is refused at start, not here
+ * @param journalSweep the segment sweeper's keys (CORE-3 items 10, 14): {@code FLOTTILA_JOURNAL_SWEEP_INTERVAL} (PT10S,
+ *                     PT1S..PT1H), {@code FLOTTILA_JOURNAL_SWEEP_GRACE} (PT1M, PT1S..PT1H), {@code FLOTTILA_JOURNAL_KEEP_MAX_AGE}
+ *                     (PT1H, PT1M..P1D), ISO-8601 each, range-checked as {@link SweepConfig} says
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
-                         MasterKeySource journalKey) {
+                         MasterKeySource journalKey, SweepConfig journalSweep) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
@@ -78,6 +82,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(targets, "targets");
         Objects.requireNonNull(journal, "journal");
         Objects.requireNonNull(journalKey, "journalKey");
+        Objects.requireNonNull(journalSweep, "journalSweep");
         if (journal.recordMax() > blobs.memoryTier()) {
             throw new IllegalArgumentException("FLOTTILA_JOURNAL_RECORD_MAX " + journal.recordMax() + " is above FLOTTILA_BLOB_MEMORY_TIER "
                     + blobs.memoryTier() + ": a journal record is held in memory whole");
@@ -86,6 +91,14 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+    }
+
+    /** A node whose sweeper has the default keys (PT10S, PT1M, PT1H), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, SweepConfig.DEFAULTS);
     }
 
     /**
@@ -141,7 +154,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets, journal, journalKey);
+                cpuSampling, targets, journal, journalKey, journalSweep);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -333,7 +346,14 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
-                MasterKeySource.fromEnv(env));
+                MasterKeySource.fromEnv(env), journalSweep(env));
+    }
+
+    /** The {@code FLOTTILA_JOURNAL_SWEEP_*} and {@code FLOTTILA_JOURNAL_KEEP_MAX_AGE} keys; no ISO-8601 duration is refused naming its key. */
+    private static SweepConfig journalSweep(Map<String, String> env) {
+        return new SweepConfig(duration(env, "FLOTTILA_JOURNAL_SWEEP_INTERVAL", SweepConfig.DEFAULTS.interval()),
+                duration(env, "FLOTTILA_JOURNAL_SWEEP_GRACE", SweepConfig.DEFAULTS.grace()),
+                duration(env, "FLOTTILA_JOURNAL_KEEP_MAX_AGE", SweepConfig.DEFAULTS.keepMaxAge()));
     }
 
     /**

@@ -1194,4 +1194,35 @@ class RetentionIT {
                 "the delete checks the DLQ under a snapshot taken after the select: the body the late DLQ row names stays");
         assertEquals(1L, run.bodies());
     }
+
+    /**
+     * CORE-4d carry (4c2/4c3 reviews): a BODIES batch holds at most {@code batch} rows FOR UPDATE — the rows it returns — not
+     * {@code batch} of {@code bodies} and {@code batch} of {@code body_refs} besides. Five old bodies rows and five old refs,
+     * interleaved by created_at, a batch of 3; the batch is held at its delete (an AFTER DELETE trigger waiting on an advisory
+     * lock this case holds); the rows it holds are those another session cannot take FOR KEY SHARE SKIP LOCKED.
+     */
+    @Test
+    void aBodiesBatchLocksAtMostItsLimit() {
+        int batch = 3;
+        Instant old = cutoff.minus(Duration.ofDays(1));
+        for (int i = 0; i < 5; i++) {
+            body("m-b" + i, 0, old.plusSeconds(2L * i));
+            bodyRef("m-r" + i, 0, old.plusSeconds(2L * i + 1));
+        }
+        db.query("create function hold_delete() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock(4747); return old; end $$").execute().await();
+        db.query("create trigger hold_bodies after delete on bodies for each row execute function hold_delete()").execute().await();
+        db.query("create trigger hold_refs after delete on body_refs for each row execute function hold_delete()").execute().await();
+        PgConnection gate = session();
+        gate.query("select pg_advisory_lock(4747)").execute().await();
+
+        Future<Retention.Run> running = job(batch).runOnce();
+        until(() -> waiting("advisory") == 1, "the BODIES batch reached its delete and waits, its rows held");
+        long lockable = db.query("select (select count(*) from (select 1 from bodies for key share skip locked) b)"
+                + " + (select count(*) from (select 1 from body_refs for key share skip locked) r)").execute().await().iterator().next().getLong(0);
+        long held = 10 - lockable;
+        gate.query("select pg_advisory_unlock(4747)").execute().await();
+        await(running, "the run");
+
+        assertEquals(batch, held, "the batch holds exactly its " + batch + " rows: never " + batch + " per table");
+    }
 }

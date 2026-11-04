@@ -285,10 +285,10 @@ class JournalBlobStoreIT {
         assertEquals(overBytes, settled(a.blobs.read(over)).result(), "and reads");
 
         Envelope fits = a.arrive("m-at", bytes(bound, 52));
-        Future<String> saved = a.save(fits, true, () -> false);
+        Future<String> saved = a.save(fits, true, JournalWorld.undecided());
         assertTrue(saved.succeeded(), "the intake saves a body of exactly the bound: " + saved.cause());
         Envelope tooLarge = a.arrive("m-over", bytes(bound + 1, 53));
-        Future<String> notSaved = a.save(tooLarge, true, () -> false);
+        Future<String> notSaved = a.save(tooLarge, true, JournalWorld.undecided());
         assertTrue(notSaved.failed(), "and refuses one byte more");
         assertTrue(JournalWorld.causes(notSaved.cause()).stream().anyMatch(c -> c.contains(BodyTooLargeException.class.getSimpleName())),
                 "as too large: " + JournalWorld.causes(notSaved.cause()));
@@ -329,7 +329,7 @@ class JournalBlobStoreIT {
         Envelope in = a.arrive("m-again", first);
         HeldFiles.Hold force = a.files.holdForceAfter("m-again");
 
-        Future<String> saved = a.start(in, true, () -> false);
+        Future<String> saved = a.start(in, true, JournalWorld.undecided());
         force.awaitReached();
         assertTrue(settled(a.blobs.write(in.body().key(), again, JournalWorld.MAX)).succeeded(), "fixture: written again while the save's force is held");
         force.release();
@@ -366,7 +366,7 @@ class JournalBlobStoreIT {
      */
     BlobKey staleEntry(JournalWorld a, String id, Buffer bytes) {
         Envelope in = a.arrive(id, bytes);
-        assertTrue(a.save(in, true, () -> false).succeeded(), "fixture: saved; its commit indexed the ref");
+        assertTrue(a.save(in, true, JournalWorld.undecided()).succeeded(), "fixture: saved; its commit indexed the ref");
         assertEquals(Boolean.TRUE, settled(a.blobs.exists(in.body().key())).result(), "witness: the body exists while its rows are there");
         db.pool().preparedQuery("delete from work where id = $1").execute(io.vertx.sqlclient.Tuple.of(id)).await();
         db.pool().preparedQuery("delete from body_refs where message_id = $1").execute(io.vertx.sqlclient.Tuple.of(id)).await();
@@ -401,7 +401,7 @@ class JournalBlobStoreIT {
         try {
             int port = server.start(vertx).await();
             Envelope witness = a.arrive("m-read", bytes);
-            assertTrue(a.save(witness, true, () -> false).succeeded(), "fixture: saved");
+            assertTrue(a.save(witness, true, JournalWorld.undecided()).succeeded(), "fixture: saved");
             Answer read = get(client, port, "/admin/messages/m-read/steps/0/body");
             assertEquals(200, read.status(), "witness: the admin reads a body whose rows are there: " + read.body());
             assertEquals(bytes, read.body());
@@ -428,8 +428,8 @@ class JournalBlobStoreIT {
         Buffer firstBytes = bytes(2_000, 72);
         Envelope first = a.arrive("m-done-1", firstBytes);
         Envelope second = a.arrive("m-done-2", bytes(2_000, 73));
-        assertTrue(a.save(first, false, () -> false).succeeded(), "fixture: saved at level none");
-        assertTrue(a.save(second, false, () -> false).succeeded(), "fixture: saved at level none, the same partition key");
+        assertTrue(a.save(first, false, JournalWorld.undecided()).succeeded(), "fixture: saved at level none");
+        assertTrue(a.save(second, false, JournalWorld.undecided()).succeeded(), "fixture: saved at level none, the same partition key");
         assertNull(bodyRef(db.pool(), first.body().key()), "fixture: no body_refs row at level none");
 
         List<WorkQueue.Item> claimed = queue.claim("w-1", JournalWorld.FLOW, 1, Duration.ofMinutes(5)).await();

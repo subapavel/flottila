@@ -60,7 +60,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -1510,7 +1509,7 @@ class DeliveryTest {
     // --- the intake (P2-08a, D-082): an at-least-once delivery saves through its Intake, once; it persists, records and
     // enqueues nothing itself. The shape assumed: core {@code Intake} (package io.flottila.core.flow) with
     // {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-    // BooleanSupplier abandoned)} (CORE-4c2: keepInput)
+    // Future<?> abandoned)} (CORE-4c2: keepInput; CORE-4d: the answer future)
     // (P2-02D: the future answers the id the Accepted names) and {@code FlowBuilder intake(Intake)}.
 
     /**
@@ -1519,7 +1518,7 @@ class DeliveryTest {
      */
     static final class HeldIntake implements Intake {
         record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-                    BooleanSupplier abandoned, Promise<String> answer) {
+                    Future<?> abandoned, Promise<String> answer) {
             /** The save succeeded as the arrived message itself (no duplicate). */
             void saved() { answer.complete(arrived.id()); }
         }
@@ -1529,7 +1528,7 @@ class DeliveryTest {
 
         @Override
         public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-                                   BooleanSupplier abandoned) {
+                                   Future<?> abandoned) {
             Promise<String> answer = Promise.promise();
             saves.add(new Save(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned, answer));
             RuntimeException thrown = throwNext.getAndSet(null);
@@ -1572,7 +1571,7 @@ class DeliveryTest {
         assertEquals(Recorder.INGRESS, save.ingress().stepName(), "the ingress snapshot");
         assertEquals(0, save.ingress().step());
         assertEquals(Optional.of(in.body().key()), save.ingress().bodyKey(), "its payload kept although the flow records nothing");
-        assertFalse(save.abandoned().getAsBoolean(), "an undecided save is not abandoned");
+        assertFalse(save.abandoned().isComplete(), "an undecided save is not abandoned");
         assertFalse(ack.isComplete(), "no ACK before the intake's save completed");
         assertEquals(List.of(), own.persists(), "the delivery persists nothing itself: the intake does");
         assertEquals(0, store.recorded(Recorder.INGRESS), "records nothing itself");
@@ -1652,28 +1651,28 @@ class DeliveryTest {
         Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
 
         Future<Ack> ack = delivery.apply(ingress(ORDER));
-        BooleanSupplier abandoned = intake.only().abandoned();
-        assertFalse(abandoned.getAsBoolean(), "just asked: not abandoned");
+        Future<?> abandoned = intake.only().abandoned();
+        assertFalse(abandoned.isComplete(), "just asked: not abandoned");
         rt.clock().advance(Duration.ofMillis(1999));
         assertFalse(ack.isComplete(), "not answered before the timeout");
-        assertFalse(abandoned.getAsBoolean(), "1 ms before the timeout the save may still commit");
+        assertFalse(abandoned.isComplete(), "1 ms before the timeout the save may still commit");
         rt.clock().advance(Duration.ofMillis(1));
         Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "the timeout decided: " + ack);
         assertTrue(nack.retryable() && (nack.reason().contains("PT2S") || nack.reason().contains("2s")), "the save timed out: " + nack.reason());
-        assertTrue(abandoned.getAsBoolean(), "once the timeout decided the answer, the intake must queue nothing");
-        assertTrue(abandoned.getAsBoolean(), "and stays abandoned, however often asked");
+        assertTrue(abandoned.isComplete(), "once the timeout decided the answer, the intake must queue nothing");
+        assertTrue(abandoned.isComplete(), "and stays abandoned, however often asked");
         intake.only().saved();   // a late save the intake did not see abandoned
         assertEquals(nack, ack.result(), "the answer stays the timeout's");
         assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the timeout");
 
         // the stop's deadline decides an answer too
         Future<Ack> second = delivery.apply(ingress(ORDER));
-        BooleanSupplier secondAbandoned = intake.saves.get(1).abandoned();
+        Future<?> secondAbandoned = intake.saves.get(1).abandoned();
         delivery.stop(Duration.ofSeconds(1));
-        assertFalse(secondAbandoned.getAsBoolean(), "stopping is not cancelling: the save may still land before the deadline");
+        assertFalse(secondAbandoned.isComplete(), "stopping is not cancelling: the save may still land before the deadline");
         rt.clock().advance(Duration.ofSeconds(1));
         cancelled(second);
-        assertTrue(secondAbandoned.getAsBoolean(), "the stop's deadline decided the answer: abandoned");
+        assertTrue(secondAbandoned.isComplete(), "the stop's deadline decided the answer: abandoned");
     }
 
     // --- the dedupe key (P2-02D, D-084): the component names a prop; the delivery reads it on the envelope as it arrived (absent

@@ -88,7 +88,7 @@ class SchemaIT {
         try (JournalWorld a = JournalWorld.open(vertx, db.pool(), db.pool(), Files.createDirectories(tmp.resolve("journal")), "node-a")) {
             Buffer body = Buffer.buffer("<Invoice><Note>" + marker + "</Note></Invoice>");
             Envelope in = a.arrive("m-dumped", body);
-            Future<String> saved = a.save(in, true, () -> false);
+            Future<String> saved = a.save(in, true, JournalWorld.undecided());
             assertTrue(saved.succeeded(), "fixture: saved " + saved.cause());
             assertEquals(1, db.count("select count(*) from body_refs where message_id = 'm-dumped'"), "fixture: its input is kept");
         }

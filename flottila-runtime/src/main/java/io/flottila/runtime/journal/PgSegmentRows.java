@@ -6,18 +6,22 @@ import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.SqlConnection;
 import io.vertx.sqlclient.Tuple;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /**
  * The journal's rows in Postgres (V12, CORE-3 items 5 and 9): {@code journal_nodes} and {@code journal_segments}. Each call
- * is one autocommit statement on the pool: its future succeeds once the row is committed — but {@link #giveUp}, one
- * transaction (V13: {@code work.lost_at}, {@code body_refs.lost_at}, {@code journal_losses}). A segment's {@code copies} is
+ * is one autocommit statement on the pool: its future succeeds once the row is committed — but {@link #giveUp} and
+ * {@link #sweep}, one transaction each (V13: {@code work.lost_at}, {@code body_refs.lost_at}, {@code journal_losses}). A segment's {@code copies} is
  * the node alone until CORE-5 replicates. The pins are CORE-3 item 10's: a work row's ref not lost, an unarchived kept ref not
  * lost (a DLQ row pins through its kept ref, which is one of those).
  *
@@ -35,6 +39,28 @@ public final class PgSegmentRows implements SegmentRows {
             select -1, r.message_id, r.step, r.part, r.segment, r.position, r.length from body_refs r
              where r.node = $1 and r.archived_at is null and r.lost_at is null
                and not exists (select 1 from e where e.segment = r.segment and r.position + r.length <= e.ends)""";
+
+    /** Segment {@code s.segment} of node $1 pinned (CORE-3 items 10, 14): $3 the instant a kept ref must be created after. */
+    private static final String PINNED = """
+            (exists (select 1 from work w where w.body_node = $1 and w.body_segment = s.segment and w.lost_at is null)
+             or exists (select 1 from body_refs r where r.node = $1 and r.segment = s.segment and r.archived_at is null and r.lost_at is null
+                         and (r.created_at > $3 or exists (select 1 from dlq d where d.body_key = r.message_id || '/' || r.step || '/' || r.part))))""";
+    /** Of node $1's candidates $2, the unpinned rows, locked; a row another transaction holds (a reference insert's key share) is passed. */
+    private static final String LOCK_UNPINNED = "select s.segment from journal_segments s where s.node = $1 and s.segment = any($2) and not "
+            + PINNED + " for update skip locked";
+    /** Of the rows locked ($2), those still unpinned under this statement's later snapshot, deleted. */
+    private static final String DELETE_UNPINNED = "delete from journal_segments s where s.node = $1 and s.segment = any($2) and not " + PINNED
+            + " returning s.segment";
+    /** $1 the node; $2, $3 each given-up segment and its first given-up position: the rows in those extents. */
+    private static final String EXTENTS = " join unnest($2::bigint[], $3::bigint[]) as g(segment, since) on %1$s = g.segment and %2$s >= g.since";
+    private static final String LOCK_REFS = "select 1 from body_refs r" + EXTENTS.formatted("r.segment", "r.position")
+            + " where r.node = $1 and r.lost_at is null for update of r";
+    private static final String LOCK_WORK = "select 1 from work w" + EXTENTS.formatted("w.body_segment", "w.body_position")
+            + " where w.body_node = $1 and w.lost_at is null for update of w";
+    private static final String LOSE_WORK = "update work w set lost_at = now() from unnest($2::bigint[], $3::bigint[]) as g(segment, since)"
+            + " where w.body_node = $1 and w.body_segment = g.segment and w.body_position >= g.since and w.lost_at is null";
+    private static final String LOSE_REFS = "update body_refs r set lost_at = now() from unnest($2::bigint[], $3::bigint[]) as g(segment, since)"
+            + " where r.node = $1 and r.segment = g.segment and r.position >= g.since and r.lost_at is null";
 
     private final Pool pool;
 
@@ -87,29 +113,28 @@ public final class PgSegmentRows implements SegmentRows {
                 .execute(Tuple.of(node, value)).map(rows -> rows.iterator().next().getBoolean(0));
     }
 
-    /** One transaction; every mark and the record take its {@code now()}, the transaction's start: one instant. */
-    @Override
+    /** {@link #giveUp(String, UUID, String, List, Map, Replacement)} with no ends: each pin's segment given up from 0. */
     public Future<Void> giveUp(String node, UUID journal, String digest, List<Pin> pins, Replacement replacement) {
-        List<Long> seqs = new ArrayList<>();
-        List<String> ids = new ArrayList<>();
-        List<Integer> steps = new ArrayList<>();
-        List<String> parts = new ArrayList<>();
-        for (Pin p : pins) {
-            if (p.kept()) {
-                ids.add(p.messageId());
-                steps.add(p.step());
-                parts.add(p.part());
-            } else {
-                seqs.add(p.seq());
-            }
-        }
+        return giveUp(node, journal, digest, pins, Map.of(), replacement);
+    }
+
+    /**
+     * {@inheritDoc} One transaction; every mark and the record take its {@code now()}, the transaction's start: one instant. The
+     * kept refs of the given-up extents are locked first — {@code for update} waits for a reference insert holding one
+     * {@code for key share} —, then the work rows, each statement under a snapshot taken after the locks before it, so a copy
+     * committed meanwhile is marked too.
+     */
+    @Override
+    public Future<Void> giveUp(String node, UUID journal, String digest, List<Pin> pins, Map<Long, Long> ends, Replacement replacement) {
+        Map<Long, Long> since = new TreeMap<>();   // each pin segment's first given-up position: its cut
+        for (Pin p : pins) since.put(p.segment(), ends.getOrDefault(p.segment(), 0L));
+        Tuple extents = Tuple.tuple().addString(node).addArrayOfLong(since.keySet().toArray(Long[]::new))
+                .addArrayOfLong(since.values().toArray(Long[]::new));
         return pool.withTransaction(tx -> Future.succeededFuture()   // a chain from a completed future: a throw in it rolls back
-                .compose(v -> tx.preparedQuery("update work set lost_at = now() where seq = any($1) and lost_at is null")
-                        .execute(Tuple.tuple().addArrayOfLong(seqs.toArray(Long[]::new))))
-                .compose(v -> tx.preparedQuery("update body_refs set lost_at = now() where lost_at is null and (message_id, step, part) in "
-                                + "(select * from unnest($1::text[], $2::int[], $3::text[]))")
-                        .execute(Tuple.tuple().addArrayOfString(ids.toArray(String[]::new)).addArrayOfInteger(steps.toArray(Integer[]::new))
-                                .addArrayOfString(parts.toArray(String[]::new))))
+                .compose(v -> tx.preparedQuery(LOCK_REFS).execute(extents))
+                .compose(v -> tx.preparedQuery(LOCK_WORK).execute(extents))
+                .compose(v -> tx.preparedQuery(LOSE_WORK).execute(extents))
+                .compose(v -> tx.preparedQuery(LOSE_REFS).execute(extents))
                 .compose(v -> tx.preparedQuery("insert into journal_losses(node, journal_id, digest, accepted_at) values ($1, $2, $3, now())")
                         .execute(Tuple.of(node, journal, digest)))
                 .compose(v -> replacement == null ? Future.succeededFuture() : replace(tx, node, replacement))
@@ -122,6 +147,27 @@ public final class PgSegmentRows implements SegmentRows {
                 ? tx.preparedQuery("insert into journal_nodes(node, journal_id) values ($1, $2)").execute(Tuple.of(node, r.now()))
                 : tx.preparedQuery("update journal_nodes set journal_id = $3 where node = $1 and journal_id = $2").execute(Tuple.of(node, r.registered(), r.now()));
         return row.compose(v -> tx.preparedQuery("delete from journal_segments where node = $1").execute(Tuple.of(node)));
+    }
+
+    /**
+     * One transaction: the unpinned candidates locked {@code for update skip locked} (a row a reference insert holds is passed),
+     * then deleted where still unpinned under the delete's own, later snapshot (a pin committed since the lock is seen).
+     */
+    @Override
+    public Future<Set<Long>> sweep(String node, Set<Long> candidates, Instant keptSince) {
+        Object kept = keptSince.atOffset(ZoneOffset.UTC);
+        return pool.withTransaction(tx -> Future.succeededFuture()   // a chain from a completed future: a throw in it rolls back
+                .compose(v -> tx.preparedQuery(LOCK_UNPINNED).execute(Tuple.tuple().addString(node).addArrayOfLong(candidates.toArray(Long[]::new)).addValue(kept)))
+                .compose(locked -> {
+                    List<Long> held = new ArrayList<>();
+                    for (Row r : locked) held.add(r.getLong(0));
+                    return tx.preparedQuery(DELETE_UNPINNED).execute(Tuple.tuple().addString(node).addArrayOfLong(held.toArray(Long[]::new)).addValue(kept));
+                })
+                .map(deleted -> {
+                    Set<Long> gone = new TreeSet<>();
+                    for (Row r : deleted) gone.add(r.getLong(0));
+                    return gone;
+                }));
     }
 
     @Override

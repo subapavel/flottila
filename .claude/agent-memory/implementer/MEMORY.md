@@ -96,10 +96,8 @@
 - JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; live RecordingStream vthread `getThread()` null, a whole dump resolves all (F-22); `dump(p)` truncates p, works on STOPPED; one dump per comparison; cp: `dependency:build-classpath`.
 ## Findings that came back in review
 - Journal SegmentRows without rows (NO_ROWS, RecordingRows) answer journalOf null for every node: a rule on "no row" checks rows kept (`segments()` non-null); a seam hold armed before an async first try is taken by it (CORE-4c1 r1).
-- A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
-- Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); subclass a packet test for its fixtures (P2-02b).
-- Packet red tests can carry fixture bugs no implementation fixes (P1-09k2): check the fixture first, fix with a one-line reason
-  (FIX-109: an assert after a hold's `release()` in `finally` sees the released chain land).
+- Tests outside allowed paths: scratch copy, hand its path back (FIX-66); subclass a packet test for its fixtures (P2-02b). Red fixtures can
+  carry bugs (P1-09k2): check the fixture first, fix with a one-line reason (FIX-109: an assert after a hold's `release()` in `finally`).
 - Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; runtime (CORE-4b, ~13 s): `-pl flottila-runtime -am -o
   test-compile surefire:test@default-test -Djacoco.skip=true -Dtest=...` skips heap-bounded-test; a double guard (two never-fail transforms)
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
@@ -107,7 +105,9 @@
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
-- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew.
+- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120).
+- Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
+  on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
 - Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile`
   drops the `**/*$*` default exclude; a stale failsafe-summary.xml upstream fails `verify` (CORE-4c2). JaCoCo: enum arrow switch
   statement leaves a synthetic default branch missed: index arrays by ordinal (P2-07).

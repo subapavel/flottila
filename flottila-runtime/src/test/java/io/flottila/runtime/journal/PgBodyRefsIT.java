@@ -81,7 +81,7 @@ class PgBodyRefsIT {
     /** {@code id} saved at level none: its ref on its work row only. */
     BlobKey levelNone(String id, Buffer bytes) {
         Envelope in = a.arrive(id, bytes);
-        assertTrue(a.save(in, false, () -> false).succeeded(), "fixture: saved");
+        assertTrue(a.save(in, false, JournalWorld.undecided()).succeeded(), "fixture: saved");
         assertNull(bodyRef(db.pool(), in.body().key()), "fixture: no body_refs row at level none");
         return in.body().key();
     }
@@ -150,7 +150,7 @@ class PgBodyRefsIT {
      */
     BlobKey keptOnly(String id, Buffer bytes) {
         Envelope in = a.arrive(id, bytes);
-        assertTrue(a.save(in, true, () -> false).succeeded(), "fixture: saved, keeping its input");
+        assertTrue(a.save(in, true, JournalWorld.undecided()).succeeded(), "fixture: saved, keeping its input");
         assertNotNull(bodyRef(db.pool(), in.body().key()), "fixture: its body_refs row");
         assertEquals(1, count(db.pool(), "with gone as (delete from work where id = $1 returning 1) select count(*) from gone", id), "fixture: its item completed");
         return in.body().key();

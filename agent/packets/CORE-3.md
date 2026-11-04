@@ -217,3 +217,8 @@ listener stalls the round); P7D in the journal before CORE-10 (2.7 TB at 4.5 MB/
 - Carried into CORE-4c2 (review r2): the item-9 guard also when NODE is lost (`registered == null && filed > 0` refuses
   whether NODE is present or not); a close during an outage logs a fail-stop ERROR (cosmetic, make it quiet); a crashed
   generation's `MASTER.*.tmp` is removed at the next start under LOCK; PIT on flottila-api before CORE-GATE (D-107).
+
+## Added in CORE-4d (architect 2026-11-04, review r1)
+- Item 11: a spill is bounded while it streams (each chunk counted; past max → JournalFull; an intake spill past the intake edge is
+  refused before its first chunk). A sealer footer and a pre-opened segment header are counted but not refused: bytes may pass
+  max by at most one footer + header, as CORE-4a's pending bound is overshot by at most one record.

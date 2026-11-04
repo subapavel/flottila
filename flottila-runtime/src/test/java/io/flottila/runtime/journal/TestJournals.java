@@ -27,7 +27,11 @@ public final class TestJournals {
     private TestJournals() { }
 
     /** A journal open on a node, with what it needs to be closed and its tenant key id. */
-    public record Opened(Journal journal, int tenant, FakeClock clock, FakeTimer timer, JournalConfig config) implements AutoCloseable {
+    public record Opened(Journal journal, int tenant, FakeClock clock, FakeTimer timer, JournalConfig config, java.util.Set<Integer> deletedKeys)
+            implements AutoCloseable {
+        /** Deletes tenant key {@code keyId} from the keys the journal reads with (a shredded tenant key, CORE-4d r2): it answers none. */
+        public void deleteKey(int keyId) { deletedKeys.add(keyId); }
+
         @Override public void close() throws IOException {
             journal.close();
         }
@@ -40,17 +44,24 @@ public final class TestJournals {
 
     /** As {@link #open(Pool, Path, String)}, through {@code files}, the settings changed by {@code tweak} first. */
     static Opened open(Pool rows, Path dir, String node, JournalFiles files, Consumer<JournalFixture.Settings> tweak) throws Exception {
+        return open(rows, dir, node, files, tweak, JournalFixture.START);
+    }
+
+    /** As {@link #open(Pool, Path, String, JournalFiles, Consumer)} with the fake clock at {@code at} (CORE-4d: a restart later on). */
+    static Opened open(Pool rows, Path dir, String node, JournalFiles files, Consumer<JournalFixture.Settings> tweak, java.time.Instant at) throws Exception {
         JournalFixture.Settings s = JournalFixture.settings(dir);
         s.node = node;
         tweak.accept(s);
         JournalConfig config = s.config();
-        FakeClock clock = FakeClock.at(JournalFixture.START);
+        FakeClock clock = FakeClock.at(at);
         FakeTimer timer = new FakeTimer(clock);
         return OnVirtualThread.call(() -> {
             JournalKeys keys = JournalKeys.load(rows, MASTER);
             int tenant = keys.keyOf("default");
-            Journal journal = Journal.open(config, clock, timer, keys, files, new PgSegmentRows(rows), UUID::randomUUID);
-            return new Opened(journal, tenant, clock, timer, config);
+            java.util.Set<Integer> deleted = java.util.concurrent.ConcurrentHashMap.newKeySet();
+            Journal journal = Journal.open(config, clock, timer, id -> deleted.contains(id) ? null : keys.apply(id), files, new PgSegmentRows(rows),
+                    UUID::randomUUID);
+            return new Opened(journal, tenant, clock, timer, config, deleted);
         });
     }
 
@@ -66,7 +77,9 @@ public final class TestJournals {
         JournalConfig config = JournalFixture.settings(dir).recordMax(recordMax).pendingBytes(Math.max(16L << 20, recordMax)).config();
         FakeClock clock = FakeClock.at(JournalFixture.START);
         FakeTimer timer = new FakeTimer(clock);
-        return OnVirtualThread.call(() -> new Opened(Journal.open(config, clock, timer, keys, JournalFiles.real()), LOCAL_TENANT, clock, timer, config));
+        java.util.Set<Integer> deleted = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        IntFunction<SecretKey> deletable = id -> deleted.contains(id) ? null : keys.apply(id);
+        return OnVirtualThread.call(() -> new Opened(Journal.open(config, clock, timer, deletable, JournalFiles.real()), LOCAL_TENANT, clock, timer, config, deleted));
     }
 
     /** {@link #local(Path, IntFunction, long)} with the fixture's tenant key and the smallest RECORD_MAX (4 KiB). */

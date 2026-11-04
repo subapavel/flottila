@@ -15,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.security.GeneralSecurityException;
 import java.util.Objects;
+import java.util.function.LongConsumer;
 
 /**
  * A large record ({@link RecordFormat#KIND_LARGE}, CORE-3 item 4) written while its body streams in, and read back one
@@ -37,15 +38,17 @@ final class LargeRecord {
      * Writes the large record of {@code key} at {@code ch}'s position: its header with the plain size 0, then each chunk as
      * it fills (a one-byte look-ahead tells the last), then the header again with the plain size. Reads {@code body} to its
      * end once, hashing every byte once on the way; a body above {@code limit} stops there with a
-     * {@link BodyTooLargeException} naming the bytes seen so far.
+     * {@link BodyTooLargeException} naming the bytes seen so far. {@code room} takes each write's bytes before it is made (the
+     * header, each chunk; not the header's rewrite in place): a refusal it throws stops the record there.
      *
      * @throws GeneralSecurityException the tenant key cannot derive the record's key, or the cipher cannot run
      */
     static Written write(FileChannel ch, BlobKey key, int keyId, SecretKey tenantKey, byte[] salt, InputStream body, long limit,
-                         Hasher hasher) throws IOException, GeneralSecurityException {
+                         Hasher hasher, LongConsumer room) throws IOException, GeneralSecurityException {
         long at = ch.position();
         byte[] header = RecordFormat.largeHeader(key.messageId(), key.step(), key.part(), keyId, 0, salt);
         SecretKey recordKey = RecordFormat.recordKey(tenantKey, salt, keyId);
+        room.accept(header.length);
         JournalIo.writeFully(ch, ByteBuffer.wrap(header));
         byte[] sizeless = RecordFormat.aad(header, header.length);
         Hasher.Session hash = hasher.begin();
@@ -60,12 +63,14 @@ final class LargeRecord {
             int ahead = filled == CHUNK ? body.read() : -1;
             if (ahead < 0) {
                 header = RecordFormat.largeHeader(key.messageId(), key.step(), key.part(), keyId, size, salt);
+                room.accept(filled + TAG);
                 JournalIo.writeFully(ch, ByteBuffer.wrap(sealed, 0, seal(recordKey, salt, i | ChunkedAead.LAST,
                         RecordFormat.aad(header, header.length), plain, filled, sealed)));
                 ch.position(at);
                 JournalIo.writeFully(ch, ByteBuffer.wrap(header));
                 return new Written(size, header.length + size + (long) (i + 1) * TAG, hash.finish());
             }
+            room.accept(filled + TAG);
             JournalIo.writeFully(ch, ByteBuffer.wrap(sealed, 0, seal(recordKey, salt, i, sizeless, plain, filled, sealed)));
             plain[0] = (byte) ahead;
             filled = 1 + body.readNBytes(plain, 1, CHUNK - 1);

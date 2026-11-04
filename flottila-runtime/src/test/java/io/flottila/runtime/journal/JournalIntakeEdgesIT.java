@@ -84,7 +84,7 @@ class JournalIntakeEdgesIT {
         Envelope in = a.arrive("m-durable", bytes(2_000, 7));
         assertTrue(settled(a.blobs.persist(in.body().key())).succeeded(), "fixture: durable before its save, no local copy");
 
-        Future<String> saved = a.save(in, true, () -> true);
+        Future<String> saved = a.save(in, true, io.vertx.core.Future.succeededFuture());
 
         assertTrue(saved.failed(), "abandoned before its commit: no save");
         assertTrue(causes(saved.cause()).stream().anyMatch(c -> c.contains("abandoned")), "failed with the abandonment: " + causes(saved.cause()));
@@ -112,7 +112,7 @@ class JournalIntakeEdgesIT {
         JournalWorld a = world("node-a");
         JournalWorld b = world("node-b");
         Buffer bytes = bytes(2_000, 8);
-        assertTrue(b.save(b.arrive("m-on-b", bytes), false, () -> false).succeeded(), "fixture: node-b's item, its body in node-b's journal");
+        assertTrue(b.save(b.arrive("m-on-b", bytes), false, JournalWorld.undecided()).succeeded(), "fixture: node-b's item, its body in node-b's journal");
         PgWorkQueue anyNode = new PgWorkQueue(db.pool(), null, a.blobs);
 
         List<WorkQueue.Item> claimed = anyNode.claim("w-any", JournalWorld.FLOW, 1, LEASE).await();

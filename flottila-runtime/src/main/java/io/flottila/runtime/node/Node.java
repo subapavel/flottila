@@ -25,6 +25,7 @@ import io.flottila.runtime.journal.Journal;
 import io.flottila.runtime.journal.JournalFiles;
 import io.flottila.runtime.journal.JournalKeys;
 import io.flottila.runtime.journal.PgSegmentRows;
+import io.flottila.runtime.journal.SegmentSweeper;
 import io.flottila.runtime.lease.InMemoryPollerLeases;
 import io.flottila.runtime.lease.PollerLeases;
 import io.flottila.runtime.lease.ValkeyPollerLeases;
@@ -90,12 +91,12 @@ import java.util.function.Function;
  * anything is listed FAILED, {@link Deployments#health}) and {@code journal} ({@link Journal#health}: DOWN once it failed and
  * stopped, DEGRADED while a segment row is retried), then the
  * retention job, whose first run begins at once and does not hold
- * the start; when any of this fails, what was opened closes again — the deployments first (the
+ * the start, then the journal's {@link SegmentSweeper} ({@code FLOTTILA_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
  * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the sampler, then the
  * journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening or pooled. {@code close} first
  * closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
  * released, while the admin port still answers — then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
- * batch in flight commits or rolls back first), then closes the journal (its spills and persists in flight first; its {@code LOCK}
+ * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then closes the journal (its spills and persists in flight first; its {@code LOCK}
  * given up), then flushes and closes the message store, then closes the pool, then the S3
  * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
  *
@@ -123,6 +124,7 @@ public final class Node implements AutoCloseable {
     private final AdminServer admin;
     private final int adminPort;
     private final Retention retention;
+    private final SegmentSweeper sweeper;
     private final Journal journal;
     private final PgMessageStore messages;
     private final Pool pool;
@@ -131,13 +133,14 @@ public final class Node implements AutoCloseable {
     /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
     private final Runnable closeValkey;
 
-    private Node(Deployments deployments, Optional<CpuSampler> sampler, AdminServer admin, int adminPort, Retention retention, Journal journal,
-                 PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private Node(Deployments deployments, Optional<CpuSampler> sampler, AdminServer admin, int adminPort, Retention retention,
+                 SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
         this.deployments = deployments;
         this.sampler = sampler;
         this.admin = admin;
         this.adminPort = adminPort;
         this.retention = retention;
+        this.sweeper = sweeper;
         this.journal = journal;
         this.messages = messages;
         this.pool = pool;
@@ -219,8 +222,9 @@ public final class Node implements AutoCloseable {
                 leases = new InMemoryPollerLeases(clock);
             }
             // an at-least-once ingress saves its body, its record and its item in one transaction (D-082)
+            PgIntake intake = new PgIntake(pool, blobs, messages, work);
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
-                    Meter.system(), new PgDeploymentStore(pool), archives, new PgIntake(pool, blobs, messages, work), leases,
+                    Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
                     new Targets(config.targets().defaults(), config.targets().overrides(), timer));   // the node's one, for every flow (D-099)
             deployments = restored;
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
@@ -235,7 +239,10 @@ public final class Node implements AutoCloseable {
                     Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)));
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
-            return new Node(restored, sampler, admin, port, retention, opened, messages, pool, closeS3, closeValkey);
+            // the segments no row pins go (CORE-3 item 10); its first pass an interval later, on a virtual thread of its own
+            SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
+            sweeper.start();
+            return new Node(restored, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey);
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -316,7 +323,7 @@ public final class Node implements AutoCloseable {
 
     /**
      * Closes the deployments (every flow stopped, its lease released, deploys refused), then the CPU sampler (if one runs), then stops the admin server, then closes the
-     * retention job (waits for its batch in flight), then closes the journal, then flushes and closes the message store, then closes
+     * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then closes the journal, then flushes and closes the message store, then closes
      * the pool, then the S3 client, then the Valkey client — each step even when the one before failed.
      */
     @Override
@@ -333,7 +340,11 @@ public final class Node implements AutoCloseable {
                     try {
                         retention.close().await();
                     } finally {
-                        closeStores(journal, messages, pool, closeS3, closeValkey);
+                        try {
+                            sweeper.close();   // waits for a pass in flight: before the journal and the pool it uses
+                        } finally {
+                            closeStores(journal, messages, pool, closeS3, closeValkey);
+                        }
                     }
                 }
             }

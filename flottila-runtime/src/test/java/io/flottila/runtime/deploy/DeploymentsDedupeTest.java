@@ -36,7 +36,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -131,7 +130,7 @@ class DeploymentsDedupeTest {
 
         @Override
         public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
-                                   BooleanSupplier abandoned) {
+                                   Future<?> abandoned) {
             saves.add(new Save(arrived.id(), flow, dedupeKey));
             return Future.succeededFuture(FIRST);
         }

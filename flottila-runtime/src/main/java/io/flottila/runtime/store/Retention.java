@@ -172,25 +172,34 @@ public final class Retention {
                        (select created_at, id, step from scan order by created_at desc, id desc, step desc limit 1) last on true""",
                 "", Integer.MIN_VALUE),
         /**
-         * Two statements (D-096): this one selects the batch from {@code bodies} and {@code body_refs} in one keyset order and holds
-         * its rows for update, passing a row a park holds for key share ({@code skip locked}) — answering created_at, then the key,
-         * the cursor's order, then whether the row is a ref; {@link #DELETE_BODIES} then deletes the selected rows that still have
+         * Two statements (D-096): this one selects the batch from {@code bodies} and {@code body_refs} in one keyset order — the
+         * first {@code batch} of both together — and holds only those rows for update (CORE-4d: never {@code batch} of each
+         * table), passing a row a park holds for key share ({@code skip locked}) — answering created_at, then the key, the
+         * cursor's order, then whether the row is a ref; {@link #DELETE_BODIES} then deletes the selected rows that still have
          * no messages row, work row or DLQ row naming them, under its own, later snapshot. A key in both tables with one
          * created_at is one cursor position: the batch limit may pass its second row to the next run.
          */
         BODIES("""
-                with b as (
-                    select created_at, message_id, step, part from bodies
-                     where created_at < $1 and (created_at, message_id, step, part) > (coalesce($3, '-infinity'::timestamptz), $4, $5, $6)
-                     order by created_at, message_id, step, part limit $2
-                       for update skip locked),
+                with x as materialized (
+                    select * from (
+                        (select created_at, message_id, step, part, false as ref from bodies
+                          where created_at < $1 and (created_at, message_id, step, part) > (coalesce($3, '-infinity'::timestamptz), $4, $5, $6)
+                          order by created_at, message_id, step, part limit $2)
+                        union all
+                        (select created_at, message_id, step, part, true as ref from body_refs
+                          where created_at < $1 and (created_at, message_id, step, part) > (coalesce($3, '-infinity'::timestamptz), $4, $5, $6)
+                          order by created_at, message_id, step, part limit $2)) both_tables
+                     order by created_at, message_id, step, part, ref limit $2),
+                b as (
+                    select y.created_at, y.message_id, y.step, y.part from bodies y
+                      join x on not x.ref and (x.message_id, x.step, x.part) = (y.message_id, y.step, y.part)
+                       for update of y skip locked),
                 r as (
-                    select created_at, message_id, step, part from body_refs
-                     where created_at < $1 and (created_at, message_id, step, part) > (coalesce($3, '-infinity'::timestamptz), $4, $5, $6)
-                     order by created_at, message_id, step, part limit $2
-                       for update skip locked)
-                select created_at, message_id, step, part, ref from (select *, false as ref from b union all select *, true as ref from r) x
-                 order by created_at, message_id, step, part, ref limit $2""",
+                    select y.created_at, y.message_id, y.step, y.part from body_refs y
+                      join x on x.ref and (x.message_id, x.step, x.part) = (y.message_id, y.step, y.part)
+                       for update of y skip locked)
+                select created_at, message_id, step, part, ref from (select *, false as ref from b union all select *, true as ref from r) z
+                 order by created_at, message_id, step, part, ref""",
                 "", Integer.MIN_VALUE, "") {
             @Override
             Future<Batch> run(SqlConnection tx, Tuple params, int cursorColumns) {

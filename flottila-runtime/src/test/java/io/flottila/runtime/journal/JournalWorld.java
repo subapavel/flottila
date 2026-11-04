@@ -36,7 +36,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -53,7 +52,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * {@code new TieredBlobStore(Config, Hasher, Journal journal, int tenantKeyId, Pool pool)}: its location index (key → ref) is the
  * store's own, so a second store over the same open journal ({@link #restartedStore()}) starts with an empty index — a store
  * restart with the journal open; {@code new PgWorkQueue(Pool pool, String node)}; core {@code Intake.save(Envelope, Snapshot,
- * String flow, String partitionKey, String dedupeKey, boolean keepInput, BooleanSupplier abandoned)}.
+ * String flow, String partitionKey, String dedupeKey, boolean keepInput, Future<?> abandoned)} (CORE-4d: the delivery's answer future;
+ * complete = abandoned).
  */
 final class JournalWorld implements AutoCloseable {
 
@@ -100,9 +100,20 @@ final class JournalWorld implements AutoCloseable {
     /** As {@link #open(Vertx, Pool, Pool, Path, String)} with the journal's settings changed by {@code tweak} and this store config. */
     static JournalWorld open(Vertx vertx, Pool pool, Pool rows, Path dir, String node, Consumer<JournalFixture.Settings> tweak,
                              TieredBlobStore.Config config) throws Exception {
+        return open(vertx, pool, rows, dir, node, tweak, config, JournalFixture.START);
+    }
+
+    /** As above, the journal's fake clock at {@code at} (CORE-4d: a node restarted later than the first start). */
+    static JournalWorld open(Vertx vertx, Pool pool, Pool rows, Path dir, String node, Consumer<JournalFixture.Settings> tweak,
+                             TieredBlobStore.Config config, Instant at) throws Exception {
         HeldFiles files = new HeldFiles();
-        TestJournals.Opened opened = TestJournals.open(rows, dir, node, files, tweak);
+        TestJournals.Opened opened = TestJournals.open(rows, dir, node, files, tweak, at);
         return new JournalWorld(node, pool, files, opened, config, vertx);
+    }
+
+    /** An answer never decided: the save is never abandoned (core {@code Intake.save}'s {@code abandoned}, CORE-4d). */
+    static Future<Void> undecided() {
+        return Promise.<Void>promise().future();
     }
 
     /** Another store over this node's open journal and pool: its location index is empty (a store restart). */
@@ -132,12 +143,12 @@ final class JournalWorld implements AutoCloseable {
     }
 
     /** The save of {@code e} without a dedupe key, partition key {@code K-1}, settled. */
-    Future<String> save(Envelope e, boolean keepInput, BooleanSupplier abandoned) {
+    Future<String> save(Envelope e, boolean keepInput, Future<?> abandoned) {
         return settled(start(e, keepInput, abandoned));
     }
 
     /** The save of {@code e}, not waited for. */
-    Future<String> start(Envelope e, boolean keepInput, BooleanSupplier abandoned) {
+    Future<String> start(Envelope e, boolean keepInput, Future<?> abandoned) {
         return intake.save(e, ingress(e), FLOW, "K-1", null, keepInput, abandoned);
     }
 

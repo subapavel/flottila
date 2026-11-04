@@ -2,6 +2,7 @@ package io.flottila.runtime.journal;
 
 import io.vertx.core.Future;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,6 +47,17 @@ public interface SegmentRows {
      */
     default Future<Set<Long>> segments(String node) {
         return Future.succeededFuture();
+    }
+
+    /**
+     * The sweep of {@code node}'s {@code candidates} (CORE-3 item 10): of them, the rows no pin holds — a work row's ref not lost,
+     * a DLQ row's kept ref not archived and not lost, a kept ref not archived, not lost and created after {@code keptSince} (the
+     * clock − {@code FLOTTILA_JOURNAL_KEEP_MAX_AGE}) — locked, passing a row another transaction holds, their pins asked again
+     * under a later snapshot, then deleted; answers the segments whose row it deleted (their files are the caller's to unlink).
+     * Without rows kept: none.
+     */
+    default Future<Set<Long>> sweep(String node, Set<Long> candidates, Instant keptSince) {
+        return Future.succeededFuture(Set.of());
     }
 
     /** Deletes the rows of {@code segments} of {@code node}: segments whose file is not there. */
@@ -97,11 +109,15 @@ public interface SegmentRows {
     }
 
     /**
-     * Gives {@code pins} up in one transaction: their work rows and kept refs get {@code lost_at} (one instant, the record's),
+     * Gives {@code pins} up in one transaction: every work row and kept ref of {@code node} whose ref lies in a given-up extent — in
+     * a pin's segment, from its cut in {@code ends} (the records a start's scan holds there; CORE-4d r1: the bytes from it are gone
+     * whether or not a row pins them), from 0 for a segment not in {@code ends} (its file gone, or the whole journal given up) —
+     * gets {@code lost_at} (one instant, the record's), its rows read after the transaction locked them {@code for update}, so a
+     * reference insert copying one of them meanwhile is waited for and its copy given up too, or waits and finds no source;
      * {@code <journal>:<digest>} is recorded as accepted at that instant, and with a {@code replacement} the node's journal is
      * replaced as it says. Nothing is deleted but the replaced journal's segment rows.
      */
-    default Future<Void> giveUp(String node, UUID journal, String digest, List<Pin> pins, Replacement replacement) {
+    default Future<Void> giveUp(String node, UUID journal, String digest, List<Pin> pins, Map<Long, Long> ends, Replacement replacement) {
         return Future.succeededFuture();
     }
 }

@@ -43,3 +43,53 @@ parameter. Floors no decrease.
 
 ## Checks
 `mvn -B -ntp -q -pl flottila-runtime -am verify`, reactor `verify -Pit`, coverage check; logs agent/work/CORE-4d-*.log.
+
+## Red approved (architect 2026-11-04)
+Red observed: test-compile 56 errors on the assumed API (agent/work/CORE-4d-red.log); semantic reds 24/24 new IT cases plus
+LargeBodyCrashTest and RetentionIT.aBodiesBatchLocksAtMostItsLimit against a shimmed scratch copy (agent/work/CORE-4d-red-it.log).
+Tests: journal/SegmentSweepIT (16), JournalBoundIT (5), IntakeAppendWaitIT, GiveUpRaceIT, LargeBodyCrashTest (2), node/
+NodeConfigJournalSweepTest, RetentionIT +1; call-site changes for `Intake.save(…, Future<?> abandoned)` in DeliveryTest,
+SequentialIntakeTest, IntakeContract, DeploymentsDedupeTest, PgIntakeIT, PgIntakeJournalIT, JournalIntakeEdgesIT, LostBodyReadIT,
+JournalReadIT, SchemaIT, JournalBlobStoreIT, PgBodyRefsIT (abandoned answers are real Promises; "asked N times" removed).
+Contract: `SweepConfig(interval, grace, keepMaxAge)`; `NodeConfig.journalSweep()`; FLOTTILA_JOURNAL_SWEEP_INTERVAL PT10S
+(PT1S..PT1H), _SWEEP_GRACE PT1M (PT1S..PT1H), _KEEP_MAX_AGE PT1H (PT1M..P1D); `SegmentSweeper(Journal, SegmentRows,
+Supplier<? extends Collection<JournalRef>> openSaves, SweepConfig, Clock, Timer)` start/sweep()/close; `SegmentRows.sweep(node,
+candidates, keptSince)`; `JournalFullException`; journal bytes = segments/ + spill/ + reservations.
+Accepted: the assumptions in the handback; the dir-force counter and LargeBodyCrashTest's start-drop case are mutant pins.
+Architect decision (GiveUpRaceIT order B): giveUp marks every work row and body_ref whose ref points into the given-up
+segment extents (at or past the cut, or a missing segment), read after it has locked them `for update` in its own transaction,
+not only the printed items; a copy made after the refusal is the same lost record.
+
+## Review r1 FAIL (2026-11-04) — architect decisions
+(1) The bound counts a spill while it streams: each chunk is counted as written and a spill that would pass max fails
+JournalFull, its file unlinked off the hot path; an intake spill is refused at its start when bytes are past the intake edge
+(max − max/16), so no body is written just to be answered 503; the footer check stays. Red: a spill started at bytes = max is
+refused and bytes stay ≤ max; an intake spill above the edge writes no chunk.
+(2) `stored()` gets the swept-segment fallback `indexed()` has: a sweep between find() and the stream reads as removed
+(BlobNotFound / REMOVED_BY_RETENTION), never IOException. Red in SegmentSweepIT with the FIND reply held across a pass.
+(3) The node's sweeper wiring is tested: a NodeJournalIT case with short SWEEP_INTERVAL/GRACE on the node's fake timer removes
+an unpinned sealed segment and keeps the segment of an in-doubt open save; close order sweeper before stores.
+(b) giveUp marks from the cut (0 for a missing segment), as decided; a case with an archived ref in [cut, lowest pin).
+(e) An unlink IOException is caught per segment; the rest of the pass continues; failed unlinks stay pending and are retried
+next pass, and their bytes still count until unlinked. (d) An empty candidate set skips the transaction.
+Accepted: (c), (f); the uncovered PgIntake:170 / TieredBlobStore:395; a sealer footer / pre-open header may overshoot max by at
+most one footer + header (recorded like CORE-4a's one-record overshoot). Test names that hold only by composition are renamed
+or their javadoc says so (anIntakeAboveTheReserveAnswers503WithRetryAfter, beyondMaxAStepBodyIsMetadataOnlyAndAParkHolds).
+Red approved r1 (architect): JournalSpillBoundTest.aSpillStartedAtMaxIsRefusedAndTheFilesStayAtMax / .anIntakeSpillPastTheEdgeWritesNoChunk,
+SegmentSweepUnlinkTest.aFailedUnlinkSparesTheOthersCountsItsBytesAndIsRetriedNextPass, SegmentSweepIT.aSweepBetweenTheFindAndTheReadReadsAsRemoved,
+NodeJournalIT.anAcceptedLossAtACutMarksTheRefsFromTheCutNotFromTheLowestPin (red, agent/work/CORE-4d-r1-red.log); pin
+AtLeastOnceIntakeIT.theNodesSweeperRemovesAnUnpinnedSegmentAndKeepsTheSegmentOfAnInDoubtSave (mutants start()/openSaves killed).
+Accepted: (3) runs the node's real timer at PT1S with a bounded wait for the condition (the node takes no timer seam; wiring test
+only, every timing rule stays pinned on the fake timer in SegmentSweeperTest/IT); the close order has no case; two renames.
+
+## Review r2 FAIL (2026-11-04) — architect decisions
+TieredBlobStore.java:442 (held-segment rethrow in `stored()`) has no case; dropping it turns a corrupt record or a shredded
+tenant key read on the rows path into BlobNotFound (CORE-3 item 9: corrupt, never BlobNotFound). Red (test-author): a store
+without an index entry (`restartedStore()`) reads a kept ref whose record has one flipped byte in a held segment → fails
+JournalCorruptException; twin: a deleted tenant key → JournalKeyException. Mutant: delete `if (journal.holds(ref.segment())) throw e;`.
+Taken with it (implementer): an unlink meeting NoSuchFileException counts as unlinked (not pending forever); the lock-order javadoc
+moves onto the 6-arg `giveUp`. Accepted: SegmentSweeper's IOException-only catch; the intake spill start edge not pinned at the byte.
+Red approved r2 (architect): SegmentSweepIT.aCorruptRecordInAHeldSegmentReadByTheRowsIsCorruptNeverNotFound /
+.aRecordWhoseTenantKeyIsDeletedReadByTheRowsFailsJournalKeyNeverNotFound (pins, :442 mutant killed);
+SegmentSweepUnlinkTest.aSegmentFileAlreadyGoneCountsAsUnlinkedAndIsNotPending (red); fixture TestJournals.Opened.deleteKey
+(agent/work/CORE-4d-r2-red.log).

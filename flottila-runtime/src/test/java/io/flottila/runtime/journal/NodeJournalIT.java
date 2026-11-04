@@ -779,6 +779,41 @@ class NodeJournalIT {
     }
 
     /**
+     * CORE-4d r1 (b): an accepted loss at a cut gives up every ref from the cut on, not from its lowest pin — the bytes from the
+     * cut are gone whether or not a row pins them. An archived ref at the cut and one between the cut and the lowest pin (both
+     * pin nothing, so neither is named) end lost, as the pin does; an archived ref and a work row before the cut stay unlost.
+     */
+    @Test
+    void anAcceptedLossAtACutMarksTheRefsFromTheCutNotFromTheLowestPin() throws Exception {
+        Map<String, String> env = pinned(65_536);
+        Map<String, JournalRef> refs = firstRun(env, "before-cut", "archived-before", "archived-at", "archived-mid", "pinned-past");
+        JournalRef at = refs.get("archived-at");
+        assertEquals(1, refs.values().stream().map(JournalRef::segment).distinct().count(), "fixture: one segment " + refs);
+        assertTrue(refs.get("archived-before").position() < at.position() && at.position() < refs.get("archived-mid").position()
+                && refs.get("archived-mid").position() < refs.get("pinned-past").position(), "fixture: in this order " + refs);
+        workRow("before-cut", NODE_ID, refs.get("before-cut"));
+        keptRef("archived-before", refs.get("archived-before"), true);
+        keptRef("archived-at", at, true);
+        keptRef("archived-mid", refs.get("archived-mid"), true);
+        keptRef("pinned-past", refs.get("pinned-past"), false);
+        try (FileChannel ch = FileChannel.open(segmentFile(journal(), at.segment()), StandardOpenOption.WRITE)) {
+            ch.truncate(at.position() + 7);   // the cut at archived-at's first byte; everything from it on is gone
+        }
+        Throwable e = refused(env, "a pin past the cut");
+        String text = text(e);
+        assertTrue(text.contains("pinned-past") && !text.contains("archived-"), "fixture: only the pin is named: " + text);
+
+        env.put(ACCEPT, printed(e));
+        Node n = start(env);
+
+        assertEquals(200, health(n).statusCode(), "the accepted loss starts the node");
+        assertEquals(Map.of("archived-before", false, "archived-at", true, "archived-mid", true, "pinned-past", true),
+                lost("body_refs", "message_id", List.of("archived-before", "archived-at", "archived-mid", "pinned-past")),
+                "every ref from the cut on is lost; one before it is not");
+        assertEquals(Map.of("before-cut", false), lost("work", "id", List.of("before-cut")), "a work row before the cut is not lost");
+    }
+
+    /**
      * A row whose segment file is gone is dropped when nothing pins it: an archived ref, a lost ref, a lost work row, a DLQ row
      * whose ref is lost. The node starts; the rows naming the bodies stay; a segment that still has its file keeps its row.
      */

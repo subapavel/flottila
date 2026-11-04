@@ -105,6 +105,22 @@ final class ReadChannels implements Closeable {
         }
     }
 
+    /**
+     * Drops segment {@code segment}'s channel, if one is kept: out of the set at once, closed now or by its last read in flight, so
+     * the inode of a swept segment's unlinked file goes (CORE-4d); a later read of that segment opens a fresh one.
+     */
+    void drop(long segment) throws IOException {
+        lock.lock();
+        try {
+            Entry e = open.remove(segment);
+            if (e == null) return;
+            e.dropped = true;
+            if (e.users == 0) e.channel.close();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     /** Closes every channel no read uses now (one in use is closed by its last read); every later read is refused. */
     @Override
     public void close() throws IOException {

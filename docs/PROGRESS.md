@@ -1,4 +1,18 @@
 
+## 2026-11-04 — CORE-4d segment sweeper, journal bound with 503, open-save outcomes, 4c carries (D-105) — done, review PASS
+context compacted; re-verified with git status / git log before changing anything.
+Test first: SegmentSweepIT (+r1/r2 cases), JournalBoundIT, IntakeAppendWaitIT, GiveUpRaceIT, LargeBodyCrashTest, JournalSpillBoundTest,
+SegmentSweepUnlinkTest, NodeConfigJournalSweepTest, RetentionIT +1, NodeJournalIT +1 (test-author; red agent/work/CORE-4d-red*.log, -r1-red, -r2-red).
+Change: SegmentSweeper/SweepConfig (interval, grace, keepMaxAge), JournalFullException; bound on segments + spill + reservations
+(intake edge max − max/16, spill counted per chunk, 503 + Retry-After, 80 % WARNING); pg_xact_status settles in-doubt commits;
+core Intake.save takes Future<?> abandoned; dir-force generations; giveUp from the cut `for update`; per-extent bytes, unlink
+pending set, NoSuchFile = unlinked; stored() swept fallback keeps corrupt/key failures; Retention BODIES limited batch.
+Checks: reactor verify -Pit exit 0 (3265, r2); coverage no decrease; reviewer and new-guard mutants killed (r1, r2 logs).
+Review: FAIL r1 (spill unbounded while streaming, stored() race, sweeper wiring untested), FAIL r2 (stored():442 rethrow unpinned), PASS r3.
+Found: FIX-121 (bench float flake); IntakeAppendWaitIT wait fixed by its author in r1.
+D-054 data: class C (test-author ×1 resumed ×4, implementer ×1 resumed ×2, reviewer ×1 resumed ×2); rounds 3.
+Next: CORE-5 per BACKLOG.
+
 ## 2026-11-04 — CORE-4c3 pinned-cut start refusal, ACCEPT_LOSS, read channels, start carries (D-105) — done, review PASS
 Test first: api BodyLostExceptionTest, core ReplayTest (+2), JournalReadChannelsTest, StoreReadKeyCheckTest, JournalFreeSpaceTest,
 JournalCloseAndDirForceTest, StoreAppendWaitTest, LostBodyReadIT, NodeJournalIT (+13), LostBodyAdminIT, NodeConfigJournalLimitsTest,

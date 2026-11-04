@@ -277,6 +277,11 @@ final class HeldFiles implements JournalFiles {
 
     int forces(Path file) { return forcesOn(file).size(); }
 
+    /** The writes on any file under {@code dir} (CORE-4d r1: a refused spill writes no chunk). */
+    List<Op> writesUnder(Path dir) {
+        return ops.stream().filter(op -> op.kind == Kind.WRITE && op.file.startsWith(dir)).toList();
+    }
+
     /** Ops on {@code file} entered after {@code seq}. */
     List<Op> opsOnAfter(Path file, long seq) {
         return ops.stream().filter(op -> op.file.equals(file) && op.entered > seq).toList();

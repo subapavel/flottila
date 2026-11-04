@@ -46,9 +46,9 @@ import java.util.Optional;
 public final class PgWorkQueue implements WorkQueue {
 
     private static final String ENQUEUE = "insert into work(id, flow, step, partition_key) values ($1, $2, $3, $4)";
-    /** An item naming its body's record (the intake's, CORE-3 item 6). */
+    /** An item naming its body's record (the intake's, CORE-3 item 6), answering its transaction's id (CORE-4d: an in-doubt commit's). */
     private static final String ENQUEUE_REF = "insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length) "
-            + "values ($1, $2, $3, $4, $5, $6, $7, $8)";
+            + "values ($1, $2, $3, $4, $5, $6, $7, $8) returning pg_current_xact_id()::text";
     /** An item taking its source's ref: the key's ref row and its segment row held for key share, the item inserted from them. */
     private static final String ENQUEUE_FROM = """
             with src as (select r.node, r.segment, r.position, r.length from body_refs r
@@ -139,10 +139,14 @@ public final class PgWorkQueue implements WorkQueue {
         return client.preparedQuery(ENQUEUE).execute(Tuple.of(messageId, flow, step, partitionKey)).mapEmpty();
     }
 
-    /** The item on {@code client} naming its body's record {@code body} in the journal of {@code bodyNode} (the intake's, D-105). */
-    public Future<Void> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, String bodyNode, JournalRef body) {
+    /**
+     * The item on {@code client} naming its body's record {@code body} in the journal of {@code bodyNode} (the intake's, D-105). Answers
+     * the id of the transaction it ran in ({@code pg_current_xact_id()}, as text): a commit whose reply is lost asks
+     * {@code pg_xact_status} of it (CORE-3 item 6).
+     */
+    public Future<String> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, String bodyNode, JournalRef body) {
         return client.preparedQuery(ENQUEUE_REF).execute(Tuple.wrap(new Object[] {messageId, flow, step, partitionKey, bodyNode, body.segment(),
-                body.position(), body.length()})).mapEmpty();
+                body.position(), body.length()})).map(rows -> rows.iterator().next().getString(0));
     }
 
     /**
