@@ -47,6 +47,10 @@ import static org.junit.jupiter.api.Assertions.fail;
  * The Postgres DLQ: a row by reference per parked message, every field back, oldest first, the first park wins. A park writes
  * its row only while the bodies row its {@code body_key} names exists, and holds that row against retention's delete for its
  * statement (P2-07b2, D-096, F-20): a DLQ row implies its body is durable (D-062).
+ *
+ * <p>Fixtures changed by CORE-4c2 (D-105, CORE-3 item 10): a durable body is its kept ref ({@code body_refs}) in a segment with
+ * its {@code journal_segments} row, no {@code bodies} row; the park holds the ref (and its segment row, PgDlqJournalIT) for key
+ * share, so the "retention lock on its body" cases lock and delete the ref.
  */
 class PgDlqIT {
 
@@ -78,7 +82,8 @@ class PgDlqIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate dlq, bodies").execute().await();
+        pool.query("truncate dlq, bodies, body_refs, journal_segments").execute().await();
+        pool.query("insert into journal_segments(node, segment, copies) values ('node-a', 1, array['node-a'])").execute().await();
         dlq = new PgDlq(pool);
     }
 
@@ -89,22 +94,22 @@ class PgDlqIT {
     }
 
     /**
-     * A parked message whose body row exists. Fixture change (P2-07b2, D-096): a DLQ row needs the bodies row its
-     * {@code body_key} names, so every fixture park has one; {@link #unstored} builds one without.
+     * A parked message whose body is durable. Fixture change (P2-07b2, D-096; CORE-4c2): a DLQ row needs the kept ref its
+     * {@code body_key} names, in a segment with its row, so every fixture park has one; {@link #unstored} builds one without.
      */
     static Parked parked(String id, int step, Instant at) {
         return stored(unstored(id, step, at));
     }
 
-    /** The bodies row of {@code p}'s body key, as {@code BlobStore.persist} writes it before a park (D-062); then {@code p}. */
+    /** The kept ref of {@code p}'s body key in segment 1 of node-a, as {@code BlobStore.persist} commits it before a park (D-062); then {@code p}. */
     static Parked stored(Parked p) {
         BlobKey k = p.bodyKey();
-        pool.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4) on conflict do nothing")
-                .execute(Tuple.of(k.messageId(), k.step(), k.part(), Buffer.buffer("<PartnerInvoice number=\"4711\"/>"))).await();
+        pool.preparedQuery("insert into body_refs(message_id, step, part, node, segment, position, length) values ($1, $2, $3, 'node-a', 1, 64, 400) on conflict do nothing")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part())).await();
         return p;
     }
 
-    /** A parked message whose body key names no bodies row: never persisted, or removed by retention. */
+    /** A parked message whose body key names no kept ref: never persisted, or removed by retention. */
     static Parked unstored(String id, int step, Instant at) {
         return new Parked(id, "invoice-sync", step, "partner", "java.lang.IllegalStateException: 503 from partner", at,
                 Headers.empty().with("content-type", "application/xml"),
@@ -234,7 +239,7 @@ class PgDlqIT {
     }
 
     static boolean bodyRow(BlobKey k) {
-        return pool.preparedQuery("select 1 from bodies where message_id = $1 and step = $2 and part = $3")
+        return pool.preparedQuery("select 1 from body_refs where message_id = $1 and step = $2 and part = $3")
                 .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().size() == 1;
     }
 
@@ -305,9 +310,9 @@ class PgDlqIT {
         assertEquals(1L, blockedBy(holder), "the park, and nothing else, waits behind the session holding the body row");
     }
 
-    /** {@code holder} locks the bodies row of {@code k} for update, as retention's batch select does (D-096). */
+    /** {@code holder} locks the kept ref of {@code k} for update, as retention's batch select does (D-096; CORE-4c2: the ref). */
     static void lockForUpdate(PgConnection holder, BlobKey k) {
-        assertEquals(1, holder.preparedQuery("select 1 from bodies where message_id = $1 and step = $2 and part = $3 for update")
+        assertEquals(1, holder.preparedQuery("select 1 from body_refs where message_id = $1 and step = $2 and part = $3 for update")
                 .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().size(), "fixture: the body row is there to lock");
     }
 
@@ -348,7 +353,7 @@ class PgDlqIT {
 
         CompletableFuture<Void> park = parkOnAVirtualThread(p);
         waitsBehind(pid(retention), park);
-        retention.preparedQuery("delete from bodies where message_id = $1 and step = $2 and part = $3").execute(Tuple.of(k.messageId(), k.step(), k.part())).await();
+        retention.preparedQuery("delete from body_refs where message_id = $1 and step = $2 and part = $3").execute(Tuple.of(k.messageId(), k.step(), k.part())).await();
         tx.commit().await();
 
         Throwable cause = failure(park, "the park behind the delete");

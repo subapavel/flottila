@@ -1509,7 +1509,8 @@ class DeliveryTest {
 
     // --- the intake (P2-08a, D-082): an at-least-once delivery saves through its Intake, once; it persists, records and
     // enqueues nothing itself. The shape assumed: core {@code Intake} (package io.flottila.core.flow) with
-    // {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}
+    // {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+    // BooleanSupplier abandoned)} (CORE-4c2: keepInput)
     // (P2-02D: the future answers the id the Accepted names) and {@code FlowBuilder intake(Intake)}.
 
     /**
@@ -1517,8 +1518,8 @@ class DeliveryTest {
      * with its arguments and a pending promise; {@link #throwNext} makes the next call throw instead of returning a future.
      */
     static final class HeldIntake implements Intake {
-        record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned,
-                    Promise<String> answer) {
+        record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                    BooleanSupplier abandoned, Promise<String> answer) {
             /** The save succeeded as the arrived message itself (no duplicate). */
             void saved() { answer.complete(arrived.id()); }
         }
@@ -1527,9 +1528,10 @@ class DeliveryTest {
         private final AtomicReference<RuntimeException> throwNext = new AtomicReference<>();
 
         @Override
-        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                                   BooleanSupplier abandoned) {
             Promise<String> answer = Promise.promise();
-            saves.add(new Save(arrived, ingress, flow, partitionKey, dedupeKey, abandoned, answer));
+            saves.add(new Save(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned, answer));
             RuntimeException thrown = throwNext.getAndSet(null);
             if (thrown != null) throw thrown;
             return answer.future();
@@ -1585,6 +1587,32 @@ class DeliveryTest {
         assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the ACK");
         assertEquals(0, rt.timer().pending(), "the save timeout went with the answer");
         assertEquals(List.of(), partner.sent(), "nothing of the pipeline runs on the handler's thread");
+    }
+
+    /**
+     * CORE-4c2 (D-105, CORE-3 item 6): the delivery tells its intake whether the flow keeps its input — the flow's
+     * {@code RecordingPolicy.keepsBody()} until CORE-13: payload {@code keep} (the default, whatever the level) → true,
+     * {@code metadata-only} → false (level none: record and work item only, no kept ref).
+     */
+    @Test
+    void anAtLeastOnceDeliveryTellsItsIntakeWhetherTheFlowKeepsItsInput() {
+        Map<String, Boolean> expected = new java.util.LinkedHashMap<>();
+        expected.put("default", true);
+        expected.put("level off", true);
+        expected.put("metadata-only", false);
+        for (Map.Entry<String, Boolean> c : expected.entrySet()) {
+            HeldIntake intake = new HeldIntake();
+            Map<String, Object> doc = flow("at-least-once", List.of(TO_PARTNER));
+            switch (c.getKey()) {
+                case "level off" -> doc.put("recording", Map.of("level", "off"));
+                case "metadata-only" -> doc.put("recording", Map.of("payload", "metadata-only"));
+                default -> { }
+            }
+            Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
+            delivery.apply(ingress(ORDER));
+            assertEquals(c.getValue(), intake.only().keepInput(), c.getKey() + ": keepInput is the flow's keepsBody()");
+            intake.only().saved();
+        }
     }
 
     @ParameterizedTest(name = "throws instead of failing its future: {0}")

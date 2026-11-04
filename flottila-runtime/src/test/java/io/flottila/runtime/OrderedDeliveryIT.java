@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
@@ -194,16 +195,25 @@ class OrderedDeliveryIT {
      * {@code maxInFlight} rewrites the flow's limit. Returns the node's in port.
      */
     int nodeWithTheFlow(HttpClient client, String nodeId, int partnerPort, int maxInFlight) throws Exception {
-        SaxonXml xml = new SaxonXml();
-        NodeConfig config = NodeConfig.from(env(nodeId));
-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
-                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
-        nodes.add(node);
+        Node node = startNode(nodeId);
         int inPort = NodeIT.freePort();
         Map<String, byte[]> files = InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + partnerPort);
         files.put("flows/invoice-async.yaml", NodeIT.replaced(files.get("flows/invoice-async.yaml"), Map.of("maxInFlight: 16", "maxInFlight: " + maxInFlight)));
         InvoiceAsyncIT.deploy(client, node, NodeIT.zip(files));
         return inPort;
+    }
+
+    /**
+     * Node {@code nodeId} with the demo's components and steps on its data directory {@code <data>/<nodeId>} (its journal there): a
+     * node started again under the same id restores what was deployed on it from the database and its archive store, without a PUT.
+     */
+    Node startNode(String nodeId) throws Exception {
+        SaxonXml xml = new SaxonXml();
+        NodeConfig config = NodeConfig.from(env(nodeId));
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
+        nodes.add(node);
+        return node;
     }
 
     /** Posts invoice {@code key} with the line {@code sku} to the in port; returns the message id of the 202. */
@@ -267,53 +277,62 @@ class OrderedDeliveryIT {
     }
 
     /**
-     * maxInFlight 1. Node X runs K/S1 and the partner holds it: X has no free slot. K/S2, K/S3 and J/S4 wait. Node Y starts: it
-     * passes the key K (leased by X) and runs J/S4. X's lease on K/S1 runs out (set in the database: the fake clock does not reach
-     * a node); Y claims K/S1 as its second attempt, reruns it, and once the partner answered goes on with K/S2 and K/S3, in order.
+     * maxInFlight 2. Node X runs K/S1 and the partner holds it; X passes the key K (K/S2, K/S3 wait for it) and runs J/S4, which
+     * completes. X closes with K/S1 still at the partner: its lease stays. The lease runs out (set in the database: the fake clock
+     * does not reach a node); X, started again over its data directory and journal, restores the flow without a PUT, claims K/S1
+     * as its second attempt and reruns it — K/S2 waits for its key while the rerun runs although a slot is free — and once the
+     * partner answered goes on with K/S2 and K/S3, in order.
+     *
+     * <p>CORE-4c2 changed the case (was: a second node Y claims K/S1 once X's lease ran out and goes on with the key): with one copy
+     * of a body, in the journal of the node that accepted it, that node's items wait for that node (CORE-REWORK §3 "Node down",
+     * D-105 item 9); another node taking them over is P2-15/CORE-5. The lease that ran out still moves the key to the claim that
+     * comes next, here X's own after its restart.
      */
     @Test
-    void leaseThatRanOutMovesKeyToOtherWorkerInOrder() throws Exception {
+    void leaseThatRanOutMovesKeyToTheNodeRestartedOverItsJournalInOrder() throws Exception {
         int[] partnerPort = new int[1];
         HoldingPartner partner = partner(partnerPort);
         try (HttpClient client = NodeIT.http()) {
-            int inX = nodeWithTheFlow(client, "node-x", partnerPort[0], 1);
+            int inX = nodeWithTheFlow(client, "node-x", partnerPort[0], 2);
+            Node x = nodes.getLast();
             String m1 = accept(client, inX, "K", "S1");
             String m2 = accept(client, inX, "K", "S2");
             String m3 = accept(client, inX, "K", "S3");
             String m4 = accept(client, inX, "J", "S4");
-            NodeIT.until(() -> partner.arrivals.size() == 1, "X runs the oldest item; rows " + rows());
-            assertEquals(List.of("K/S1"), partner.arrivals);
-            assertEquals("node-x@1", row(m1), "K/S1 leased to X, first attempt; rows " + rows());
-
-            nodeWithTheFlow(client, "node-y", partnerPort[0], 1);
-            NodeIT.until(() -> partner.arrivals.size() >= 2, "Y runs an item; rows " + rows());
-            assertEquals(List.of("K/S1", "J/S4"), partner.arrivals, "Y passes the key X holds and runs J; rows " + rows());
+            NodeIT.until(() -> partner.arrivals.size() >= 2, "X runs two items; rows " + rows());
+            assertEquals(Set.of("K/S1", "J/S4"), Set.copyOf(partner.arrivals),
+                    "X runs the oldest item and, with its second slot, passes the key it holds for J (the two race to the partner); rows " + rows());
             assertEquals(List.of(), partner.overlaps);
+            assertEquals("node-x@1", row(m1), "K/S1 leased to X, first attempt; rows " + rows());
             assertEquals("null@0", row(m2), "K/S2 waits for its key; rows " + rows());
             partner.releaseLatest("J/S4");
             NodeIT.until(() -> row(m4).equals("gone"), "J/S4 completed; rows " + rows());
 
-            NodeIT.until(() -> {
-                db.preparedQuery("update work set locked_until = now() - interval '1 second' where id = $1 and attempts = 1").execute(Tuple.of(m1)).await();
-                return row(m1).equals("node-y@2");
-            }, "X's lease ran out and Y claimed K/S1 as its second attempt; rows " + rows());
-            NodeIT.until(() -> partner.arrivals.size() == 3, "Y reruns K/S1; rows " + rows());
-            assertEquals(List.of("K/S1", "J/S4", "K/S1"), partner.arrivals);
-            assertEquals("null@0", row(m2), "K/S2 still waits while the rerun runs; rows " + rows());
+            OnVirtualThread.call(() -> { x.close(); return null; });
+            nodes.remove(x);
+            assertEquals(List.of(m1 + " node-x@1", m2 + " null@0", m3 + " null@0"), List.of(m1 + " " + row(m1), m2 + " " + row(m2), m3 + " " + row(m3)),
+                    "fixture: X closed with K/S1 leased, K/S2 and K/S3 queued");
+            db.preparedQuery("update work set locked_until = now() - interval '1 second' where id = $1 and attempts = 1").execute(Tuple.of(m1)).await();
 
-            partner.releaseLatest("K/S1");   // Y's rerun; X's first run stays held
+            startNode("node-x");   // the same node id: the same data directory, its journal holds the bodies
+            NodeIT.until(() -> partner.arrivals.size() == 3, "X, restarted, reruns K/S1; rows " + rows());
+            assertEquals(List.of("K/S1"), partner.arrivals.subList(2, 3), "the rerun; arrivals " + partner.arrivals);
+            assertEquals("node-x@2", row(m1), "X claimed K/S1 as its second attempt once the lease ran out; rows " + rows());
+            assertEquals("null@0", row(m2), "K/S2 still waits for its key while the rerun runs; rows " + rows());
+
+            partner.releaseLatest("K/S1");   // the rerun; X's first run stays held at the partner
             NodeIT.until(() -> partner.arrivals.size() == 4, "the key goes on after the rerun; rows " + rows());
-            assertEquals("K/S2", partner.arrivals.get(3), "K/S2 next; arrivals " + partner.arrivals);
-            assertEquals("node-y@1", row(m2), "on Y, the key's new holder; rows " + rows());
+            assertEquals(List.of("K/S1", "K/S2"), partner.arrivals.subList(2, 4), "K/S2 next; arrivals " + partner.arrivals);
+            assertEquals("node-x@1", row(m2), "on the restarted X; rows " + rows());
             assertEquals("gone", row(m1), "the rerun completed K/S1");
             partner.releaseLatest("K/S2");
             NodeIT.until(() -> partner.arrivals.size() == 5, "then K/S3; rows " + rows());
-            assertEquals(List.of("K/S1", "J/S4", "K/S1", "K/S2", "K/S3"), partner.arrivals);
-            assertEquals("node-y@1", row(m3), "K/S3 on Y as well; rows " + rows());
+            assertEquals(List.of("K/S1", "K/S2", "K/S3"), partner.arrivals.subList(2, 5), "the key in accept order after the restart");
+            assertEquals("node-x@1", row(m3), "K/S3 on X as well; rows " + rows());
             partner.releaseLatest("K/S3");
             NodeIT.until(() -> rows().isEmpty(), "every row completed; rows " + rows());
 
-            assertEquals(List.of("K/S1"), partner.held(), "X's first run of K/S1 is still at the partner");
+            assertEquals(List.of("K/S1"), partner.held(), "X's first run of K/S1, abandoned by its close, is still at the partner");
         }
     }
 }

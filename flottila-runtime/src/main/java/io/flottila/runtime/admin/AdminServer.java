@@ -1,5 +1,6 @@
 package io.flottila.runtime.admin;
 
+import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Envelope;
@@ -499,10 +500,15 @@ public final class AdminServer {
         // the head first: a recorded content-type no response may carry is refused here (IllegalArgumentException, a 500), before any stream is opened
         MultiMap head = HttpHeaders.headers().set("content-type", at.headers().getOrDefault("content-type", OCTETS)).set("content-length", Long.toString(at.bodySize()));
         String gone = "the bytes of step " + n + " of message " + id + " are no longer stored (removed by retention)";
+        BlobKey key = at.bodyKey().get();
+        // existence as Postgres names it, never a node's location index (CORE-4c2 r1): no object is retention's removal (D-096);
+        // bytes that go after this check are gone too — an open that throws (a store that finds the key synchronously) or a
+        // stream that fails before its first chunk (a store that opens lazily) answers the same 404
+        if (!blobs.exists(key).await()) return Json.of(404, error(gone));
         ReadStream<Buffer> bytes;
         try {
-            bytes = blobs.open(at.bodyKey().get());
-        } catch (BlobNotFoundException missing) {   // the store holds no object under the key: retention took the bytes (D-096)
+            bytes = blobs.open(key);
+        } catch (BlobNotFoundException missing) {   // removed between the check and the open
             return Json.of(404, error(gone));
         }
         return new Bytes(head, bytes, gone);

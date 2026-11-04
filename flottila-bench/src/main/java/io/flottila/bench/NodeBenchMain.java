@@ -22,6 +22,7 @@ import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.ServerSocket;
@@ -35,6 +36,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -56,7 +58,8 @@ import java.util.zip.ZipOutputStream;
  * <ul>
  *   <li>{@code sync}: HTTP → the sync flow → the echo → the reply, against {@code raw} (the same client straight to the echo,
  *       measured first); the record carries both distributions and {@code overheadP50Ms = p50(sync) − p50(raw)};</li>
- *   <li>{@code ack}: the at-least-once flow's 202 latency (the durable save, the {@code bodies} insert included, D-061);</li>
+ *   <li>{@code ack}: the at-least-once flow's 202 latency (the durable save — the ingress body's journal record forced, then
+ *       its rows — included, D-061, CORE-4c2);</li>
  *   <li>{@code worker}: the same flow's items, queued through the ingress and run by its worker: the distribution is each
  *       item's claim → complete, from triggers on {@code work} into an unlogged {@code bench_work_log}; the window runs from
  *       the first request until the queue is empty, and the record adds the ingress' own distribution ({@code ingress}) and
@@ -72,9 +75,10 @@ import java.util.zip.ZipOutputStream;
  * node's /health {@code snapshotWriteFailures} rises above its value before the load. The partner's pool has
  * {@code --concurrency} connections, and its target limit (D-099) as many calls as the run sends at once: {@code --concurrency}
  * for sync, the flow's {@code maxInFlight} for at-least-once. Every record carries
- * {@code walBytesPerSecond} ({@code pg_current_wal_lsn} delta), {@code bodiesBytesPerSecond} ({@code pg_total_relation_size('bodies')}
- * delta) — both taken once what the window accepted landed (recorded, the work queue empty) and divided by the window's
- * {@code elapsedMs} — and {@code bodiesGrowthPerHour} (the latter × 3600). Every record also carries the server's commit settings
+ * {@code walBytesPerSecond} ({@code pg_current_wal_lsn} delta), {@code journalBytesPerSecond} (the delta of the node's journal
+ * segment files, {@code <journal>/segments}: the bodies are journal records since CORE-4c2, D-105) — both taken once what the
+ * window accepted landed (recorded, the work queue empty) and divided by the window's {@code elapsedMs} — and
+ * {@code journalGrowthPerHour} (the latter × 3600). Every record also carries the server's commit settings
  * as a session of the run's database reads them from pg_settings ({@link #SETTINGS}, text values) and the node's Postgres pool
  * ({@code poolSize}); an ack record adds {@code commitsPerMessage} (Δ pg_stat_database.xact_commit of the database — the
  * ingress, the worker, the recording and every poll, read-only ones included — over the window's messages) and
@@ -300,10 +304,10 @@ public final class NodeBenchMain {
         HttpServer echo = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(bytes -> req.response().end(bytes)))
                 .listen(0, "127.0.0.1").await();
         HttpClientAgent client = vertx.createHttpClient(new HttpClientOptions(), new PoolOptions().setHttp1MaxSize(o.concurrency()));
-        Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort());
+        NodeConfig config = nodeConfig(o, data, echo.actualPort());
+        Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort(), config.journal().dir());
         SaxonXml xml = new SaxonXml();
         JsonObject measured;
-        NodeConfig config = nodeConfig(o, data, echo.actualPort());
         Node node = Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(),
                 xml.languages());
         try {
@@ -479,7 +483,7 @@ public final class NodeBenchMain {
     }
 
     /** The database's counters at one instant. */
-    record Snapshot(long walBytes, long bodiesBytes, long parked) {}
+    record Snapshot(long walBytes, long journalBytes, long parked) {}
 
     /** pg_stat_database.xact_commit of the run's database and pg_stat_wal.wal_sync at one instant. */
     record Counters(long commits, long walSyncs) {}
@@ -494,7 +498,12 @@ public final class NodeBenchMain {
     record Probe(LongPredicate landed, LongSupplier snapshotWriteFailures, LongSupplier nanoTime, Runnable pause) {}
 
     /** What a run drives: the client, the bench's own pool, the ports and the body. */
-    record Harness(Options o, Vertx vertx, Pool pool, HttpClientAgent client, Buffer body, int in, int echo) {
+    record Harness(Options o, Vertx vertx, Pool pool, HttpClientAgent client, Buffer body, int in, int echo, Path journal) {
+
+        /** A harness without a node's journal to measure (a stub partner's windows): its journal rate is 0. */
+        Harness(Options o, Vertx vertx, Pool pool, HttpClientAgent client, Buffer body, int in, int echo) {
+            this(o, vertx, pool, client, body, in, echo, null);
+        }
 
         /** The answer the flow gives a request it took: the reply of a sync flow, else 202. */
         int accepted() {
@@ -569,9 +578,9 @@ public final class NodeBenchMain {
 
         static JsonObject rates(Snapshot before, Snapshot after, long elapsedNanos) {
             double seconds = elapsedNanos / 1_000_000_000.0;
-            double bodies = (after.bodiesBytes() - before.bodiesBytes()) / seconds;
-            return new JsonObject().put("walBytesPerSecond", (after.walBytes() - before.walBytes()) / seconds).put("bodiesBytesPerSecond", bodies)
-                    .put("bodiesGrowthPerHour", bodies * 3600);
+            double journal = (after.journalBytes() - before.journalBytes()) / seconds;
+            return new JsonObject().put("walBytesPerSecond", (after.walBytes() - before.walBytes()) / seconds).put("journalBytesPerSecond", journal)
+                    .put("journalGrowthPerHour", journal * 3600);
         }
 
         /** The database's commits and the cluster's WAL syncs once every backend published its counts ({@link #STATS_FLUSH}). */
@@ -588,9 +597,17 @@ public final class NodeBenchMain {
         }
 
         Snapshot snapshot() {
-            Row r = pool.query("select pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint, pg_total_relation_size('bodies'), (select count(*) from dlq)")
+            Row r = pool.query("select pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint, (select count(*) from dlq)")
                     .execute().await().iterator().next();
-            return new Snapshot(r.getLong(0), r.getLong(1), r.getLong(2));
+            return new Snapshot(r.getLong(0), journalBytes(), r.getLong(1));
+        }
+
+        /** The bytes of the journal's segment files (a persisted spill is one); 0 without a journal, a file gone meanwhile 0. */
+        long journalBytes() {
+            if (journal == null) return 0;
+            long bytes = 0;
+            for (File f : Objects.requireNonNullElse(journal.resolve("segments").toFile().listFiles(), new File[0])) bytes += f.length();
+            return bytes;
         }
 
         /**

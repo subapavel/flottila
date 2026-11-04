@@ -283,18 +283,19 @@ class NodeIT {
         }
     }
 
-    /** A spooled object is encrypted with a key that died with its process: what a previous run left under the spool is garbage. */
+    /**
+     * Expectation changed by CORE-4c2 (D-105): the spool tier and its per-start key are gone — a body the memory tier does not
+     * hold is a large body in the journal — so a started node keeps no {@code <data>/spool}; its bodies live under the journal
+     * directory ({@code <data>/journal} by default). (The case used to pin that a start clears the spool a previous run left.)
+     */
     @Test
-    void startClearsTheSpoolLeftByAPreviousRun() throws Exception {
-        Path spool = data.resolve("spool");
-        Path leftover = Files.writeString(Files.createDirectories(spool).resolve("leftover.bin"), "spooled by the previous run");
-        Path nested = Files.writeString(Files.createDirectories(spool.resolve("previous-run")).resolve("part-0"), "and in a directory of its own");
-        Path besides = Files.writeString(data.resolve("not-the-spool.txt"), "outside the spool");
+    void aStartedNodeKeepsNoSpool() throws Exception {
+        Path besides = Files.writeString(data.resolve("not-the-spool.txt"), "outside the journal");
         start(env("ci"), ctx -> List.of(new PlainComponent("sftp")));
         assertEquals(200, get(node.adminPort(), "/health").statusCode(), "the node runs");
-        assertFalse(Files.exists(leftover), "a file the previous run left in the spool is gone after start");
-        assertFalse(Files.exists(nested.getParent()), "a directory the previous run left in the spool is gone with its files");
-        assertTrue(Files.exists(besides), "only the spool is cleared: the rest of the data directory stays");
+        assertFalse(Files.exists(data.resolve("spool")), "no spool directory");
+        assertTrue(Files.isDirectory(data.resolve("journal").resolve("segments")), "the journal is where bodies go");
+        assertTrue(Files.exists(besides), "the rest of the data directory stays");
     }
 
     @Test
@@ -1675,11 +1676,13 @@ class NodeIT {
 
     /**
      * The demo package with its flow switched to at-least-once (its 1 MiB body limit is FLOTTILA_BLOB_DURABLE_MAX's default):
-     * the 202 promises the body, so another session sees its {@code bodies} row the moment the 202 arrives, with the posted
-     * bytes; the worker then reads the body back from Postgres (the node keeps no local copy after persist) and sends it on.
+     * the 202 promises the body. Expectation changed by CORE-4c2 (D-105): the promise is the journal's — another session sees,
+     * the moment the 202 arrives, the ingress body's kept ref ({@code body_refs}, the flow keeping its input) on this node and
+     * no {@code bodies} row; the worker reads the body back from the journal and sends it on. The invoice is padded above the
+     * memory tier (4 KiB here, so RECORD_MAX is 4 KiB too): a large body of its own in the journal, and no {@code <data>/spool}.
      */
     @Test
-    void anAcceptedAtLeastOnceMessageHasItsBodiesRow() throws Exception {
+    void anAcceptedAtLeastOnceMessageIsKeptInTheJournalNotInBodies() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
@@ -1687,20 +1690,41 @@ class NodeIT {
             int inPort = freePort();
             Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
             files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
-            startDemoNode(env("ci"));
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_BLOB_MEMORY_TIER", "4096");
+            startDemoNode(env);
             HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip(files), "application/zip");
             assertEquals(200, put.statusCode(), put.body());
 
-            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+            byte[] invoice = (Files.readString(DEMO.resolve("fixtures/sample-invoice.xml")) + "<!-- " + "padding ".repeat(1024) + "-->")
+                    .getBytes(StandardCharsets.UTF_8);
+            assertTrue(invoice.length > 8192, "fixture: above the 4 KiB memory tier");
             HttpResponse<String> accepted = send(client, "POST", inPort, "/in", invoice, "application/xml");
             assertEquals(202, accepted.statusCode(), accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
-            assertEquals(Optional.of(Buffer.buffer(invoice)), bodiesRow(id), "no wait: what the 202 promised is in Postgres, the ingress body's bytes under (id, 0, body)");
+            assertEquals(List.of("node-it"), keptRefNodes(id), "no wait: what the 202 promised is kept in this node's journal, under (id, 0, body)");
+            assertEquals(Optional.empty(), bodiesRow(id), "and no bytes went to Postgres");
+            assertFalse(Files.exists(data.resolve("spool")), "nor to a spool");
 
-            until(() -> partnerSaw.size() == 1, "the worker sends the invoice on, its body read back from Postgres");
+            until(() -> partnerSaw.size() == 1, "the worker sends the invoice on, its body read back from the journal");
             assertTrue(partnerSaw.get(0).startsWith("/echo ") && partnerSaw.get(0).contains("<PartnerInvoice number=\"4711\""), "the mapped invoice went to the domestic partner: " + partnerSaw);
         } finally {
             partner.close().await();
+        }
+    }
+
+    /** The nodes of the message's ingress body ref ({@code body_refs} under (id, 0, body)), as a session of its own sees them. */
+    List<String> keptRefNodes(String messageId) {
+        PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+        try {
+            List<String> nodes = new java.util.ArrayList<>();
+            for (io.vertx.sqlclient.Row r : reader.preparedQuery("select node from body_refs where message_id = $1 and step = 0 and part = 'body'")
+                    .execute(Tuple.of(messageId)).await()) {
+                nodes.add(r.getString(0));
+            }
+            return nodes;
+        } finally {
+            reader.close().await();
         }
     }
 

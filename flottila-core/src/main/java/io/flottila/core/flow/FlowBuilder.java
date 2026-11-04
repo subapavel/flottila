@@ -257,8 +257,8 @@ public final class FlowBuilder {
                 Function<Envelope, Optional<String>> partitionKey = partitionKey(flow, baseDir);
                 Recorder recorder = new Recorder(store, runtime.clock(), meter, versionsOf(flow));
                 yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
-                        partitionKey, e -> dedupeBy.flatMap(e::get), intake != null ? intake : new SequentialIntake(store, queue), runtime.timer(),
-                        flow.saveTimeout());
+                        partitionKey, e -> dedupeBy.flatMap(e::get), intake != null ? intake : new SequentialIntake(store, queue),
+                        flow.recording().keepsBody(), runtime.timer(), flow.saveTimeout());
             }
             default -> throw new IllegalArgumentException("flow '" + flow.id() + "': unknown delivery.mode '" + flow.deliveryMode() + "'");
         };

@@ -122,7 +122,7 @@ public abstract class IntakeContract {
 
     /** A save without a dedupe key (P2-02D: null — the keyed saves are PgIntake's, {@code PgIntakeIT}). */
     protected Future<String> save(Envelope e, String partitionKey, BooleanSupplier abandoned) {
-        return settled(world.intake().save(e, ingress(e), FLOW, partitionKey, null, abandoned));
+        return settled(world.intake().save(e, ingress(e), FLOW, partitionKey, null, true, abandoned));   // the default policy keeps its input (CORE-4c2)
     }
 
     /** {@code f} once complete, either way; still pending after 20 s fails the case. */

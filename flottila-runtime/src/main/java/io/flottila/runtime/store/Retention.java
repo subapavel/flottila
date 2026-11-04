@@ -31,9 +31,11 @@ import java.util.Set;
  *       in that batch's transaction, those beyond the scan included — when no row of it is at or after the cutoff and no work row
  *       (held or not) and no DLQ row has its id; the key rows of the deleted rows' {@code keys} go with them. A scanned row whose
  *       message stays is passed by the cursor and counted in {@link Run#kept}.</li>
- *   <li>{@code bodies}: a body older than the cutoff goes when no messages row and no work row has its message's id and no DLQ row's
- *       {@code body_key} names it (orphans included); its bytes are counted. The batch holds its rows for update and passes a row a
- *       park holds ({@code skip locked}, D-096), and its delete re-checks those three under a snapshot taken after the select.</li>
+ *   <li>{@code bodies} and {@code body_refs} (CORE-4c2), scanned as one keyset: a body or a kept ref older than the cutoff goes
+ *       when no messages row and no work row has its message's id and no DLQ row's {@code body_key} names it (orphans included);
+ *       the bodies and their bytes are counted, the refs are not (the journal's bytes go later, with their segment, CORE-4d). The
+ *       batch holds its rows for update and passes a row a park holds ({@code skip locked}, D-096), and its delete re-checks those
+ *       three under a snapshot taken after the select.</li>
  *   <li>{@code processed_ids}: a row older than the cutoff goes when no messages row has its message's id.</li>
  * </ol>
  * A phase ends with the batch that scanned fewer rows than the batch size. The lock found taken ends the run {@link Outcome#SKIPPED}
@@ -57,9 +59,10 @@ public final class Retention {
     private static final String LOCK = "select pg_try_advisory_xact_lock($1)";
 
     /**
-     * The bodies batch's delete (D-096): of the rows the batch select holds ({@code $1..$3}, the keys as arrays), those with no
-     * messages row and no work row for their message and no DLQ row whose {@code body_key} names them, re-checked under this
-     * statement's snapshot — a DLQ row committed since the select is seen; answers the rows deleted and their bytes.
+     * The bodies batch's delete (D-096): of the rows the batch select holds — {@code bodies} keys {@code $1..$3}, {@code body_refs}
+     * keys {@code $4..$6}, as arrays — those with no messages row and no work row for their message and no DLQ row whose
+     * {@code body_key} names them, re-checked under this statement's snapshot — a DLQ row committed since the select is seen;
+     * answers the bodies deleted and their bytes.
      */
     private static final String DELETE_BODIES = """
             with gone as (
@@ -68,8 +71,15 @@ public final class Retention {
                    and not exists (select 1 from messages m where m.id = b.message_id)
                    and not exists (select 1 from work w where w.id = b.message_id)
                    and not exists (select 1 from dlq d where d.body_key = b.message_id || '/' || b.step || '/' || b.part)
-                 returning octet_length(b.bytes) as size)
-            select count(*), coalesce(sum(size), 0) from gone""";
+                 returning octet_length(b.bytes) as size),
+            refs as (
+                delete from body_refs r using unnest($4::text[], $5::int[], $6::text[]) as k(message_id, step, part)
+                 where r.message_id = k.message_id and r.step = k.step and r.part = k.part
+                   and not exists (select 1 from messages m where m.id = r.message_id)
+                   and not exists (select 1 from work w where w.id = r.message_id)
+                   and not exists (select 1 from dlq d where d.body_key = r.message_id || '/' || r.step || '/' || r.part)
+                 returning 1)
+            select count(*), coalesce(sum(size), 0), (select count(*) from refs) from gone""";
 
     /** The most rows a batch scans (D-088): a batch is one transaction holding its row locks. */
     static final int MAX_BATCH = 10_000;
@@ -162,31 +172,39 @@ public final class Retention {
                        (select created_at, id, step from scan order by created_at desc, id desc, step desc limit 1) last on true""",
                 "", Integer.MIN_VALUE),
         /**
-         * Two statements (D-096): this one selects the batch and holds its rows for update, passing a row a park holds for key share
-         * ({@code skip locked}) — answering created_at, then the key, the cursor's order; {@link #DELETE_BODIES} then deletes the
-         * selected rows that still have no messages row, work row or DLQ row naming them, under its own, later snapshot.
+         * Two statements (D-096): this one selects the batch from {@code bodies} and {@code body_refs} in one keyset order and holds
+         * its rows for update, passing a row a park holds for key share ({@code skip locked}) — answering created_at, then the key,
+         * the cursor's order, then whether the row is a ref; {@link #DELETE_BODIES} then deletes the selected rows that still have
+         * no messages row, work row or DLQ row naming them, under its own, later snapshot. A key in both tables with one
+         * created_at is one cursor position: the batch limit may pass its second row to the next run.
          */
         BODIES("""
-                select created_at, message_id, step, part from bodies
-                 where created_at < $1 and (created_at, message_id, step, part) > (coalesce($3, '-infinity'::timestamptz), $4, $5, $6)
-                 order by created_at, message_id, step, part limit $2
-                   for update skip locked""",
+                with b as (
+                    select created_at, message_id, step, part from bodies
+                     where created_at < $1 and (created_at, message_id, step, part) > (coalesce($3, '-infinity'::timestamptz), $4, $5, $6)
+                     order by created_at, message_id, step, part limit $2
+                       for update skip locked),
+                r as (
+                    select created_at, message_id, step, part from body_refs
+                     where created_at < $1 and (created_at, message_id, step, part) > (coalesce($3, '-infinity'::timestamptz), $4, $5, $6)
+                     order by created_at, message_id, step, part limit $2
+                       for update skip locked)
+                select created_at, message_id, step, part, ref from (select *, false as ref from b union all select *, true as ref from r) x
+                 order by created_at, message_id, step, part, ref limit $2""",
                 "", Integer.MIN_VALUE, "") {
             @Override
             Future<Batch> run(SqlConnection tx, Tuple params, int cursorColumns) {
                 return tx.preparedQuery(sql).execute(params).compose(scan -> {
-                    List<String> ids = new ArrayList<>();
-                    List<Integer> steps = new ArrayList<>();
-                    List<String> parts = new ArrayList<>();
+                    Keys bodies = new Keys();
+                    Keys refs = new Keys();
                     Object[] last = new Object[cursorColumns];
                     for (Row r : scan) {
-                        ids.add(r.getString(1));
-                        steps.add(r.getInteger(2));
-                        parts.add(r.getString(3));
+                        (r.getBoolean(4) ? refs : bodies).add(r);
                         for (int i = 0; i < cursorColumns; i++) last[i] = r.getValue(i);
                     }
-                    Tuple keys = Tuple.tuple().addArrayOfString(ids.toArray(String[]::new)).addArrayOfInteger(steps.toArray(Integer[]::new))
-                            .addArrayOfString(parts.toArray(String[]::new));
+                    Tuple keys = Tuple.tuple();
+                    bodies.into(keys);
+                    refs.into(keys);
                     return tx.preparedQuery(DELETE_BODIES).execute(keys).map(gone -> {
                         Row g = gone.iterator().next();
                         return new Batch(scan.size(), g.getLong(0), g.getLong(1), 0, Arrays.asList(last));
@@ -224,6 +242,23 @@ public final class Retention {
         /** One batch in {@code tx}, the lock already taken: the phase's one statement, its answer row read as a {@link Batch}. */
         Future<Batch> run(SqlConnection tx, Tuple params, int cursorColumns) {
             return tx.preparedQuery(sql).execute(params).map(rows -> Batch.of(rows.iterator().next(), cursorColumns));
+        }
+    }
+
+    /** The keys of the bodies batch's rows of one table, as the arrays its delete takes. */
+    private static final class Keys {
+        private final List<String> ids = new ArrayList<>();
+        private final List<Integer> steps = new ArrayList<>();
+        private final List<String> parts = new ArrayList<>();
+
+        void add(Row r) {
+            ids.add(r.getString(1));
+            steps.add(r.getInteger(2));
+            parts.add(r.getString(3));
+        }
+
+        void into(Tuple t) {
+            t.addArrayOfString(ids.toArray(String[]::new)).addArrayOfInteger(steps.toArray(Integer[]::new)).addArrayOfString(parts.toArray(String[]::new));
         }
     }
 

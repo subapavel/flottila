@@ -56,9 +56,11 @@ import java.util.function.BooleanSupplier;
  * connection, no answer within {@value #ACK_TIMEOUT_MS} ms — is re-sent until it is ACKed: to node 1 until the kill, then to
  * node 2, so the ledger reads N/N over all N messages. The in-flight work at the kill is made certain, not left to timing:
  * the partner answers the first {@code --kill-after / 2} calls and holds every later one until node 1 is dead, so at least
- * {@code --kill-after − --kill-after / 2} ACKed messages are queued or leased, unfinished. Node 2 then starts in this JVM on an
- * empty data directory and restores the package from the deployment record and the archive store (P1-09c3b, no PUT): S3 when
- * the {@code --s3-*} options are given, else a directory both nodes share. The rest is sent to node 2, which also re-runs what
+ * {@code --kill-after − --kill-after / 2} ACKed messages are queued or leased, unfinished. Node 2 then starts in this JVM: node 1
+ * restarted under its id and on its journal (CORE-4c2, D-105: the unfinished items' bodies are records in that journal, and a
+ * node claims only the items whose body it holds), on an empty data directory otherwise, and restores the package from the
+ * deployment record and the archive store (P1-09c3b, no PUT): S3 when the {@code --s3-*} options are given, else a directory
+ * both nodes share. The rest is sent to node 2, which also re-runs what
  * node 1 left leased once the lease ({@link WorkerPolicy#DEFAULT}) ran out; each load gives up after {@link #SEND}, the run
  * waits for the work queue to be empty, at most {@link #DRAIN}, closes node 2 and writes the record to {@code --out}.
  *
@@ -109,6 +111,7 @@ public final class LedgerMain {
     /** The exit status of a JVM SIGKILL ended: 128 + 9. */
     static final int SIGKILLED = 137;
     static final String NODE_1 = "ledger-node-1";
+    /** Node 2's data directory: node 1 restarted, its journal node 1's (FLOTTILA_JOURNAL_DIR). */
     static final String NODE_2 = "ledger-node-2";
     /** The {@code --s3-*} options and the node keys they set. */
     static final Map<String, String> S3_OPTIONS = Map.of("s3-endpoint", "FLOTTILA_S3_ENDPOINT", "s3-region", "FLOTTILA_S3_REGION",
@@ -278,7 +281,9 @@ public final class LedgerMain {
         partner.release();
 
         SaxonXml xml = new SaxonXml();
-        Node node2 = Node.start(NodeConfig.from(nodeEnv(o, NODE_2, Files.createDirectories(run.resolve(NODE_2)), run.resolve("archives"), 0)), vertx,
+        Map<String, String> env2 = nodeEnv(o, NODE_1, Files.createDirectories(run.resolve(NODE_2)), run.resolve("archives"), 0);
+        env2.put("FLOTTILA_JOURNAL_DIR", NodeConfig.from(env1).journal().dir().toString());   // node 1's journal: its LOCK died with it
+        Node node2 = Node.start(NodeConfig.from(env2), vertx,
                 ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())), xml.steps(), xml.languages());
         try {
             HttpClientAgent client = client(vertx);   // a fresh pool: none of node 1's dead connections

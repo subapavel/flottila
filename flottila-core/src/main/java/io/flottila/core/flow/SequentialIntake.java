@@ -16,6 +16,7 @@ import java.util.function.BooleanSupplier;
  * decides at once, without waiting for the other save, and nothing is queued; a store that throws instead of failing its
  * future is the same failed save. The in-memory stores and a future non-Postgres queue save so. They dedupe nothing (D-084):
  * a save with a dedupe key fails at once, nothing persisted, recorded or queued — every node saves through the Postgres intake.
+ * It keeps no body references: {@code keepInput} changes nothing.
  *
  * @since 0.1
  */
@@ -30,7 +31,8 @@ public final class SequentialIntake implements Intake {
     }
 
     @Override
-    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                               BooleanSupplier abandoned) {
         if (dedupeKey != null) {
             return Future.failedFuture(new IllegalStateException("the save of " + arrived.id() + " has a dedupe key, which flow " + flow
                     + "'s intake cannot keep: only the Postgres intake dedupes (D-084)"));

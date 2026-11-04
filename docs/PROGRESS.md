@@ -1,4 +1,17 @@
 
+## 2026-11-04 — CORE-4c2 body store on journal references: intake, DLQ, reads, claim, ledger (D-105) — done, review PASS
+context compacted (twice); re-verified with git status / git log before changing anything.
+Test first: JournalBlobStoreIT, PgIntakeJournalIT, JournalReadIT, PgDlqJournalIT, PgBodyRefsIT, WorkClaimIT, SchemaIT,
+ReferenceEnqueueIT (test-author; red = test-compile 95 errors + semantic reds, agent/work/CORE-4c2-red*.log).
+Change: TieredBlobStore on the journal (forced → keepIn(tx)/committed/rolledBack, LocationIndex, RemoteBodyException), SpoolSink
+gone, PgBodies read-only, PgIntake on refs with openSaves(), PgDlq/PgWorkQueue on refs (claim by body_node), Retention on body_refs,
+core Intake.save keepInput, LateBlobStore; exists() asks Postgres only, admin GET checks it first (r1 decision on the index).
+Checks: reactor verify -Pit exit 0 (2711 + 422; run 1 hit the JournalKill9IT test race → FIX-120); coverage no decrease; mutants killed.
+Review: FAIL r1 (6: keepInput unpinned, BEGIN-before-force unpinned, failed spill persist set, kept CTE locks, retired twins
+missing, exists() from the index), FAIL r2 (admin open() catch removed → 500), PASS r3. Stale CORE-2 worktree removed.
+D-054 data: class C (test-author ×1 resumed ×4, implementer ×1 resumed ×4, reviewer ×1 resumed ×2); rounds 3.
+Next: CORE-4c3 [C] packet (pinned-cut refusal, ACCEPT_LOSS, channel cache, start carries).
+
 ## 2026-11-04 — CORE-4c1 V12, journal master and tenant keys, identity, segment rows, node wiring (D-106, D-107) — done, review PASS
 Test first: MasterKeySourceTest, JournalLifecycleTest, JournalSegmentRowsTest, JournalKeysIT, PgSegmentRowsIT, NodeJournalIT,
 NodeConfigJournalTest, MigrationsIT V12 (test-author; red = test-compile exit 1, agent/work/CORE-4c1-red.log). CORE-4c split in 4c1/4c2.

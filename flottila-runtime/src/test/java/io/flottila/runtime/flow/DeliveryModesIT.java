@@ -19,9 +19,10 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Snapshot;
 import io.flottila.core.record.Trail;
-import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.journal.JournalRef;
+import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
@@ -53,12 +54,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.ByteBuffer;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -88,8 +89,13 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * P1-08 against Postgres: no 202 without a committed ingress row and queue item (the invariant behind the kill -9 ledger,
  * which is P1-10's measurement), and the worker drains the durable queue. P1-09h (D-058, F-6): the bodies live in the
- * runtime's tiered store with its Postgres tier, as on a node — no 202 before the body's {@code bodies} row is committed, and a
- * worker over a fresh store (new spool directory and key, new pool: a restart) reads the queued body from Postgres.
+ * runtime's tiered store over the node's journal, as on a node — no 202 before the body's record is forced and its ref
+ * committed, and a worker over a restarted store (the journal reopened, a new pool) reads the queued body through its ref.
+ *
+ * <p>CORE-4c2 changed the expectations, each for one reason: a durable body is a journal record named by a {@code body_refs}
+ * row, never a {@code bodies} row (D-105); the ingress record, the item and the ref commit in one transaction, so nothing of the
+ * message is visible while the ref's insert waits (CORE-3 item 6); the restart reopens the node's journal, since a body is read
+ * on its owner node only until CORE-5 (CORE-3 item 8); there is no spool and no spool key.
  */
 class DeliveryModesIT {
 
@@ -107,7 +113,8 @@ class DeliveryModesIT {
     final Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", URI.create("mock://partner"), Map.of()));
     /** The consumer's ids: the first message of a case is {@code dm-1}. */
     final FakeIds ids = new FakeIds("dm");
-    @TempDir Path spool;
+    @TempDir Path data;
+    TestJournals.Opened journal;
     TieredBlobStore blobs;
     PgMessageStore store;
     PgWorkQueue queue;
@@ -137,9 +144,10 @@ class DeliveryModesIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate message_keys, messages, dlq, work, bodies").execute().await();
+        // the case's node journal lives in its own temp dir: its node row and segment rows go with the case
+        pool.query("truncate message_keys, messages, dlq, work, bodies, body_refs, journal_segments, journal_nodes").execute().await();
         store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
-        queue = new PgWorkQueue(pool);
+        queue = new PgWorkQueue(pool, "node-a");
         dlq = new PgDlq(pool);
         rt.withComponent(partner);
         Map<String, Object> doc = new HashMap<>();
@@ -152,7 +160,8 @@ class DeliveryModesIT {
         doc.put("limits", Map.of("maxBodyBytes", 65_536));
         doc.put("steps", List.of(Map.of("type", "to", "name", "partner", "endpoint", "partner")));
         def = FlowDefinition.from(doc);
-        blobs = tiered(spool.resolve("node"), pool);
+        journal = journal(data, pool);
+        blobs = tiered(journal, pool);
         FlowBuilder builder = builder(blobs, store, queue, dlq);
         Function<Envelope, Future<Ack>> delivery = builder.delivery(def, DEMO);
         worker = builder.worker(def, DEMO, "w1");
@@ -164,25 +173,25 @@ class DeliveryModesIT {
     }
 
     @AfterEach
-    void close() {
+    void close() throws IOException {
         consumer.stop().await();
         store.close();
+        journal.close();
     }
 
-    /** The runtime's store as a node builds it: memory and spool (a fresh key per start) and the Postgres tier over {@code p}. */
-    static TieredBlobStore tiered(Path spoolDir, Pool p) {
-        return new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, spoolDir, freshKey()), io.flottila.api.Hasher.sha256(),
-                new PgBodies(p, MIB));
-    }
-
-    static SecretKey freshKey() {
+    /** Node {@code node-a}'s journal under {@code <data>/journal}, its rows on {@code p}: a second open of the same dir is a restart. */
+    static TestJournals.Opened journal(Path data, Pool p) {
         try {
-            KeyGenerator g = KeyGenerator.getInstance("AES");
-            g.init(256);
-            return g.generateKey();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
+            return TestJournals.open(p, Files.createDirectories(data.resolve("journal")), "node-a");
+        } catch (Exception e) {
+            throw new IllegalStateException("fixture: the node's journal did not open", e);
         }
+    }
+
+    /** The runtime's store as a node builds it: memory, the node's journal and its refs in Postgres over {@code p}. */
+    static TieredBlobStore tiered(TestJournals.Opened journal, Pool p) {
+        return new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, MIB), io.flottila.api.Hasher.sha256(),
+                journal.journal(), journal.tenant(), p);
     }
 
     /** A builder over {@code blobs} — the runtime's store — and the given Postgres stores, the fake clock and timer, the mock partner. */
@@ -210,14 +219,17 @@ class DeliveryModesIT {
         return a.messageId();
     }
 
-    /** The bytes of the message's ingress body row, as a session of its own sees them, or empty. */
-    static Optional<Buffer> bodiesRow(String messageId) {
+    /** The bytes of the record the message's ingress {@code body_refs} row names, as a session of its own sees the row, or empty. */
+    Optional<Buffer> keptIngress(String messageId) {
         PgConnection reader = PgConnection.connect(vertx, connectOptions()).await();
         try {
-            for (Row r : reader.preparedQuery("select bytes from bodies where message_id = $1 and step = 0 and part = 'body'").execute(Tuple.of(messageId)).await()) {
-                return Optional.of(r.getBuffer(0));
+            for (Row r : reader.preparedQuery("select segment, position, length from body_refs where message_id = $1 and step = 0 and part = 'body'")
+                    .execute(Tuple.of(messageId)).await()) {
+                return Optional.of(Buffer.buffer(journal.journal().read(new JournalRef(r.getLong(0), r.getLong(1), r.getLong(2)))));
             }
             return Optional.empty();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         } finally {
             reader.close().await();
         }
@@ -275,23 +287,24 @@ class DeliveryModesIT {
     }
 
     /**
-     * Another session holds an uncommitted {@code bodies} row under the message's key: the persist's insert waits for it, and no
-     * 202 leaves while it waits — though the ingress snapshot is already committed. Once that session rolls back, the insert
-     * commits and the 202 arrives; at that moment another session sees the row with the posted bytes.
+     * Another session holds an uncommitted {@code body_refs} row under the message's key: the intake's ref insert waits for it,
+     * and no 202 leaves while it waits — nor is the ingress snapshot committed, which shares the ref's transaction. Once that
+     * session rolls back, the transaction commits and the 202 arrives; at that moment another session sees the ref, naming a
+     * record of the posted bytes. (CORE-4c2: was an uncommitted {@code bodies} row, with the snapshot committed before it.)
      */
     @Test
-    void the202ArrivesOnlyWithTheBodiesRowCommitted() {
+    void the202ArrivesOnlyWithTheBodyRefCommitted() {
         String id = "dm-1";   // the consumer's first id
         PgConnection holder = PgConnection.connect(vertx, connectOptions()).await();
         Future<Answer> answer;
         try {
             Transaction held = holder.begin().await();
-            holder.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, 0, 'body', $2)")
-                    .execute(Tuple.of(id, Buffer.buffer("another session's, rolled back"))).await();
+            holder.preparedQuery("insert into body_refs(message_id, step, part, node, segment, position, length) values ($1, 0, 'body', 'node-a', 999, 0, 1)")
+                    .execute(Tuple.of(id)).await();   // another session's, rolled back
             answer = post();
-            until(() -> lockWaiters() == 1, "the body's insert waits on the other session's uncommitted row");
-            until(() -> store.timeline(id).await().size() == 1, "the ingress snapshot is committed meanwhile");
-            assertFalse(answer.isComplete(), "no answer while the body's row is not committed: " + answer);
+            until(() -> lockWaiters() == 1, "the ref's insert waits on the other session's uncommitted row");
+            assertEquals(List.of(), store.timeline(id).await(), "the ingress snapshot is not committed meanwhile: one transaction with the ref");
+            assertFalse(answer.isComplete(), "no answer while the body's ref is not committed: " + answer);
             assertEquals(0, count("work"), "nothing enqueued while the body is not durable");
             held.rollback().await();
         } finally {
@@ -300,29 +313,33 @@ class DeliveryModesIT {
         Answer a = answer.await();
         assertEquals(202, a.status());
         assertEquals(id, a.messageId());
-        assertEquals(Optional.of(ORDER), bodiesRow(id), "at the 202, another session sees the body's row with the posted bytes");
+        assertEquals(Optional.of(ORDER), keptIngress(id), "at the 202, another session sees the body's ref, naming the posted bytes");
+        assertEquals(0, count("bodies"), "and no bodies row");
         List<WorkQueue.Item> claimed = queue.claim("probe", def.id(), 10, Duration.ofSeconds(30)).await();
         assertEquals(List.of(id), claimed.stream().map(WorkQueue.Item::messageId).toList(), "and the item");
     }
 
     /**
-     * A restart between the 202 and the worker: a new store over a new spool directory and key and a new pool, a new builder
-     * and worker. The queued message's body is read from Postgres by its key; nothing of the first store is used.
+     * A restart between the 202 and the worker: the node's journal closed and reopened, a new store over it and a new pool, a
+     * new builder and worker. The queued message's body is read through the ref Postgres names; nothing of the first store is
+     * used. (CORE-4c2: was a fresh store reading the {@code bodies} row; a body is read on its owner node only until CORE-5.)
      */
     @Test
-    void aQueuedBodyIsReadFromPostgresByAFreshStoreAfterARestart() {
+    void aQueuedBodyIsReadThroughItsRefByARestartedStore() throws IOException {
         String id = accepted();
+        journal.close();   // the process is gone
+        journal = journal(data, pool);
         Pool fresh = PgBuilder.pool().connectingTo(connectOptions()).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
         PgMessageStore restartedStore = new PgMessageStore(fresh, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
         try {
-            TieredBlobStore restarted = tiered(spool.resolve("after-restart"), fresh);
+            TieredBlobStore restarted = tiered(journal, fresh);
             assertEquals(Optional.empty(), restarted.location(io.flottila.api.BlobKey.body(id, 0)), "the fresh store holds nothing locally");
-            FlowWorker after = builder(restarted, restartedStore, new PgWorkQueue(fresh), new PgDlq(fresh)).worker(def, DEMO, "w-restarted");
+            FlowWorker after = builder(restarted, restartedStore, new PgWorkQueue(fresh, "node-a"), new PgDlq(fresh)).worker(def, DEMO, "w-restarted");
             assertEquals(1, after.poll().await(), "the restarted worker processes the queued message");
             List<Envelope> got = partner.sentTo("partner");
             assertEquals(1, got.size());
             assertEquals(id, got.get(0).id());
-            assertEquals(ORDER.toString(), got.get(0).body().whole().toString(), "the body, read from Postgres by its key");
+            assertEquals(ORDER.toString(), got.get(0).body().whole().toString(), "the body, read from the journal by its ref");
             assertEquals(List.of(), queue.claim("probe", def.id(), 10, Duration.ofSeconds(30)).await(), "the item is completed");
         } finally {
             restartedStore.close();

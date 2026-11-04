@@ -33,10 +33,11 @@ import java.util.regex.Pattern;
 /**
  * The DLQ over Postgres (ARCHITECTURE §6, §7): one row per parked message in V1's {@code dlq} with V3's columns, written
  * at once — a park is rare and must be durable before the failure surfaces — with no foreign key to {@code messages} (a
- * park never waits on the step rows), but its bodies row must be committed first (D-062 persist → park, D-096): without it
- * the park fails with {@link BlobNotFoundException}. A park writes its row only while the bodies row its {@code body_key}
- * names exists, and holds that row against retention's delete for its one statement (D-096), so a DLQ row implies a durable
- * body (D-062). The first park
+ * park never waits on the step rows), but its body's kept ref must be committed first (D-062 persist → park, D-096, D-105):
+ * without it the park fails with {@link BlobNotFoundException}. A park adds no record (CORE-3 item 10): it writes its row
+ * only while the {@code body_refs} row its {@code body_key} names exists with that ref's {@code journal_segments} row, and
+ * holds both for key share against retention's and the sweeper's deletes for its one statement, so a DLQ row implies a
+ * durable body (D-062). A pre-V12 {@code bodies} row alone admits no park. The first park
  * of a message wins. Listed oldest first by V3's {@code (parked_at, id)} index; the cursor is the page's last position —
  * {@code parked_at} in microseconds, Postgres' precision, and the id — so a removal before it skips nothing.
  *
@@ -46,14 +47,15 @@ public final class PgDlq implements Dlq {
 
     private static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions";
     /**
-     * The park, one statement (D-096): {@code b} holds the bodies row {@code body_key} names ({@code $15..$17}) for key share —
-     * retention's batch holds the rows it selects for update (it may keep some), so the park either waits for that batch and,
-     * after a delete, finds no row, or holds the row first and the batch passes it — and {@code ins} writes the DLQ row only
-     * from that row ({@code on conflict} skips an id parked already). Answers the rows found; {@code ins} runs to completion
+     * The park, one statement (D-096, CORE-3 item 10): {@code b} holds the {@code body_refs} row {@code body_key} names
+     * ({@code $15..$17}) and its segment row for key share — retention's batch and the sweeper's hold the rows they select for
+     * update, so the park either waits for that batch and, after a delete, finds no row, or holds the rows first and the batch
+     * passes them — and {@code ins} writes the DLQ row only from them ({@code on conflict} skips an id parked already). Answers the rows found; {@code ins} runs to completion
      * unread, as every data-modifying CTE does.
      */
     private static final String PARK = """
-            with b as materialized (select 1 from bodies where message_id = $15 and step = $16 and part = $17 for key share),
+            with b as materialized (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
+                                     where r.message_id = $15 and r.step = $16 and r.part = $17 for key share),
             ins as (insert into dlq(%s) select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14 from b
                     on conflict (id) do nothing)
             select count(*) from b""".formatted(COLUMNS);
@@ -75,9 +77,10 @@ public final class PgDlq implements Dlq {
     }
 
     /**
-     * Writes {@code p}'s row unless its id is parked already, and only while the bodies row its {@code body_key} names exists:
-     * without one the park fails with {@link BlobNotFoundException} naming the key and writes nothing (D-062, D-096). A
-     * retention batch holding that row waits the park until it committed or rolled back.
+     * Writes {@code p}'s row unless its id is parked already, and only while the kept ref its {@code body_key} names exists with
+     * its segment row: without one (a pre-V12 {@code bodies} row admits none) the park fails with {@link BlobNotFoundException}
+     * naming the key and writes nothing (D-062, D-096, CORE-4c2). A retention batch holding that ref waits the park until it
+     * committed or rolled back.
      */
     @Override
     public Future<Void> park(Parked p) {

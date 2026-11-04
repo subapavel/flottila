@@ -130,7 +130,8 @@ class DeploymentsDedupeTest {
         final List<Save> saves = new CopyOnWriteArrayList<>();
 
         @Override
-        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                                   BooleanSupplier abandoned) {
             saves.add(new Save(arrived.id(), flow, dedupeKey));
             return Future.succeededFuture(FIRST);
         }

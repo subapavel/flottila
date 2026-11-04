@@ -45,7 +45,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * future, nothing persisted, recorded or queued): every node runs the Postgres intake, the in-memory stores dedupe nothing.
  *
  * <p>The shape assumed: core {@code SequentialIntake(MessageStore, WorkQueue) implements Intake}, package {@code io.flottila.core.flow};
- * P2-02D: {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}.
+ * P2-02D: {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}; CORE-4c2 adds {@code boolean keepInput} before
+ * {@code abandoned} (D-105: which bodies get a kept ref; this intake has no refs, every case passes true).
  */
 @Timeout(10)
 class SequentialIntakeTest {
@@ -97,7 +98,7 @@ class SequentialIntakeTest {
         store.hold();
         Asked abandoned = Asked.answering(false, items);
 
-        Future<String> saved = intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier());
+        Future<String> saved = intake.save(in, ingress(in), "orders", "K-7", null, true, abandoned.supplier());
         assertEquals(List.of(in.body().key()), own.persists(), "the body's persist is asked in its own store");
         assertEquals(1, own.held(), "and held");
         assertEquals(1, store.held(), "the ingress record is asked beside the persist, not after it");
@@ -124,7 +125,7 @@ class SequentialIntakeTest {
         assertEquals(List.of(Recorder.INGRESS), store.timeline(in.id()).await().stream().map(Snapshot::stepName).toList(), "the ingress is recorded");
 
         Envelope unkeyed = arrived();
-        Future<String> unkeyedSave = done(intake.save(unkeyed, ingress(unkeyed), "orders", null, null, () -> false));
+        Future<String> unkeyedSave = done(intake.save(unkeyed, ingress(unkeyed), "orders", null, null, true, () -> false));
         assertTrue(unkeyedSave.succeeded());
         assertEquals(unkeyed.id(), unkeyedSave.result());
         assertEquals(null, items.snapshot().get(1).partitionKey(), "no key: an unordered item");
@@ -167,7 +168,7 @@ class SequentialIntakeTest {
         }
 
         AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, true, abandoned.supplier())),
                 "a store that throws is a failed save, not an exception escaping save");
         Future<String> saved = returned.get();
         if (failure == Failure.PERSIST_FAILS) {
@@ -201,7 +202,7 @@ class SequentialIntakeTest {
         Asked abandoned = Asked.answering(false, items);
 
         AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", "drop/inbox/a.xml|1730196000000|42", abandoned.supplier())),
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", "drop/inbox/a.xml|1730196000000|42", true, abandoned.supplier())),
                 "a dedupe key is a failed save, not an exception escaping save");
         Future<String> saved = done(returned.get());
         assertTrue(saved.failed(), "the in-memory stores dedupe nothing: a keyed save is refused, never saved undeduped: " + saved);
@@ -210,7 +211,7 @@ class SequentialIntakeTest {
         assertEquals(List.of(), items.snapshot(), "nothing queued");
         assertEquals(0, abandoned.times(), "a refused save never reaches the enqueue, nor the ask just before it");
 
-        Future<String> unkeyed = done(intake.save(in, ingress(in), "orders", "K-7", null, () -> false));
+        Future<String> unkeyed = done(intake.save(in, ingress(in), "orders", "K-7", null, true, () -> false));
         assertTrue(unkeyed.succeeded(), "the same arrival without a key saves: the refusal left nothing in its way: " + unkeyed.cause());
         assertEquals(in.id(), unkeyed.result());
         assertEquals(1, items.size());

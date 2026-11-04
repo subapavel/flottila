@@ -10,6 +10,8 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.ReadStream;
+import io.flottila.runtime.journal.ChunkedAead;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -48,15 +50,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * synchronously inside the calls the store makes on it; where the sink thread must wait, the test's own spool key
  * holds it at the sink's open ({@link GatedKey}); where the source must wait for the sink, it watches the spool
  * directory. Only observable behaviour is asserted: the write's outcome, the stored bytes, the pause / resume calls.
+ *
+ * <p>CORE-4c2 migrated this class from the spool to the journal's spill (D-105): the store is {@link LocalStores}' (a journal
+ * in the case's directory, no Postgres), its tenant key the case's key where the case holds or breaks the cipher; "spool"
+ * reads "spill" ({@code Location.SPILL}, files under {@code <journal>/spill}). The expectations are unchanged.
  */
 @ExtendWith(NoBlockedPlatformThreads.class)
 class TieredBlobStoreHandoverTest {
+
+    /**
+     * CORE-4c2: a journal's close waits for every spill in flight (by design), so every spill a case may have left held — a
+     * source that never ended, a key whose gate never opened — is let go first: then the case's journal closes.
+     */
+    @AfterEach
+    void closeTheJournals() {
+        ScriptedStream.releaseAll();
+        GatedKey.openAll();
+        LocalStores.closeAll();
+    }
 
     private static final long MARK = 100;   // the store's high-water mark for these tests (package seam, as in TieredBlobStoreFailureTest)
 
     /** No memory tier: the first non-empty chunk spills and starts the sink, as SpoolTierContractTest configures it. */
     private static TieredBlobStore store(Path spool, SecretKey key) {
-        return new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, spool, key), TieredBlobStoreTest.HASHER, MARK);
+        return LocalStores.store(spool, new TieredBlobStore.Config(4096, 0, 1 << 20, LocalStores.DURABLE), MARK, key);
     }
 
     private static Buffer bytes(int n) {
@@ -85,7 +102,7 @@ class TieredBlobStoreHandoverTest {
         assertFalse(afterFailure.contains("resume"), "no resume after the failure: " + source.calls);
         assertTrue(afterFailure.contains("pause"), "the failed source is left paused: " + source.calls);
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-1", 0)), "nothing stored, neither before nor after the failure");
-        assertTrue(TieredBlobStoreTest.spoolFiles(dir).isEmpty(), "the sink aborted: no .blob, no .part");
+        assertTrue(LocalStores.spillFiles(dir).isEmpty(), "the sink aborted: no .blob, no .part");
         assertEquals(0, s.memoryInUse());
     }
 
@@ -111,7 +128,7 @@ class TieredBlobStoreHandoverTest {
         assertEquals("pause", flowCalls.get(flowCalls.size() - 1), "the last flow-control call is a pause: " + source.calls);
         assertTrue(source.paused, "the source ends paused, after its handover resume took effect: " + source.calls);
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-1", 0)), "nothing stored");
-        assertTrue(TieredBlobStoreTest.spoolFiles(dir).isEmpty(), "never spilled: no spool file");
+        assertTrue(LocalStores.spillFiles(dir).isEmpty(), "never spilled: no spool file");
         assertEquals(0, s.memoryInUse());
     }
 
@@ -134,7 +151,7 @@ class TieredBlobStoreHandoverTest {
         assertEquals(1, source.resumes.get(), "nothing resumes a failed source: " + source.calls);
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-1", 0)), "nothing stored");
         assertEquals(0, s.memoryInUse());
-        assertEquals(List.of(), TieredBlobStoreTest.spoolFiles(dir), "no .blob and no .part left behind");
+        assertEquals(List.of(), LocalStores.spillFiles(dir), "no .blob and no .part left behind");
     }
 
     private static boolean chainNames(Throwable t, String text) {
@@ -182,7 +199,7 @@ class TieredBlobStoreHandoverTest {
         assertEquals(2, source.resumes.get(), "the handover resume and the sink's, nothing after: " + source.calls);
         assertFalse(source.callsAfter("fail").contains("resume"), "no resume after the failure: " + source.calls);
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-2", 0)));
-        assertTrue(TieredBlobStoreTest.spoolFiles(dir).isEmpty(), "the sink thread aborted its file before failing the write: no .part left");
+        assertTrue(LocalStores.spillFiles(dir).isEmpty(), "the sink thread aborted its file before failing the write: no .part left");
         assertEquals(0, s.memoryInUse());
     }
 
@@ -217,7 +234,7 @@ class TieredBlobStoreHandoverTest {
         Body body = BlobStoreContract.await(b);
         assertEquals(chunk.length(), body.size());
         assertEquals(TieredBlobStoreTest.HASHER.hashOf(chunk), body.hash());
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(body.key()));
+        assertEquals(Optional.of(TieredBlobStore.Location.SPILL), s.location(body.key()));
         assertEquals(chunk, BlobStoreContract.await(s.read(body.key())), "read back byte for byte");
         assertEquals(1, source.pauses.get(), source.calls::toString);
         assertEquals(2, source.resumes.get(), "the handover resume, then one resume for the one pause: " + source.calls);
@@ -249,11 +266,14 @@ class TieredBlobStoreHandoverTest {
     @Timeout(10)
     void aPauseAndADrainRacingBeforeTheAttachResumeExactlyOnce(@TempDir Path dir, BlockedPlatformThreadDetector detector) throws Exception {
         TieredBlobStore s = store(dir, TieredBlobStoreTest.key());
-        // the first chunk is one cipher segment and a byte: the sink stores (seals) the segment as soon as it takes the chunk
-        Buffer first = bytes(SpoolCipher.SEGMENT + 1);
+        // the first chunk is one journal chunk and a byte (the large record's chunk, 1 MiB): the spill seals the chunk as soon as
+        // it has read the byte after it
+        Buffer first = bytes((1 << 20) + 1);
         Buffer tail = Buffer.buffer("tail");
-        long sealed = SpoolCipher.SALT_BYTES + 5L + SpoolCipher.SEGMENT + SpoolCipher.TAG_BYTES;   // salt, one segment header, ciphertext, tag
-        Path messageDir = Files.createDirectories(dir.resolve("m-1"));
+        long sealed = (1 << 20) + ChunkedAead.TAG_BYTES;   // at least one sealed chunk: its ciphertext and tag (headers come on top)
+        // CORE-4c2: the spill as the journal names it — a file of its own under <journal>/spill, named by its segment — was the
+        // spool's <dir>/m-1
+        Path messageDir = Files.createDirectories(dir.resolve("spill"));
         try (WatchService watch = FileSystems.getDefault().newWatchService()) {
             messageDir.register(watch, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_MODIFY);
             ScriptedStream source = new ScriptedStream(false, true, first, tail);
@@ -312,10 +332,19 @@ class TieredBlobStoreHandoverTest {
 
     /** The test's spool key: a real AES key whose material is handed out only once the test opens the gate — it holds the sink thread at its open. */
     static final class GatedKey implements SecretKey {
+        private static final List<GatedKey> ALL = new CopyOnWriteArrayList<>();
         private final SecretKey real = TieredBlobStoreTest.key();
         private final CountDownLatch gate = new CountDownLatch(1);
 
+        GatedKey() { ALL.add(this); }
+
         void open() { gate.countDown(); }
+
+        /** Opens the gate of every key made so far (after each case: no sink waits at a gate the case left closed). */
+        static void openAll() {
+            ALL.forEach(GatedKey::open);
+            ALL.clear();
+        }
 
         @Override public String getAlgorithm() { return real.getAlgorithm(); }
         @Override public String getFormat() { return real.getFormat(); }
@@ -336,6 +365,7 @@ class TieredBlobStoreHandoverTest {
      * at any moment. Hooks run synchronously inside pause() and resume(). Every call is counted and recorded in order.
      */
     static final class ScriptedStream implements ReadStream<Buffer> {
+        private static final List<ScriptedStream> ALL = new CopyOnWriteArrayList<>();
         private final ArrayDeque<Buffer> script = new ArrayDeque<>();
         private final boolean endAfterScript;
         private volatile Handler<Buffer> data;
@@ -344,6 +374,7 @@ class TieredBlobStoreHandoverTest {
         private volatile boolean paused;
         private volatile boolean draining;
         private volatile boolean ended;
+        private volatile boolean failed;
         private long credit;
         final AtomicInteger pauses = new AtomicInteger();
         final AtomicInteger resumes = new AtomicInteger();
@@ -357,6 +388,21 @@ class TieredBlobStoreHandoverTest {
             this.paused = handedOverPaused;
             this.endAfterScript = endAfterScript;
             for (Buffer c : chunks) script.addLast(c);
+            ALL.add(this);
+        }
+
+        /**
+         * Fails every source made so far that neither ended nor failed and has a store attached (after each case): a spill
+         * reading it stops, so the journal's close, which waits for running spills, returns.
+         */
+        static void releaseAll() {
+            for (ScriptedStream s : ALL) {
+                s.onPause = x -> { };
+                s.onResume = x -> { };
+                s.beforeResume = x -> { };
+                if (!s.ended && !s.failed && s.failure != null) s.failNow(new IllegalStateException("released after the case"));
+            }
+            ALL.clear();
         }
 
         @Override public ReadStream<Buffer> exceptionHandler(Handler<Throwable> h) { failure = h; return this; }
@@ -394,7 +440,7 @@ class TieredBlobStoreHandoverTest {
         /** Delivers one chunk now, paused or not (the store must cope with a source that ignores pause). */
         void push(Buffer chunk) { calls.add("chunk"); data.handle(chunk); }
 
-        void failNow(Throwable t) { calls.add("fail"); failure.handle(t); }
+        void failNow(Throwable t) { calls.add("fail"); failed = true; failure.handle(t); }
 
         void endNow() { calls.add("end"); ended = true; end.handle(null); }
 

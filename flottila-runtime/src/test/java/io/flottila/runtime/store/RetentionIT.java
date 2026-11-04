@@ -245,6 +245,13 @@ class RetentionIT {
         body(id, step, "body", created, 10);
     }
 
+    /** A kept ref ({@code body_refs}, V12) of {@code id/step/body} on node-a created {@code at}: what a persist commits (CORE-4c2). */
+    void bodyRef(String id, int step, Instant created) {
+        db.preparedQuery("insert into body_refs(message_id, step, part, node, segment, position, length, created_at) values ($1, $2, 'body', 'node-a', 1, 64, 400, $3)")
+                .execute(Tuple.of(id, step, at(created))).await();
+        seeded.add("ref " + id + "/" + step + "/body");
+    }
+
     /** An open work item of {@code id}; a held one has {@code held_at} set (D-055). */
     void work(String id, boolean held) {
         db.preparedQuery("insert into work(id, flow, step, held_at) values ($1, 'shop/orders', 0, $2)")
@@ -285,6 +292,9 @@ class RetentionIT {
         }
         for (Row r : db.query("select message_id, step, part from bodies").execute().await()) {
             rows.add("body " + r.getString(0) + "/" + r.getInteger(1) + "/" + r.getString(2));
+        }
+        for (Row r : db.query("select message_id, step, part from body_refs").execute().await()) {
+            rows.add("ref " + r.getString(0) + "/" + r.getInteger(1) + "/" + r.getString(2));
         }
         for (Row r : db.query("select message_id from processed_ids").execute().await()) rows.add("processed " + r.getString(0));
         for (Row r : db.query("select id from dlq").execute().await()) rows.add("dlq " + r.getString(0));
@@ -720,6 +730,56 @@ class RetentionIT {
         assertEquals(List.of(0L, 2L, 2L), List.of(run.messages(), run.bodies(), run.processedIds()), "messages, bodies, processedIds");
         assertEquals(7, run.batches(), "one empty messages batch, then 5 rows in batches of 2 for bodies (k-1 k-2 | k-3 o-1 | o-2) "
                 + "and the same for processed ids: a cursor that went back would scan more batches");
+    }
+
+    /**
+     * CORE-4c2 (packet scope 7): the bodies phase removes a kept ref ({@code body_refs}) with its message, by the rule a
+     * {@code bodies} row goes by — older than the cutoff, and no messages row, no work row and no DLQ row naming it — so a kept
+     * ref outlives no message and no message loses its ref while it stays. The journal's bytes go later, with their segment
+     * (CORE-4d's sweeper).
+     */
+    @Test
+    void bodyRefsGoWithTheirMessage() {
+        message("gone", 0, cutoff.minus(DAY));               // an old message: it goes, its ref with it
+        bodyRef("gone", 0, cutoff.minus(DAY));
+        bodyRef("orphan", 0, cutoff.minus(DAY));             // an old ref whose message went before: it goes
+        message("young", 0, cutoff.plus(DAY));               // a young message keeps its old ref
+        bodyRef("young", 0, cutoff.minus(DAY));
+        message("queued", 0, cutoff.minus(DAY));             // a work row keeps the message and its ref
+        bodyRef("queued", 0, cutoff.minus(DAY));
+        work("queued", false);
+        message("parked", 1, cutoff.minus(DAY));             // a DLQ row naming the ref keeps it (D-062: a DLQ row needs its body)
+        bodyRef("parked", 0, cutoff.minus(DAY));
+        dlq("parked", "parked/0/body", cutoff.minus(DAY));
+        bodyRef("recent", 0, cutoff.plus(DAY));              // a young ref without a message: kept by its age
+
+        Retention.Run run = run(job(1000));
+
+        assertEquals("DONE", outcome(run));
+        assertEquals(seededWithout("messages gone@0", "ref gone/0/body", "ref orphan/0/body"), left(),
+                "a kept ref goes with its message, by the bodies rule, and only then");
+    }
+
+    /**
+     * Each clause of the refs delete keeps a ref on its own (in {@link #bodyRefsGoWithTheirMessage} the messages row keeps both the
+     * queued and the parked ref, so the work and DLQ clauses were never the only keeper): an old ref whose message row is gone stays
+     * while a work row has its message's id, and while a DLQ row — under another id, a replay's — names it. The refs twin of
+     * {@code w-body-only} in {@link #anOpenWorkItemKeepsItsMessageAndBodies} and of
+     * {@link #aDlqRowKeepsTheBodyItNamesUnderAnotherMessage}. The witness, an old ref nothing names, goes in the same run.
+     */
+    @Test
+    void aWorkRowOrADlqRowAloneKeepsAnOldRefWhoseMessageIsGone() {
+        bodyRef("w-ref-only", 0, cutoff.minus(DAY));      // no messages row: only its work row keeps it
+        work("w-ref-only", false);
+        bodyRef("orig", 0, cutoff.minus(DAY));            // no messages row, no work row: only the DLQ row naming it keeps it
+        dlq("retry", "orig/0/body", cutoff.minus(DAY));
+        bodyRef("orphan", 0, cutoff.minus(DAY));          // the witness: nothing names it
+
+        Retention.Run run = run(job(1000));
+
+        assertEquals("DONE", outcome(run));
+        assertEquals(seededWithout("ref orphan/0/body"), left(),
+                "a work row alone, and a DLQ row naming it alone, keep an old ref whose message is gone; an unnamed one goes");
     }
 
     @Test

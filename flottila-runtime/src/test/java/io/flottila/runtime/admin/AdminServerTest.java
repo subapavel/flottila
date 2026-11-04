@@ -420,6 +420,26 @@ class AdminServerTest {
         assertJsonError(404, admin("/admin/messages/m-1/steps/2/body"), "witness: the miss signal on the same route");
     }
 
+    /**
+     * CORE-4c2 review r2: the existence check and the open are two calls, so the bytes may be removed between them, and
+     * {@code BlobStore.open} may throw the miss signal at the call. An open that throws {@link BlobNotFoundException} after
+     * {@code exists} answered true is the same 404 "removed by retention" (D-096), never a 500. Witness: a plain
+     * IllegalArgumentException thrown by the same open stays a 500 (as in {@link #aPlainIllegalArgumentFromTheStoreIs500NotRemoved}).
+     */
+    @Test
+    void aBodyRemovedBetweenItsExistenceCheckAndItsOpenIs404() throws Exception {
+        start();
+        recordInvoice();
+        blobs.goneOnOpen.add(BlobKey.body("m-1", 0));
+        Answer missing = admin("/admin/messages/m-1/steps/0/body");
+        assertJsonError(404, missing, "the miss signal thrown by open after exists answered true is the store holding nothing: a 404, not a 500");
+        assertEquals("the bytes of step 0 of message m-1 are no longer stored (removed by retention)", missing.error(), "D-096: says why the bytes are gone");
+        assertTrue(blobs.goneOnOpenThrown.get() > 0, "witness: exists answered true and open threw the BlobNotFoundException");
+        blobs.goneOnOpen.clear();
+        blobs.plainOnOpen.add(BlobKey.body("m-1", 0));
+        assertJsonError(500, admin("/admin/messages/m-1/steps/0/body"), "witness: a plain IllegalArgumentException from the same open is a store failure");
+    }
+
     /** The 404 is only for a stream that fails before the head: the miss signal after bytes went out cuts the response like any failure. */
     @Test
     void aBlobStreamFailingWithIllegalArgumentMidBodyCutsTheResponse() throws Exception {
@@ -863,6 +883,10 @@ class AdminServerTest {
         final Set<BlobKey> plainOnOpen = ConcurrentHashMap.newKeySet();
         /** Keys whose open() answers a stream that, once read, fails with a plain IllegalArgumentException before any data. */
         final Set<BlobKey> plainLazily = ConcurrentHashMap.newKeySet();
+        /** Keys that exist() answers true for, whose open() then throws a BlobNotFoundException at the call (gone in between). */
+        final Set<BlobKey> goneOnOpen = ConcurrentHashMap.newKeySet();
+        /** How many BlobNotFoundExceptions open() has thrown for a key gone in between. */
+        final AtomicInteger goneOnOpenThrown = new AtomicInteger();
         /** Keys whose stream delivers these bytes and then fails with a BlobNotFoundException (after the head is out). */
         final Map<BlobKey, Buffer> illegalAfter = new ConcurrentHashMap<>();
 
@@ -873,6 +897,10 @@ class AdminServerTest {
                     lazyFailures.incrementAndGet();
                     return new BlobNotFoundException(key);
                 }));
+            }
+            if (goneOnOpen.contains(key)) {
+                goneOnOpenThrown.incrementAndGet();
+                throw new BlobNotFoundException(key);   // BlobStore.open: the miss signal may be thrown at the call
             }
             if (plainOnOpen.contains(key)) throw new IllegalArgumentException("not the miss signal: " + key);
             if (plainLazily.contains(key)) return new AttachWatch(new BrokenStream(Buffer.buffer(), () -> new IllegalArgumentException("not the miss signal: " + key)));
@@ -885,6 +913,12 @@ class AdminServerTest {
         @Override public Future<Buffer> read(BlobKey key) {
             saw("blob");
             return inner.read(key);
+        }
+
+        /** True for a key gone in between (its check came before the removal); else the interface's default, over {@link #read}. */
+        @Override public Future<Boolean> exists(BlobKey key) {
+            if (goneOnOpen.contains(key)) return Future.succeededFuture(Boolean.TRUE);
+            return BlobStore.super.exists(key);
         }
 
         @Override public Future<Void> persist(BlobKey key) { return inner.persist(key); }

@@ -76,10 +76,12 @@ class TieredBlobStoreBackpressureTest {
         openOnExit.forEach(CountDownLatch::countDown);
         wrappers.forEach(h -> h.latches().forEach(CountDownLatch::countDown));
         sources.forEach(o -> o.latches().forEach(CountDownLatch::countDown));
+        TieredBlobStoreHandoverTest.ScriptedStream.releaseAll();
+        LocalStores.closeAll();   // CORE-4c2: each case's journal, once no spill of it is held (a close waits for running spills)
     }
 
     private static TieredBlobStore store(Path spool, SecretKey key) {
-        return new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, spool, key), TieredBlobStoreTest.HASHER, MARK);
+        return LocalStores.store(spool, new TieredBlobStore.Config(4096, 0, 1 << 20, LocalStores.DURABLE), MARK, key);
     }
 
     @Test
@@ -172,7 +174,7 @@ class TieredBlobStoreBackpressureTest {
         assertInstanceOf(IOException.class, suppressed[0], "the sink's open failure: " + suppressed[0]);
         assertTrue(chainNames(suppressed[0], "master key"), "the suppressed exception is the sink's key refusal: " + suppressed[0]);
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-1", 0)), "nothing stored");
-        assertEquals(List.of(), TieredBlobStoreTest.spoolFiles(dir), "no .blob and no .part left behind");
+        assertEquals(List.of(), LocalStores.spillFiles(dir), "no .blob and no .part left behind");
     }
 
     @Test
@@ -299,7 +301,7 @@ class TieredBlobStoreBackpressureTest {
                 "no chunk was delivered into the failed write (" + source.delivered.get() + " in total, " + deliveredAtFailure
                         + " at the failure): " + events);
         assertEquals(Optional.empty(), s.location(blob), "nothing stored");
-        assertEquals(List.of(), TieredBlobStoreTest.spoolFiles(dir),
+        assertEquals(List.of(), LocalStores.spillFiles(dir),
                 "the sink had opened and its abort() ran before the write failed: no .blob and no .part left behind");
     }
 
@@ -354,7 +356,7 @@ class TieredBlobStoreBackpressureTest {
                         "no chunk was delivered into the failed write after its failure (" + deliveredAtFailure + " at the failure): "
                                 + events),
                 () -> assertEquals(Optional.empty(), s.location(blob), "nothing stored"),
-                () -> assertEquals(List.of(), TieredBlobStoreTest.spoolFiles(dir),
+                () -> assertEquals(List.of(), LocalStores.spillFiles(dir),
                         "the sink had opened and its abort() ran: no .blob and no .part left behind"));
     }
 

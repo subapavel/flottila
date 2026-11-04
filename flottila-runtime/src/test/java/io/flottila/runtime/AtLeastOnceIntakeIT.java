@@ -143,7 +143,7 @@ class AtLeastOnceIntakeIT {
             HttpResponse<String> refused = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-1", "S1"), "application/xml");
             assertEquals(503, refused.statusCode(), "an enqueue that fails is a retryable Nack: " + refused.body());
             assertEquals(0, count("select count(*) from messages"), "no ingress row: the record rolled back with the item");
-            assertEquals(0, count("select count(*) from bodies"), "no body row: the body rolled back with the item");
+            assertEquals(0, count("select count(*) from body_refs"), "no body ref: it rolled back with the item (CORE-4c2: a ref, no bodies row)");
             assertEquals(0, count("select count(*) from work"), "no item");
             assertEquals(0L, NodeIT.health(node.adminPort(), 200).getLong("snapshotWriteFailures"), "a failed intake is no snapshot write failure");
 
@@ -152,7 +152,8 @@ class AtLeastOnceIntakeIT {
             assertEquals(202, accepted.statusCode(), "the retry is accepted once the enqueue succeeds: " + accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow();
             assertEquals(1, count("select count(*) from messages where id = $1 and step = 0", id), "its ingress row is committed at the 202");
-            assertEquals(1, count("select count(*) from bodies where message_id = $1 and step = 0", id), "so is its body");
+            assertEquals(1, count("select count(*) from body_refs where message_id = $1 and step = 0 and node = 'node-a'", id), "so is its body's ref, on this node");
+            assertEquals(0, count("select count(*) from bodies"), "and no bodies row: the body is a journal record (CORE-4c2)");
         }
     }
 }

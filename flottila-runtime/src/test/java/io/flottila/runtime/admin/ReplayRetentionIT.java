@@ -11,11 +11,11 @@ import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.record.Snapshot;
-import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.deploy.Deployments;
 import io.flottila.runtime.deploy.Doors;
+import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.store.PgMessageStore;
@@ -45,9 +45,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import javax.crypto.KeyGenerator;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -68,8 +67,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  * P2-07b1 (D-096, F-20) end to end over Postgres: a replay's input row names the original's body by reference (no copy, D-064),
  * so when the original message ages out whole, the retention job takes its rows and its body while the replay's rows stay. A
  * replay from the replay's input step is then 409 {@code {error}} "removed by retention", before anything ran, and a GET of that
- * step's body 404 "(removed by retention)" (D-057) — through the real {@link TieredBlobStore} over {@link PgBodies}, the
+ * step's body 404 "(removed by retention)" (D-057) — through the real {@link TieredBlobStore} over the node's journal, the
  * {@link PgMessageStore}, the {@link Retention} job (one run) and the {@link AdminServer} over a real {@link Deployments}.
+ *
+ * <p>CORE-4c2 changed the fixture lines, for one reason: X's durable body is a journal record named by its {@code body_refs}
+ * row, which retention removes with X's rows (phase 2), never a {@code bodies} row (D-105). The refusal and the 404 stay as
+ * D-096 has them, on the store whose index named X's body when it was saved: the deleted ref must reach that store's reads.
  */
 class ReplayRetentionIT {
 
@@ -91,6 +94,7 @@ class ReplayRetentionIT {
     final FakeIds replayIds = new FakeIds("replay");
     final List<String> minted = new CopyOnWriteArrayList<>();
     final AdminServerReplayTest.Probe probe = new AdminServerReplayTest.Probe();
+    TestJournals.Opened journal;
     TieredBlobStore blobs;
     PgMessageStore messages;
     Deployments deployments;
@@ -118,15 +122,8 @@ class ReplayRetentionIT {
 
     @BeforeEach
     void wire() throws Exception {
-        KeyGenerator aes;
-        try {
-            aes = KeyGenerator.getInstance("AES");
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-        aes.init(256);
-        blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, tmp.resolve("spool"), aes.generateKey()), Hasher.sha256(),
-                new PgBodies(pool, MIB));
+        journal = TestJournals.open(pool, Files.createDirectories(tmp.resolve("journal")), "node-1");
+        blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 64 * 1024, 16 * MIB, MIB), Hasher.sha256(), journal.journal(), journal.tenant(), pool);
         messages = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
         Map<String, String> env = new HashMap<>();
         env.put("FLOTTILA_ENV", "dev");
@@ -152,6 +149,7 @@ class ReplayRetentionIT {
         server.stop().await(10, TimeUnit.SECONDS);
         OnVirtualThread.call(() -> { deployments.close(); return null; });
         messages.close();
+        journal.close();
     }
 
     record Answer(int status, Buffer body) {
@@ -214,7 +212,8 @@ class ReplayRetentionIT {
         Envelope x = recorded();
         Envelope k = recorded();
         BlobKey input = BlobKey.body(x.id(), 0);
-        assertEquals(1, count("select count(*) from bodies where message_id = $1 and step = 0 and part = 'body'", x.id()), "fixture: X's ingress body is durable in Postgres");
+        assertEquals(1, count("select count(*) from body_refs where message_id = $1 and step = 0 and part = 'body'", x.id()), "fixture: X's ingress body is durable: its ref");
+        assertEquals(0, count("select count(*) from bodies where message_id = $1", x.id()), "fixture: and no bodies row");
 
         Answer replayed = send(HttpMethod.POST, "/admin/messages/" + x.id() + "/replay?from=2");
         assertEquals(200, replayed.status(), replayed.body().toString());
@@ -228,7 +227,7 @@ class ReplayRetentionIT {
 
         // X ages out; R and K stay young
         pool.preparedQuery("update messages set created_at = now() - interval '30 days' where id = $1").execute(Tuple.of(x.id())).await();
-        pool.preparedQuery("update bodies set created_at = now() - interval '30 days' where message_id = $1").execute(Tuple.of(x.id())).await();
+        pool.preparedQuery("update body_refs set created_at = now() - interval '30 days' where message_id = $1").execute(Tuple.of(x.id())).await();
         FakeClock clock = FakeClock.at(Instant.now().truncatedTo(ChronoUnit.SECONDS));
         Retention job = new Retention(pool, clock, new FakeTimer(clock), new Retention.Config(Duration.ofDays(7), Duration.ofHours(1), 100));
         Retention.Run run;
@@ -239,8 +238,8 @@ class ReplayRetentionIT {
         }
         assertEquals("DONE", run.outcome().name(), String.valueOf(run));
         assertEquals(5, run.messages(), "fixture: X's five rows went: " + run);
-        assertEquals(1, run.bodies(), "fixture: X's body went with them: " + run);
-        assertEquals(0, count("select count(*) from bodies where message_id = $1", x.id()), "fixture: no row of X's body left");
+        assertEquals(0, run.bodies(), "fixture: no bodies row to remove: " + run);
+        assertEquals(0, count("select count(*) from body_refs where message_id = $1", x.id()), "fixture: X's refs went with its rows");
         assertTrue(count("select count(*) from messages where id = $1", r) > 0, "fixture: R's rows stay");
 
         int ran = probe.total();

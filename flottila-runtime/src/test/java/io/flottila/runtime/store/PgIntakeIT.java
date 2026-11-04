@@ -11,9 +11,10 @@ import io.flottila.core.record.Meter;
 import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.Snapshot;
-import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.journal.JournalRef;
+import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.InMemoryBlobStore;
@@ -35,8 +36,6 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
@@ -85,6 +84,13 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * <p>The shape assumed: {@code io.flottila.runtime.store.PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue) implements Intake};
  * P2-02D: {@code Future<String> save(Envelope, Snapshot, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}.
+ *
+ * <p>Expectations changed by CORE-4c2 (D-105, CORE-3 item 6): the body store's durable tier is the node's journal, so a save
+ * inserts no {@code bodies} row — the record is forced before the transaction, which commits the ingress row, the item with the
+ * ref and, the flow keeping its input (every save here passes {@code keepInput} true, the default policy), the {@code body_refs}
+ * row. "The body is durable" reads that row's ref back from the journal ({@link #kept}); "no body row" covers both tables. The
+ * shape: {@code save(…, String dedupeKey, boolean keepInput, BooleanSupplier abandoned)}, {@code TieredBlobStore.Config(treeLimit,
+ * memoryTier, memoryBudget, durableMax)}, {@code new TieredBlobStore(Config, Hasher, Journal, int tenantKeyId, Pool)}.
  */
 @Timeout(60)
 class PgIntakeIT {
@@ -96,11 +102,12 @@ class PgIntakeIT {
     static final String FLOW = "orders";
     static Vertx vertx;
 
-    @TempDir Path spool;
+    @TempDir Path spool;   // the journal directories of the case's nodes (CORE-4c2: no spool any more)
     String database;
     Pool pool;    // the intake's pool
     Pool other;   // another session's view of the case database
     TieredBlobStore blobs;
+    TestJournals.Opened journal;   // node-1's journal, its rows on {@code other}
     PgMessageStore messages;
     PgIntake intake;
 
@@ -155,32 +162,27 @@ class PgIntakeIT {
                 .with(new PoolOptions().setMaxSize(maxSize).setConnectionTimeout(POOL_WAIT_SECONDS).setConnectionTimeoutUnit(TimeUnit.SECONDS)).using(vertx).build();
     }
 
-    /** The node's body store over {@code spool}: a 1 MiB memory tier and budget, the Postgres tier over {@code pool} bounded by {@link #BOUND}. */
-    static TieredBlobStore blobs(Path spool, Pool pool) {
-        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, 1L << 20, 1L << 20, spool, spoolKey()), Hasher.sha256(),
-                new PgBodies(pool, BOUND));
+    /**
+     * The node's body store over {@code journal} (CORE-4c2: the journal replaces the spool and the bodies tier): a 1 MiB memory tier
+     * and budget, durable bound {@link #BOUND}, its rows on {@code pool}.
+     */
+    static TieredBlobStore blobs(TestJournals.Opened journal, Pool pool) {
+        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, 1L << 20, 1L << 20, BOUND), Hasher.sha256(), journal.journal(),
+                journal.tenant(), pool);
     }
 
-    static SecretKey spoolKey() {
-        try {
-            KeyGenerator g = KeyGenerator.getInstance("AES");
-            g.init(256);
-            return g.generateKey();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
-    }
 
     // --- fixture
 
     @BeforeEach
-    void openTheStores() {
+    void openTheStores() throws Exception {
         database = caseDatabase(pg, "intake_" + cases.incrementAndGet());
         pool = pool(vertx, pg, database);
         other = pool(vertx, pg, database, 2);
-        blobs = blobs(spool, pool);
+        journal = TestJournals.open(other, java.nio.file.Files.createDirectories(spool.resolve("node-1")), "node-1");
+        blobs = blobs(journal, pool);
         messages = new PgMessageStore(pool, new VertxTimer(vertx), BatchingWriter.Options.defaults());
-        intake = new PgIntake(pool, blobs, messages, new PgWorkQueue(pool));
+        intake = new PgIntake(pool, blobs, messages, new PgWorkQueue(pool, "node-1"));
         // only the retention job deletes from bodies (P2-07): a save path that deletes fails its case
         sql("create function bodies_never_deleted() returns trigger language plpgsql as "
                 + "$$ begin raise exception 'a DELETE on bodies: only the retention job deletes (P2-07)'; end $$");
@@ -188,10 +190,11 @@ class PgIntakeIT {
     }
 
     @AfterEach
-    void closeTheStores() {
+    void closeTheStores() throws Exception {
         if (held != null) held.close();
         if (node2 != null) node2.close();
         if (messages != null) messages.close();
+        if (journal != null) journal.close();
         if (pool != null) pool.close().await();
         if (other != null) other.close().await();
     }
@@ -201,7 +204,7 @@ class PgIntakeIT {
     }
 
     long count(String table, String id) {
-        String column = table.equals("bodies") ? "message_id" : "id";
+        String column = table.equals("bodies") || table.equals("body_refs") ? "message_id" : "id";
         return other.preparedQuery("select count(*) from " + table + " where " + column + " = $1").execute(Tuple.of(id)).await()
                 .iterator().next().getLong(0);
     }
@@ -215,10 +218,12 @@ class PgIntakeIT {
         return other.query("select is_called from " + sequence).execute().await().iterator().next().getBoolean(0);
     }
 
-    Optional<Buffer> row(BlobKey k) {
-        for (Row r : other.preparedQuery("select bytes from bodies where message_id = $1 and step = $2 and part = $3")
+    /** The bytes of {@code k}'s kept ref ({@code body_refs}), read back from the journal by that ref; empty without a row. */
+    Optional<Buffer> kept(BlobKey k) throws Exception {
+        for (Row r : other.preparedQuery("select segment, position, length from body_refs where message_id = $1 and step = $2 and part = $3")
                 .execute(Tuple.of(k.messageId(), k.step(), k.part())).await()) {
-            return Optional.of(r.getBuffer(0));
+            JournalRef ref = new JournalRef(r.getLong(0), r.getLong(1), r.getLong(2));
+            return Optional.of(Buffer.buffer(io.flottila.runtime.node.OnVirtualThread.call(() -> journal.journal().read(ref))));
         }
         return Optional.empty();
     }
@@ -230,12 +235,12 @@ class PgIntakeIT {
         return out;
     }
 
-    /** Every insert into bodies, messages and work from now on is logged with its table and its transaction, in insert order. */
+    /** Every insert into bodies, messages, work and body_refs from now on is logged with its table and its transaction, in insert order. */
     void logTransactions() {
         sql("create table txlog(n bigserial primary key, tbl text not null, txid bigint not null)");
         sql("create function log_tx() returns trigger language plpgsql as "
                 + "$$ begin insert into txlog(tbl, txid) values (tg_table_name, txid_current()); return null; end $$");
-        for (String t : List.of("bodies", "messages", "work")) sql("create trigger log_tx after insert on " + t + " for each row execute function log_tx()");
+        for (String t : List.of("bodies", "messages", "work", "body_refs")) sql("create trigger log_tx after insert on " + t + " for each row execute function log_tx()");
     }
 
     record Logged(String table, long txid) {}
@@ -266,7 +271,7 @@ class PgIntakeIT {
 
     /** A save without a dedupe key. */
     Future<String> save(Envelope e, java.util.function.BooleanSupplier abandoned) {
-        return settled(intake.save(e, ingress(e), FLOW, "K-1", null, abandoned));
+        return settled(intake.save(e, ingress(e), FLOW, "K-1", null, true, abandoned));
     }
 
     static <T> Future<T> settled(Future<T> f) {
@@ -288,6 +293,7 @@ class PgIntakeIT {
     void nothingCommitted(String id) {
         assertEquals(0, count("messages", id), "no ingress row");
         assertEquals(0, count("bodies", id), "no body row");
+        assertEquals(0, count("body_refs", id), "no kept ref (CORE-4c2)");
         assertEquals(0, count("work", id), "no item");
     }
 
@@ -304,11 +310,9 @@ class PgIntakeIT {
     @Test
     void aSessionKilledBetweenRecordAndEnqueueLeavesNeither() {
         sql("create sequence work_inserts");
-        sql("create sequence saw_body");
         sql("create sequence saw_record");
         sql("create function kill_at_enqueue() returns trigger language plpgsql as $$ begin "
                 + "perform nextval('work_inserts'); "
-                + "if exists (select 1 from bodies where message_id = new.id) then perform nextval('saw_body'); end if; "
                 + "if exists (select 1 from messages where id = new.id) then perform nextval('saw_record'); end if; "
                 + "perform pg_terminate_backend(pg_backend_pid()); "
                 + "return new; end $$");
@@ -319,7 +323,7 @@ class PgIntakeIT {
         Future<String> saved = save(in, () -> false);
         assertTrue(saved.failed(), "the session died before its commit: the save fails");
         assertTrue(bumped("work_inserts"), "fixture: the session reached the item's insert, and died there");
-        assertTrue(bumped("saw_body"), "the body was inserted before the item, in the item's transaction");
+        // CORE-4c2: no body row precedes the item any more — the record was forced before the transaction (PgIntakeJournalIT)
         assertTrue(bumped("saw_record"), "so was the ingress record");
         nothingCommitted("m-killed");
         stillLocal(in, bytes);
@@ -327,7 +331,7 @@ class PgIntakeIT {
     }
 
     @Test
-    void aFailingEnqueueRollsBackRecordAndBody() {
+    void aFailingEnqueueRollsBackRecordAndBody() throws Exception {
         sql("create function refuse_work() returns trigger language plpgsql as $$ begin raise exception 'work refused by the test'; end $$");
         sql("create trigger refuse_work before insert on work for each row execute function refuse_work()");
         Buffer bytes = bytes(300, 2);
@@ -343,7 +347,7 @@ class PgIntakeIT {
         sql("drop trigger refuse_work on work");
         Future<String> retry = save(in, () -> false);
         assertTrue(retry.succeeded(), "the sender's retry saves once the enqueue succeeds: " + retry.cause());
-        assertEquals(Optional.of(bytes), row(in.body().key()), "the body is durable");
+        assertEquals(Optional.of(bytes), kept(in.body().key()), "the body is durable: its kept ref reads it back from the journal (CORE-4c2)");
         assertEquals(1, count("messages", "m-refused"), "the ingress row is there");
         assertEquals(List.of("m-refused/K-1"), work(), "and the item");
         assertEquals(Optional.empty(), blobs.location(in.body().key()), "the local copy went once the commit proved the body durable");
@@ -356,15 +360,21 @@ class PgIntakeIT {
         Envelope first = arrive("m-one", bytes(300, 3));
         Envelope second = arrive("m-two", bytes(400, 4));
 
-        Future<Optional<TieredBlobStore.Location>> whereAtCompletion = settled(intake.save(first, ingress(first), FLOW, "K-1", null, () -> false)
+        Future<Optional<TieredBlobStore.Location>> whereAtCompletion = settled(intake.save(first, ingress(first), FLOW, "K-1", null, true, () -> false)
                 .map(v -> blobs.location(first.body().key())));
         assertTrue(whereAtCompletion.succeeded(), "saved: " + whereAtCompletion.cause());
         assertEquals(Optional.empty(), whereAtCompletion.result(), "the local copy is released before the save's future completes");
         assertTrue(save(second, () -> false).succeeded());
 
+        // CORE-4c2: the body is no row — its record is forced before the transaction; then the record, then the item with its
+        // ref and the kept ref (body_refs) in either order
         List<Logged> log = logged();
-        assertEquals(List.of("bodies", "messages", "work", "bodies", "messages", "work"), log.stream().map(Logged::table).toList(),
-                "per save: body → record → item, the item last (D-082)");
+        assertEquals(6, log.size(), "three inserts per save, no bodies row: " + log);
+        for (int save = 0; save < 2; save++) {
+            List<String> tables = log.subList(3 * save, 3 * save + 3).stream().map(Logged::table).toList();
+            assertEquals("messages", tables.get(0), "save " + save + ": the record first: " + log);
+            assertEquals(java.util.Set.of("work", "body_refs"), java.util.Set.copyOf(tables.subList(1, 3)), "save " + save + ": then item and kept ref: " + log);
+        }
         assertEquals(1, log.subList(0, 3).stream().map(Logged::txid).distinct().count(), "the first save's three inserts share one transaction: " + log);
         assertEquals(1, log.subList(3, 6).stream().map(Logged::txid).distinct().count(), "so do the second's: " + log);
         assertNotEquals(log.get(0).txid(), log.get(3).txid(), "one transaction per save: " + log);
@@ -419,7 +429,7 @@ class PgIntakeIT {
         Snapshot ingress = new Recorder(new InMemoryMessageStore(), Clock.fixed(Instant.parse("2026-10-29T10:00:00.123456Z"), ZoneOffset.UTC), reading, Map.of())
                 .startSnapshot(in, Recorder.INGRESS, RecordingPolicy.DEFAULT);
 
-        Future<String> saved = settled(intake.save(in, ingress, FLOW, "K-1", null, () -> false));
+        Future<String> saved = settled(intake.save(in, ingress, FLOW, "K-1", null, true, () -> false));
         assertTrue(saved.succeeded(), "saved: " + saved.cause());
         List<String> rows = new ArrayList<>();
         for (Row r : other.preparedQuery("select step, wall_ns, cpu_ns from messages where id = $1").execute(Tuple.of("m-cpu")).await()) {
@@ -431,7 +441,7 @@ class PgIntakeIT {
     }
 
     @Test
-    void aBodyAlreadyDurableIsNotInsertedAgain() {
+    void aBodyAlreadyDurableIsNotInsertedAgain() throws Exception {
         Buffer bytes = bytes(300, 6);
         Envelope in = arrive("m-durable", bytes);
         assertTrue(settled(blobs.persist(in.body().key())).succeeded(), "fixture: the body is durable already");
@@ -441,8 +451,9 @@ class PgIntakeIT {
         Future<String> saved = save(in, () -> false);
         assertTrue(saved.succeeded(), "saved: " + saved.cause());
         assertEquals(List.of("messages", "work"), logged().stream().map(Logged::table).toList(), "a body already durable inserts nothing");
-        assertEquals(1, count("bodies", "m-durable"), "one body row");
-        assertEquals(Optional.of(bytes), row(in.body().key()));
+        assertEquals(1, count("body_refs", "m-durable"), "one kept ref, the persist's (CORE-4c2: no bodies row)");
+        assertEquals(0, count("bodies", "m-durable"));
+        assertEquals(Optional.of(bytes), kept(in.body().key()));
         assertEquals(List.of("m-durable/K-1"), work());
     }
 
@@ -457,6 +468,7 @@ class PgIntakeIT {
         assertTrue(saved.succeeded(), "saved: " + saved.cause());
         assertTrue(elsewhere.persisted(key), "the body is persisted in its own store");
         assertEquals(0, count("bodies", "m-elsewhere"), "not in the Postgres tier: it is another store's body");
+        assertEquals(0, count("body_refs", "m-elsewhere"), "nor kept in this node's journal (CORE-4c2)");
         assertEquals(1, count("messages", "m-elsewhere"));
         assertEquals(List.of("m-elsewhere/K-1"), work());
 
@@ -498,9 +510,14 @@ class PgIntakeIT {
         }
     }
 
-    record Node2(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgIntake intake) implements AutoCloseable {
+    record Node2(Pool pool, TestJournals.Opened journal, TieredBlobStore blobs, PgMessageStore messages, PgIntake intake) implements AutoCloseable {
         @Override public void close() {
             messages.close();
+            try {
+                journal.close();
+            } catch (java.io.IOException e) {
+                throw new java.io.UncheckedIOException("node-2's journal did not close", e);
+            }
             pool.close().await();
         }
     }
@@ -516,10 +533,17 @@ class PgIntakeIT {
 
     Node2 node2() throws java.io.IOException {
         Pool p = pool(vertx, pg, database);
-        Path dir = java.nio.file.Files.createDirectories(spool.resolve("node-2"));
-        TieredBlobStore b = blobs(dir, p);
+        TestJournals.Opened j;
+        try {
+            j = TestJournals.open(other, java.nio.file.Files.createDirectories(spool.resolve("node-2")), "node-2");
+        } catch (java.io.IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("fixture: node-2's journal did not open", e);
+        }
+        TieredBlobStore b = blobs(j, p);
         PgMessageStore m = new PgMessageStore(p, new VertxTimer(vertx), BatchingWriter.Options.defaults());
-        node2 = new Node2(p, b, m, new PgIntake(p, b, m, new PgWorkQueue(p)));
+        node2 = new Node2(p, j, b, m, new PgIntake(p, b, m, new PgWorkQueue(p, "node-2")));
         return node2;
     }
 
@@ -532,7 +556,7 @@ class PgIntakeIT {
     }
 
     Future<String> saveKeyed(PgIntake through, Envelope e, String scope, String key, java.util.function.BooleanSupplier abandoned) {
-        return through.save(e, ingress(e), scope, "K-1", key, abandoned);
+        return through.save(e, ingress(e), scope, "K-1", key, true, abandoned);
     }
 
     Future<String> saveKeyed(Envelope e, String key, java.util.function.BooleanSupplier abandoned) {
@@ -587,13 +611,15 @@ class PgIntakeIT {
     void nothingOf(String id) {
         assertEquals(0, count("messages", id), id + ": no ingress row");
         assertEquals(0, count("bodies", id), id + ": no body row");
+        assertEquals(0, count("body_refs", id), id + ": no kept ref");
         assertEquals(0, count("work", id), id + ": no item");
     }
 
-    /** Message {@code id} saved whole: its ingress row, its body row and its item. */
+    /** Message {@code id} saved whole: its ingress row, its kept ref (CORE-4c2: no bodies row) and its item. */
     void savedWhole(String id) {
         assertEquals(1, count("messages", id), id + ": the ingress row");
-        assertEquals(1, count("bodies", id), id + ": the body row");
+        assertEquals(1, count("body_refs", id), id + ": the kept ref");
+        assertEquals(0, count("bodies", id), id + ": no bodies row");
         assertEquals(1, count("work", id), id + ": the item");
     }
 
@@ -614,7 +640,7 @@ class PgIntakeIT {
         assertEquals(1, count("messages"), "one ingress row");
         assertEquals("sha256-64", other.query("select hash_algorithm from messages where id = 'm-1'").execute().await().iterator().next().getString(0),
                 "the ingress row carries its hash's algorithm (V11, D-097): the store's sha256-64");
-        assertEquals(1, count("bodies"), "one body row");
+        assertEquals(1, count("body_refs"), "one kept ref (CORE-4c2: no bodies row)");
         assertEquals(List.of("m-1/K-1"), work(), "one item");
         assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-1", STARTED)), processed(),
                 "one processed_ids row: the flow's scope, the SHA-256 of the key's UTF-8 bytes, the first id, the ingress snapshot's start");
@@ -723,33 +749,39 @@ class PgIntakeIT {
         assertEquals(Optional.empty(), whereAtCompletion.result(), "the duplicate's local body is evicted before its save completes");
         assertEquals(0, blobs.memoryInUse(), "with its budget");
         assertEquals(0, count("bodies", "m-2"), "and never made durable");
+        assertEquals(0, count("body_refs", "m-2"), "no kept ref either");
     }
 
+    /**
+     * Rewritten by CORE-4c2 (was {@code aDuplicateWhoseEvictionFailsStillAnswersTheFirstId}): the body's record is appended and
+     * forced before the dedupe insert runs (CORE-3 item 6), so a duplicate's body is already in the journal when its key is
+     * found taken — there is no local spool file left whose eviction could fail. A duplicate answers the first id and writes
+     * no row; its record stays in the journal, referenced by nothing (the sweeper's, CORE-4d). Its id is plain in the record's
+     * header, which is how the case finds it in the segment files.
+     */
     @Test
-    void aDuplicateWhoseEvictionFailsStillAnswersTheFirstId() throws java.io.IOException {
-        // a store whose memory tier takes nothing: every body spills to its spool file
-        Path dir = java.nio.file.Files.createDirectories(spool.resolve("spilling"));
-        TieredBlobStore spilling = new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, 0, 1L << 20, dir, spoolKey()), Hasher.sha256(),
-                new PgBodies(pool, BOUND));
-        PgIntake through = new PgIntake(pool, spilling, messages, new PgWorkQueue(pool));
+    void aDuplicateAnswersTheFirstIdWritesNoRowAndLeavesItsRecordUnreferenced() throws java.io.IOException {
         assertEquals("m-1", settled(saveKeyed(intake, arrive("m-1", bytes(300, 28)), SCOPE, KEY, () -> false)).result());
-        Body body = settled(spilling.write(BlobKey.body("m-2", 0), bytes(300, 28), FLOW_MAX)).result();
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spilling.location(body.key()), "fixture: the duplicate's body is in its spool file");
-        List<Path> files;
-        try (var walk = java.nio.file.Files.walk(dir)) {
-            files = walk.filter(java.nio.file.Files::isRegularFile).toList();
-        }
-        assertEquals(1, files.size(), "fixture: one spool file: " + files);
-        java.nio.file.Files.delete(files.get(0));   // its file is now a non-empty directory: deleting it fails
-        java.nio.file.Files.createDirectories(files.get(0).resolve("blocker"));
-        assertTrue(settled(spilling.evict(BlobKey.body("m-unknown", 0))).succeeded(), "fixture: an unknown key evicts quietly");
-        Envelope again = Envelope.ingress("m-2", FLOW, Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), body);
+        Envelope again = arrive("m-duplicate", bytes(900, 28));   // within BOUND: a save, not a refusal
 
-        Future<String> duplicate = settled(saveKeyed(through, again, SCOPE, KEY, () -> false));
-        assertTrue(duplicate.succeeded(), "an eviction that fails is logged, never the save's failure: " + duplicate.cause());
-        assertEquals("m-1", duplicate.result());
-        assertTrue(java.nio.file.Files.isDirectory(files.get(0)), "fixture: the eviction was asked and failed (the blocker still stands)");
-        nothingOf("m-2");
+        Future<String> duplicate = settled(saveKeyed(intake, again, SCOPE, KEY, () -> false));
+        assertTrue(duplicate.succeeded(), "a duplicate is a save that answers: " + duplicate.cause());
+        assertEquals("m-1", duplicate.result(), "the first id");
+        nothingOf("m-duplicate");
+        assertEquals(0, count("body_refs", "m-duplicate"), "no ref names its record");
+        byte[] id = "m-duplicate".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        boolean inTheJournal = false;
+        try (var walk = java.nio.file.Files.walk(journal.config().dir().resolve("segments"))) {
+            for (Path f : walk.filter(java.nio.file.Files::isRegularFile).toList()) {
+                byte[] all = java.nio.file.Files.readAllBytes(f);
+                for (int at = 0; !inTheJournal && at + id.length <= all.length; at++) {
+                    inTheJournal = java.util.Arrays.equals(all, at, at + id.length, id, 0, id.length);
+                }
+            }
+        }
+        assertTrue(inTheJournal, "its record was appended before the key was found taken (item 6): it stays, unreferenced");
+        assertEquals(Optional.empty(), blobs.location(again.body().key()), "and no local copy is left of it");
+        assertEquals(0, blobs.memoryInUse(), "with its budget");
     }
 
     @Test

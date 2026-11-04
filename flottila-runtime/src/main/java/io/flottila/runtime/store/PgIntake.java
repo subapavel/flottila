@@ -5,6 +5,7 @@ import io.flottila.api.Envelope;
 import io.flottila.core.flow.Intake;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.blob.TieredBlobStore;
+import io.flottila.runtime.journal.JournalRef;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.vertx.core.Future;
 import io.vertx.sqlclient.Pool;
@@ -12,34 +13,39 @@ import io.vertx.sqlclient.SqlClient;
 import io.vertx.sqlclient.Tuple;
 
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
 /**
- * The node's {@link Intake} (D-082): the ingress body, the ingress record and the work item commit in one Postgres
- * transaction — body ({@link TieredBlobStore#persistIn}), then record ({@link PgMessageStore}, outside its batching writer),
- * then item ({@link PgWorkQueue}), the item last — so a save that fails or a session that dies before the commit leaves none
- * of them. {@code abandoned} is asked once, after the item's insert and just before the commit: true rolls everything back. A
- * body already durable inserts nothing; a body of another store is persisted there first, before the transaction (the node's
- * ingress bodies are this store's). Once the commit is done, the body's local copy goes, before the save's future completes;
- * a transaction that rolls back leaves it local. Any failure — of a statement, the commit or the body's own store — fails the
- * save; nothing here throws.
+ * The node's {@link Intake} (D-082 restated by D-105, CORE-3 item 6): no row naming a body commits before its record is forced.
+ * The ingress body is made durable in the node's journal first ({@link TieredBlobStore#forced}: appended, or its spill
+ * persisted, and forced) — before the transaction, so no statement of it is sent while the record is not forced and a force that
+ * fails saves nothing; then one Postgres transaction holds the ingress record ({@link PgMessageStore}, outside its batching
+ * writer) and the work item naming the record's ref ({@link PgWorkQueue}) and — only when the flow keeps its input
+ * ({@code keepInput}) — the body's kept ref ({@code body_refs}); a save that fails or a session that dies before the commit
+ * leaves none of them, only bytes in the journal no row references. {@code abandoned} is asked once, after the rows' inserts and
+ * just before the commit: true rolls everything back. A body durable already (no local copy) adds no record and no kept ref: its
+ * item copies the key's kept ref ({@link PgWorkQueue#enqueue(SqlClient, String, String, int, String, io.flottila.api.BlobKey)}).
+ * A body of another store is persisted there first, before the transaction (the node's ingress bodies are this store's), its item
+ * naming no ref. Once the commit is acknowledged the body's ref is indexed and its local copy goes, before the save's future
+ * completes; a transaction that rolls back leaves it local. The save is an open save ({@link #openSaves}) from its record's
+ * reservation until its commit or rollback is acknowledged, or its force failed. Any failure — of the force, a statement, the
+ * commit or the body's own store — fails the save; nothing here throws.
  *
  * <p>A save with a dedupe key (D-084) runs one more statement, first in its transaction: the key's row in {@code processed_ids}
  * — scope {@code flow}, the SHA-256 of the key's UTF-8 bytes, the arrival's id, the ingress snapshot's start — {@code on
  * conflict do nothing}. A row inserted is the arrival's: the save goes on and commits it with the rest, so a save that fails or
  * is abandoned leaves the key free. None inserted is a key taken — by a committed save, or by an open one this statement waited
  * for (READ COMMITTED) and that committed: the second statement reads that message's id, the transaction rolls back with
- * nothing of the arrival written, {@code abandoned} is never asked, this store's copy of the arrival's body is evicted (a
- * failed eviction is logged, never the save's failure; a body of another store keeps what its persist made durable) and the
+ * nothing of the arrival written, {@code abandoned} is never asked, this store's copy of the arrival's body is evicted (its
+ * record, forced already, stays unreferenced in the journal; a body of another store keeps what its persist made durable) and the
  * future succeeds with the first message's id. A taken key whose row is gone when read (the retention job) fails the save.
  * A save without a key runs no extra statement.
  *
  * @since 0.1
  */
 public final class PgIntake implements Intake {
-
-    private static final System.Logger LOG = System.getLogger(PgIntake.class.getName());
 
     /** The key's row for the arrival, unless the scope holds the key already: no row returned is a key taken (D-084). */
     static final String CLAIM_KEY = "insert into processed_ids(scope, key_hash, message_id, created_at) "
@@ -69,26 +75,42 @@ public final class PgIntake implements Intake {
         this.queue = Objects.requireNonNull(queue, "queue");
     }
 
+    /** The refs of the saves open now (CORE-3 item 6): the CORE-4d sweeper keeps their segments. */
+    public Collection<JournalRef> openSaves() {
+        return blobs.openSaves();
+    }
+
     @Override
-    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+    public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                               BooleanSupplier abandoned) {
         Body body = arrived.body();
         boolean ours = body.store() == blobs;
         // from a completed future on, so a store or a statement that throws fails the save instead of escaping it
         return Future.<Void>succeededFuture()
-                .compose(start -> ours ? Future.<Void>succeededFuture() : body.store().persist(body.key()))
-                .compose(elsewhere -> pool.withTransaction(tx -> claim(tx, arrived.id(), ingress, flow, dedupeKey)
-                        .compose(claimed -> ours ? blobs.persistIn(tx, body.key()) : Future.<Runnable>succeededFuture(() -> { }))
-                        .compose(release -> messages.insert(tx, ingress)
-                                .compose(recorded -> queue.enqueue(tx, arrived.id(), flow, 1, partitionKey))
-                                .compose(queued -> abandoned.getAsBoolean()
-                                        ? Future.<Runnable>failedFuture(new IllegalStateException("the save of " + arrived.id()
+                .compose(start -> ours ? blobs.forced(body.key()) : body.store().persist(body.key()).map((TieredBlobStore.Durable) null))
+                .compose(durable -> pool.withTransaction(tx -> claim(tx, arrived.id(), ingress, flow, dedupeKey)
+                                .compose(claimed -> messages.insert(tx, ingress))
+                                .compose(recorded -> enqueue(tx, arrived, flow, partitionKey, durable))
+                                .compose(queued -> keepInput && durable != null ? durable.keepIn(tx) : Future.<Void>succeededFuture())
+                                .compose(kept -> abandoned.getAsBoolean()
+                                        ? Future.<Void>failedFuture(new IllegalStateException("the save of " + arrived.id()
                                                 + " was abandoned before its commit: its answer was decided; rolled back"))
-                                        : Future.succeededFuture(release)))))
-                .map(release -> {
-                    release.run();   // committed: the body's local copy goes before the save's future completes
-                    return arrived.id();
-                })
+                                        : Future.<Void>succeededFuture()))
+                        .transform(outcome -> {   // the commit or the rollback acknowledged: out of the open saves, before the future completes
+                            if (durable != null) {
+                                if (outcome.succeeded()) durable.committed();   // the ref indexed, the local copy gone
+                                else durable.rolledBack();
+                            }
+                            return outcome.succeeded() ? Future.succeededFuture(arrived.id()) : Future.<String>failedFuture(outcome.cause());
+                        }))
                 .recover(failure -> failure instanceof Duplicate duplicate ? evicted(arrived, duplicate.first) : Future.failedFuture(failure));
+    }
+
+    /** The item: naming the record forced for it; taking the kept ref of a body durable already; naming nothing for another store's body. */
+    private Future<Void> enqueue(SqlClient tx, Envelope arrived, String flow, String partitionKey, TieredBlobStore.Durable durable) {
+        if (durable == null) return queue.enqueue(tx, arrived.id(), flow, 1, partitionKey);
+        if (durable.ref() == null) return queue.enqueue(tx, arrived.id(), flow, 1, partitionKey, arrived.body().key());
+        return queue.enqueue(tx, arrived.id(), flow, 1, partitionKey, durable.node(), durable.ref());
     }
 
     /**
@@ -105,14 +127,11 @@ public final class PgIntake implements Intake {
                                 : Future.failedFuture(new Duplicate(first.iterator().next().getString(0)))));
     }
 
-    /** {@code first}, once this store's copy of the duplicate's body is gone — or its eviction failed, which is logged. */
+    /**
+     * {@code first}, once this store's copy of the duplicate's body is gone: forced before the claim, it is a memory copy or a
+     * persisted spill, so its eviction releases memory and unlinks no file.
+     */
     private Future<String> evicted(Envelope duplicate, String first) {
-        return blobs.evict(duplicate.body().key()).transform(evict -> {
-            if (evict.failed()) {
-                LOG.log(System.Logger.Level.WARNING, "the local body of " + duplicate.id() + ", a duplicate of message " + first
-                        + ", was not evicted", evict.cause());
-            }
-            return Future.succeededFuture(first);
-        });
+        return blobs.evict(duplicate.body().key()).map(evicted -> first);
     }
 }

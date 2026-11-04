@@ -10,6 +10,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.ReadStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,13 +29,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** What the tiers do when the world misbehaves: unwritable spool, sources that ignore pause, spill by budget. */
 class TieredBlobStoreFailureTest {
 
+    @AfterEach
+    void closeTheJournals() {
+        LocalStores.closeAll();
+    }
+
     static TieredBlobStore store(Path spool, long tier, long budget) { return TieredBlobStoreTest.store(spool, tier, budget); }
 
     @Test
-    void anUnwritableSpoolFailsTheWriteWholeAndStreamedAndStoresNothing(@TempDir Path dir) throws Exception {
-        Path notADir = dir.resolve("spool-is-a-file");
+    void anUnwritableSpillFailsTheWriteWholeAndStreamedAndStoresNothing(@TempDir Path dir) throws Exception {
+        TieredBlobStore s = store(dir, 0, 1 << 20);
+        Path notADir = dir.resolve("spill");   // the journal's spill directory, a file now
+        if (Files.isDirectory(notADir)) Files.delete(notADir);
         Files.writeString(notADir, "in the way");
-        TieredBlobStore s = store(notADir, 0, 1 << 20);
         Future<Body> whole = s.write(BlobKey.body("m-1", 0), Buffer.buffer("x"), 100);
         assertTrue(BlobStoreContract.awaitOutcome(whole).failed());
         assertInstanceOf(java.io.IOException.class, whole.cause());
@@ -53,16 +60,18 @@ class TieredBlobStoreFailureTest {
         Future<Body> f = s.write(BlobKey.body("m-1", 0), new ChunkedReadStream(List.of("aaaaaa", "bbbbbb", "cccccc"), boom), 1 << 20);
         assertTrue(BlobStoreContract.awaitOutcome(f).failed());
         assertEquals(boom, f.cause());
-        assertTrue(TieredBlobStoreTest.spoolFiles(dir).isEmpty(), "no .blob and no .part left behind");
+        assertTrue(LocalStores.spillFiles(dir).isEmpty(), "no .blob and no .part left behind");
         assertEquals(Optional.empty(), s.location(BlobKey.body("m-1", 0)));
     }
 
     @Test
     void theBudgetSpillsAStreamThatTheTierAloneWouldHaveKept(@TempDir Path dir) {
-        TieredBlobStore s = store(dir, 50_000, 60_000);
+        // RECORD_MAX 64 KiB, above the 50 000-byte tier (CORE-3 item 4: RECORD_MAX lies in 4 KiB..memory tier): the budget, not
+        // the record bound, decides this spill (CORE-4c2)
+        TieredBlobStore s = LocalStores.store(dir, new TieredBlobStore.Config(BlobStoreContract.TREE_LIMIT, 50_000, 60_000, LocalStores.DURABLE), 65_536);
         BlobStoreContract.await(s.write(BlobKey.body("m-0", 0), Buffer.buffer(new byte[20_000]), 100_000));   // 20 000 of the budget taken
         Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), new GeneratedReadStream(45_000, 10_000), 100_000));
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(body.key()), "45 000 fits the tier, but 20 000 + 45 000 does not fit the budget");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPILL), s.location(body.key()), "45 000 fits the tier, but 20 000 + 45 000 does not fit the budget");
         assertEquals(20_000, s.memoryInUse(), "the spilled stream gave its reservation back; the first body keeps its own");
         assertEquals(GeneratedReadStream.expectedHash(TieredBlobStoreTest.HASHER, 45_000), body.hash());
     }
@@ -102,7 +111,7 @@ class TieredBlobStoreFailureTest {
 
     @Test
     void aSlowSinkPausesTheSourceAtTheHighWaterMarkAndResumesItBelowHalf(@TempDir Path dir) {
-        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key()), TieredBlobStoreTest.HASHER, 100);
+        TieredBlobStore s = LocalStores.store(dir, new TieredBlobStore.Config(4096, 0, 1 << 20, LocalStores.DURABLE), 100, TieredBlobStoreTest.key());
         CountingStream source = new CountingStream(new GeneratedReadStream(5000, 60));
         Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), source, 10_000));
         assertEquals(5000, body.size());
@@ -110,7 +119,8 @@ class TieredBlobStoreFailureTest {
         assertTrue(source.pauses.get() >= 1, "60-byte chunks against a 100-byte high-water mark: the source was paused");
         assertEquals(source.pauses.get(), source.resumes.get(), "every pause was followed by a resume: " + source.pauses + " / " + source.resumes);
         assertTrue(s.peakQueuedBytes() <= 100 + 60, "the queue never held more than the high-water mark plus one chunk — a resume that undid the store's own pause would let the whole body in: " + s.peakQueuedBytes());
-        assertThrows(IllegalArgumentException.class, () -> new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key()), TieredBlobStoreTest.HASHER, 1));
+        // a journal of its own: one journal per directory, its LOCK refuses a second (CORE-4c2)
+        assertThrows(IllegalArgumentException.class, () -> LocalStores.store(dir.resolve("high-water-1"), new TieredBlobStore.Config(4096, 0, 1 << 20, LocalStores.DURABLE), 1, TieredBlobStoreTest.key()));
     }
 
     @Test
@@ -119,7 +129,8 @@ class TieredBlobStoreFailureTest {
         // completed only the attach thread may resume it (the sink thread clears the flag and leaves the resume to whoever comes
         // second), so no resume ever undoes a pause and no pause is left without its resume — whichever way the two threads interleave.
         for (int round = 0; round < 20; round++) {
-            TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, TieredBlobStoreTest.key()), TieredBlobStoreTest.HASHER, 100);
+            // each round's store over a journal in a directory of its own: the LOCK refuses a second journal in one (CORE-4c2)
+            TieredBlobStore s = LocalStores.store(dir.resolve("round-" + round), new TieredBlobStore.Config(4096, 0, 1 << 20, LocalStores.DURABLE), 100, TieredBlobStoreTest.key());
             CountingStream source = new CountingStream(new GeneratedReadStream(5000, 60));
             Body body = BlobStoreContract.await(s.write(BlobKey.body("m-" + round, 0), source, 10_000));
             assertEquals(5000, body.size());
@@ -139,7 +150,7 @@ class TieredBlobStoreFailureTest {
         // its pause land only once the sink has made its decision (the store's afterSinkDecision seam, call 2: chunk 2 polled, queued 0).
         // The write runs on its own virtual thread (Attach): the attach thread is the one held inside pause(), never a platform thread.
         TieredBlobStoreBackpressureTest.HeldKey key = new TieredBlobStoreBackpressureTest.HeldKey(false);
-        TieredBlobStore s = new TieredBlobStore(new TieredBlobStore.Config(4096, 0, 1 << 20, dir, key), TieredBlobStoreTest.HASHER, 100);
+        TieredBlobStore s = LocalStores.store(dir, new TieredBlobStore.Config(4096, 0, 1 << 20, LocalStores.DURABLE), 100, key);
         java.util.concurrent.CountDownLatch sinkDecided = new java.util.concurrent.CountDownLatch(1);
         AtomicInteger hookCalls = new AtomicInteger();
         s.afterSinkDecision(() -> {
@@ -180,7 +191,7 @@ class TieredBlobStoreFailureTest {
     void anEvictionThatCannotDeleteReportsIt(@TempDir Path dir) throws Exception {
         TieredBlobStore s = store(dir, 0, 1 << 20);
         Body body = BlobStoreContract.await(s.write(BlobKey.body("m-1", 0), Buffer.buffer("bytes"), 4096));
-        Path file = TieredBlobStoreTest.spoolFiles(dir).get(0);
+        Path file = LocalStores.spillFiles(dir).get(0);
         Files.delete(file);
         Files.createDirectory(file);
         Files.writeString(file.resolve("child"), "blocks the delete");

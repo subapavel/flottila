@@ -50,3 +50,43 @@ signature change; core `Intake.save` gains one parameter only; fake clock/timer,
 
 ## Checks
 runtime verify, reactor `verify -Pit`, coverage check; logs agent/work/CORE-4c2-*.log.
+
+## Red approved (architect 2026-11-04)
+Red observed: test-compile 95 errors on the assumed API (agent/work/CORE-4c2-red.log); semantic reds against today's code
+(agent/work/CORE-4c2-red-semantic.log, -red-enqueue.log). Tests: journal/JournalBlobStoreIT, PgIntakeJournalIT, JournalReadIT,
+PgDlqJournalIT, PgBodyRefsIT, WorkClaimIT, SchemaIT, ReferenceEnqueueIT (+ fixtures PgWire, TestJournals, JournalWorld,
+blob/LocalStores); changed: PgIntakeIT, PgIntakeContractIT, PgDlqIT, IntakeContract, SequentialIntakeTest, RetentionIT, DeliveryTest,
+DeploymentsDedupeTest, NodeIT, LedgerIT, StepBodiesIT, DlqBodiesIT, DeliveryModesIT, PartnerFailureParkIT, SftpIngressDedupeIT,
+AtLeastOnceIntakeIT, InvoiceSyncReplayIT, ReplayRetentionIT, NodeBenchAckCommitsIT, NodeBenchMainIT, NodeBenchMainWarmupIT; blob tests
+migrated; retired with reasons: SpoolSinkFailureTest, SpoolHeapTest, SpoolTierContractTest, PgTierContractIT.SpoolAndPg,
+PgBodiesReleaseIT, PgBodiesIT insert cases, TieredBlobStoreTest path cases. Contract = the signatures in the test-author's
+handback: `TieredBlobStore.Config(treeLimit, memoryTierBytes, memoryBudgetBytes, durableMaxBytes[, indexEntries = 262 144])`,
+`new TieredBlobStore(Config, Hasher, Journal, int tenantKeyId[, Pool])`, `Location.SPILL`, `new PgWorkQueue(Pool, String node,
+TieredBlobStore)`, `PgWorkQueue.enqueue(SqlClient, messageId, flow, step, partitionKey, BlobKey body)`, `PgIntake.openSaves()`,
+`Intake.save(…, boolean keepInput, …)`; SQL shapes work.body_*, body_refs.
+Assumptions accepted: the index belongs to the store; a pre-V12 bodies row admits no park; exists() true on another node, its read
+fails retryable naming the owner; the work-row lookup matches the input key only; 8 round trips with uncached prepared statements;
+LedgerMain restarts node 1 under the same id and journal; a memory tier below RECORD_MAX (0 = spill from the first byte); an open
+save leaves the set before its future completes, a failed force too.
+Architect decision (ReplayRetentionIT): the location index serves the hot path only (a worker's reads of items it saved or
+claimed); admin replay and DLQ retry check the key's ref in Postgres first and answer D-096's 409/404 from there, so retention
+needs no hook into any node's index. The connection-lost-mid-commit (`pg_xact_status`) case goes to CORE-4d with its consumer.
+
+## Review r1 FAIL (reviewer 2026-11-04) — fix round
+Tests (test-author): (1) FlowBuilder passes `recording().keepsBody()` as keepInput — a core case per level (false and true)
+asserting what the intake receives; (2) noCommitBeforeTheForce over the counted PgWire pool: no statement, BEGIN included,
+while the force is held; (3) a body above RECORD_MAX whose spill persist fails (refused segment-row insert) → save fails,
+openSaves() empty; (4) PgBodyRefsIT: a keepInput key persisted with no local copy whose body_refs row names a swept segment →
+BlobNotFound, inserts nothing; the same key's source row held `for update` → the insert waits, then BlobNotFound after the
+holder deletes it; (5) JournalBlobStoreIT twins for retired cases: persist at durableMax passes, durableMax+1 refused; a key
+rewritten while its persist's force is held stays local and readable with the new bytes; (6) see the decision below.
+Architect decision on (6): the decision stands, the code follows it. `exists()` never answers from the location index — it
+asks Postgres (body_refs → work row → bodies); the index serves `open()` only. Red: an index entry left stale (its body_refs
+row and work row deleted by the test, as after retention with a lost COMPLETE) → exists() false and the admin GET 404; plus
+an async item completed over PgWorkQueue drops its index entry (pins forget).
+Red approved r1 (architect): reds JournalBlobStoreIT.aStaleIndexEntryDoesNotAnswerExists / .aStaleIndexEntryDoesNotAnswerTheAdminRead
+(agent/work/CORE-4c2-r1-red.log); pins with killed mutants for (1)–(5) and the forget pin. Fix: exists() asks Postgres only; the
+admin body read (AdminServer.body) checks existence through Postgres before it opens, so the index serves the hot path only.
+Architect r1 (conflict): JournalReadIT.indexHitAsksNoPostgres:127 (exists true from the index) contradicts the r1 decision; it is a
+wrong expectation now. The test-author changes it: exists() on an index hit waits while the case holds the tables locked and
+answers true once they are released; :125-126 (read/open from the index without Postgres) stay.

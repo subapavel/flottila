@@ -17,6 +17,7 @@ import io.flottila.core.record.Meter;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgIntake;
@@ -63,8 +64,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P2-02D done-when (D-084): a file the real sftp consumer delivers twice — its removal refused by the server after the durable
- * save answered — is one message and one work item. The node's own pieces: the runtime's tiered body store with its Postgres
- * tier, {@code PgIntake} over Postgres, an at-least-once flow built with the dedupe key the sftp component names, its worker
+ * save answered — is one message and one work item. The node's own pieces: the runtime's tiered body store over the node's
+ * journal (CORE-4c2: the durable body is a journal record named by a {@code body_refs} row, no {@code bodies} row), {@code PgIntake} over Postgres, an at-least-once flow built with the dedupe key the sftp component names, its worker
  * over the Postgres queue, a mock partner. Round 1 saves the file as {@code sd-1} and its removal is refused: the file stays.
  * Round 2 delivers it again as {@code sd-2}: the save finds its file key taken and answers {@code sd-1}; the removal goes
  * through. One ingress row, one item, one send. A replay of the message is a new message: it never passes the intake, so is
@@ -83,7 +84,8 @@ class SftpIngressDedupeIT {
     static Pool pool;
 
     @TempDir Path root;
-    @TempDir Path spool;
+    @TempDir Path data;
+    TestJournals.Opened journal;
 
     final FakeRuntime rt = FakeRuntime.create();
     final RecordingComponent partner = new RecordingComponent("mock");
@@ -117,9 +119,10 @@ class SftpIngressDedupeIT {
     void open() throws IOException {
         sftp = EmbeddedSftp.start(root);
         sftp.mkdir("/inbox");
-        TieredBlobStore blobs = DeliveryModesIT.tiered(spool, pool);
+        journal = DeliveryModesIT.journal(data, pool);
+        TieredBlobStore blobs = DeliveryModesIT.tiered(journal, pool);
         messages = new PgMessageStore(pool, new VertxTimer(vertx), BatchingWriter.Options.defaults());
-        PgWorkQueue queue = new PgWorkQueue(pool);
+        PgWorkQueue queue = new PgWorkQueue(pool, "node-a");
         rt.withComponent(partner);
         Map<String, Object> doc = new HashMap<>();
         doc.put("schemaVersion", 1);
@@ -150,7 +153,8 @@ class SftpIngressDedupeIT {
         try {
             if (consumer != null) consumer.stop().await();
             if (messages != null) messages.close();
-            pool.query("truncate message_keys, messages, dlq, work, bodies, processed_ids").execute().await();
+            if (journal != null) journal.close();
+            pool.query("truncate message_keys, messages, dlq, work, bodies, body_refs, journal_segments, journal_nodes, processed_ids").execute().await();
         } finally {
             sftp.close();
         }
@@ -212,7 +216,8 @@ class SftpIngressDedupeIT {
         assertEquals(List.of("sd-1"), column("select id from messages where step = 0 order by id"), "one ingress row: sd-2 was never recorded");
         assertEquals(List.of("sd-1"), column("select id from work order by seq"), "one work item");
         assertEquals(List.of("sd-1"), column("select message_id from processed_ids"), "one key row, naming the first message");
-        assertEquals(List.of("sd-1"), column("select distinct message_id from bodies order by message_id"), "only sd-1's body is durable");
+        assertEquals(List.of("sd-1"), column("select distinct message_id from body_refs order by message_id"), "only sd-1's body is durable");
+        assertEquals(List.of(), column("select distinct message_id from bodies"), "as a kept ref: no bodies row (CORE-4c2)");
 
         assertEquals(1, worker.poll().await(), "the worker runs the one item");
         assertEquals(List.of("sd-1"), partner.sentTo("partner").stream().map(Envelope::id).toList(), "one send to the partner");

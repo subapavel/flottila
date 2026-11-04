@@ -14,7 +14,6 @@ import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.StepCpu;
 import io.flottila.runtime.admin.AdminServer;
-import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.deploy.ArchiveStore;
@@ -50,16 +49,10 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3ClientBuilder;
 
 import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.security.SecureRandom;
 import java.time.Clock;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,15 +60,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
-import java.util.stream.Stream;
 
 /**
  * A running node (D-057 b amended): the Postgres stores, the blob store, the components and the admin API on its caller's
  * Vert.x. {@link #start} and {@link #close} block on Vert.x futures: call them on a virtual thread.
  *
- * <p>{@code start} clears {@code <dataDir>/spool} (and nothing else under the data directory), builds the pool (no connection
- * yet), the blob store over the spool with a fresh key and over the pool's {@code bodies} tier bounded by
- * {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), the timer, ids and clock, builds the components from them, refuses two components
+ * <p>{@code start} builds the pool (no connection yet), the timer, ids and clock, builds the components from them and from the
+ * node's blob store (bound once the journal is open, see below), refuses two components
  * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
  * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — and, in a deployed environment, the dir archive
  * store and an S3 endpoint over plain http (D-070) before it touches Postgres, and loads the body journal's master key (D-106:
@@ -83,8 +74,10 @@ import java.util.stream.Stream;
  * keyless node migrates nothing). It then refuses a
  * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
  * refused node leaves its database untouched, migrates the database, opens the body journal in {@code FLOTTILA_JOURNAL_DIR} (D-105:
- * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows;
- * the intake does not write to it yet, CORE-4c2), opens the stores and the archive store (an s3 store over
+ * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), builds
+ * the blob store on it (CORE-4c2: bodies in the journal under the {@code default} tenant's key, their refs in the pool, bounded by
+ * {@code FLOTTILA_BLOB_DURABLE_MAX}; no spool), opens the stores (the work queue claiming only what this journal holds) and the
+ * archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
  * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them and the node's
  * one {@link Targets} ({@code FLOTTILA_TARGET_*}, D-099: every flow it builds sends under it, across packages and versions), starts the
@@ -120,6 +113,9 @@ public final class Node implements AutoCloseable {
      * waits for the local flush only and is refused because it does not wait for a standby.
      */
     private static final Set<String> SYNCHRONOUS_COMMIT = Set.of("on", "remote_write", "remote_apply");
+
+    /** The tenant whose journal key seals the node's bodies until tenants are configured (D-105). */
+    private static final String TENANT = "default";
 
     private final Deployments deployments;
     /** The CPU sampler (D-094), when {@code FLOTTILA_CPU_SAMPLING} sets a period. */
@@ -157,7 +153,7 @@ public final class Node implements AutoCloseable {
      *                               the dir archive store or an S3 endpoint over plain http, or a {@code synchronous_commit} other than on, remote_write or remote_apply ({@code off} does
      *                               not wait for the WAL flush, {@code local} for a synchronous standby)
      * @throws IllegalArgumentException no journal master key, or one that is no base64 of 256 bits
-     * @throws IOException the spool a previous run left cannot be cleared, the restore's data directory cannot be written, a
+     * @throws IOException the restore's data directory cannot be written, a
      *                     {@code journal_keys} row cannot be unwrapped (named by its key id), or the journal cannot be opened
      */
     public static Node start(NodeConfig config, Vertx vertx, Function<ComponentContext, List<Component>> components, List<StepFactory> steps,
@@ -169,8 +165,6 @@ public final class Node implements AutoCloseable {
         IdGenerator ids = () -> UUID.randomUUID().toString();
         Clock clock = Clock.systemUTC();
         NodeConfig.Blobs tiers = config.blobs();
-        Path spool = config.dataDir().resolve("spool");
-        clearSpool(spool);
         NodeConfig.Pg pg = config.pg();
         // building the pool connects nowhere (connections open on the first query), so the refusals below still come before
         // anything touches Postgres; from here on every failed start closes it again
@@ -184,9 +178,8 @@ public final class Node implements AutoCloseable {
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
         Optional<CpuSampler> sampler = Optional.empty();   // once started: closed after the deployments
         try {
-            TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
-                    spool, spoolKey()), hasher, new PgBodies(pool, tiers.durableMax()));
-            List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, blobs, ids, timer, clock)));
+            LateBlobStore late = new LateBlobStore(tiers.treeLimit());   // the node's store once the journal it writes to is open
+            List<Component> built = List.copyOf(components.apply(new ComponentContext(vertx, late, ids, timer, clock)));
             Map<String, Component> byScheme = byScheme(built);
             if (config.deployed()) {
                 refuseMocks(config.env(), built);
@@ -200,10 +193,13 @@ public final class Node implements AutoCloseable {
             JournalKeys keys = JournalKeys.load(pool, master);
             Journal opened = Journal.open(config.journal(), clock, timer, keys, JournalFiles.real(), new PgSegmentRows(pool), UUID::randomUUID);
             journal = opened;
+            TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
+                    tiers.durableMax()), hasher, opened, keys.keyOf(TENANT), pool);
+            late.bind(blobs);   // before any flow is built: every body a component writes is this store's
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
-            PgWorkQueue work = new PgWorkQueue(pool);
+            PgWorkQueue work = new PgWorkQueue(pool, opened.node(), blobs);   // claims what this journal holds, its claims indexed
             ArchiveStore archives = new DirArchiveStore(config.archives().dir());
             if (config.s3().isPresent()) {
                 NodeConfig.S3 settings = config.s3().get();
@@ -390,23 +386,5 @@ public final class Node implements AutoCloseable {
             }
         }
         return byScheme;
-    }
-
-    /**
-     * Deletes {@code spool} with everything in it: what a previous run spooled is sealed with that run's key, which is gone, and the
-     * store's index of it did not survive the restart either. The store creates the directory again when it first spills.
-     */
-    private static void clearSpool(Path spool) throws IOException {
-        if (Files.notExists(spool, LinkOption.NOFOLLOW_LINKS)) return;
-        try (Stream<Path> left = Files.walk(spool)) {
-            for (Path p : left.sorted(Comparator.reverseOrder()).toList()) Files.delete(p);
-        }
-    }
-
-    /** A fresh AES-256 key per start: nothing a run spools can be read by the next one, which clears the spool before it opens the store. */
-    private static SecretKey spoolKey() {
-        byte[] material = new byte[32];
-        new SecureRandom().nextBytes(material);
-        return new SecretKeySpec(material, "AES");
     }
 }

@@ -27,6 +27,11 @@ public interface Intake {
      * <p>{@code dedupeKey} (D-084; null: none) names what arrived, scoped by {@code flow}: a key an earlier message of
      * {@code flow} was saved under records and queues nothing of {@code arrived} and never asks {@code abandoned} — the
      * future succeeds with that earlier message's id. An intake that cannot dedupe fails a keyed save, never saves it undeduped.
+     *
+     * <p>{@code keepInput} (D-105) says whether the flow keeps its input body beyond its run — the flow's
+     * {@code RecordingPolicy.keepsBody()} until CORE-13: an intake with body references keeps one for the ingress body only
+     * when true (false: the item names the body, nothing else does); an intake without references ignores it.
      */
-    Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned);
+    Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                        BooleanSupplier abandoned);
 }

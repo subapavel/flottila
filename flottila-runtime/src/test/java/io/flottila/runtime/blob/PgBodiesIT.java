@@ -13,6 +13,7 @@ import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.journal.TestJournals;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -66,16 +67,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The Postgres tier of {@link TieredBlobStore} (D-058, D-061, F-6): {@code persist} moves a memory or spool body into
- * {@code bodies(message_id, step, part, bytes)} and completes only once that insert committed; then the local copy is gone —
- * the index entry and the memory budget before the future completes, the spool file afterwards off the caller's path — and
- * every read of the key goes to Postgres, by a store of this node or a fresh one (a new spool directory, key and pool). A
- * key's durable bytes never change (D-061 amended by FIX-35): the same bytes again persist quietly, other bytes fail with an
- * {@link IllegalStateException} and stay local; above the durable bound nothing is written and the body stays local; a failed
- * insert keeps the body local too. Every case runs on a database of its own (FIX-5).
+ * {@code bodies} rows written before V12 (D-058, D-061, F-6), read by the journal store (CORE-4c2, CORE-3 item 8): a key with
+ * no index entry, no {@code body_refs} row and no work row is read from its {@code bodies} row — by the store of this node and
+ * by a restarted one alike; a key whose row the retention job deleted reads as never written (D-096); exists asks for the
+ * row, never its bytes. Every case runs on a database of its own (FIX-5); rows are seeded by SQL as V6..V11 wrote them.
  *
- * <p>The test seam {@code afterRelease(Consumer<BlobKey>)} as these cases read it: called once per persisted local body,
- * with its key, once its local copy is gone — for a spool body after the unlink (attempted) on the unlinking virtual thread.
+ * <p>CORE-4c2 retired the cases of the Postgres tier's writes — no body bytes are inserted into {@code bodies} any more (D-105;
+ * the table is read only until CORE-11): {@code aPersistedBodyIsReadByAFreshStoreOverANewSpoolKeyAndPool},
+ * {@code persistCompletesOnlyOnceItsInsertCommitted}, {@code aSameSizeSpoolRewriteDuringAPersistKeepsTheRewrite},
+ * {@code aBodyOfExactlyTheBoundPersists}, {@code aBodyAboveTheBoundFailsTooLargeWritesNoRowAndStaysReadable},
+ * {@code persistReleasesTheBudgetAndTheIndexEntryAndUnlinksTheSpoolFile}, {@code aFailedInsertFailsPersistAndKeepsTheBodyLocal},
+ * {@code aKeyWrittenAgainWithOtherBytesAfterPersistFailsIllegalStateAndTheRowKeepsTheFirst},
+ * {@code aKeyWrittenAgainWithTheSameBytesAfterPersistPersistsQuietlyAndReleasesTheCopy},
+ * {@code aConflictingRowCommittedWhileThePersistWaitsIsCompared}, {@code aRowDeletedBetweenConflictAndCompareIsNoOtherBytes},
+ * {@code theSameBytesAgainKeepTheRowsAge}. Their journal twins: JournalBlobStoreIT (persist, FIX-35 read-back, the bound
+ * through DurableBlobStoreContract), PgIntakeIT, PgBodyRefsIT. The kept cases persist nothing: a body is a seeded row.
  */
 class PgBodiesIT {
 
@@ -83,25 +89,23 @@ class PgBodiesIT {
     static final AtomicInteger cases = new AtomicInteger();
     static final Hasher HASHER = Hasher.sha256();
     static final long BOUND = 1000;   // the durable bound of every store here
-    static final long FLOW_MAX = 4 * BOUND;   // the flow's max body size: writes above the durable bound are accepted
+    static final long FLOW_MAX = 4 * BOUND;
     static Vertx vertx;
-    static Pool observer;   // on the container's own database: never a session of the case database
 
     @TempDir Path dir;
     String database;
     Pool pool;    // the stores' pool
     Pool other;   // another session's pool on the case database: what "another session sees" reads through
+    TestJournals.Opened journal;
 
     @BeforeAll
     static void start() {
         pg.start();
         vertx = Vertx.vertx();
-        observer = PgBuilder.pool().connectingTo(options(pg.getDatabaseName())).with(new PoolOptions().setMaxSize(2)).using(vertx).build();
     }
 
     @AfterAll
     static void stop() {
-        observer.close().await();
         vertx.close().await();
         pg.stop();
     }
@@ -112,7 +116,7 @@ class PgBodiesIT {
     }
 
     @BeforeEach
-    void createTheCaseDatabase() throws SQLException {
+    void createTheCaseDatabase() throws Exception {
         database = "bodies_" + cases.incrementAndGet();
         try (Connection admin = DriverManager.getConnection(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
              Statement create = admin.createStatement()) {
@@ -128,21 +132,12 @@ class PgBodiesIT {
                 pg.getUsername(), pg.getPassword());
         pool = newPool();
         other = newPool();
-        neverDeleted(other);
-    }
-
-    /**
-     * Only the retention job deletes from {@code bodies} (P2-07): any DELETE statement on the table fails while this trigger
-     * stands, so a store path that deletes fails its case. A case that plays the retention job disables it first.
-     */
-    static void neverDeleted(Pool p) {
-        p.query("create function bodies_never_deleted() returns trigger language plpgsql as "
-                + "$$ begin raise exception 'a DELETE on bodies: only the retention job deletes (P2-07)'; end $$").execute().await();
-        p.query("create trigger bodies_never_deleted before delete on bodies for each statement execute function bodies_never_deleted()").execute().await();
+        journal = TestJournals.open(other, Files.createDirectories(dir.resolve("journal")), "node-1");
     }
 
     @AfterEach
-    void closeThePools() {
+    void closeThePools() throws Exception {
+        if (journal != null) journal.close();
         if (pool != null) pool.close().await();
         if (other != null) other.close().await();
     }
@@ -151,10 +146,9 @@ class PgBodiesIT {
         return PgBuilder.pool().connectingTo(options(database)).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
     }
 
-    /** A store over {@code spool} with a fresh spool key, a memory tier of {@code memoryTier} bytes and the Postgres tier over {@code p}. */
-    static TieredBlobStore store(Path spool, long memoryTier, Pool p) {
-        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, memoryTier, 1L << 20, spool, TieredBlobStoreTest.key()), HASHER,
-                new PgBodies(p, BOUND));
+    /** A store of node {@code node-1} over its journal, a memory tier of {@code memoryTier} bytes, its rows read through {@code p}; a second one is a restart. */
+    TieredBlobStore store(long memoryTier, Pool p) {
+        return new TieredBlobStore(new TieredBlobStore.Config(FLOW_MAX, memoryTier, 1L << 20, BOUND), HASHER, journal.journal(), journal.tenant(), p);
     }
 
     /** {@code size} bytes of a repeating, position-dependent pattern: a shifted or truncated copy does not compare equal. */
@@ -162,6 +156,12 @@ class PgBodiesIT {
         byte[] b = new byte[size];
         for (int i = 0; i < size; i++) b[i] = (byte) (i * 31 + seed);
         return Buffer.buffer(b);
+    }
+
+    /** {@code k}'s pre-V12 row with {@code bytes}, as V6..V11's persist committed it. */
+    void seeded(BlobKey k, Buffer bytes) {
+        other.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)")
+                .execute(Tuple.of(k.messageId(), k.step(), k.part(), bytes)).await();
     }
 
     /** The bytes of the key's row as another session sees them, or empty. */
@@ -173,233 +173,9 @@ class PgBodiesIT {
         return Optional.empty();
     }
 
-    long rows() {
-        return other.query("select count(*) from bodies").execute().await().iterator().next().getLong(0);
-    }
-
-    /** Backends of the case database waiting on a lock. */
-    long lockWaiters() {
-        return observer.preparedQuery("select count(*) from pg_stat_activity where datname = $1 and wait_event_type = 'Lock'")
-                .execute(Tuple.of(database)).await().iterator().next().getLong(0);
-    }
-
-    static List<Path> files(Path spool) {
-        return Files.exists(spool) ? TieredBlobStoreTest.spoolFiles(spool) : List.of();
-    }
-
-    @Test
-    void aPersistedBodyIsReadByAFreshStoreOverANewSpoolKeyAndPool() {
-        BlobKey k = BlobKey.body("m-restart", 0);
-        Buffer original = bytes(900, 7);
-        TieredBlobStore before = store(dir.resolve("before"), 0, pool);   // no memory tier: the body is spooled under this start's key
-        Body body = await(before.write(k, original, FLOW_MAX));
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), before.location(k), "fixture: spooled");
-        await(before.persist(k));
-        pool.close().await();   // the first store's pool is gone with its process
-        pool = null;
-
-        Pool fresh = newPool();
-        try {
-            TieredBlobStore after = store(dir.resolve("after"), 1L << 16, fresh);   // a new spool directory and key, a new pool
-            assertEquals(Optional.empty(), after.location(k), "the fresh store holds nothing locally");
-            assertEquals(original, await(after.read(k)), "read by key from Postgres");
-            assertEquals(original, await(collect(after.open(k))), "streamed by key from Postgres");
-            assertEquals(original, Body.of(after, k, body.hash(), body.size()).whole(), "a body rebuilt from its key reads whole");
-            assertEquals(Optional.empty(), after.location(k), "reading caches nothing locally");
-        } finally {
-            fresh.close().await();
-        }
-    }
-
-    @Test
-    void persistCompletesOnlyOnceItsInsertCommitted() {
-        BlobKey k = BlobKey.body("m-held", 0);
-        Buffer original = bytes(600, 1);
-        TieredBlobStore s = store(dir, 1L << 16, pool);
-        await(s.write(k, original, FLOW_MAX));
-        Future<Void> persisted;
-        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
-        try {
-            Transaction held = holder.begin().await();
-            // another session's uncommitted row under the same key: the persist's insert waits for that transaction to end
-            holder.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)")
-                    .execute(Tuple.of(k.messageId(), k.step(), k.part(), Buffer.buffer("the other session's, rolled back"))).await();
-            persisted = s.persist(k);
-            until(() -> lockWaiters() == 1, "the persist's insert waits on the other session's uncommitted row");
-            assertFalse(persisted.isComplete(), "not complete while its insert is not committed: " + persisted);
-            assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(k), "the local copy stays until the insert committed");
-            assertEquals(600, s.memoryInUse(), "and so does its budget");
-            assertEquals(Optional.empty(), row(k), "another session sees no row yet");
-            held.rollback().await();
-        } finally {
-            holder.close().await();
-        }
-        await(persisted);
-        assertEquals(Optional.of(original), row(k), "once persist completed, another session sees the row with the body's bytes");
-        assertEquals(Optional.empty(), s.location(k), "and the local copy is gone");
-        assertEquals(0, s.memoryInUse());
-    }
-
-    /**
-     * P1-09j (D-062): the key is written again — same size, other bytes, spooled to a file of its own (FIX-35) — while a
-     * persist's insert waits. Once that persist completes, the rewrite is not mistaken for the body the persist moved: its
-     * index entry and its spool file stay, and the key reads the rewrite.
-     */
-    @Test
-    void aSameSizeSpoolRewriteDuringAPersistKeepsTheRewrite() {
-        BlobKey k = BlobKey.body("m-rewritten", 1);
-        Buffer first = bytes(600, 11);
-        Buffer rewrite = bytes(600, 12);
-        assertFalse(first.equals(rewrite), "fixture: other bytes");
-        TieredBlobStore s = store(dir, 0, pool);   // no memory tier: both writes spool, each to a file of its own (FIX-35)
-        await(s.write(k, first, FLOW_MAX));
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "fixture: spooled");
-        assertEquals(1, files(dir).size(), "fixture: the first write's spool file: " + files(dir));
-        Path firstFile = files(dir).get(0);
-        Future<Void> persisted;
-        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
-        try {
-            Transaction held = holder.begin().await();
-            holder.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)")
-                    .execute(Tuple.of(k.messageId(), k.step(), k.part(), Buffer.buffer("the other session's, rolled back"))).await();
-            persisted = s.persist(k);
-            until(() -> lockWaiters() == 1, "the persist read the first bytes and its insert waits on the other session's uncommitted row");
-            await(s.write(k, rewrite, FLOW_MAX));   // written again meanwhile: same key, same size, other bytes
-            assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "fixture: the rewrite is spooled");
-            assertFalse(persisted.isComplete(), "fixture: the persist still waits: " + persisted);
-            held.rollback().await();
-        } finally {
-            holder.close().await();
-        }
-        await(persisted);
-        assertEquals(Optional.of(first), row(k), "fixture: the persist inserted the bytes it had read");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(k), "the rewrite is not the body the persist moved: its index entry stays");
-        assertEquals(rewrite, await(s.read(k)), "and the key reads the rewrite, from its spool file");
-        assertEquals(rewrite, await(collect(s.open(k))), "streamed too");
-        // the replaced first copy's file goes on a virtual thread of its own (FIX-35): counted once it is gone, never raced
-        until(() -> !Files.exists(firstFile), "the replaced first copy's spool file is unlinked");
-        assertEquals(1, files(dir).size(), "the rewrite's spool file stays: " + files(dir));
-    }
-
-    @Test
-    void aBodyOfExactlyTheBoundPersists() {
-        BlobKey k = BlobKey.body("m-exact", 0);
-        Buffer exact = bytes((int) BOUND, 2);
-        TieredBlobStore s = store(dir, 1L << 16, pool);
-        await(s.write(k, exact, FLOW_MAX));
-        await(s.persist(k));
-        assertEquals(Optional.of(exact), row(k), "a body of exactly the bound is durable");
-        assertEquals(exact, await(s.read(k)));
-    }
-
-    @Test
-    void aBodyAboveTheBoundFailsTooLargeWritesNoRowAndStaysReadable() {
-        TieredBlobStore s = store(dir, 2 * BOUND, pool);
-        BlobKey inMemory = BlobKey.body("m-above", 0);
-        Buffer above = bytes((int) BOUND + 1, 3);
-        await(s.write(inMemory, above, FLOW_MAX));
-        TieredBlobStore spooling = store(dir.resolve("spool-only"), 0, pool);
-        BlobKey spooled = BlobKey.body("m-above-spooled", 0);
-        await(spooling.write(spooled, above, FLOW_MAX));
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(inMemory), "fixture");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(spooled), "fixture");
-
-        for (Object[] c : new Object[][] {{s, inMemory}, {spooling, spooled}}) {
-            TieredBlobStore store = (TieredBlobStore) c[0];
-            BlobKey k = (BlobKey) c[1];
-            Future<Void> f = awaitOutcome(store.persist(k));
-            assertTrue(f.failed(), "above the durable bound: " + k);
-            BodyTooLargeException e = assertInstanceOf(BodyTooLargeException.class, f.cause(), String.valueOf(f.cause()));
-            assertEquals(k, e.key());
-            assertEquals(BOUND + 1, e.size());
-            assertEquals(BOUND, e.limit(), "the limit is the durable bound, not the flow's max");
-            assertEquals(above, await(store.read(k)), "the body stays readable");
-        }
-        assertEquals(0, rows(), "nothing written to bodies");
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(inMemory), "the body stays local");
-        assertEquals(BOUND + 1, s.memoryInUse(), "its budget stays reserved");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(spooled));
-        assertEquals(1, files(dir.resolve("spool-only")).size(), "the spool file stays");
-    }
-
-    @Test
-    void persistReleasesTheBudgetAndTheIndexEntryAndUnlinksTheSpoolFile() throws InterruptedException {
-        TieredBlobStore s = store(dir, 512, pool);   // 300 bytes stay in memory, 800 go to the spool
-        BlobKey small = BlobKey.body("m-small", 0);
-        BlobKey large = BlobKey.body("m-large", 0);
-        Buffer smallBytes = bytes(300, 4);
-        Buffer largeBytes = bytes(800, 5);
-        List<BlobKey> released = new CopyOnWriteArrayList<>();
-        CountDownLatch largeReleased = new CountDownLatch(1);
-        s.afterRelease(k -> {
-            released.add(k);
-            if (k.equals(large)) largeReleased.countDown();
-        });
-        await(s.write(small, smallBytes, FLOW_MAX));
-        await(s.write(large, largeBytes, FLOW_MAX));
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(small), "fixture");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(large), "fixture");
-        assertEquals(300, s.memoryInUse(), "fixture");
-        assertEquals(1, files(dir).size(), "fixture: the large body's spool file");
-
-        await(s.persist(small));
-        assertEquals(0, s.memoryInUse(), "the budget is released before persist completes");
-        assertEquals(Optional.empty(), s.location(small), "and the index entry removed");
-        await(s.persist(large));
-        assertEquals(Optional.empty(), s.location(large), "the spool body's index entry is removed before persist completes");
-
-        assertTrue(largeReleased.await(10, TimeUnit.SECONDS), "afterRelease saw the spool body's key: " + released);
-        until(() -> files(dir).isEmpty(), "the spool file is unlinked after the persist: " + files(dir));
-        assertEquals(1, released.stream().filter(large::equals).count(), "released once: " + released);
-        assertEquals(Optional.of(smallBytes), row(small));
-        assertEquals(Optional.of(largeBytes), row(large));
-        assertEquals(smallBytes, await(s.read(small)), "read back from Postgres");
-        assertEquals(largeBytes, await(collect(s.open(large))), "streamed back from Postgres");
-
-        await(s.evict(small));   // forgetting a persisted body frees nothing durable: only the retention job deletes rows
-        await(s.evict(large));
-        assertEquals(Optional.of(smallBytes), row(small), "evict deleted no row");
-        assertEquals(Optional.of(largeBytes), row(large));
-        assertEquals(largeBytes, await(s.read(large)), "and the key still reads");
-    }
-
-    @Test
-    void aFailedInsertFailsPersistAndKeepsTheBodyLocal() {
-        other.query("create function refuse_bodies() returns trigger language plpgsql as $$ begin raise exception 'bodies refused by the test'; end $$")
-                .execute().await();
-        other.query("create trigger refuse_bodies before insert on bodies for each row execute function refuse_bodies()").execute().await();
-        TieredBlobStore s = store(dir, 512, pool);
-        BlobKey inMemory = BlobKey.body("m-refused", 0);
-        BlobKey spooled = BlobKey.body("m-refused-spooled", 0);
-        Buffer smallBytes = bytes(300, 6);
-        Buffer largeBytes = bytes(800, 7);
-        await(s.write(inMemory, smallBytes, FLOW_MAX));
-        await(s.write(spooled, largeBytes, FLOW_MAX));
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(spooled), "fixture");
-
-        for (BlobKey k : List.of(inMemory, spooled)) {
-            Future<Void> f = awaitOutcome(s.persist(k));
-            assertTrue(f.failed(), "the insert failed, so the persist fails: " + k);
-            assertTrue(causes(f.cause()).stream().anyMatch(m -> m.contains("bodies refused by the test")), "with the insert's failure: " + causes(f.cause()));
-        }
-        assertEquals(0, rows(), "no row");
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(inMemory), "the memory body stays local");
-        assertEquals(300, s.memoryInUse(), "with its budget");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(spooled), "the spool body stays local");
-        assertEquals(1, files(dir).size(), "with its spool file");
-        assertEquals(smallBytes, await(s.read(inMemory)));
-        assertEquals(largeBytes, await(s.read(spooled)));
-
-        other.query("drop trigger refuse_bodies on bodies").execute().await();
-        await(s.persist(inMemory));
-        await(s.persist(spooled));
-        assertEquals(Optional.of(smallBytes), row(inMemory), "the kept bodies persist once the insert succeeds");
-        assertEquals(Optional.of(largeBytes), row(spooled));
-    }
-
     @Test
     void aMissingRowFailsReadAndOpen() {
-        TieredBlobStore s = store(dir, 1L << 16, pool);
+        TieredBlobStore s = store(1L << 16, pool);
         BlobKey never = BlobKey.body("m-never", 0);
         Future<Buffer> read = awaitOutcome(s.read(never));
         assertTrue(read.failed(), "no local copy, no row");
@@ -411,299 +187,25 @@ class PgBodiesIT {
 
         // a persisted body whose row is gone (the retention job's delete, P2-07): no local copy is left to answer instead
         BlobKey gone = BlobKey.body("m-gone", 0);
-        await(s.write(gone, bytes(100, 8), FLOW_MAX));
-        await(s.persist(gone));
-        other.query("alter table bodies disable trigger bodies_never_deleted").execute().await();   // the case plays the retention job
+        seeded(gone, bytes(100, 8));
+        assertEquals(bytes(100, 8), await(s.read(gone)), "witness: the row reads");
         other.preparedQuery("delete from bodies where message_id = $1").execute(Tuple.of(gone.messageId())).await();
         Future<Buffer> readGone = awaitOutcome(s.read(gone));
-        assertTrue(readGone.failed(), "no local cache after persist");
+        assertTrue(readGone.failed(), "no local copy answers instead");
         assertInstanceOf(IllegalArgumentException.class, readGone.cause(), String.valueOf(readGone.cause()));
         Future<Buffer> openGone = awaitOutcome(collect(s.open(gone)));
         assertTrue(openGone.failed());
         assertInstanceOf(IllegalArgumentException.class, openGone.cause(), String.valueOf(openGone.cause()));
     }
 
-    /**
-     * FIX-35 (D-061 amended; the case was {@code aKeyWrittenAgainAfterPersistPersistsQuietlyAndTheFirstBytesWin}): a key written
-     * again with other bytes after its persist is not persisted — the persist fails with an {@link IllegalStateException}
-     * naming the key, the row keeps the first bytes, and the second copy stays local with its budget or its spool file. For
-     * the spool twin the first persist's unlink is awaited before the key is written again, so the spool directory holds the
-     * second copy's file alone (each write has a file of its own, FIX-35; the unlink runs after the persist completed).
-     */
-    @Test
-    void aKeyWrittenAgainWithOtherBytesAfterPersistFailsIllegalStateAndTheRowKeepsTheFirst() throws InterruptedException {
-        TieredBlobStore inMemory = store(dir, 1L << 16, pool);
-        TieredBlobStore spooling = store(dir.resolve("spool-only"), 0, pool);
-        BlobKey k = BlobKey.body("m-again", 0);
-        BlobKey ks = BlobKey.body("m-again-spooled", 0);
-        Buffer first = bytes(400, 9);
-        Buffer second = bytes(500, 10);
-        CountDownLatch firstUnlinked = new CountDownLatch(1);
-        spooling.afterRelease(released -> firstUnlinked.countDown());
-        await(inMemory.write(k, first, FLOW_MAX));
-        await(inMemory.persist(k));
-        await(spooling.write(ks, first, FLOW_MAX));
-        await(spooling.persist(ks));
-        assertTrue(firstUnlinked.await(10, TimeUnit.SECONDS), "fixture: the first spool copy was released");
-        await(inMemory.write(k, second, FLOW_MAX));   // a rerun writes the key again, with other bytes
-        await(spooling.write(ks, second, FLOW_MAX));
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), inMemory.location(k), "fixture: the second bytes are local");
-        assertEquals(500, inMemory.memoryInUse(), "fixture: with their budget");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(ks), "fixture: spooled");
-        assertEquals(1, files(dir.resolve("spool-only")).size(), "fixture: the second bytes' spool file");
-
-        for (Object[] c : new Object[][] {{inMemory, k}, {spooling, ks}}) {
-            TieredBlobStore s = (TieredBlobStore) c[0];
-            BlobKey key = (BlobKey) c[1];
-            Future<Void> f = awaitOutcome(s.persist(key));
-            assertTrue(f.failed(), "other bytes under a durable key are not persisted: " + key);
-            IllegalStateException e = assertInstanceOf(IllegalStateException.class, f.cause(), String.valueOf(f.cause()));
-            assertTrue(e.getMessage().contains(key.toString()), "names the key: " + e.getMessage());
-            assertEquals(Optional.of(first), row(key), "the row keeps the first bytes: " + key);
-            assertEquals(second, await(s.read(key)), "the key reads the second bytes, local: " + key);
-            assertEquals(second, await(collect(s.open(key))), "streamed too: " + key);
-        }
-        assertEquals(2, rows(), "no row added");
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), inMemory.location(k), "the second copy stays local");
-        assertEquals(500, inMemory.memoryInUse(), "its budget unchanged");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(ks), "the spooled second copy stays local");
-        assertEquals(1, files(dir.resolve("spool-only")).size(), "with its spool file");
-    }
-
-    /**
-     * FIX-35: a key written again with the same bytes after its persist — a rerun of a deterministic step — persists quietly,
-     * and that second local copy goes like the first: the index entry and the budget, or the spool file.
-     */
-    @Test
-    void aKeyWrittenAgainWithTheSameBytesAfterPersistPersistsQuietlyAndReleasesTheCopy() throws InterruptedException {
-        TieredBlobStore inMemory = store(dir, 1L << 16, pool);
-        TieredBlobStore spooling = store(dir.resolve("spool-only"), 0, pool);
-        BlobKey k = BlobKey.body("m-same", 0);
-        BlobKey ks = BlobKey.body("m-same-spooled", 0);
-        Buffer bytes = bytes(400, 9);
-        List<BlobKey> released = new CopyOnWriteArrayList<>();
-        inMemory.afterRelease(released::add);
-        Semaphore spoolReleases = new Semaphore(0);
-        spooling.afterRelease(key -> {
-            released.add(key);
-            spoolReleases.release();
-        });
-        await(inMemory.write(k, bytes, FLOW_MAX));
-        await(inMemory.persist(k));
-        await(spooling.write(ks, bytes, FLOW_MAX));
-        await(spooling.persist(ks));
-        assertTrue(spoolReleases.tryAcquire(10, TimeUnit.SECONDS), "fixture: the first spool copy was released");
-        await(inMemory.write(k, bytes.copy(), FLOW_MAX));   // a rerun writes the key again: equal bytes
-        await(spooling.write(ks, bytes.copy(), FLOW_MAX));
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), inMemory.location(k), "fixture: the second copy is local");
-        assertEquals(400, inMemory.memoryInUse(), "fixture: with its budget");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), spooling.location(ks), "fixture: spooled");
-        assertEquals(1, files(dir.resolve("spool-only")).size(), "fixture: the second copy's spool file");
-
-        await(inMemory.persist(k));
-        assertEquals(Optional.empty(), inMemory.location(k), "the second copy's index entry is gone");
-        assertEquals(0, inMemory.memoryInUse(), "and its budget released");
-        await(spooling.persist(ks));
-        assertEquals(Optional.empty(), spooling.location(ks), "the spooled second copy's index entry is gone");
-        assertTrue(spoolReleases.tryAcquire(10, TimeUnit.SECONDS), "the spooled second copy was released: " + released);
-        assertEquals(List.of(), files(dir.resolve("spool-only")), "and its spool file unlinked");
-        assertEquals(List.of(k, ks, k, ks), released, "each copy released once");
-        for (BlobKey key : List.of(k, ks)) {
-            assertEquals(Optional.of(bytes), row(key), "one row, the bytes: " + key);
-            assertEquals(bytes, await((key == k ? inMemory : spooling).read(key)), "read from Postgres: " + key);
-        }
-        assertEquals(2, rows());
-    }
-
-    /**
-     * FIX-35: the compare runs after the insert found the conflict, on what was committed meanwhile. Another session holds an
-     * uncommitted row under each of two keys — other bytes under one, the store's own bytes under the other — and both
-     * persists' inserts wait for it; once it commits, the persist of other bytes fails with an {@link IllegalStateException}
-     * and keeps its copy local, the persist of equal bytes completes quietly and releases its copy.
-     */
-    @Test
-    void aConflictingRowCommittedWhileThePersistWaitsIsCompared() {
-        TieredBlobStore s = store(dir, 1L << 16, pool);
-        BlobKey differs = BlobKey.body("m-raced", 1);
-        BlobKey equal = BlobKey.body("m-raced", 2);
-        Buffer ours = bytes(600, 21);
-        Buffer theirs = bytes(600, 22);   // the same size, other bytes
-        assertFalse(ours.equals(theirs), "fixture: other bytes");
-        await(s.write(differs, ours, FLOW_MAX));
-        await(s.write(equal, ours, FLOW_MAX));
-        Future<Void> refused;
-        Future<Void> quiet;
-        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
-        try {
-            Transaction held = holder.begin().await();
-            String insert = "insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)";
-            holder.preparedQuery(insert).execute(Tuple.of(differs.messageId(), differs.step(), differs.part(), theirs)).await();
-            holder.preparedQuery(insert).execute(Tuple.of(equal.messageId(), equal.step(), equal.part(), ours)).await();
-            refused = s.persist(differs);
-            quiet = s.persist(equal);
-            until(() -> lockWaiters() == 2, "both persists' inserts wait on the other session's uncommitted rows");
-            assertFalse(refused.isComplete(), "fixture: waiting: " + refused);
-            assertFalse(quiet.isComplete(), "fixture: waiting: " + quiet);
-            held.commit().await();
-        } finally {
-            holder.close().await();
-        }
-        Future<Void> r = awaitOutcome(refused);
-        assertTrue(r.failed(), "the committed row holds other bytes: the persist fails");
-        IllegalStateException e = assertInstanceOf(IllegalStateException.class, r.cause(), String.valueOf(r.cause()));
-        assertTrue(e.getMessage().contains(differs.toString()), "names the key: " + e.getMessage());
-        assertEquals(Optional.of(theirs), row(differs), "the committed row is unchanged");
-        assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), s.location(differs), "the copy stays local");
-        assertEquals(ours, await(s.read(differs)), "and is what the key reads");
-
-        Future<Void> q = awaitOutcome(quiet);
-        assertTrue(q.succeeded(), "the committed row holds the same bytes: the persist is quiet: " + q.cause());
-        assertEquals(Optional.of(ours), row(equal));
-        assertEquals(Optional.empty(), s.location(equal), "and its copy released");
-        assertEquals(600, s.memoryInUse(), "only the refused copy's budget stays");
-        assertEquals(ours, await(s.read(equal)), "read from Postgres");
-    }
-
-    /**
-     * FIX-35 closed (D-088): the retention job deletes from {@code bodies} (P2-07), so an insert that finds the key's row and then
-     * compares in a second statement can see the row vanish in between and call the same bytes "other bytes". The insert is one
-     * statement — the conflicting row is compared, and kept, under the row lock of that statement — so a delete staged before a
-     * second statement finds none to precede: the answer is "these bytes", and the row is there holding them.
-     */
-    @Test
-    void aRowDeletedBetweenConflictAndCompareIsNoOtherBytes() {
-        other.query("alter table bodies disable trigger bodies_never_deleted").execute().await();   // this case plays the retention job
-        BlobKey k = BlobKey.body("m-aged", 0);
-        Buffer bytes = bytes(700, 5);
-        other.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4)")
-                .execute(Tuple.of(k.messageId(), k.step(), k.part(), bytes)).await();   // a rerun's key: the row holds the same bytes
-        DeletingClient client = new DeletingClient(pool, other, k);
-
-        boolean these = await(new PgBodies(pool, BOUND).insert(client, k, bytes.copy()));
-
-        assertTrue(these, "the key's row held these bytes when the insert met it: never 'other bytes' (statements " + client.statements
-                + ", row deleted before a second: " + client.deleted + ")");
-        assertEquals(1, client.statements.size(), "one statement on the caller's client, nothing a delete can come between: " + client.statements);
-        assertEquals(Optional.of(bytes), row(k), "the row is there with the bytes");
-        assertEquals(1, rows());
-    }
-
-    /**
-     * The same bytes inserted again over a row the retention job ages (D-088): the row keeps its {@code created_at} — a rerun's
-     * persist does not make an old body young — and its bytes.
-     */
-    @Test
-    void theSameBytesAgainKeepTheRowsAge() {
-        BlobKey k = BlobKey.body("m-old", 2);
-        Buffer bytes = bytes(300, 8);
-        other.preparedQuery("insert into bodies(message_id, step, part, bytes, created_at) values ($1, $2, $3, $4, timestamptz '2026-01-02 03:04:05.678901+00')")
-                .execute(Tuple.of(k.messageId(), k.step(), k.part(), bytes)).await();
-
-        assertTrue(await(new PgBodies(pool, BOUND).insert(pool, k, bytes.copy())), "the same bytes: true");
-
-        Row r = other.preparedQuery("select created_at, bytes from bodies where message_id = $1 and step = $2 and part = $3")
-                .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().iterator().next();
-        assertEquals(Instant.parse("2026-01-02T03:04:05.678901Z"), r.getOffsetDateTime(0).toInstant(), "created_at unchanged");
-        assertEquals(bytes, r.getBuffer(1));
-        assertEquals(1, rows());
-    }
-
-    /**
-     * {@link PgBodies#insert}'s client: the case's pool, recording every statement executed through it; before the second, another
-     * session deletes the key's row and commits (the retention job's delete between the conflict and the compare).
-     */
-    static final class DeletingClient implements io.vertx.sqlclient.SqlClient {
-        final Pool delegate;
-        final Pool deleter;
-        final BlobKey key;
-        final List<String> statements = new CopyOnWriteArrayList<>();
-        volatile boolean deleted;
-
-        DeletingClient(Pool delegate, Pool deleter, BlobKey key) {
-            this.delegate = delegate;
-            this.deleter = deleter;
-            this.key = key;
-        }
-
-        /** Records {@code sql}; before the second statement, deletes the key's row on the other session. */
-        Future<Void> before(String sql) {
-            statements.add(sql);
-            if (statements.size() != 2) return Future.succeededFuture();
-            return deleter.preparedQuery("delete from bodies where message_id = $1 and step = $2 and part = $3")
-                    .execute(Tuple.of(key.messageId(), key.step(), key.part())).map(rows -> {
-                        deleted = rows.rowCount() == 1;
-                        return null;
-                    });
-        }
-
-        @Override
-        public io.vertx.sqlclient.Query<io.vertx.sqlclient.RowSet<Row>> query(String sql) {
-            return new Counted(sql, delegate.preparedQuery(sql), delegate.query(sql));
-        }
-
-        @Override
-        public io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> preparedQuery(String sql) {
-            return new Counted(sql, delegate.preparedQuery(sql), delegate.query(sql));
-        }
-
-        @Override
-        public io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> preparedQuery(String sql, io.vertx.sqlclient.PrepareOptions options) {
-            return new Counted(sql, delegate.preparedQuery(sql, options), delegate.query(sql));
-        }
-
-        @Override
-        public Future<Void> close() {
-            throw new UnsupportedOperationException("the case closes the pool, never the insert");
-        }
-
-        /** One statement of the client: executed after {@link #before}. */
-        final class Counted implements io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> {
-            final String sql;
-            final io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> prepared;
-            final io.vertx.sqlclient.Query<io.vertx.sqlclient.RowSet<Row>> simple;
-
-            Counted(String sql, io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<Row>> prepared,
-                    io.vertx.sqlclient.Query<io.vertx.sqlclient.RowSet<Row>> simple) {
-                this.sql = sql;
-                this.prepared = prepared;
-                this.simple = simple;
-            }
-
-            @Override
-            public Future<io.vertx.sqlclient.RowSet<Row>> execute(Tuple tuple) {
-                return before(sql).compose(v -> prepared.execute(tuple));
-            }
-
-            @Override
-            public Future<io.vertx.sqlclient.RowSet<Row>> executeBatch(List<Tuple> batch) {
-                return before(sql).compose(v -> prepared.executeBatch(batch));
-            }
-
-            @Override
-            public Future<io.vertx.sqlclient.RowSet<Row>> execute() {
-                return before(sql).compose(v -> simple.execute());
-            }
-
-            @Override
-            public <R> io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.SqlResult<R>> collecting(java.util.stream.Collector<Row, ?, R> collector) {
-                throw new UnsupportedOperationException("not a statement PgBodies.insert runs: " + sql);
-            }
-
-            @Override
-            public <U> io.vertx.sqlclient.PreparedQuery<io.vertx.sqlclient.RowSet<U>> mapping(java.util.function.Function<Row, U> mapper) {
-                throw new UnsupportedOperationException("not a statement PgBodies.insert runs: " + sql);
-            }
-        }
-    }
-
     @Test
     void aBodyKeyWithNoIndexEntryAndNoRowIs404NoLongerStoredThroughTheAdminRoute() {
-        TieredBlobStore s = store(dir, 1L << 16, pool);
+        TieredBlobStore s = store(1L << 16, pool);
         BlobKey kept = BlobKey.body("m-admin", 0);
         BlobKey gone = BlobKey.body("m-admin", 1);   // never written: no index entry, no row (retention took it, P2-07)
         Buffer xml = bytes(500, 3);
-        Body body = await(s.write(kept, xml, FLOW_MAX));
-        await(s.persist(kept));   // the witness: the same route over the same store answers from Postgres
+        seeded(kept, xml);   // the witness: the same route over the same store answers from the pre-V12 row
+        Body body = Body.of(s, kept, HASHER.hashOf(xml), xml.length());
         assertEquals(Optional.empty(), s.location(gone), "fixture: no index entry for the gone key");
         assertEquals(Optional.empty(), row(gone), "fixture: no row for the gone key");
         InMemoryMessageStore messages = new InMemoryMessageStore();
@@ -724,8 +226,8 @@ class PgBodiesIT {
             String says = new JsonObject(missing.body()).getString("error");
             assertTrue(says != null && says.contains("no longer stored"), "says the bytes are no longer stored: " + missing.body());
             Answer durable = get(client, port, token, "/admin/messages/m-admin/steps/0/body");
-            assertEquals(200, durable.status(), "the persisted body streams from Postgres through the same route");
-            assertEquals(xml, durable.body(), "every byte of the persisted body");
+            assertEquals(200, durable.status(), "the pre-V12 body streams from its row through the same route");
+            assertEquals(xml, durable.body(), "every byte of the row");
         } finally {
             client.close().await();
             admin.stop().await();
@@ -733,32 +235,29 @@ class PgBodiesIT {
     }
 
     /**
-     * D-096: a persisted key whose row the retention job deleted reads as never written, for the store that persisted it (its
-     * local copy went with the persist) and for a fresh store alike: exists is false (an answer), read fails with the miss
+     * D-096: a key whose pre-V12 row the retention job deleted reads as never written, for the store that read it and for a
+     * restarted one alike: exists is false (an answer), read fails with the miss
      * signal naming the key, open throws it or its stream fails with it before any byte, persist fails with it. Witness: before
      * the delete the key exists and reads from Postgres; a sibling key persisted beside it still does afterwards.
      */
     @Test
     void aKeyWhoseRowWasDeletedIsFalseToExistsAndBlobNotFoundToReadOpenPersist() {
-        TieredBlobStore s = store(dir, 1L << 16, pool);
+        TieredBlobStore s = store(1L << 16, pool);
         BlobKey k = BlobKey.body("m-retained", 1);
         BlobKey sibling = BlobKey.body("m-retained", 2);
-        await(s.write(k, bytes(400, 5), FLOW_MAX));
-        await(s.write(sibling, bytes(300, 6), FLOW_MAX));
-        await(s.persist(k));
-        await(s.persist(sibling));
-        assertEquals(Optional.empty(), s.location(k), "fixture: the persist let the local copy go");
-        assertEquals(Boolean.TRUE, await(s.exists(k)), "witness: the persisted key exists, from its row");
+        seeded(k, bytes(400, 5));
+        seeded(sibling, bytes(300, 6));
+        assertEquals(Optional.empty(), s.location(k), "fixture: no local copy");
+        assertEquals(Boolean.TRUE, await(s.exists(k)), "witness: the key exists, from its row");
         assertEquals(bytes(400, 5), await(s.read(k)), "witness: and reads from Postgres");
 
-        // the retention job's delete (P2-07): the trigger that fails every other DELETE is dropped first
-        other.query("drop trigger bodies_never_deleted on bodies").execute().await();
+        // the retention job's delete (P2-07)
         assertEquals(1, other.preparedQuery("delete from bodies where message_id = $1 and step = $2 and part = $3")
                 .execute(Tuple.of(k.messageId(), k.step(), k.part())).await().rowCount(), "fixture: the row is deleted");
 
-        TieredBlobStore fresh = store(dir.resolve("fresh"), 1L << 16, pool);
+        TieredBlobStore fresh = store(1L << 16, pool);   // a restart: an empty index over the same journal
         for (TieredBlobStore store : List.of(s, fresh)) {
-            String which = store == s ? "the store that persisted it" : "a fresh store";
+            String which = store == s ? "the store that read it" : "a restarted store";
             Future<Boolean> exists = awaitOutcome(store.exists(k));
             assertTrue(exists.succeeded(), which + ": a key with no row is an answer, not a failure: " + exists.cause());
             assertEquals(Boolean.FALSE, exists.result(), which);
@@ -780,7 +279,7 @@ class PgBodiesIT {
     }
 
     /**
-     * D-096: exists of a key whose local copy the persist let go asks Postgres whether the row is there, never for its bytes:
+     * D-096: exists of a key with no local copy, no ref and a pre-V12 row asks Postgres whether the row is there, never for its bytes:
      * every statement the store sends from the exists on is recorded at the pool (a proxy, the store boundary) and none
      * selects {@code bytes}. Witness: a read of the same key through the same pool does.
      */
@@ -797,11 +296,10 @@ class PgBodiesIT {
                 throw e.getCause();
             }
         });
-        TieredBlobStore s = store(dir, 1L << 16, recording);
+        TieredBlobStore s = store(1L << 16, recording);
         BlobKey k = BlobKey.body("m-exists-only", 1);
-        await(s.write(k, bytes(900, 9), FLOW_MAX));
-        await(s.persist(k));
-        assertEquals(Optional.empty(), s.location(k), "fixture: the persist let the local copy go");
+        seeded(k, bytes(900, 9));
+        assertEquals(Optional.empty(), s.location(k), "fixture: no local copy");
         statements.clear();
 
         assertEquals(Boolean.TRUE, await(s.exists(k)), "the row is there");
@@ -813,7 +311,6 @@ class PgBodiesIT {
         await(s.read(k));
         assertTrue(statements.stream().anyMatch(q -> q.toLowerCase(java.util.Locale.ROOT).contains("select bytes")), "witness: a read selects the bytes: " + statements);
     }
-
     /** The miss signal of opening {@code k}: thrown by open, or its stream's failure, with no chunk and no end before it. */
     static io.flottila.api.BlobNotFoundException openFailure(TieredBlobStore s, BlobKey k) {
         ReadStream<Buffer> stream;

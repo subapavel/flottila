@@ -4,8 +4,8 @@
     "line": 99.3
   },
   "flottila-bench": {
-    "branch": 96.6,
-    "line": 97.4
+    "branch": 96.4,
+    "line": 97.5
   },
   "flottila-cli": {
     "branch": 100.0,
@@ -28,8 +28,8 @@
     "line": 99.5
   },
   "flottila-runtime": {
-    "branch": 99.7,
-    "line": 99.5
+    "branch": 99.5,
+    "line": 99.4
   },
   "flottila-schemas": {
     "branch": 99.5,

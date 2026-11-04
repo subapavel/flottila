@@ -33,6 +33,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * on the pool instead of its transaction fails the case. Every case runs on a database of its own (FIX-5).
  *
  * <p>The shape assumed: {@code io.flottila.runtime.store.PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue) implements Intake}.
+ *
+ * <p>Expectation changed by CORE-4c2 (D-105): the body store's durable tier is the node's journal; "made durable" is the key's
+ * kept ref ({@code body_refs}, the contract saving with the input kept) read back from the journal by that ref — never a
+ * {@code bodies} row, which takes no inserts any more.
  */
 class PgIntakeContractIT extends IntakeContract {
 
@@ -42,6 +46,8 @@ class PgIntakeContractIT extends IntakeContract {
 
     @TempDir Path spool;
     Pool pool;
+    Pool rows;   // the journal's own rows: not the intake's one connection
+    io.flottila.runtime.journal.TestJournals.Opened journal;
     PgMessageStore messages;
 
     @BeforeAll
@@ -57,8 +63,10 @@ class PgIntakeContractIT extends IntakeContract {
     }
 
     @AfterEach
-    void closeTheStores() {
+    void closeTheStores() throws Exception {
         if (messages != null) messages.close();
+        if (journal != null) journal.close();
+        if (rows != null) rows.close().await();
         if (pool != null) pool.close().await();
     }
 
@@ -66,9 +74,16 @@ class PgIntakeContractIT extends IntakeContract {
     protected World emptyWorld() {
         String database = PgIntakeIT.caseDatabase(pg, "intake_contract_" + cases.incrementAndGet());
         pool = PgIntakeIT.pool(vertx, pg, database);
-        TieredBlobStore blobs = PgIntakeIT.blobs(spool, pool);
+        rows = PgIntakeIT.pool(vertx, pg, database, 2);
+        try {
+            journal = io.flottila.runtime.journal.TestJournals.open(rows, spool, "node-1");
+        } catch (Exception e) {
+            throw new IllegalStateException("fixture: the journal did not open", e);
+        }
+        TieredBlobStore blobs = PgIntakeIT.blobs(journal, pool);
         messages = new PgMessageStore(pool, new VertxTimer(vertx), BatchingWriter.Options.defaults());
-        PgIntake intake = new PgIntake(pool, blobs, messages, new PgWorkQueue(pool));
+        PgIntake intake = new PgIntake(pool, blobs, messages, new PgWorkQueue(pool, "node-1"));
+        io.flottila.runtime.journal.Journal opened = journal.journal();
         Pool reader = pool;
         return new World() {
             @Override public Intake intake() { return intake; }
@@ -76,9 +91,14 @@ class PgIntakeContractIT extends IntakeContract {
             @Override public BlobStore bodies() { return blobs; }
 
             @Override public Optional<Buffer> durable(BlobKey key) {
-                for (Row r : reader.preparedQuery("select bytes from bodies where message_id = $1 and step = $2 and part = $3")
+                for (Row r : reader.preparedQuery("select segment, position, length from body_refs where message_id = $1 and step = $2 and part = $3")
                         .execute(Tuple.of(key.messageId(), key.step(), key.part())).await()) {
-                    return Optional.of(r.getBuffer(0));
+                    io.flottila.runtime.journal.JournalRef ref = new io.flottila.runtime.journal.JournalRef(r.getLong(0), r.getLong(1), r.getLong(2));
+                    try {
+                        return Optional.of(Buffer.buffer(io.flottila.runtime.node.OnVirtualThread.call(() -> opened.read(ref))));
+                    } catch (Exception e) {
+                        throw new IllegalStateException("the kept ref of " + key + " does not read back", e);
+                    }
                 }
                 return Optional.empty();
             }

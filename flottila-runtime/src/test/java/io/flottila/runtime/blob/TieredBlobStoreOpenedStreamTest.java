@@ -5,6 +5,7 @@ import io.flottila.testkit.BlobStoreContract;
 import io.vertx.core.Future;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.ReadStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,15 +24,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TieredBlobStoreOpenedStreamTest {
 
+    @AfterEach
+    void closeTheJournals() {
+        LocalStores.closeAll();
+    }
+
     @Test
-    void aSpoolStreamOpenedBeforeAnEvictFailsWithTheMissingFileWithoutADurableTier(@TempDir Path dir) {
+    void aSpillStreamOpenedBeforeAnEvictFailsWithTheMissingFileWithoutADurableTier(@TempDir Path dir) {
         TieredBlobStore s = TieredBlobStoreTest.store(dir, 0, 1 << 20);   // no memory tier: the body is spooled
         BlobKey key = BlobKey.body("m-evicted", 0);
         BlobStoreContract.await(s.write(key, Buffer.buffer(new byte[700]), 4096));
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), s.location(key), "fixture");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPILL), s.location(key), "fixture");
         ReadStream<Buffer> opened = s.open(key);   // nothing read yet: the file is opened on the first demand
         BlobStoreContract.await(s.evict(key));
-        assertEquals(0, TieredBlobStoreTest.spoolFiles(dir).size(), "fixture: the spool file is gone");
+        assertEquals(0, LocalStores.spillFiles(dir).size(), "fixture: the spool file is gone");
         Future<Buffer> read = BlobStoreContract.awaitOutcome(BlobStoreContract.collect(opened));
         assertTrue(read.failed(), "the evicted body cannot be read");
         assertInstanceOf(NoSuchFileException.class, read.cause(), "the missing file, not a durable read: " + read.cause());

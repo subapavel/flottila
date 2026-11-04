@@ -96,6 +96,8 @@ import java.util.stream.Stream;
 public final class Journal implements AutoCloseable {
 
     private static final System.Logger LOG = System.getLogger(Journal.class.getName());
+    /** The largest body a {@link #spill} takes: {@code (2^31 - 1) MiB}, the chunk counter's range. */
+    public static final long SPILL_MAX = RecordFormat.MAX_PLAIN;
     /** A round drains at most this many records … */
     static final int ROUND_RECORDS = 4096;
     /** … and at most this many bytes; its first record always. */
@@ -582,6 +584,16 @@ public final class Journal implements AutoCloseable {
         return new IllegalStateException("the journal is closed");
     }
 
+    /** The node whose journal this is ({@code FLOTTILA_NODE_ID}): its refs name it. */
+    public String node() {
+        return config.node();
+    }
+
+    /** {@code FLOTTILA_JOURNAL_RECORD_MAX}: the largest body {@link #append} takes; a longer one is {@link #spill spilled}. */
+    public long recordMax() {
+        return config.recordMax();
+    }
+
     /** True once the journal failed and stopped (fail-stop): the admin health reports it DOWN. */
     public boolean isFailed() {
         lock.lock();
@@ -1066,6 +1078,9 @@ public final class Journal implements AutoCloseable {
 
         /** The segment number: from the journal's one sequence, the writer's segments never take it. */
         public long segment() { return entry.ref().segment(); }
+
+        /** The ref of its record, known from the start: where it lies once {@link #persist persisted}. */
+        public JournalRef ref() { return entry.ref(); }
 
         /** The body's size in bytes. */
         public long size() { return size; }

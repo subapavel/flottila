@@ -270,13 +270,18 @@ class RestoreIT {
      * Node 1 deploys the demo as an at-least-once flow with {@code maxInFlight: 1} (one item runs at a time) over S3 and Postgres
      * and accepts invoices 4711, 4712 and 4713 (202 each). The partner holds node 1's request for 4711 and never answers it (its
      * producer's timeout is ten minutes): node 1 leaves 4711 leased and 4712, 4713 queued, and closes. Node 2, on the same database
-     * and S3 prefix, with an empty data directory and no PUT, restores the demo from its row and its object and runs 4712 and 4713
-     * while 4711 is still leased to node 1 (its lease extended to an hour by SQL); once that lease has run out (set into the past by
-     * SQL) node 2 runs 4711 too. Every item completes, nothing is parked, node 1 never ran more than 4711, and the row is as the
-     * PUT wrote it: the restore wrote none.
+     * and S3 prefix, with an empty data directory and no PUT, restores the demo from its row and its object and runs the invoices
+     * it accepts itself — but not node 1's: their bodies are in node 1's journal, the one copy (CORE-REWORK §3 "Node down", D-105
+     * item 9), so they wait for node 1 and stay in work, 4711 even once its lease ran out (taking them over is P2-15/CORE-5; giving
+     * them up is ACCEPT_LOSS, CORE-4c3). The witness that node 2 claims: 4714 and 4715, accepted by node 2 after node 1's items,
+     * run on node 2 although the claim takes the oldest claimable item first. Nothing is parked, node 1 never ran more than 4711,
+     * and the row is as the PUT wrote it: the restore wrote none.
+     *
+     * <p>CORE-4c2 changed the expectation (was: node 2 runs 4712, 4713 and, after the lease, 4711 — every item completes): a node
+     * claims only items whose body it holds (CORE-3 item 6, WorkClaimIT).
      */
     @Test
-    void aRestartedNodeWithAnEmptyDataDirResumesQueuedAtLeastOnceWorkWithoutAPut() throws Exception {
+    void aRestartedNodeWithAnEmptyDataDirRestoresWithoutAPutAndLeavesTheOtherJournalsItemsQueued() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         AtomicBoolean answering = new AtomicBoolean(false);
         List<String> held = new CopyOnWriteArrayList<>();
@@ -322,18 +327,28 @@ class RestoreIT {
         assertEquals(List.of(), children(empty), "fixture: node 2's data directory is empty");
         Node two = start(env("node-2", empty));
 
-        until(() -> answered.containsAll(List.of("4712", "4713")), "node 2, restored without a PUT, runs the items node 1 left queued (partner saw " + answered + ")");
-        assertFalse(answered.contains("4711"), "4711 waits for the lease node 1 holds: " + answered);
-        assertTrue(work().contains(ids.get(0) + " node-1"), "4711 is still leased to node 1: " + work());
-        sql("update work set locked_until = now() - interval '1 second' where id = '" + ids.get(0) + "'");   // the lease ran out
-        until(() -> answered.contains("4711"), "node 2 runs 4711 once node 1's lease ran out (D-055)");
+        try (HttpClient client = http()) {
+            HttpResponse<String> own = send(client, "POST", inPort, "/in", invoice(4714), "application/xml");
+            assertEquals(202, own.statusCode(), "node 2, restored without a PUT, accepts: " + own.body());
+            until(() -> answered.contains("4714"), "node 2 runs what it accepted (partner saw " + answered + ")");
+            assertEquals(List.of("4714"), answered, "and nothing of node 1's, though 4712 and 4713 are older and unleased: " + answered);
+            sql("update work set locked_until = now() - interval '1 second' where id = '" + ids.get(0) + "'");   // node 1's lease ran out
+            HttpResponse<String> after = send(client, "POST", inPort, "/in", invoice(4715), "application/xml");
+            assertEquals(202, after.statusCode(), after.body());
+            until(() -> answered.contains("4715"), "node 2 runs what it accepts after the lease ran out (partner saw " + answered + ")");
+        }
+        List<String> nodeOnes = List.of(ids.get(0) + " node-1", ids.get(1) + " -", ids.get(2) + " -");
         until(() -> {
             try {
-                return work().isEmpty();
+                return work().size() == nodeOnes.size();
             } catch (SQLException e) {
                 throw new AssertionError("the work table could not be read", e);
             }
-        }, "every item completed on node 2");
+        }, "node 2 completed what it accepted: its work rows went");
+        assertEquals(List.of("4714", "4715"), answered, "4711 is not taken over by node 2 either: its body is in node 1's journal");
+        assertEquals(nodeOnes, work(), "node 1's items stay in work for node 1 (ACCEPT_LOSS is CORE-4c3)");
+        assertEquals(List.of(ids.get(0) + " 1", ids.get(1) + " 0", ids.get(2) + " 0"), rows("select id, attempts from work order by seq", 2),
+                "node 2 never claimed one of them, not even to release it again: only node 1's claim of 4711 counted");
         assertEquals(0, dlqRows(), "nothing was parked");
         assertEquals(List.of("4711"), held, "node 1 ran 4711 only");
 

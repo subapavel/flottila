@@ -248,7 +248,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
                                 MessageStore store, WorkQueue queue, Timer timer, Duration saveTimeout) {
-        return atLeastOnce(admission, flow, ingress, partitionKey, e -> Optional.empty(), new SequentialIntake(store, queue), timer, saveTimeout);
+        return atLeastOnce(admission, flow, ingress, partitionKey, e -> Optional.empty(), new SequentialIntake(store, queue), true, timer, saveTimeout);
     }
 
     /**
@@ -259,10 +259,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
      * expression, compiled at build time. The save's dedupe key is what {@code dedupeKey} gives that envelope, read just before
      * the save is asked — no value or {@code ""} is none (D-084), a failure to read it (a prop of its name but another type) a
      * retryable Nack with nothing saved — and the Accepted names the id the save answers. The save's
-     * {@code abandoned} answers whether the answer is decided already — by the save timeout or the stop's deadline.
+     * {@code abandoned} answers whether the answer is decided already — by the save timeout or the stop's deadline; its
+     * {@code keepInput} is {@code keepInput}, the flow's {@code RecordingPolicy.keepsBody()} (D-105).
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
-                                Function<Envelope, Optional<String>> dedupeKey, Intake intake, Timer timer, Duration saveTimeout) {
+                                Function<Envelope, Optional<String>> dedupeKey, Intake intake, boolean keepInput, Timer timer, Duration saveTimeout) {
         Objects.requireNonNull(flow, "flow");
         Objects.requireNonNull(ingress, "ingress");
         Objects.requireNonNull(partitionKey, "partitionKey");
@@ -316,7 +317,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 // the one save (D-082); a save still running once the answer is decided finds itself abandoned and queues nothing
                 Future<String> saved;
                 try {
-                    saved = intake.save(e, ingress.apply(e), flow, key, dedupe, () -> answer.future().isComplete());
+                    saved = intake.save(e, ingress.apply(e), flow, key, dedupe, keepInput, () -> answer.future().isComplete());
                 } catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
                     saved = Future.failedFuture(failure);
                 }

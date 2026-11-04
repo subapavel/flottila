@@ -72,7 +72,9 @@ class NodeBenchAckCommitsIT {
     void anAtLeastOnceAckCostsAtLeastOneCommitPerMessageAndItsWalSyncsAreCountedPerMessage() throws Exception {
         String db = database();
         JsonObject json = ack(db, 1, "commits");
-        assertEquals(MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"), "every 202 saved its ingress body");
+        // CORE-4c2: the durable ingress body is a journal record named by its body_refs row, no bodies row (D-105)
+        assertEquals(MESSAGES, count(db, "select count(distinct message_id) from body_refs where step = 0"), "every 202 saved its ingress body's ref");
+        assertEquals(0, count(db, "select count(*) from bodies"), "and no bodies row");
 
         Double commits = json.getDouble("commitsPerMessage");
         assertNotNull(commits, "the ack record carries commitsPerMessage: " + json.encode());

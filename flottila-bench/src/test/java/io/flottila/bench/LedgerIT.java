@@ -70,6 +70,11 @@ class LedgerIT {
     static final AtomicInteger cases = new AtomicInteger();
     /** A final-step row: the bench flow's last step, {@code to partner}, recorded as done. */
     static final String FINAL = "step_name = 'partner' and outcome = 'ok'";
+
+    /** {@link #FINAL} on the {@code messages} row named {@code alias}: in a self-join both rows have the columns. */
+    static String finalRow(String alias) {
+        return alias + ".step_name = 'partner' and " + alias + ".outcome = 'ok'";
+    }
     /** Linux reports a child killed by signal 9 as 128 + 9. */
     static final int SIGKILLED = 137;
     static S3Client s3;
@@ -117,8 +122,10 @@ class LedgerIT {
         assertTrue(unfinished > 0, "ACKed messages had no final-step row when node 1 died: " + json.encode());
         Instant killedAt = Instant.parse(json.getString("killedAt"));
         List<String> ackedIds = strings(json.getJsonArray("ackedIds"));
-        long finishedByNode2 = count(c.db, "select count(distinct f.id) from messages f join bodies b on b.message_id = f.id and b.step = 0"
-                + " where f." + FINAL + " and b.created_at < ?::timestamptz and f.created_at > ?::timestamptz and f.id = any(?)",
+        // CORE-4c2 (D-105): "saved before the kill" is the ingress row (step 0, committed in the save's one transaction), no
+        // longer a bodies row — bodies take no inserts; the ingress body is in node 1's journal
+        long finishedByNode2 = count(c.db, "select count(distinct f.id) from messages f join messages s on s.id = f.id and s.step = 0"
+                + " where " + finalRow("f") + " and s.created_at < ?::timestamptz and f.created_at > ?::timestamptz and f.id = any(?)",
                 killedAt.toString(), killedAt.toString(), ackedIds);
         assertTrue(finishedByNode2 >= 1, "an id saved and ACKed before the kill got its final-step row after it, from node 2: " + json.encode());
         assertTrue(finishedByNode2 <= unfinished, "only what was unfinished at the kill is finished after it: " + finishedByNode2 + " vs " + unfinished);
@@ -126,6 +133,9 @@ class LedgerIT {
         long deployedBeforeKill = count(c.db, "select count(*) from deployments where package = 'bench' and deployed_at < ?::timestamptz", killedAt.toString());
         assertEquals(1, deployedBeforeKill, "node 2 restored the bench package from its record, nothing re-deployed it");
         assertFalse(archives(c.prefix).isEmpty(), "the package archive is in S3 under the case prefix: " + c.prefix);
+        // CORE-4c2 (D-105): the ledger holds with every body in the journal — no bodies row and no S3 object but the archive
+        assertEquals(0, count(c.db, "select count(*) from bodies"), "no bodies row: the bodies were in the journal, across the kill");
+        assertEquals(archives(c.prefix), objects(c.prefix), "the only S3 objects under the case prefix are the package archive's");
 
         // the ledger, checked in the database rather than in the record
         assertEquals(acked, ackedIds.size(), "one id per ACK: " + json.encode());
@@ -221,6 +231,12 @@ class LedgerIT {
 
     static List<String> archives(String prefix) {
         return s3.listObjectsV2(ListObjectsV2Request.builder().bucket(BUCKET).prefix(prefix + "/archives/").build()).contents().stream()
+                .map(S3Object::key).toList();
+    }
+
+    /** Every S3 object key under the case prefix. */
+    static List<String> objects(String prefix) {
+        return s3.listObjectsV2(ListObjectsV2Request.builder().bucket(BUCKET).prefix(prefix + "/").build()).contents().stream()
                 .map(S3Object::key).toList();
     }
 

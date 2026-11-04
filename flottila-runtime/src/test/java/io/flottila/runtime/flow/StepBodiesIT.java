@@ -20,9 +20,10 @@ import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.flow.Replay;
 import io.flottila.core.flow.WorkerPolicy;
 import io.flottila.core.record.Meter;
-import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.journal.JournalRef;
+import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
@@ -71,29 +72,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * P1-09k2 (D-064, D-066, F-10) against Postgres: every kept step body of a run is made durable — its {@code bodies} row
- * committed — when the run ends and before its row is written, so a replay from any step works after a restart, on a fresh
- * node: a new tiered store (fresh spool directory and key), a new pool, a new message store. A row's {@code body_key} always
- * names a durable body; a body above the durable bound is recorded metadata-only; a persisted body's local copy is gone once
- * the run ended.
+ * P1-09k2 (D-064, D-066, F-10) against Postgres: every kept step body of a run is made durable — its record forced in the
+ * node's journal and its {@code body_refs} row committed — when the run ends and before its row is written, so a replay from
+ * any step works after a restart: a new tiered store over the node's journal reopened, a new pool, a new message store. A
+ * row's {@code body_key} always names a durable body; a body above the durable bound is recorded metadata-only; a persisted
+ * body's local copy is gone once the run ended.
+ *
+ * <p>CORE-4c2 changed the expectations, each for one reason: a durable body is a journal record named by a {@code body_refs}
+ * row, no {@code bodies} row (D-105; {@code bodies} is read only, pre-V12); the spool is the journal's spill (no spool
+ * directory, no spool key); and "a fresh node" is now the same node restarted over its journal — a body is read on its owner
+ * node only until CORE-5 adds peer reads (CORE-3 item 8), so a node with another id and journal could not read it.
  *
  * <p>Flow {@code orders}: {@code one} (hands on a new body of {@value #SMALL} bytes, held in memory), {@code two} (a new body
- * of {@value #LARGE} bytes, spooled), {@code three} (notes its input, hands it on). Each writer writes under the envelope's
- * {@link Envelope#nextKey()} into the runtime's tiered store — memory up to {@value #MEMORY_TIER} bytes, spool above,
- * Postgres tier bound {@value #DURABLE_BOUND}. Nothing waits on wall time but the bounds of the spins.
+ * of {@value #LARGE} bytes, spilled), {@code three} (notes its input, hands it on). Each writer writes under the envelope's
+ * {@link Envelope#nextKey()} into the runtime's tiered store — memory up to {@value #MEMORY_TIER} bytes, the journal's spill
+ * above, durable bound {@value #DURABLE_BOUND}. Nothing waits on wall time but the bounds of the spins.
  */
 class StepBodiesIT {
 
     static final Path NO_FILES = Path.of("");
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
     static final long MIB = 1L << 20;
-    /** Bodies up to this many bytes stay in memory; larger ones spool. */
+    /** Bodies up to this many bytes stay in memory; larger ones spill into the journal. */
     static final long MEMORY_TIER = 1024;
-    /** The Postgres tier's bound: a larger body cannot be made durable. */
+    /** The durable bound: a larger body cannot be made durable. */
     static final long DURABLE_BOUND = 4096;
     static final int SMALL = 300;    // memory
-    static final int LARGE = 3000;   // spool, under the durable bound
-    static final int ABOVE = 5000;   // spool, above the durable bound
+    static final int LARGE = 3000;   // spill, under the durable bound
+    static final int ABOVE = 5000;   // spill, above the durable bound
     static final Duration LEASE = Duration.ofSeconds(30);
     static final Duration STOP_BOUND = Duration.ofHours(1);   // on the fake timer: never reached, a stop waits for its flights
     static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
@@ -120,7 +126,7 @@ class StepBodiesIT {
     final List<Buffer> stamped = new CopyOnWriteArrayList<>();
     final List<NodeStores> nodes = new CopyOnWriteArrayList<>();
     final List<FlowWorker> workers = new CopyOnWriteArrayList<>();
-    @TempDir Path spool;
+    @TempDir Path data;
 
     record Input(String step, String messageId, Buffer bytes) {}
 
@@ -146,7 +152,8 @@ class StepBodiesIT {
 
     @BeforeEach
     void empty() {
-        admin.query("truncate message_keys, messages, dlq, work, bodies").execute().await();
+        // a case's node journal lives in its own temp dir: its node row and segment rows go with the case
+        admin.query("truncate message_keys, messages, dlq, work, bodies, body_refs, journal_segments, journal_nodes").execute().await();
     }
 
     @AfterEach
@@ -222,26 +229,33 @@ class StepBodiesIT {
     }
 
     /**
-     * One node's stores over a pool of its own: the runtime's tiered store (memory, a spool directory under a fresh key, the
-     * Postgres tier), the Postgres message store, queue and DLQ, and a builder over them with the fake clock and timer.
+     * One process of node {@code node-a} over a pool of its own: its journal under {@code <data>/journal} (reopened by the next
+     * process), the runtime's tiered store over it (memory, the journal, its refs in Postgres), the Postgres message store,
+     * queue and DLQ, and a builder over them with the fake clock and timer.
      */
     final class NodeStores {
         final Pool pool;
-        final Path spoolDir;
+        final TestJournals.Opened journal;
+        final Path journalDir;
         final TieredBlobStore blobs;
         final PgMessageStore messages;
         final FlowBuilder builder;
         private boolean closed;
 
-        NodeStores(String name) {
+        NodeStores() {
             pool = PgBuilder.pool().connectingTo(connectOptions()).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
-            spoolDir = spool.resolve(name);
-            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, MEMORY_TIER, 16 * MIB, spoolDir, DeliveryModesIT.freshKey()),
-                    Hasher.sha256(), new PgBodies(pool, DURABLE_BOUND));
+            journalDir = data.resolve("journal");
+            try {
+                journal = TestJournals.open(pool, Files.createDirectories(journalDir), "node-a");
+            } catch (Exception e) {
+                throw new IllegalStateException("fixture: the node's journal did not open", e);
+            }
+            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, MEMORY_TIER, 16 * MIB, DURABLE_BOUND), Hasher.sha256(),
+                    journal.journal(), journal.tenant(), pool);
             messages = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), blobs, rt.hasher(), Map.of(partner.scheme(), partner));
             builder = new FlowBuilder(runtime, steps(), List.of(), endpoints)
-                    .recording(messages, Meter.system()).queue(new PgWorkQueue(pool)).dlq(new PgDlq(pool));
+                    .recording(messages, Meter.system()).queue(new PgWorkQueue(pool, "node-a")).dlq(new PgDlq(pool));
             nodes.add(this);
         }
 
@@ -251,12 +265,30 @@ class StepBodiesIT {
             return w;
         }
 
-        /** Its process is gone: the message store and the pool close; its memory, spool key and directory are never used again. */
+        /** Its process is gone: the message store, the journal and the pool close; its memory is never used again. */
         void close() {
             if (closed) return;
             closed = true;
             messages.close();
+            try {
+                journal.close();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
             pool.close().await();
+        }
+
+        /** The bytes of the record {@code key}'s {@code body_refs} row names, read through this process's journal; empty without a row. */
+        Optional<Buffer> kept(BlobKey key) {
+            for (Row r : admin.preparedQuery("select segment, position, length from body_refs where message_id = $1 and step = $2 and part = $3")
+                    .execute(Tuple.of(key.messageId(), key.step(), key.part())).await()) {
+                try {
+                    return Optional.of(Buffer.buffer(journal.journal().read(new JournalRef(r.getLong(0), r.getLong(1), r.getLong(2)))));
+                } catch (IOException e) {
+                    throw new UncheckedIOException("the kept ref of " + key + " does not read", e);
+                }
+            }
+            return Optional.empty();
         }
     }
 
@@ -290,13 +322,9 @@ class StepBodiesIT {
         until(() -> count("messages where id = '" + id + "'") == n, "fixture: " + n + " rows of " + id);
     }
 
-    /** The bytes of {@code key}'s {@code bodies} row as another session sees them, or empty. */
-    static Optional<Buffer> bodiesRow(BlobKey key) {
-        for (Row r : admin.preparedQuery("select bytes from bodies where message_id = $1 and step = $2 and part = $3")
-                .execute(Tuple.of(key.messageId(), key.step(), key.part())).await()) {
-            return Optional.of(r.getBuffer(0));
-        }
-        return Optional.empty();
+    /** {@code bodies} rows: none for a new message (CORE-4c2: the table is read only, pre-V12). */
+    static long bodiesRows() {
+        return count("bodies");
     }
 
     /** The {@code body_key} of message {@code id}'s row at {@code step} as another session sees it; empty for metadata-only. */
@@ -311,10 +339,10 @@ class StepBodiesIT {
         return admin.query("select count(*) from " + from).execute().await().iterator().next().getLong(0);
     }
 
-    /** Rows whose {@code body_key} names no {@code bodies} row: a row that promises bytes nobody can read. */
+    /** Rows whose {@code body_key} names no {@code body_refs} row: a row that promises bytes nobody can read. */
     static long rowsWithoutTheirBody() {
         return count("messages m where m.body_key is not null and not exists ("
-                + "select 1 from bodies b where b.message_id || '/' || b.step || '/' || b.part = m.body_key)");
+                + "select 1 from body_refs b where b.message_id || '/' || b.step || '/' || b.part = m.body_key)");
     }
 
     /** The lease of {@code messageId}'s item runs out now (the queue measures leases by the database clock). */
@@ -347,50 +375,53 @@ class StepBodiesIT {
     }
 
     /**
-     * The done-when of P1-09k: a message ran through {@code one} (memory), {@code two} (spool) and {@code three} on node A; node
-     * A is gone. On a fresh node B — new tiered store with a fresh spool directory and key, new pool, new message store — a
-     * replay from step 3 gives step 3 the bytes the original run gave it, read from Postgres by the key step 2's row names; a
-     * replay from step 2 does the same for the body that was held in memory.
+     * The done-when of P1-09k: a message ran through {@code one} (memory), {@code two} (spill) and {@code three}; the node's
+     * process is gone. In the next process — its journal reopened, a new tiered store, new pool, new message store — a replay
+     * from step 3 gives step 3 the bytes the original run gave it, read from the journal by the ref Postgres names for the key
+     * step 2's row names; a replay from step 2 does the same for the body that was held in memory. (CORE-4c2: was "on a fresh
+     * node", read from {@code bodies}; a body is read on its owner node only until CORE-5.)
      */
     @ParameterizedTest
     @ValueSource(strings = {"at-least-once", "sync"})
-    void aReplayFromStepThreeOnAFreshNodeAfterARestartReproducesTheStepThreeInputByteForByte(String mode) {
+    void aReplayFromStepThreeAfterARestartReproducesTheStepThreeInputByteForByte(String mode) {
         FlowDefinition def = flow(mode, List.of(ONE, TWO, THREE));
-        NodeStores a = new NodeStores("a");
+        NodeStores a = new NodeStores();
         String id = "sb-" + mode;
         run(a, def, id);
         BlobKey stepOne = BlobKey.body(id, 1);
         BlobKey stepTwo = BlobKey.body(id, 2);
         assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), where.get(stepOne), "fixture: step 1's body was held in memory");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), where.get(stepTwo), "fixture: step 2's body was spooled");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPILL), where.get(stepTwo), "fixture: step 2's body was spilled");
         List<Buffer> original = inputsOf("three", id);
         assertEquals(List.of(written.get(stepTwo)), original, "fixture: step 3 ran once, on step 2's output");
         assertEquals(Optional.of(stepTwo.messageId() + "/2/body"), rowBodyKey(id, 2), "fixture: step 2's row keeps its body by key");
-        a.close();   // node A is gone: its memory, its spool key, its pool
+        assertEquals(0, bodiesRows(), "no bodies row: the bytes are in the journal only");
+        a.close();   // the process is gone: its memory, its index, its pool
 
-        NodeStores b = new NodeStores("b");
-        assertEquals(Optional.empty(), b.blobs.location(stepTwo), "fixture: the fresh store holds nothing locally");
+        NodeStores b = new NodeStores();
+        assertEquals(Optional.empty(), b.blobs.location(stepTwo), "fixture: the restarted store holds nothing locally");
         Replay replay = b.builder.replay(def, NO_FILES);
-        Envelope fromThree = assertDoesNotThrow(() -> replay.from(id, 3), "a replay from step 3 on the fresh node");
+        Envelope fromThree = assertDoesNotThrow(() -> replay.from(id, 3), "a replay from step 3 after the restart");
         assertEquals(Optional.of(id), fromThree.get(Envelope.REPLAY_OF));
         List<Buffer> replayed = inputsOf("three", fromThree.id());
         assertEquals(1, replayed.size(), "step 3 ran once in the replay");
         assertEquals(original.get(0), replayed.get(0), "the replayed step-3 input is the original step-3 input, byte for byte");
 
-        Envelope fromTwo = assertDoesNotThrow(() -> replay.from(id, 2), "a replay from step 2 on the fresh node");
-        assertEquals(List.of(written.get(stepOne)), inputsOf("two", fromTwo.id()), "step 2 replayed on step 1's in-memory body, read from Postgres");
+        Envelope fromTwo = assertDoesNotThrow(() -> replay.from(id, 2), "a replay from step 2 after the restart");
+        assertEquals(List.of(written.get(stepOne)), inputsOf("two", fromTwo.id()), "step 2 replayed on step 1's in-memory body, read from the journal");
     }
 
     /**
      * D-066 with the trail: the first run of a message whose {@code stamp} step is not deterministic crashes after its stamp,
      * so its item is claimed again. The first run's trail made its stamp body durable, under the plain key; the rerun stamps
-     * other bytes under a key of its own ({@code body~2}). The stamp row is the first run's (the first row wins), and on a
-     * fresh node a replay from step 2 reads the first run's bytes — the bytes that row describes.
+     * other bytes under a key of its own ({@code body~2}). The stamp row is the first run's (the first row wins), and after a
+     * restart a replay from step 2 reads the first run's bytes — the bytes that row describes. (CORE-4c2: was "on a fresh
+     * node", the first run's bytes in its {@code bodies} row; now its kept ref, read back from the journal.)
      */
     @Test
-    void aRerunOfAStampingStepKeepsTheFirstRowsBytesReplayableOnAFreshNode() {
+    void aRerunOfAStampingStepKeepsTheFirstRowsBytesReplayableAfterARestart() {
         FlowDefinition def = flow("at-least-once", List.of(STAMP, CRASH_FIRST, THREE));
-        NodeStores a = new NodeStores("a");
+        NodeStores a = new NodeStores();
         String id = "sb-rerun";
         Envelope in = ingress(a, id);
         assertEquals(new Ack.Accepted(id), a.builder.delivery(def, NO_FILES).apply(in).await(), "fixture: accepted");
@@ -407,24 +438,28 @@ class StepBodiesIT {
         rowsOf(id, 4);   // ingress, stamp (attempt 1's), crash-first and three (attempt 2's)
         assertEquals(stamped.get(1), written.get(new BlobKey(id, 1, "body~2")), "fixture: the rerun wrote under its attempt's key");
         assertEquals(Optional.of(id + "/1/body"), rowBodyKey(id, 1), "the stamp row is the first run's, under the plain key");
-        assertEquals(Optional.of(stamped.get(0)), bodiesRow(first), "the first run's stamp body is durable with the first run's bytes");
+        assertEquals(Optional.of(stamped.get(0)), a.kept(first), "the first run's stamp body is durable with the first run's bytes");
         a.close();
 
-        NodeStores b = new NodeStores("b");
-        Envelope replayed = assertDoesNotThrow(() -> b.builder.replay(def, NO_FILES).from(id, 2), "a replay from step 2 on a fresh node");
+        NodeStores b = new NodeStores();
+        Envelope replayed = assertDoesNotThrow(() -> b.builder.replay(def, NO_FILES).from(id, 2), "a replay from step 2 after the restart");
         assertEquals(List.of(stamped.get(0)), inputsOf("three", replayed.id()), "step 3 of the replay read the bytes the stamp row describes");
     }
 
-    /** The invariant behind it all: after runs of both modes over memory and spool bodies, every row's {@code body_key} has its {@code bodies} row. */
+    /**
+     * The invariant behind it all: after runs of both modes over memory and spilled bodies, every row's {@code body_key} has its
+     * {@code body_refs} row (CORE-4c2: was its {@code bodies} row) and no {@code bodies} row is written.
+     */
     @Test
-    void everyKeptBodyKeyHasItsBodiesRow() {
-        NodeStores a = new NodeStores("a");
+    void everyKeptBodyKeyHasItsBodyRef() {
+        NodeStores a = new NodeStores();
         for (String mode : List.of("at-least-once", "sync")) {
             FlowDefinition def = flow(mode, List.of(ONE, TWO, THREE));
             for (int i = 1; i <= 3; i++) run(a, def, "sb-" + mode + "-" + i);
         }
         assertEquals(6 * 4, count("messages where body_key is not null"), "witness: every row of the six messages (ingress and three steps) keeps its body by key");
         assertEquals(0, rowsWithoutTheirBody(), "no row names a body key without a durable body behind it");
+        assertEquals(0, bodiesRows(), "and no bodies row: every durable body is a journal record");
     }
 
     /**
@@ -436,15 +471,16 @@ class StepBodiesIT {
     @ValueSource(strings = {"at-least-once", "sync"})
     void aBodyAboveTheBoundIsRecordedMetadataOnly(String mode) {
         FlowDefinition def = flow(mode, List.of(ONE, HUGE, THREE));
-        NodeStores a = new NodeStores("a");
+        NodeStores a = new NodeStores();
         String id = "sb-huge-" + mode;
         run(a, def, id);
         BlobKey huge = BlobKey.body(id, 2);
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), where.get(huge), "fixture: the huge body was spooled");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPILL), where.get(huge), "fixture: the huge body was spilled");
         assertEquals(Optional.empty(), rowBodyKey(id, 2), "the row of the step whose body is above the bound has no body key");
         long size = admin.preparedQuery("select body_size from messages where id = $1 and step = 2").execute(Tuple.of(id)).await().iterator().next().getLong(0);
         assertEquals(ABOVE, size, "its size is still recorded");
-        assertEquals(Optional.empty(), bodiesRow(huge), "nothing was written for it");
+        assertEquals(Optional.empty(), a.kept(huge), "no ref was written for it");
+        assertEquals(0, bodiesRows(), "nor a bodies row");
         assertEquals(Optional.of(id + "/1/body"), rowBodyKey(id, 1), "the row before it keeps its key");
         assertEquals(Optional.empty(), rowBodyKey(id, 3), "step 3 handed the huge body on unchanged: its row names no key either");
         assertEquals(0, rowsWithoutTheirBody(), "no row names a body that is not durable");
@@ -452,23 +488,27 @@ class StepBodiesIT {
         assertTrue(refused.getMessage().contains("metadata-only"), "a replay that needs the body names why it cannot: " + refused.getMessage());
     }
 
-    /** A run's step bodies leave the node's memory and spool once its trail made them durable: nothing of the run stays local. */
+    /**
+     * A run's step bodies leave the node's memory and spill once its trail made them durable: nothing of the run stays local
+     * (CORE-4c2: durable is a kept ref, no {@code bodies} row; the spill file moved into the journal's segments, no spool file).
+     */
     @ParameterizedTest
     @ValueSource(strings = {"at-least-once", "sync"})
     void aRunsLocalCopiesAreReleasedWhenItEnds(String mode) {
         FlowDefinition def = flow(mode, List.of(ONE, TWO, THREE));
-        NodeStores a = new NodeStores("a");
+        NodeStores a = new NodeStores();
         String id = "sb-local-" + mode;
         run(a, def, id);
         BlobKey stepOne = BlobKey.body(id, 1);
         BlobKey stepTwo = BlobKey.body(id, 2);
         assertEquals(Optional.of(TieredBlobStore.Location.MEMORY), where.get(stepOne), "fixture: step 1's body was held in memory");
-        assertEquals(Optional.of(TieredBlobStore.Location.SPOOL), where.get(stepTwo), "fixture: step 2's body was spooled");
+        assertEquals(Optional.of(TieredBlobStore.Location.SPILL), where.get(stepTwo), "fixture: step 2's body was spilled");
         for (BlobKey k : List.of(BlobKey.body(id, 0), stepOne, stepTwo)) {
             assertEquals(Optional.empty(), a.blobs.location(k), "no local copy left of " + k);
-            assertTrue(bodiesRow(k).isPresent(), "durable instead: " + k);
+            assertTrue(a.kept(k).isPresent(), "durable instead: " + k);
         }
         assertEquals(0, a.blobs.memoryInUse(), "the memory budget is back");
-        until(() -> filesUnder(a.spoolDir) == 0, "the spool file of step 2's body unlinked");
+        until(() -> filesUnder(a.journalDir.resolve("spill")) == 0, "step 2's spill file moved into the journal's segments");
+        assertTrue(filesUnder(a.journalDir.resolve("segments")) > 0, "witness: the journal's segments hold the run's records");
     }
 }

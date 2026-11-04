@@ -7,398 +7,567 @@ import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Hasher;
 import io.flottila.api.InputStreamReadStream;
+import io.flottila.runtime.journal.Journal;
+import io.flottila.runtime.journal.JournalRecord;
+import io.flottila.runtime.journal.JournalRef;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.ReadStream;
+import io.vertx.sqlclient.Pool;
+import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.SqlClient;
+import io.vertx.sqlclient.Tuple;
 
-import javax.crypto.SecretKey;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
+import java.io.InterruptedIOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Consumer;
 
 /**
- * The runtime {@link BlobStore} (ARCHITECTURE §4 "where the bytes live"): a body stays in memory while it is
- * at most {@link Config#memoryTierBytes()} and the node-wide {@link MemoryBudget} has room; otherwise it goes
- * to the encrypted local spool (the S3 body tier is gone, D-105: the body journal replaces it). A streamed body starts in
- * memory and spills the moment it outgrows either limit — the prefix already seen is replayed into the sink, the hash runs
- * over every byte once. Objects are keyed by message id + step ({@link BlobKey}), never by content. Every limit is finite;
+ * The runtime {@link BlobStore} (ARCHITECTURE §4 "where the bytes live", D-105): a body stays in memory while it is at most
+ * {@link Config#memoryTierBytes()} and {@code FLOTTILA_JOURNAL_RECORD_MAX} and the node-wide {@link MemoryBudget} has room;
+ * otherwise it is a spill of the node's body journal ({@link Journal#spill}: a large record of its own under
+ * {@code <journal>/spill}, encrypted at rest). A streamed body starts in memory and spills the moment it outgrows either limit —
+ * the prefix already seen is replayed into the spill; the hash runs over every byte once (in memory at the end, or by the
+ * spill while it streams). Objects are keyed by message id + step ({@link BlobKey}), never by content. Every limit is finite;
  * sizes are long.
  *
- * <p>Blocking file I/O runs on a virtual thread per write or read — opening the sink included; the
- * caller's stream is paused while the sink is behind and resumed as it drains, so an event-loop source is
- * never blocked.
+ * <p>Blocking file I/O runs on a virtual thread — the spill of a streamed body on one of its own that drains a bounded queue;
+ * the caller's stream is paused while the spill is behind and resumed as it drains, so an event-loop source is never blocked.
  *
- * <p>With a durable tier ({@link PgBodies}, D-058, D-061) {@link #persist} moves a memory or spool body into Postgres: once
- * the insert has committed, the index entry and its memory budget go before the future completes, a spool file is unlinked
- * afterwards on a virtual thread. From then on — and on any node, after any restart — a key missing from the index is read
- * from Postgres; nothing is cached locally. {@link #persistIn} inserts it inside the caller's transaction instead and leaves
- * the local copy until the caller says the transaction committed (D-082). A key's durable bytes never change (D-061 amended
- * by FIX-35): other bytes under a durable key are refused and stay local. No path of this store deletes a durable body.
+ * <p><b>Durable.</b> With Postgres ({@link #TieredBlobStore(Config, Hasher, Journal, int, Pool)}), {@link #persist} makes a
+ * local body durable in the journal — a memory body is appended as a record, a spill persisted as its segment — and only once
+ * that is forced commits the key's {@code body_refs} row naming it (CORE-3 items 5–7); then the local copy goes. A key's durable
+ * bytes never change (D-061 amended by FIX-35): a persist that meets the key's row while it holds a local copy reads the stored
+ * record back and compares it byte for byte, 64 KiB at a time — equal is quiet, other bytes fail with an
+ * {@link IllegalStateException} and change nothing; a row whose segment row is gone (swept) is replaced in the same statement.
+ * A persist of a key held nowhere locally adds no record: one statement holds its source row — the key's {@code body_refs} row,
+ * or for an ingress key the work row of its message — and that row's segment row {@code for key share}, inserting the
+ * {@code body_refs} row from them; no source is a {@link BlobNotFoundException}. No body byte goes to Postgres; {@code bodies}
+ * rows (pre-V12) are only read. The intake makes its body durable with {@link #forced} and commits the rows itself (D-082).
  *
- * <p>Every spool write has a file of its own (FIX-35): the index entry holds its path, and an unlink — after a persist, an
- * evict, or a write of the key that replaced the entry — only ever removes the file of the entry it took out of the index. A
- * stream that finds its entry's file gone reads the key's row only when a persist proved the row holds that entry's bytes;
- * otherwise it fails.
+ * <p><b>Reads</b> (CORE-3 item 8): the local copy; then the in-memory location index of the hot path — filled when an intake's
+ * save committed ({@link Durable#committed}) and by a claim of this node's work ({@link #located}), emptied by the completion
+ * ({@link #forget}), at most {@link Config#indexEntries()} entries, the oldest segment's first out; then the key's
+ * {@code body_refs} row, then (an ingress key) the work row of its message, then its pre-V12 {@code bodies} row, then
+ * {@link BlobNotFoundException}. A ref whose segment row is gone reads as removed (never written); a ref on another node fails
+ * retryable, naming that node ({@link RemoteBodyException}; CORE-5 adds peer reads), and exists there. Without Postgres a key
+ * not held locally is not found and every persist is refused.
  *
  * @since 0.1
  */
 public final class TieredBlobStore implements BlobStore {
 
     /** @since 0.1 */
-    public enum Location { MEMORY, SPOOL }
+    public enum Location { MEMORY, SPILL }
 
     /**
-     * The tiers. {@code memoryTierBytes} may be 0 (no memory tier) and never exceeds {@code memoryBudgetBytes}.
+     * The tiers. {@code memoryTierBytes} may be 0 (no memory tier) and never exceeds {@code memoryBudgetBytes};
+     * {@code durableMaxBytes} bounds what {@link #persist} makes durable; {@code indexEntries} bounds the location index.
      *
      * @since 0.1
      */
-    public record Config(long treeLimit, long memoryTierBytes, long memoryBudgetBytes, Path spoolDir, SecretKey spoolKey) {
+    public record Config(long treeLimit, long memoryTierBytes, long memoryBudgetBytes, long durableMaxBytes, int indexEntries) {
+
+        /** The location index's bound by default (CORE-3 item 8). */
+        public static final int INDEX_ENTRIES = 262_144;
+
         public Config {
             if (treeLimit <= 0) throw new IllegalArgumentException("treeLimit must be positive, was " + treeLimit);
             if (memoryTierBytes < 0) throw new IllegalArgumentException("memoryTierBytes must not be negative, was " + memoryTierBytes);
             if (memoryBudgetBytes <= 0) throw new IllegalArgumentException("memoryBudgetBytes must be positive, was " + memoryBudgetBytes);
             if (memoryTierBytes > memoryBudgetBytes) throw new IllegalArgumentException("memoryTierBytes " + memoryTierBytes + " above the memory budget " + memoryBudgetBytes);
             if (memoryTierBytes > Integer.MAX_VALUE) throw new IllegalArgumentException("memoryTierBytes above " + Integer.MAX_VALUE + ": one in-memory body is one buffer");
-            Objects.requireNonNull(spoolDir, "spoolDir");
-            Objects.requireNonNull(spoolKey, "spoolKey");
+            if (durableMaxBytes <= 0) throw new IllegalArgumentException("durableMaxBytes must be positive, was " + durableMaxBytes);
+            if (indexEntries <= 0) throw new IllegalArgumentException("indexEntries must be positive, was " + indexEntries);
+        }
+
+        /** The tiers with the default index bound. */
+        public Config(long treeLimit, long memoryTierBytes, long memoryBudgetBytes, long durableMaxBytes) {
+            this(treeLimit, memoryTierBytes, memoryBudgetBytes, durableMaxBytes, INDEX_ENTRIES);
         }
     }
 
-    static final long DEFAULT_QUEUE_HIGH_WATER = 1L << 20;   // bytes queued for the sink before the source is paused
+    /**
+     * A body made durable in the journal for the intake ({@link #forced}): its record forced, its ref known. In the open-save set
+     * from the record's reservation until {@link #committed} or {@link #rolledBack} (CORE-3 item 6); a body that was durable
+     * already (no local copy) has no ref of its own: its rows name it by its key.
+     *
+     * @since 0.1
+     */
+    public final class Durable {
+        private final BlobKey key;
+        private final Stored local;   // null: durable already
+        private final Save save;      // null: durable already
+
+        private Durable(BlobKey key, Stored local, Save save) {
+            this.key = key;
+            this.local = local;
+            this.save = save;
+        }
+
+        /** The node whose journal holds the record. */
+        public String node() { return node; }
+
+        /** The record's ref; null for a body that was durable already, whose rows name it by its key. */
+        public JournalRef ref() { return save == null ? null : save.ref; }
+
+        /**
+         * Keeps the key's ref ({@code body_refs}) on {@code tx}, the caller's transaction, as {@link #persist} does (FIX-35): a row
+         * the key has already, naming a live record, is compared with the local bytes by reading that record back — the same
+         * bytes keep it, other bytes fail with {@link IllegalStateException} (the caller's transaction rolls back); one on
+         * another node fails with {@link RemoteBodyException}. Nothing for a body durable already.
+         */
+        public Future<Void> keepIn(SqlClient tx) {
+            return save == null ? Future.succeededFuture() : keep(tx, key, local, save.ref);
+        }
+
+        /** The caller's transaction committed and its commit was acknowledged: out of the open saves, the ref indexed, the local copy gone. */
+        public void committed() {
+            if (save == null) return;
+            saves.remove(save);
+            index.put(key, save.ref);
+            release(key, local);
+        }
+
+        /** The caller's transaction rolled back (or its outcome is known to be no commit): out of the open saves; the body stays local. */
+        public void rolledBack() {
+            if (save != null) saves.remove(save);
+        }
+    }
+
+    static final long DEFAULT_QUEUE_HIGH_WATER = 1L << 20;   // bytes queued for the spill before the source is paused
+    /** FIX-35's read-back compares this many bytes at a time. */
+    private static final int COMPARE_BLOCK = 64 * 1024;
+
+    /** A ref row whose segment row is gone (swept, CORE-4d): it names no record any more. */
+    private static final String GONE = "not exists (select 1 from journal_segments s where s.node = r.node and s.segment = r.segment)";
+    /**
+     * A persist's ref (FIX-35 without bytes in Postgres): inserted; or the key's row met — replaced in place when its segment row
+     * is gone, else left as it was. Answers the row as it is now: this record's ref, or the one it already names.
+     */
+    private static final String KEEP = "insert into body_refs as r (message_id, step, part, node, segment, position, length) values ($1, $2, $3, $4, $5, $6, $7) "
+            + "on conflict (message_id, step, part) do update set "
+            + "node = case when " + GONE + " then excluded.node else r.node end, "
+            + "segment = case when " + GONE + " then excluded.segment else r.segment end, "
+            + "position = case when " + GONE + " then excluded.position else r.position end, "
+            + "length = case when " + GONE + " then excluded.length else r.length end, "
+            + "created_at = case when " + GONE + " then now() else r.created_at end, "
+            + "archived_at = case when " + GONE + " then null else r.archived_at end "
+            + "returning node, segment, position, length";
+    /**
+     * A persist of a key held nowhere locally (CORE-3 item 10, last sentence): its source — the key's ref row, or for an ingress
+     * key ($4) its message's work row — with that row's segment row, both {@code for key share}; a work row's ref is inserted as
+     * the key's. Answers the sources found (or the key's pre-V12 {@code bodies} row): none is no body.
+     */
+    private static final String REFERENCE = """
+            with kept as (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
+                           where r.message_id = $1 and r.step = $2 and r.part = $3 for key share),
+            src as (select w.body_node, w.body_segment, w.body_position, w.body_length from work w
+                      join journal_segments s on s.node = w.body_node and s.segment = w.body_segment
+                     where $4 and w.id = $1 and not exists (select 1 from kept) limit 1 for key share),
+            ins as (insert into body_refs(message_id, step, part, node, segment, position, length)
+                    select $1, $2, $3, body_node, body_segment, body_position, body_length from src on conflict do nothing returning 1)
+            select (select count(*) from kept) + (select count(*) from ins)
+                 + (select count(*) from bodies where message_id = $1 and step = $2 and part = $3)""";
+    /** Where a key's body lies, as Postgres names it: its ref row first, then (an ingress key, $4) its message's work row. */
+    private static final String FIND = """
+            select 0 as o, r.node, r.segment, r.position, r.length, s.node is not null as live from body_refs r
+              left join journal_segments s on s.node = r.node and s.segment = r.segment
+             where r.message_id = $1 and r.step = $2 and r.part = $3
+            union all
+            select 1, w.body_node, w.body_segment, w.body_position, w.body_length, s.node is not null from work w
+              left join journal_segments s on s.node = w.body_node and s.segment = w.body_segment
+             where $4 and w.id = $1 and w.body_node is not null
+            order by o limit 1""";
 
     private final Config config;
     private final Hasher hasher;
     private final MemoryBudget budget;
-    private final SpoolCipher cipher;
+    private final Journal journal;
+    private final int tenant;
+    private final String node;
+    private final long memoryTier;   // the memory tier, at most RECORD_MAX: an in-memory body is always one record
+    private final Pool pool;          // null: no Postgres, nothing durable
+    private final PgBodies bodies;    // the pre-V12 rows, read only; null without Postgres
     private final long queueHighWater;
     private final Map<BlobKey, Stored> objects = new ConcurrentHashMap<>();
-    private final AtomicLong spoolNames = new AtomicLong();   // one spool file name per write: no two writes share a file
-    private final PgBodies bodies;   // the durable tier; null = none
-    private volatile long peakQueued;   // the most bytes any streaming write held ahead of its sink (a test seam for the back-pressure bound)
+    private final LocationIndex index;
+    private final Set<Save> saves = ConcurrentHashMap.newKeySet();
+    private volatile long peakQueued;   // the most bytes any streaming write held ahead of its spill (a test seam for the back-pressure bound)
     private volatile Runnable afterSinkDecision;   // test seam: see afterSinkDecision(Runnable)
-    private volatile Consumer<BlobKey> afterRelease;   // test seam: see afterRelease(Consumer)
 
     private static final System.Logger LOG = System.getLogger(TieredBlobStore.class.getName());
-    /** What a persist of a body durable already runs once committed: there is no local copy to let go. */
-    private static final Runnable NOTHING_TO_RELEASE = () -> { };
+
+    /** One open save (CORE-3 item 6): a record reserved or forced whose rows' commit or rollback is not yet acknowledged. */
+    private static final class Save {
+        final JournalRef ref;
+
+        Save(JournalRef ref) { this.ref = ref; }
+    }
 
     /**
-     * One write's index entry. Identity equality, never value equality (D-062): a same-size rewrite of a body has the same
-     * location and size, and {@link #release} must not take it for the entry its persist read. A spool entry's file is its
-     * write's own (FIX-35).
+     * One write's local copy. Identity equality, never value equality (D-062): a same-size rewrite of a body has the same
+     * location and size, and {@link #release} must not take it for the entry its persist read.
      */
     private static final class Stored {
         private final Location location;
-        private final Buffer bytes;
-        private final Path file;
+        private final Buffer bytes;          // MEMORY
+        private final Journal.Spill spill;   // SPILL
         private final long size;
-        // set by a persist that found the key's row holding this entry's bytes, before it releases the entry (FIX-35): only then
-        // may a read whose spool file is gone read the row instead
-        private volatile boolean durable;
 
-        Stored(Location location, Buffer bytes, Path file, long size) {
+        Stored(Location location, Buffer bytes, Journal.Spill spill, long size) {
             this.location = location;
             this.bytes = bytes;
-            this.file = file;
+            this.spill = spill;
             this.size = size;
         }
 
         Location location() { return location; }
-        Buffer bytes() { return bytes; }
-        Path file() { return file; }
         long size() { return size; }
-        boolean durable() { return durable; }
-        void provenDurable() { durable = true; }
+
+        /** A fresh stream of the local bytes. */
+        InputStream stream() throws IOException {
+            return location == Location.MEMORY ? new ByteArrayInputStream(bytes.getBytes()) : spill.open();
+        }
     }
 
-    /** A store without a durable tier: {@link #persist} refuses every key. */
-    public TieredBlobStore(Config config, Hasher hasher) {
-        this(config, hasher, null, DEFAULT_QUEUE_HIGH_WATER);
+    /** A store without Postgres: bodies live in memory and in the journal's spill; {@link #persist} refuses every key. */
+    public TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId) {
+        this(config, hasher, journal, tenantKeyId, null, DEFAULT_QUEUE_HIGH_WATER);
     }
 
-    /** A store whose {@link #persist} moves memory and spool bodies into {@code bodies}, the Postgres tier. */
-    public TieredBlobStore(Config config, Hasher hasher, PgBodies bodies) {
-        this(config, hasher, Objects.requireNonNull(bodies, "bodies"), DEFAULT_QUEUE_HIGH_WATER);
+    /** The node's store: bodies made durable in {@code journal} under the tenant key {@code tenantKeyId}, their refs on {@code pool}. */
+    public TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, Pool pool) {
+        this(config, hasher, journal, tenantKeyId, Objects.requireNonNull(pool, "pool"), DEFAULT_QUEUE_HIGH_WATER);
     }
 
     /** Test seam: a small high-water mark makes the pause / resume of the source deterministic. */
-    TieredBlobStore(Config config, Hasher hasher, long queueHighWater) {
-        this(config, hasher, null, queueHighWater);
+    TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, long queueHighWater) {
+        this(config, hasher, journal, tenantKeyId, null, queueHighWater);
     }
 
-    private TieredBlobStore(Config config, Hasher hasher, PgBodies bodies, long queueHighWater) {
+    private TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, Pool pool, long queueHighWater) {
         this.config = Objects.requireNonNull(config, "config");
         this.hasher = Objects.requireNonNull(hasher, "hasher");
+        this.journal = Objects.requireNonNull(journal, "journal");
         if (queueHighWater <= 1) throw new IllegalArgumentException("queueHighWater must be above 1, was " + queueHighWater);
+        this.tenant = tenantKeyId;
+        this.node = journal.node();
+        this.memoryTier = Math.min(config.memoryTierBytes(), journal.recordMax());
         this.budget = new MemoryBudget(config.memoryBudgetBytes());
-        this.cipher = new SpoolCipher(config.spoolKey());
         this.queueHighWater = queueHighWater;
-        this.bodies = bodies;
+        this.pool = pool;
+        this.bodies = pool == null ? null : new PgBodies(pool, PgBodies.MAX_BOUND);
+        this.index = new LocationIndex(config.indexEntries());
     }
 
-    /** The most bytes any streaming write has queued ahead of its sink since this store was created: back-pressure keeps it near the high-water mark plus one chunk. */
+    /** The most bytes any streaming write has queued ahead of its spill since this store was created: back-pressure keeps it near the high-water mark plus one chunk. */
     long peakQueuedBytes() { return peakQueued; }
 
     /**
-     * Test-only: runs on the sink thread once per {@code drain} loop iteration that polled (a chunk or the end), after the
-     * monitor block that decides on the resume and before the resume it may issue, the final iteration included — not on the
-     * iteration that leaves the loop on a recorded failure; {@code null} (the default) = none.
+     * Test-only: runs on the spill thread once per poll of its queue that took a chunk or the end, after the monitor block that
+     * decides on the resume and before the resume it may issue, the final poll included — not on the poll that ends the spill on a
+     * recorded failure; {@code null} (the default) = none.
      */
     void afterSinkDecision(Runnable hook) { this.afterSinkDecision = hook; }
 
-    /**
-     * Test-only: called once per persisted local body with its key once its local copy is gone — a memory body's right after
-     * its budget is released (before the persist completes), a spool body's after the unlink was attempted, on the unlinking
-     * virtual thread; {@code null} (the default) = none.
-     */
-    void afterRelease(Consumer<BlobKey> hook) { this.afterRelease = hook; }
-
     @Override public long treeLimit() { return config.treeLimit(); }
 
-    /** Where a body is held locally (memory, spool), or empty when none is — a persisted body lives in Postgres only. */
+    /** Where a body is held locally (memory, spill), or empty when none is — a durable body lives in the journal only. */
     public Optional<Location> location(BlobKey key) { return Optional.ofNullable(objects.get(key)).map(Stored::location); }
 
     /** Bytes of bodies currently held in the memory tier. */
     public long memoryInUse() { return budget.inUse(); }
 
-    /**
-     * A fresh spool file for one write: {@code <messageId>/<step>-<part>-<n>.blob}, {@code n} counting this store's spool
-     * names — keyed by id and step, never by content, and never shared by two writes of a key (FIX-35): the unlink of one
-     * write's file, which runs after its entry left the index, cannot remove a later write's.
-     */
-    private Path spoolFile(BlobKey key) {
-        return config.spoolDir().resolve(key.messageId()).resolve(key.step() + "-" + key.part() + "-" + spoolNames.incrementAndGet() + ".blob");
+    /** The refs of the saves open now (CORE-3 item 6): reserved or forced, their commit or rollback not yet acknowledged. */
+    public List<JournalRef> openSaves() {
+        List<JournalRef> open = new ArrayList<>();
+        for (Save s : saves) open.add(s.ref);
+        return Collections.unmodifiableList(open);
     }
 
-    /** Ids become path segments: a separator or a dot-name would escape the spool directory. */
-    private static void checkKey(BlobKey key) {
-        String id = key.messageId();
-        if (id.isEmpty() || id.equals(".") || id.equals("..") || id.indexOf('/') >= 0 || id.indexOf('\\') >= 0) {
-            throw new IllegalArgumentException("message id is not a safe path segment: '" + id + "'");
-        }
+    /** A claim of this node's work names {@code key}'s body at {@code ref} on {@code owner}: indexed when that is this node. */
+    public void located(BlobKey key, String owner, JournalRef ref) {
+        if (node.equals(owner)) index.put(key, ref);
+    }
+
+    /** The work item of {@code key}'s body completed: the hot path reads it no more, its index entry goes. */
+    public void forget(BlobKey key) {
+        index.remove(key);
     }
 
     @Override
     public Future<Body> write(BlobKey key, Buffer whole, long maxSize) {
-        checkKey(key);
+        Objects.requireNonNull(key, "key");
         long size = whole.length();
         if (size > maxSize) return Future.failedFuture(new BodyTooLargeException(key, size, maxSize));
-        if (size <= config.memoryTierBytes() && budget.tryReserve(size)) {
-            index(key, new Stored(Location.MEMORY, whole.copy(), null, size));
+        if (size <= memoryTier && budget.tryReserve(size)) {
+            local(key, new Stored(Location.MEMORY, whole.copy(), null, size));
             return Future.succeededFuture(Body.of(this, key, hasher.hashOf(whole), size));
         }
-        Promise<Body> result = Promise.promise();
-        Thread.ofVirtual().name("flottila-blob-write").start(() -> {
-            try {
-                Path file = spoolFile(key);
-                SpoolSink sink = new SpoolSink(cipher, file);
-                try {
-                    sink.write(whole);
-                    sink.finish();
-                } catch (Throwable t) {
-                    sink.abort();
-                    throw t;
-                }
-                index(key, spoolEntry(file, size));
-                result.complete(Body.of(this, key, hasher.hashOf(whole), size));
-            } catch (Throwable t) {
-                result.fail(t);
-            }
+        return blocking(() -> {
+            Journal.Spill spill = spilled(key, new ByteArrayInputStream(whole.getBytes()), maxSize);
+            local(key, new Stored(Location.SPILL, null, spill, size));
+            return Body.of(this, key, spill.hash(), size);
         });
-        return result.future();
     }
 
     @Override
     public Future<Body> write(BlobKey key, ReadStream<Buffer> in, long maxSize) {
-        checkKey(key);
+        Objects.requireNonNull(key, "key");
         StreamingWrite w = new StreamingWrite(key, in, maxSize);
         w.start();
         return w.result.future();
     }
 
     /**
-     * {@inheritDoc} A key the index misses is read from the durable tier when there is one, lazily: the stream asks Postgres
-     * when it is first read and fails with a {@link BlobNotFoundException} when no row exists. Without a durable tier an
-     * unknown key throws that at once.
+     * Spills {@code body} under {@code key} on this thread. A tenant key that cannot encrypt (or a name the record format refuses)
+     * is the write's {@link IOException}: the spill could not be written.
+     */
+    private Journal.Spill spilled(BlobKey key, InputStream body, long maxSize) throws IOException {
+        try {
+            return journal.spill(key, tenant, body, Math.min(maxSize, Journal.SPILL_MAX), hasher);
+        } catch (IllegalArgumentException refused) {
+            throw new IOException("the spill of " + key + " was refused: the journal's tenant key " + tenant
+                    + " (wrapped under the master key) cannot encrypt it, or its names are too long", refused);
+        }
+    }
+
+    /**
+     * {@inheritDoc} Lazy: the local copy, the index, then — on the stream's virtual thread when it is first read — Postgres (see
+     * the class comment); nothing stored fails the stream with a {@link BlobNotFoundException} before any byte.
      */
     @Override
     public ReadStream<Buffer> open(BlobKey key) {
+        ReadStream<Buffer> in = stream(key);
+        if (in == null) throw noObject(key);
+        return in;
+    }
+
+    /** The key's bytes: the local copy, the indexed ref, else its rows in Postgres; null without Postgres (nothing else can hold it). */
+    private ReadStream<Buffer> stream(BlobKey key) {
         Stored s = objects.get(key);
-        if (s != null) return open(key, s);
-        if (bodies == null) throw noObject(key);
-        return new InputStreamReadStream(() -> durable(key));
+        if (s != null) return s.location() == Location.MEMORY ? new BufferReadStream(s.bytes) : new InputStreamReadStream(s::stream);
+        JournalRef ref = index.get(key);
+        if (ref != null) return new InputStreamReadStream(() -> journal.stream(ref));
+        return pool == null ? null : new InputStreamReadStream(() -> stored(key));
     }
 
-    private ReadStream<Buffer> open(BlobKey key, Stored s) {
-        return switch (s.location()) {
-            case MEMORY -> new BufferReadStream(s.bytes());
-            case SPOOL -> new InputStreamReadStream(() -> spooled(key, s));
-        };
-    }
-
-    /** A key the index misses is read from the durable tier when there is one; no row (or no tier) fails with a {@link BlobNotFoundException}. */
     @Override
     public Future<Buffer> read(BlobKey key) {
         Stored s = objects.get(key);
-        if (s == null) {
-            if (bodies == null) return Future.failedFuture(noObject(key));
-            return bodies.select(key).compose(row -> row.isPresent() ? Future.succeededFuture(row.get()) : Future.failedFuture(noObject(key)));
-        }
-        if (s.location() == Location.MEMORY) return Future.succeededFuture(s.bytes().copy());
-        return collect(open(key, s));
+        if (s != null && s.location() == Location.MEMORY) return Future.succeededFuture(s.bytes.copy());
+        ReadStream<Buffer> in = stream(key);
+        return in == null ? Future.failedFuture(noObject(key)) : collect(in);
     }
 
     /**
-     * {@inheritDoc} Reads no bytes (D-096): a key in the index exists; a key it misses exists when the durable tier has its row,
-     * asked by primary key; without a durable tier it does not.
+     * {@inheritDoc} Reads no bytes (D-096): a local copy exists; otherwise Postgres answers — the key's ref (any node's) with its
+     * segment row, then its message's work row (an ingress key), then its pre-V12 {@code bodies} row, asked by primary key —
+     * never the location index, which serves {@link #open} on the hot path only and may outlive the rows (CORE-4c2 r1); without
+     * Postgres nothing else exists.
      */
     @Override
     public Future<Boolean> exists(BlobKey key) {
-        if (objects.containsKey(key)) return Future.succeededFuture(Boolean.TRUE);
-        if (bodies == null) return Future.succeededFuture(Boolean.FALSE);
-        return bodies.exists(bodies.pool(), key);
+        if (objects.containsKey(key)) return Future.succeededFuture(Boolean.TRUE);   // a local copy, in flight; never the index (CORE-4c2 r1)
+        if (pool == null) return Future.succeededFuture(Boolean.FALSE);
+        return find(key).compose(found -> found.isPresent() ? Future.succeededFuture(found.get().live()) : bodies.exists(pool, key));
+    }
+
+    /** A durable body the index misses, on the stream's virtual thread: by its rows in Postgres; none is a {@link BlobNotFoundException}. */
+    private InputStream stored(BlobKey key) throws IOException {
+        Optional<Found> found = find(key).await();
+        if (found.isEmpty()) {
+            Optional<Buffer> row = bodies.select(key).await();
+            if (row.isEmpty()) throw noObject(key);
+            return new ByteArrayInputStream(row.get().getBytes());
+        }
+        return journal.stream(readable(key, found.get()));
+    }
+
+    /** {@code found}'s ref when this node can read it: a ref whose segment row is gone is removed, another node's is elsewhere. */
+    private JournalRef readable(BlobKey key, Found found) {
+        if (!found.live()) throw noObject(key);
+        if (!node.equals(found.node())) throw new RemoteBodyException(key, found.node(), node);
+        return found.ref();
+    }
+
+    /** A ref Postgres names for a key, and whether its segment row is there. */
+    private record Found(String node, JournalRef ref, boolean live) { }
+
+    private Future<Optional<Found>> find(BlobKey key) {
+        return pool.preparedQuery(FIND).execute(Tuple.of(key.messageId(), key.step(), key.part(), ingress(key))).map(rows -> {
+            for (Row r : rows) return Optional.of(new Found(r.getString(1), new JournalRef(r.getLong(2), r.getLong(3), r.getLong(4)), r.getBoolean(5)));
+            return Optional.empty();
+        });
+    }
+
+    /** An ingress key — step 0's body — is the one a work row's ref names (the item's input). */
+    private static boolean ingress(BlobKey key) {
+        return key.equals(BlobKey.body(key.messageId(), 0));
     }
 
     /**
-     * Makes a body durable (D-061). Without a durable tier every key — a local body
-     * or one the index misses — is refused with an {@link IllegalStateException}. With one: a key the index misses is done when
-     * its row exists, else refused with a
-     * {@link BlobNotFoundException}; a body above the tier's bound fails with {@link BodyTooLargeException} and stays where it
-     * is; otherwise its bytes are read and inserted. Once the key's row holds these bytes — inserted now and committed, or
-     * found holding the same bytes — the entry is proven durable and its local copy goes: the index entry and the memory budget
-     * before the future completes, a spool file afterwards on a virtual thread (an unlink that fails is logged). A row that
-     * holds other bytes is kept: a key's durable bytes never change (D-061 amended by FIX-35), the persist fails with an
-     * {@link IllegalStateException} naming the key, and the body stays local with its budget or spool file. A spool entry
-     * whose file is gone before it is read — a write of the key replaced it, or an evict took it, meanwhile — and that no
-     * persist proved durable fails the persist with an {@link IllegalStateException} naming the key before any insert: the
-     * row is no witness of bytes never read (FIX-35). Any other failed read, or a failed insert, fails the persist and leaves
-     * the body local. Nothing is ever deleted from Postgres.
+     * Makes a body durable (D-061, CORE-3 item 7): forced in the journal, then its {@code body_refs} row committed (see the class
+     * comment). Without Postgres every key is refused with an {@link IllegalStateException}. A local body above the durable bound
+     * fails with {@link BodyTooLargeException} and stays where it is; one whose key's row names other bytes fails with an
+     * {@link IllegalStateException} naming the key and stays local; once the row names these bytes the local copy goes before the
+     * future completes. A key held nowhere locally is done when its source row and that row's segment row are there (or its
+     * pre-V12 row), else refused with a {@link BlobNotFoundException}.
      */
     @Override
     public Future<Void> persist(BlobKey key) {
-        return persisting(bodies == null ? null : bodies.pool(), key).map(committed -> {
-            committed.run();   // the pool's insert has committed: the local copy goes before the future completes
+        if (pool == null) return Future.failedFuture(new IllegalStateException("this blob store has no durable tier: " + key + " cannot be persisted"));
+        Stored s = objects.get(key);
+        if (s == null) {
+            return pool.preparedQuery(REFERENCE).execute(Tuple.of(key.messageId(), key.step(), key.part(), ingress(key)))
+                    .compose(rows -> rows.iterator().next().getLong(0) > 0 ? Future.<Void>succeededFuture() : Future.failedFuture(noObject(key)));
+        }
+        if (s.size() > config.durableMaxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), config.durableMaxBytes()));
+        return blocking(() -> {
+            Save save = durably(key, s);
+            try {
+                keep(pool, key, s, save.ref).await();
+            } finally {
+                saves.remove(save);
+            }
+            index.remove(key);   // the row names the durable bytes now: a stale index entry must not answer for them
+            release(key, s);
             return null;
         });
     }
 
     /**
-     * {@link #persist} inside the caller's transaction (D-082): the same checks, and the insert — or, for a key the index
-     * misses, the look for its row — on {@code client}, the transaction's connection. The future gives what the caller runs
-     * once that transaction has committed, and only then: it proves the entry durable and lets its local copy go, as
-     * {@link #persist} does after its own insert; a body durable already has nothing to let go. A transaction that rolls back
-     * never runs it, and the body stays local with its budget or spool file. A failed future is a failed persist, as
-     * {@link #persist} documents, and the caller's transaction must not commit then.
+     * The intake's persist (CORE-3 item 6): a local body forced in the journal — a memory body appended as a record, a spill persisted —
+     * in the open-save set from its reservation; its rows are the caller's ({@link Durable}). A key held nowhere locally is durable
+     * already: its {@link Durable} has no ref. Fails as {@link #persist} does, nothing reserved after a failure.
      */
-    public Future<Runnable> persistIn(SqlClient client, BlobKey key) {
-        return persisting(Objects.requireNonNull(client, "client"), key);
+    public Future<Durable> forced(BlobKey key) {
+        Stored s = objects.get(key);
+        if (s == null) return Future.succeededFuture(new Durable(key, null, null));
+        if (s.size() > config.durableMaxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), config.durableMaxBytes()));
+        return blocking(() -> new Durable(key, s, durably(key, s)));
     }
 
-    /** The persist of {@code key} on {@code client} (null only without a durable tier); its result runs once the insert committed. */
-    private Future<Runnable> persisting(SqlClient client, BlobKey key) {
-        Stored s = objects.get(key);
-        if (bodies == null) return Future.failedFuture(new IllegalStateException("this blob store has no durable tier: " + key + " cannot be persisted"));
-        if (s == null) return bodies.exists(client, key).compose(found -> found ? Future.succeededFuture(NOTHING_TO_RELEASE) : Future.failedFuture(noObject(key)));
-        if (s.size() > bodies.maxBytes()) return Future.failedFuture(new BodyTooLargeException(key, s.size(), bodies.maxBytes()));
-        Future<Buffer> local = s.location() == Location.MEMORY ? Future.succeededFuture(s.bytes()) : collect(open(key, s));
-        return local.compose(bytes -> bodies.insert(client, key, bytes)).compose(same -> {
-            if (!same) {
-                return Future.failedFuture(new IllegalStateException("the durable body under " + key + " holds other bytes than these " + s.size()
-                        + ": a key's durable bytes never change (D-061, FIX-35); nothing was persisted and the body stays local"));
+    /** {@code s} forced in the journal, on this (virtual) thread: an open save from its reservation on, out of the set again if it fails. */
+    private Save durably(BlobKey key, Stored s) throws IOException {
+        if (s.location() == Location.MEMORY) {
+            Journal.Appended a = journal.append(new JournalRecord(key.messageId(), key.step(), key.part(), tenant, s.bytes.getBytes()), Promise.promise().future());
+            Save save = opened(a.ref());
+            try {
+                a.forced().await();
+            } catch (Throwable t) {   // the force's failure, whatever await throws
+                saves.remove(save);
+                throw t;
             }
-            return Future.succeededFuture(() -> {
-                s.provenDurable();   // before the release unlinks its file: a stream that then misses the file reads the row
-                release(key, s);   // before the persist's future completes: whoever awaits it finds the local copy gone
-            });
-        });
+            return save;
+        }
+        Save save = opened(s.spill.ref());
+        try {
+            s.spill.persist();
+        } catch (IOException | RuntimeException | Error e) {
+            saves.remove(save);
+            throw e;
+        }
+        return save;
+    }
+
+    private Save opened(JournalRef ref) {
+        Save save = new Save(ref);
+        saves.add(save);
+        return save;
     }
 
     /**
-     * The local copy of a persisted body goes, when the index still holds {@code s} — otherwise it was evicted, written again
-     * or released by another persist meanwhile, and its budget and file are not this persist's: the entry and its memory budget
-     * now, a spool file — {@code s}'s own — afterwards on a virtual thread, never on the caller's.
+     * Keeps {@code key}'s ref to the record at {@code ref} on {@code client} (FIX-35): inserted, or replacing a row whose segment row
+     * is gone; a row naming another live record of this node is compared with the local bytes {@code s} by reading that record
+     * back (on a virtual thread): other bytes fail with {@link IllegalStateException} and change nothing. A row on another node
+     * cannot be read here: {@link RemoteBodyException}.
+     */
+    private Future<Void> keep(SqlClient client, BlobKey key, Stored s, JournalRef ref) {
+        return client.preparedQuery(KEEP).execute(Tuple.of(key.messageId(), key.step(), key.part(), node, ref.segment(), ref.position(), ref.length()))
+                .compose(rows -> {
+                    Row r = rows.iterator().next();
+                    String owner = r.getString(0);
+                    if (!node.equals(owner)) return Future.failedFuture(new RemoteBodyException(key, owner, node));
+                    JournalRef named = new JournalRef(r.getLong(1), r.getLong(2), r.getLong(3));
+                    if (named.equals(ref)) return Future.succeededFuture();
+                    return blocking(() -> {
+                        try (InputStream stored = journal.stream(named); InputStream mine = s.stream()) {
+                            if (sameBytes(stored, mine)) return null;
+                        }
+                        throw new IllegalStateException("the durable body under " + key + " holds other bytes than these " + s.size()
+                                + ": a key's durable bytes never change (D-061, FIX-35); nothing was persisted and the body stays local");
+                    });
+                });
+    }
+
+    /** Whether {@code a} and {@code b} hold the same bytes, compared {@value #COMPARE_BLOCK} bytes at a time. */
+    private static boolean sameBytes(InputStream a, InputStream b) throws IOException {
+        byte[] x = new byte[COMPARE_BLOCK];
+        byte[] y = new byte[COMPARE_BLOCK];
+        while (true) {
+            int n = a.readNBytes(x, 0, COMPARE_BLOCK);
+            int m = b.readNBytes(y, 0, COMPARE_BLOCK);
+            if (n != m || !java.util.Arrays.equals(x, 0, n, y, 0, m)) return false;
+            if (n < COMPARE_BLOCK) return true;
+        }
+    }
+
+    /**
+     * The local copy of a durable body goes, when the index still holds {@code s} — otherwise it was evicted, written again or
+     * released by another persist meanwhile, and its budget is not this persist's. A persisted spill is its segment now: nothing
+     * to unlink.
      */
     private void release(BlobKey key, Stored s) {
-        if (!objects.remove(key, s)) return;
-        if (s.location() == Location.MEMORY) {
-            budget.release(s.size());
-            released(key);
-            return;
-        }
-        unlinkLater(key, s.file(), "the persisted body", () -> released(key));
+        if (objects.remove(key, s) && s.location() == Location.MEMORY) budget.release(s.size());
     }
 
     /**
-     * Puts a write's entry in the index. A spool entry it replaces leaves with its own file, unlinked on a virtual thread
-     * (FIX-35: the file is that write's alone, no other write's name). Nothing else is freed here: a replaced memory entry's
-     * budget stays reserved (FIX-36).
+     * Puts a write's local copy in place. A spill it replaces is given up on a virtual thread (its file unlinked; a failure is a
+     * WARNING). Nothing else is freed here: a replaced memory entry's budget stays reserved (FIX-36).
      */
-    private void index(BlobKey key, Stored s) {
+    private void local(BlobKey key, Stored s) {
         Stored replaced = objects.put(key, s);
-        if (replaced != null && replaced.location() == Location.SPOOL) unlinkLater(key, replaced.file(), "a replaced copy of", () -> {});
-    }
-
-    /**
-     * Unlinks the spool {@code file} of one entry on a virtual thread, never the caller's, then runs {@code then}; an unlink
-     * that fails is a WARNING — a stale spool file costs disk until the next start clears the spool. An entry without a file
-     * (memory) is refused on the caller's thread.
-     */
-    private void unlinkLater(BlobKey key, Path file, String whose, Runnable then) {
-        Objects.requireNonNull(file, "only a spool entry has a file to unlink");
-        Thread.ofVirtual().name("flottila-blob-unlink").start(() -> {
-            try {
-                Files.deleteIfExists(file);
-            } catch (IOException left) {
-                LOG.log(System.Logger.Level.WARNING, "the spool file of " + whose + " " + key + " was not unlinked: " + file, left);
-            }
-            then.run();
-        });
-    }
-
-    private void released(BlobKey key) {
-        Consumer<BlobKey> hook = afterRelease;
-        if (hook != null) hook.accept(key);
-    }
-
-    /**
-     * A spool body's bytes, on the stream's virtual thread. A file unlinked after this stream was opened is read from the
-     * durable tier only for an entry proven durable — a persist found the key's row holding this entry's bytes before it
-     * released the entry (FIX-35). Any other missing file — an evict, a write of the key that replaced the entry, a persist
-     * not (yet) proven — fails the stream before it yields a byte, never with the row's bytes, which may be another write's:
-     * a store without a durable tier fails with the missing file, as before; one with a tier with an
-     * {@link IllegalStateException} naming the key, which is also how a persist that reads such an entry fails.
-     */
-    private InputStream spooled(BlobKey key, Stored s) throws IOException {
-        try {
-            return cipher.decrypting(s.file());
-        } catch (NoSuchFileException gone) {
-            if (bodies == null) throw gone;
-            if (s.durable()) return durable(key);
-            throw new IllegalStateException("the spool copy of " + key + " is gone (its file was unlinked before it was read) and was never"
-                    + " proven durable: its bytes cannot be read, and the key's durable row is no witness of them (FIX-35)", gone);
+        if (replaced != null && replaced.location() == Location.SPILL) {
+            Thread.ofVirtual().name("flottila-blob-unlink").start(() -> {
+                try {
+                    replaced.spill.abandon();
+                } catch (IOException left) {
+                    LOG.log(System.Logger.Level.WARNING, "the replaced spill of " + key + " was not unlinked", left);
+                }
+            });
         }
-    }
-
-    /** The durable row's bytes, on the stream's virtual thread (it blocks on the query); no row fails with a {@link BlobNotFoundException}. */
-    private InputStream durable(BlobKey key) {
-        Optional<Buffer> row = bodies.select(key).await();
-        if (row.isEmpty()) throw noObject(key);
-        return new ByteArrayInputStream(row.get().getBytes());
     }
 
     private static BlobNotFoundException noObject(BlobKey key) { return new BlobNotFoundException(key); }
+
+    /** Runs {@code work} on a virtual thread — this one when it is one — and completes with what it returns or throws. */
+    private static <T> Future<T> blocking(Callable<T> work) {
+        Promise<T> p = Promise.promise();
+        Runnable run = () -> {
+            try {
+                p.complete(work.call());
+            } catch (Throwable t) {
+                p.fail(t);
+            }
+        };
+        if (Thread.currentThread().isVirtual()) run.run();
+        else Thread.ofVirtual().name("flottila-blob-persist").start(run);
+        return p.future();
+    }
 
     /** Every byte of {@code stream}, in order. */
     private static Future<Buffer> collect(ReadStream<Buffer> stream) {
@@ -411,8 +580,8 @@ public final class TieredBlobStore implements BlobStore {
     }
 
     /**
-     * Forgets a body and frees what it held (budget, spool file); quiet for an unknown key — a persisted body's row
-     * stays, only the retention job deletes from {@code bodies} (P2-07). Not for the hot path.
+     * Forgets a body's local copy and frees what it held (budget, spill file); quiet for an unknown key — a durable body's refs
+     * stay, only retention removes them (P2-07). Not for the hot path.
      */
     public Future<Void> evict(BlobKey key) {
         Stored s = objects.remove(key);
@@ -424,7 +593,7 @@ public final class TieredBlobStore implements BlobStore {
         Promise<Void> p = Promise.promise();
         Thread.ofVirtual().name("flottila-blob-evict").start(() -> {
             try {
-                Files.deleteIfExists(s.file());
+                s.spill.abandon();
                 p.complete();
             } catch (Throwable t) {
                 p.fail(t);
@@ -433,24 +602,17 @@ public final class TieredBlobStore implements BlobStore {
         return p.future();
     }
 
-    /** The index entry of a write spooled to its own {@code file}. */
-    private static Stored spoolEntry(Path file, long size) {
-        return new Stored(Location.SPOOL, null, file, size);
-    }
-
-    /** One streamed write: memory first; after the spill a virtual thread opens the sink and feeds it from a bounded queue. */
+    /** One streamed write: memory first; after the spill a virtual thread spills it into the journal from a bounded queue. */
     private final class StreamingWrite {
         private final BlobKey key;
         private final ReadStream<Buffer> in;
         private final long maxSize;
         final Promise<Body> result = Promise.promise();
-        private final Hasher.Session hash = hasher.begin();
         private Buffer collected = Buffer.buffer();
         private long reserved;
         private long seen;
         // after the spill (all guarded by this):
         private boolean spilled;
-        private SpoolSink sink;
         private final ArrayDeque<Buffer> queue = new ArrayDeque<>();
         private long queued;
         private boolean ended;
@@ -516,9 +678,8 @@ public final class TieredBlobStore implements BlobStore {
                 fail(new BodyTooLargeException(key, seen, maxSize));
                 return;
             }
-            hash.update(c);
             if (!spilled) {
-                if (seen <= config.memoryTierBytes() && budget.tryReserve(c.length())) {
+                if (seen <= memoryTier && budget.tryReserve(c.length())) {
                     reserved += c.length();
                     collected.appendBuffer(c);
                     return;
@@ -589,8 +750,8 @@ public final class TieredBlobStore implements BlobStore {
         private void end() {
             if (over()) return;
             if (!spilled) {
-                index(key, new Stored(Location.MEMORY, collected, null, seen));
-                result.complete(Body.of(TieredBlobStore.this, key, hash.finish(), seen));
+                local(key, new Stored(Location.MEMORY, collected, null, seen));
+                result.complete(Body.of(TieredBlobStore.this, key, hasher.hashOf(collected), seen));
                 return;
             }
             synchronized (this) {
@@ -599,7 +760,7 @@ public final class TieredBlobStore implements BlobStore {
             }
         }
 
-        /** Records the failure; before the spill the promise fails at once, after it the sink thread aborts first and then fails it. */
+        /** Records the failure; before the spill the promise fails at once, after it the spill thread gives its file up first and then fails it. */
         private void fail(Throwable t) {
             synchronized (this) {
                 if (over()) return;
@@ -613,56 +774,26 @@ public final class TieredBlobStore implements BlobStore {
             if (!spilled) result.tryFail(t);
         }
 
-        /** The sink's virtual thread: opens the sink, writes queued chunks in order, resumes the source as the queue drains, commits at the end; on any failure aborts the sink before the promise fails. */
+        /**
+         * The spill's virtual thread: spills the queued chunks in order into the journal ({@link Drained}), resuming the source as
+         * the queue drains, and indexes the spill at the end; on any failure the spill has left no file before the promise fails.
+         */
         private void drain() {
             Throwable problem;
             try {
-                Path file = spoolFile(key);
-                sink = new SpoolSink(cipher, file);
-                while (true) {
-                    Buffer next;
-                    boolean resumeSource = false;
-                    synchronized (this) {
-                        while (queue.isEmpty() && !ended && failure == null) wait();
-                        if (failure != null) {
-                            problem = failure;
-                            break;
-                        }
-                        next = queue.pollFirst();   // null only when the queue is empty and the source has ended
-                        if (next != null) {
-                            queued -= next.length();
-                            if (sourcePaused && queued < queueHighWater / 2) {
-                                sourcePaused = false;
-                                // after the attach the sink resumes a pause whose re-check has run — unless the hand-over resume is in flight: then the hand-over
-                                // thread reconciles (a resume of ours now would be a second one for this pause and could undo the source's next); a pause still
-                                // being entered is resumed by its own re-check (which sees sourcePaused cleared); before the attach the re-check or start() issues the one resume
-                                if (attached && !pausing) {
-                                    if (handingOver == null) resumeSource = true;
-                                    else resumeDeferred = true;   // the hand-over resume is in flight: the hand-over thread issues this resume after it; a resume of ours now would be a second one for this pause and could undo the source's next
-                                }
-                            }
-                        }
-                    }
-                    Runnable hook = afterSinkDecision;
-                    if (hook != null) hook.run();
-                    if (resumeSource) {
-                        in.resume();
-                        if (failed()) in.pause();   // the source's fail() landed between the decision and the resume: never consume past it
-                    }
-                    if (next == null) {
-                        sink.finish();
-                        index(key, spoolEntry(file, seen));
-                        result.complete(Body.of(TieredBlobStore.this, key, hash.finish(), seen));
-                        return;
-                    }
-                    sink.write(next);
+                Journal.Spill spill = spilled(key, new Drained(), maxSize);
+                local(key, new Stored(Location.SPILL, null, spill, seen));
+                result.complete(Body.of(TieredBlobStore.this, key, spill.hash(), seen));
+                return;
+            } catch (Aborted recorded) {
+                synchronized (this) {
+                    problem = failure;   // the source's failure, recorded before the poll that saw it
                 }
             } catch (Throwable t) {
-                // the sink's failure takes the source's path: recorded under the monitor first, then the pause, then the promise,
+                // the spill's failure takes the source's path: recorded under the monitor first, then the pause, then the promise,
                 // so every party that later looks (start()'s re-check, chunk(), fail()) sees the failure before the future fails; the first
-                // failure recorded under the monitor (the source's in fail() or the sink's here) is the cause. A sink failure after the
-                // source's rides as suppressed; a source failure after the sink's is dropped (fail() returns on over(); the future fails
-                // with the sink's after the sink's abort())
+                // failure recorded under the monitor (the source's in fail() or the spill's here) is the cause. A spill failure after the
+                // source's rides as suppressed; a source failure after the spill's is dropped (fail() returns on over())
                 synchronized (this) {
                     if (failure == null) failure = t;
                     else if (t != failure) failure.addSuppressed(t);   // a source failure racing in here has already stopped the source
@@ -671,8 +802,76 @@ public final class TieredBlobStore implements BlobStore {
                 }
                 in.pause();
             }
-            if (sink != null) sink.abort();
             result.tryFail(problem);
+        }
+
+        /** The queue as the spill reads it: the next chunk once there is one, the end once the source ended. */
+        private final class Drained extends InputStream {
+            private Buffer current;
+            private int at;
+
+            @Override public int read() throws IOException {
+                byte[] one = new byte[1];
+                return read(one, 0, 1) < 0 ? -1 : one[0] & 0xFF;
+            }
+
+            @Override public int read(byte[] b, int off, int len) throws IOException {
+                while (current == null || at == current.length()) {
+                    current = poll();
+                    at = 0;
+                    if (current == null) return -1;
+                }
+                int n = Math.min(len, current.length() - at);
+                current.getBytes(at, at + n, b, off);
+                at += n;
+                return n;
+            }
+        }
+
+        /**
+         * The next queued chunk, null once the source ended; waits while the queue is empty. Resumes the source once the queue fell
+         * below half the high-water mark; a recorded failure ends the spill ({@link Aborted}).
+         */
+        private Buffer poll() throws IOException {
+            Buffer next;
+            boolean resumeSource = false;
+            synchronized (this) {
+                try {
+                    while (queue.isEmpty() && !ended && failure == null) wait();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new InterruptedIOException("the spill of " + key + " was interrupted");
+                }
+                if (failure != null) throw new Aborted();
+                next = queue.pollFirst();   // null only when the queue is empty and the source has ended
+                if (next != null) {
+                    queued -= next.length();
+                    if (sourcePaused && queued < queueHighWater / 2) {
+                        sourcePaused = false;
+                        // after the attach the spill resumes a pause whose re-check has run — unless the hand-over resume is in flight: then the hand-over
+                        // thread reconciles (a resume of ours now would be a second one for this pause and could undo the source's next); a pause still
+                        // being entered is resumed by its own re-check (which sees sourcePaused cleared); before the attach the re-check or start() issues the one resume
+                        if (attached && !pausing) {
+                            if (handingOver == null) resumeSource = true;
+                            else resumeDeferred = true;   // the hand-over resume is in flight: the hand-over thread issues this resume after it
+                        }
+                    }
+                }
+            }
+            Runnable hook = afterSinkDecision;
+            if (hook != null) hook.run();
+            if (resumeSource) {
+                in.resume();
+                if (failed()) in.pause();   // the source's fail() landed between the decision and the resume: never consume past it
+            }
+            return next;
+        }
+    }
+
+    /** A failure recorded while the spill waited for its queue: it ends the spill, which gives its file up. */
+    private static final class Aborted extends IOException {
+        Aborted() {
+            super("the streamed write failed: its spill is given up");
         }
     }
 }
