@@ -1,10 +1,10 @@
 # Handoff
 
 state: RUNNING core rework (priority 1, docs/CORE-REWORK.md, D-103/D-104); CORE-0..4, 6a, 6b, 15 done; D-110 no size refusal
-last commit: `Task: FIX-124` (this commit); aa01415 `Task: CORE-15`; 4ba1919 `Task: CORE-6b`
+last commit: fa80da8 docs(bench) CORE-15 preview; 6d5e4c3 `Task: FIX-124`; aa01415 `Task: CORE-15`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: stepped open-loop run (ack, recording none) → RESULTS; then owner order: CORE-8 (at-least-once half), P2-15 → P2-16 → CORE-7
+next exact action: P2-15 designer draft (lease) → packet → P2-16 → CORE-7, then CORE-8 (preview fa80da8: hand-over is the bottleneck at recording none)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
