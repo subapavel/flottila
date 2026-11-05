@@ -36,3 +36,17 @@ Bench module, run.sh, RESULTS only; no node change; the sampler adds no load to 
 ## Checks
 `mvn -B -ntp -q -pl flottila-bench -am verify -Pit`, reactor `verify -Pit`, coverage; then the verifier reruns the r2000 cell
 (and r1000) with the series, results to RESULTS as "CORE-15b — r1000/r2000 with database series (preview)".
+
+## Red approved (architect 2026-11-05)
+Red: compile red; shim 21/24 unit+script, IT 2/3 (agent/work/CORE-15b-red.log). Tests: OpenLoopSamplerTest, DbSamplerTest,
+DiskSamplerTest, CpuSourceClusterTest, NodeBenchMainSettleProbeTest, NodeBenchMainOpenIoOptionsTest, BenchRunScriptOpenDbTest,
+NodeBenchOpenDbSeriesIT. API as the test-author named it (OpenLoop.Sampler, DbSampler, DiskSampler, CpuSource.of(String, Path),
+CpuSource.sampler, NodeBenchMain.landed / SETTLE_PAUSE, Open.ioDevice).
+Decisions: (1) the window-start sample is the baseline: each delta series' first entry is 0; (2) statements as window deltas,
+hit + read summed (accepted); (3) Postgres CPU also adds the postmaster's cutime + cstime delta (exited backends) — implementer
+pins it; skipping a child that exits mid-read accepted; (4) a refused extension keeps the run, prints a message; (5) the sampler's
+own pg_stat_* reads excluded; (6) record keys `pgCpu` and `io` pinned by the implementer in a Harness-level case.
+Not testable, accepted: the sampler's own connection (reviewer reads it), the real 1 s pause, Harness wiring of landed().
+Architect (implementer handback): accepted — CpuSource.of(String) stays one process (its JDK-figure test); the cluster counts
+children's c-times too; the 1 s pause for the open settle only (closed-loop keeps 5 ms, work-first order); xactCommit includes the
+sampler's 1 commit per sample (noted). PG 18 wal_sync absence → null with the error (FIX later if needed).

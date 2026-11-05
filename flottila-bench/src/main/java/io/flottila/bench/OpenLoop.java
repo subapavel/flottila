@@ -10,11 +10,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeoutException;
 import java.util.function.LongSupplier;
 
@@ -33,6 +36,54 @@ import java.util.function.LongSupplier;
  * @since 0.1
  */
 final class OpenLoop {
+
+    /**
+     * A per-second series of the record (CORE-15b): sampled with the backlog — at the window's start, each second after it and
+     * at its end — and put into the record under its name ({@link #series()}). {@link #sample()} runs on the loop's timer under
+     * its lock, so it must not block: a sampler that reads the outside world is {@link #offloaded}.
+     */
+    interface Sampler {
+        /** Takes one sample. */
+        void sample();
+
+        /** The series so far, one entry per sample; read once every sample taken has finished ({@link #settled()}). */
+        JsonObject series();
+
+        /** Completes once every sample taken so far has finished, or fails with the first one that threw; at once by default. */
+        default Future<Void> settled() {
+            return Future.succeededFuture();
+        }
+    }
+
+    /**
+     * {@code sampler} with each sample run on a virtual thread of its own, in order, after the one before it finished: the
+     * loop's timer only queues it. {@code settled()} completes when the last sample queued finished; a sample that throws fails
+     * it, and the samples queued after it do not run.
+     */
+    static Sampler offloaded(Sampler sampler) {
+        return offloaded(sampler, task -> Thread.ofVirtual().name("open-loop-sampler").start(task));
+    }
+
+    /** {@link #offloaded(Sampler)} with each sample handed to {@code executor} once the one before it finished. */
+    static Sampler offloaded(Sampler sampler, Executor executor) {
+        Objects.requireNonNull(sampler, "sampler");
+        Objects.requireNonNull(executor, "executor");
+        return new Sampler() {
+            private CompletableFuture<Void> last = CompletableFuture.completedFuture(null);
+
+            @Override public synchronized void sample() {
+                last = last.thenRunAsync(sampler::sample, executor);
+            }
+
+            @Override public JsonObject series() {
+                return sampler.series();
+            }
+
+            @Override public synchronized Future<Void> settled() {
+                return Future.fromCompletionStage(last);
+            }
+        };
+    }
 
     /** One request of the load: sends request {@code index} and answers its HTTP status, or fails. */
     @FunctionalInterface
@@ -93,6 +144,7 @@ final class OpenLoop {
     private final Timer timer;
     private final Target target;
     private final LongSupplier receipts;
+    private final Map<String, Sampler> samplers;
     private final long total;
     /** Backlog samples: the window's start, each second after it, its end. */
     private final long samples;
@@ -124,6 +176,16 @@ final class OpenLoop {
      * is the accepted requests minus them).
      */
     OpenLoop(Schedule schedule, long maxOutstanding, int acceptedStatus, Clock clock, Timer timer, Target target, LongSupplier receipts) {
+        this(schedule, maxOutstanding, acceptedStatus, clock, timer, target, receipts, Map.of());
+    }
+
+    /**
+     * A loop that also takes each of {@code samplers} with every backlog sample, in the map's order, and puts each one's series
+     * into the record under its name (CORE-15b); the record is complete once every sampler settled.
+     */
+    OpenLoop(Schedule schedule, long maxOutstanding, int acceptedStatus, Clock clock, Timer timer, Target target, LongSupplier receipts,
+             Map<String, Sampler> samplers) {
+        this.samplers = new LinkedHashMap<>(samplers);
         this.schedule = Objects.requireNonNull(schedule, "schedule");
         this.maxOutstanding = maxOutstanding;
         this.acceptedStatus = acceptedStatus;
@@ -190,6 +252,7 @@ final class OpenLoop {
         synchronized (this) {
             while (nextSample < samples && sampleDue(nextSample) <= now) {
                 backlog.add(acceptedTotal - receipts.getAsLong());
+                samplers.values().forEach(Sampler::sample);
                 nextSample++;
                 if (nextSample == 1) windowStart.complete();
                 if (nextSample == samples) windowEnd.complete();
@@ -232,7 +295,8 @@ final class OpenLoop {
 
     /**
      * Completes {@link #done()} once every request was processed, every sample taken and no answer is outstanding: nothing
-     * changes the counts after that, so the timer's last tick and the last answer, racing here, build the same record.
+     * changes the counts after that, so the timer's last tick and the last answer, racing here, build the same record. Each
+     * sampler's series joins it once every sampler settled; a sampler that failed fails the record.
      */
     private void complete() {
         JsonObject record;
@@ -240,7 +304,10 @@ final class OpenLoop {
             if (next < total || nextSample < samples || outstanding > 0) return;
             record = record();
         }
-        done.tryComplete(record);
+        Future.all(samplers.values().stream().map(Sampler::settled).toList()).map(settled -> {
+            samplers.forEach((name, sampler) -> record.put(name, sampler.series()));
+            return record;
+        }).onComplete(done::tryComplete, done::tryFail);
     }
 
     private JsonObject record() {

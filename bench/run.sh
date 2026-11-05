@@ -38,6 +38,11 @@
 # BENCH_RECORDING_LEVEL is set (an all and a none run never share a file); its summary prints the record's open fields, its
 # recording level and whether it settled (bench/RESULTS.md, "Harness: open loop (CORE-15)"). A run whose settle did not land
 # within PT10M writes its record and exits 4 (FIX-124), which stops the script as any non-zero exit does.
+# CORE-15b: BENCH_IO_DEVICE (unset) names the block device of Postgres' data directory as /proc/diskstats lists it (--io-device,
+# the record's per-second `io` series); BENCH_PG_STATEMENTS=1 (unset/0: off) creates the pg_stat_statements extension in BENCH_DB
+# before the run (the server must preload it, shared_preload_libraries; a refusal is printed and the run goes on, its record
+# then says the statements are unknown). The summary adds the window's totals from the record's `db` series: commits/s and WAL
+# syncs/s (the series summed, over scheduled / offered rate seconds) and the top statement by execution time; n/a when unknown.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
@@ -111,6 +116,12 @@ clickhouse_run() { # CORE-2, in a subshell: its EXIT trap stops and removes the 
   grep '^|' bench/out/clickhouse-compression.log
 }
 
+pg_statements() { # BENCH_PG_STATEMENTS: the extension in BENCH_DB, where the node's statements run; a refusal keeps the run going
+  if ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$BENCH_DB" -v ON_ERROR_STOP=1 -tAc "create extension if not exists pg_stat_statements" > /dev/null; then
+    echo "BENCH_PG_STATEMENTS: pg_stat_statements could not be created in $BENCH_DB (the error above); the run goes on, its statements unknown" >&2
+  fi
+}
+
 # an open-loop record's summary line (CORE-15), nothing for a closed-loop record
 OPEN_SUMMARY='
 import json, sys
@@ -122,11 +133,18 @@ if o:
     cpu = ", ".join(k + " " + ("n/a" if v is None else "%.0f ms" % v) for k, v in o["cpuMs"].items())
     pct = "n/a" if o["backlogGrowthPercent"] is None else "%.2f %%" % o["backlogGrowthPercent"]
     why = "" if o["valid"] else " (" + "; ".join(o["invalidReasons"]) + ")"
+    db = o.get("db")
+    seconds = o["scheduled"] / o["offeredRate"]
+    per_second = lambda v: "n/a" if v is None or None in v else "%.0f/s" % (sum(v) / seconds)
+    top = lambda s: "n/a" if s is None else "none" if not s else "%.0f ms in %d calls: %s" % (s[0]["totalExecTimeMs"], s[0]["calls"],
+          " ".join(s[0]["query"].split())[:100])
+    dbs = "" if db is None else "; db over the window: commits {0}, wal syncs {1}, top statement {2}".format(per_second(db.get("xactCommit")),
+          per_second(db.get("walSync")), top(db.get("statements")))
     print(("open loop: offered {offeredRate:.0f} msg/s, achieved {achievedRate:.1f} msg/s, sent {sent} of {scheduled} scheduled,"
            " accepted {accepted}, refused 503 {refused503}, refused {refused}, timeouts {timeouts}, errors {errors},"
            " clientSaturated {clientSaturated}, p50 {p50}, p99 {p99}, p99.9 {p999}, max {max}, receipts {receipts},"
            " backlog growth {backlogGrowth} ({pct}), cpu over the window: {cpu}; valid {ok}{why}; recording level {level_shown},"
-           " settled {settled_shown}").format(**o, p50=ms(o["p50Ms"]), p99=ms(o["p99Ms"]), p999=ms(o["p999Ms"]), max=ms(o["maxMs"]), pct=pct,
+           " settled {settled_shown}{dbs}").format(**o, dbs=dbs, p50=ms(o["p50Ms"]), p99=ms(o["p99Ms"]), p999=ms(o["p999Ms"]), max=ms(o["maxMs"]), pct=pct,
           cpu=cpu, ok=str(o["valid"]).lower(), why=why, level_shown=na(j.get("recordingLevel")), settled_shown=na(o.get("settled"))))
 '
 
@@ -196,6 +214,8 @@ for scenario in $BENCH_SCENARIOS; do
       if [[ -n "${BENCH_RAMP:-}" ]]; then open_args+=(--ramp "$BENCH_RAMP"); fi
       if [[ -n "${BENCH_WINDOW:-}" ]]; then open_args+=(--window "$BENCH_WINDOW"); fi
       if [[ -n "${BENCH_PG_CPU:-}" ]]; then open_args+=(--pg-cpu-source "$BENCH_PG_CPU"); fi
+      if [[ -n "${BENCH_IO_DEVICE:-}" ]]; then open_args+=(--io-device "$BENCH_IO_DEVICE"); fi
+      if [[ "${BENCH_PG_STATEMENTS:-0}" != 0 ]]; then pg_statements; fi
       if [[ -n "${BENCH_RECORDING_LEVEL:-}" ]]; then open_args+=(--recording-level "$BENCH_RECORDING_LEVEL"); fi
       if [[ -n "${BENCH_MAX_IN_FLIGHT:-}" ]]; then open_args+=(--max-in-flight "$BENCH_MAX_IN_FLIGHT"); fi
       run_node "node-open-$open_scenario-r${BENCH_RATE:-5000}${BENCH_RECORDING_LEVEL:+-$BENCH_RECORDING_LEVEL}" "${open_args[@]}" ;;

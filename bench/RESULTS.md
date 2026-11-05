@@ -48,8 +48,8 @@ BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate`
 - **CPU over the window** (`cpuMs`, read at the window's start and end): `bench` the bench JVM (client, node and echo together);
   `node` the bench flow's step CPU as the node's sampler attributed it (`--cpu-sampling` on; the sampler reads every 5 s and keeps
   2 s of lateness, so a short window reads low or 0 — meaningful for minutes-long windows only); `postgres` from
-  `--pg-cpu-source` (a cgroup v2 directory's `cpu.stat` `usage_usec`, or a pid's `/proc/<pid>/stat` utime + stime at USER_HZ 100).
-  A figure that cannot be read is JSON null with its reason in `cpuNotes`, never 0.
+  `--pg-cpu-source` (a cgroup v2 directory's `cpu.stat` `usage_usec`, or — since CORE-15b — the postmaster's pid: the whole
+  cluster, below). A figure that cannot be read is JSON null with its reason in `cpuNotes`, never 0.
 - **valid** is false, with `invalidReasons`, when any request was `clientSaturated` or `achievedRate` is more than 1 % off the
   scheduled rate (`scheduled` / window seconds, the offered rate whenever rate × window is whole). An invalid run measured the
   client, not the node. The run exits 3 on window errors or timeouts; refusals and invalidity are recorded, not failed.
@@ -61,6 +61,40 @@ BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate`
 - **recordingLevel** (record top level, FIX-124): `--recording-level` — `all` (default) records every step, `none` deploys the
   flow with `recording.level: off` (the CORE-GATE cell); `recording` stays the payload setting. Sync refuses `none`.
 - Latency samples are kept exactly (8 bytes per window request: 24 MB at 5 000/s × PT10M).
+- **Per-sample series** (CORE-15b, F-27 I1): taken with each backlog sample (the window's start, each second, its end), one entry
+  per sample, each read on a virtual thread off the loop's timer (the record waits for the last read). A delta entry is the
+  change since the sample before; the first entry is 0 (the window's start is the baseline). An entry that could not be read is
+  null, a field no sample could read is JSON null, and either way its reason is in the object's `notes` — never 0.
+  - `db` (ack and sync; the echo self-test has none): one statement per sample on a Postgres session of its own (never the
+    node's pool nor the bench's; application_name `flottila-bench-sampler`, statement_timeout 10 s; its one commit per sample
+    is in `xactCommit`). `xactCommit` Δ pg_stat_database.xact_commit of the run's database; `walSync`, `walSyncTimeMs`,
+    `walFpi`, `walBytes` Δ pg_stat_wal (the cluster's; `walSync` / `walSyncTimeMs` null unless fsync is on and wal_sync_method
+    is fdatasync, fsync or fsync_writethrough — the only cases pg_stat_wal counts — and `walSyncTimeMs` also null with
+    track_wal_io_timing off); `workDeadTup` / `workLiveTup` pg_stat_user_tables n_dead_tup / n_live_tup of `work` as read (not
+    deltas), `workHotUpd` / `workUpd` Δ n_tup_hot_upd / n_tup_upd (all null when the schema has no `work` statistics row);
+    `workAutovacuum` / `workAutoanalyze` `[{sample, at}]` for each new last_autovacuum / last_autoanalyze time a sample saw
+    (one the window's start already saw is not listed); `statements` the 12 statements with the most execution time between
+    the window's first and last sample — `queryid`, `query`, `calls`, `totalExecTimeMs`, `sharedBlks` (hit + read), each a
+    window delta, summed per queryid over the run's database (`dbid`), only those called in the window, the sampler's own statements (they name the pg_stat_ views) left
+    out — null when pg_stat_statements cannot be read in the run's database (probed once when the sampler opens: the
+    extension must be created there and the server must preload it, `shared_preload_libraries`). Columns as PostgreSQL 16 and
+    17 name them (checked with `\d` on 16.15 and the 17 image); PostgreSQL 18 moved wal_sync out of pg_stat_wal, where the
+    read fails and every field is null with the error. The cumulative pg_stat counters are what backends have published: a
+    busy backend publishes up to 1 s late and one that goes idle up to 10 s late (PGSTAT_IDLE_INTERVAL), so the per-second
+    entries and the window's sum are shifted by that lag at both ends; pg_stat_statements updates when a statement ends, no lag.
+  - `pgCpu`: `cpuMs` per sample from `--pg-cpu-source` — a cgroup v2 directory, or the postmaster's pid: utime + stime +
+    cutime + cstime of the postmaster and of every process whose parent it is (backends, checkpointer, walwriter, archiver;
+    the c-times hold the backends that exited and what a child ran and reaped), read from `/proc/<pid>/stat`; a child that exits
+    while the tree is read is left out of that sample and counted in the next one's. Null with "no --pg-cpu-source" unless set.
+    Both `pgCpu` and the window's `cpuMs.postgres` include the `db` sampler's own backend (one statement per second).
+  - `io` (`--io-device <name>`, `BENCH_IO_DEVICE`): the device's line of `/proc/diskstats` (the name exactly, not a partition):
+    `reads` (field 4), `writes` (8), `writeMs` (11), `ioMs` (13) as deltas, `utilPercent` = Δ ioMs over the sample's own
+    interval. Null with "no --io-device" unless named; a device not listed or an unreadable file is null with that reason.
+- **Settle probe** (CORE-15b, F-27): the open settle asks whether `work` is empty first and counts the recorded messages
+  (`count(distinct id)`) only then, once per probe, one probe per second; the closed-loop settles keep their 5 ms poll with the
+  same order. `bench/run.sh` scenario `open` adds BENCH_IO_DEVICE and BENCH_PG_STATEMENTS=1 (creates the extension in BENCH_DB
+  before the run; a refusal is printed and the run goes on) and prints the window's commits/s and WAL syncs/s (the `db` series
+  summed over `scheduled` / `offeredRate` seconds, n/a when an entry is unknown) and the top statement by time.
 
 ## CORE-2 — ClickHouse payload compression — cloud VM, 4 vCPU
 
