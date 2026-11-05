@@ -9,12 +9,14 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.ToLongFunction;
 
 /**
  * The persistence batcher (ARCHITECTURE §4 "Writer"): hand-rolled, no reactive operator chain.
  * Adaptive flush — a save commits immediately when no commit is in flight, accumulates to
- * {@code batchSize} or the {@code window} under load; up to {@code commitConcurrency} commits in
- * flight, each completed per batch; a bounded backlog whose overflow fails the save at once with
+ * {@code batchSize} items or {@code batchBytes} bytes (the weighed constructor; an item above {@code batchBytes} goes alone) or
+ * the {@code window} under load — a batch full by count or by bytes goes on a free slot without waiting for the window; up to
+ * {@code commitConcurrency} commits in flight, each completed per batch; a bounded backlog whose overflow fails the save at once with
  * {@link OverloadedException}. {@link #saveWaiting} instead waits for room, in arrival order, at most
  * {@code maxWait} (D-071): a slot that frees is handed to the oldest waiter under the same lock that freed it, so
  * {@code waiting() > 0} implies {@code backlog() == maxBacklog} and a {@link #save} never overtakes a waiter.
@@ -62,7 +64,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
         }
     }
 
-    private record Pending<T>(T item, Promise<Void> done) {}
+    private record Pending<T>(T item, long weight, Promise<Void> done) {}
 
     /** A batch a drain took and then failed: the window for what stayed behind it could not be scheduled. */
     private record Refused<T>(List<Pending<T>> batch, Throwable cause) {}
@@ -81,18 +83,37 @@ public final class BatchingWriter<T> implements AutoCloseable {
     private final BatchSink<T> sink;
     private final Timer timer;
     private final Options options;
+    private final ToLongFunction<? super T> weight;
+    private final long batchBytes;
     private final ArrayDeque<Pending<T>> queue = new ArrayDeque<>();
     private final ArrayDeque<Waiter<T>> waiters = new ArrayDeque<>();   // arrival order; non-empty only while the queue is full
     private final List<List<Pending<T>>> flying = new ArrayList<>();   // batches handed to the sink and not yet completed
     private final Object lock = new Object();
     private int inFlight;
+    private long queuedBytes;   // the weights of the items in the queue
     private Timer.Cancellable armed;
     private boolean closed;
 
+    /** A writer batching by count alone: every item weighs 1 and a batch holds at most {@code batchSize} of them. */
     public BatchingWriter(BatchSink<T> sink, Timer timer, Options options) {
+        this(sink, timer, options, item -> 1L, Objects.requireNonNull(options, "options").batchSize());
+    }
+
+    /**
+     * A writer batching by count and bytes (D-109): a batch holds at most {@code batchSize} items and at most {@code batchBytes}
+     * bytes, an item's bytes its {@code weight} (asked once, when it is saved; never negative); an item above {@code batchBytes}
+     * goes alone. Queued items whose bytes reach {@code batchBytes} are a full batch, as {@code batchSize} items are.
+     *
+     * @param batchBytes the bytes of a batch at most; positive
+     * @since 0.1
+     */
+    public BatchingWriter(BatchSink<T> sink, Timer timer, Options options, ToLongFunction<? super T> weight, long batchBytes) {
         this.sink = Objects.requireNonNull(sink, "sink");
         this.timer = Objects.requireNonNull(timer, "timer");
         this.options = Objects.requireNonNull(options, "options");
+        this.weight = Objects.requireNonNull(weight, "weight");
+        if (batchBytes < 1) throw new IllegalArgumentException("batchBytes " + batchBytes + " < 1");
+        this.batchBytes = batchBytes;
     }
 
     /**
@@ -122,17 +143,22 @@ public final class BatchingWriter<T> implements AutoCloseable {
         synchronized (lock) { return waiters.size(); }
     }
 
-    /** {@code item} into the backlog; a full one fails it at once or, if {@code wait}, lines it up behind the waiters. */
+    /**
+     * {@code item} into the backlog; a full one fails it at once or, if {@code wait}, lines it up behind the waiters. A negative
+     * weight is refused (IllegalArgumentException), nothing queued.
+     */
     private Future<Void> enqueue(T item, boolean wait) {
         Objects.requireNonNull(item, "item");
-        Pending<T> p = new Pending<>(item, Promise.promise());
+        long bytes = weight.applyAsLong(item);
+        if (bytes < 0) throw new IllegalArgumentException("a negative weight " + bytes);
+        Pending<T> p = new Pending<>(item, bytes, Promise.promise());
         Drained<T> drained;
         synchronized (lock) {
             if (closed) return Future.failedFuture(new IllegalStateException("writer closed"));
             if (queue.size() >= options.maxBacklog()) {   // full; a waiter already there implies full, so no save overtakes it
                 return wait ? waitLocked(p) : Future.failedFuture(new OverloadedException(options.maxBacklog()));
             }
-            queue.add(p);
+            queue(p);
             drained = drainLocked(false);
         }
         dispatch(drained);
@@ -214,21 +240,36 @@ public final class BatchingWriter<T> implements AutoCloseable {
         }
     }
 
-    /** Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees. */
+    /** Under the lock: {@code p} at the back of the queue, its bytes counted. */
+    private void queue(Pending<T> p) {
+        queue.add(p);
+        queuedBytes += p.weight();
+    }
+
+    /**
+     * Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees. A batch is the
+     * queue's front: its first item, then each next one while the batch stays within {@code batchSize} items and {@code batchBytes}
+     * bytes.
+     */
     private List<List<Pending<T>>> takeLocked(boolean windowElapsed) {
         List<List<Pending<T>>> batches = new ArrayList<>();
         while (!queue.isEmpty() && inFlight < options.commitConcurrency()
-                && (inFlight == 0 || queue.size() >= options.batchSize() || windowElapsed)) {
-            int n = Math.min(options.batchSize(), queue.size());
-            List<Pending<T>> batch = new ArrayList<>(n);
-            for (int i = 0; i < n; i++) batch.add(queue.poll());
+                && (inFlight == 0 || queue.size() >= options.batchSize() || queuedBytes >= batchBytes || windowElapsed)) {
+            List<Pending<T>> batch = new ArrayList<>();
+            long bytes = 0;
+            do {
+                Pending<T> p = queue.poll();
+                batch.add(p);
+                bytes += p.weight();
+                queuedBytes -= p.weight();
+            } while (!queue.isEmpty() && batch.size() < options.batchSize() && bytes + queue.peek().weight() <= batchBytes);
             inFlight++;
             flying.add(batch);
             batches.add(batch);
             while (!waiters.isEmpty() && queue.size() < options.maxBacklog()) {   // the freed room goes to the waiters first
                 Waiter<T> w = waiters.poll();
                 w.deadline.cancel();
-                queue.add(w.pending);
+                queue(w.pending);
             }
         }
         return batches;

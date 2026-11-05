@@ -88,12 +88,26 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
     }
 
     /**
-     * Writes {@code snapshot} on {@code client} — the intake's transaction (D-082) — with the writer's statements, never through
-     * the writer: the caller's commit makes it durable. A failure fails the future only; it is not counted in {@link #failed()},
-     * since the save it belongs to fails with it and no acknowledged row is missing.
+     * Writes {@code snapshots} on {@code client} — the intake's transaction (D-082), one group's records (D-109) — with the writer's
+     * statements, never through the writer: the caller's commit makes them durable. A failure fails the future only; it is not
+     * counted in {@link #failed()}, since the saves they belong to fail with it and no acknowledged row is missing.
      */
-    Future<Void> insert(SqlClient client, Snapshot snapshot) {
-        return sink.write(client, List.of(snapshot));
+    Future<Void> insert(SqlClient client, List<Snapshot> snapshots) {
+        return sink.write(client, snapshots);
+    }
+
+    /**
+     * The UTF-8 bytes {@code s}'s rows bind, at least: its id, flow and step name, and its headers, props and keys as the JSON they
+     * are written as (a group's byte limit weighs a member by them, D-109).
+     */
+    static long weight(Snapshot s) {
+        return utf8(s.messageId()) + utf8(s.flow()) + utf8(s.stepName()) + utf8(new JsonObject(new HashMap<>(s.headers().asMap())).encode())
+                + utf8(json(s.props().asMap()).encode()) + utf8(new JsonObject(new HashMap<>(s.keys().asMap())).encode());
+    }
+
+    /** The UTF-8 bytes of {@code text}; none for null. */
+    static long utf8(String text) {
+        return text == null ? 0 : text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
     }
 
     @Override

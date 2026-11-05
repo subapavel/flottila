@@ -1,4 +1,18 @@
 
+## 2026-11-05 — CORE-6b intake group commit (D-109, FIX-95a) — done, review PASS
+context compacted; re-verified with git status / git log before changing anything.
+Test first: PgIntakeGroupIT (19), PgIntakeGroupPropertyIT (jqwik), NodeConfigIntakeGroupTest, BatchingWriterTest +5, BatchingWriterPropertyTest +1,
+PgWire holdNextConnection / fatalReplyTo (test-author; red agent/work/CORE-6b-red.log, -r1-red, -r2-red); implementer's PgIntakeGroupEdgeIT (8), BatchingWriterWeightTest.
+Change: core BatchingWriter weight + batchBytes; NodeConfig.IntakeGroup + FLOTTILA_INTAKE_GROUP_* (draft until CORE-GATE); PgIntake gathers
+saves into one transaction (unnest claims sorted by flow/key, ON CONFLICT DO NOTHING, failed group re-runs survivors one by one, ERROR
+reply to COMMIT = known abort, FATAL/PANIC/lost = in doubt until pg_xact_status); groupStats(); ARCHITECTURE §4, D-082, D-084, D-071 amended.
+Checks: reactor verify -Pit exit 1 (3317, 1 failure = FIX-121 NodeBenchMainWarmupIT:111 float flake, not intake); class rerun exit 0, 5/0/0
+(agent/work/CORE-6b-r2-bench-rerun2.log); coverage no decrease; PIT core batch+flow 529/535; mutants r1 R1..R7, r2 S1..S3 killed.
+Review: FAIL r1 (re-run order, keyed duplicate in a poisoned group, SINGLE by value, refused COMMIT in doubt), FAIL r2 (FATAL reply as
+known abort could lose a committed body; R1 only a hang), PASS r3.
+Found: FIX-122 (PANIC unpinned). D-054 data: class C (test-author ×1 resumed ×3, implementer ×1 resumed ×2, verifier ×1, reviewer ×1 resumed ×2); rounds 3.
+Next: next ready CORE row (CORE-5 waits for P2-15).
+
 ## 2026-11-04 — CORE-6a intake round trips: prepared-statement cache, pipelined turns (D-109, F-26, FIX-95b) — done, review PASS
 Deviation: F-26 (the node pool did not cache prepared statements as §4 Writer says; code brought to the document).
 Test first: PgIntakeRoundTripIT (8), NodeConnectOptionsTest, AtLeastOnceIntakeIT.theNodesPoolParsesEachIntakeStatementOncePerConnection,

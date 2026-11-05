@@ -8,7 +8,8 @@ import io.vertx.core.Future;
  * The durable save an at-least-once {@link Delivery} answers by (ARCHITECTURE §4, D-082): the ingress body made durable, the
  * ingress snapshot recorded and the work item queued for step 1 of {@code flow}. Two implementations exist on day 1: core's
  * {@link SequentialIntake} (the body's persist beside the record, then the enqueue) and runtime's Postgres intake (all three in
- * one transaction).
+ * one transaction — per group: saves made concurrently may share it, each answered on its own; a member re-run after its group
+ * failed commits in its own transaction, D-109).
  *
  * @since 0.1
  */
@@ -21,12 +22,14 @@ public interface Intake {
      * write (the enqueue, or the commit that holds it) was already sent when it failed: that item may land, as the duplicate
      * D-049 b accepts. {@code abandoned} is the delivery's answer: complete once that answer is decided (the save timeout's
      * Nack, the stop's deadline). Its {@link Future#isComplete()} is asked just before that last write, and true queues nothing
-     * and fails the future; a save may also end a wait of its own once it completes (an intake waiting for room for its body
-     * stops waiting, retryable, nothing saved). A save that fails before that point never asks it.
+     * and fails the future; an intake that groups saves (D-109) asks it also, for a save without a dedupe key, when the save is taken into a
+     * group and again once the group's connection came, true there failing the save with nothing sent for it; a save may also end a wait of its own
+     * once it completes (an intake waiting for room for its body stops waiting, retryable, nothing saved). A save that fails
+     * before the last write may already have asked it.
      *
      * <p>{@code dedupeKey} (D-084; null: none) names what arrived, scoped by {@code flow}: a key an earlier message of
-     * {@code flow} was saved under records and queues nothing of {@code arrived} and never asks {@code abandoned} — the
-     * future succeeds with that earlier message's id. An intake that cannot dedupe fails a keyed save, never saves it undeduped.
+     * {@code flow} was saved under records and queues nothing of {@code arrived} — it writes nothing, and saves sharing its
+     * transaction are unaffected — and never asks {@code abandoned}: the future succeeds with that earlier message's id. An intake that cannot dedupe fails a keyed save, never saves it undeduped.
      *
      * <p>{@code keepInput} (D-105) says whether the flow keeps its input body beyond its run — the flow's
      * {@code RecordingPolicy.keepsBody()} until CORE-13: an intake with body references keeps one for the ingress body only

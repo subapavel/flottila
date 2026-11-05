@@ -232,4 +232,119 @@ class BatchingWriterPropertyTest {
             }
         }
     }
+
+    // --- CORE-6b (D-109): the weighed constructor
+
+    /** A move of the weighed property: a save of {@code weight} bytes, a commit completion (ok or failed), or a window's tick. */
+    record Weighed(Action action, long weight) {}
+
+    @Provide
+    Arbitrary<List<Weighed>> weighedMoves() {
+        Arbitrary<Weighed> save = Arbitraries.longs().between(1, 60).map(w -> new Weighed(Action.SAVE, w));
+        Arbitrary<Weighed> other = Arbitraries.of(Action.COMPLETE_OK, Action.COMPLETE_FAIL, Action.TICK).map(a -> new Weighed(a, 0));
+        return Arbitraries.frequencyOf(net.jqwik.api.Tuple.of(2, save), net.jqwik.api.Tuple.of(1, other)).list().ofMinSize(1).ofMaxSize(60);
+    }
+
+    /**
+     * Any demand on the weighed writer ({@code BatchingWriter(sink, timer, options, weight, batchBytes)}): items reach the sink once
+     * each, in arrival order; a batch holds at most {@code batchSize} items and at most {@code batchBytes} bytes — more only as one
+     * item alone; a batch is never cut short: the queued item after it would have broken a limit; after every move an idle writer
+     * has nothing queued, and no batch full by count or bytes waits beside a free slot.
+     */
+    @Property(tries = 300)
+    void batchesKeepArrivalOrderWithinCountAndBytes(@ForAll("weighedMoves") List<Weighed> moves,
+                                                    @ForAll @IntRange(min = 1, max = 5) int batchSize,
+                                                    @ForAll @IntRange(min = 1, max = 3) int concurrency,
+                                                    @ForAll @IntRange(min = 1, max = 4) int backlogBatches,
+                                                    @ForAll @IntRange(min = 0, max = 20) int windowMs,
+                                                    @ForAll @IntRange(min = 1, max = 100) int batchBytes) {
+        FakeClock clock = FakeClock.at(Instant.EPOCH);
+        FakeTimer timer = new FakeTimer(clock);
+        FakeSink sink = new FakeSink();
+        sink.manual = true;
+        int maxBacklog = batchSize * backlogBatches;
+        Map<String, Long> weights = new HashMap<>();
+        BatchingWriter<String> w = new BatchingWriter<>(sink, timer,
+                new BatchingWriter.Options(batchSize, Duration.ofMillis(windowMs), concurrency, maxBacklog), weights::get, batchBytes);
+
+        List<String> accepted = new ArrayList<>();
+        Map<String, Future<Void>> futures = new HashMap<>();
+        List<Boolean> outcomes = new ArrayList<>();
+        int saves = 0;
+        for (Weighed m : moves) {
+            List<String> queuedBefore = queued(accepted, sink);
+            int batchesBefore = sink.batches.size();
+            switch (m.action()) {
+                case SAVE -> {
+                    String item = "i" + (saves++);
+                    weights.put(item, m.weight());
+                    Future<Void> f = w.save(item);
+                    if (!(f.failed() && f.cause() instanceof OverloadedException)) {
+                        accepted.add(item);
+                        futures.put(item, f);
+                        queuedBefore.add(item);
+                    }
+                }
+                case COMPLETE_OK -> { if (sink.open() > 0) { sink.gate().complete(); outcomes.add(true); } }
+                case COMPLETE_FAIL -> { if (sink.open() > 0) { sink.gate().fail(new RuntimeException("failed batch")); outcomes.add(false); } }
+                case TICK -> clock.advance(Duration.ofMillis(Math.max(windowMs, 1)));
+                default -> throw new IllegalStateException(m.toString());
+            }
+            checkWeighed(w, sink, weights, queuedBefore, batchesBefore, batchSize, batchBytes, concurrency, maxBacklog);
+        }
+        for (int guard = 0; guard < 10_000 && (w.backlog() > 0 || sink.open() > 0); guard++) {
+            List<String> queuedBefore = queued(accepted, sink);
+            int batchesBefore = sink.batches.size();
+            clock.advance(Duration.ofMillis(Math.max(windowMs, 1)));
+            checkWeighed(w, sink, weights, queuedBefore, batchesBefore, batchSize, batchBytes, concurrency, maxBacklog);
+            queuedBefore = queued(accepted, sink);
+            batchesBefore = sink.batches.size();
+            if (sink.open() > 0) { sink.gate().complete(); outcomes.add(true); }
+            checkWeighed(w, sink, weights, queuedBefore, batchesBefore, batchSize, batchBytes, concurrency, maxBacklog);
+        }
+        assertEquals(0, w.backlog(), "every accepted item was handed on");
+        assertEquals(0, w.inFlight());
+        assertEquals(accepted, sink.batches.stream().flatMap(List::stream).toList(), "accepted items reach the sink once each, in arrival order");
+        assertEquals(sink.batches.size(), outcomes.size(), "every batch completed once");
+        for (int i = 0; i < sink.batches.size(); i++) {
+            for (String item : sink.batches.get(i)) assertEquals(outcomes.get(i), futures.get(item).succeeded(), item + " carries its batch's outcome");
+        }
+    }
+
+    /** The accepted items not yet handed to the sink, in arrival order. */
+    private static List<String> queued(List<String> accepted, FakeSink sink) {
+        int handed = sink.batches.stream().mapToInt(List::size).sum();
+        return new ArrayList<>(accepted.subList(handed, accepted.size()));
+    }
+
+    /**
+     * After a move: the limits hold; the batches the move handed on took the queue's front in order, each within count and bytes
+     * (alone above the byte limit) and none cut short; an idle writer queues nothing; no full batch waits beside a free slot.
+     */
+    private static void checkWeighed(BatchingWriter<String> w, FakeSink sink, Map<String, Long> weights, List<String> queuedBefore, int batchesBefore,
+                                     int batchSize, long batchBytes, int concurrency, int maxBacklog) {
+        assertTrue(w.inFlight() <= concurrency, "in flight " + w.inFlight() + " > " + concurrency);
+        assertTrue(w.backlog() <= maxBacklog, "backlog " + w.backlog() + " > " + maxBacklog);
+        int at = 0;
+        for (List<String> batch : sink.batches.subList(batchesBefore, sink.batches.size())) {
+            assertEquals(queuedBefore.subList(at, Math.min(at + batch.size(), queuedBefore.size())), batch, "a batch takes the queue's front, in order");
+            long bytes = batch.stream().mapToLong(weights::get).sum();
+            assertTrue(batch.size() <= batchSize, "a batch of " + batch.size() + " items > " + batchSize);
+            assertTrue(bytes <= batchBytes || batch.size() == 1, "a batch of " + bytes + " bytes > " + batchBytes + " and not one item alone: " + batch);
+            at += batch.size();
+            if (at < queuedBefore.size()) {
+                long next = weights.get(queuedBefore.get(at));
+                assertTrue(batch.size() == batchSize || bytes + next > batchBytes,
+                        "a batch cut short: " + batch + " (" + bytes + " bytes) left " + queuedBefore.get(at) + " (" + next + ") within " + batchBytes);
+            }
+        }
+        List<String> queuedNow = queuedBefore.subList(at, queuedBefore.size());
+        assertEquals(queuedNow.size(), w.backlog(), "the writer's backlog is what was queued and not handed on");
+        if (w.inFlight() == 0) assertEquals(0, w.backlog(), "an idle writer sends at once: nothing stays queued");
+        if (w.inFlight() < concurrency && !queuedNow.isEmpty()) {
+            long queuedBytes = queuedNow.stream().mapToLong(weights::get).sum();
+            assertTrue(queuedNow.size() < batchSize && queuedBytes < batchBytes,
+                    "a batch full by count or bytes waits beside a free slot: " + queuedNow + " (" + queuedBytes + " bytes)");
+        }
+    }
 }

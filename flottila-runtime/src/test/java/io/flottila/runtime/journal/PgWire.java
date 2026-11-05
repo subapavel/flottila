@@ -129,6 +129,7 @@ public final class PgWire implements AutoCloseable {
         final int id;
         final Socket client;
         volatile HeldReply replyHold;
+        volatile FatalReply fatalReply;
         /** ReadyForQuery messages forwarded to the client: the turn of the next message read. */
         volatile long delivered;
         /** SSL or GSS requests forwarded whose one-byte answer the server has not sent yet. */
@@ -208,12 +209,66 @@ public final class PgWire implements AutoCloseable {
         void release() { go.countDown(); }
     }
 
+    /**
+     * The server's answer to a frontend message replaced by a FATAL error (CORE-6b review r2): once the first message {@code matches}
+     * accepts is forwarded, the next bytes the server sends on that connection — its answer: for a COMMIT, CommandComplete, so the
+     * transaction committed — are swallowed; the client gets an ErrorResponse of severity FATAL with SQLSTATE {@code 57P01} instead and
+     * the connection is closed on both sides. {@link #awaitDone} returns once that happened.
+     */
+    static final class FatalReply {
+        private final Predicate<Sent> matches;
+        private final CountDownLatch done = new CountDownLatch(1);
+
+        private FatalReply(Predicate<Sent> matches) { this.matches = matches; }
+
+        void awaitDone() throws InterruptedException {
+            if (!done.await(20, TimeUnit.SECONDS)) throw new AssertionError("no reply to a matching message was replaced within 20 s");
+        }
+    }
+
+    private final List<FatalReply> fatalReplies = new CopyOnWriteArrayList<>();
+
+    /** Replaces the reply to the next frontend message {@code matches} accepts by a FATAL 57P01 error ({@link FatalReply}). */
+    FatalReply fatalReplyTo(Predicate<Sent> matches) {
+        FatalReply f = new FatalReply(matches);
+        fatalReplies.add(f);
+        return f;
+    }
+
+    /** An ErrorResponse: severity FATAL (S and V), SQLSTATE 57P01, an administrator's termination. */
+    private static byte[] fatal57P01() {
+        java.io.ByteArrayOutputStream fields = new java.io.ByteArrayOutputStream();
+        for (String f : List.of("SFATAL", "VFATAL", "C57P01", "Mterminating connection due to administrator command")) {
+            fields.writeBytes(f.getBytes(StandardCharsets.UTF_8));
+            fields.write(0);
+        }
+        fields.write(0);
+        byte[] body = fields.toByteArray();
+        java.nio.ByteBuffer msg = java.nio.ByteBuffer.allocate(1 + 4 + body.length);
+        msg.put((byte) 'E').putInt(4 + body.length).put(body);
+        return msg.array();
+    }
+
     /** Holds the reply to the next frontend message {@code matches} accepts ({@link HeldReply}). */
     HeldReply holdReplyTo(Predicate<Sent> matches) {
         HeldReply r = new HeldReply(matches);
         everyReplyHold.add(r);
         replyHolds.add(r);
         return r;
+    }
+
+    private final List<Held> connectHolds = new CopyOnWriteArrayList<>();
+
+    /**
+     * Holds the next connection the relay accepts before its startup message reaches the server (CORE-6b): the client has its TCP
+     * connection and waits for the server's answer, so a pool's connect is in progress until {@link Held#release()}; reached once
+     * the relay has accepted the connection.
+     */
+    Held holdNextConnection() {
+        Held h = new Held(s -> false);
+        everyHold.add(h);
+        connectHolds.add(h);
+        return h;
     }
 
     /** Holds the next frontend message {@code matches} accepts, on whichever connection it comes ({@link Held}). */
@@ -351,6 +406,14 @@ public final class PgWire implements AutoCloseable {
         Map<String, String> portals = new ConcurrentHashMap<>();      // portal name → SQL
         java.util.Set<Held> primed = new java.util.HashSet<>();       // holds whose `after` this connection met
         try (DataInputStream in = new DataInputStream(client.getInputStream()); OutputStream out = upstream.getOutputStream()) {
+            for (Held connecting : connectHolds) {
+                if (!connectHolds.remove(connecting)) continue;   // another connection took it
+                connecting.reached.countDown();
+                conn.held(true);
+                connecting.decided.await();
+                conn.held(false);
+                break;
+            }
             boolean started = false;
             while (!started) {
                 int length = in.readInt();
@@ -372,6 +435,12 @@ public final class PgWire implements AutoCloseable {
                 byte[] body = new byte[length - 4];
                 in.readFully(body);
                 Sent recorded = record((char) type, body, statements, portals, conn);
+                for (FatalReply f : fatalReplies) {
+                    if (f.matches.test(recorded) && fatalReplies.remove(f)) {
+                        conn.fatalReply = f;   // set before the message goes: its answer is replaced
+                        break;
+                    }
+                }
                 if (!replyHolds.isEmpty()) {
                     for (HeldReply r : replyHolds) {
                         if (r.matches.test(recorded) && replyHolds.remove(r)) {
@@ -464,6 +533,16 @@ public final class PgWire implements AutoCloseable {
         long payloadLeft = 0;          // bytes of the current message's payload still to come
         try (InputStream in = from.getInputStream(); OutputStream out = to.getOutputStream()) {
             for (int n; (n = in.read(buffer)) >= 0; ) {
+                FatalReply fatal = conn.fatalReply;
+                if (fatal != null) {   // the answer swallowed, a FATAL error in its place, the connection gone
+                    conn.fatalReply = null;
+                    out.write(fatal57P01());
+                    out.flush();
+                    closeQuietly(to);
+                    closeQuietly(from);
+                    fatal.done.countDown();
+                    return;
+                }
                 HeldReply r = conn.replyHold;
                 if (r != null) {
                     conn.replyHold = null;

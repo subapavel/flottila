@@ -61,16 +61,21 @@ import java.util.regex.Pattern;
  * @param journalSweep the segment sweeper's keys (CORE-3 items 10, 14): {@code FLOTTILA_JOURNAL_SWEEP_INTERVAL} (PT10S,
  *                     PT1S..PT1H), {@code FLOTTILA_JOURNAL_SWEEP_GRACE} (PT1M, PT1S..PT1H), {@code FLOTTILA_JOURNAL_KEEP_MAX_AGE}
  *                     (PT1H, PT1M..P1D), ISO-8601 each, range-checked as {@link SweepConfig} says
+ * @param intakeGroup the intake's group commit (CORE-6b, D-109): {@code FLOTTILA_INTAKE_GROUP_MAX} (64, 1..1024; 1 = no grouping),
+ *                    {@code FLOTTILA_INTAKE_GROUP_BYTES} (1 MiB, 64 KiB..64 MiB), {@code FLOTTILA_INTAKE_GROUP_WINDOW} (PT0.001S,
+ *                    PT0S..PT0.05S in whole milliseconds), {@code FLOTTILA_INTAKE_GROUP_CONCURRENCY} (1..64, at most
+ *                    max(1, {@code FLOTTILA_PG_POOL_SIZE} − 1); unset, min(4, that bound)); draft defaults until CORE-GATE
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
-                         MasterKeySource journalKey, SweepConfig journalSweep) {
+                         MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
-     * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5).
+     * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5). The intake's groups in flight leave the
+     * pool a connection: at most max(1, pool size − 1) of them (CORE-6b).
      */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
@@ -83,6 +88,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(journal, "journal");
         Objects.requireNonNull(journalKey, "journalKey");
         Objects.requireNonNull(journalSweep, "journalSweep");
+        Objects.requireNonNull(intakeGroup, "intakeGroup");
         if (journal.recordMax() > blobs.memoryTier()) {
             throw new IllegalArgumentException("FLOTTILA_JOURNAL_RECORD_MAX " + journal.recordMax() + " is above FLOTTILA_BLOB_MEMORY_TIER "
                     + blobs.memoryTier() + ": a journal record is held in memory whole");
@@ -91,6 +97,18 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+        if (intakeGroup.concurrency() > IntakeGroup.bound(pg.poolSize())) {
+            throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_CONCURRENCY " + intakeGroup.concurrency() + " is above max(1, FLOTTILA_PG_POOL_SIZE "
+                    + pg.poolSize() + " - 1): each group in flight holds a connection, and the pool keeps one for the rest of the node");
+        }
+    }
+
+    /** A node whose intake groups have the default keys for its pool ({@link IntakeGroup#defaults}), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, IntakeGroup.defaults(pg.poolSize()));
     }
 
     /** A node whose sweeper has the default keys (PT10S, PT1M, PT1H), as {@link #from} reads an env without them. */
@@ -154,7 +172,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets, journal, journalKey, journalSweep);
+                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -178,6 +196,34 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         @Override
         public String toString() {
             return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize + "]";
+        }
+    }
+
+    /**
+     * The intake's group commit (CORE-6b, D-109): saves waiting while a group is in flight go together, in one transaction.
+     *
+     * @param max members of a group at most; 1 = no grouping
+     * @param bytes the bytes a group binds at most (a member above it goes alone)
+     * @param window how long a partial group waits for members while a group is in flight; zero = until a group completes
+     * @param concurrency groups in flight at most, each on a connection of its own
+     * @since 0.1
+     */
+    public record IntakeGroup(int max, long bytes, Duration window, int concurrency) {
+
+        /**
+         * A group of one per save, sent at once — as many in flight as the largest pool (1024); the pool's own wait bounds them: the
+         * intake built without a group.
+         */
+        public static final IntakeGroup SINGLE = new IntakeGroup(1, 64 * MIB, Duration.ZERO, 1024);
+
+        /** Groups in flight at most over a pool of {@code poolSize}: max(1, poolSize − 1), one connection left for the rest of the node. */
+        static int bound(int poolSize) {
+            return Math.max(1, poolSize - 1);
+        }
+
+        /** The draft defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight. */
+        public static IntakeGroup defaults(int poolSize) {
+            return new IntakeGroup(64, MIB, Duration.ofMillis(1), Math.min(4, bound(poolSize)));
         }
     }
 
@@ -315,6 +361,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** The shortest and the longest CPU-time sampling period (D-094). */
     private static final Duration CPU_SAMPLING_MIN = Duration.ofMillis(1);
     private static final Duration CPU_SAMPLING_MAX = Duration.ofMillis(100);
+    private static final Duration GROUP_WINDOW_MAX = Duration.ofMillis(50);
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
@@ -346,7 +393,35 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
-                MasterKeySource.fromEnv(env), journalSweep(env));
+                MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.poolSize()));
+    }
+
+    /**
+     * The {@code FLOTTILA_INTAKE_GROUP_*} keys over a pool of {@code poolSize}: each range-checked naming its key; the concurrency's
+     * bound by the pool is the record's ({@link NodeConfig#NodeConfig}).
+     */
+    private static IntakeGroup intakeGroup(Map<String, String> env, int poolSize) {
+        IntakeGroup defaults = IntakeGroup.defaults(poolSize);
+        return new IntakeGroup((int) number(env, "FLOTTILA_INTAKE_GROUP_MAX", defaults.max(), 1, 1024),
+                number(env, "FLOTTILA_INTAKE_GROUP_BYTES", defaults.bytes(), 64 * 1024, 64 * MIB), groupWindow(env, defaults.window()),
+                (int) number(env, "FLOTTILA_INTAKE_GROUP_CONCURRENCY", defaults.concurrency(), 1, 64));
+    }
+
+    /** {@code FLOTTILA_INTAKE_GROUP_WINDOW}: an ISO-8601 duration in whole milliseconds from PT0S to PT0.05S, else refused naming the key. */
+    private static Duration groupWindow(Map<String, String> env, Duration fallback) {
+        String raw = env.get("FLOTTILA_INTAKE_GROUP_WINDOW");
+        if (raw == null) return fallback;
+        Duration window;
+        try {
+            window = Duration.parse(raw);
+        } catch (DateTimeParseException notIso) {
+            window = Duration.ofDays(1);   // refused below, as any value out of range
+        }
+        if (window.isNegative() || window.compareTo(GROUP_WINDOW_MAX) > 0 || window.getNano() % 1_000_000 != 0) {
+            throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_WINDOW must be an ISO-8601 duration in whole milliseconds from PT0S to "
+                    + GROUP_WINDOW_MAX + ", was '" + raw + "'");
+        }
+        return window;
     }
 
     /** The {@code FLOTTILA_JOURNAL_SWEEP_*} and {@code FLOTTILA_JOURNAL_KEEP_MAX_AGE} keys; no ISO-8601 duration is refused naming its key. */

@@ -1,10 +1,10 @@
 # Handoff
 
-state: RUNNING core rework (priority 1, docs/CORE-REWORK.md, D-103/D-104); CORE-0..4, 6a done (D-109); nothing else until CORE-GATE
-last commit: `Task: CORE-6a` (this commit); f7d90cc `Task: CORE-4d`; 3b54ee6 `Task: CORE-4c3`
+state: RUNNING core rework (priority 1, docs/CORE-REWORK.md, D-103/D-104); CORE-0..4, 6a, 6b done (D-109); nothing else until CORE-GATE
+last commit: `Task: CORE-6b` (this commit); 35835d4 `Task: CORE-6a`; f7d90cc `Task: CORE-4d`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: CORE-6b red tests (test-author, agent/packets/CORE-6b.md) → approve → implementer; FIX-120 kill-9 race, FIX-121 bench float flake open
+next exact action: pick the next ready CORE row (CORE-5 needs P2-15; CORE-9/12/15/16 ready); FIX-120, FIX-121, FIX-122 open
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

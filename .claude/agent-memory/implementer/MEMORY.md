@@ -40,6 +40,8 @@
   answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`.
   Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.
 - vertx-web 5.1.10 `Router.post(String)`→Route; RouterImpl never pauses (javap). Pg `UPDATE…RETURNING` has no order: CLAIM sorts in a CTE (P1-09c1).
+- Vert.x 5.1.10 pool acquire (javap SimpleConnectionPool$Acquire, CORE-6b): an idle conn on the CALLER's event loop, else a NEW conn below
+  max, else any idle one; a vthread caller is a fresh context: "the pool's one open connection" fixtures fail (warm conn left idle).
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
 - vertx-sql-client 5.1.10 (javap -c Pool): `Pool`, `SqlConnection` extend `SqlClient`; `withTransaction(fn)` = getConnection → begin →
@@ -52,9 +54,8 @@
 - runtime System.Logger → JUL: capture with a JUL Handler on `Logger.getLogger(<class>)`. Vert.x 5.1.10: `Promise.tryComplete(T)`; `complete(T,Throwable)`/`handle` THROW when already done (race a
   bound with `f.onComplete(p::tryComplete, p::tryFail)`); `Future.join` fails after all settle with the first failure in INDEX order; an `eventually` supplier throw is lost
   (completes with the ORIGINAL outcome); `compose`/`transform`/`Future.future` fail on any Throwable, a listener's throw is lost.
-- Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
-  static `doc()`/`unparsed-text()`/`use-when` read via `Configuration.getResourceResolver()` (UseWhenFilter builds
-  `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
+- Saxon-HE 12.4 (FIX-6): `setResourceResolver` sees only xsl:include/import; DTD entities, static doc()/unparsed-text()/use-when read
+  via `Configuration.getResourceResolver()` (default CatalogResourceResolver; may return StreamSource).
 - Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()
   .join()` waits uninterruptibly (no catch), for a never-failing close in a finally (P1-09k2). `andThen(Handler<AsyncResult>)` completes after
   the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause.
@@ -114,6 +115,5 @@
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
 - Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp. PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn.
-- Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
-  `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).
+- Node bench (P2-07): `NodeBenchMain --scenario ack --concurrency 8`, --db contains "bench", fresh DB per side; before side: `git worktree add --detach`.
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).

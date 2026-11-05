@@ -222,7 +222,7 @@ public final class Node implements AutoCloseable {
                 leases = new InMemoryPollerLeases(clock);
             }
             // an at-least-once ingress saves its body, its record and its item in one transaction (D-082)
-            PgIntake intake = new PgIntake(pool, blobs, messages, work);
+            PgIntake intake = new PgIntake(pool, blobs, messages, work, timer, config.intakeGroup());   // grouped saves (D-109)
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
                     new Targets(config.targets().defaults(), config.targets().overrides(), timer));   // the node's one, for every flow (D-099)
