@@ -1,9 +1,11 @@
 package io.flottila.bench;
 
+import io.flottila.api.Timer;
 import io.flottila.components.http.HttpComponent;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.runtime.time.VertxTimer;
 import io.flottila.steps.xslt.SaxonXml;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -14,6 +16,7 @@ import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.PoolOptions;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgBuilder;
@@ -29,10 +32,13 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -43,9 +49,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongPredicate;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -102,12 +110,20 @@ import java.util.zip.ZipOutputStream;
  * node's {@code GET /admin/flows/bench%2Fbench/cpu} answer once the window settled (cumulative since the node started: the
  * warm-up included).
  *
+ * <p>CORE-15: {@code --rate} runs {@code ack} or {@code sync} open loop ({@link OpenLoop}) after the warm-up instead of the
+ * closed-loop window — {@code --ramp}, {@code --window}, {@code --max-outstanding}, {@code --pg-cpu-source} ({@link #open}) —
+ * and the record carries its {@code open} object; {@code --scenario echo} runs it at the raw echo alone. bench/RESULTS.md,
+ * "Harness: open loop (CORE-15)", says what each field means.
+ *
  * @since 0.1
  */
 public final class NodeBenchMain {
 
-    /** What a run measures; the CLI name is the lower-case name. */
-    public enum Scenario { SYNC, ACK, WORKER }
+    /**
+     * What a run measures; the CLI name is the lower-case name. {@code ECHO} (CORE-15) is the open loop's self-test: the open
+     * loop straight at the raw echo, no node and no Postgres — the harness' own ceiling; it needs {@code --rate}.
+     */
+    public enum Scenario { SYNC, ACK, WORKER, ECHO }
 
     /** The flow's {@code recording.payload}; the CLI name is the lower-case name with a dash. */
     public enum Recording { KEEP, METADATA_ONLY }
@@ -115,10 +131,24 @@ public final class NodeBenchMain {
     /** The flow's step before {@code to partner}. */
     public enum Step { PASSTHROUGH, XSLT }
 
-    /** One run's command line. */
+    /**
+     * The open loop of CORE-15 ({@code --rate}): {@code rate} requests per second after a linear {@code ramp} from 0, for
+     * {@code window}; at most {@code maxOutstanding} requests in flight; the Postgres CPU source ({@link CpuSource}) or null.
+     */
+    public record Open(int rate, Duration ramp, Duration window, int maxOutstanding, String pgCpuSource) {}
+
+    /** One run's command line; {@code open} is null for the closed loop. */
     public record Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
                           String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
-                          String commit, String cpuSampling) {
+                          String commit, String cpuSampling, Open open) {
+        /** A closed-loop run. */
+        public Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
+                       String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
+                       String commit, String cpuSampling) {
+            this(scenario, recording, step, messages, warmup, concurrency, maxInFlight, name, out, syncCommit, host, port, db, user, password,
+                    commit, cpuSampling, null);
+        }
+
         /** A run without CPU sampling. */
         public Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
                        String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
@@ -134,6 +164,8 @@ public final class NodeBenchMain {
     static final int XSLT_BODY_BYTES = 100_000;
     /** A sync flow's permits per client request in flight (see the class comment). */
     static final int SYNC_PERMITS_PER_CLIENT = 64;
+    /** How long an open-loop request waits for a connection and, once sent, for its answer before it counts as a timeout. */
+    static final Duration OPEN_TIMEOUT = Duration.ofSeconds(30);
     /** How long a run waits for what a window accepted to land (recorded, the work queue empty) before it gives up. */
     static final Duration DRAIN = Duration.ofMinutes(10);
     /** Postgres' idle stats flush (PGSTAT_IDLE_INTERVAL, 10 s) and a margin: after it every backend's counts are published. */
@@ -201,7 +233,7 @@ public final class NodeBenchMain {
         if (!o.syncCommit()) {
             throw new IllegalArgumentException("--sync-commit off: a node refuses synchronous_commit off (D-061); the node bench runs with on");
         }
-        FutureTask<Integer> run = new FutureTask<>(() -> measure(o));
+        FutureTask<Integer> run = new FutureTask<>(() -> o.scenario() == Scenario.ECHO ? echo(o) : measure(o));
         Thread.ofVirtual().name("node-bench").start(run).join();
         try {
             return run.get();
@@ -231,7 +263,58 @@ public final class NodeBenchMain {
                 Path.of(a.getOrDefault("out", "bench/out/" + name + ".json")), syncCommit.equals("on"),
                 a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")), db,
                 a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
-                a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")), cpuSampling(a.getOrDefault("cpu-sampling", "off")));
+                a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")), cpuSampling(a.getOrDefault("cpu-sampling", "off")),
+                open(scenario, a));
+    }
+
+    /** The highest {@code --rate}, the longest {@code --ramp} and the longest {@code --window} (CORE-15). */
+    static final int MAX_RATE = 100_000;
+    static final Duration MAX_RAMP = Duration.ofMinutes(10);
+    static final Duration MAX_WINDOW = Duration.ofHours(1);
+
+    /**
+     * The open-loop options, null without {@code --rate} (the closed loop): {@code --rate} 1..{@value #MAX_RATE}, {@code --ramp}
+     * PT0S..PT10M (PT1M), {@code --window} PT1S..PT1H (PT10M), {@code --max-outstanding} a positive number (rate × 2 s) and
+     * {@code --pg-cpu-source} (none). The worker scenario refuses {@code --rate} (its window is the queue's drain), the echo
+     * scenario needs it; a value out of its bounds is refused naming the option and the value.
+     */
+    static Open open(Scenario scenario, Map<String, String> a) {
+        String raw = a.get("rate");
+        if (raw == null) {
+            if (scenario == Scenario.ECHO) throw new IllegalArgumentException("--scenario echo is the open loop's self-test: it needs --rate");
+            return null;
+        }
+        if (scenario == Scenario.WORKER) {
+            throw new IllegalArgumentException("--rate '" + raw + "' is open loop: the worker scenario runs closed loop only (ack, sync or echo take --rate)");
+        }
+        int rate;
+        try {
+            rate = Integer.parseInt(raw);
+        } catch (NumberFormatException notANumber) {
+            rate = 0;
+        }
+        if (rate < 1 || rate > MAX_RATE) {
+            throw new IllegalArgumentException("--rate must be a whole number of messages per second from 1 to " + MAX_RATE + ", was '" + raw + "'");
+        }
+        Duration ramp = duration(a, "ramp", "PT1M", Duration.ZERO, MAX_RAMP);
+        Duration window = duration(a, "window", "PT10M", Duration.ofSeconds(1), MAX_WINDOW);
+        String bound = a.get("max-outstanding");
+        return new Open(rate, ramp, window, bound == null ? 2 * rate : positive("max-outstanding", bound), a.get("pg-cpu-source"));
+    }
+
+    /** {@code --key} as an ISO-8601 duration from {@code min} to {@code max} ({@code fallback} when absent); else refused. */
+    private static Duration duration(Map<String, String> a, String key, String fallback, Duration min, Duration max) {
+        String raw = a.getOrDefault(key, fallback);
+        Duration value;
+        try {
+            value = Duration.parse(raw);
+        } catch (java.time.format.DateTimeParseException notADuration) {
+            value = min.minusNanos(1);
+        }
+        if (value.compareTo(min) < 0 || value.compareTo(max) > 0) {
+            throw new IllegalArgumentException("--" + key + " must be an ISO-8601 duration from " + min + " to " + max + ", was '" + raw + "'");
+        }
+        return value;
     }
 
     /** {@code raw} as the node's {@code FLOTTILA_CPU_SAMPLING}: off, or a period the node takes; refused as the node refuses it. */
@@ -301,9 +384,9 @@ public final class NodeBenchMain {
     private static int report(Options o, Migrations.Result migrated, Vertx vertx, Pool pool, Path data) throws Exception {
         Buffer body = invoice(o.step() == Step.XSLT ? XSLT_BODY_BYTES : 0);
         int in = freePort();
-        HttpServer echo = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(bytes -> req.response().end(bytes)))
-                .listen(0, "127.0.0.1").await();
-        HttpClientAgent client = vertx.createHttpClient(new HttpClientOptions(), new PoolOptions().setHttp1MaxSize(o.concurrency()));
+        AtomicLong receipts = new AtomicLong();
+        HttpServer echo = echo(vertx, receipts);
+        HttpClientAgent client = client(vertx, o);
         NodeConfig config = nodeConfig(o, data, echo.actualPort());
         Harness h = new Harness(o, vertx, pool, client, body, in, echo.actualPort(), config.journal().dir());
         SaxonXml xml = new SaxonXml();
@@ -317,7 +400,8 @@ public final class NodeBenchMain {
             int warmupFailed = h.load(in, "/in", o.warmup()).failed();
             int warmedUp = o.warmup() - warmupFailed;
             h.settle(warmedUp, failuresAtStart, DRAIN, h.probe(admin));
-            measured = h.measure(warmedUp, admin).put("warmupFailed", warmupFailed)   // settled too: the node stops with nothing in flight
+            measured = (o.open() == null ? h.measure(warmedUp, admin) : h.open(warmedUp, admin, receipts))
+                    .put("warmupFailed", warmupFailed)   // settled too: the node stops with nothing in flight
                     .put("cpu", h.cpu(admin));
         } finally {
             node.close();   // flushes the message store: its rows are in before the record is written
@@ -334,14 +418,67 @@ public final class NodeBenchMain {
         for (Row r : pool.query("select name, setting from pg_settings where name in ('" + String.join("', '", SETTINGS) + "')").execute().await()) {
             json.put(r.getString(0), r.getString(1));
         }
+        return write(o, json);
+    }
+
+    /**
+     * The echo self-test (CORE-15, {@code --scenario echo}): a closed-loop warm-up of {@code --warmup} requests at the raw echo,
+     * then the open loop straight at it — no node, no Postgres. The record carries the {@code open} object; the node's CPU is
+     * null (there is none).
+     */
+    static int echo(Options o) throws IOException {
+        Vertx vertx = Vertx.vertx();
+        try {
+            AtomicLong receipts = new AtomicLong();
+            int port = echo(vertx, receipts).actualPort();
+            Harness h = new Harness(o, vertx, null, client(vertx, o), invoice(0), 0, port);
+            int warmupFailed = h.load(port, "/echo", o.warmup(), 200).failed();
+            long base = receipts.get();
+            JsonObject open = h.openLoop(port, "/echo", 200, () -> receipts.get() - base,
+                    () -> new CpuSource.Reading(0, "no node: the echo self-test runs the open loop at the raw echo alone"));
+            return write(o, new JsonObject().put("name", o.name()).put("scenario", cli(o.scenario())).put("warmup", o.warmup())
+                    .put("concurrency", o.concurrency()).put("warmupFailed", warmupFailed).put("open", open).put("bodyBytes", h.body().length())
+                    .put("machine", BenchMain.machine()).put("date", Instant.now().toString()).put("commit", o.commit()));
+        } finally {
+            vertx.close().await();
+        }
+    }
+
+    /** The partner: a raw Vert.x echo on 127.0.0.1 that answers each request with its bytes, counting it in {@code receipts}. */
+    static HttpServer echo(Vertx vertx, AtomicLong receipts) {
+        return vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(bytes -> {
+            receipts.incrementAndGet();
+            req.response().end(bytes);
+        })).listen(0, "127.0.0.1").await();
+    }
+
+    /** The run's client: {@code --concurrency} connections (an open loop's requests beyond them wait in its queue, on the clock). */
+    static HttpClientAgent client(Vertx vertx, Options o) {
+        return vertx.createHttpClient(new HttpClientOptions(), new PoolOptions().setHttp1MaxSize(o.concurrency()));
+    }
+
+    /** Writes {@code json} to {@code --out} and stdout; the run's exit code ({@link #exitCode}). */
+    static int write(Options o, JsonObject json) throws IOException {
         Files.createDirectories(o.out().toAbsolutePath().getParent());
         Files.writeString(o.out(), json.encodePrettily() + "\n");
         System.out.println(json.encodePrettily());
         return exitCode(json);
     }
 
-    /** 3 when the record counts a failure (named on stderr with the first one), else 0. */
+    /**
+     * 3 when the record counts a failure (named on stderr with the first one), else 0. An open-loop record fails on its window's
+     * errors and timeouts only: its refusals (503 and other statuses) and its validity are what it measures.
+     */
     static int exitCode(JsonObject record) {
+        JsonObject open = record.getJsonObject("open");
+        if (open != null) {
+            long failed = open.getLong("errors") + open.getLong("timeouts");
+            if (failed > 0) {
+                System.err.println(failed + " of " + open.getLong("sent") + " window requests failed or timed out; first: " + open.getString("firstFailure"));
+                return 3;
+            }
+            return 0;
+        }
         int failed = record.getInteger("failed");
         if (failed > 0) {
             System.err.println(failed + " of " + record.getInteger("messages") + " failed; first: " + record.getString("firstFailure"));
@@ -526,8 +663,59 @@ public final class NodeBenchMain {
                     JsonObject w = window(recorded, admin);
                     yield w.mergeIn(perMessage(before, counters(), o.messages()));
                 }
-                case WORKER -> worker(recorded, admin);
+                default -> worker(recorded, admin);   // WORKER: an echo run measures no node window
             };
+        }
+
+        /**
+         * The open loop (CORE-15) at the flow, after the warm-up's {@code recorded} messages landed: its record ({@code open}),
+         * then a settle until every request it accepted (ramp included) landed, and the partner's receipts read once settled.
+         */
+        JsonObject open(long recorded, int admin, AtomicLong receipts) {
+            long failuresAtStart = snapshotWriteFailures(admin);
+            long base = receipts.get();
+            JsonObject open = openLoop(in, "/in", accepted(), () -> receipts.get() - base, () -> nodeCpu(cpu(admin)));
+            settle(recorded + open.getLong("acceptedTotal"), failuresAtStart, DRAIN, probe(admin));
+            return new JsonObject().put("open", open.put("receipts", receipts.get() - base));
+        }
+
+        /**
+         * Runs {@code --rate}'s open loop at 127.0.0.1:{@code port}{@code path} ({@code status} accepted) on the Vert.x timer
+         * and the system clock, and adds the window's CPU per process: the bench JVM's, {@code node} and Postgres' from
+         * {@code --pg-cpu-source}, each read when the window starts and when it ends.
+         */
+        JsonObject openLoop(int port, String path, int status, LongSupplier receipts, Supplier<CpuSource.Reading> node) {
+            Open p = o.open();
+            VertxTimer millis = new VertxTimer(vertx);   // whole milliseconds from 1, rounded down: rounded up here, a send is never early
+            Timer timer = (delay, task) -> millis.schedule(delay.plusNanos(999_999).truncatedTo(ChronoUnit.MILLIS), task);
+            OpenLoop loop = new OpenLoop(new OpenLoop.Schedule(p.rate(), p.ramp(), p.window()), p.maxOutstanding(), status, Clock.systemUTC(),
+                    timer, i -> post(port, path), receipts);
+            Map<String, Supplier<CpuSource.Reading>> sources = new LinkedHashMap<>();
+            sources.put("bench", () -> new CpuSource.Reading(processCpuNanos(), null));
+            sources.put("node", node);
+            sources.put("postgres", p.pgCpuSource() == null ? () -> new CpuSource.Reading(0, "no --pg-cpu-source") : CpuSource.of(p.pgCpuSource())::read);
+            loop.start();
+            loop.windowStart().await();
+            Map<String, CpuSource.Reading> before = new LinkedHashMap<>();
+            sources.forEach((k, source) -> before.put(k, source.get()));
+            loop.windowEnd().await();
+            Map<String, CpuSource.Reading> after = new LinkedHashMap<>();
+            sources.forEach((k, source) -> after.put(k, source.get()));
+            JsonObject open = loop.done().await();
+            sources.keySet().forEach(k -> CpuSource.put(open, k, before.get(k), after.get(k)));
+            return open;
+        }
+
+        /**
+         * The node's CPU so far from its cpu answer ({@link #cpu}): the bench flow's step CPU its sampler attributed (D-094, the
+         * sum of its items' {@code cpuNanos}); unreadable unless sampling is on.
+         */
+        static CpuSource.Reading nodeCpu(JsonObject answer) {
+            String sampling = answer.getString("sampling");
+            if (!"on".equals(sampling)) return new CpuSource.Reading(0, "the node's cpu sampling is " + sampling + " (--cpu-sampling)");
+            long nanos = 0;
+            for (Object item : answer.getJsonArray("items")) nanos += ((JsonObject) item).getLong("cpuNanos");
+            return new CpuSource.Reading(nanos, null);
         }
 
         /**
@@ -735,14 +923,28 @@ public final class NodeBenchMain {
          * body cannot end before {@code body()} is attached on a later task (FIX-21).
          */
         Answer exchange(HttpMethod method, int port, String path, String contentType, Buffer content) {
-            return client.request(method, port, "127.0.0.1", path).compose(req -> {
+            return send(new RequestOptions().setMethod(method).setHost("127.0.0.1").setPort(port).setURI(path), contentType, content).await();
+        }
+
+        /**
+         * One open-loop request: the body POSTed to 127.0.0.1:{@code port}{@code path}, its status; a request without a
+         * connection or an answer within {@link #OPEN_TIMEOUT} fails with a {@link java.util.concurrent.TimeoutException}.
+         */
+        Future<Integer> post(int port, String path) {
+            return send(new RequestOptions().setMethod(HttpMethod.POST).setHost("127.0.0.1").setPort(port).setURI(path)
+                    .setConnectTimeout(OPEN_TIMEOUT.toMillis()).setIdleTimeout(OPEN_TIMEOUT.toMillis()), "application/xml", body).map(Answer::status);
+        }
+
+        /** {@link #exchange}'s request, not awaited. */
+        Future<Answer> send(RequestOptions request, String contentType, Buffer content) {
+            return client.request(request).compose(req -> {
                 req.response().onSuccess(HttpClientResponse::pause);
                 return req.putHeader("content-type", contentType).send(content);
             }).compose(res -> {
                 Future<Buffer> answer = res.body();
                 res.resume();
                 return answer.map(bytes -> new Answer(res.statusCode(), bytes));
-            }).await();
+            });
         }
     }
 }

@@ -1,5 +1,37 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## Harness: open loop (CORE-15) — method note, no numbers
+
+`NodeBenchMain --rate <msg/s>` (1..100 000) runs scenario `ack` or `sync` open loop; `--scenario echo --rate ..` runs it straight
+at the raw echo (no node, no Postgres): the harness' own ceiling. `bench/run.sh` scenario `open` (BENCH_RATE 5000, BENCH_RAMP,
+BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate` the closed loop is unchanged.
+
+- **Schedule.** Request i is due at an instant fixed in advance: a linear ramp from 0 to the rate over `--ramp` (PT1M; i is due at
+  sqrt(2·ramp·i/rate)), then the constant rate for `--window` (PT10M). A request is sent when due whatever the answers to earlier
+  ones; sends run on a Vert.x timer rounded up to whole milliseconds (a timer that fires late sends everything due by then).
+  Nothing is scheduled at or after the window's end. The closed-loop `--warmup` runs before the ramp.
+- **Bound.** At most `--max-outstanding` (rate × 2 s) requests in flight; one due while the bound is full is never sent and counts
+  `clientSaturated`. Client connections are `--concurrency`; a request beyond them waits in the client's queue, on the clock.
+  A request without a connection or an answer within 30 s counts as a timeout.
+- **Window figures** count only the requests scheduled inside the window: `scheduled` (rate × window), `sent`, `achievedRate`
+  (window requests whose actual send fell inside the window, per window second), `accepted` (202 for ack, 200 for sync and echo),
+  `refused503` (the flow's admission), `refused` (any other status, by code), `timeouts`, `errors` (`firstFailure` the first).
+- **Latency** p50/p99/p99.9/max of the accepted answers, each from the request's **scheduled** send time to its answer: a late
+  send counts its delay (no coordinated omission). Null when nothing was accepted.
+- **Backlog** = accepted − partner receipts (the echo counts each request it answers; ramp included in both), sampled at the
+  window's start, each second, and its end (`backlog`); `backlogGrowth` = end − start, `backlogGrowthPercent` over the window's
+  `accepted`. `acceptedTotal` is ramp + window. `receipts` is re-read once the node settled (everything accepted landed).
+  In the echo self-test a receipt is counted before its answer reaches the client, so a sample can be slightly negative.
+- **CPU over the window** (`cpuMs`, read at the window's start and end): `bench` the bench JVM (client, node and echo together);
+  `node` the bench flow's step CPU as the node's sampler attributed it (`--cpu-sampling` on; the sampler reads every 5 s and keeps
+  2 s of lateness, so a short window reads low or 0 — meaningful for minutes-long windows only); `postgres` from
+  `--pg-cpu-source` (a cgroup v2 directory's `cpu.stat` `usage_usec`, or a pid's `/proc/<pid>/stat` utime + stime at USER_HZ 100).
+  A figure that cannot be read is JSON null with its reason in `cpuNotes`, never 0.
+- **valid** is false, with `invalidReasons`, when any request was `clientSaturated` or `achievedRate` is more than 1 % off the
+  scheduled rate (`scheduled` / window seconds, the offered rate whenever rate × window is whole). An invalid run measured the
+  client, not the node. The run exits 3 on window errors or timeouts; refusals and invalidity are recorded, not failed.
+- Latency samples are kept exactly (8 bytes per window request: 24 MB at 5 000/s × PT10M).
+
 ## CORE-2 — ClickHouse payload compression — cloud VM, 4 vCPU
 
 Date: 2026-11-04. Commit: the CORE-2 working tree on d2e2845 (records labelled `d2e2845+dirty`). Machine: Intel Xeon @ 2.80 GHz

@@ -27,6 +27,12 @@
 # pin) started with `docker run` on 127.0.0.1:BENCH_CH_PORT (18123), default server settings, data inside the container on the host's
 # disk; stopped and removed with its data when the scenario ends, failed or not. BENCH_CH_ARGS (unset: the full matrix) passes harness
 # arguments, e.g. "--sizes 100 --counts 50 --levels 1 --runs 1". Writes bench/out/clickhouse-compression.{json,log}, prints the table.
+# `open` (CORE-15): one NodeBenchMain run open loop (requests sent at times fixed in advance, whatever the answers) of
+# BENCH_OPEN_SCENARIO (ack; sync, or echo — the raw echo alone, the harness' own ceiling) at BENCH_RATE msg/s (5000, passed through:
+# NodeBenchMain refuses a value outside 1..100000), after a linear BENCH_RAMP (NodeBenchMain's PT1M unless set) for BENCH_WINDOW
+# (PT10M unless set); BENCH_PG_CPU (unset) names Postgres' cgroup v2 directory or pid for its CPU over the window
+# (--pg-cpu-source). Named node-open-<scenario>-r<rate>; its summary prints the record's open fields (bench/RESULTS.md, "Harness:
+# open loop (CORE-15)").
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
@@ -43,6 +49,13 @@ if [[ -n "${BENCH_COMMIT_DELAY:-}" ]]; then
   fi
   ack_suffix="-cd$BENCH_COMMIT_DELAY"
 fi
+
+open_scenario="${BENCH_OPEN_SCENARIO:-ack}"
+case "$open_scenario" in
+  ack|sync|echo) ;;
+  *) echo "BENCH_OPEN_SCENARIO: unknown open-loop scenario '$open_scenario' (ack, sync, echo)" >&2
+     exit 2 ;;
+esac
 
 needs_pg=0   # every scenario but clickhouse runs against Postgres
 for scenario in $BENCH_SCENARIOS; do
@@ -93,7 +106,26 @@ clickhouse_run() { # CORE-2, in a subshell: its EXIT trap stops and removes the 
   grep '^|' bench/out/clickhouse-compression.log
 }
 
+# an open-loop record's summary line (CORE-15), nothing for a closed-loop record
+OPEN_SUMMARY='
+import json, sys
+o = json.load(open(sys.argv[1])).get("open")
+if o:
+    ms = lambda v: "n/a" if v is None else "%.2f ms" % v
+    cpu = ", ".join(k + " " + ("n/a" if v is None else "%.0f ms" % v) for k, v in o["cpuMs"].items())
+    pct = "n/a" if o["backlogGrowthPercent"] is None else "%.2f %%" % o["backlogGrowthPercent"]
+    why = "" if o["valid"] else " (" + "; ".join(o["invalidReasons"]) + ")"
+    print(("open loop: offered {offeredRate:.0f} msg/s, achieved {achievedRate:.1f} msg/s, sent {sent} of {scheduled} scheduled,"
+           " accepted {accepted}, refused 503 {refused503}, refused {refused}, timeouts {timeouts}, errors {errors},"
+           " clientSaturated {clientSaturated}, p50 {p50}, p99 {p99}, p99.9 {p999}, max {max}, receipts {receipts},"
+           " backlog growth {backlogGrowth} ({pct}), cpu over the window: {cpu}; valid {ok}{why}").format(**o, p50=ms(o["p50Ms"]),
+          p99=ms(o["p99Ms"]), p999=ms(o["p999Ms"]), max=ms(o["maxMs"]), pct=pct, cpu=cpu, ok=str(o["valid"]).lower(), why=why))
+'
+
 summary() { # name
+  local open
+  open="$(python3 -c "$OPEN_SUMMARY" "bench/out/$1.json")"
+  if [[ -n "$open" ]]; then echo "$1: $open"; return; fi
   echo "$1: $(python3 -c "import json,sys; j=json.load(open('bench/out/$1.json')); print(f\"{j['throughputPerSecond']:.0f} msg/s, p50 {j['p50Ms']:.2f} ms, p95 {j['p95Ms']:.2f} ms, p99 {j['p99Ms']:.2f} ms, max {j['maxMs']:.1f} ms\" + (f\", overhead p50 {j['overheadP50Ms']:.2f} ms\" if 'overheadP50Ms' in j else '') + (f\", process cpu {j['processCpuMsPerMessage']:.3f} ms/msg\" if 'processCpuMsPerMessage' in j else '') + (f\", refused {j['refused']} of {j['messages']}\" if 'refused' in j else '') + (f\", warm-up failed {j['warmupFailed']}\" if 'warmupFailed' in j else ''))")"
 }
 
@@ -151,8 +183,14 @@ for scenario in $BENCH_SCENARIOS; do
       done ;;
     clickhouse)
       (clickhouse_run) ;;
+    open)
+      open_args=(--scenario "$open_scenario" --rate "${BENCH_RATE:-5000}")
+      if [[ -n "${BENCH_RAMP:-}" ]]; then open_args+=(--ramp "$BENCH_RAMP"); fi
+      if [[ -n "${BENCH_WINDOW:-}" ]]; then open_args+=(--window "$BENCH_WINDOW"); fi
+      if [[ -n "${BENCH_PG_CPU:-}" ]]; then open_args+=(--pg-cpu-source "$BENCH_PG_CPU"); fi
+      run_node "node-open-$open_scenario-r${BENCH_RATE:-5000}" "${open_args[@]}" ;;
     *)
-      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu, clickhouse)" >&2
+      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu, clickhouse, open)" >&2
       exit 2 ;;
   esac
 done

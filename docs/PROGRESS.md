@@ -1,4 +1,16 @@
 
+## 2026-11-05 — CORE-15 open-loop load harness (GATE §CORE-GATE condition 2, P2-14 (b)) — done, review PASS
+Test first: OpenLoopScheduleTest, OpenLoopTest (FakeClock/FakeTimer), NodeBenchMainOpenOptionsTest, CpuSourceTest, NodeBenchOpenEchoIT,
+NodeBenchOpenAckIT, BenchRunScriptOpenTest (test-author; red agent/work/CORE-15-red.log); implementer's OpenLoopAccountingTest,
+NodeBenchMainOpenRunTest, BenchRunScriptOpenDefaultsTest, NodeBenchOpenEchoCpuIT.
+Change: NodeBenchMain --rate/--ramp/--window/--max-outstanding/--pg-cpu-source, scenario echo; OpenLoop (fixed schedule, latency
+from the scheduled send time, saturation invalidates, backlog = accepted − partner receipts per second); CpuSource (cgroup or pid,
+null + reason when unreadable); LatencyStats rank ceil(p·n/100); run.sh scenario `open`; RESULTS method note.
+Checks: reactor verify -Pit exit 0 (3368, 367 fresh reports); coverage no decrease (bench 97.8/97.2); mutants M1..M8 killed.
+Review: PASS r1. Found: FIX-123 (sample budget, monotonic clock, clamp pin, timeout label, pg CPU scope).
+D-054 data: class B (scout ×1, test-author ×1, implementer ×1, reviewer ×1); rounds 1.
+Next: preview run at 5 000 msg/s (owner 2026-11-05), then CORE-9/12.
+
 ## 2026-11-05 — CORE-6b intake group commit (D-109, FIX-95a) — done, review PASS
 context compacted; re-verified with git status / git log before changing anything.
 Test first: PgIntakeGroupIT (19), PgIntakeGroupPropertyIT (jqwik), NodeConfigIntakeGroupTest, BatchingWriterTest +5, BatchingWriterPropertyTest +1,

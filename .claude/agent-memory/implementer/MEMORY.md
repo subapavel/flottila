@@ -4,15 +4,14 @@
   `target/`, so any `mvn clean` leaves them; P1-08 r2 lost them when they lived in the root `target/`.
 - Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
   components need only `-pl flottila-api,flottila-testkit,<module>`.
-- Full check: `mvn -B -ntp -q verify -Pit > agent/work/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
-  Postgres (`sudo pg_ctlcluster 16 main start`); both die between calls: start detached (NOTES "Build and VM"), check
-  `docker info` first — ~31 IT errors "Previous attempts to find a Docker environment failed" mean dockerd is down.
+- Full check: `mvn -B -ntp -q verify -Pit > agent/work/<task>-verify.log 2>&1`; needs Docker and native Postgres, both die between
+  calls: start detached (NOTES "Build and VM"), check `docker info` first (~31 IT errors "find a Docker environment" = dockerd down).
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
 - `-q` prints no "Tests run:" lines: count `**/target/{surefire,failsafe}-reports/TEST-*.xml` RECURSIVELY (components/steps are
   nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start.
 - A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
   `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
-- flottila-runtime `verify` without `-Pit` passed its floor at CORE-4c1 (failed ~73 % before); runtime figures need `-Pit`; a `-Dtest=` verify fails the floor: read surefire XML.
+- Runtime figures need `-Pit`; a `-Dtest=` verify fails the floor: read surefire XML.
 - Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36 (schema count); public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
   a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
@@ -94,6 +93,7 @@
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
+- Vert.x 5.1.10 (javap, CORE-15): RequestOptions idle/connect timeouts fail with a TimeoutException; VertxTimer FLOORS to ms. Rank: `p*n/100.0`.
 - JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; live RecordingStream vthread `getThread()` null, a whole dump resolves all (F-22); `dump(p)` truncates p, works on STOPPED; one dump per comparison; cp: `dependency:build-classpath`.
 ## Findings that came back in review
 - Journal SegmentRows without rows (NO_ROWS, RecordingRows) answer journalOf null for every node: a rule on "no row" checks rows kept (`segments()` non-null); a seam hold armed before an async first try is taken by it (CORE-4c1 r1).
