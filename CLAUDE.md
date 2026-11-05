@@ -48,7 +48,7 @@ build; this file holds the rules that keep the code and the way of working align
 - Clock, timers and id generation are injected through `Runtime`. No static singletons.
 - Dependencies: Apache 2.0, MIT, BSD, MPL 2.0, EPL only. AGPL, GPL, BSL, SSPL → `ISSUE`, never
   linked. SAP JCo is `provided` scope and never redistributed.
-- Sizes are `long`. Every flow has a finite max body size. Never default a limit to unlimited.
+- Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited.
 
 ## Tests (TDD from day 1)
 
