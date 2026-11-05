@@ -1,4 +1,15 @@
 
+## 2026-11-05 — FIX-124 open-loop record kept when the settle misses, recording level option — done, review PASS
+Found by the owner's preview run (ack 5 000 msg/s, recording all: settle timed out, no JSON; ~470 k of ~3.15 M accepted, work 376 k left).
+Test first: NodeBenchMainOpenSettleTest, NodeBenchMainRecordingLevelTest (test-author; red agent/work/FIX-124-red.log); implementer's
+NodeBenchMainOpenSettleCasesTest, BenchRunScriptOpenLevelTest, NodeBenchOpenRecordingLevelIT, NodeBenchOpenSettleCountsIT.
+Change: settleOpen writes settled/settleDeadline/settleTarget/messages/work/receipts, exit 4 when unsettled (wins over 3);
+--recording-level none|all (none → flow level off; sync + none refused); run.sh BENCH_RECORDING_LEVEL, BENCH_MAX_IN_FLIGHT, level
+in the run name, summary prints level and settled; RESULTS note updated.
+Checks: reactor verify -Pit exit 0 (3387, run 2; run 1 FIX-121 flake); bench verify r2 exit 0 (199); coverage no decrease; M1..M11 killed.
+Review: FAIL r1 (RESULTS note stale, all/none runs shared a file), PASS r2. Found: FIX-125.
+Next: stepped open-loop run, recording none (owner 2026-11-05), then CORE-8 at-least-once half, P2-15 → P2-16 → CORE-7.
+
 ## 2026-11-05 — CORE-15 open-loop load harness (GATE §CORE-GATE condition 2, P2-14 (b)) — done, review PASS
 Test first: OpenLoopScheduleTest, OpenLoopTest (FakeClock/FakeTimer), NodeBenchMainOpenOptionsTest, CpuSourceTest, NodeBenchOpenEchoIT,
 NodeBenchOpenAckIT, BenchRunScriptOpenTest (test-author; red agent/work/CORE-15-red.log); implementer's OpenLoopAccountingTest,

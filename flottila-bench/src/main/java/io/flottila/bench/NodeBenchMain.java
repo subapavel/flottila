@@ -115,6 +115,11 @@ import java.util.zip.ZipOutputStream;
  * and the record carries its {@code open} object; {@code --scenario echo} runs it at the raw echo alone. bench/RESULTS.md,
  * "Harness: open loop (CORE-15)", says what each field means.
  *
+ * <p>FIX-124: {@code --recording-level none|all} (all) is the flow's {@code recording.level} (none deploys {@code off}: no step
+ * is recorded; {@code --recording} stays the payload setting); sync refuses none, its settle counts the recorded rows a sync
+ * message would then never write. An open run's settle that misses {@link #DRAIN} keeps the record: its {@code open} object
+ * carries {@code settled} ({@link Harness#settleOpen}), and the run exits {@value #EXIT_NOT_SETTLED} once it is written.
+ *
  * @since 0.1
  */
 public final class NodeBenchMain {
@@ -128,6 +133,9 @@ public final class NodeBenchMain {
     /** The flow's {@code recording.payload}; the CLI name is the lower-case name with a dash. */
     public enum Recording { KEEP, METADATA_ONLY }
 
+    /** The flow's {@code recording.level} (FIX-124): none deploys {@code off}, all {@code all}; the CLI name is the lower-case name. */
+    public enum RecordingLevel { NONE, ALL }
+
     /** The flow's step before {@code to partner}. */
     public enum Step { PASSTHROUGH, XSLT }
 
@@ -140,13 +148,13 @@ public final class NodeBenchMain {
     /** One run's command line; {@code open} is null for the closed loop. */
     public record Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
                           String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
-                          String commit, String cpuSampling, Open open) {
-        /** A closed-loop run. */
+                          String commit, String cpuSampling, Open open, RecordingLevel recordingLevel) {
+        /** A closed-loop run that records every step. */
         public Options(Scenario scenario, Recording recording, Step step, int messages, int warmup, int concurrency, int maxInFlight,
                        String name, Path out, boolean syncCommit, String host, int port, String db, String user, String password,
                        String commit, String cpuSampling) {
             this(scenario, recording, step, messages, warmup, concurrency, maxInFlight, name, out, syncCommit, host, port, db, user, password,
-                    commit, cpuSampling, null);
+                    commit, cpuSampling, null, RecordingLevel.ALL);
         }
 
         /** A run without CPU sampling. */
@@ -168,6 +176,8 @@ public final class NodeBenchMain {
     static final Duration OPEN_TIMEOUT = Duration.ofSeconds(30);
     /** How long a run waits for what a window accepted to land (recorded, the work queue empty) before it gives up. */
     static final Duration DRAIN = Duration.ofMinutes(10);
+    /** The exit code of a run whose open window's settle did not land within {@link #DRAIN} (FIX-124); 3 is a failed request. */
+    static final int EXIT_NOT_SETTLED = 4;
     /** Postgres' idle stats flush (PGSTAT_IDLE_INTERVAL, 10 s) and a margin: after it every backend's counts are published. */
     static final Duration STATS_FLUSH = Duration.ofSeconds(11);
     /** The commit settings every record carries, as pg_settings names them; NodeBenchMain sets none but synchronous_commit. */
@@ -226,7 +236,7 @@ public final class NodeBenchMain {
 
     /**
      * The whole run on a virtual thread of its own ({@link Node#start} blocks on Vert.x futures); returns the exit code (0 ok,
-     * 3 a request or an item failed) and rethrows what the run threw. The options are refused before anything connects.
+     * 3 a request or an item failed, {@value #EXIT_NOT_SETTLED} an open window that did not settle) and rethrows what the run threw. The options are refused before anything connects.
      */
     public static int run(String[] args) throws Exception {
         Options o = options(args);
@@ -242,11 +252,19 @@ public final class NodeBenchMain {
         }
     }
 
-    /** {@code args} as options; an unknown or missing scenario, an unknown recording or step is refused naming the value and the known ones. */
+    /**
+     * {@code args} as options; an unknown or missing scenario, an unknown recording, recording level or step is refused naming
+     * the value and the known ones, and sync with {@code --recording-level none} naming both.
+     */
     public static Options options(String[] args) {
         Map<String, String> a = BenchMain.parse(args);
         Scenario scenario = choice(a, "scenario", Scenario.class, null);
         Recording recording = choice(a, "recording", Recording.class, Recording.KEEP);
+        RecordingLevel level = choice(a, "recording-level", RecordingLevel.class, RecordingLevel.ALL);
+        if (scenario == Scenario.SYNC && level == RecordingLevel.NONE) {
+            throw new IllegalArgumentException("--scenario sync refuses --recording-level none: a sync message would record no row, and its"
+                    + " settle waits for the recorded rows, so it could never land");
+        }
         Step step = choice(a, "step", Step.class, Step.PASSTHROUGH);
         String name = a.getOrDefault("name", "node-" + cli(scenario));
         String syncCommit = a.getOrDefault("sync-commit", "on");
@@ -264,7 +282,7 @@ public final class NodeBenchMain {
                 a.getOrDefault("host", "localhost"), Integer.parseInt(a.getOrDefault("port", "5432")), db,
                 a.getOrDefault("user", "flottila"), a.getOrDefault("password", "flottila"),
                 a.getOrDefault("commit", System.getenv().getOrDefault("GIT_COMMIT", "unknown")), cpuSampling(a.getOrDefault("cpu-sampling", "off")),
-                open(scenario, a));
+                open(scenario, a), level);
     }
 
     /** The highest {@code --rate}, the longest {@code --ramp} and the longest {@code --window} (CORE-15). */
@@ -408,7 +426,8 @@ public final class NodeBenchMain {
         }
         Row server = pool.query("select current_setting('synchronous_commit'), current_setting('server_version')").execute().await().iterator().next();
         JsonObject json = new JsonObject().put("name", o.name()).put("scenario", cli(o.scenario())).put("recording", cli(o.recording()))
-                .put("step", cli(o.step())).put("warmup", o.warmup()).put("concurrency", o.concurrency()).put("maxInFlight", inFlight(o))
+                .put("recordingLevel", cli(o.recordingLevel())).put("step", cli(o.step())).put("warmup", o.warmup())
+                .put("concurrency", o.concurrency()).put("maxInFlight", inFlight(o))
                 .put("cpuSampling", o.cpuSampling())
                 .mergeIn(measured)
                 // observed on a session opened as the node's were, not the flag
@@ -466,12 +485,20 @@ public final class NodeBenchMain {
     }
 
     /**
-     * 3 when the record counts a failure (named on stderr with the first one), else 0. An open-loop record fails on its window's
-     * errors and timeouts only: its refusals (503 and other statuses) and its validity are what it measures.
+     * {@value #EXIT_NOT_SETTLED} when an open-loop record's settle did not land ({@code settled} false, named on stderr with
+     * the counts read at its deadline), whatever its failures; else 3 when the record counts a failure (named on stderr with the
+     * first one), else 0. An open-loop record fails on its window's errors and timeouts only: its refusals (503 and other
+     * statuses) and its validity are what it measures; an echo record has no {@code settled}.
      */
     static int exitCode(JsonObject record) {
         JsonObject open = record.getJsonObject("open");
         if (open != null) {
+            if (Boolean.FALSE.equals(open.getBoolean("settled"))) {
+                System.err.println(open.getLong("settleTarget") + " recorded messages and an empty work queue did not land within "
+                        + open.getString("settleDeadline") + ": messages " + open.getLong("messages") + ", work " + open.getLong("work")
+                        + " at the deadline (the record is written)");
+                return EXIT_NOT_SETTLED;
+            }
             long failed = open.getLong("errors") + open.getLong("timeouts");
             if (failed > 0) {
                 System.err.println(failed + " of " + open.getLong("sent") + " window requests failed or timed out; first: " + open.getString("firstFailure"));
@@ -526,7 +553,7 @@ public final class NodeBenchMain {
 
     /**
      * The bench package as a zip: the in endpoint on 127.0.0.1:{@code in}, the partner at the echo, and the flow {@code bench}
-     * — sync for the sync scenario, else at-least-once — with the run's recording payload and steps.
+     * — sync for the sync scenario, else at-least-once — with the run's recording level and payload and its steps.
      */
     static byte[] benchPackage(Options o, int in, int echo) throws IOException {
         Map<String, byte[]> files = new TreeMap<>();
@@ -541,7 +568,8 @@ public final class NodeBenchMain {
         steps.add(new JsonObject().put("type", "to").put("name", "partner").put("endpoint", "partner"));
         files.put("flows/bench.yaml", yaml(doc("flow").put("id", "bench").put("version", "0.1.0").put("from", new JsonObject().put("endpoint", "in"))
                 .put("delivery", new JsonObject().put("mode", o.scenario() == Scenario.SYNC ? "sync" : "at-least-once"))
-                .put("recording", new JsonObject().put("level", "all").put("payload", cli(o.recording())))
+                .put("recording", new JsonObject().put("level", o.recordingLevel() == RecordingLevel.NONE ? "off" : "all")
+                        .put("payload", cli(o.recording())))
                 .put("limits", new JsonObject().put("maxBodyBytes", MAX_BODY_BYTES).put("maxInFlight", inFlight(o)))
                 .put("steps", steps)));
         files.put("flows/transform.xsl", STYLESHEET.getBytes(StandardCharsets.UTF_8));
@@ -630,9 +658,16 @@ public final class NodeBenchMain {
 
     /**
      * What a settle reads and waits on: whether {@code recorded} messages landed (and the work queue is empty), the node's
-     * /health {@code snapshotWriteFailures}, the clock that bounds the wait and the pause between polls.
+     * /health {@code snapshotWriteFailures}, the clock that bounds the wait and the pause between polls; and the counts an open
+     * settle records once it returned ({@link Harness#settleOpen}): the messages recorded and the work queue's items.
      */
-    record Probe(LongPredicate landed, LongSupplier snapshotWriteFailures, LongSupplier nanoTime, Runnable pause) {}
+    record Probe(LongPredicate landed, LongSupplier snapshotWriteFailures, LongSupplier nanoTime, Runnable pause, LongSupplier messages,
+                 LongSupplier work) {
+        /** A probe for {@link Harness#settle} alone: it reads no counts (null). */
+        Probe(LongPredicate landed, LongSupplier snapshotWriteFailures, LongSupplier nanoTime, Runnable pause) {
+            this(landed, snapshotWriteFailures, nanoTime, pause, null, null);
+        }
+    }
 
     /** What a run drives: the client, the bench's own pool, the ports and the body. */
     record Harness(Options o, Vertx vertx, Pool pool, HttpClientAgent client, Buffer body, int in, int echo, Path journal) {
@@ -669,14 +704,15 @@ public final class NodeBenchMain {
 
         /**
          * The open loop (CORE-15) at the flow, after the warm-up's {@code recorded} messages landed: its record ({@code open}),
-         * then a settle until every request it accepted (ramp included) landed, and the partner's receipts read once settled.
+         * then an open settle ({@link #settleOpen}) until every request it accepted (ramp included) landed or {@link #DRAIN}
+         * passed.
          */
         JsonObject open(long recorded, int admin, AtomicLong receipts) {
             long failuresAtStart = snapshotWriteFailures(admin);
             long base = receipts.get();
             JsonObject open = openLoop(in, "/in", accepted(), () -> receipts.get() - base, () -> nodeCpu(cpu(admin)));
-            settle(recorded + open.getLong("acceptedTotal"), failuresAtStart, DRAIN, probe(admin));
-            return new JsonObject().put("open", open.put("receipts", receipts.get() - base));
+            return new JsonObject().put("open", settleOpen(open, recorded + open.getLong("acceptedTotal"), failuresAtStart, DRAIN,
+                    probe(admin), () -> receipts.get() - base));
         }
 
         /**
@@ -811,9 +847,28 @@ public final class NodeBenchMain {
          * (a run waits {@link #DRAIN}). A sync run fails at the first poll whose {@code snapshotWriteFailures} is above
          * {@code failuresAtStart} (read before the load), landed or not: a sync message's rows are written after its reply, so
          * a write failure is a lost row and the window would never land. An at-least-once run never fails on the counter: it
-         * also counts the ingress' refusals, which are not losses.
+         * also counts the ingress' refusals, which are not losses. A wait that passes {@code within} fails.
          */
         void settle(long recorded, long failuresAtStart, Duration within, Probe probe) {
+            if (!landedWithin(recorded, failuresAtStart, within, probe)) {
+                throw new IllegalStateException(recorded + " recorded messages and an empty work queue did not land within " + within);
+            }
+        }
+
+        /**
+         * An open window's settle (FIX-124): {@link #settle}'s wait, which returns at the deadline instead of failing there.
+         * Returns {@code open} with {@code settled} (whether {@code recorded} landed), {@code settleDeadline} ({@code within}),
+         * {@code settleTarget} ({@code recorded}), and the probe's {@code messages} and {@code work} counts and the partner's
+         * {@code receipts} read once the wait returned — landed or at the deadline. A sync run's rising write failures still throw.
+         */
+        JsonObject settleOpen(JsonObject open, long recorded, long failuresAtStart, Duration within, Probe probe, LongSupplier receipts) {
+            boolean settled = landedWithin(recorded, failuresAtStart, within, probe);
+            return open.put("settled", settled).put("settleDeadline", within.toString()).put("settleTarget", recorded)
+                    .put("messages", probe.messages().getAsLong()).put("work", probe.work().getAsLong()).put("receipts", receipts.getAsLong());
+        }
+
+        /** {@link #settle}'s wait: true once {@code recorded} landed, false when {@code within} passed on the probe's clock. */
+        private boolean landedWithin(long recorded, long failuresAtStart, Duration within, Probe probe) {
             long deadline = probe.nanoTime().getAsLong() + within.toNanos();
             while (true) {
                 boolean landed = probe.landed().test(recorded);
@@ -824,17 +879,25 @@ public final class NodeBenchMain {
                                 + " while " + recorded + " recorded messages were awaited: the window lost rows");
                     }
                 }
-                if (landed) return;
-                if (probe.nanoTime().getAsLong() - deadline > 0) {
-                    throw new IllegalStateException(recorded + " recorded messages and an empty work queue did not land within " + within);
-                }
+                if (landed) return true;
+                if (probe.nanoTime().getAsLong() - deadline > 0) return false;
                 probe.pause().run();
             }
         }
 
-        /** The run's probe: the database, the node's /health on {@code admin}, the system clock, a 5 ms timer. */
+        /** The run's probe: the database (its counts too), the node's /health on {@code admin}, the system clock, a 5 ms timer. */
         Probe probe(int admin) {
-            return new Probe(this::landed, () -> snapshotWriteFailures(admin), System::nanoTime, this::pause);
+            return new Probe(this::landed, () -> snapshotWriteFailures(admin), System::nanoTime, this::pause, this::messageCount, this::workCount);
+        }
+
+        /** The distinct messages {@code messages} holds (what {@link #landed} compares). */
+        private long messageCount() {
+            return pool.query("select count(distinct id) from messages").execute().await().iterator().next().getLong(0);
+        }
+
+        /** The items in the work queue. */
+        private long workCount() {
+            return pool.query("select count(*) from work").execute().await().iterator().next().getLong(0);
         }
 
         /** Whether {@code messages} holds at least {@code recorded} messages and the work queue is empty. */

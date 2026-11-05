@@ -106,7 +106,7 @@
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
-- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120).
+- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1).
 - Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
   on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
 - Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile`

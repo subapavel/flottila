@@ -22,7 +22,8 @@
 # A node run that exits non-zero stops the script, with one exception: in the cpu scenario (refusals_ok=1) an exit 3 whose record
 # counts no error (errors 0: every failure is the flow's admission refusing, 503) stands — refusals occur even at 1 in flight against
 # the default limit 64×c, a permit outliving its reply (FIX-113), and FIX-112 judges their share. Every node run's summary names its
-# refused and warm-up failures ("refused R of M", "warm-up failed W"); the flow's limit stays NodeBenchMain's default (no --max-in-flight).
+# refused and warm-up failures ("refused R of M", "warm-up failed W"); the flow's limit stays NodeBenchMain's default (no --max-in-flight)
+# but in the open scenario with BENCH_MAX_IN_FLIGHT set.
 # `clickhouse` (CORE-2, needs Docker, not Postgres): ClickHouseCompressionMain against clickhouse/clickhouse-server:25.8.33.6 (the compose
 # pin) started with `docker run` on 127.0.0.1:BENCH_CH_PORT (18123), default server settings, data inside the container on the host's
 # disk; stopped and removed with its data when the scenario ends, failed or not. BENCH_CH_ARGS (unset: the full matrix) passes harness
@@ -31,8 +32,12 @@
 # BENCH_OPEN_SCENARIO (ack; sync, or echo — the raw echo alone, the harness' own ceiling) at BENCH_RATE msg/s (5000, passed through:
 # NodeBenchMain refuses a value outside 1..100000), after a linear BENCH_RAMP (NodeBenchMain's PT1M unless set) for BENCH_WINDOW
 # (PT10M unless set); BENCH_PG_CPU (unset) names Postgres' cgroup v2 directory or pid for its CPU over the window
-# (--pg-cpu-source). Named node-open-<scenario>-r<rate>; its summary prints the record's open fields (bench/RESULTS.md, "Harness:
-# open loop (CORE-15)").
+# (--pg-cpu-source). BENCH_RECORDING_LEVEL (unset: NodeBenchMain's all) is passed as --recording-level (none|all, FIX-124: the
+# CORE-GATE cell runs none; NodeBenchMain refuses none for sync), BENCH_MAX_IN_FLIGHT (unset: NodeBenchMain's default) as
+# --max-in-flight, each as given for NodeBenchMain to judge. Named node-open-<scenario>-r<rate>, with -<level> appended when
+# BENCH_RECORDING_LEVEL is set (an all and a none run never share a file); its summary prints the record's open fields, its
+# recording level and whether it settled (bench/RESULTS.md, "Harness: open loop (CORE-15)"). A run whose settle did not land
+# within PT10M writes its record and exits 4 (FIX-124), which stops the script as any non-zero exit does.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
@@ -109,8 +114,10 @@ clickhouse_run() { # CORE-2, in a subshell: its EXIT trap stops and removes the 
 # an open-loop record's summary line (CORE-15), nothing for a closed-loop record
 OPEN_SUMMARY='
 import json, sys
-o = json.load(open(sys.argv[1])).get("open")
+j = json.load(open(sys.argv[1]))
+o = j.get("open")
 if o:
+    na = lambda v: "n/a" if v is None else str(v).lower()
     ms = lambda v: "n/a" if v is None else "%.2f ms" % v
     cpu = ", ".join(k + " " + ("n/a" if v is None else "%.0f ms" % v) for k, v in o["cpuMs"].items())
     pct = "n/a" if o["backlogGrowthPercent"] is None else "%.2f %%" % o["backlogGrowthPercent"]
@@ -118,8 +125,9 @@ if o:
     print(("open loop: offered {offeredRate:.0f} msg/s, achieved {achievedRate:.1f} msg/s, sent {sent} of {scheduled} scheduled,"
            " accepted {accepted}, refused 503 {refused503}, refused {refused}, timeouts {timeouts}, errors {errors},"
            " clientSaturated {clientSaturated}, p50 {p50}, p99 {p99}, p99.9 {p999}, max {max}, receipts {receipts},"
-           " backlog growth {backlogGrowth} ({pct}), cpu over the window: {cpu}; valid {ok}{why}").format(**o, p50=ms(o["p50Ms"]),
-          p99=ms(o["p99Ms"]), p999=ms(o["p999Ms"]), max=ms(o["maxMs"]), pct=pct, cpu=cpu, ok=str(o["valid"]).lower(), why=why))
+           " backlog growth {backlogGrowth} ({pct}), cpu over the window: {cpu}; valid {ok}{why}; recording level {level_shown},"
+           " settled {settled_shown}").format(**o, p50=ms(o["p50Ms"]), p99=ms(o["p99Ms"]), p999=ms(o["p999Ms"]), max=ms(o["maxMs"]), pct=pct,
+          cpu=cpu, ok=str(o["valid"]).lower(), why=why, level_shown=na(j.get("recordingLevel")), settled_shown=na(o.get("settled"))))
 '
 
 summary() { # name
@@ -188,7 +196,9 @@ for scenario in $BENCH_SCENARIOS; do
       if [[ -n "${BENCH_RAMP:-}" ]]; then open_args+=(--ramp "$BENCH_RAMP"); fi
       if [[ -n "${BENCH_WINDOW:-}" ]]; then open_args+=(--window "$BENCH_WINDOW"); fi
       if [[ -n "${BENCH_PG_CPU:-}" ]]; then open_args+=(--pg-cpu-source "$BENCH_PG_CPU"); fi
-      run_node "node-open-$open_scenario-r${BENCH_RATE:-5000}" "${open_args[@]}" ;;
+      if [[ -n "${BENCH_RECORDING_LEVEL:-}" ]]; then open_args+=(--recording-level "$BENCH_RECORDING_LEVEL"); fi
+      if [[ -n "${BENCH_MAX_IN_FLIGHT:-}" ]]; then open_args+=(--max-in-flight "$BENCH_MAX_IN_FLIGHT"); fi
+      run_node "node-open-$open_scenario-r${BENCH_RATE:-5000}${BENCH_RECORDING_LEVEL:+-$BENCH_RECORDING_LEVEL}" "${open_args[@]}" ;;
     *)
       echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu, clickhouse, open)" >&2
       exit 2 ;;

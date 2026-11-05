@@ -20,7 +20,8 @@ BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate`
   send counts its delay (no coordinated omission). Null when nothing was accepted.
 - **Backlog** = accepted − partner receipts (the echo counts each request it answers; ramp included in both), sampled at the
   window's start, each second, and its end (`backlog`); `backlogGrowth` = end − start, `backlogGrowthPercent` over the window's
-  `accepted`. `acceptedTotal` is ramp + window. `receipts` is re-read once the node settled (everything accepted landed).
+  `accepted`. `acceptedTotal` is ramp + window. `receipts` is re-read when the settle returns: once the node settled
+  (everything accepted landed) or at its deadline (FIX-124).
   In the echo self-test a receipt is counted before its answer reaches the client, so a sample can be slightly negative.
 - **CPU over the window** (`cpuMs`, read at the window's start and end): `bench` the bench JVM (client, node and echo together);
   `node` the bench flow's step CPU as the node's sampler attributed it (`--cpu-sampling` on; the sampler reads every 5 s and keeps
@@ -30,6 +31,13 @@ BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate`
 - **valid** is false, with `invalidReasons`, when any request was `clientSaturated` or `achievedRate` is more than 1 % off the
   scheduled rate (`scheduled` / window seconds, the offered rate whenever rate × window is whole). An invalid run measured the
   client, not the node. The run exits 3 on window errors or timeouts; refusals and invalidity are recorded, not failed.
+- **Settle** (FIX-124): after the window the run waits up to PT10M (`settleDeadline`) until `settleTarget` messages (the warm-up requests that succeeded +
+  `acceptedTotal`) are recorded and the work queue is empty. `settled` says whether that landed; `messages` (distinct recorded
+  messages) and `work` (work-queue items) are read when the wait returns, landed or at the deadline. The record is written
+  either way; a run with `settled: false` exits 4, which takes precedence over 3. The echo self-test does not settle (no
+  `settled`).
+- **recordingLevel** (record top level, FIX-124): `--recording-level` — `all` (default) records every step, `none` deploys the
+  flow with `recording.level: off` (the CORE-GATE cell); `recording` stays the payload setting. Sync refuses `none`.
 - Latency samples are kept exactly (8 bytes per window request: 24 MB at 5 000/s × PT10M).
 
 ## CORE-2 — ClickHouse payload compression — cloud VM, 4 vCPU

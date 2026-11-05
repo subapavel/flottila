@@ -122,3 +122,4 @@
 - Round-trip crypto tests are symmetric: demand an outside-the-code decrypt per persisted format (CORE-4a RecordFormat:93).
 - A byte bound must count a stream while it writes, not at its seal (CORE-4d r0 spill). A swept-segment fallback is not equivalent on the rows path: corrupt or shredded-key reads must never become BlobNotFound (CORE-4d r2).
 - Pipelined turns: refuse the first statement of each turn, not only a later one, to pin 'own cause, never 25P02' (CORE-6a r1).
+- FIX-124 (2026-11-05): a bench field or exit-code change must update the RESULTS method note and the run.sh summary/name; check that two settings of a new option never write the same output file.
