@@ -1,5 +1,29 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## CORE-15b preview — r1000 / r2000 with database series — cloud VM, 4 vCPU (owner request; NOT the CORE-GATE measurement)
+
+Date 2026-11-05. Commit aa4a717. Same machine and configuration as the CORE-15 preview below, plus PostgreSQL 16.15 with
+shared_preload_libraries pg_stat_statements, track_wal_io_timing on (wal_sync_method fdatasync, full_page_writes on),
+BENCH_IO_DEVICE=vda, BENCH_PG_CPU = the postmaster. pg_test_fsync on the data filesystem: fdatasync 3 178 ops/s (315 µs).
+One run per cell; raw agent/work/db-r1000.json, db-r2000.json, db2-r2000.json (with pg_stat_statements) — not committed.
+
+| cell | accepted / 503 | ACK p50 / p99 ms | backlog 30 s → 180 s | commits/s 0–29 s → 30 s–end | WAL ms/sync | disk util | Postgres CPU |
+|---|---|---|---|---|---|---|---|
+| r1000 | 180 000 / 0 | 9.96 / 47.10 | 40 → 14 (settled) | 2 825 → 3 012 | 0.49 | 46 % | 1.27 cores |
+| r2000 | 353 860 / 6 140 | 33.11 / 179.97 | 6 968 → 232 906 (not settled) | 3 629 → 1 173 | 0.78 | 40 % | 1.28 → 1.85 cores |
+| r2000 (2) | 359 189 / 811 | 15.9 / 124.1 | 13 722 → 255 762 (not settled) | 3 248 → 1 126 | 0.67 | 38 % | 1.56 → 1.87 cores |
+
+pg_stat_statements over the r2000 (2) window (180 s): the worker's CLAIM ran 957 times at **171 ms per call** (2 041 buffers per
+call, 164 s in total — one claim in flight at a time, so the worker spent the window waiting on it); the segment sweeper's pinned
+check ran 12 times at 1.7 s per call (203 k buffers per call); every other statement is below 0.3 ms per call.
+EXPLAIN (ANALYZE, BUFFERS) of CLAIM on the left-over `work` (42 192 rows, none leased): 479–530 ms, of which **JIT 461–492 ms**
+(the planner estimates the whole table for the seq-ordered index scan, cost ≈ 3.9e8, above jit_above_cost); the generic plan
+(what a cached prepared statement gets) adds a Seq Scan of `work` as a hash semi-join probe (5 196 buffers); the custom plan
+reads 410 buffers.
+Reading: not the disk (fdatasync 0.3–0.9 ms, util ≤ 47 %), not dead tuples (autovacuum kept n_dead_tup down while the backlog
+grew). The hand-over ceiling is the CLAIM statement, whose cost grows with the queue depth through JIT and the generic plan's
+seq scan (F-27 addendum); the sweeper's check is the second cost. Fixes: FIX-130, then FIX-127.
+
 ## CORE-15 preview — open loop, at-least-once, recording none — cloud VM, 4 vCPU (owner request; NOT the CORE-GATE measurement)
 
 Date 2026-11-05 (UTC 11:07–11:29). Commit 6d5e4c3. Machine: Intel Xeon @ 2.80 GHz × 4 vCPU, 15 GiB, Linux 6.18.44; Java 25.0.5;
