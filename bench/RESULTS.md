@@ -15,11 +15,12 @@ PT10M window). CPU per process not measured (node sampling off; no Postgres cgro
 | 1000 | 180 000 / 180 000 | 0      | 20.34 / 66.91 / 102.82 / 172.63  | 8 → 17         | 0.005 % | yes |
 | 2000 | 329 961 / 360 000 | 30 039 | 37.31 / 213.83 / 3235.23 / 3481.26 | 3 239 → 265 431 | 79.46 % | no: work 131 384 left |
 
-Reading: at 2 000 msg/s the intake still answered 92 % with 202, but the partner hand-over fell behind — backlog +262 k over the
-window (≈ 375 receipts/s while loaded) and ≈ 223 receipts/s during the settle with ~265 k queued: delivery slows as the `work`
-backlog grows. The sustained at-least-once rate on this VM at 6d5e4c3 is between 1 000 and 2 000 msg/s; ACK p99 is above the
-50 ms target already at 1 000. An earlier run at 5 000 msg/s with recording `all` (aa01415) accepted ~470 k of ~3.15 M and left
-376 k work items; its record was lost (FIX-124), so it gives no figures here. Next by owner order: CORE-8, P2-15 → P2-16 → CORE-7.
+Reading: at 2 000 msg/s the intake still answered 92 % with 202, but the partner hand-over fell behind. The backlog grew ~497/s
+for the window's first 30 s (receipts ≈ 1.3–1.5 k/s), then ~1 766/s (receipts ≈ 170/s) from a depth of ≈ 17 k: the worker
+collapsed ~8×, it is not a flat ceiling (F-27). The settle drain rate is withdrawn: the settle probe's `count(distinct id)` every
+5 ms loaded the shared CPU (F-27). The sustained at-least-once rate on this VM at 6d5e4c3 is between 1 000 and 2 000 msg/s; ACK
+p99 is above the 50 ms target already at 1 000. An earlier run at 5 000 msg/s with recording `all` (aa01415) lost its record
+(FIX-124) and gives no figures here.
 
 ## Harness: open loop (CORE-15) — method note, no numbers
 
