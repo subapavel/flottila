@@ -1,4 +1,25 @@
 
+## 2026-11-05 — FIX-130 CLAIM bounded by its room, node sessions without JIT (F-27 addendum) — done, review PASS
+Test first: PgWorkQueueClaimPlanIT (generic + custom, 50 k rows), NodeConnectOptionsIT.theNodesPooledSessionsRunWithoutJit
+(test-author; red agent/work/FIX-130-red.log); implementer's PgWorkQueueNextOfKeyPlanIT (red agent/work/FIX-130-M4-next-in-form.log).
+Change: Node.connectOptions adds startup property jit=off; PgWorkQueue CLAIM and CLAIM_NEXT_OF_KEY take rows by
+`w.seq = any(array(<eligible … limit … for update skip locked>))` — no seq scan of `work`; fence, ordering, SKIP LOCKED unchanged.
+Checks: reactor verify -Pit exit 0 (3451, 390 fresh); coverage no decrease; mutants M1..M4 killed. EXPLAIN figures in the commit body.
+Review: FAIL r1 (rerun clause unmet → moved to FIX-127; fast-path test unapproved → approved), PASS r2. Found: FIX-131 (keyed claims).
+Next: FIX-127 sweeper, then the r2000 rerun.
+
+## 2026-11-05 — CORE-15b the open-loop record measures the database (F-27 I1) — done, review PASS
+Test first: OpenLoopSamplerTest, DbSamplerTest, DiskSamplerTest, CpuSourceClusterTest, NodeBenchMainSettleProbeTest,
+NodeBenchMainOpenIoOptionsTest, BenchRunScriptOpenDbTest, NodeBenchOpenDbSeriesIT (test-author; red agent/work/CORE-15b-red.log);
+implementer's DbSamplerCasesTest, CpuSourceClusterCasesTest, NodeBenchMainSamplersTest, DiskSamplerCasesTest, OpenLoopOffloadedTest, DbSamplerPgIT.
+Change: per-second `db` series (commits, pg_stat_wal, `work` tuples/vacuum, top statements by window time) on the sampler's own
+connection; `io` from /proc/diskstats; `pgCpu` over the whole cluster; samples in order; settle probe work-first, 1 s pause.
+Checks: reactor verify -Pit exit 0 (3442, r0); bench verify -Pit r1 exit 0 (3135; earlier runs FIX-121 ×2, PgIntakeJournalIT:351 ×1 → FIX-128);
+coverage no decrease; mutants M1..M9, M11 killed, M10 survives (memory only, accepted).
+Review: FAIL r1 (sample order unpinned; RESULTS lag sentence wrong), PASS r2. Found: FIX-128, FIX-129. The PROGRESS entry was
+missing from its commit aa4a717 (a script error) and is added with FIX-130's ledger fix.
+Preview rerun (c4b197a, RESULTS "CORE-15b preview"): CLAIM 171 ms per call at r2000 → FIX-130.
+
 ## 2026-11-05 — FIX-124 open-loop record kept when the settle misses, recording level option — done, review PASS
 Found by the owner's preview run (ack 5 000 msg/s, recording all: settle timed out, no JSON; ~470 k of ~3.15 M accepted, work 376 k left).
 Test first: NodeBenchMainOpenSettleTest, NodeBenchMainRecordingLevelTest (test-author; red agent/work/FIX-124-red.log); implementer's
