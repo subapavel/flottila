@@ -1,5 +1,26 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## CORE-15 preview — open loop, at-least-once, recording none — cloud VM, 4 vCPU (owner request; NOT the CORE-GATE measurement)
+
+Date 2026-11-05 (UTC 11:07–11:29). Commit 6d5e4c3. Machine: Intel Xeon @ 2.80 GHz × 4 vCPU, 15 GiB, Linux 6.18.44; Java 25.0.5;
+PostgreSQL 16.15 native (fsync on, synchronous_commit on, commit_delay 0), pool 16, schema v13. One node, journal copies 1.
+Configuration: `BENCH_SCENARIOS=open BENCH_OPEN_SCENARIO=ack BENCH_RECORDING_LEVEL=none BENCH_CONCURRENCY=512
+BENCH_MAX_IN_FLIGHT=256 BENCH_RAMP=PT30S BENCH_WINDOW=PT3M bench/run.sh`, body 132 B, one run per rate (the gate needs 3 and a
+PT10M window). CPU per process not measured (node sampling off; no Postgres cgroup on this VM). Warm-up (closed loop, 1 000) had
+328 / 266 / 419 failed requests (client 512 > in-flight 256). Raw: agent/work/step-r{500,1000,2000}.json (not committed).
+
+| offered msg/s | accepted (window) | 503 | ACK p50 / p99 / p99.9 / max ms | backlog first → last | growth | settled (PT10M) |
+|---|---|---|---|---|---|---|
+| 500  | 90 000 / 90 000   | 0      | 9.65 / 38.49 / 207.04 / 336.23   | 3 → 3          | 0 %     | yes |
+| 1000 | 180 000 / 180 000 | 0      | 20.34 / 66.91 / 102.82 / 172.63  | 8 → 17         | 0.005 % | yes |
+| 2000 | 329 961 / 360 000 | 30 039 | 37.31 / 213.83 / 3235.23 / 3481.26 | 3 239 → 265 431 | 79.46 % | no: work 131 384 left |
+
+Reading: at 2 000 msg/s the intake still answered 92 % with 202, but the partner hand-over fell behind — backlog +262 k over the
+window (≈ 375 receipts/s while loaded) and ≈ 223 receipts/s during the settle with ~265 k queued: delivery slows as the `work`
+backlog grows. The sustained at-least-once rate on this VM at 6d5e4c3 is between 1 000 and 2 000 msg/s; ACK p99 is above the
+50 ms target already at 1 000. An earlier run at 5 000 msg/s with recording `all` (aa01415) accepted ~470 k of ~3.15 M and left
+376 k work items; its record was lost (FIX-124), so it gives no figures here. Next by owner order: CORE-8, P2-15 → P2-16 → CORE-7.
+
 ## Harness: open loop (CORE-15) — method note, no numbers
 
 `NodeBenchMain --rate <msg/s>` (1..100 000) runs scenario `ack` or `sync` open loop; `--scenario echo --rate ..` runs it straight
