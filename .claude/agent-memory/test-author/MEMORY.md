@@ -43,7 +43,7 @@
 - A nanos time source built from `epochSecond * 1e9 + nano` is unpinned unless a measured interval crosses a whole second
   (FIX-2 r2): start the FakeClock at `.850Z`. Mutant runner for a scratch copy: JUnit `LauncherFactory` + `SummaryGeneratingListener`.
 - Testcontainers-postgresql 2.0.5 `getJdbcUrl()` ends with `?loggerLevel=OFF` (db name is NOT the URL's tail). A database per case
-  (FIX-5 `MigrationsIT`): admin JDBC `CREATE DATABASE`, swap the path segment before `?`. Failsafe honours `-Dit.test=<Class>`.
+  (FIX-5 `MigrationsIT`): admin JDBC `CREATE DATABASE`, swap the path segment before `?`. Failsafe honours `-Dit.test=<Class>`. Plan ITs (FIX-130 `PgWorkQueueClaimPlanIT`, FIX-127 `journal/PgSegmentRowsSweepPlanIT`): one-connection pool from `Node.connectOptions` (statement cache on), run the real call once, EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) EXECUTE each `pg_prepared_statements where not from_sql` by name in begin/set local plan_cache_mode/rollback; args by `parameter_types::text[]`.
 - XML resolution (FIX-6, JDK 25 / Saxon-HE 12.4): JDK schema refusal names only the file part of a remote URL; ACCESS_EXTERNAL_SCHEMA=""
   still loads LSResourceResolver inputs and makes a refused import/include/DTD entity a parser ERROR (stops at the first). Saxon
   ResourceResolver misses DTD entities, static unparsed-text()/doc()/use-when (compile-time reads); default resolver answers NULL for

@@ -1,5 +1,25 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## FIX-130 + FIX-127 preview — r2000 / r3000 after the claim and sweeper fixes — cloud VM, 4 vCPU (owner request; NOT CORE-GATE)
+
+Date 2026-11-05. Commit 0f3c6d5 + the FIX-127 working tree (records labelled `0f3c6d5+dirty`; FIX-127 commits next with this
+section). Configuration exactly as the CORE-15b preview below (PG 16.15, pg_stat_statements, track_wal_io_timing, vda, recording
+none, client 512, in-flight 256, ramp PT30S, window PT3M, 132 B). One run per cell; raw agent/work/fix-r{2000,3000}.json (not
+committed). Statement figures are window deltas.
+
+| cell | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog 30 s → 180 s | settled | completes/s | commits/s | Postgres CPU | bench JVM CPU |
+|---|---|---|---|---|---|---|---|---|
+| r2000 | 356 809 / 3 191 | 79.32 / 154.24 / 202.47 | 6 683 → 16 985 (+4.7 %) | yes, work 0 | ≈ 1 890 | 3 857 | 1.31 cores | 1.72 cores |
+| r3000 | 438 032 / 101 968 | 94.01 / 186.91 / 267.51 | 24 705 → 127 422 (+28 %) | yes, work 0 | ≈ 1 750 | 3 568 | 1.30 cores | 1.77 cores |
+
+CLAIM: 4.97 ms per call at r2000 (was 171 ms in the CORE-15b preview), 2.55 ms at r3000; the sweeper's check is no longer among
+the top statements; every other statement ≤ 1.2 ms per call. WAL 0.53–0.58 ms per sync, disk util ≤ 40 %.
+Reading: the hand-over no longer collapses with depth — at r2000 the worker delivers ≈ 1 890/s against ≈ 375/s before, and both
+runs drain completely. The end-to-end ceiling on this VM is now ≈ 1 800–1 900 msg/s, with ≈ 3.0–3.1 of 4 cores busy (Postgres
+1.3, the bench JVM — node, client and echo together — 1.7–1.8): CPU, not the disk. ≈ 2 commits per message remain (claim and
+per-message delete: P2-16, CORE-7). ACK latency rose (p50 79 ms at r2000) now that the worker competes for the shared pool and CPU
+(CORE-17, D-111); the node's own CPU share is not separated yet (cpu sampling off).
+
 ## CORE-15b preview — r1000 / r2000 with database series — cloud VM, 4 vCPU (owner request; NOT the CORE-GATE measurement)
 
 Date 2026-11-05. Commit aa4a717. Same machine and configuration as the CORE-15 preview below, plus PostgreSQL 16.15 with

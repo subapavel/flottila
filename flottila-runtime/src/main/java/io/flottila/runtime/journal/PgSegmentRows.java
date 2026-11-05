@@ -40,16 +40,26 @@ public final class PgSegmentRows implements SegmentRows {
              where r.node = $1 and r.archived_at is null and r.lost_at is null
                and not exists (select 1 from e where e.segment = r.segment and r.position + r.length <= e.ends)""";
 
-    /** Segment {@code s.segment} of node $1 pinned (CORE-3 items 10, 14): $3 the instant a kept ref must be created after. */
+    /**
+     * Node $1's pinned segments (CORE-3 items 10, 14), worked out once per statement (FIX-127): a materialized CTE reads
+     * {@code work} and {@code body_refs} in one scan each, so the check costs |work| + |candidates|, never their product (a
+     * correlated {@code exists} ran a scan of {@code work} per candidate). $2 the candidates, $3 the instant a kept ref must be
+     * created after.
+     */
     private static final String PINNED = """
-            (exists (select 1 from work w where w.body_node = $1 and w.body_segment = s.segment and w.lost_at is null)
-             or exists (select 1 from body_refs r where r.node = $1 and r.segment = s.segment and r.archived_at is null and r.lost_at is null
-                         and (r.created_at > $3 or exists (select 1 from dlq d where d.body_key = r.message_id || '/' || r.step || '/' || r.part))))""";
+            with pinned(segment) as materialized (
+                select w.body_segment from work w where w.body_node = $1 and w.lost_at is null
+                union
+                select r.segment from body_refs r where r.node = $1 and r.segment = any($2) and r.archived_at is null and r.lost_at is null
+                   and (r.created_at > $3 or exists (select 1 from dlq d where d.body_key = r.message_id || '/' || r.step || '/' || r.part)))
+            """;
+    /** Segment {@code s.segment} not in the pinned set. */
+    private static final String UNPINNED = " and not exists (select 1 from pinned p where p.segment = s.segment)";
     /** Of node $1's candidates $2, the unpinned rows, locked; a row another transaction holds (a reference insert's key share) is passed. */
-    private static final String LOCK_UNPINNED = "select s.segment from journal_segments s where s.node = $1 and s.segment = any($2) and not "
-            + PINNED + " for update skip locked";
+    private static final String LOCK_UNPINNED = PINNED + "select s.segment from journal_segments s where s.node = $1 and s.segment = any($2)"
+            + UNPINNED + " for update of s skip locked";
     /** Of the rows locked ($2), those still unpinned under this statement's later snapshot, deleted. */
-    private static final String DELETE_UNPINNED = "delete from journal_segments s where s.node = $1 and s.segment = any($2) and not " + PINNED
+    private static final String DELETE_UNPINNED = PINNED + "delete from journal_segments s where s.node = $1 and s.segment = any($2)" + UNPINNED
             + " returning s.segment";
     /** $1 the node; $2, $3 each given-up segment and its first given-up position: the rows in those extents. */
     private static final String EXTENTS = " join unnest($2::bigint[], $3::bigint[]) as g(segment, since) on %1$s = g.segment and %2$s >= g.since";

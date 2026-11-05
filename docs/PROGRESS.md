@@ -1,4 +1,15 @@
 
+## 2026-11-05 — FIX-127 sweeper's pinned check linear in work + candidates (F-27 I3) — done, review PASS
+Test first: PgSegmentRowsSweepPlanIT (generic + custom, 49 920 work rows, 200 candidates; red agent/work/FIX-127-red.log);
+implementer's PgSegmentRowsSweepRecheckIT (a pin committed between lock and delete keeps the segment).
+Change: PgSegmentRows PINNED = one materialized CTE (live work segments ∪ fresh or DLQ-held kept refs), LOCK / DELETE anti-join
+against it; no index, no migration; the later-snapshot re-check kept. EXPLAIN 74 k → 670/690 buffers, ~900 → 18–37 ms.
+Checks: reactor verify -Pit exit 0 (3455, 392 fresh); coverage no decrease; M1, M3, M4 killed, M2 (`materialized`) equivalent.
+Preview rerun (moved from FIX-130): RESULTS "FIX-130 + FIX-127 preview" — r2000 drains (≈ 1 890 completes/s, was ≈ 375), ceiling
+≈ 1 800–1 900 msg/s, CPU-bound; ACK p50 79 ms at r2000.
+Review: FAIL r1 (rerun not recorded), PASS after the run. Found: FIX-132 (jqwik log line).
+Next: CORE-17 / D-111 for ACK latency, node CPU split; P2-15 → P2-16 → CORE-7 for commits per message.
+
 ## 2026-11-05 — FIX-130 CLAIM bounded by its room, node sessions without JIT (F-27 addendum) — done, review PASS
 Test first: PgWorkQueueClaimPlanIT (generic + custom, 50 k rows), NodeConnectOptionsIT.theNodesPooledSessionsRunWithoutJit
 (test-author; red agent/work/FIX-130-red.log); implementer's PgWorkQueueNextOfKeyPlanIT (red agent/work/FIX-130-M4-next-in-form.log).
