@@ -78,13 +78,21 @@ public final class PgWorkQueue implements WorkQueue {
 
     private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts, body_node, body_segment, body_position, body_length";
 
-    /** Handed out in seq order, as {@code InMemoryWorkQueue} does: an UPDATE's RETURNING has no order of its own. */
-    private static final String CLAIM = "with taken as (" + TAKE + " where w.seq in (" + ELIGIBLE + " order by w1.seq limit $3 for update skip locked)"
-            + ITEM + ") select * from taken order by seq";
+    /**
+     * Handed out in seq order, as {@code InMemoryWorkQueue} does: an UPDATE's RETURNING has no order of its own. The UPDATE takes
+     * the rows the locking subselect chose by {@code seq = any(array(..))}, an init plan whose array is the primary key's index
+     * condition in the generic plan and the custom one alike; {@code seq in (..)} let the generic plan of the cached statement
+     * join the subselect to a Seq Scan of {@code work}, O(queue depth) per claim (FIX-130, F-27 addendum).
+     */
+    private static final String CLAIM = "with taken as (" + TAKE + " where w.seq = any(array(" + ELIGIBLE
+            + " order by w1.seq limit $3 for update skip locked))" + ITEM + ") select * from taken order by seq";
 
-    /** The fast path: same rule, restricted to one key, one row. Note the parameters: $3 is the key here, the int limit in CLAIM. */
+    /**
+     * The fast path: same rule and the same {@code any(array(..))} take, restricted to one key, one row. Note the parameters: $3 is
+     * the key here, the int limit in CLAIM.
+     */
     private static final String CLAIM_NEXT_OF_KEY = TAKE
-            + " where w.seq in (" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked)" + ITEM;
+            + " where w.seq = any(array(" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked))" + ITEM;
 
     /**
      * The holder's claim is the row's current one (D-055, Q-1 / D-074): it exists, is not held and was last handed out with

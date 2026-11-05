@@ -84,7 +84,6 @@
 - Apache MINA SSHD 2.20.0 (javap, P2-02): SFTP answers wait CoreModuleProperties.IDLE_TIMEOUT (also closes an idle session);
   NIO2 pools "-nio2" and "-nio2-resume" both sized by NIO_WORKERS; setUpDefaultClient reads ~/.ssh/config unless
   HostConfigEntryResolver.EMPTY; a client session can still be isOpen() after the server counted it closed (idle DISCONNECT race).
-  loadKeyPairIdentities: garbage → null, PKCS8 with an unknown OID → NoSuchAlgorithmException (a GSE). rename never overwrites.
 - vertx-redis-client 5.1.10 (javap, P2-02L; Apache-2.0/EPL-1.0, no NOTICE): `Redis.createClient(Vertx, String)` lazy, `close()` → Future;
   `RedisAPI.api(Redis).eval(List)` = [script, numkeys, keys.., args..]; `RedisAPI.close()` is void. Valkey IT image valkey/valkey:8.
 - `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
@@ -92,10 +91,11 @@
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- Vert.x 5.1.10 (javap, CORE-15): RequestOptions idle/connect timeouts fail with a TimeoutException; VertxTimer FLOORS to ms. Rank: `p*n/100.0`.
 - JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; live RecordingStream vthread `getThread()` null, a whole dump resolves all (F-22); `dump(p)` truncates p, works on STOPPED; one dump per comparison; cp: `dependency:build-classpath`.
 - PG stats (CORE-15b, `\d` 16.15 + 17 image): pg_stat_wal wal_sync(_time) up to 17 only, counted only with fsync on + fdatasync/fsync/fsync_writethrough;
   Testcontainers PostgreSQLContainer's default command is `fsync=off`; `PgConnectOptions.addProperty("statement_timeout",..)` is a startup GUC (IT-proven).
+- PG 17 (FIX-130, EXPLAIN on 50 k rows): `update .. where seq in (<sub> limit n for update skip locked)` = generic-plan Seq Scan of the target;
+  `seq = any(array(<sub>))` = InitPlan + pkey Index Cond in both plans; a one-key table hid the keyed form's scan (use ~100 keys).
 ## Findings that came back in review
 - Journal SegmentRows without rows (NO_ROWS, RecordingRows) answer journalOf null for every node: a rule on "no row" checks rows kept (`segments()` non-null); a seam hold armed before an async first try is taken by it (CORE-4c1 r1).
 - Tests outside allowed paths: scratch copy, hand its path back (FIX-66); subclass a packet test for its fixtures (P2-02b). Red fixtures can

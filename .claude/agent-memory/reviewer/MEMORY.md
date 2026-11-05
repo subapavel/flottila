@@ -124,3 +124,4 @@
 - Pipelined turns: refuse the first statement of each turn, not only a later one, to pin 'own cause, never 25P02' (CORE-6a r1).
 - FIX-124 (2026-11-05): a bench field or exit-code change must update the RESULTS method note and the run.sh summary/name; check that two settings of a new option never write the same output file.
 - CORE-15b (2026-11-05): an 'in order, after the previous finished' promise needs a start/end event test; a final list order alone passes a parallel mutant.
+- FIX-130 (2026-11-05): BACKLOG done-when clauses that HANDOFF moves to a later task need the row amended at the commit.

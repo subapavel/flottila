@@ -268,11 +268,13 @@ public final class Node implements AutoCloseable {
     /**
      * The node's Postgres connect options (F-26): the server and credentials of {@code pg}, and the prepared-statement cache on
      * (ARCHITECTURE §4 Writer) for every SQL text up to {@value #STATEMENT_CACHE_SQL_LIMIT} characters, so a connection parses a
-     * statement once; pipelining stays at the client's default (D-109: a turn's statements are sent together).
+     * statement once; pipelining stays at the client's default (D-109: a turn's statements are sent together). Every session runs
+     * with {@code jit} off, a startup parameter (FIX-130, F-27 addendum): the node's statements touch a bounded number of rows, yet
+     * an estimate that grows with a table's size crossed jit_above_cost and every claim compiled its plan.
      */
     public static PgConnectOptions connectOptions(NodeConfig.Pg pg) {
         return new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password())
-                .setCachePreparedStatements(true).setPreparedStatementCacheSqlLimit(STATEMENT_CACHE_SQL_LIMIT);
+                .setCachePreparedStatements(true).setPreparedStatementCacheSqlLimit(STATEMENT_CACHE_SQL_LIMIT).addProperty("jit", "off");
     }
 
     /**
