@@ -9,7 +9,6 @@ next exact action: Monday: FIX-140 packet (F-29), then FIX-139, FIX-142, FIX-145
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
-WF-1 done (skills, no command hook; hook kept in agent/patches/guard-commands-hook.patch); WF-2/D-092 deferred by the owner
 open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2, ISSUE-3 answered; ISSUE-4 answered 2026-11-04 (D-106)
 open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..64, 68,71..75,77..84,86..104,109,112,113; CONSIDER-1..3,5..9 (owner)
 pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..97, D-099, D-100
