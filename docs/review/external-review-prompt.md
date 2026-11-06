@@ -9,8 +9,11 @@ nothing here.
 
 ## 1. Access and method
 
-- Repository: `https://github.com/subapavel/flottila`, branch **`claude/brave-hopper-5vwaju`**. Everything in it is in English.
-- If you cannot open the repository or a file, say so and ask for the file. **Never guess what a file contains.**
+- The repository is attached as a ZIP archive (a snapshot of branch `claude/brave-hopper-5vwaju`; the commit is in the file
+  name, e.g. `flottila-977aee9.zip`). Unpack it and work from its files; there is no network access to the repository. Everything
+  in it is in English.
+- If the archive is missing, cannot be unpacked, or a file you need is not in it, say so and ask for it. **Never guess what a file
+  contains.**
 - Treat documents as claims and code as fact. When a document and the code disagree, that itself is a finding.
 - Cite evidence as `path:line` or `docs/ARCHITECTURE.md §n`. Mark each finding **VERIFIED** (you read the code path) or
   **SUSPECTED** (inferred from documents or a partial read).
