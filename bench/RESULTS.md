@@ -1,5 +1,24 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## Baseline after P2-15a — r2000 / r3000 twice, one host — cloud VM, 4 vCPU @ 2.10 GHz (owner request; NOT CORE-GATE)
+
+Date 2026-11-06. Commit aa4ca58 (clean worktree). Settings as the P2-15a preview below; four runs back to back, nothing else
+running. **Host: Intel Xeon @ 2.10 GHz × 4 vCPU — not the CORE-GATE reference (2.80 GHz, GATE.md); earlier previews ran on the
+2.80 GHz shape, so they are not comparable with this section.** Raw agent/work/base-r{2000,3000}-{1,2}.json, base-machine.txt
+(not committed). All exit 0, valid, settled; warmupFailed 314 / 323 / 469 / 416 (outside the window, FIX-123).
+
+| run | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog growth | completes/s | Postgres CPU | bench JVM CPU | CLAIM ms (calls) |
+|---|---|---|---|---|---|---|---|
+| r2000-1 | 359 780 / 220 | 8.99 / 66.67 / 142.13 | +0.002 % | 1 999 | 1.23 | 1.59 | 0.10 (157 246) |
+| r3000-1 | 526 058 / 13 942 | 55.41 / 127.98 / 203.83 | +5.95 % | 2 748 | 1.28 | 1.65 | 2.26 (7 253) |
+| r2000-2 | 359 887 / 113 | 14.92 / 74.86 / 134.42 | −0.003 % | 2 000 | 1.33 | 1.57 | 0.43 (75 558) |
+| r3000-2 | 493 258 / 46 742 | 73.47 / 152.96 / 265.96 | +20.8 % | 2 170 | 1.28 | 1.73 | 2.57 (5 744) |
+
+Reading: r2000 holds on this host in both runs (≈ 2 000 completes/s, backlog flat, a few hundred 503s, ACK p50 9–15 ms, p99
+67–75 ms). r3000 is over the ceiling: 2 170–2 750 completes/s, backlog growing 6–21 %, thousands of 503s; the spread between
+the two r3000 runs is large (one run each is not a number to plan on). The ceiling on this host is ≈ 2 200–2 700 msg/s,
+CPU-bound (Postgres ≈ 1.3 cores + bench JVM ≈ 1.6–1.7 of 4). This is the baseline for P2-16 / CORE-7.
+
 ## P2-15a preview — r2000 after the node lease — cloud VM, 4 vCPU (owner request; NOT CORE-GATE)
 
 Date 2026-11-06. Commit 7db5453. Configuration as the FIX-130 + FIX-127 preview below (BENCH_IO_DEVICE vda, BENCH_PG_CPU
