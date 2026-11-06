@@ -278,8 +278,8 @@ class OrderedDeliveryIT {
 
     /**
      * maxInFlight 2. Node X runs K/S1 and the partner holds it; X passes the key K (K/S2, K/S3 wait for it) and runs J/S4, which
-     * completes. X closes with K/S1 still at the partner: its lease stays. The lease runs out (set in the database: the fake clock
-     * does not reach a node); X, started again over its data directory and journal, restores the flow without a PUT, claims K/S1
+     * completes. X closes with K/S1 still at the partner: its lease stays. The lease runs out, and X's node lease with it (set in
+     * the database: the fake clock does not reach a node); X, started again over its data directory and journal, restores the flow without a PUT, claims K/S1
      * as its second attempt and reruns it — K/S2 waits for its key while the rerun runs although a slot is free — and once the
      * partner answered goes on with K/S2 and K/S3, in order.
      *
@@ -313,6 +313,8 @@ class OrderedDeliveryIT {
             assertEquals(List.of(m1 + " node-x@1", m2 + " null@0", m3 + " null@0"), List.of(m1 + " " + row(m1), m2 + " " + row(m2), m3 + " " + row(m3)),
                     "fixture: X closed with K/S1 leased, K/S2 and K/S3 queued");
             db.preparedQuery("update work set locked_until = now() - interval '1 second' where id = $1 and attempts = 1").execute(Tuple.of(m1)).await();
+            // and X's node lease (D-112: a restart reruns its own items only after its previous incarnation's lease_until)
+            db.query("update nodes set lease_until = now() - interval '1 second' where node = 'node-x'").execute().await();
 
             startNode("node-x");   // the same node id: the same data directory, its journal holds the bodies
             NodeIT.until(() -> partner.arrivals.size() == 3, "X, restarted, reruns K/S1; rows " + rows());

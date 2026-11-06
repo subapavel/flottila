@@ -448,6 +448,28 @@ class SegmentSweepIT {
         kept(a, leased.segment(), "a leased work row");
     }
 
+    /**
+     * P2-15a (D-101): a work row in doubt — handed out again after its holder's node was released ({@code doubts} > 0, V14) — and
+     * one a restarted node reruns only after its old fence ({@code available_at} ahead) pin their segments alone, as any work row.
+     */
+    @Test
+    void anInDoubtWorkRowAlonePins() throws Exception {
+        Sealed doubt = saved(a, "m-doubt", false);
+        Sealed rerun = saved(a, "m-rerun", false);
+        Sealed done = saved(a, "m-done", false);
+        sql("insert into nodes(node, epoch, lease_until) values ('node-gone', 3, null)");   // a released node
+        sql("update work set attempts = 2, doubts = 1, locked_by = 'node-gone', locked_until = now() - interval '1 minute' where id = $1", doubt.id());
+        sql("update work set attempts = 1, locked_by = 'node-a', locked_until = now() - interval '1 minute', available_at = now() + interval '15 seconds'"
+                + " where id = $1", rerun.id());
+        sql("delete from work where id = $1", done.id());
+        a.opened.clock().advance(GRACE);
+
+        assertEquals(Set.of(done.segment()), sweep(sweeper(a)), "an in-doubt row and a row awaiting its old fence pin; a completed one does not");
+        kept(a, doubt.segment(), "an in-doubt work row");
+        kept(a, rerun.segment(), "a work row awaiting its node's old fence");
+        gone(a, done.segment(), "no row");
+    }
+
     @Test
     void aLargeStepBodyPersistedPastTheGraceKeepsItsSegment() throws Exception {
         Sealed free = saved(a, "m-free", false);

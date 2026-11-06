@@ -1,5 +1,6 @@
 package io.flottila.core.queue;
 
+import io.flottila.core.node.InMemoryMembership;
 import io.flottila.core.record.Page;
 import io.flottila.testkit.FakeClock;
 import net.jqwik.api.Arbitraries;
@@ -771,5 +772,142 @@ class InMemoryWorkQueueTest {
             }
             return out;
         }
+    }
+
+    // --- P2-15a (D-101 (1)): the holder's liveness, hand-outs in doubt, a restarted node's rerun. The API assumed:
+    // InMemoryWorkQueue(Clock, InMemoryMembership) — a worker id is its node id; another node's item is claimable only when its
+    // holder has no live row (a holder with no row is gone); every hand-out of a row that was handed out before and not settled
+    // (locked_by set) counts a doubt (WorkQueue.Item.doubts()); a join reruns the node's own unheld items only once the previous
+    // incarnation's lease ran out: available at old lease_until (review r1 decision 1 — the old incarnation's lease is not the new
+    // one's, so old lease_until − L/2 of the new L was a wrong expectation). A holder whose node lease ran out but that nobody
+    // released is still live (reading (1), review r1 decision 2).
+
+    static final Duration NODE_LEASE = Duration.ofSeconds(30);
+    static final Duration ITEM_LEASE = Duration.ofSeconds(5);
+    final InMemoryMembership members = new InMemoryMembership(clock);
+    final InMemoryWorkQueue nodes = new InMemoryWorkQueue(clock, members);
+
+    private WorkQueue.Item enqueueAndClaim(String id, String node) {
+        nodes.enqueue(id, "t", 1, null).await();
+        List<WorkQueue.Item> got = nodes.claim(node, "t", 1, ITEM_LEASE).await();
+        assertEquals(List.of(id), got.stream().map(WorkQueue.Item::messageId).toList(), "fixture: " + node + " claims " + id);
+        return got.get(0);
+    }
+
+    private List<WorkQueue.Item> claimBy(String node) { return nodes.claim(node, "t", 10, ITEM_LEASE).await(); }
+
+    @Test
+    void aLiveNodesExpiredItemIsNotTakenByAnotherNode() {
+        members.join("a", NODE_LEASE).await();
+        members.join("b", NODE_LEASE).await();
+        WorkQueue.Item ofA = enqueueAndClaim("x-live", "a");
+        WorkQueue.Item ofGhost = enqueueAndClaim("x-gone", "ghost");   // a holder that never joined: no row, gone
+        assertEquals(0, ofA.doubts(), "a first hand-out is in no doubt");
+
+        clock.advance(Duration.ofSeconds(10));   // both item leases ran out; a's node lease runs to +30 s
+        List<WorkQueue.Item> taken = claimBy("b");
+        assertEquals(List.of("x-gone"), taken.stream().map(WorkQueue.Item::messageId).toList(),
+                "the expired item of a holder with no row is taken as before; the live node a's expired item is not");
+        assertEquals(1, taken.get(0).doubts(), "handed out again after an unsettled hand-out: in doubt");
+        assertEquals(ofGhost.attempts() + 1, taken.get(0).attempts());
+
+        clock.advance(Duration.ofSeconds(19));   // +29 s: a's node lease still live
+        assertEquals(List.of(), claimBy("c"), "a live node's item stays its own for as long as its node lease lives");
+        assertEquals(List.of(ofA.seq(), ofGhost.seq()), nodes.snapshot().stream().map(WorkQueue.Item::seq).toList(), "nothing completed");
+    }
+
+    @Test
+    void aReleasedNodesItemIsTakenInDoubt() {
+        members.join("a", NODE_LEASE).await();
+        long epochB = members.join("b", NODE_LEASE).await();
+        WorkQueue.Item x = enqueueAndClaim("x", "a");
+        WorkQueue.Item h = enqueueAndClaim("h", "a");
+        assertTrue(nodes.hold(h.seq(), h.attempts()).await(), "fixture: a holds h for a human");
+
+        clock.advance(NODE_LEASE.plusSeconds(1));   // a stopped renewing: its node lease ran out; b renews
+        assertTrue(members.renew("b", epochB, NODE_LEASE).await().renewed(), "fixture: b renews");
+        assertEquals(List.of("a"), members.release(List.of("a")).await(), "fixture: b releases the expired a");
+        nodes.enqueue("y", "t", 1, null).await();   // a fresh item beside them
+
+        List<WorkQueue.Item> taken = claimBy("b");
+        assertEquals(List.of("x", "y"), taken.stream().map(WorkQueue.Item::messageId).toList(), "a released node's item is taken; its held row is not");
+        WorkQueue.Item again = taken.get(0);
+        assertEquals(x.seq(), again.seq());
+        assertEquals(x.attempts() + 1, again.attempts(), "the takeover counts an attempt (D-055)");
+        assertEquals(1, again.doubts(), "taken over unsettled: in doubt");
+        assertEquals(0, taken.get(1).doubts(), "a fresh item taken beside it: no doubt");
+        Page<WorkQueue.Held> held = nodes.held(Optional.empty(), 10).await();
+        assertEquals(List.of(new WorkQueue.Held(h, held.items().get(0).heldAt())), held.items(),
+                "the held row untouched: still held, the same attempts, no doubt");
+        assertEquals(0, held.items().get(0).item().doubts());
+    }
+
+    @Test
+    void aRowAnOperatorReleasedIsTakenWithoutADoubt() {
+        WorkQueue.Item z = enqueueAndClaim("z", "w1");
+        assertTrue(nodes.hold(z.seq(), z.attempts()).await(), "fixture: held");
+        assertTrue(nodes.release(z.seq()).await(), "fixture: released by an operator (D-067): the hold and its holder cleared");
+        List<WorkQueue.Item> taken = claimBy("w2");
+        assertEquals(List.of(z.seq()), taken.stream().map(WorkQueue.Item::seq).toList());
+        assertEquals(2, taken.get(0).attempts(), "the attempts kept and counted on (D-067)");
+        assertEquals(0, taken.get(0).doubts(), "a doubt counts a hand-out left unsettled by its holder, not a row an operator handed back");
+    }
+
+    @Test
+    void aRestartedNodeRerunsItsOldItemsAfterTheOldFence() {
+        assertEquals(1L, members.join("a", NODE_LEASE).await(), "fixture: a's first incarnation");   // at T: leased until T+30 s
+        WorkQueue.Item x = enqueueAndClaim("x", "a");
+        WorkQueue.Item h = enqueueAndClaim("h", "a");
+        assertTrue(nodes.hold(h.seq(), h.attempts()).await(), "fixture: held");
+
+        clock.advance(Duration.ofSeconds(10));   // a crashed and restarts at T+10 s; its item leases ran out at T+5 s
+        assertEquals(2L, members.join("a", NODE_LEASE).await(), "the restart joins a new epoch");
+        members.join("b", NODE_LEASE).await();
+        clock.advance(Duration.ofSeconds(20).minusMillis(1));   // T+30 s − 1 ms: the old incarnation's lease ends at T+30 s
+        assertEquals(List.of(), claimBy("a"), "not rerun before the old incarnation's lease_until");
+        assertEquals(List.of(), claimBy("b"), "nor taken by another node: a is live");
+
+        clock.advance(Duration.ofMillis(1));   // T+30 s exactly
+        List<WorkQueue.Item> rerun = claimBy("a");
+        assertEquals(List.of(x.seq()), rerun.stream().map(WorkQueue.Item::seq).toList(), "at the old lease_until its own unheld item reruns; the held one does not");
+        assertEquals(2, rerun.get(0).attempts());
+        assertEquals(1, rerun.get(0).doubts(), "the crashed incarnation left it unsettled: in doubt");
+    }
+
+    @Test
+    void aRestartWithALargerLeaseRerunsItsOldItemsAtTheOldLeaseEndNotBefore() {
+        members.join("a", NODE_LEASE).await();             // T: the first incarnation leased until T+30 s
+        WorkQueue.Item x = enqueueAndClaim("x", "a");
+        clock.advance(Duration.ofSeconds(10));              // T+10 s: a restarts with a lease four times as long
+        assertEquals(2L, members.join("a", Duration.ofSeconds(120)).await(), "fixture: the restart joins a new epoch");
+        // the old incarnation's fence is bounded by its own lease (T+30 s), not by the new one's half (T+30 s − 60 s = T−30 s)
+
+        assertEquals(List.of(), claimBy("a"), "at the restart the old incarnation may still be sending: nothing reruns");
+        clock.advance(Duration.ofSeconds(20).minusMillis(1));   // T+30 s − 1 ms
+        assertEquals(List.of(), claimBy("a"), "not before the old incarnation's lease_until");
+        clock.advance(Duration.ofMillis(1));                    // T+30 s exactly
+        List<WorkQueue.Item> rerun = claimBy("a");
+        assertEquals(List.of(x.seq()), rerun.stream().map(WorkQueue.Item::seq).toList(), "at the old lease_until its own unheld item reruns");
+        assertEquals(2, rerun.get(0).attempts());
+        assertEquals(1, rerun.get(0).doubts(), "the old incarnation left it unsettled: in doubt");
+    }
+
+    @Test
+    void anExpiredButUnreleasedNodesItemIsTakenOnlyAfterItsRelease() {
+        members.join("a", NODE_LEASE).await();
+        long epochB = members.join("b", NODE_LEASE).await();
+        WorkQueue.Item x = enqueueAndClaim("x", "a");
+
+        clock.advance(NODE_LEASE.plusSeconds(1));   // T+31 s: a's node lease ran out, nobody released it; x's item lease long gone
+        assertEquals(List.of("a"), members.renew("b", epochB, NODE_LEASE).await().expired(), "fixture: b sees a expired, not yet released");
+        assertEquals(List.of(), claimBy("b"), "an expired but unreleased holder is still live: its item is not taken");
+        assertEquals(List.of(), claimBy("c"), "by no other node either");
+        assertEquals(List.of(x.seq()), nodes.snapshot().stream().map(WorkQueue.Item::seq).toList(), "the item still queued, untouched");
+
+        assertEquals(List.of("a"), members.release(List.of("a")).await(), "fixture: b releases the expired a");
+        List<WorkQueue.Item> taken = claimBy("b");
+        assertEquals(List.of(x.seq()), taken.stream().map(WorkQueue.Item::seq).toList(), "after the release the item is taken");
+        assertEquals(x.attempts() + 1, taken.get(0).attempts(), "the takeover counts an attempt (D-055)");
+        assertEquals(1, taken.get(0).doubts(), "taken over unsettled: in doubt");
     }
 }

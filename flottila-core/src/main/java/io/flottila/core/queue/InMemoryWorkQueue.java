@@ -1,5 +1,6 @@
 package io.flottila.core.queue;
 
+import io.flottila.core.node.InMemoryMembership;
 import io.flottila.core.record.Page;
 import io.vertx.core.Future;
 
@@ -14,9 +15,10 @@ import java.util.TreeMap;
 
 /**
  * In-memory {@link WorkQueue} with the exact eligibility rule of the Postgres claim (not held, oldest
- * row of its key, no live lease on the key), the same attempts and fencing (D-055, D-074), leases on an
- * injected {@link Clock}. Single process only; state whose loss loses messages belongs to Postgres
- * (CLAUDE.md) — this is for tests.
+ * row of its key, no live lease on the key; another node's row only once its holder has no live row in the
+ * {@link InMemoryMembership}, a restarted node's own rows only after its old lease's end, D-101, D-112), the same attempts, doubts and
+ * fencing (D-055, D-074), leases on an injected {@link Clock}. Single process only; state whose loss loses messages belongs
+ * to Postgres (CLAUDE.md) — this is for tests.
  *
  * @since 0.1
  */
@@ -24,18 +26,27 @@ public final class InMemoryWorkQueue implements WorkQueue {
 
     private static final class Row {
         Item item;            // as last handed out: its attempts are the current holder's
-        String lockedBy;
+        String lockedBy;      // null: never handed out, or released by an operator
+        long lockedEpoch;     // the holder's epoch in the membership at the hand-out
         Instant lockedUntil;
         Instant heldAt;       // null: not held
         Row(Item item) { this.item = item; }
     }
 
     private final Clock clock;
+    private final InMemoryMembership members;
     private final TreeMap<Long, Row> rows = new TreeMap<>();
     private long nextSeq = 1;
 
+    /** A queue whose holders are members of none: every holder counts as gone once its row's lease ran out. */
     public InMemoryWorkQueue(Clock clock) {
+        this(clock, new InMemoryMembership(clock));
+    }
+
+    /** A queue whose holders' liveness is their row in {@code members} (a worker id is its node id). */
+    public InMemoryWorkQueue(Clock clock, InMemoryMembership members) {
         this.clock = Objects.requireNonNull(clock, "clock");
+        this.members = Objects.requireNonNull(members, "members");
     }
 
     @Override public synchronized Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
@@ -51,7 +62,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         List<Item> taken = new ArrayList<>();
         for (Row r : rows.values()) {
             if (taken.size() >= max) break;
-            if (!r.item.flow().equals(flow) || r.heldAt != null || live(r, now) || !eligible(r)) continue;
+            if (!r.item.flow().equals(flow) || r.heldAt != null || live(r, now) || !eligible(r) || !released(r, workerId, now)) continue;
             taken.add(take(r, workerId, now, lease));
         }
         return Future.succeededFuture(taken);
@@ -71,7 +82,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Instant now = clock.instant();
         for (Row r : rows.values()) {   // seq order: the first row of the key is its oldest, and only the oldest is ever leased
             if (!r.item.flow().equals(done.item.flow()) || !done.item.partitionKey().equals(r.item.partitionKey())) continue;
-            return Future.succeededFuture(Completion.done(Optional.of(take(r, workerId, now, lease))));
+            return Future.succeededFuture(Completion.done(Optional.of(take(r, workerId, now, lease))));   // never handed out: the oldest only ever is
         }
         return Future.succeededFuture(Completion.done(Optional.empty()));
     }
@@ -107,7 +118,8 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Row r = rows.get(seq);
         if (r == null || r.heldAt == null) return Future.succeededFuture(false);
         r.heldAt = null;
-        r.lockedUntil = null;   // the lease cleared (lockedBy is read only under a live lease, and the next take sets it)
+        r.lockedBy = null;      // the holder cleared with the lease: the next hand-out is in no doubt
+        r.lockedUntil = null;
         return Future.succeededFuture(true);
     }
 
@@ -167,12 +179,24 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Long.parseLong(Page.position(cursor));
     }
 
-    /** Leases {@code r} to {@code workerId} and counts the attempt; the item as handed out. */
-    private static Item take(Row r, String workerId, Instant now, Duration lease) {
-        r.lockedBy = Objects.requireNonNull(workerId, "workerId");
-        r.lockedUntil = now.plus(lease);
+    /**
+     * The holder of a row whose lease ran out lets it go to {@code workerId} (D-101): no holder, the claimer itself, or a node
+     * with no live membership row; and a restarted holder's row only once its previous incarnation's lease ended.
+     */
+    private boolean released(Row r, String workerId, Instant now) {
+        if (r.lockedBy == null) return true;
+        if (!r.lockedBy.equals(workerId) && members.live(r.lockedBy)) return false;
+        return !members.waits(r.lockedBy, r.lockedEpoch, now);
+    }
+
+    /** Leases {@code r} to {@code workerId} and counts the attempt, and a doubt when an earlier holder left it unsettled; the item as handed out. */
+    private Item take(Row r, String workerId, Instant now, Duration lease) {
         Item i = r.item;
-        r.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts() + 1);
+        int doubt = r.lockedBy == null ? 0 : 1;
+        r.lockedBy = Objects.requireNonNull(workerId, "workerId");
+        r.lockedEpoch = members.epoch(workerId);
+        r.lockedUntil = now.plus(lease);
+        r.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts() + 1, i.doubts() + doubt);
         return r.item;
     }
 }

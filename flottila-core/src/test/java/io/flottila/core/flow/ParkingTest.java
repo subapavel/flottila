@@ -16,6 +16,7 @@ import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.dlq.Parking;
+import io.flottila.core.node.FencedException;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Page;
 import io.flottila.core.record.Snapshot;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -470,5 +472,44 @@ class ParkingTest {
         assertSame(boom, surfaced, "the step's original failure surfaces");
         assertEquals(List.of(down), List.of(surfaced.getSuppressed()), "the park's failure, suppressed");
         assertFalse(flagAfter, "a park that failed without an interrupt leaves the flag clear");
+    }
+
+    /**
+     * P2-15a (review r1 decision 3): under a closed fence a step's failure is not parked — no persist, no DLQ row — and surfaces
+     * as a {@link FencedException} carrying the step's failure as its cause; a failure that is already fenced, or a later step's,
+     * passes through as is; with the fence open again the same failure is parked.
+     */
+    @Test
+    void aStepFailureUnderAClosedFenceIsNotParkedAndSurfacesFencedWithTheStepsFailureAsItsCause() {
+        HoldingBlobStore bodies = bodies();
+        WatchingDlq dlq = new WatchingDlq(bodies);
+        Envelope in = stepTwoInput(ingressIn(bodies), bodies);
+        AtomicBoolean open = new AtomicBoolean(false);
+        Parking fenced = new Parking(dlq, rt.clock(), Map.of("flow", "f@1.0.0"), open::get);
+        IllegalStateException boom = new IllegalStateException("boom at x");
+        Stage failing = fenced.wrap(Stage.of(e -> { throw boom; }), STEP_X);
+
+        FencedException surfaced = assertThrows(FencedException.class, () -> failing.apply(in, out -> out));
+        assertSame(boom, surfaced.getCause(), "the step's failure is the cause");
+        assertTrue(surfaced.getMessage().contains(in.id()) && surfaced.getMessage().contains("not parked"), surfaced.getMessage());
+        assertEquals(List.of(), dlq.all(), "no DLQ row");
+        assertFalse(bodies.persisted(in.body().key()), "nor a persist of its body");
+
+        FencedException sendFenced = new FencedException("fenced send");
+        Stage fencedSend = fenced.wrap(Stage.of(e -> { throw sendFenced; }), STEP_X);
+        assertSame(sendFenced, assertThrows(FencedException.class, () -> fencedSend.apply(in, out -> out)), "a fenced failure passes as is");
+        IllegalStateException later = new IllegalStateException("boom further down");
+        Stage handsOn = fenced.wrap((e, rest) -> rest.apply(e), STEP_X);
+        assertSame(later, assertThrows(IllegalStateException.class, () -> handsOn.apply(in, out -> { throw later; })),
+                "a later step's failure passes untouched, fenced or not");
+        assertEquals(List.of(), dlq.all());
+
+        open.set(true);   // the fence reopened after a send it fenced: that failure is still not parked
+        assertSame(sendFenced, assertThrows(FencedException.class, () -> fencedSend.apply(in, out -> out)), "a fenced send is never parked");
+        assertEquals(List.of(), dlq.all());
+        // witness: the step's failure with the fence open is parked
+        ParkedException parked = assertThrows(ParkedException.class, () -> failing.apply(in, out -> out));
+        assertSame(boom, parked.getCause());
+        assertEquals(List.of(in.id()), dlq.all().stream().map(Parked::messageId).toList(), "one DLQ row");
     }
 }

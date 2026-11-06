@@ -10,6 +10,7 @@ import io.flottila.api.StepFactory;
 import io.flottila.api.Timer;
 import io.flottila.core.admission.Targets;
 import io.flottila.core.batch.BatchingWriter;
+import io.flottila.core.node.NodeLease;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.StepCpu;
@@ -54,6 +55,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,7 +79,11 @@ import java.util.function.Function;
  * refused node leaves its database untouched, migrates the database, opens the body journal in {@code FLOTTILA_JOURNAL_DIR} (D-105:
  * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), builds
  * the blob store on it (CORE-4c2: bodies in the journal under the {@code default} tenant's key, their refs in the pool, bounded by
- * {@code FLOTTILA_BLOB_DURABLE_MAX}; no spool), opens the stores (the work queue claiming only what this journal holds) and the
+ * {@code FLOTTILA_BLOB_DURABLE_MAX}; no spool), joins the membership as a new incarnation of its node id (D-101 (1), F-28: a
+ * {@link NodeLease} over a {@link PgMembership} on a connection of its own, renewed every {@code FLOTTILA_NODE_LEASE_RENEW}; its
+ * fence fences every at-least-once worker the deployments build; superseded, the node halts — the process exits with
+ * {@value #SUPERSEDED}) and states its notices once — one journal copy (D-101 (5), until CORE-5) and, when no other member is
+ * live, that nobody takes its items over —, opens the stores (the work queue claiming only what this journal holds) and the
  * archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
  * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them and the node's
@@ -92,10 +98,12 @@ import java.util.function.Function;
  * stopped, DEGRADED while a segment row is retried), then the
  * retention job, whose first run begins at once and does not hold
  * the start, then the journal's {@link SegmentSweeper} ({@code FLOTTILA_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
- * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the sampler, then the
- * journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening or pooled. {@code close} first
+ * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the node lease
+ * and its connection, then the sampler, then the journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening
+ * or pooled. {@code close} first
  * closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
- * released, while the admin port still answers — then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
+ * released, while the admin port still answers — then stops renewing the node lease and closes its connection (the row expires;
+ * a peer or the next start takes the items over), then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
  * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then closes the journal (its spills and persists in flight first; its {@code LOCK}
  * given up), then flushes and closes the message store, then closes the pool, then the S3
  * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
@@ -118,7 +126,19 @@ public final class Node implements AutoCloseable {
     /** The tenant whose journal key seals the node's bodies until tenants are configured (D-105). */
     private static final String TENANT = "default";
 
+    /** The exit status of a superseded node (D-101 (2), fail-stop): a peer released its lease, or a newer incarnation joined. */
+    public static final int SUPERSEDED = 3;
+
+    /** The single-copy notice (D-101 (5)): until CORE-5 a body lies in its node's journal only. */
+    static final String ONE_COPY = "one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))";
+
+    /** The notice of a node that found no other member live at its start. */
+    static final String ALONE = "no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)";
+
     private final Deployments deployments;
+    /** The node's lease (D-101), renewed on its membership's own connection. */
+    private final NodeLease lease;
+    private final PgMembership membership;
     /** The CPU sampler (D-094), when {@code FLOTTILA_CPU_SAMPLING} sets a period. */
     private final Optional<CpuSampler> sampler;
     private final AdminServer admin;
@@ -133,9 +153,11 @@ public final class Node implements AutoCloseable {
     /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
     private final Runnable closeValkey;
 
-    private Node(Deployments deployments, Optional<CpuSampler> sampler, AdminServer admin, int adminPort, Retention retention,
-                 SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private Node(Deployments deployments, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin, int adminPort,
+                 Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
         this.deployments = deployments;
+        this.lease = lease;
+        this.membership = membership;
         this.sampler = sampler;
         this.admin = admin;
         this.adminPort = adminPort;
@@ -179,6 +201,8 @@ public final class Node implements AutoCloseable {
         Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pool
         Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
+        NodeLease lease = null;   // once joined: closed after the deployments, its connection with it
+        PgMembership membership = null;
         Optional<CpuSampler> sampler = Optional.empty();   // once started: closed after the deployments
         try {
             LateBlobStore late = new LateBlobStore(tiers.treeLimit());   // the node's store once the journal it writes to is open
@@ -199,6 +223,11 @@ public final class Node implements AutoCloseable {
             TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
                     tiers.durableMax()), hasher, opened, keys.keyOf(TENANT), pool);
             late.bind(blobs);   // before any flow is built: every body a component writes is this store's
+            // the node lease (D-101): after the journal's LOCK (one process per journal joins), before any flow is built (each is fenced)
+            membership = PgMembership.connecting(vertx, connectOptions(pg));   // its own connection, never the pool's
+            lease = new NodeLease(config.nodeId(), membership, config.nodeLease(), config.nodeLeaseRenew(), System::nanoTime, timer, Node::halt);
+            lease.start().await();
+            List<String> notices = notices(config, membership.others(config.nodeId()).await());
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
@@ -225,7 +254,7 @@ public final class Node implements AutoCloseable {
             PgIntake intake = new PgIntake(pool, blobs, messages, work, timer, config.intakeGroup());   // grouped saves (D-109)
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
-                    new Targets(config.targets().defaults(), config.targets().overrides(), timer));   // the node's one, for every flow (D-099)
+                    new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease);   // the node's one Targets (D-099) and fence
             deployments = restored;
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
             // before the restore: the restored flows' steps are sampled from their first message on (D-094)
@@ -235,14 +264,14 @@ public final class Node implements AutoCloseable {
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health()),
-                            "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices(config)),
+                            "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices),
                     Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)));
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go (CORE-3 item 10); its first pass an interval later, on a virtual thread of its own
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
-            return new Node(restored, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey);
+            return new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey);
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -253,9 +282,13 @@ public final class Node implements AutoCloseable {
                 failure.addSuppressed(unstopped);
             } finally {
                 try {
-                    sampler.ifPresent(CpuSampler::close);
+                    closeLease(lease, membership);
                 } finally {
-                    closeStores(journal, messages, pool, closeS3, closeValkey);
+                    try {
+                        sampler.ifPresent(CpuSampler::close);
+                    } finally {
+                        closeStores(journal, messages, pool, closeS3, closeValkey);
+                    }
                 }
             }
             throw failure;
@@ -326,18 +359,45 @@ public final class Node implements AutoCloseable {
     /** The node's message store over Postgres. */
     public MessageStore messages() { return messages; }
 
-    /** What the admin health names beside its checks (D-106): a generated master key, which lies beside the data it protects. */
-    private static List<String> notices(NodeConfig config) {
-        if (!config.journalKey().generates()) return List.of();
-        return List.of("the journal's master key is generated (FLOTTILA_JOURNAL_KEY_GENERATE=true) and lies beside the data it protects: "
-                + "for a single dev node only; give every other node FLOTTILA_JOURNAL_KEY_FILE (D-106)");
+    /**
+     * What the admin health names beside its checks: a generated master key, which lies beside the data it protects (D-106); one
+     * journal copy (D-101 (5)); and, with no {@code others} live at the start, that no other node takes this one's items over. The
+     * last two are logged here, once.
+     */
+    private static List<String> notices(NodeConfig config, int others) {
+        List<String> notices = new ArrayList<>();
+        if (config.journalKey().generates()) {
+            notices.add("the journal's master key is generated (FLOTTILA_JOURNAL_KEY_GENERATE=true) and lies beside the data it protects: "
+                    + "for a single dev node only; give every other node FLOTTILA_JOURNAL_KEY_FILE (D-106)");
+        }
+        notices.add(ONE_COPY);
+        LOG.log(System.Logger.Level.WARNING, ONE_COPY);
+        if (others == 0) {
+            notices.add(ALONE);
+            LOG.log(System.Logger.Level.WARNING, ALONE);
+        }
+        return notices;
+    }
+
+    /** Fail-stop (D-101 (2)): the process exits with {@link #SUPERSEDED}, off the calling thread (a renew answers on an event loop, which the shutdown hook needs). */
+    private static void halt() {
+        Thread.ofVirtual().name("flottila-superseded").start(() -> System.exit(SUPERSEDED));
+    }
+
+    /** Stops renewing the node lease (none yet: nothing) and closes its connection (none: nothing), the connection even when the stop threw. */
+    private static void closeLease(NodeLease lease, PgMembership membership) {
+        try {
+            if (lease != null) lease.close();
+        } finally {
+            if (membership != null) membership.close().await();
+        }
     }
 
     /** The node's body journal (CORE-4c2's store writes through it). */
     public Journal journal() { return journal; }
 
     /**
-     * Closes the deployments (every flow stopped, its lease released, deploys refused), then the CPU sampler (if one runs), then stops the admin server, then closes the
+     * Closes the deployments (every flow stopped, its lease released, deploys refused), then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
      * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then closes the journal, then flushes and closes the message store, then closes
      * the pool, then the S3 client, then the Valkey client — each step even when the one before failed.
      */
@@ -347,18 +407,22 @@ public final class Node implements AutoCloseable {
             deployments.close();
         } finally {
             try {
-                sampler.ifPresent(CpuSampler::close);   // after the deployments; it feeds nothing more, their last one to two read cycles unread (F-22)
+                closeLease(lease, membership);   // after the deployments: no flow is left to fence
             } finally {
                 try {
-                    admin.stop().await();
+                    sampler.ifPresent(CpuSampler::close);   // after the deployments; it feeds nothing more, their last one to two read cycles unread (F-22)
                 } finally {
                     try {
-                        retention.close().await();
+                        admin.stop().await();
                     } finally {
                         try {
-                            sweeper.close();   // waits for a pass in flight: before the journal and the pool it uses
+                            retention.close().await();
                         } finally {
-                            closeStores(journal, messages, pool, closeS3, closeValkey);
+                            try {
+                                sweeper.close();   // waits for a pass in flight: before the journal and the pool it uses
+                            } finally {
+                                closeStores(journal, messages, pool, closeS3, closeValkey);
+                            }
                         }
                     }
                 }

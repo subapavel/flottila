@@ -65,6 +65,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -218,6 +219,7 @@ public final class Deployments {
     private final ArchiveStore archives;
     private final PollerLeases leases;
     private final Targets targets;
+    private final BooleanSupplier fence;
     /** Numbers the owners of the leased consumers built here: {@code <nodeId>#<n>}. */
     private final AtomicLong owners = new AtomicLong();
     /** One deploy, undeploy or restore at a time; {@link #close} takes it to wait for the one running. */
@@ -271,6 +273,16 @@ public final class Deployments {
     }
 
     /**
+     * Deployments whose workers are never fenced: tests and tools; the node passes its lease's fence (D-101 (2)).
+     */
+    public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases, targets,
+                () -> true);
+    }
+
+    /**
      * @param runtime handed to each deploy's {@code new FlowBuilder} and read nowhere else
      * @param components the node's components by scheme: the consumers, and the config schemas the endpoints are checked against
      * @param clock {@code deployedAt}, and the validity of a leased consumer's lease
@@ -284,10 +296,12 @@ public final class Deployments {
      * @param targets the node's limits per target system (D-099): every flow built here — deployed, swapped in by a redeploy,
      *                rebuilt by a rollback, restored — sends under them, so flows naming one target share its limit across packages
      *                and versions; {@link #targets()} lists their gauges
+     * @param fence the node's fence (D-101 (2), {@code NodeLease}): every at-least-once flow's worker built here sends, completes,
+     *              takes the next item of a key and holds only while it is open ({@link FlowBuilder#fence})
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
-                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets) {
+                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence) {
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
@@ -304,6 +318,7 @@ public final class Deployments {
         this.archives = Objects.requireNonNull(archives, "archives");
         this.leases = Objects.requireNonNull(leases, "leases");
         this.targets = Objects.requireNonNull(targets, "targets");
+        this.fence = Objects.requireNonNull(fence, "fence");
     }
 
     /**
@@ -1404,7 +1419,7 @@ public final class Deployments {
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
-                .stepEvents(config.cpuSampling().isPresent()).targets(targets);
+                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence);
     }
 
     /**

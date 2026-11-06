@@ -65,17 +65,23 @@ import java.util.regex.Pattern;
  *                    {@code FLOTTILA_INTAKE_GROUP_BYTES} (1 MiB, 64 KiB..64 MiB), {@code FLOTTILA_INTAKE_GROUP_WINDOW} (PT0.001S,
  *                    PT0S..PT0.05S in whole milliseconds), {@code FLOTTILA_INTAKE_GROUP_CONCURRENCY} (1..64, at most
  *                    max(1, {@code FLOTTILA_PG_POOL_SIZE} − 1); unset, min(4, that bound)); draft defaults until CORE-GATE
+ * @param nodeLease {@code FLOTTILA_NODE_LEASE} (D-101 (1), F-28), ISO-8601, above zero and at most PT10M (PT30S): the node's
+ *                  lease in the membership; its fence closes half a lease after its last renewed send
+ * @param nodeLeaseRenew {@code FLOTTILA_NODE_LEASE_RENEW}, ISO-8601, above zero and at most a quarter of the lease (PT5S): how
+ *                       often the node renews it
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
-                         MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup) {
+                         MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
+                         Duration nodeLeaseRenew) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
      * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5). The intake's groups in flight leave the
-     * pool a connection: at most max(1, pool size − 1) of them (CORE-6b).
+     * pool a connection: at most max(1, pool size − 1) of them (CORE-6b). The node lease is renewed at least four times a lease
+     * (D-101 (1)): a renew or two may fail without closing the fence.
      */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
@@ -89,6 +95,13 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(journalKey, "journalKey");
         Objects.requireNonNull(journalSweep, "journalSweep");
         Objects.requireNonNull(intakeGroup, "intakeGroup");
+        if (!nodeLease.isPositive() || nodeLease.compareTo(NODE_LEASE_MAX) > 0) {
+            throw new IllegalArgumentException("FLOTTILA_NODE_LEASE " + nodeLease + " must be above zero and at most " + NODE_LEASE_MAX);
+        }
+        if (!nodeLeaseRenew.isPositive() || nodeLeaseRenew.multipliedBy(4).compareTo(nodeLease) > 0) {
+            throw new IllegalArgumentException("FLOTTILA_NODE_LEASE_RENEW " + nodeLeaseRenew + " must be above zero and at most a quarter of FLOTTILA_NODE_LEASE "
+                    + nodeLease + ": the node renews at least four times a lease");
+        }
         if (journal.recordMax() > blobs.memoryTier()) {
             throw new IllegalArgumentException("FLOTTILA_JOURNAL_RECORD_MAX " + journal.recordMax() + " is above FLOTTILA_BLOB_MEMORY_TIER "
                     + blobs.memoryTier() + ": a journal record is held in memory whole");
@@ -101,6 +114,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_CONCURRENCY " + intakeGroup.concurrency() + " is above max(1, FLOTTILA_PG_POOL_SIZE "
                     + pg.poolSize() + " - 1): each group in flight holds a connection, and the pool keeps one for the rest of the node");
         }
+    }
+
+    /** A node whose node lease has the default keys (PT30S, renewed every PT5S), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, NODE_LEASE_DEFAULT, NODE_LEASE_RENEW_DEFAULT);
     }
 
     /** A node whose intake groups have the default keys for its pool ({@link IntakeGroup#defaults}), as {@link #from} reads an env without them. */
@@ -172,7 +194,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup);
+                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -362,6 +384,10 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Duration CPU_SAMPLING_MIN = Duration.ofMillis(1);
     private static final Duration CPU_SAMPLING_MAX = Duration.ofMillis(100);
     private static final Duration GROUP_WINDOW_MAX = Duration.ofMillis(50);
+    /** The node lease's defaults and bound (D-101 (1)). */
+    private static final Duration NODE_LEASE_DEFAULT = Duration.ofSeconds(30);
+    private static final Duration NODE_LEASE_RENEW_DEFAULT = Duration.ofSeconds(5);
+    private static final Duration NODE_LEASE_MAX = Duration.ofMinutes(10);
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
@@ -393,7 +419,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
-                MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.poolSize()));
+                MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.poolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
+                duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT));
     }
 
     /**

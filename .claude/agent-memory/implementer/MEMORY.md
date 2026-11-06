@@ -19,11 +19,12 @@
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
+- Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`.
 - JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants offline (`-o`): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
-- Scoped PIT `-DtargetClasses=..` (no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
+- Scoped PIT `-pl flottila-api,flottila-testkit,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
 - Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
   `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start).
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
@@ -55,11 +56,9 @@
   via `Configuration.getResourceResolver()` (default CatalogResourceResolver; may return StreamSource).
 - Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()
   .join()` waits uninterruptibly (no catch), for a never-failing close in a finally (P1-09k2). `andThen(Handler<AsyncResult>)` completes after
-  the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause.
-- AWS SDK 2.56.0 (javap): `RequestBody.fromFile(Path)` sizes the file at once (missing → UncheckedIOException); a client built without a credentialsProvider
-  resolves `DefaultCredentialsProvider.builder()..build()` (`create()` is a static singleton); `serviceClientConfiguration()` shows region/endpoint/credentials.
-- JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
-  `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
+  the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause; on a platform thread it blocks on a latch.
+- AWS SDK 2.56.0 (javap): `RequestBody.fromFile` sizes at once (missing → UncheckedIOException); no credentialsProvider → `DefaultCredentialsProvider.builder()..build()`.
+- JDK 25 (P2-03b1): a vthread unblocked from a monitor is neither mounted nor queued until `VirtualThread-unblocker` queues it (MXBean misses it).
   FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
 - Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
   loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
@@ -86,11 +85,10 @@
 - vertx-redis-client 5.1.10 (javap, P2-02L; Apache-2.0/EPL-1.0, no NOTICE): `Redis.createClient(Vertx, String)` lazy, `close()` → Future;
   `RedisAPI.api(Redis).eval(List)` = [script, numkeys, keys.., args..]; `RedisAPI.close()` is void. Valkey IT image valkey/valkey:8.
 - `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
-- P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch, an interrupt sneaky-throws InterruptedException (source, FIX-108); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- JFR, JDK 25.0.5 (FIX-108): `jdk.CPUTimeSample` throttle `"<n>ms"`; live RecordingStream vthread `getThread()` null, a whole dump resolves all (F-22); `dump(p)` truncates p, works on STOPPED; one dump per comparison; cp: `dependency:build-classpath`.
+- JFR, JDK 25.0.5 (FIX-108): CPUTimeSample throttle `"<n>ms"`; live vthread `getThread()` null, a dump resolves all (F-22); `dump(p)` truncates p.
 - PG stats (CORE-15b, `\d` 16.15 + 17 image): pg_stat_wal wal_sync(_time) up to 17 only, counted only with fsync on + fdatasync/fsync/fsync_writethrough;
   Testcontainers PostgreSQLContainer's default command is `fsync=off`; `PgConnectOptions.addProperty("statement_timeout",..)` is a startup GUC (IT-proven).
 - PG 17 (FIX-130, EXPLAIN on 50 k rows): `update .. where seq in (<sub> limit n for update skip locked)` = generic-plan Seq Scan of the target;
@@ -107,7 +105,9 @@
   before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
-- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1).
+- FlowWorker (P2-15a r2): a chain's end always polls once more (an empty claim) before poll()'s future completes: count claims that took items.
+  Node.close keeps its `nodes` row (no release): a restart's own items wait for the old lease_until (≤ L); an IT restarting a node expires the row.
+- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1).
 - Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
   on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
 - Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile`

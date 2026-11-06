@@ -19,6 +19,7 @@ import io.flottila.core.admission.TargetLimit;
 import io.flottila.core.admission.Targets;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parking;
+import io.flottila.core.node.FencedException;
 import io.flottila.core.pattern.Filter;
 import io.flottila.core.pattern.Retry;
 import io.flottila.core.pattern.Route;
@@ -30,6 +31,7 @@ import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.StepEvent;
 import io.flottila.core.scope.MessageContext;
+import io.vertx.core.Future;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -45,9 +47,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
@@ -77,7 +81,11 @@ import java.util.function.UnaryOperator;
  * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time), and a replay
  * runs the same stage. A permit not granted within the earlier of the limit's maxWait and the time left until the message's
  * deadline fails the send with a retryable {@link io.flottila.api.NackException}; a send where no {@link MessageContext} is bound
- * waits maxWait.
+ * waits maxWait. A {@link #worker}'s {@code to} sends only while the node's fence given through {@link #fence} is open, checked
+ * under the permit just before the producer's send: closed, it fails with a {@link FencedException}, which no {@link Retry}
+ * retries and no {@link Parking} parks (D-101 (2)); a step's failure in a worker's pipeline is parked only while the same fence
+ * is open — closed, a {@link FencedException} with that failure as its cause and no DLQ row; a sync, at-most-once or replayed
+ * run is never fenced (no other node takes it over).
  *
  * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s, a {@link #replay}'s
  * {@code from} and {@code retry} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
@@ -100,6 +108,9 @@ public final class FlowBuilder {
     /** The expression language a step uses when it names none. */
     public static final String DEFAULT_LANGUAGE = "xpath";
 
+    /** The fence of an unfenced run: always open. */
+    private static final BooleanSupplier OPEN = () -> true;
+
     private final Runtime runtime;
     private final Map<String, StepFactory> factories = new LinkedHashMap<>();
     private final Map<String, Expressions> languages = new LinkedHashMap<>();
@@ -114,6 +125,7 @@ public final class FlowBuilder {
     private Map<String, Path> dependencies = Map.of();
     private boolean stepEvents;   // false: no step is marked (D-094, owner decision 2026-11-03)
     private Targets targets;
+    private BooleanSupplier fence = OPEN;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -209,9 +221,20 @@ public final class FlowBuilder {
         return this;
     }
 
+    /**
+     * Fences the workers built from now on by {@code fence}, the node's ({@link io.flottila.core.node.NodeLease}, D-101 (2)):
+     * they claim, their {@code to} steps send, their steps' failures are parked, and they complete, take the next item of a key,
+     * hold and park an item past its attempts, only while it answers true. It
+     * replaces the fence of an earlier call. Without a call the fence is always open.
+     */
+    public FlowBuilder fence(BooleanSupplier fence) {
+        this.fence = Objects.requireNonNull(fence, "fence");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory, D-078). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
-        return built(flow, baseDir).pipeline(true);
+        return built(flow, baseDir, OPEN).pipeline(true);
     }
 
     /**
@@ -244,11 +267,11 @@ public final class FlowBuilder {
         Admission admission = admission(flow);
         return switch (flow.deliveryMode()) {
             case "sync" -> {
-                Built built = built(flow, baseDir);
+                Built built = built(flow, baseDir, OPEN);
                 yield Delivery.sync(admission, built.pipeline(true), built.producers(), runtime.timer());
             }
             case "at-most-once" -> {
-                Built built = built(flow, baseDir);
+                Built built = built(flow, baseDir, OPEN);
                 yield Delivery.atMostOnce(admission, built.pipeline(true), built.producers(), runtime.timer());
             }
             case "at-least-once" -> {
@@ -309,9 +332,9 @@ public final class FlowBuilder {
         requireDlq(flow);
         int max = (int) Math.min(inFlightRequests(flow), Integer.MAX_VALUE);
         Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
-        Built built = built(flow, baseDir);
+        Built built = built(flow, baseDir, fence);
         return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), built.pipeline(false),
-                parking, flow.steps().get(0), runtime.timer(), built.producers());
+                parking, flow.steps().get(0), runtime.timer(), built.producers(), fence);
     }
 
     private void requireStoreAndQueue(FlowDefinition flow, String what) {
@@ -385,7 +408,7 @@ public final class FlowBuilder {
 
     private Replay replay(FlowDefinition flow, Path baseDir, Admission admission) {
         if (store == null) throw new IllegalStateException("replay needs the recorded snapshots: call recording(store, meter) first");
-        Built built = built(flow, baseDir);
+        Built built = built(flow, baseDir, OPEN);
         List<Stage> steps = built.steps();
         Recorder recorder = built.recorder();
         RecordingPolicy policy = flow.recording();
@@ -415,13 +438,16 @@ public final class FlowBuilder {
         }
     }
 
-    /** The flow built; a build that throws closes every producer it created before the failure leaves (FIX-30), unchecked ones included. */
-    private Built built(FlowDefinition flow, Path baseDir) {
+    /**
+     * The flow built, its {@code to} steps sending and its steps' failures parked under {@code fence}; a build that throws closes every producer it created
+     * before the failure leaves (FIX-30), unchecked ones included.
+     */
+    private Built built(FlowDefinition flow, Path baseDir, BooleanSupplier fence) {
         Objects.requireNonNull(flow, "flow");
         Map<String, String> versions = versionsOf(flow);
         boolean parks = "at-least-once".equals(flow.deliveryMode());
         if (parks) requireDlq(flow);
-        Parking parking = parks ? new Parking(dlq, runtime.clock(), versions) : null;
+        Parking parking = parks ? new Parking(dlq, runtime.clock(), versions, fence) : null;
         StepResources resources = resources(flow, baseDir);
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
         UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
@@ -445,7 +471,7 @@ public final class FlowBuilder {
                 }
                 if (kind == BodyKind.SPLIT_ASSEMBLE) splitBefore = true;
                 Stage stage = switch (step.type()) {
-                    case "to" -> to(step, forward, opened);
+                    case "to" -> to(step, forward, opened, fence);
                     case "route" -> route(step, resources);
                     case "filter" -> new Filter(predicate(step, step.requireString("when"), resources));
                     case "extractKey" -> extractKey(step, resources);
@@ -543,9 +569,9 @@ public final class FlowBuilder {
      * The producer gets the envelope through {@code forward} (the flow's {@code forwardHeaders}) under its target's limit;
      * what goes on is its reply. Every producer created is added to {@code opened} at once.
      */
-    private Stage to(StepConfig step, UnaryOperator<Envelope> forward, List<Producer> opened) {
+    private Stage to(StepConfig step, UnaryOperator<Envelope> forward, List<Producer> opened, BooleanSupplier fence) {
         if (step.config().get("endpoint") != null) {
-            Send send = send(step, step.requireString("endpoint"), opened);
+            Send send = send(step, step.requireString("endpoint"), opened, fence);
             return Stage.of(e -> send.apply(forward.apply(e)));
         }
         Key<String> prop = new Key<>(step.requireString("byProp"));
@@ -553,7 +579,7 @@ public final class FlowBuilder {
             throw new IllegalArgumentException(step + ": 'endpoints' must map every value of " + prop.name() + " to an endpoint");
         }
         Map<String, Send> sends = new LinkedHashMap<>();
-        choices.forEach((choice, endpoint) -> sends.put(String.valueOf(choice), send(step, String.valueOf(endpoint), opened)));
+        choices.forEach((choice, endpoint) -> sends.put(String.valueOf(choice), send(step, String.valueOf(endpoint), opened, fence)));
         return Stage.of(e -> {
             String choice = e.get(prop).orElseThrow(() -> new IllegalStateException(step + ": prop " + prop.name() + " is not set; a route step before it decides"));
             Send send = sends.get(choice);
@@ -562,8 +588,8 @@ public final class FlowBuilder {
         });
     }
 
-    /** The producer of {@code endpoint}, added to {@code opened} at once, and the limit of the target its component names. */
-    private Send send(StepConfig step, String endpoint, List<Producer> opened) {
+    /** The producer of {@code endpoint}, added to {@code opened} at once, the limit of the target its component names, and {@code fence}. */
+    private Send send(StepConfig step, String endpoint, List<Producer> opened, BooleanSupplier fence) {
         EndpointConfig cfg = endpoints.get(endpoint);
         if (cfg == null) throw new IllegalArgumentException(step + ": unknown endpoint '" + endpoint + "' (" + endpoints.keySet() + ")");
         Component component;
@@ -574,19 +600,25 @@ public final class FlowBuilder {
         }
         Producer producer = component.producer(cfg);
         opened.add(producer);
-        return new Send(producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock());
+        return new Send(endpoint, producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock(), fence);
     }
 
     /**
      * A {@code to}'s send: the producer's, under the limit of its target, waiting no longer than the time left on {@code clock}
-     * until the deadline of the message bound, maxWait when none is; what the send fails with comes out as is.
+     * until the deadline of the message bound, maxWait when none is; under the permit, a closed {@code fence} fails it with a
+     * {@link FencedException} before the producer is called; what the send fails with comes out as is.
      */
-    private record Send(Producer producer, TargetLimit limit, Clock clock) {
+    private record Send(String endpoint, Producer producer, TargetLimit limit, Clock clock, BooleanSupplier fence) {
         Envelope apply(Envelope e) {
+            Supplier<Future<Envelope>> send = () -> {
+                if (!fence.getAsBoolean()) {
+                    throw new FencedException("message " + e.id() + " not sent to endpoint '" + endpoint + "': the node's fence is closed (D-101 (2)); "
+                            + "its item is left to whoever runs it next");
+                }
+                return producer.send(e);
+            };
             try {
-                return MessageContext.isBound()
-                        ? limit.call(MessageContext.current().remaining(clock), () -> producer.send(e))
-                        : limit.call(() -> producer.send(e));
+                return MessageContext.isBound() ? limit.call(MessageContext.current().remaining(clock), send) : limit.call(send);
             } catch (Exception failure) {   // a checked one too, as the producer's future failed with it, or the interrupt
                 throw FlowBuilder.<RuntimeException>rethrown(failure);
             }

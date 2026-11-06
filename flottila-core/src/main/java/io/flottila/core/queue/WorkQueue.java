@@ -5,6 +5,7 @@ import io.vertx.core.Future;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,12 +29,36 @@ import java.util.Optional;
 public interface WorkQueue {
 
     /**
-     * One queued message, as handed out.
+     * One queued message, as handed out. Two items are equal when they are the same hand-out — seq, message, flow, step, key
+     * and attempts, the holder's token; {@code doubts}, read off the row's history, is not compared (P2-15a: an item a test or
+     * a caller builds without it names the same hand-out).
      *
      * @param attempts how many times the row has been handed out, this hand-out included (1 on the first claim)
+     * @param doubts how many of its hand-outs were of a row an earlier holder had been handed and left unsettled (D-101,
+     *               derived, nothing written per send): that holder may have sent before it died or was fenced, so the run is in
+     *               doubt; 0 on a first hand-out and on a row an operator {@linkplain #release released}
      * @since 0.1
      */
-    record Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts) {}
+    record Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts, int doubts) {
+
+        /** An item in no doubt. */
+        public Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts) {
+            this(seq, messageId, flow, step, partitionKey, attempts, 0);
+        }
+
+        @Override public boolean equals(Object o) {
+            return o instanceof Item other && handOut().equals(other.handOut());
+        }
+
+        @Override public int hashCode() {
+            return handOut().hashCode();
+        }
+
+        /** What names the hand-out: every component but {@code doubts}. */
+        private List<Object> handOut() {
+            return Arrays.asList(seq, messageId, flow, step, partitionKey, attempts);
+        }
+    }
 
     /**
      * One held row (D-067).
@@ -77,7 +102,10 @@ public interface WorkQueue {
     /**
      * Leases up to {@code max} rows to {@code workerId}: a row is claimable when it is not held, its lease is
      * free, it is the oldest row of its key (held rows included) and that key holds no live lease (or it has no key).
-     * Each row handed out counts one more attempt; the rows come in seq order.
+     * Each row handed out counts one more attempt; the rows come in seq order. A worker id is its node's id (D-101): another
+     * node's row is claimable only once that holder has no live membership row (released, or none at all), and a restarted
+     * node's own rows only after its previous incarnation's lease end. A row handed out while an earlier holder left it unsettled
+     * counts one more {@linkplain Item#doubts() doubt}.
      */
     Future<List<Item>> claim(String workerId, String flow, int max, Duration lease);
 

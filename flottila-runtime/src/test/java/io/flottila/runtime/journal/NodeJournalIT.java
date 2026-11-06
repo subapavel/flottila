@@ -1096,13 +1096,18 @@ class NodeJournalIT {
         assertTrue(Files.exists(other), "a file that is no MASTER.*.tmp is kept");
     }
 
-    /** D-106: the admin health names a generated master key in its notices (no key bytes); a configured key has none. */
+    /**
+     * D-106: the admin health names a generated master key in its notices (no key bytes); a configured key has none of it
+     * (P2-15a: the single-copy notice of D-101 (5) stands beside it either way).
+     */
     @Test
     void theAdminHealthNamesAGeneratedKey() throws Exception {
         Node configured = start(env("dev"));
         HttpResponse<String> plain = health(configured);
         assertEquals(200, plain.statusCode(), plain.body());
-        assertTrue(new JsonObject(plain.body()).getJsonArray("notices", new JsonArray()).isEmpty(), "a configured key: no notice: " + plain.body());
+        // P2-15a (D-101 (5)): every node now states its single-copy notice, so "no notice" reads "no notice of the key"
+        assertTrue(new JsonObject(plain.body()).getJsonArray("notices", new JsonArray()).stream().noneMatch(n -> String.valueOf(n).contains(GENERATE)),
+                "a configured key: no notice of it: " + plain.body());
         close(configured);
 
         try (CaseDatabase fresh = CaseDatabase.create(pg, vertx, "node_journal_generated_")) {

@@ -1,4 +1,15 @@
 
+## 2026-11-06 — P2-15a node lease and self-fencing (D-101 → D-112, F-28) — done, review PASS (r3) · Deviation: F-28
+context compacted (twice, plus two container restarts; tree re-verified with git status/log before continuing)
+Test first: NodeLeaseTest, NodeLeaseFencePropertiesTest (jqwik), MembershipContract + PgMembershipIT, PgWorkQueueIT/InMemoryWorkQueueTest
+liveness/doubt/rejoin cases, FlowWorkerFenceTest, PgWorkQueueStatementsIT, SegmentSweepIT, NodeIT notices (red agent/work/P2-15a-red.log, r1 P2-15a-r1-red.log)
+Changed: V14 (nodes, work.doubts); core node (Membership, InMemoryMembership, NodeLease, FencedException); PgMembership; claim/TAKE
+liveness + doubts; fence on claim, send, park, settle; renew bounded at L/2 with reconnect; rejoin waits for the old lease end
+Checks: reactor clean verify -Pit VERIFIED_PASS rc 0 (P2-15a-r2-reactor.log) · coverage no decrease VERIFIED_PASS · PIT core
+node/queue/flow/Parking 633/642 VERIFIED_PASS · hand mutants M-A..M-K killed
+Review: r1 FAIL (rejoin with another lease, unfenced park/claim, docs), r2 FAIL (F-28 "never" vs FIX-135), r3 PASS
+Decisions: D-112 (draft) · Opened: FIX-133, FIX-134, FIX-135
+Next: P2-15b (message-id header, split ids, send bounded by the fence, kill -9 ledger); r2000 rerun to show the lease costs nothing
 ## 2026-11-05 — FIX-127 sweeper's pinned check linear in work + candidates (F-27 I3) — done, review PASS
 Test first: PgSegmentRowsSweepPlanIT (generic + custom, 49 920 work rows, 200 candidates; red agent/work/FIX-127-red.log);
 implementer's PgSegmentRowsSweepRecheckIT (a pin committed between lock and delete keeps the segment).

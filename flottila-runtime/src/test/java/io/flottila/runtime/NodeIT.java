@@ -1883,4 +1883,96 @@ class NodeIT {
             Thread.yield();
         }
     }
+
+    /**
+     * P2-15a acceptance 6 (D-101 (5)): a node states, once at start and in the admin health's notices, that its at-least-once
+     * items wait for it while it is down (one journal copy, until CORE-5) and that no other member is live — never a refusal
+     * (health 200). "Once": two renews of its node lease later (a short lease, FLOTTILA_NODE_LEASE PT2S, renewed every PT0.5S,
+     * seen as {@code nodes.lease_until} moving on the case database) each line is still logged once.
+     */
+    @Test
+    void aSingleCopyNodeStatesItOnceAtStartAndInTheAdminHealth() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        Handler all = new Handler() {
+            @Override public void publish(LogRecord r) { lines.add(r.getLevel() + " " + new SimpleFormatter().formatMessage(r)); }
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        all.setLevel(Level.ALL);
+        Logger flottila = Logger.getLogger("io.flottila");
+        flottila.addHandler(all);
+        try {
+            Map<String, String> env = env("dev");
+            env.put("FLOTTILA_NODE_LEASE", "PT2S");
+            env.put("FLOTTILA_NODE_LEASE_RENEW", "PT0.5S");
+            Node n = start(env, ctx -> List.of());
+
+            JsonObject h = health(n.adminPort(), 200);   // a notice is no failure
+            List<String> notices = h.getJsonArray("notices", new JsonArray()).stream().map(String::valueOf).toList();
+            assertTrue(notices.stream().anyMatch(t -> t.contains("one journal copy") && t.contains("D-101 (5)")),
+                    "the single-copy notice in the admin health: " + h.encode());
+            assertTrue(notices.stream().anyMatch(t -> t.contains("no other live member")), "the no-other-member notice: " + h.encode());
+
+            PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+            try {
+                Object joined = leaseUntil(reader);
+                until(() -> !java.util.Objects.equals(leaseUntil(reader), joined), "the node renews its lease");
+                Object renewed = leaseUntil(reader);
+                until(() -> !java.util.Objects.equals(leaseUntil(reader), renewed), "and renews it again");
+            } finally {
+                reader.close().await();
+            }
+            assertEquals(1, lines.stream().filter(l -> l.contains("one journal copy")).count(),
+                    "the single-copy notice logged once at start, not at every renew: " + lines);
+            assertEquals(1, lines.stream().filter(l -> l.contains("no other live member")).count(),
+                    "the no-other-member notice logged once: " + lines);
+        } finally {
+            flottila.removeHandler(all);
+        }
+    }
+
+    /**
+     * P2-15a review r1 decision 6: the "no other live member" notice is only stated when no other member is live. Another node's
+     * live {@code nodes} row on the case database before the start (migrated first, the row inserted) silences it, in the admin
+     * health and in the log; the single-copy notice stays.
+     */
+    @Test
+    void aNodeThatFindsAnotherLiveMemberAtStartDoesNotStateItIsAlone() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        Handler all = new Handler() {
+            @Override public void publish(LogRecord r) { lines.add(r.getLevel() + " " + new SimpleFormatter().formatMessage(r)); }
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        all.setLevel(Level.ALL);
+        Logger flottila = Logger.getLogger("io.flottila");
+        flottila.addHandler(all);
+        try {
+            OnVirtualThread.call(() -> Migrations.migrate(url, pg.getUsername(), pg.getPassword()));
+            PgConnection writer = PgConnection.connect(vertx, options(database)).await();
+            try {
+                writer.query("insert into nodes(node, epoch, lease_until) values ('node-peer', 1, now() + interval '10 minutes')").execute().await();
+            } finally {
+                writer.close().await();
+            }
+            Node n = start(env("dev"), ctx -> List.of());
+
+            JsonObject h = health(n.adminPort(), 200);
+            List<String> notices = h.getJsonArray("notices", new JsonArray()).stream().map(String::valueOf).toList();
+            assertTrue(notices.stream().anyMatch(t -> t.contains("one journal copy") && t.contains("D-101 (5)")),
+                    "the single-copy notice still in the admin health: " + h.encode());
+            assertFalse(notices.stream().anyMatch(t -> t.contains("no other live member")),
+                    "another member is live: no no-other-member notice in the admin health: " + h.encode());
+            assertEquals(1, lines.stream().filter(l -> l.contains("one journal copy")).count(), "the single-copy notice logged once: " + lines);
+            assertEquals(0, lines.stream().filter(l -> l.contains("no other live member")).count(), "nor in the log: " + lines);
+        } finally {
+            flottila.removeHandler(all);
+        }
+    }
+
+    /** The node's {@code nodes.lease_until} on the case database (null: no row yet). */
+    static Object leaseUntil(PgConnection reader) {
+        var rows = reader.query("select lease_until from nodes where node = 'node-it'").execute().await();
+        return rows.size() == 0 ? null : rows.iterator().next().getValue(0);
+    }
 }

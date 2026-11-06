@@ -8,6 +8,7 @@ import io.flottila.api.StepConfig;
 import io.flottila.api.Timer;
 import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.dlq.Parking;
+import io.flottila.core.node.FencedException;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Recorder;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 /**
@@ -69,6 +71,15 @@ import java.util.function.Function;
  * and ends its chain, and the key goes back to the seq-ordered claim. A next item past {@link WorkerPolicy#maxAttempts()} is
  * parked as a claimed one is, and its key goes on.
  *
+ * <p>The node's fence (D-101 (2), {@link FlowBuilder#fence}) is checked before every claim — closed, a round claims nothing and
+ * answers 0 —, before every complete, fast path and hold, and before
+ * an item past {@link WorkerPolicy#maxAttempts()} is parked: while it is closed the node cannot prove its lease is live and
+ * another node may take its items over, so a finished item is settled not at all — no complete, no fast path, no hold — and
+ * is left unsettled, its run's outcome to whoever runs it next (one WARNING per item); an item past the bound is not parked
+ * (no DLQ row a later holder could write again) and is never held for it, but left to its lease. The at-least-once {@code to}
+ * checks the same fence before each send and fails it with a {@link FencedException}, never retried and never parked, and a step's
+ * failure under a closed fence is not parked but surfaces as a {@link FencedException} with that failure as its cause (no DLQ row).
+ *
  * <p>What polls: {@link #poll()}; a {@linkplain #start() started} worker every {@link WorkerPolicy#pollInterval()} on the
  * timer; the handler of {@link #pollingAfterAccept} after each {@link Ack.Accepted}; and the end of each chain (an item no
  * fast path followed), once, so a backlog drains without waiting for a tick. A poll nobody waits for logs its failure and
@@ -96,6 +107,7 @@ public final class FlowWorker {
     private final StepConfig firstStep;
     private final Timer timer;
     private final Producers producers;
+    private final BooleanSupplier fence;
 
     private final Object lock = new Object();
     private final Map<Long, Lease> running = new HashMap<>();   // guarded by lock: claimed by this worker and not finished
@@ -107,7 +119,7 @@ public final class FlowWorker {
     private final AtomicLong staleSettles = new AtomicLong();
 
     FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, WorkQueue queue, MessageStore store, BlobStore blobs,
-               Pipeline pipeline, Parking parking, StepConfig firstStep, Timer timer, Producers producers) {
+               Pipeline pipeline, Parking parking, StepConfig firstStep, Timer timer, Producers producers, BooleanSupplier fence) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.max = max;
@@ -120,18 +132,20 @@ public final class FlowWorker {
         this.firstStep = Objects.requireNonNull(firstStep, "firstStep");
         this.timer = Objects.requireNonNull(timer, "timer");
         this.producers = Objects.requireNonNull(producers, "producers");
+        this.fence = Objects.requireNonNull(fence, "fence");
     }
 
     /**
      * One round: claims up to the flow's in-flight request limit less the items this worker still runs and processes them.
      * Completes, once every item the round started — the items its fast paths took after them included — is done with —
      * completed, held or left to its lease — with the number
-     * of items the claim returned; 0 without a claim when the worker runs its limit or is stopped. Requested while a claim is
+     * of items the claim returned; 0 without a claim when the node's fence is closed, the worker runs its limit or is stopped. Requested while a claim is
      * in flight, it returns the one round that starts once that claim returns, shared by every poll requested meanwhile.
      * Fails when the claim fails or throws, or when a completion, fast path or hold in the queue fails; one that answers false
      * or stale ({@link #staleSettles()}) is no failure.
      */
     public Future<Integer> poll() {
+        if (!fence.getAsBoolean()) return Future.succeededFuture(0);   // the node's fence closed (D-101 (2)): no TAKE, nothing claimed
         int room;
         synchronized (lock) {
             if (stopped) return Future.succeededFuture(0);
@@ -284,12 +298,17 @@ public final class FlowWorker {
     }
 
     /**
-     * Settles the item; one to complete that has a key, while the worker is not stopped and its chain is shorter than
+     * Settles the item — not at all while the node's fence is closed; one to complete that has a key, while the worker is not stopped and its chain is shorter than
      * {@link WorkerPolicy#maxChain()}, by the same-key fast path (D-075): the item the queue hands out with it, if any, is
      * returned under a lease of its own, in the finished item's slot.
      */
     private Future<Optional<Lease>> settleOrTake(Lease lease, Verdict verdict, int chain) {
         WorkQueue.Item item = lease.item;
+        if (!fence.getAsBoolean()) {   // the node's fence closed (D-101 (2)): no complete, no fast path, no hold
+            LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt "
+                    + lease.token() + ") finished at worker " + workerId + " while the node's fence is closed: left unsettled for whoever runs it next");
+            return Future.succeededFuture(Optional.empty());
+        }
         if (!verdict.complete() || item.partitionKey() == null || chain >= policy.maxChain() || stopped()) {
             return settle(lease, verdict).map(Optional.empty());
         }
@@ -337,6 +356,10 @@ public final class FlowWorker {
             Envelope ingress = Replay.rebuild(in.get(), id, flow, in.get().props(), blobs);
             if (item.attempts() > 1) ingress = ingress.with(Envelope.ATTEMPT, item.attempts());   // a rerun's step bodies under keys of its own (D-066)
             if (exhausted) {
+                if (!fence.getAsBoolean()) {   // a park is a settle (D-101 (2)): never from a closed fence, whose items another node may take and park
+                    throw new FencedException("message " + id + " of flow " + flow + " is past maxAttempts " + policy.maxAttempts()
+                            + " and not parked: the node's fence is closed; left unsettled for whoever runs it next");
+                }
                 parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), policy.maxAttempts())).await();
             } else {
                 Trail trail = new Trail(List.of(ingress.body().key()));   // its seed: the delivery made the ingress durable (D-058)
@@ -350,7 +373,7 @@ public final class FlowWorker {
         } catch (ParkedException parked) {
             return Verdict.COMPLETE;   // the DLQ row is the failure's record
         } catch (Throwable failure) {
-            if (exhausted) return Verdict.hold(failure);
+            if (exhausted && !(failure instanceof FencedException)) return Verdict.hold(failure);   // fenced: not a failed park, never held
             LOG.log(System.Logger.Level.WARNING, "message " + id + " of flow " + flow + " failed at worker " + workerId + " (attempt " + item.attempts()
                     + " of " + policy.maxAttempts() + ") and is left to its lease (" + policy.lease() + "): " + failure, failure);
             return Verdict.LEAVE;

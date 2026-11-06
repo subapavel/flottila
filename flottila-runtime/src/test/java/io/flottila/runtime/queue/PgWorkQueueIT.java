@@ -598,4 +598,171 @@ class PgWorkQueueIT {
         assertTrue(queue.renew(q1, 1, LEASE).await(), "witness: its token renews");
         assertTrue(queue.complete(q1, 1).await(), "and completes");
     }
+
+    // --- P2-15a (D-101 (1)): the holder's liveness by V14's nodes, hand-outs in doubt (work.doubts), a restarted node's rerun —
+    // the same cases as InMemoryWorkQueueTest. A worker id is its node id; a holder with no nodes row is gone (leaseExpiryRedelivers
+    // above, unchanged). The API assumed: WorkQueue.Item.doubts(); io.flottila.runtime.node.PgMembership(SqlConnection), whose join
+    // reruns the node's own unheld items only once the previous incarnation's lease ran out: available_at = greatest(available_at,
+    // old lease_until) (review r1 decision 1 — old lease_until − L/2 of the new L was a wrong expectation). A holder whose node lease
+    // ran out but that nobody released is still live (reading (1), review r1 decision 2).
+
+    static final Duration NODE_LEASE = Duration.ofSeconds(30);
+
+    /** A {@code nodes} row for {@code node} whose lease_until is the SQL expression {@code until} (null: released). */
+    private void nodeRow(String node, String until) {
+        pool.query("insert into nodes(node, epoch, lease_until) values ('" + node + "', 1, " + until + ")"
+                + " on conflict (node) do update set lease_until = excluded.lease_until").execute().await();
+    }
+
+    private WorkQueue.Item enqueueAndClaim(String id, String worker) {
+        enqueue(id, null);
+        List<WorkQueue.Item> got = claim(worker, 1, LEASE);
+        assertEquals(List.of(id), got.stream().map(WorkQueue.Item::messageId).toList(), "fixture: " + worker + " claims " + id);
+        return got.get(0);
+    }
+
+    private java.time.OffsetDateTime availableAt(long seq) {
+        return pool.preparedQuery("select available_at from work where seq = $1").execute(Tuple.of(seq)).await().iterator().next().getOffsetDateTime(0);
+    }
+
+    @Test
+    void aLiveNodesExpiredItemIsNotTakenByAnotherNode() {
+        pool.query("delete from nodes").execute().await();
+        nodeRow("a", "now() + interval '30 seconds'");
+        nodeRow("b", "now() + interval '30 seconds'");
+        WorkQueue.Item ofA = enqueueAndClaim("x-live", "a");
+        WorkQueue.Item ofGhost = enqueueAndClaim("x-gone", "ghost");   // a holder that never joined: no row, gone
+        assertEquals(0, ofA.doubts(), "a first hand-out is in no doubt");
+        expire(ofA.seq());
+        expire(ofGhost.seq());
+
+        List<WorkQueue.Item> taken = claim("b", 10, LEASE);
+        assertEquals(List.of("x-gone"), taken.stream().map(WorkQueue.Item::messageId).toList(),
+                "the expired item of a holder with no row is taken as before; the live node a's expired item is not");
+        assertEquals(1, taken.get(0).doubts(), "handed out again after an unsettled hand-out: in doubt");
+        assertEquals(ofGhost.attempts() + 1, taken.get(0).attempts());
+        assertEquals(List.of(), claim("b", 10, LEASE), "a live node's item stays its own while its node lease lives");
+        assertEquals("a", row(ofA.seq()).getString("locked_by"));
+    }
+
+    @Test
+    void aReleasedNodesItemIsTakenInDoubt() {
+        pool.query("delete from nodes").execute().await();
+        nodeRow("a", "now() + interval '30 seconds'");
+        nodeRow("b", "now() + interval '30 seconds'");
+        WorkQueue.Item x = enqueueAndClaim("x", "a");
+        WorkQueue.Item h = enqueueAndClaim("h", "a");
+        assertTrue(queue.hold(h.seq(), h.attempts()).await(), "fixture: a holds h for a human");
+        nodeRow("a", "null");   // a's lease ran out and a peer released it
+        expire(x.seq());
+        enqueue("y", null);
+
+        List<WorkQueue.Item> taken = claim("b", 10, LEASE);
+        assertEquals(List.of("x", "y"), taken.stream().map(WorkQueue.Item::messageId).toList(), "a released node's item is taken; its held row is not");
+        assertEquals(x.seq(), taken.get(0).seq());
+        assertEquals(x.attempts() + 1, taken.get(0).attempts(), "the takeover counts an attempt (D-055)");
+        assertEquals(1, taken.get(0).doubts(), "taken over unsettled: in doubt");
+        assertEquals(0, taken.get(1).doubts(), "a fresh item taken beside it: no doubt");
+        List<WorkQueue.Held> held = queue.held(Optional.empty(), 10).await().items();
+        assertEquals(List.of(h), held.stream().map(WorkQueue.Held::item).toList(), "the held row untouched: still held, the same attempts, no doubt");
+        assertEquals("a", row(h.seq()).getString("locked_by"));
+    }
+
+    @Test
+    void aRowAnOperatorReleasedIsTakenWithoutADoubt() {
+        WorkQueue.Item z = enqueueAndClaim("z", "w1");
+        assertTrue(queue.hold(z.seq(), z.attempts()).await(), "fixture: held");
+        assertTrue(queue.release(z.seq()).await(), "fixture: released by an operator (D-067): the hold and its holder cleared");
+        List<WorkQueue.Item> taken = claim("w2", 10, LEASE);
+        assertEquals(List.of(z.seq()), taken.stream().map(WorkQueue.Item::seq).toList());
+        assertEquals(2, taken.get(0).attempts(), "the attempts kept and counted on (D-067)");
+        assertEquals(0, taken.get(0).doubts(), "a doubt counts a hand-out left unsettled by its holder, not a row an operator handed back");
+    }
+
+    @Test
+    void aRestartedNodeRerunsItsOldItemsAfterTheOldFence() {
+        pool.query("delete from nodes").execute().await();
+        io.vertx.sqlclient.SqlConnection dedicated = pool.getConnection().await();
+        try {
+            io.flottila.runtime.node.PgMembership members = new io.flottila.runtime.node.PgMembership(dedicated);
+            long first = members.join("a", NODE_LEASE).await();
+            nodeRow("b", "now() + interval '30 seconds'");
+            WorkQueue.Item x = enqueueAndClaim("x", "a");
+            WorkQueue.Item h = enqueueAndClaim("h", "a");
+            WorkQueue.Item ofB = enqueueAndClaim("o", "b");
+            assertTrue(queue.hold(h.seq(), h.attempts()).await(), "fixture: held");
+            expire(x.seq());   // its item lease ran out: only the node lease decides
+            java.time.OffsetDateTime oldUntil = pool.query("select lease_until from nodes where node = 'a'").execute().await().iterator().next().getOffsetDateTime(0);
+            java.time.OffsetDateTime heldAvailable = availableAt(h.seq());
+            java.time.OffsetDateTime otherAvailable = availableAt(ofB.seq());
+
+            assertEquals(first + 1, members.join("a", NODE_LEASE).await(), "the restart joins a new epoch");
+            assertEquals(oldUntil.toInstant(), availableAt(x.seq()).toInstant(),
+                    "its own unheld item waits for the old incarnation's lease to end: old lease_until");
+            assertEquals(heldAvailable, availableAt(h.seq()), "its held row untouched");
+            assertEquals(otherAvailable, availableAt(ofB.seq()), "another node's item untouched");
+            assertEquals(List.of(), claim("a", 10, LEASE), "not rerun before the old lease_until (about 30 s from now)");
+            assertEquals(List.of(), claim("b", 10, LEASE), "nor taken by another node: a is live");
+
+            pool.preparedQuery("update work set available_at = now() - interval '1 millisecond' where seq = $1").execute(Tuple.of(x.seq())).await();
+            List<WorkQueue.Item> rerun = claim("a", 10, LEASE);   // the old fence has passed
+            assertEquals(List.of(x.seq()), rerun.stream().map(WorkQueue.Item::seq).toList(), "then its own item reruns");
+            assertEquals(2, rerun.get(0).attempts());
+            assertEquals(1, rerun.get(0).doubts(), "the crashed incarnation left it unsettled: in doubt");
+        } finally {
+            dedicated.close().await();
+        }
+    }
+
+    @Test
+    void aRestartWithALargerLeaseRerunsItsOldItemsAtTheOldLeaseEndNotBefore() {
+        pool.query("delete from nodes").execute().await();
+        io.vertx.sqlclient.SqlConnection dedicated = pool.getConnection().await();
+        try {
+            io.flottila.runtime.node.PgMembership members = new io.flottila.runtime.node.PgMembership(dedicated);
+            long first = members.join("a", NODE_LEASE).await();   // the first incarnation: leased about 30 s from now
+            WorkQueue.Item x = enqueueAndClaim("x", "a");
+            expire(x.seq());   // its item lease ran out: only the node lease decides
+            java.time.OffsetDateTime oldUntil = pool.query("select lease_until from nodes where node = 'a'").execute().await().iterator().next().getOffsetDateTime(0);
+
+            assertEquals(first + 1, members.join("a", Duration.ofSeconds(120)).await(), "fixture: a restarts with a lease four times as long");
+            assertEquals(oldUntil.toInstant(), availableAt(x.seq()).toInstant(),
+                    "the old incarnation's fence is bounded by its own lease: old lease_until, not old lease_until − 60 s (already past)");
+            assertEquals(List.of(), claim("a", 10, LEASE), "at the restart the old incarnation may still be sending: nothing reruns");
+
+            pool.preparedQuery("update work set available_at = now() - interval '1 millisecond' where seq = $1").execute(Tuple.of(x.seq())).await();
+            List<WorkQueue.Item> rerun = claim("a", 10, LEASE);   // witness: the old lease ended
+            assertEquals(List.of(x.seq()), rerun.stream().map(WorkQueue.Item::seq).toList(), "then its own item reruns");
+            assertEquals(1, rerun.get(0).doubts(), "the old incarnation left it unsettled: in doubt");
+        } finally {
+            dedicated.close().await();
+        }
+    }
+
+    @Test
+    void anExpiredButUnreleasedNodesItemIsTakenOnlyAfterItsRelease() {
+        pool.query("delete from nodes").execute().await();
+        io.vertx.sqlclient.SqlConnection dedicated = pool.getConnection().await();
+        try {
+            io.flottila.runtime.node.PgMembership members = new io.flottila.runtime.node.PgMembership(dedicated);
+            nodeRow("a", "now() + interval '30 seconds'");
+            nodeRow("b", "now() + interval '30 seconds'");
+            WorkQueue.Item x = enqueueAndClaim("x", "a");
+            expire(x.seq());
+            nodeRow("a", "now() - interval '1 second'");   // a's node lease ran out; nobody released it
+
+            assertEquals(List.of(), claim("b", 10, LEASE), "an expired but unreleased holder is still live: its item is not taken");
+            assertEquals(List.of(), claim("c", 10, LEASE), "by no other node either");
+            assertEquals("a", row(x.seq()).getString("locked_by"), "the row untouched");
+            assertEquals(x.attempts(), row(x.seq()).getInteger("attempts"));
+
+            assertEquals(List.of("a"), members.release(List.of("a")).await(), "fixture: a peer releases the expired a");
+            List<WorkQueue.Item> taken = claim("b", 10, LEASE);
+            assertEquals(List.of(x.seq()), taken.stream().map(WorkQueue.Item::seq).toList(), "after the release the item is taken");
+            assertEquals(x.attempts() + 1, taken.get(0).attempts(), "the takeover counts an attempt (D-055)");
+            assertEquals(1, taken.get(0).doubts(), "taken over unsettled: in doubt");
+        } finally {
+            dedicated.close().await();
+        }
+    }
 }

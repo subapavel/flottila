@@ -52,7 +52,7 @@
 - Worker fixtures (core flow test tree, P1-08b): `RunGate` (step `gate`: holds each run until `Run.release()`, records thread → `joined()`,
   `overlaps()` per message id, `peakActive()`, `open()`), `RecordingWorkQueue` (decorates InMemoryWorkQueue: claims with max/in-flight/
   running probe, `holdNext`/`releaseHeld`, `failClaims`, `answerRenews`/`failRenews`, renews/holds/completes; one-shot `failNextClaim`,
-  `throwOnNextClaim` (sync throw), `failCompletes(n,c)`, `failHolds(n,c)`, `answerHolds(Boolean)`). `FlowWorkerTest.World` = per case/try.
+  `throwOnNextClaim` (sync throw), `failCompletes(n,c)`, `failHolds(n,c)`, `answerHolds(Boolean)`). `FlowWorkerTest.World` = per case/try. Fence (P2-15a): close it after the claim via holdNext/releaseHeld or mid-run at the gate; a probe Stage (`ParkingTest.factory`) before a failing step sees what Parking throws.
 - Scratch reference (P1-09h): no rsync on the VM; `tar --exclude=./target --exclude='*/target' --exclude=./.git -cf - . | (cd $S/repo && tar -xf -)`,
   edit production there, `mvn -o test`/`verify -Pit` there (Docker ok; `-Dit.test='Outer*'` runs @Nested classes). One class: javac to m/out ahead on the cp.
 - jqwik in a Jupiter class: @BeforeEach/@AfterEach do not run for @Property and instances may be shared — build all state inside the

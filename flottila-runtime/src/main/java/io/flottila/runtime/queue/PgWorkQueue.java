@@ -41,6 +41,12 @@ import java.util.Optional;
  * share — in one statement: no source is a {@link BlobNotFoundException}. An item whose body an accepted
  * {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} gave up ({@code lost_at}, V13) is held for good: never claimed, so never run or parked.
  *
+ * <p>Holder liveness (D-101 (1), V14): a worker id is its node's id. A row whose lease ran out is claimable by another node only
+ * when its holder has no live {@code nodes} row — released, or none at all (a holder that never joined counts as gone); its own
+ * holder claims it back as before, after its join's {@code available_at} (a restarted node's old items wait for the previous
+ * incarnation's {@code lease_until}, {@code PgMembership}). The check is one primary-key probe per candidate that has a holder, so the claim
+ * keeps FIX-130's bounded plan. A hand-out of a row whose holder left it unsettled counts a doubt ({@code work.doubts}).
+ *
  * @since 0.1
  */
 public final class PgWorkQueue implements WorkQueue {
@@ -67,6 +73,8 @@ public final class PgWorkQueue implements WorkQueue {
               and w1.lost_at is null
               and (w1.locked_until is null or w1.locked_until < now())
               and ($5::text is null or w1.body_node is null or w1.body_node = $5)
+              and (w1.locked_by is null or w1.locked_by = $1
+                   or not exists (select 1 from nodes n where n.node = w1.locked_by and n.lease_until is not null))
               and (w1.partition_key is null or (
                     not exists (select 1 from work w2 where w2.flow = $2
                                   and w2.partition_key = w1.partition_key and w2.locked_until >= now())
@@ -74,9 +82,11 @@ public final class PgWorkQueue implements WorkQueue {
                                   and w3.partition_key = w1.partition_key and w3.seq < w1.seq)))
             """;
 
-    private static final String TAKE = "update work w set locked_by = $1, locked_until = now() + make_interval(secs => $4), attempts = w.attempts + 1";
+    /** A hand-out of a row an earlier holder left unsettled ({@code locked_by} still set) counts a doubt (D-101); RELEASE clears the holder. */
+    private static final String TAKE = "update work w set locked_by = $1, locked_until = now() + make_interval(secs => $4), attempts = w.attempts + 1,"
+            + " doubts = w.doubts + (w.locked_by is not null)::int";
 
-    private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts, body_node, body_segment, body_position, body_length";
+    private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts, doubts, body_node, body_segment, body_position, body_length";
 
     /**
      * Handed out in seq order, as {@code InMemoryWorkQueue} does: an UPDATE's RETURNING has no order of its own. The UPDATE takes
@@ -108,7 +118,7 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
 
     /** Every flow's held rows after a seq, in seq order, on the partial index {@code work_held} (V5); $2 is the limit plus one. */
-    private static final String HELD = "select seq, id, flow, step, partition_key, attempts, held_at from work"
+    private static final String HELD = "select seq, id, flow, step, partition_key, attempts, doubts, held_at from work"
             + " where held_at is not null and seq > $1 order by seq limit $2";
 
     /** Only a held row: the hold and the lease cleared, the attempts kept. */
@@ -255,6 +265,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     private static Item item(Row r) {
-        return new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"), r.getInteger("attempts"));
+        return new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"), r.getInteger("attempts"),
+                r.getInteger("doubts"));
     }
 }

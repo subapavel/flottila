@@ -5,6 +5,7 @@ import io.flottila.api.Stage;
 import io.flottila.api.Step;
 import io.flottila.api.Timer;
 import io.flottila.core.flow.RetryPolicy;
+import io.flottila.core.node.FencedException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,8 +22,9 @@ import java.util.concurrent.CountDownLatch;
  * <p>Any {@link Exception} is retried, a checked one too — {@code Future.await()} rethrows a failed future's checked cause
  * as is, a refused connection's {@link java.net.ConnectException} among them (FIX-107) — except an
  * {@link InterruptedException}: a cancelled run, rethrown at once with the interrupt flag restored and, on an attempt after
- * the first, the earlier attempts' failures suppressed on it in attempt order (D-098). An {@link Error} is not a transient
- * failure and is never caught.
+ * the first, the earlier attempts' failures suppressed on it in attempt order (D-098), and a {@link FencedException}: the
+ * node's fence is closed (D-101 (2)), so no attempt may send, and it is thrown at once with the earlier failures suppressed. An
+ * {@link Error} is not a transient failure and is never caught.
  *
  * @since 0.1
  */
@@ -47,7 +49,7 @@ public final class Retry {
                         earlier.forEach(failure::addSuppressed);
                         throw failure;
                     }
-                    if (attempt > policy.attempts() || !pause(policy.delayBefore(attempt), timer)) {
+                    if (failure instanceof FencedException || attempt > policy.attempts() || !pause(policy.delayBefore(attempt), timer)) {
                         earlier.forEach(failure::addSuppressed);
                         throw failure;
                     }
