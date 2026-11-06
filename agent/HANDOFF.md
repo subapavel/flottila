@@ -1,5 +1,6 @@
 # Handoff
 
+owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
 state: RUNNING core rework (priority 1, docs/CORE-REWORK.md, D-103/D-104); CORE-0..4, 6a, 6b, 15, P2-15a done; D-110 no size refusal
 last commit: `Task: P2-15a` (this commit); fd04977 `Task: FIX-127`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
