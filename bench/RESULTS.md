@@ -1,5 +1,21 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## P2-15a preview — r2000 after the node lease — cloud VM, 4 vCPU (owner request; NOT CORE-GATE)
+
+Date 2026-11-06. Commit 7db5453. Configuration as the FIX-130 + FIX-127 preview below (BENCH_IO_DEVICE vda, BENCH_PG_CPU
+postmaster, BENCH_PG_STATEMENTS on). One run; raw agent/work/P2-15a-r2000.json (not committed). Exit 0, valid, settled, work 0.
+Caveat: the container restarted twice since the previous preview (kernel 6.18.44-fc-v236 → v242); the host may differ, so the
+gains below are not attributed to P2-15a; warmupFailed 160 (outside the window, unexplained — FIX-123).
+
+| cell | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog growth | completes/s | Postgres CPU | bench JVM CPU |
+|---|---|---|---|---|---|---|
+| r2000 | 360 000 / 0 | 13.19 / 47.98 / 102.78 | +18 (0.005 %) | ≈ 2 000 | 1.38 cores | 1.52 cores |
+
+Lease cost: `update nodes set lease_until …` 36 calls, 3.2 ms in the window (one per 5 s); no statement per message added.
+CLAIM 66 223 calls, 0.90 ms per call (4.97 ms before); sweeper check 15 calls, ≈ 63 ms each.
+Reading: the lease costs nothing measurable; r2000 now keeps up with no 503s. Whether the lower ACK latency comes from the code
+(the fenced poll path) or the host needs a repeat on one host before it is claimed.
+
 ## FIX-130 + FIX-127 preview — r2000 / r3000 after the claim and sweeper fixes — cloud VM, 4 vCPU (owner request; NOT CORE-GATE)
 
 Date 2026-11-05. Commit 0f3c6d5 + the FIX-127 working tree (records labelled `0f3c6d5+dirty`; FIX-127 commits next with this
