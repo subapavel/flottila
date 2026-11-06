@@ -28,6 +28,12 @@ class HttpComponentContractTest extends ComponentContract {
         return new HttpComponent(vertx, rt.blobs(), rt.ids());
     }
 
+    /** P2-15b: the producer's cut runs on {@code timer} (the packet's 4-argument constructor). */
+    @Override protected Component component(io.flottila.api.Timer timer) {
+        FakeRuntime rt = FakeRuntime.create().withTreeLimit(4096);
+        return new HttpComponent(vertx, rt.blobs(), rt.ids(), timer);
+    }
+
     /** Port 0: the kernel assigns the consumer's port at bind time — never a probed port another socket can take meanwhile. */
     @Override protected EndpointConfig endpoint() { return at(0); }
 

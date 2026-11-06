@@ -25,8 +25,7 @@
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
 - Scoped PIT `-pl flottila-api,flottila-testkit,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
-- Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
-  `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start).
+- Mutant killers: grep the `-q` log's `[ERROR]   ` lines (inherited contract case `Impl>Contract.method:NN`; XML only if mtime ≥ start).
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
 - coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
   scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a).
@@ -60,7 +59,7 @@
 - AWS SDK 2.56.0 (javap): `RequestBody.fromFile` sizes at once (missing → UncheckedIOException); no credentialsProvider → `DefaultCredentialsProvider.builder()..build()`.
 - JDK 25 (P2-03b1): a vthread unblocked from a monitor is neither mounted nor queued until `VirtualThread-unblocker` queues it (MXBean misses it).
   FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
-- Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
+- Vert.x 5.1.10 client (sources: `mvn dependency:get -Dartifact=io.vertx:vertx-core:5.1.10:jar:sources`, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
   loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
   `compose` can end unheard. `req.response().onSuccess(HttpClientResponse::pause)` registered BEFORE `send` runs inline in the head emit.
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and never resumes one it paused
@@ -88,7 +87,8 @@
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- JFR, JDK 25.0.5 (FIX-108): CPUTimeSample throttle `"<n>ms"`; live vthread `getThread()` null, a dump resolves all (F-22); `dump(p)` truncates p.
+- Vert.x 5.1.10 http client (P2-15b): `setTimeout` = connect + idle, connect 0 = none, both a j.u.c.TimeoutException; `putHeader` = `set`
+  (case-insensitive); unsent `reset()` aborts. D-113: a send past the run's deadline (30 s default) is refused: long fake-clock holds need `delivery.timeout`.
 - PG stats (CORE-15b, `\d` 16.15 + 17 image): pg_stat_wal wal_sync(_time) up to 17 only, counted only with fsync on + fdatasync/fsync/fsync_writethrough;
   Testcontainers PostgreSQLContainer's default command is `fsync=off`; `PgConnectOptions.addProperty("statement_timeout",..)` is a startup GUC (IT-proven).
 - PG 17 (FIX-130, EXPLAIN on 50 k rows): `update .. where seq in (<sub> limit n for update skip locked)` = generic-plan Seq Scan of the target;
@@ -101,8 +101,7 @@
 - Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; runtime (CORE-4b, ~13 s): `-pl flottila-runtime -am -o
   test-compile surefire:test@default-test -Djacoco.skip=true -Dtest=...` skips heap-bounded-test; a double guard (two never-fail transforms)
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
-- A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
-  before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
+- A "stopping" boolean ANDed into a completion check survives drop-the-term unless a test answers before the stop: use a hold count (P1-08c).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
 - FlowWorker (P2-15a r2): a chain's end always polls once more (an empty claim) before poll()'s future completes: count claims that took items.
@@ -110,10 +109,11 @@
 - Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1).
 - Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
   on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
-- Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile`
-  drops the `**/*$*` default exclude; a stale failsafe-summary.xml upstream fails `verify` (CORE-4c2). JaCoCo: enum arrow switch
-  statement leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
+- Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile` drops the `**/*$*`
+  default exclude; a stale failsafe-summary.xml upstream fails `verify` (CORE-4c2). JaCoCo: enum arrow switch leaves a synthetic default missed (P2-07).
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
 - Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp. PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn.
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).
+- P2-15b r1: a timer armed before an SPI call must be disarmed for a THROW and a NULL answer (requireNonNull inside the disarming try) and a
+  throwing `Timer.schedule` in a producer is a failed future; a `<=` boundary on a clock needs a case landing exactly on it (mutant `<`).

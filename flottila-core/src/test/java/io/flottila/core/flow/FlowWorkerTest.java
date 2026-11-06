@@ -129,6 +129,9 @@ class FlowWorkerTest {
     /** An at-least-once flow {@code orders} with these steps and this in-flight request limit (the worker's max). */
     static Map<String, Object> flow(int maxInFlight, List<Map<String, Object>> steps) {
         Map<String, Object> doc = DeliveryTest.flow("at-least-once", steps);
+        // runs are held across several leases on the fake clock: since P2-15b (D-113) a send past the run's deadline is not
+        // started, so the message's time is longer than any case holds a run (the default 30 s is less than one hold here)
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "1h"));
         doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", maxInFlight));
         return doc;
     }

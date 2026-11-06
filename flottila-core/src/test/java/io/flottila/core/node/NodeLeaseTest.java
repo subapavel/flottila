@@ -146,6 +146,52 @@ class NodeLeaseTest {
         assertEquals(1, halts.get());
     }
 
+    /**
+     * P2-15b: {@code NodeLease implements Fence} — {@code openNanos()} is what the fence has left on the monotonic clock,
+     * {@code joined && !superseded ? fenceUntil - nanos() : 0}, live at each read; the fence is open exactly while it is
+     * positive. The values: join at T0 opens until T0 + L/2 = T0+15 s; the renew sent at T0+5 s moves it to T0+20 s.
+     */
+    @Test
+    void openNanosCountsDownToTheFenceAndIsZeroOnceSuperseded() {
+        AtomicInteger halts = new AtomicInteger();
+        NodeLease lease = lease("a", scripted, halts);
+        Fence fence = lease;   // the type the builder looks for to bound a send by the fence
+        assertEquals(0L, fence.openNanos(), "before the join: 0, closed");
+        assertFalse(fence.getAsBoolean());
+
+        lease.start().await();
+        assertEquals(15_000_000_000L, fence.openNanos(), "joined at T0: L/2 = 15 s left");
+        assertTrue(fence.getAsBoolean());
+        clock.advance(Duration.ofMillis(3_250));
+        assertEquals(11_750_000_000L, fence.openNanos(), "re-read 3.25 s later: 11.75 s left, live, to the nanosecond");
+        until(s(5));
+        assertEquals(15_000_000_000L, fence.openNanos(), "renewed by the renew sent at T0+5 s: until T0+20 s, 15 s left again");
+
+        scripted.mode(Mode.FAIL);
+        until(s(20).minusNanos(1));
+        assertEquals(1L, fence.openNanos(), "1 ns before T0+20 s: 1 ns left");
+        assertTrue(fence.getAsBoolean(), "open while positive");
+        until(s(20));
+        assertEquals(0L, fence.openNanos(), "at T0+20 s: nothing left");
+        assertFalse(fence.getAsBoolean(), "closed at 0");
+        until(s(21).plusMillis(500));
+        assertEquals(-1_500_000_000L, fence.openNanos(), "past the fence: fenceUntil - now, negative (1.5 s past)");
+        assertFalse(fence.getAsBoolean());
+
+        // a second node, renewed and then superseded while its fence has time left
+        ScriptedMembership other = new ScriptedMembership(clock);
+        NodeLease b = lease("b", other, halts);
+        b.start().await();   // joined at T0+21.5 s: open until T0+36.5 s
+        assertEquals(15_000_000_000L, b.openNanos());
+        other.mode(Mode.SUPERSEDED);
+        until(s(26).plusMillis(500));   // b's first renew, at its join + R, answers not renewed
+        assertEquals(1, halts.get(), "fixture: b was superseded");
+        assertEquals(0L, b.openNanos(), "superseded: 0, though its fenceUntil was 10 s away");
+        assertFalse(b.getAsBoolean());
+        until(s(40));
+        assertEquals(0L, b.openNanos(), "and 0 for good, never negative: superseded is not a clock reading");
+    }
+
     @Test
     void aNodeWithAGapInItsOwnLeaseReleasesNobodyForOneLease() {
         AtomicInteger halts = new AtomicInteger();
@@ -185,6 +231,32 @@ class NodeLeaseTest {
         assertTrue(scripted.releases().size() > beforeReopen, "a lease after the reopening the releases resume (by T0+105 s)");
         Instant resumed = scripted.releases().get(beforeReopen).at();
         assertTrue(!resumed.isBefore(T0.plusSeconds(100)), "not before T0+100 s = reopened + L: " + resumed);
+        assertEquals(0, halts.get());
+    }
+
+    @Test
+    void aRenewAnsweredExactlyAtTheFenceCountsAsAGap() {
+        AtomicInteger halts = new AtomicInteger();
+        scripted.expired(List.of("b"));   // every renewed answer names peer b as expired
+        NodeLease lease = lease("a", scripted, halts);
+        lease.start().await();
+        until(s(45));                     // renews OK every R; the last, sent and answered at T0+45 s, holds the fence to T0+60 s
+        assertFalse(scripted.releases().isEmpty(), "fixture: open for a whole lease, b was released before T0+50 s");
+        int before = scripted.releases().size();
+
+        scripted.mode(Mode.FAIL);         // the renews at T0+50 s and T0+55 s fail
+        until(s(55));
+        scripted.mode(Mode.OK);
+        until(s(60).minusMillis(1));
+        assertTrue(lease.getAsBoolean(), "fixture: open 1 ms before T0+60 s");
+        until(s(60));                     // the renew at T0+60 s is answered at T0+60 s, exactly where the fence closed
+        assertTrue(lease.getAsBoolean(), "fixture: reopened by the renew answered at T0+60 s");
+        until(s(90).minusMillis(1));
+        assertEquals(before, scripted.releases().size(),
+                "an answer at the fence's own instant finds it closed: a gap, nobody released for one lease from T0+60 s: " + scripted.releases());
+        until(s(90));
+        assertEquals(before + 1, scripted.releases().size(), "a lease after the reopening, at the renew of T0+90 s, b is released again");
+        assertEquals(T0.plusSeconds(90), scripted.releases().get(before).at());
         assertEquals(0, halts.get());
     }
 

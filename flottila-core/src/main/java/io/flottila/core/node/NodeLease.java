@@ -7,7 +7,6 @@ import io.vertx.core.Future;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
 
 /**
@@ -16,7 +15,8 @@ import java.util.function.LongSupplier;
  * one renew in flight: a period that finds one outstanding sends nothing, and the fence keeps counting from the outstanding
  * send. With {@code s} the clock read just before a join or renew is sent, each renewed answer sets
  * {@code fenceUntil = max(fenceUntil, s + lease/2)}; the fence ({@link #getAsBoolean}) is open while the node is not superseded
- * and the clock is before {@code fenceUntil} — closed before the join. Counted from the send, the fence ends at least half a
+ * and the clock is before {@code fenceUntil} — closed before the join; {@link #openNanos} is {@code fenceUntil - now} while
+ * joined and not superseded, else 0. Counted from the send, the fence ends at least half a
  * lease before the store's lease, which the store started no earlier than {@code s}: a peer that releases the node's row after
  * it expired takes its items over at least half a lease after its last possible send.
  *
@@ -31,7 +31,7 @@ import java.util.function.LongSupplier;
  *
  * @since 0.1
  */
-public final class NodeLease implements BooleanSupplier, AutoCloseable {
+public final class NodeLease implements Fence, AutoCloseable {
 
     private static final System.Logger LOG = System.getLogger(NodeLease.class.getName());
 
@@ -86,10 +86,13 @@ public final class NodeLease implements BooleanSupplier, AutoCloseable {
         });
     }
 
-    /** The fence: open while the node is not superseded and its last renewed send is less than half a lease ago. */
-    @Override public boolean getAsBoolean() {
+    /**
+     * What the fence has left, live: {@code fenceUntil - now} while joined and not superseded (negative once past it), else 0.
+     * It is open — {@link #getAsBoolean} — while the node is not superseded and its last renewed send is less than half a lease ago.
+     */
+    @Override public long openNanos() {
         synchronized (lock) {
-            return open(nanos.getAsLong());
+            return openNanos(nanos.getAsLong());
         }
     }
 
@@ -103,8 +106,8 @@ public final class NodeLease implements BooleanSupplier, AutoCloseable {
         }
     }
 
-    private boolean open(long now) {
-        return joined && !superseded && now - fenceUntil < 0;
+    private long openNanos(long now) {
+        return joined && !superseded ? fenceUntil - now : 0;
     }
 
     private void tick() {
@@ -159,7 +162,7 @@ public final class NodeLease implements BooleanSupplier, AutoCloseable {
             if (halting) {
                 superseded = true;
             } else {
-                if (!open(now)) openSince = now;   // the fence was closed: open again from now, after a gap in its own lease
+                if (openNanos(now) <= 0) openSince = now;   // the fence was closed: open again from now, after a gap in its own lease
                 fenceUntil = s + halfNanos;   // max(fenceUntil, s + L/2): one renew in flight, each sent R after the last, so s only grows
                 if (now - openSince >= leaseNanos) release = answer.result().expired();
             }

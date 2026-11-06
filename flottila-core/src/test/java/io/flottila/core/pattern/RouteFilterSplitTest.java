@@ -67,7 +67,7 @@ class RouteFilterSplitTest {
     void splitFansOutChildrenWithParentIdIndexAndTotalAndReturnsTheParent() {
         Envelope parent = rt.ingress("f", Headers.empty(), Buffer.buffer("<l><i>1</i><i>2</i><i>3</i></l>"));
         // the parts are keyed by the parent's id and the child's step, one part name each: bytes exist once, the children reference them
-        Split split = new Split(e -> List.of(part(e, 0, "<i>1</i>"), part(e, 1, "<i>2</i>"), part(e, 2, "<i>3</i>")), rt.ids());
+        Split split = new Split(e -> List.of(part(e, 0, "<i>1</i>"), part(e, 1, "<i>2</i>"), part(e, 2, "<i>3</i>")));
         List<Envelope> children = new ArrayList<>();
         Envelope returned = split.apply(parent, c -> { children.add(c); return c; });
         assertSame(parent, returned);
@@ -81,9 +81,9 @@ class RouteFilterSplitTest {
             assertEquals("f", c.flow());
             assertEquals("<i>" + (i + 1) + "</i>", c.body().whole().toString());
         }
-        assertEquals(3, children.stream().map(Envelope::id).distinct().count(), "every child has its own id from the injected generator");
+        assertEquals(3, children.stream().map(Envelope::id).distinct().count(), "every child has its own id (P2-15b: the parent's id and its index)");
         assertTrue(children.stream().noneMatch(c -> c.id().equals(parent.id())));
-        Split empty = new Split(e -> List.of(), rt.ids());
+        Split empty = new Split(e -> List.of());
         assertTrue(run(empty, parent).isEmpty(), "zero children: nothing downstream, no error");
     }
 

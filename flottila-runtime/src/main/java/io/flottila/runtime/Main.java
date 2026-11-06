@@ -53,7 +53,7 @@ public final class Main {
     /** The shipped components, steps and languages: the one place that names them, for the node ({@link #start}) and the CLI (D-079). */
     public static Shipped shipped() {
         SaxonXml xml = new SaxonXml();
-        return new Shipped(ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids()),
+        return new Shipped(ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids(), ctx.timer()),
                 new SftpComponent(ctx.blobs(), ctx.ids(), ctx.timer(), ctx.clock())),
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages());
     }

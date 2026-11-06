@@ -1,4 +1,14 @@
 
+## 2026-11-06 — P2-15b send bounded by the fence; x-message-id; split ids (D-113 amends D-100) — done, review PASS (r2) · Deviation: F-28
+Test first: FlowBuilderSendDeadlineTest (7), SendFencePropertiesTest (jqwik), NodeLeaseTest.openNanos…, ProducerTest, ComponentContract
+(3 cases, http + mock + recording), HttpComponentTest (2), SplitTest (jqwik); red agent/work/P2-15b-red.log
+Changed: api Deadline, Producer.send(e, d), Envelope.H_MESSAGE_ID / outboundId(); core Fence, FencedWait abandon, TargetLimit permit
+follows the raw future, Split ids <parent>.<i>; http Timer constructor, cut by reset, timeoutMs → retryable Nack; mock/recording deadline
+Checks: reactor verify -Pit VERIFIED_PASS 3601 tests (P2-15b-reactor2.log; run 1 NodeIT:1425 freePort race → FIX-149) · coverage no
+decrease · PIT api 188/189, core 613/622 · hand mutants 39/40 killed (C3 equivalent)
+Review: r1 FAIL (null answer leaked the fence timer; NodeLease:165 boundary unpinned), r2 PASS
+Decisions: D-113 (draft) · Opened: FIX-148, FIX-149 · owner: benchmarks paused until a dedicated machine; message-id model low priority
+Next: core fixes from F-29 (FIX-140, 139, 142, 145), then P2-15c ledger, P2-16, CORE-7
 ## 2026-11-06 — P2-15a node lease and self-fencing (D-101 → D-112, F-28) — done, review PASS (r3) · Deviation: F-28
 context compacted (twice, plus two container restarts; tree re-verified with git status/log before continuing)
 Test first: NodeLeaseTest, NodeLeaseFencePropertiesTest (jqwik), MembershipContract + PgMembershipIT, PgWorkQueueIT/InMemoryWorkQueueTest

@@ -12,6 +12,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 /**
  * A bound on the sends in flight to one target system (D-099): at most {@code maxCalls} permits out at once, shared by every
@@ -76,8 +77,18 @@ public final class TargetLimit {
      * {@code maxWait} and {@code within}; with nothing left a request that must wait is refused at once, a free permit is taken.
      */
     public <T> T call(Duration within, Supplier<Future<T>> send) throws Exception {
+        return call(within, send, sent -> sent);
+    }
+
+    /**
+     * {@link #call(Duration, Supplier)} whose caller waits for {@code awaited} applied to the send's future instead of the
+     * future itself — one that may end first, a send abandoned at the node's fence (D-113 draft). The permit still follows the
+     * send's own future: held until that settles, however early the caller stopped waiting.
+     */
+    public <T> T call(Duration within, Supplier<Future<T>> send, UnaryOperator<Future<T>> awaited) throws Exception {
         Objects.requireNonNull(within, "within");
         Objects.requireNonNull(send, "send");
+        Objects.requireNonNull(awaited, "awaited");
         Waiter request = request(within);
         Future<Permit> answer = request.answer.future();
         if (!answer.isComplete()) {
@@ -100,7 +111,7 @@ public final class TargetLimit {
             throw failure;
         }
         sent.onComplete(settled -> permit.close());   // released when the send settles, wherever the caller is by then
-        return sent.await();
+        return awaited.apply(sent).await();
     }
 
     /** What the limit holds right now. */

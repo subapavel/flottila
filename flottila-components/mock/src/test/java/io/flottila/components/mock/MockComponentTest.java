@@ -210,7 +210,7 @@ class MockComponentTest {
         Envelope in = invoice();
         Future<Envelope> sent = http.producer(domestic).send(in);
         assertTrue(soon(() -> !handled.isEmpty()), "the send reached the running consumer's handler");
-        assertEquals(List.of(in), handled, "the send reached the running consumer's handler");
+        assertEquals(List.of(in.withOutboundId()), handled, "the send reached the running consumer's handler, its message id carried (P2-15b)");
 
         Future<Void> first = consumer.stop();
         Future<Void> again = consumer.stop();

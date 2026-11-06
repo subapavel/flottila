@@ -126,3 +126,5 @@
 - CORE-15b (2026-11-05): an 'in order, after the previous finished' promise needs a start/end event test; a final list order alone passes a parallel mutant.
 - FIX-130 (2026-11-05): BACKLOG done-when clauses that HANDOFF moves to a later task need the row amended at the commit.
 - FIX-127 (2026-11-05): a measurement clause moved between tasks needs the run in RESULTS before PASS.
+- An arm-before-call timer needs every non-throw failure path disarmed too (null answer; P2-15b FencedWait).
+- A predicate split into two sites leaves the second boundary unpinned; ask for a boundary case at each site (NodeLease:165, P2-15b).

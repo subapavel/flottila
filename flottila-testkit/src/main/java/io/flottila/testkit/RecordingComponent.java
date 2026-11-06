@@ -3,11 +3,13 @@ package io.flottila.testkit;
 import io.flottila.api.Ack;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Health;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
+import io.flottila.api.Timer;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
@@ -21,6 +23,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -31,13 +34,18 @@ import java.util.function.Supplier;
  * with {@link #replyWith(Function)} (identity by default), or with the next failure queued by
  * {@link #failNext(int, Supplier)} — the way a test plays "partner down" for a retry. Each delivery calls a consumer's handler
  * on a virtual thread of its own (D-057); a consumer's {@code stop()} completes once the answers its handler handed out have
- * completed (D-056). Health is up while a consumer runs. Passes {@link ComponentContract}.
+ * completed (D-056). Health is up while a consumer runs. The consumer's handler receives the envelope with its
+ * {@link Envelope#H_MESSAGE_ID} ({@link Envelope#withOutboundId()}); {@link #sent()} records it as it was given. A bounded send
+ * ({@code send(e, d)}) with no time left is refused with a retryable {@link NackException}, not recorded; one built with a
+ * {@link Timer} is cut there — the same failure — when its deadline, re-read at each firing, has run out. Passes
+ * {@link ComponentContract}.
  *
  * @since 0.1
  */
 public final class RecordingComponent implements Component {
 
     private final String scheme;
+    private final Timer timer;   // null: a bounded send is never cut
     private final List<Envelope> sent = new CopyOnWriteArrayList<>();
     private final Map<String, List<Envelope>> sentTo = new ConcurrentHashMap<>();
     private final ConcurrentLinkedDeque<Supplier<? extends Throwable>> failures = new ConcurrentLinkedDeque<>();
@@ -49,6 +57,13 @@ public final class RecordingComponent implements Component {
 
     public RecordingComponent(String scheme) {
         this.scheme = Objects.requireNonNull(scheme, "scheme");
+        this.timer = null;
+    }
+
+    /** One whose bounded sends ({@code send(e, d)}) are cut on {@code timer} once their deadline, re-read there, has run out. */
+    public RecordingComponent(String scheme, Timer timer) {
+        this.scheme = Objects.requireNonNull(scheme, "scheme");
+        this.timer = Objects.requireNonNull(timer, "timer");
     }
 
     /** What the producers were sent, in order. */
@@ -182,6 +197,12 @@ public final class RecordingComponent implements Component {
         producersBuilt.incrementAndGet();
         List<Envelope> mine = sentTo.computeIfAbsent(cfg.name(), k -> new CopyOnWriteArrayList<>());
         return new Producer() {
+            @Override public Future<Envelope> send(Envelope e, Deadline d) {
+                Duration left = d.remaining();
+                if (!left.isPositive()) return Future.failedFuture(new NackException("deadline passed: message " + e.id() + " not sent", true));
+                return timer == null ? send(e) : cutAt(d, left, () -> send(e));
+            }
+
             @Override public Future<Envelope> send(Envelope e) {
                 sent.add(e);
                 mine.add(e);
@@ -207,7 +228,7 @@ public final class RecordingComponent implements Component {
                 if (failure != null) return Future.failedFuture(failure.get());
                 Function<Envelope, Future<Ack>> running = handlers.get(cfg.name());
                 if (running != null) {
-                    return running.apply(e).compose(ack -> switch (ack) {
+                    return running.apply(e.withOutboundId()).compose(ack -> switch (ack) {
                         case Ack.Reply r -> Future.succeededFuture(r.reply());
                         case Ack.Accepted a -> Future.succeededFuture(e);
                         case Ack.Nack n -> Future.failedFuture(new NackException(n.reason(), n.retryable()));
@@ -217,6 +238,29 @@ public final class RecordingComponent implements Component {
             }
             @Override public Future<Void> close() { return Future.succeededFuture(); }
         };
+    }
+
+    /**
+     * {@code send}'s outcome, unless {@code d} — {@code left} at the start, re-read each time the timer fires, re-armed while
+     * time is left — runs out first: then a retryable Nack. Armed before {@code send} runs, cancelled once its future settles.
+     */
+    private Future<Envelope> cutAt(Deadline d, Duration left, Supplier<Future<Envelope>> send) {
+        Promise<Envelope> out = Promise.promise();
+        AtomicReference<Timer.Cancellable> armed = new AtomicReference<>();
+        Runnable[] reread = new Runnable[1];
+        reread[0] = () -> {
+            if (out.future().isComplete()) return;
+            Duration now = d.remaining();
+            if (now.isPositive()) armed.set(timer.schedule(now, reread[0]));
+            else out.tryFail(new NackException("deadline passed: the send was cut", true));
+        };
+        armed.set(timer.schedule(left, reread[0]));
+        send.get().onComplete(settled -> {
+            armed.get().cancel();
+            if (settled.succeeded()) out.tryComplete(settled.result());
+            else out.tryFail(settled.cause());
+        });
+        return out.future();
     }
 
     @Override

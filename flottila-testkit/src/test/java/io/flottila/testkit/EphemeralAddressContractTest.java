@@ -3,6 +3,7 @@ package io.flottila.testkit;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
 import io.flottila.api.EndpointConfig;
+import io.flottila.api.Timer;
 
 import java.net.URI;
 import java.util.Map;
@@ -14,6 +15,8 @@ import java.util.Map;
 class EphemeralAddressContractTest extends ComponentContract {
 
     @Override protected Component component() { return new EphemeralAddressComponent(); }
+
+    @Override protected Component component(Timer timer) { return new EphemeralAddressComponent(timer); }
 
     @Override protected EndpointConfig endpoint() {
         return new EndpointConfig("in", URI.create("ephemeral://in"), Map.of());   // no address: none exists before start

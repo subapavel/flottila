@@ -5,6 +5,7 @@ import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.BlobKey;
@@ -35,6 +36,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -45,7 +47,10 @@ import java.util.stream.Stream;
  * answers with the reply of the consumer running on that same endpoint when there is one, else per behaviour: the fixture as
  * the next body (or the request echoed), after the delay through the injected timer, or a failure — a status or fault
  * as {@link NackException}, retryable as HTTP would be. Each delivery calls a consumer's handler on a virtual thread of its
- * own (D-057). Standing in for a polling component such as {@code sftp} (D-076), a consumer also polls: every second on the
+ * own (D-057), with the envelope's {@link Envelope#H_MESSAGE_ID} ({@link Envelope#withOutboundId()}); {@link #sent} records
+ * the envelope as it was given. A bounded send ({@code send(e, d)}, D-113 draft) with no time left fails with a retryable
+ * {@link NackException} and is neither recorded nor counted; one still unanswered (a delay, a held handler) is cut on the
+ * injected timer — the same failure — once its deadline, re-read at each firing, has run out. Standing in for a polling component such as {@code sftp} (D-076), a consumer also polls: every second on the
  * injected timer it delivers the files {@link #drop dropped} on its endpoint — and the behaviour's {@code files} fixtures,
  * fed at its start in name order — oldest first, one at a time, by the rules of the real one: Accepted or Reply removes
  * the file, a retryable Nack or a failed answer keeps it and ends the round, a final Nack (or a body above the endpoint's
@@ -371,6 +376,12 @@ public final class MockComponent implements Component {
         List<Envelope> mine = sentTo.computeIfAbsent(name, k -> new CopyOnWriteArrayList<>());
         AtomicLong count = sends.computeIfAbsent(name, k -> new AtomicLong());
         return new Producer() {
+            @Override public Future<Envelope> send(Envelope e, Deadline d) {
+                Duration left = d.remaining();
+                if (!left.isPositive()) return Future.failedFuture(new NackException("deadline passed: mock " + name + " did not send message " + e.id(), true));
+                return cutAt(d, left, () -> send(e));
+            }
+
             @Override public Future<Envelope> send(Envelope e) {
                 sent.add(e);
                 mine.add(e);
@@ -434,6 +445,29 @@ public final class MockComponent implements Component {
         }
     }
 
+    /**
+     * {@code send}'s outcome, unless {@code d} — {@code left} at the start, re-read each time the timer fires, re-armed while
+     * time is left — runs out first: then a retryable Nack. Armed before {@code send} runs, cancelled once its future settles.
+     */
+    private Future<Envelope> cutAt(Deadline d, Duration left, java.util.function.Supplier<Future<Envelope>> send) {
+        Promise<Envelope> out = Promise.promise();
+        AtomicReference<Timer.Cancellable> armed = new AtomicReference<>();
+        Runnable[] reread = new Runnable[1];
+        reread[0] = () -> {
+            if (out.future().isComplete()) return;
+            Duration now = d.remaining();
+            if (now.isPositive()) armed.set(timer.schedule(now, reread[0]));
+            else out.tryFail(new NackException("deadline passed: the mock's send was cut", true));
+        };
+        armed.set(timer.schedule(left, reread[0]));
+        send.get().onComplete(settled -> {
+            armed.get().cancel();
+            if (settled.succeeded()) out.tryComplete(settled.result());
+            else out.tryFail(settled.cause());
+        });
+        return out.future();
+    }
+
     private <T> Future<T> after(java.time.Duration delay, java.util.function.Supplier<Future<T>> then) {
         if (delay.isZero()) return then.get();
         Promise<T> p = Promise.promise();
@@ -441,8 +475,9 @@ public final class MockComponent implements Component {
         return p.future();
     }
 
+    /** The handler's answer to {@code e} as the partner receives it, its message id carried; an Accepted answers {@code e} as given. */
     private static Future<Envelope> deliver(Function<Envelope, Future<Ack>> handler, Envelope e) {
-        return handler.apply(e).compose(ack -> switch (ack) {
+        return handler.apply(e.withOutboundId()).compose(ack -> switch (ack) {
             case Ack.Reply r -> Future.succeededFuture(r.reply());
             case Ack.Accepted a -> Future.succeededFuture(e);
             case Ack.Nack n -> Future.failedFuture(new NackException(n.reason(), n.retryable()));

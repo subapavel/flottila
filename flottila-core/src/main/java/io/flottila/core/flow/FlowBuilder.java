@@ -2,11 +2,13 @@ package io.flottila.core.flow;
 
 import io.flottila.api.BodyKind;
 import io.flottila.api.Component;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Expressions;
 import io.flottila.api.Headers;
 import io.flottila.api.Key;
+import io.flottila.api.NackException;
 import io.flottila.api.Pipeline;
 import io.flottila.api.Producer;
 import io.flottila.api.Runtime;
@@ -14,11 +16,13 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.api.Timer;
 import io.flottila.core.admission.Admission;
 import io.flottila.core.admission.TargetLimit;
 import io.flottila.core.admission.Targets;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parking;
+import io.flottila.core.node.Fence;
 import io.flottila.core.node.FencedException;
 import io.flottila.core.pattern.Filter;
 import io.flottila.core.pattern.Retry;
@@ -32,10 +36,12 @@ import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.StepEvent;
 import io.flottila.core.scope.MessageContext;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -81,9 +87,16 @@ import java.util.function.UnaryOperator;
  * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time), and a replay
  * runs the same stage. A permit not granted within the earlier of the limit's maxWait and the time left until the message's
  * deadline fails the send with a retryable {@link io.flottila.api.NackException}; a send where no {@link MessageContext} is bound
- * waits maxWait. A {@link #worker}'s {@code to} sends only while the node's fence given through {@link #fence} is open, checked
+ * waits maxWait. Under the permit the producer is handed the time the send has left as a live {@link Deadline} — until the
+ * message's deadline; no time left fails the send with a retryable {@link io.flottila.api.NackException} "deadline passed" and
+ * the producer is not called (D-113 draft); a send where no {@link MessageContext} is bound is the producer's plain
+ * {@code send(e)}. A {@link #worker}'s {@code to} sends only while the node's fence given through {@link #fence} is open, checked
  * under the permit just before the producer's send: closed, it fails with a {@link FencedException}, which no {@link Retry}
- * retries and no {@link Parking} parks (D-101 (2)); a step's failure in a worker's pipeline is parked only while the same fence
+ * retries and no {@link Parking} parks (D-101 (2)). A {@link Fence} also bounds the worker's sends: the deadline is the earlier
+ * of the message's and the fence's, a timer at the fence's end re-reads it and fails the run's wait with a
+ * {@link FencedException} once it is closed (the item left unsettled; the abandoned send keeps its permit until its own future
+ * settles), and a producer failure landing while it is closed is a {@link FencedException} carrying it; a step's failure in a
+ * worker's pipeline is parked only while the same fence
  * is open — closed, a {@link FencedException} with that failure as its cause and no DLQ row; a sync, at-most-once or replayed
  * run is never fenced (no other node takes it over).
  *
@@ -224,8 +237,9 @@ public final class FlowBuilder {
     /**
      * Fences the workers built from now on by {@code fence}, the node's ({@link io.flottila.core.node.NodeLease}, D-101 (2)):
      * they claim, their {@code to} steps send, their steps' failures are parked, and they complete, take the next item of a key,
-     * hold and park an item past its attempts, only while it answers true. It
-     * replaces the fence of an earlier call. Without a call the fence is always open.
+     * hold and park an item past its attempts, only while it answers true. A {@link Fence} also bounds their sends by time
+     * (D-113 draft): the producer's deadline is the earlier of the message's and the fence's, and a run stops waiting for a send
+     * still open when the fence closes. It replaces the fence of an earlier call. Without a call the fence is always open.
      */
     public FlowBuilder fence(BooleanSupplier fence) {
         this.fence = Objects.requireNonNull(fence, "fence");
@@ -476,7 +490,7 @@ public final class FlowBuilder {
                     case "filter" -> new Filter(predicate(step, step.requireString("when"), resources));
                     case "extractKey" -> extractKey(step, resources);
                     case "validate" -> validate(step, resources);
-                    case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources), runtime.ids());
+                    case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources));
                     default -> factoryFor(step).create(step, resources);
                 };
                 if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
@@ -600,28 +614,127 @@ public final class FlowBuilder {
         }
         Producer producer = component.producer(cfg);
         opened.add(producer);
-        return new Send(endpoint, producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock(), fence);
+        return new Send(endpoint, producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock(), runtime.timer(), fence,
+                fence instanceof Fence f ? f : null);   // only a Fence bounds a send by time and abandons it at the fence (D-113)
     }
 
     /**
      * A {@code to}'s send: the producer's, under the limit of its target, waiting no longer than the time left on {@code clock}
      * until the deadline of the message bound, maxWait when none is; under the permit, a closed {@code fence} fails it with a
-     * {@link FencedException} before the producer is called; what the send fails with comes out as is.
+     * {@link FencedException} before the producer is called. With a message bound the producer gets
+     * {@code send(e, d)} (D-113 draft): {@code d} is the time left until the message's deadline — the earlier of that and what
+     * the fence has left when {@code fence} is a {@link Fence} — re-read at each {@code remaining()}; no time left fails the send
+     * with a retryable {@link NackException} and the producer is not called. Without a message bound it gets {@code send(e)}.
+     * With a {@link Fence} the run stops waiting once the fence closes ({@link FencedWait}) and a producer failure landing while
+     * it is closed is a {@link FencedException} with that failure as its cause; the permit is held until the producer's own
+     * future settles. Otherwise what the send fails with comes out as is.
      */
-    private record Send(String endpoint, Producer producer, TargetLimit limit, Clock clock, BooleanSupplier fence) {
+    private record Send(String endpoint, Producer producer, TargetLimit limit, Clock clock, Timer timer, BooleanSupplier fence, Fence bound) {
         Envelope apply(Envelope e) {
+            MessageContext context = MessageContext.isBound() ? MessageContext.current() : null;
+            FencedWait wait = bound == null ? null : new FencedWait(bound, timer, e.id(), endpoint);
             Supplier<Future<Envelope>> send = () -> {
                 if (!fence.getAsBoolean()) {
                     throw new FencedException("message " + e.id() + " not sent to endpoint '" + endpoint + "': the node's fence is closed (D-101 (2)); "
                             + "its item is left to whoever runs it next");
                 }
-                return producer.send(e);
+                Deadline d = context == null ? null : deadline(context.deadline());
+                if (d != null && !d.remaining().isPositive()) {
+                    return Future.failedFuture(new NackException("message " + e.id() + " not sent to endpoint '" + endpoint + "': its deadline passed (D-113)", true));
+                }
+                if (wait != null) wait.arm();   // before the producer is called: nothing of the send is out before the fence is watched
+                try {   // a null answer fails here, inside the catch, so its re-read is disarmed too
+                    return Objects.requireNonNull(d == null ? producer.send(e) : producer.send(e, d),
+                            () -> "endpoint '" + endpoint + "': the send answered no future");
+                } catch (RuntimeException | Error failure) {
+                    if (wait != null) wait.disarm();
+                    throw failure;
+                }
             };
+            Duration within = context == null ? limit.gauge().maxWait() : context.remaining(clock);
             try {
-                return MessageContext.isBound() ? limit.call(MessageContext.current().remaining(clock), send) : limit.call(send);
+                return wait == null ? limit.call(within, send) : limit.call(within, send, wait::watch);
             } catch (Exception failure) {   // a checked one too, as the producer's future failed with it, or the interrupt
                 throw FlowBuilder.<RuntimeException>rethrown(failure);
             }
+        }
+
+        /** The time left until {@code until} on the clock, the earlier of that and the fence's when bounded by one; live. */
+        private Deadline deadline(Instant until) {
+            if (bound == null) return () -> Duration.between(clock.instant(), until);
+            return () -> {
+                Duration message = Duration.between(clock.instant(), until);
+                Duration fenced = Duration.ofNanos(bound.openNanos());
+                return message.compareTo(fenced) <= 0 ? message : fenced;
+            };
+        }
+    }
+
+    /**
+     * The wait of one send bounded by the node's {@link Fence} (D-113 draft): {@link #arm} — under the permit, just before the
+     * producer is called — schedules a re-read on the timer at what the fence has left; there a fence still open (renewed) is
+     * re-armed, a closed one fails the wait with a {@link FencedException}: the run stops waiting for a send that may outlive
+     * the fence, the producer's own future goes on (and keeps the target's permit) until it settles. A producer answer that
+     * settles first ends the wait with it — a failure landing while the fence is closed as a {@link FencedException} carrying it
+     * — and cancels the re-read.
+     */
+    private static final class FencedWait {
+        private final Fence fence;
+        private final Timer timer;
+        private final String messageId;
+        private final String endpoint;
+        private final Promise<Envelope> out = Promise.promise();
+        private Timer.Cancellable armed;   // guarded by this: the re-read pending, the latest one scheduled
+
+        FencedWait(Fence fence, Timer timer, String messageId, String endpoint) {
+            this.fence = fence;
+            this.timer = timer;
+            this.messageId = messageId;
+            this.endpoint = endpoint;
+        }
+
+        /** Schedules the re-read at what the fence has left now (at least a nanosecond: one that closed meanwhile is re-read at once). */
+        void arm() {
+            Timer.Cancellable next = timer.schedule(Duration.ofNanos(Math.max(fence.openNanos(), 1)), this::reread);
+            synchronized (this) {
+                armed = next;
+            }
+        }
+
+        /** Cancels the pending re-read, if one was armed: the send settled, or never started (no time left: never armed). */
+        void disarm() {
+            Timer.Cancellable pending;
+            synchronized (this) {
+                pending = armed;
+            }
+            if (pending != null) pending.cancel();
+        }
+
+        /** The timer's task: a wait still open is re-armed while the fence is open, failed once it is closed. */
+        private void reread() {
+            if (out.future().isComplete()) return;   // settled meanwhile: its cancel came too late for this one
+            if (fence.getAsBoolean()) {
+                arm();
+                return;
+            }
+            out.tryFail(new FencedException("message " + messageId + ": its send to endpoint '" + endpoint + "' was abandoned, still open when the "
+                    + "node's fence closed (D-101 (2), D-113); its item is left to whoever runs it next"));
+        }
+
+        /** What the run waits for: {@code sent}'s outcome, unless the fence closes first. */
+        Future<Envelope> watch(Future<Envelope> sent) {
+            sent.onComplete(settled -> {
+                disarm();
+                if (settled.succeeded()) {
+                    out.tryComplete(settled.result());
+                } else if (fence.getAsBoolean()) {
+                    out.tryFail(settled.cause());
+                } else {
+                    out.tryFail(new FencedException("message " + messageId + ": its send to endpoint '" + endpoint + "' failed while the node's fence was "
+                            + "closed (D-101 (2)); its item is left to whoever runs it next", settled.cause()));
+                }
+            });
+            return out.future();
         }
     }
 
