@@ -154,7 +154,7 @@ public final class MasterKeySource {
         new SecureRandom().nextBytes(material);
         byte[] text = (Base64.getEncoder().encodeToString(material) + "\n").getBytes(StandardCharsets.ISO_8859_1);
         try {
-            Files.createDirectories(dir);   // a first start: the journal opens its directory after its key
+            JournalIo.createDirectoriesDurably(files, dir);   // a first start: the journal opens its directory after its key
             Path tmp = Files.createTempFile(dir, MASTER + ".", ".tmp", PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
             try {
                 try (FileChannel ch = files.open(tmp, Set.of(StandardOpenOption.WRITE))) {

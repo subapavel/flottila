@@ -8,11 +8,12 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayDeque;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.zip.CRC32C;
 
-/** Whole reads and writes on a channel, the directory force, CRC32C, and the cleanup of what a failing create opened. */
+/** Whole reads and writes on a channel, the directory force and the durable directory creation, CRC32C, and the cleanup of what a failing create opened. */
 final class JournalIo {
 
     private JournalIo() { }
@@ -50,6 +51,24 @@ final class JournalIo {
         try (FileChannel d = files.open(dir, Set.of(StandardOpenOption.READ))) {
             d.force(true);
         }
+    }
+
+    /**
+     * Creates every missing level of {@code dir} and makes each new entry durable: from the nearest directory already there
+     * down, it creates a level, then forces the level's parent (an fsync of a directory does not make its own entry in its
+     * parent durable, Linux fsync(2)), and forces {@code dir} itself last. A {@code dir} already there is not forced. A level a
+     * concurrent start created first is taken as created here ({@link Files#createDirectories} tolerates it), its parent forced.
+     */
+    static void createDirectoriesDurably(JournalFiles files, Path dir) throws IOException {
+        ArrayDeque<Path> missing = new ArrayDeque<>();
+        // the root of an absolute path is always there, so the walk ends before getParent() answers null
+        for (Path at = dir.toAbsolutePath(); !Files.isDirectory(at); at = at.getParent()) missing.addFirst(at);
+        if (missing.isEmpty()) return;
+        for (Path level : missing) {
+            Files.createDirectories(level);
+            forceDir(files, level.getParent());
+        }
+        forceDir(files, missing.getLast());
     }
 
     /** Unlinks {@code file} after {@code failure}; an unlink that fails rides on it as suppressed. */

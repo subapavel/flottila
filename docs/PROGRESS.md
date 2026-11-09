@@ -1,4 +1,13 @@
 
+## 2026-11-09 — FIX-139 durable creation of the journal, segments and key directories (review F7.5, F-29) — done, review PASS (r2)
+context compacted (tree re-verified with git status/log)
+Test first: JournalIoTest (4), JournalDurableDirTest (4) (red agent/work/FIX-139-red.log); implementer's JournalSegmentsEntryTest
+.aFirstStartForcesTheJournalDirectoryOnceSegmentsIsThere approved with M6r1 as its red
+Changed: JournalIo.createDirectoriesDurably — creates each missing level and forces its parent, forces the directory last; used for
+the journal dir, segments/ and the master-key dir; spill keeps plain createDirectories (comment, loss changes nothing durable)
+Checks: verify VERIFIED_PASS 3047 tests (FIX-139-verify.log) · coverage no decrease · hand mutants M1–M7 killed · PIT helper 5/5
+Review: r1 FAIL (implementer's test not approved in the packet), r2 PASS · Opened: FIX-151 (javadoc on a not-retried force; `..`)
+Next: FIX-142 (node shutdown awaits bounded worker settlement)
 ## 2026-11-09 — FIX-140 recovery pins agree with sweep pins (review F7.1, F-29) — done, review PASS (r3)
 Test first: SegmentSweepIT.aNormallySweptKeptRefDoesNotRefuseRestart (red: ACCEPT_LOSS refusal), controls
 .aRegisteredSegmentWhoseFileVanishedStillRefuses, .aDlqHeldRefStillPinsItsSegment (agent/work/FIX-140-red.log)

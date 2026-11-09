@@ -375,7 +375,7 @@ public final class Journal implements AutoCloseable {
         Objects.requireNonNull(journalIds, "journalIds");
         Path dir = config.dir();
         String node = config.node();
-        Files.createDirectories(dir);
+        JournalIo.createDirectoriesDurably(files, dir);
         try (JournalIo.Owned lockChannel = new JournalIo.Owned(files.open(dir.resolve("LOCK"),
                 Set.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE)))) {
             takeLock(lockChannel.get(), dir);
@@ -391,10 +391,7 @@ public final class Journal implements AutoCloseable {
             Recovery.Plan plan = Recovery.plan(segments, format, files, kept);
             if (!identity.replaced()) start.pins(identity.id(), plan.ends());
             clearSpill(dir.resolve("spill"));
-            if (!Files.isDirectory(segments)) {
-                Files.createDirectories(segments);
-                JournalIo.forceDir(files, dir);
-            }
+            JournalIo.createDirectoriesDurably(files, segments);   // a first start: its entry in dir forced, then segments/
             MasterKeySource.removeCrashedTmps(dir);
             long highest = highest(numbers, registered);
             unlinkOthers(segments, numbers, kept);
@@ -443,6 +440,8 @@ public final class Journal implements AutoCloseable {
 
     /** Unlinks whatever an earlier run left under {@code spill/}: a spill never persisted nor abandoned is no one's. */
     private static void clearSpill(Path spill) throws IOException {
+        // not createDirectoriesDurably: spill/ holds nothing durable (cleared here at every start; a persist moves its file
+        // into segments/ and forces that), so losing spill/'s entry in a crash loses no record
         Files.createDirectories(spill);
         try (Stream<Path> left = Files.list(spill)) {
             for (Iterator<Path> it = left.iterator(); it.hasNext(); ) Files.delete(it.next());
