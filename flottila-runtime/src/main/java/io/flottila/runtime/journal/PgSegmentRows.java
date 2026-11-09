@@ -23,13 +23,26 @@ import java.util.UUID;
  * is one autocommit statement on the pool: its future succeeds once the row is committed — but {@link #giveUp} and
  * {@link #sweep}, one transaction each (V13: {@code work.lost_at}, {@code body_refs.lost_at}, {@code journal_losses}). A segment's {@code copies} is
  * the node alone until CORE-5 replicates. The pins are CORE-3 item 10's: a work row's ref not lost, an unarchived kept ref not
- * lost (a DLQ row pins through its kept ref, which is one of those).
+ * lost (a DLQ row pins through its kept ref, which is one of those). At recovery ({@link #pinsBeyond}) a kept ref pins only while
+ * its segment row is registered — the sweep let an expired one go with its segment (FIX-140); a work row always pins.
  *
  * @since 0.1
  */
 public final class PgSegmentRows implements SegmentRows {
 
-    /** $1 the node; $2, $3 the segments held and the end of each one's records. */
+    /**
+     * $1 the node; $2, $3 the segments held and the end of each one's records. A work row pins unconditionally; a kept ref only
+     * while its segment row is registered (FIX-140): the sweep deleted a swept segment's row under its own pin check, so a ref
+     * left on it expired, it is not lost. No foreign key keeps a ref off a swept segment; per branch of TieredBlobStore's writes:
+     * {@code REFERENCE}'s {@code kept} and {@code src} CTEs and {@code KEEP}'s conflict branch (its {@code seg} CTE) hold the
+     * segment row {@code for key share}, so no sweep deletes it under them. {@code KEEP}'s fresh insert and its {@code GONE}
+     * replace take no lock: they point at the active segment, never a sweep candidate (SegmentSweeper's {@code sealedBy}), and
+     * their save is in the open-save set the sweeper reads before it asks the pins; once committed, the fresh
+     * {@code created_at} pins. Except one window, not guarded: a memory body's append returns before {@code opened(a.ref())}
+     * puts its save in the open-save set (TieredBlobStore's {@code durably}); if the segment seals and the grace passes in that
+     * gap, the sweep can delete the segment row and the ref then lands on a swept segment, which this query no longer reports
+     * at restart — accepted silently, not refused (FIX-150 closes the gap).
+     */
     private static final String PINS_BEYOND = """
             with e(segment, ends) as (select * from unnest($2::bigint[], $3::bigint[]))
             select w.seq, w.id, 0, 'body', w.body_segment, w.body_position, w.body_length from work w
@@ -38,6 +51,7 @@ public final class PgSegmentRows implements SegmentRows {
             union all
             select -1, r.message_id, r.step, r.part, r.segment, r.position, r.length from body_refs r
              where r.node = $1 and r.archived_at is null and r.lost_at is null
+               and exists (select 1 from journal_segments s where s.node = $1 and s.segment = r.segment)
                and not exists (select 1 from e where e.segment = r.segment and r.position + r.length <= e.ends)""";
 
     /**

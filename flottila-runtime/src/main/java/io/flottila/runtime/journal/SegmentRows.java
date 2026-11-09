@@ -68,7 +68,8 @@ public interface SegmentRows {
     /**
      * A committed pin of a node's journal (CORE-3 item 9): a work row ({@code seq} at least 1, its message's ingress body) or a
      * kept ref ({@code seq} {@value #REF}, its key) that is not lost — a ref also not archived — naming the record at
-     * {@code segment, position, length}.
+     * {@code segment, position, length}. At recovery a kept ref pins only while its segment row is registered; a work row
+     * always pins ([amended by FIX-140]).
      *
      * @since 0.1
      */
@@ -97,7 +98,8 @@ public interface SegmentRows {
 
     /**
      * The pins of {@code node}'s journal that no record held now holds: a pin is held when {@code ends} names its segment and it
-     * ends at or before the end of that segment's records; an empty {@code ends} holds none (every pin). In no order.
+     * ends at or before the end of that segment's records; an empty {@code ends} holds none (every pin). In no order. A kept
+     * ref is a pin only while its segment row is registered; a work row always is ([amended by FIX-140]).
      */
     default Future<List<Pin>> pinsBeyond(String node, Map<Long, Long> ends) {
         return Future.succeededFuture(List.of());

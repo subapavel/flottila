@@ -37,11 +37,14 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static io.flottila.runtime.journal.JournalWorld.bodyRef;
 import static io.flottila.runtime.journal.JournalWorld.bytes;
@@ -55,6 +58,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -574,6 +578,159 @@ class SegmentSweepIT {
         assertEquals(1, count(db.pool(), "select count(*) from body_refs where message_id = $1", atTheAge.id()), "its rows stay (D-096)");
     }
 
+    // --- the pins of a restart agree with the sweep's (FIX-140, F-29)
+
+    static final Pattern ACCEPT_VALUE = Pattern.compile("FLOTTILA_JOURNAL_ACCEPT_LOSS=([0-9a-f-]{36}):([0-9a-f]{16})");
+
+    /** {@code s}'s kept ref, created when it was persisted on the injected clock, then that clock past KEEP_MAX_AGE and the grace. */
+    void expired(JournalWorld w, Sealed s, Instant persistedAt) {
+        createdAt(s.key(), persistedAt);   // the server wrote its own now(); the pins compare with the injected clock
+        w.opened.clock().advance(KEEP.plus(GRACE));
+        assertTrue(w.opened.clock().instant().minus(KEEP).isAfter(persistedAt), "fixture: the injected clock is past KEEP_MAX_AGE since the persist");
+    }
+
+    /** Closes node {@code w} (its sweepers first) and starts it again on the same directory and database, its clock where it was. */
+    JournalWorld restarted(JournalWorld w) throws Exception {
+        for (AutoCloseable c : closing) if (c instanceof SegmentSweeper s) s.close();
+        Instant at = w.opened.clock().instant();
+        if (w == a) {   // still open: close it; a world a case closed already is not closed again
+            a = null;
+            w.close();
+        }
+        a = JournalWorld.open(vertx, relayed, db.pool(), tmp.resolve(w.node), w.node, s -> { }, w.config, at);
+        return a;
+    }
+
+    UUID journalId(String node) {
+        return db.pool().preparedQuery("select journal_id from journal_nodes where node = $1").execute(Tuple.of(node)).await().iterator().next().getUUID(0);
+    }
+
+    /** {@code id}'s kept ref is neither archived nor lost, and no loss was recorded. */
+    void refUntouched(String id, String what) {
+        assertEquals(1, count(db.pool(), "select count(*) from body_refs where message_id = $1 and archived_at is null and lost_at is null", id),
+                what + ": its body_refs row stays, unarchived, not lost");
+        assertEquals(0, count(db.pool(), "select count(*) from journal_losses"), what + ": no loss recorded");
+    }
+
+    /** A restart of {@code w} is refused naming {@code s}'s kept ref and printing {@code <journal id>:<digest>}; nothing changes. */
+    void restartRefusedNaming(JournalWorld w, Sealed s, String what) {
+        UUID journal = journalId(w.node);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> restarted(w), what + ": the restart is refused");
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains("does not hold every record"), what + ": refused as a pin beyond the held records: " + message);
+        assertTrue(message.contains("ref " + s.id() + "/" + s.key().step() + "/") && message.contains(" at segment " + s.segment() + " "),
+                what + ": it names the kept ref into segment " + s.segment() + ": " + message);
+        Matcher m = ACCEPT_VALUE.matcher(message);
+        assertTrue(m.find(), what + ": it prints FLOTTILA_JOURNAL_ACCEPT_LOSS=<journal id>:<digest>: " + message);
+        assertEquals(journal.toString(), m.group(1), what + ": the value names the registered journal");
+        assertEquals(1, rows(w.node, s.segment()), what + ": its segment row stays (a refusal changes nothing)");
+        refUntouched(s.id(), what);
+    }
+
+    /**
+     * F-29: an expired kept ref (created_at ≤ clock − KEEP_MAX_AGE, no DLQ row) is swept — its segment row and file go, its
+     * body_refs row lives on until retention (D-096) — and the next start goes on: the ref reads as nothing stored (retired by
+     * the sweep), never as a loss to accept.
+     */
+    @Test
+    void aNormallySweptKeptRefDoesNotRefuseRestart() throws Exception {
+        Instant persistedAt = a.opened.clock().instant();
+        Sealed s = persisted(a, "m-expired");
+        expired(a, s, persistedAt);
+
+        assertEquals(Set.of(s.segment()), sweep(sweeper(a)), "fixture: the expired kept ref pins nothing; its segment is swept");
+        gone(a, s.segment(), "the expired ref's segment");
+        refUntouched(s.id(), "fixture: after the sweep");
+
+        JournalWorld b;
+        try {
+            b = restarted(a);
+        } catch (IllegalStateException refused) {
+            throw new AssertionError("a routine sweep of an expired kept ref must not refuse the next start, but: " + refused.getMessage(), refused);
+        }
+        assertEquals(0, rows(b.node, s.segment()), "the swept segment stays unregistered");
+        refUntouched(s.id(), "after the restart: nothing given up");
+        JournalReadIT.readsAsNeverWritten(b.blobs, s.key(), "an expired kept ref into a swept segment, after the restart");
+    }
+
+    /** Control: the same expired kept ref, its segment row still registered but its file gone — a loss: the restart refuses. */
+    @Test
+    void aRegisteredSegmentWhoseFileVanishedStillRefuses() throws Exception {
+        Instant persistedAt = a.opened.clock().instant();
+        Sealed s = persisted(a, "m-vanished");
+        expired(a, s, persistedAt);
+        a.close();
+        JournalWorld closed = a;
+        a = null;
+        assertEquals(1, rows(closed.node, s.segment()), "fixture: its segment row is registered (never swept)");
+        Files.delete(file(closed, s.segment()));
+
+        restartRefusedNaming(closed, s, "a registered segment whose file vanished");
+    }
+
+    /**
+     * FIX-140: a work row pins at restart whether or not its segment row is registered — unlike a kept ref, a work row is never
+     * retired by the sweep. Its segment row and file gone (no sweep deletes them under a live work row), the restart refuses
+     * naming the work item; nothing changes.
+     */
+    @Test
+    void aWorkRowWhoseSegmentRowIsGoneStillRefuses() throws Exception {
+        Sealed s = saved(a, "m-work", false);
+        assertNull(bodyRef(db.pool(), s.key()), "fixture: level none: no kept ref, the work row alone");
+        a.close();
+        JournalWorld closed = a;
+        a = null;
+        sql("delete from journal_segments where node = $1 and segment = $2", closed.node, s.segment());
+        Files.delete(file(closed, s.segment()));
+        assertEquals(0, rows(closed.node, s.segment()), "fixture: its segment row is gone");
+        UUID journal = journalId(closed.node);
+
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> restarted(closed), "a work row's pin refuses the restart");
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains("does not hold every record"), "refused as a pin beyond the held records: " + message);
+        assertTrue(message.contains("work item ") && message.contains(" of message " + s.id() + " at segment " + s.segment() + " "),
+                "it names the work item into segment " + s.segment() + ": " + message);
+        Matcher m = ACCEPT_VALUE.matcher(message);
+        assertTrue(m.find(), "it prints FLOTTILA_JOURNAL_ACCEPT_LOSS=<journal id>:<digest>: " + message);
+        assertEquals(journal.toString(), m.group(1), "the value names the registered journal");
+        assertEquals(1, count(db.pool(), "select count(*) from work where id = $1 and lost_at is null", s.id()), "its work row stays, not lost");
+        assertEquals(0, count(db.pool(), "select count(*) from journal_losses"), "no loss recorded");
+    }
+
+    /**
+     * Control: an expired kept ref a DLQ row holds keeps its segment through the sweep (an unreferenced twin goes, the pass is
+     * no no-op); a restart with its file there goes on and reads it; with the file deleted it refuses naming it.
+     */
+    @Test
+    void aDlqHeldRefStillPinsItsSegment() throws Exception {
+        Instant persistedAt = a.opened.clock().instant();
+        Sealed held = persisted(a, "m-held");
+        Sealed unreferenced = persisted(a, "m-unreferenced");
+        sql("delete from body_refs where message_id = $1", unreferenced.id());
+        parked(held);
+        expired(a, held, persistedAt);
+
+        assertEquals(Set.of(unreferenced.segment()), sweep(sweeper(a)), "a DLQ row pins its expired ref's segment; the unreferenced twin goes");
+        kept(a, held.segment(), "the DLQ-held ref's segment");
+        gone(a, unreferenced.segment(), "the unreferenced twin's segment");
+
+        JournalWorld b;
+        try {
+            b = restarted(a);
+        } catch (IllegalStateException refused) {
+            throw new AssertionError("a DLQ-held ref whose segment is held must not refuse the start, but: " + refused.getMessage(), refused);
+        }
+        Future<Buffer> read = settled(b.blobs.read(held.key()));
+        assertTrue(read.succeeded(), "after the restart the DLQ-held body reads by its rows: " + (read.failed() ? causes(read.cause()) : ""));
+        assertEquals(bytes(3_000, held.id().hashCode()), read.result(), "the DLQ-held body, after the restart");
+        refUntouched(held.id(), "after the restart");
+
+        b.close();
+        a = null;
+        Files.delete(file(b, held.segment()));
+        restartRefusedNaming(b, held, "a DLQ-held ref whose segment file vanished");
+    }
+
     // --- whose segments
 
     @Test
@@ -594,6 +751,37 @@ class SegmentSweepIT {
         assertTrue(Files.exists(file(b, theirs.segment())), "node-b's file untouched");
 
         assertEquals(Set.of(theirs.segment()), sweep(sweeper(b)), "witness: node-b's segment was sweepable, by node-b");
+    }
+
+    /**
+     * FIX-140: a restart asks whether a kept ref's segment row is registered for the ref's own node. node-b registers the
+     * number of node-a's swept segment in the same database; node-a's expired ref into it still pins nothing at node-a's start.
+     */
+    @Test
+    void aSweptKeptRefDoesNotRefuseRestartWhileAnotherNodeRegistersThatNumber() throws Exception {
+        JournalWorld b = world("node-b", db.pool());
+        closing.add(b);
+        Instant persistedAt = a.opened.clock().instant();
+        Sealed mine = persisted(a, "m-a");
+        Sealed theirs = persisted(b, "m-b");
+        assertEquals(mine.segment(), theirs.segment(), "fixture: node-b's kept ref lies in a segment of node-a's number");
+        expired(a, mine, persistedAt);
+
+        assertEquals(Set.of(mine.segment()), sweep(sweeper(a)), "fixture: node-a's expired kept ref pins nothing; its segment is swept");
+        gone(a, mine.segment(), "node-a's segment");
+        assertEquals(1, rows(b.node, mine.segment()), "fixture: node-b's segment of the same number stays registered");
+
+        JournalWorld restarted;
+        try {
+            restarted = restarted(a);
+        } catch (IllegalStateException refused) {
+            throw new AssertionError("node-b's segment row of the same number must not pin node-a's swept ref, but: " + refused.getMessage(), refused);
+        }
+        assertEquals(0, rows(restarted.node, mine.segment()), "node-a's swept segment stays unregistered");
+        refUntouched(mine.id(), "node-a's ref after the restart: nothing given up");
+        assertEquals(1, count(db.pool(), "select count(*) from body_refs where message_id = $1 and archived_at is null and lost_at is null", theirs.id()),
+                "node-b's ref untouched");
+        assertTrue(Files.exists(file(b, theirs.segment())), "node-b's file untouched");
     }
 
     // --- races and reads

@@ -68,7 +68,8 @@ rule; core `Intake.save(keepInput, Future abandoned)`; the persist javadoc; the 
    random default); every `journal_keys` row is unwrapped, one that fails refuses naming its key id. Then: spill cleared;
    files without a row unlinked; rows without a file dropped if unpinned. A segment without a valid trailer (unsealed or a
    torn seal) is scanned (length bounds + CRC32C) and cut at its first bad record. A committed pin (work ref, unarchived
-   body_refs, DLQ ⋈ body_refs) at or past the cut, or into a missing segment, refuses the start naming the items; with
+   body_refs, DLQ ⋈ body_refs) at or past the cut, or into a missing segment [amended by FIX-140: a kept ref pins only while its
+   segment row is registered; a work row always pins], refuses the start naming the items; with
    ACCEPT_LOSS = the printed `<journal id>:<digest>` of this loss their work rows are held ('body lost': never run, never DLQ), their body_refs marked `lost_at` (lost rows pin nothing),
    each logged at ERROR. Then footer, trailer, force. A valid trailer with a bad index CRC: WARNING, read without the
    index, never rewritten. A record failing its CRC on read fails as corrupt (ERROR), never BlobNotFound. Next n = max + 1;

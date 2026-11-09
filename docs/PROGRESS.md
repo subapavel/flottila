@@ -1,4 +1,12 @@
 
+## 2026-11-09 — FIX-140 recovery pins agree with sweep pins (review F7.1, F-29) — done, review PASS (r3)
+Test first: SegmentSweepIT.aNormallySweptKeptRefDoesNotRefuseRestart (red: ACCEPT_LOSS refusal), controls
+.aRegisteredSegmentWhoseFileVanishedStillRefuses, .aDlqHeldRefStillPinsItsSegment (agent/work/FIX-140-red.log)
+Changed: PgSegmentRows.PINS_BEYOND — a kept ref pins at recovery only while its segment row is registered; work rows always pin;
+guard comment per branch (key share / active segment + open-save set / FIX-150 window); SegmentRows javadoc; CORE-3 item 9 amended
+Checks: runtime -am verify -Pit VERIFIED_PASS 3035 tests (FIX-140-verify3.log) · coverage no decrease · hand mutants per predicate killed
+Review: r1 FAIL (node predicate unpinned, guard comment, docs), r2 FAIL (comment missing the FIX-150 window), r3 PASS · Opened: FIX-150
+Next: FIX-139 (journal parent-directory fsync)
 ## 2026-11-06 — P2-15b send bounded by the fence; x-message-id; split ids (D-113 amends D-100) — done, review PASS (r2) · Deviation: F-28
 Test first: FlowBuilderSendDeadlineTest (7), SendFencePropertiesTest (jqwik), NodeLeaseTest.openNanos…, ProducerTest, ComponentContract
 (3 cases, http + mock + recording), HttpComponentTest (2), SplitTest (jqwik); red agent/work/P2-15b-red.log
