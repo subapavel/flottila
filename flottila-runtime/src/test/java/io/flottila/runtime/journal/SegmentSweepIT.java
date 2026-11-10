@@ -416,6 +416,185 @@ class SegmentSweepIT {
         assertEquals(List.of(), List.copyOf(a.intake.openSaves()), "both outcomes known: no open save left");
     }
 
+    // --- a status lookup that fails (FIX-145): it pins only its own save, the sweep goes on
+
+    /** A statement asking {@code pg_xact_status}, as executed (extended protocol) or as a simple query. */
+    static final java.util.function.Predicate<PgWire.Sent> XACT_LOOKUP = s -> (s.type() == 'E' || s.type() == 'Q')
+            && s.sql() != null && s.sql().contains("pg_xact_status");
+
+    /** A save whose COMMIT reply was cut: failed, open, its body local, its segment sealed; {@code held} decides its outcome. */
+    record InDoubtSave(PgWire.Held held, BlobKey key, JournalRef ref) { }
+
+    InDoubtSave inDoubtSave(String id, int seed) throws Exception {
+        Set<JournalRef> before = Set.copyOf(a.blobs.openSaves());
+        PgWire.Held held = wire.holdNext(PgWire.query("COMMIT"));
+        Envelope in = a.arrive(id, bytes(3_000, seed));
+        Future<String> save = a.start(in, false, undecided());
+        held.awaitReached();
+        held.cut();
+        assertTrue(settled(save).failed(), "fixture: the save whose commit reply was lost fails");
+        List<JournalRef> added = a.blobs.openSaves().stream().filter(r -> !before.contains(r)).toList();
+        assertEquals(1, added.size(), "fixture: it stays open, by its xid: " + added);
+        seal(a, added.get(0).segment());
+        return new InDoubtSave(held, in.body().key(), added.get(0));
+    }
+
+    /** A transaction id this server has not assigned yet: {@code pg_xact_status} refuses it (SQLSTATE 22023), checked here. */
+    String futureXid() {
+        String xid = db.pool().query("select (pg_current_xact_id()::text::bigint + 1000000)::text").execute().await()
+                .iterator().next().getString(0);
+        Future<?> asked = settled(db.pool().preparedQuery("select pg_xact_status($1::text::xid8)").execute(Tuple.of(xid)));
+        assertTrue(asked.failed(), "fixture: Postgres refuses the status of the future xid " + xid);
+        assertEquals("22023", assertInstanceOf(io.vertx.pgclient.PgException.class, asked.cause()).getSqlState(),
+                "fixture: refused as a future transaction id: " + asked.cause());
+        return xid;
+    }
+
+    /** A save forced and open, its segment sealed, registered in doubt under {@code xid} (the {@code PgIntake.inDoubt} seam). */
+    InDoubtSave refusedSave(String id, int seed, String xid) throws Exception {
+        Envelope in = a.arrive(id, bytes(3_000, seed));
+        Future<TieredBlobStore.Durable> forced = settled(a.blobs.forced(in.body().key()));
+        assertTrue(forced.succeeded(), "fixture: forced " + (forced.failed() ? causes(forced.cause()) : ""));
+        JournalRef ref = forced.result().ref();
+        assertNotNull(ref, "fixture: a local body forced has a ref of its own");
+        seal(a, ref.segment());
+        io.flottila.runtime.store.InDoubtSeam.register(a.intake, xid, List.of(forced.result()));
+        return new InDoubtSave(null, in.body().key(), ref);
+    }
+
+    /** The resolved sessions gone and {@code committed}'s row visible: the outcomes are known to Postgres. */
+    void outcomesKnown(String committed) {
+        until(() -> count(db.pool(), "select count(*) from work where id = $1", committed) == 1
+                        && count(db.pool(), "select count(*) from pg_stat_activity where datname = current_database() and state like 'idle in transaction%'") == 0,
+                () -> "the landed COMMIT of " + committed + " visible and every cut session gone");
+    }
+
+    /** The {@code pg_xact_status} lookups the intake executed since {@code mark}. */
+    long lookupsSince(int mark) {
+        return wire.since(mark).stream().filter(XACT_LOOKUP).count();
+    }
+
+    /** The WARNING records of every Flottila logger, each as its formatted message and its causes' messages. */
+    static final class Warnings implements AutoCloseable {
+        private final java.util.logging.Logger logger = java.util.logging.Logger.getLogger("io.flottila");   // strong: JUL holds it weakly
+        private final List<String> texts = new CopyOnWriteArrayList<>();
+        private final java.util.logging.Handler handler = new java.util.logging.Handler() {
+            private final java.util.logging.SimpleFormatter format = new java.util.logging.SimpleFormatter();
+
+            @Override public void publish(java.util.logging.LogRecord r) {
+                if (!r.getLevel().equals(java.util.logging.Level.WARNING)) return;
+                StringBuilder text = new StringBuilder(r.getLoggerName()).append(": ").append(format.formatMessage(r));
+                for (Throwable t = r.getThrown(); t != null; t = t.getCause()) text.append(" | ").append(t);
+                texts.add(text.toString());
+            }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+
+        Warnings() {
+            handler.setLevel(java.util.logging.Level.ALL);
+            logger.addHandler(handler);
+        }
+
+        List<String> all() { return List.copyOf(texts); }
+
+        List<String> naming(String xid) {
+            Pattern whole = Pattern.compile("(?<![0-9])" + Pattern.quote(xid) + "(?![0-9])");
+            return texts.stream().filter(t -> whole.matcher(t).find()).toList();
+        }
+
+        @Override public void close() { logger.removeHandler(handler); }
+    }
+
+    @Test
+    void futureXidDoesNotBlockUnrelatedSegmentCollection() throws Exception {
+        Sealed free = saved(a, "m-free", false);
+        sql("delete from work where id = $1", free.id());
+        String xid = futureXid();
+        InDoubtSave refused = refusedSave("m-refused", 91, xid);
+        assertFalse(refused.ref().segment() == free.segment(), "fixture: the refused save and the unrelated body in segments of their own");
+        a.opened.clock().advance(GRACE);
+        SegmentSweeper sweeper = sweeper(a);
+
+        try (Warnings warnings = new Warnings()) {
+            assertEquals(Set.of(free.segment()), sweep(sweeper), "a refused xid pins only its own save: the unrelated segment is swept");
+            gone(a, free.segment(), "the unrelated segment");
+            kept(a, refused.ref().segment(), "the save whose xid Postgres refuses");
+            assertEquals(List.of(refused.ref()), a.blobs.openSaves(), "neither committed nor rolled back: the refused save is still open");
+            assertTrue(a.blobs.location(refused.key()).isPresent(), "not committed: its body stays local");
+            List<String> first = warnings.naming(xid);
+            assertEquals(1, first.size(), "one WARNING names the xid the first time its lookup fails: " + warnings.all());
+            assertTrue(first.get(0).contains("22023") || first.get(0).contains("in the future"),
+                    "the WARNING carries Postgres's refusal (SQLSTATE or message): " + first.get(0));
+
+            int mark = wire.mark();
+            assertEquals(Set.of(), sweep(sweeper), "a second pass: still pinned, nothing else to sweep");
+            assertTrue(lookupsSince(mark) >= 1, "fixture: the second pass asked the xid's status again: " + wire.since(mark));
+            kept(a, refused.ref().segment(), "the refused save, a second pass");
+            assertEquals(List.of(refused.ref()), a.blobs.openSaves(), "still open after the second pass");
+            assertEquals(1, warnings.naming(xid).size(), "a second failing lookup logs no second WARNING for the xid: " + warnings.all());
+        }
+    }
+
+    @Test
+    void aFailingStatusQueryLeavesEveryInDoubtSaveOpenAndTheSweepRuns() throws Exception {
+        Sealed free = saved(a, "m-free", false);
+        sql("delete from work where id = $1", free.id());
+        InDoubtSave landed = inDoubtSave("m-landed", 92);
+        InDoubtSave lost = inDoubtSave("m-lost", 93);
+        landed.held().commitAfterCut();   // committed: a lookup that answered would settle it as committed
+        lost.held().abort();              // rolled back: a lookup that answered would let its segment go
+        outcomesKnown("m-landed");
+        Set<JournalRef> both = Set.of(landed.ref(), lost.ref());
+        assertEquals(3, Set.of(free.segment(), landed.ref().segment(), lost.ref().segment()).size(), "fixture: three segments of their own");
+        a.opened.clock().advance(GRACE);
+        SegmentSweeper sweeper = sweeper(a);
+
+        try (Warnings warnings = new Warnings()) {
+            List<PgWire.FatalReply> asked = List.of(wire.fatalReplyTo(XACT_LOOKUP), wire.fatalReplyTo(XACT_LOOKUP), wire.fatalReplyTo(XACT_LOOKUP));
+            Collection<JournalRef> open = OnVirtualThread.call(() -> a.intake.openSaves());   // throws today: the batched error escapes
+            for (PgWire.FatalReply f : asked) f.awaitDone();   // the batched lookup, then each xid's own: every one failed
+            assertEquals(both, Set.copyOf(open), "every lookup failed: openSaves answers every in-doubt save, none settled");
+            assertEquals(2, warnings.all().size(), "one WARNING per in-doubt xid whose lookup failed: " + warnings.all());
+
+            List<PgWire.FatalReply> again = List.of(wire.fatalReplyTo(XACT_LOOKUP), wire.fatalReplyTo(XACT_LOOKUP), wire.fatalReplyTo(XACT_LOOKUP));
+            assertEquals(Set.of(free.segment()), sweep(sweeper), "every lookup failing: the pass sweeps the unrelated segment");
+            for (PgWire.FatalReply f : again) f.awaitDone();
+            gone(a, free.segment(), "the unrelated segment");
+            kept(a, lost.ref().segment(), "an in-doubt save whose lookup failed (only its open save pins it)");
+            assertEquals(both, Set.copyOf(a.blobs.openSaves()), "every in-doubt save still open after the pass");
+            assertTrue(a.blobs.location(landed.key()).isPresent(), "not settled as committed: its body stays local");
+            assertEquals(2, warnings.all().size(), "a second failing pass: no second WARNING for either xid: " + warnings.all());
+            int warned = warnings.all().size();
+
+            int mark = wire.mark();
+            assertEquals(Set.of(lost.ref().segment()), sweep(sweeper), "the lookups answer again: the rolled-back save's segment goes");
+            assertEquals(1, lookupsSince(mark), "no lookup failed: one batched lookup, no per-xid one: " + wire.since(mark));
+            assertEquals(List.of(), a.blobs.openSaves(), "both outcomes known: no open save left");
+            assertTrue(a.blobs.location(landed.key()).isEmpty(), "committed: its local copy is gone");
+            assertTrue(a.blobs.location(lost.key()).isPresent(), "rolled back: its body stays local");
+            assertEquals(warned, warnings.all().size(), "a later success settles silently: " + warnings.all());
+        }
+    }
+
+    @Test
+    void oneBadXidDoesNotHoldBackAResolvableOne() throws Exception {
+        InDoubtSave landed = inDoubtSave("m-landed", 94);
+        landed.held().commitAfterCut();
+        outcomesKnown("m-landed");
+        InDoubtSave refused = refusedSave("m-refused", 95, futureXid());
+        assertFalse(refused.ref().segment() == landed.ref().segment(), "fixture: the two saves in segments of their own");
+        a.opened.clock().advance(GRACE);
+        SegmentSweeper sweeper = sweeper(a);
+
+        assertEquals(Set.of(), sweep(sweeper), "the committed save's work row and the refused save's open save pin their segments");
+        assertEquals(List.of(refused.ref()), a.blobs.openSaves(), "the same pass settled the resolvable save; the refused one stays open");
+        assertTrue(a.blobs.location(landed.key()).isEmpty(), "settled as committed (not rolled back): its local copy is gone");
+        assertTrue(a.blobs.location(refused.key()).isPresent(), "the refused save neither committed nor rolled back: its body stays local");
+        kept(a, refused.ref().segment(), "the refused save");
+        kept(a, landed.ref().segment(), "the committed save");
+    }
+
     // --- what pins
 
     @Test
