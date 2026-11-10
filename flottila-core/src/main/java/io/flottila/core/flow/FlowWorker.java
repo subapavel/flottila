@@ -227,6 +227,16 @@ public final class FlowWorker {
      */
     public long staleSettles() { return staleSettles.get(); }
 
+    /**
+     * The items this worker claimed and still runs: none of them completed, held or left to its lease in the queue yet — what
+     * a {@link #close()} still waits for (FIX-142).
+     */
+    public int unsettled() {
+        synchronized (lock) {
+            return running.size();
+        }
+    }
+
     private void tick() {
         synchronized (lock) {
             if (stopped) return;   // fired as the worker stopped

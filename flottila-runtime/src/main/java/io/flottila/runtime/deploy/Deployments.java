@@ -182,12 +182,14 @@ import java.util.stream.Stream;
  * <p>{@link #close} refuses deploys from then on, waits for a running one, then closes every replay to new runs and stops every
  * flow that runs at once: its worker first, then its delivery (within the node's stop deadline) and its consumer (bounded by the
  * stop deadline once the delivery stopped: ≤ 2× the stop deadline) together; once all have stopped it
- * closes every delivery's producers (FIX-30; a failed close is logged), then waits up to the stop deadline for every replay's
- * runs in flight to end and its producers to close (a WARNING when they did not by then), then returns and rethrows the first
- * stop failure, in flow order.
- * Worker items still running are not awaited (P1-09e): each runs to its end through its worker's open producers, renewing
- * its lease, and the worker closes its producers once the last of them finished; only an item whose process ends first is
- * claimed again when its lease runs out.
+ * closes every delivery's producers (FIX-30; a failed close is logged), then waits for every worker's items still running to
+ * settle in the work queue and its producers to close — within the stop deadline counted from the start of the close (FIX-142):
+ * a flow whose worker has not closed by then is a WARNING naming its count of unsettled items, whose work rows stay claimed
+ * and run again once their lease ran out — then waits up to the stop deadline for every replay's runs in flight to end and its
+ * producers to close (a WARNING when they did not by then), then returns and rethrows the first stop failure, in flow order.
+ * The node lease and each item's lease are renewed while the close waits: the node closes its lease and stores after it.
+ * A redeploy or an undeploy never waits for a worker (D-063, FIX-30): its items run to their end through the worker's open
+ * producers, renewing their lease, and the worker closes its producers once the last of them finished.
  *
  * <p>The {@link Runtime} only goes into each deploy's {@code new FlowBuilder}: nothing here reads it, and no flow or lambda
  * captures it (CLAUDE.md); the components, the clock and the timer come in on their own.
@@ -351,9 +353,10 @@ public final class Deployments {
         }
 
         /**
-         * Asks its stopped worker and its replay to close their producers, never awaited — those closes wait for the items and the
-         * runs still in flight; the replay refuses new runs at once — and closes its delivery's producers once the delivery
-         * stopped; completes with the delivery's close, never fails (FIX-30).
+         * Asks its stopped worker and its replay to close their producers, never awaited here — those closes wait for the items and
+         * the runs still in flight; the replay refuses new runs at once; only the node's shutdown waits for them ({@link Deployments#drain},
+         * FIX-142) — and closes its delivery's producers once the delivery stopped; completes with the delivery's close, never
+         * fails (FIX-30).
          */
         Future<Void> close() {
             if (worker != null) worker.close();
@@ -591,10 +594,10 @@ public final class Deployments {
 
     /**
      * Refuses deploys from now on, waits for a running one, then stops every flow at once and closes their producers (see the
-     * class comment) and returns once all have stopped and every delivery's producers closed — a worker's close is not awaited;
-     * every replay refuses new runs at once and its producers' close, once its runs in flight ended, is awaited up to the stop
-     * deadline (one not closed by then is a WARNING); the first stop failure, in flow order, is rethrown then.
-     * Blocking: on a virtual thread.
+     * class comment) and returns once all have stopped and every delivery's producers closed, and every worker closed — its
+     * items settled — or the stop deadline, counted from now, passed ({@link #drain}); every replay refuses new runs at once and
+     * its producers' close, once its runs in flight ended, is awaited up to the stop deadline (one not closed by then is a
+     * WARNING); the first stop failure, in flow order, is rethrown then. Blocking: on a virtual thread.
      */
     public void close() {
         closing = true;
@@ -603,7 +606,9 @@ public final class Deployments {
             List<Flow> running = deployed.values().stream().flatMap(d -> d.flows().stream()).filter(Flow::runs).toList();
             deployed.clear();
             Future<Void> replays = Future.all(running.stream().map(f -> f.replay().close()).toList()).mapEmpty();   // no new run from here on
-            stop(running, config.stopDeadline()).eventually(() -> close(running)).eventually(() -> bounded(replays, "the replays' runs in flight")
+            Future<Void> stopped = stop(running, config.stopDeadline());   // every worker stopped first: no claim from here on
+            Future<Void> drained = drain(running, stopped);                 // its bound runs from here, the start of the close
+            stopped.eventually(() -> close(running)).eventually(() -> drained).eventually(() -> bounded(replays, "the replays' runs in flight")
                     .onFailure(late -> LOG.log(System.Logger.Level.WARNING, "the node closes with replay runs still in flight; their producers close once "
                             + "they ended: " + late, late)).otherwiseEmpty()).await();
         } finally {
@@ -1608,10 +1613,30 @@ public final class Deployments {
 
     /**
      * Closes the producers of {@code flows} (FIX-30): each delivery's once it stopped, awaited; each worker's asked, not awaited
-     * ({@link Flow#close}). Never fails, a failed producer close is logged.
+     * ({@link Flow#close}; the node's shutdown waits for it in {@link #drain}). Never fails, a failed producer close is logged.
      */
     private static Future<Void> close(List<Flow> flows) {
         return Future.all(flows.stream().map(Flow::close).toList()).mapEmpty();
+    }
+
+    /**
+     * The node's shutdown wait for the workers of {@code flows} (FIX-142): once {@code stopped} settled, each worker's close —
+     * complete once its items settled in the work queue and its producers closed ({@link FlowWorker#close}) — bounded by the
+     * node's stop deadline from now ({@link #bounded}), every flow on a bound of its own. Completes once every one closed or
+     * passed its bound: one WARNING per flow whose worker had not closed by then, naming its count of unsettled items — their
+     * work rows stay claimed, never settled or deleted here, and run again once their lease ran out. Never fails: a worker's
+     * close never fails, and never throws once its {@link FlowWorker#stop} ran — {@link #stop(Flow, Duration)} calls it before
+     * this, and it sets its flag before anything that could throw — so a bound fails only with its deadline.
+     */
+    private Future<Void> drain(List<Flow> flows, Future<Void> stopped) {
+        return Future.join(flows.stream().filter(f -> f.worker() != null).map(f -> drain(f, stopped)).toList()).mapEmpty();
+    }
+
+    private Future<Void> drain(Flow f, Future<Void> stopped) {
+        return bounded(stopped.transform(s -> f.worker().close()), "flow '" + f.id() + "': its worker's items in flight")
+                .onFailure(late -> LOG.log(System.Logger.Level.WARNING, "flow '" + f.id() + "' closes with " + f.worker().unsettled() + " unsettled item(s) as "
+                        + "the node shuts down: their work rows stay claimed and run again once their lease ran out: " + late, late))
+                .otherwiseEmpty();
     }
 
     /**

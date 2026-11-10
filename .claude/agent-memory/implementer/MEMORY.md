@@ -50,7 +50,7 @@
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
 - runtime System.Logger → JUL: capture with a JUL Handler on `Logger.getLogger(<class>)`. Vert.x 5.1.10: `Promise.tryComplete(T)`; `complete(T,Throwable)`/`handle` THROW when already done (race a
   bound with `f.onComplete(p::tryComplete, p::tryFail)`); `Future.join` fails after all settle with the first failure in INDEX order; an `eventually` supplier throw is lost
-  (completes with the ORIGINAL outcome); `compose`/`transform`/`Future.future` fail on any Throwable, a listener's throw is lost.
+  (completes with the ORIGINAL outcome) — a FAILED supplier future too (FIX-142 M4: `.otherwiseEmpty()` on it is an equivalent mutant); `compose`/`transform`/`Future.future` fail on any Throwable, a listener's throw is lost.
 - Saxon-HE 12.4 (FIX-6): `setResourceResolver` sees only xsl:include/import; DTD entities, static doc()/unparsed-text()/use-when read
   via `Configuration.getResourceResolver()` (default CatalogResourceResolver; may return StreamSource).
 - Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()

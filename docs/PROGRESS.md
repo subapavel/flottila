@@ -1,4 +1,14 @@
 
+## 2026-11-10 — FIX-142 node shutdown awaits bounded worker settlement (review F4.3, F-29) — done, review PASS (r2)
+Test first: NodeShutdownWaitsForWorkerSettlementIT (3; red agent/work/FIX-142-red.log, redeploy case a green control); after the red,
+FlowWorkerUnsettledTest (test-author) and DeploymentsProducersTest close case reversed (wrong expectation: close now waits)
+Changed: Deployments.close stops flows, then drains every worker's close within the one stopDeadline (node timer); past it one
+WARNING per flow names its unsettled items, rows stay claimed; redeploy/undeploy unchanged (D-063 amended); FlowWorker.unsettled()
+Checks: verify -Pit (no bench) VERIFIED_PASS 3367 tests, 364 fresh XML · coverage no decrease · PIT FlowWorker 105/108 (survivors
+pre-existing :318/:342/:361) · hand mutants M1–M3 killed, M4/M5b equivalent (agent/work/FIX-142-mut.log)
+Review: r1 FAIL (D-114..D-120 not recorded; M5 run against a fixture without a non-worker flow), r2 PASS
+Decisions: D-114..D-120 (owner answers to F-29) · Opened: FIX-152 (Node javadoc)
+Next: FIX-145 (pg_xact_status failures isolated per xid)
 ## 2026-11-09 — FIX-139 durable creation of the journal, segments and key directories (review F7.5, F-29) — done, review PASS (r2)
 context compacted (tree re-verified with git status/log)
 Test first: JournalIoTest (4), JournalDurableDirTest (4) (red agent/work/FIX-139-red.log); implementer's JournalSegmentsEntryTest

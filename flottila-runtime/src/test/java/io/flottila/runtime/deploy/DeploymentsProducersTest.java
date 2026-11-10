@@ -292,23 +292,30 @@ class DeploymentsProducersTest {
     }
 
     /**
-     * {@code shop} runs; an at-least-once message's worker item is held at the partner. Deployments.close returns without
-     * waiting for it, having closed the deliveries' producers; the worker's producer is not closed while the item runs and no
-     * DLQ row appears. Released, the item completes by its own success and then its producer is closed, once.
+     * {@code shop} runs; an at-least-once message's worker item is held at the partner. Deployments.close closes the
+     * deliveries' producers and then waits for the item (FIX-142: the node's shutdown awaits its workers within the stop
+     * deadline, which the fake timer never reaches here); the worker's producer is not closed while the item runs and no DLQ
+     * row appears. Released, the item completes by its own success, then its producer is closed, once, and only then does
+     * close return: the producer's close count read on close's own thread as it returns is 1.
      */
     @Test
-    void closeLeavesARunningWorkerItemItsProducerUntilTheItemFinishes() throws Exception {
+    void closeWaitsForARunningWorkerItemThenItsProducerClosesOnceBeforeCloseReturns() throws Exception {
         deploy(shop("shop"));
         assertEquals(6, doors.producers().size(), "fixture: shop's six producers, each flow's and its replay's: " + doors.producers());
         Held held = acceptAndHoldAtThePartner(doors.door("shop/audit"), envelope("shop/audit"));
         Doors.Out heldBy = held.by();
 
-        OnVirtualThread.join(OnVirtualThread.start(deployments::close));   // returns while the item is held: never waits for it
+        OnVirtualThread.Call<Integer> closing = OnVirtualThread.start(() -> {
+            deployments.close();
+            return heldBy.closes();   // read as close returns, on its thread: did it wait for the worker's producer?
+        });
+        until(() -> doors.openProducers().equals(List.of(heldBy)), "the deliveries' producers are closed by close, as before: " + doors.producers());
 
         assertEquals(0, heldBy.closes(), "the worker's producer is not closed while its item runs: " + doors.producers());
         assertEquals(0, dlq.size(), "no DLQ row while the item runs");
-        assertEquals(List.of(heldBy), doors.openProducers(), "the deliveries' producers are closed by close, as before: " + doors.producers());
+        assertFalse(closing.isDone(), "close waits for the worker's item held at the partner (FIX-142)");
         assertTheItemFinishesThenItsProducerCloses(heldBy, held.release());
+        assertEquals(1, OnVirtualThread.join(closing), "close returned only once the worker's item finished and its producer closed (FIX-142)");
     }
 
     /**
