@@ -11,6 +11,7 @@ import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.journal.JournalRef;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.queue.PgWorkQueue;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.pgclient.PgException;
@@ -102,6 +103,8 @@ public final class PgIntake implements Intake {
     /** Each transaction id's status: committed, aborted, in progress, or null for one too old to be known. */
     static final String XACT_STATUS = "select x, pg_xact_status(x::xid8) from unnest($1::text[]) x";
 
+    private static final System.Logger LOG = System.getLogger(PgIntake.class.getName());
+
     /** A group of one never waits for a window: its writer never schedules one. */
     private static final Timer NO_WINDOW = (delay, task) -> { throw new IllegalStateException("a group of one has no window"); };
 
@@ -175,6 +178,8 @@ public final class PgIntake implements Intake {
     private final BatchingWriter<Member> writer;
     /** The members whose group's commit is in doubt, by transaction id. */
     private final Map<String, List<TieredBlobStore.Durable>> inDoubt = new ConcurrentHashMap<>();
+    /** The in-doubt ids whose own lookup failed and was logged, until they settle: guarded by {@link #asking}. */
+    private final Set<String> warned = new HashSet<>();
     private final ReentrantLock asking = new ReentrantLock();
     private final LongAdder groups = new LongAdder();
     private final LongAdder members = new LongAdder();
@@ -205,7 +210,10 @@ public final class PgIntake implements Intake {
      * The refs of the saves open now (CORE-3 item 6): the CORE-4d sweeper keeps their segments. A group whose commit is in doubt is
      * asked first ({@code pg_xact_status}, blocking — on a virtual thread): committed, each of its members is done as a committed
      * save is (its ref indexed, its local copy gone); aborted or too old to be known, as a rolled-back one (rows it may have pin by
-     * themselves); in progress, they stay open.
+     * themselves); in progress, they stay open. Every in-doubt id is asked in one statement; when it fails, each id is asked on its
+     * own (FIX-145) and an id whose own lookup fails stays in doubt — never taken as an abort or a commit — with one WARNING the
+     * first time (its id and the failure), none again until it settled. A lookup failing never fails this call: the saves still
+     * open are answered, every in-doubt one among them when no lookup could run.
      */
     public Collection<JournalRef> openSaves() {
         if (!inDoubt.isEmpty()) settle();
@@ -216,17 +224,50 @@ public final class PgIntake implements Intake {
         asking.lock();
         try {
             String[] xids = inDoubt.keySet().toArray(String[]::new);
-            for (Row r : pool.preparedQuery(XACT_STATUS).execute(Tuple.tuple().addArrayOfString(xids)).await()) {
-                String status = r.getString(1);
-                if ("in progress".equals(status)) continue;
-                for (TieredBlobStore.Durable save : inDoubt.remove(r.getString(0))) {
-                    if ("committed".equals(status)) save.committed();
-                    else save.rolledBack();
+            AsyncResult<RowSet<Row>> batched = status(xids);
+            if (batched.succeeded()) {
+                settle(batched.result());
+                return;
+            }
+            for (String xid : xids) {   // the batched lookup failed: one id it cannot answer pins only its own saves
+                AsyncResult<RowSet<Row>> own = status(xid);
+                if (own.succeeded()) settle(own.result());
+                else if (warned.add(xid)) {
+                    LOG.log(System.Logger.Level.WARNING, "the commit outcome of transaction " + xid + " cannot be asked (pg_xact_status failed: "
+                            + own.cause() + "): its saves stay open and their journal segments kept until a lookup answers", own.cause());
                 }
             }
         } finally {
             asking.unlock();
         }
+    }
+
+    /** The statuses of {@code xids} — the failure as an outcome, never thrown (a throw while sending included). */
+    private AsyncResult<RowSet<Row>> status(String... xids) {
+        return Future.<Void>succeededFuture().compose(start -> pool.preparedQuery(XACT_STATUS).execute(Tuple.tuple().addArrayOfString(xids)))
+                .transform((AsyncResult<RowSet<Row>> asked) -> Future.succeededFuture(asked)).await();
+    }
+
+    /** Each id {@code statuses} answers done, its saves committed or rolled back, unless in progress; its warned mark dropped. */
+    private void settle(RowSet<Row> statuses) {
+        for (Row r : statuses) {
+            String status = r.getString(1);
+            if ("in progress".equals(status)) continue;
+            String xid = r.getString(0);
+            warned.remove(xid);
+            for (TieredBlobStore.Durable save : inDoubt.remove(xid)) {
+                if ("committed".equals(status)) save.committed();
+                else save.rolledBack();
+            }
+        }
+    }
+
+    /**
+     * {@code saves} in doubt under {@code xid}, as a commit whose reply was lost leaves the members writing rows ({@link #notCommitted});
+     * for the tests, which cannot make Postgres assign an id it refuses to answer for (FIX-145).
+     */
+    void inDoubt(String xid, List<TieredBlobStore.Durable> saves) {
+        inDoubt.put(xid, saves);
     }
 
     @Override
@@ -437,7 +478,7 @@ public final class PgIntake implements Intake {
             open = g.writing;
             List<TieredBlobStore.Durable> durables = new ArrayList<>();
             for (Member m : open) if (m.durable() != null) durables.add(m.durable());
-            inDoubt.put(lost.xid, durables);
+            inDoubt(lost.xid, durables);
         }
         for (Member m : g.members) {
             if (!open.contains(m)) rolledBack(m);

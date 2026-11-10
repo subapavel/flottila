@@ -1,4 +1,12 @@
 
+## 2026-11-10 — FIX-145 a pg_xact_status failure pins only its own save (review F7.3, F-29) — done, review PASS (r1)
+Test first: SegmentSweepIT .futureXidDoesNotBlockUnrelatedSegmentCollection, .aFailingStatusQueryLeavesEveryInDoubtSaveOpenAndThe
+SweepRuns, .oneBadXidDoesNotHoldBackAResolvableOne + InDoubtSeam (red agent/work/FIX-145-red.log, FIX-145-red-scratch.log)
+Changed: PgIntake.settle — batched lookup first, per-xid on its failure; a failed xid stays in doubt (never an outcome), one WARNING
+per xid until it settles; openSaves never throws for a lookup; package-private inDoubt seam (also the production path)
+Checks: runtime -am verify -Pit VERIFIED_PASS 3054 tests, 338 fresh XML · coverage no decrease · hand mutants M1–M3 killed
+Review: r1 PASS · Opened: FIX-153 (xid reused after a failover, class C), FIX-154 (stop the fallback on a connection failure)
+Next: P2-15c (kill -9 ledger, SIGSTOP)
 ## 2026-11-10 — FIX-142 node shutdown awaits bounded worker settlement (review F4.3, F-29) — done, review PASS (r2)
 Test first: NodeShutdownWaitsForWorkerSettlementIT (3; red agent/work/FIX-142-red.log, redeploy case a green control); after the red,
 FlowWorkerUnsettledTest (test-author) and DeploymentsProducersTest close case reversed (wrong expectation: close now waits)
