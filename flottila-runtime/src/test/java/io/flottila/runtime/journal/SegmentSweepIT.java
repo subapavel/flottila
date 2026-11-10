@@ -385,8 +385,9 @@ class SegmentSweepIT {
         long abortedSegment = openAfterLoss.get(0).segment();
         seal(a, abortedSegment);
 
+        // P2-16a (D-121 A3): the cut save's transaction, open until lost.abort(), holds K-1's lock: the second goes under K-2
         PgWire.Held landed = wire.holdNext(PgWire.query("COMMIT"));
-        Future<String> committed = a.start(a.arrive("m-committed", bytes(3_000, 82)), false, undecided());
+        Future<String> committed = startUnder(a.arrive("m-committed", bytes(3_000, 82)), "K-2");
         landed.awaitReached();
         landed.cut();
         assertTrue(settled(committed).failed(), "fixture: its reply lost too");
@@ -425,11 +426,15 @@ class SegmentSweepIT {
     /** A save whose COMMIT reply was cut: failed, open, its body local, its segment sealed; {@code held} decides its outcome. */
     record InDoubtSave(PgWire.Held held, BlobKey key, JournalRef ref) { }
 
-    InDoubtSave inDoubtSave(String id, int seed) throws Exception {
+    /**
+     * {@code id}'s save under partition key {@code partition}, its COMMIT reply cut. P2-16a (D-121 A3): its transaction, open until
+     * the case decides it, holds the key's lock, so a second in-doubt save of the same case goes under another key.
+     */
+    InDoubtSave inDoubtSave(String id, int seed, String partition) throws Exception {
         Set<JournalRef> before = Set.copyOf(a.blobs.openSaves());
         PgWire.Held held = wire.holdNext(PgWire.query("COMMIT"));
         Envelope in = a.arrive(id, bytes(3_000, seed));
-        Future<String> save = a.start(in, false, undecided());
+        Future<String> save = startUnder(in, partition);
         held.awaitReached();
         held.cut();
         assertTrue(settled(save).failed(), "fixture: the save whose commit reply was lost fails");
@@ -437,6 +442,11 @@ class SegmentSweepIT {
         assertEquals(1, added.size(), "fixture: it stays open, by its xid: " + added);
         seal(a, added.get(0).segment());
         return new InDoubtSave(held, in.body().key(), added.get(0));
+    }
+
+    /** {@code e}'s save on node a under partition key {@code partition}, no dedupe key, not waited for. */
+    Future<String> startUnder(Envelope e, String partition) {
+        return a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, partition, null, false, undecided());
     }
 
     /** A transaction id this server has not assigned yet: {@code pg_xact_status} refuses it (SQLSTATE 22023), checked here. */
@@ -540,8 +550,8 @@ class SegmentSweepIT {
     void aFailingStatusQueryLeavesEveryInDoubtSaveOpenAndTheSweepRuns() throws Exception {
         Sealed free = saved(a, "m-free", false);
         sql("delete from work where id = $1", free.id());
-        InDoubtSave landed = inDoubtSave("m-landed", 92);
-        InDoubtSave lost = inDoubtSave("m-lost", 93);
+        InDoubtSave landed = inDoubtSave("m-landed", 92, "K-1");
+        InDoubtSave lost = inDoubtSave("m-lost", 93, "K-2");   // landed's open transaction holds K-1's lock
         landed.held().commitAfterCut();   // committed: a lookup that answered would settle it as committed
         lost.held().abort();              // rolled back: a lookup that answered would let its segment go
         outcomesKnown("m-landed");
@@ -579,7 +589,7 @@ class SegmentSweepIT {
 
     @Test
     void oneBadXidDoesNotHoldBackAResolvableOne() throws Exception {
-        InDoubtSave landed = inDoubtSave("m-landed", 94);
+        InDoubtSave landed = inDoubtSave("m-landed", 94, "K-1");
         landed.held().commitAfterCut();
         outcomesKnown("m-landed");
         InDoubtSave refused = refusedSave("m-refused", 95, futureXid());

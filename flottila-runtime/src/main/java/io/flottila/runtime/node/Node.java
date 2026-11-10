@@ -10,6 +10,7 @@ import io.flottila.api.StepFactory;
 import io.flottila.api.Timer;
 import io.flottila.core.admission.Targets;
 import io.flottila.core.batch.BatchingWriter;
+import io.flottila.core.flow.Workers;
 import io.flottila.core.node.NodeLease;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
@@ -251,10 +252,12 @@ public final class Node implements AutoCloseable {
                 leases = new InMemoryPollerLeases(clock);
             }
             // an at-least-once ingress saves its body, its record and its item in one transaction (D-082)
-            PgIntake intake = new PgIntake(pool, blobs, messages, work, timer, config.intakeGroup());   // grouped saves (D-109)
+            // the node's started workers: its intake hands each saved item off to the flow's worker, leased to this node (D-121 (a))
+            Workers workers = new Workers();
+            PgIntake intake = new PgIntake(pool, blobs, messages, work, workers, timer, config.intakeGroup());   // grouped saves (D-109)
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
-                    new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease);   // the node's one Targets (D-099) and fence
+                    new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers);   // the node's one Targets (D-099) and fence
             deployments = restored;
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
             // before the restore: the restored flows' steps are sampled from their first message on (D-094)

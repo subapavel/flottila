@@ -198,9 +198,10 @@ class PgIntakeJournalIT {
         nothingCommitted("m-unforced");
     }
 
-    /** The statement a SQL text is, as {@code BEGIN}, {@code COMMIT} or {@code insert into <table>}. */
+    /** The statement a SQL text is, as {@code BEGIN}, {@code COMMIT}, the key lock or {@code insert into <table>}. */
     static String head(String sql) {
         String s = sql.toLowerCase(Locale.ROOT);
+        if (s.strip().startsWith(PgIntakeRoundTripIT.KEY_LOCK + "(")) return PgIntakeRoundTripIT.KEY_LOCK;
         if (s.startsWith("insert into ")) {
             String rest = s.substring("insert into ".length());
             int end = 0;
@@ -230,12 +231,13 @@ class PgIntakeJournalIT {
             List<String> sent = wire.statementsSince(mark).stream().map(PgIntakeJournalIT::head).toList();
             long roundTrips = wire.roundTripsSince(mark);
 
-            // the record is the message store's two statements (messages, then message_keys: PgBatchSink), then the item
-            assertEquals(List.of("BEGIN", "insert into messages", "insert into message_keys", "insert into work", "COMMIT"), sent,
-                    "level none: the ingress record and the work item, nothing else in or around the transaction (CORE-3 item 6)");
+            // the partition key's lock (K-1, P2-16a: D-121 A3), the record — the message store's two statements (messages, then
+            // message_keys: PgBatchSink) —, then the item
+            assertEquals(List.of("BEGIN", PgIntakeRoundTripIT.KEY_LOCK, "insert into messages", "insert into message_keys", "insert into work", "COMMIT"), sent,
+                    "level none: the key's lock, the ingress record and the work item, nothing else in or around the transaction (CORE-3 item 6)");
             // this client sends BEGIN and COMMIT as one simple query each and a prepared statement as two round trips
-            // (Parse/Describe/Sync, then Bind/Execute/Sync), as observed for today's save on the same wire
-            assertEquals(1 + 3 * 2 + 1, roundTrips, "8 round trips: no extra statement or round trip for the body: " + wire.since(mark));
+            // (Parse/Describe/Sync, then Bind/Execute/Sync), as observed for today's save on the same wire; the lock is one more
+            assertEquals(1 + 4 * 2 + 1, roundTrips, "10 round trips: no extra statement or round trip for the body: " + wire.since(mark));
         }
         assertEquals(1, count(db.pool(), "select count(*) from messages where id = 'm-none'"), "the ingress row");
         JournalWorld.Ref ref = workRef(db.pool(), "m-none");

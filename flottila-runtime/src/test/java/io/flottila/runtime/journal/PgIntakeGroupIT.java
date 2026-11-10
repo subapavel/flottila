@@ -178,16 +178,27 @@ class PgIntakeGroupIT {
 
     /** The writer idle: the save goes at once, alone; returns once its COMMIT is held at the relay. */
     Plug plug(String id) throws Exception {
+        return plug(id, "K-1");
+    }
+
+    /**
+     * {@link #plug(String)} under partition key {@code partition}. P2-16a (D-121 A3): a held COMMIT holds the partition key's lock
+     * too, so a later group of another key's saves is not held behind it by the lock.
+     */
+    Plug plug(String id, String partition) throws Exception {
         PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
-        Future<String> saved = call(id, null, undecided());
+        Future<String> saved = call(arrive(id), null, partition, undecided());
         commit.awaitReached();
         return new Plug(id, commit, saved);
     }
 
-    /** A second slot's plug (concurrency 2, one group in flight): queued, it goes when the case advances the clock by the window. */
-    Plug plugByWindow(String id) throws Exception {
+    /**
+     * A second slot's plug (concurrency 2, one group in flight) under partition key {@code partition}: queued, it goes when the case
+     * advances the clock by the window. P2-16a: under another key than the first plug's, whose held COMMIT holds that key's lock.
+     */
+    Plug plugByWindow(String id, String partition) throws Exception {
         PgWire.Held commit = wire.holdNext(PgWire.query("COMMIT"));
-        Future<String> saved = call(id, null, undecided());
+        Future<String> saved = call(arrive(id), null, partition, undecided());
         clock.advance(WINDOW);
         commit.awaitReached();
         return new Plug(id, commit, saved);
@@ -294,8 +305,9 @@ class PgIntakeGroupIT {
 
     /**
      * Eight saves queued while a group is in flight (concurrency 1) go as one group: one BEGIN and one COMMIT for the eight, their
-     * rows in one transaction — BEGIN awaited, then the messages and message_keys unnests and each member's item and kept ref in
-     * one turn, then COMMIT: 4 + 2·8 statements in three waits; each member answers its own id and is committed.
+     * rows in one transaction — BEGIN awaited, then the key's lock once for the eight (P2-16a, D-121 A3: all under K-1), the
+     * messages and message_keys unnests and each member's item and kept ref in one turn, then COMMIT: 5 + 2·8 statements in
+     * three waits; each member answers its own id and is committed.
      */
     @Test
     void concurrentSavesShareOneTransaction() throws Exception {
@@ -311,14 +323,15 @@ class PgIntakeGroupIT {
         members.forEach((id, save) -> saved(save, id));
 
         List<List<String>> turns = wire.turnsSince(mark).stream().map(PgIntakeRoundTripIT::heads).toList();
-        assertEquals(20, PgIntakeRoundTripIT.heads(wire.statementsSince(mark)).size(), "4 + 2*8 statements for the group of eight: " + wire.since(mark));
+        assertEquals(21, PgIntakeRoundTripIT.heads(wire.statementsSince(mark)).size(), "5 + 2*8 statements for the group of eight: " + wire.since(mark));
         assertEquals(3, turns.size(), "three waits — BEGIN, the rows, COMMIT: " + turns);
         assertEquals(List.of("BEGIN"), turns.get(0), "BEGIN awaited alone: " + turns);
-        assertEquals(List.of("insert into messages", "insert into message_keys"), turns.get(1).subList(0, 2),
-                "the records as one unnest each, first in the rows turn: " + turns);
+        assertEquals(List.of(PgIntakeRoundTripIT.KEY_LOCK, "insert into messages", "insert into message_keys"), turns.get(1).subList(0, 3),
+                "the key's lock first in the rows turn, then the records as one unnest each: " + turns);
+        assertEquals(1, turns.get(1).stream().filter(PgIntakeRoundTripIT.KEY_LOCK::equals).count(), "one lock statement for the group's one key: " + turns);
         assertEquals(8, turns.get(1).stream().filter("insert into work"::equals).count(), "an item per member in the rows turn: " + turns);
         assertEquals(8, turns.get(1).stream().filter("insert into body_refs"::equals).count(), "a kept ref per member in the rows turn: " + turns);
-        assertEquals(18, turns.get(1).size(), "nothing else in the rows turn: " + turns);
+        assertEquals(19, turns.get(1).size(), "nothing else in the rows turn: " + turns);
         assertEquals(List.of("COMMIT"), turns.get(2), "COMMIT alone: " + turns);
 
         long tx = txOf("m-1");
@@ -422,7 +435,7 @@ class PgIntakeGroupIT {
         gate.query("select pg_advisory_lock(4242)").execute().await();
 
         Plug first = plug("m-plug-1");
-        Plug second = plugByWindow("m-plug-2");
+        Plug second = plugByWindow("m-plug-2", "K-plug-2");   // P2-16a: not behind the first plug's K-1 lock — the case is about claims
         Future<String> a1 = call("m-a1", "K-1", undecided());
         Future<String> a2 = call("m-a2", "K-2", undecided());
         unplug(first);
@@ -621,8 +634,9 @@ class PgIntakeGroupIT {
     @Test
     void aLostGroupCommitKeepsEveryMemberOpenUntilItsXactStatusIsKnown() throws Exception {
         open(group(64, 1), 4);
-        PgWire.Held landed = lostGroupCommit("m-plug-1", List.of("m-x1", "m-x2"));
-        PgWire.Held lost = lostGroupCommit("m-plug-2", List.of("m-y1", "m-y2"));
+        PgWire.Held landed = lostGroupCommit("m-plug-1", "K-1", List.of("m-x1", "m-x2"));
+        // P2-16a: the landed group's transaction stays open, holding K-1's lock, until commitAfterCut — the second group under another key
+        PgWire.Held lost = lostGroupCommit("m-plug-2", "K-2", List.of("m-y1", "m-y2"));
         assertEquals(4, List.copyOf(intake.openSaves()).size(), "every member of both groups open, their outcome unknown: " + intake.openSaves());
         for (String id : List.of("m-x1", "m-x2", "m-y1", "m-y2")) stillLocal(id);
 
@@ -640,11 +654,14 @@ class PgIntakeGroupIT {
         }
     }
 
-    /** A group of {@code members} behind plug {@code plugId} whose COMMIT reply is cut: each member fails, its body local. */
-    PgWire.Held lostGroupCommit(String plugId, List<String> members) throws Exception {
-        Plug plug = plug(plugId);
+    /**
+     * A group of {@code members} behind plug {@code plugId}, all under partition key {@code partition}, whose COMMIT reply is cut: each
+     * member fails, its body local.
+     */
+    PgWire.Held lostGroupCommit(String plugId, String partition, List<String> members) throws Exception {
+        Plug plug = plug(plugId, partition);
         List<Future<String>> saves = new ArrayList<>();
-        for (String id : members) saves.add(call(id, null, undecided()));
+        for (String id : members) saves.add(call(arrive(id), null, partition, undecided()));
         PgWire.Held groupCommit = wire.holdNext(PgWire.query("COMMIT"));
         unplug(plug);
         groupCommit.awaitReached();
@@ -720,9 +737,10 @@ class PgIntakeGroupIT {
         logTransactions();
         Plug plug = plug("m-plug");   // on the pool's one open connection
         Promise<Void> answer = Promise.promise();
-        Future<String> before = call("m-1", null, undecided());
-        Future<String> decided = call("m-2", null, answer.future());
-        Future<String> after = call("m-3", null, undecided());
+        // P2-16a: the plug's held COMMIT holds K-1's lock; the group under another key commits while the plug is held
+        Future<String> before = call(arrive("m-1"), null, "K-2", undecided());
+        Future<String> decided = call(arrive("m-2"), null, "K-2", answer.future());
+        Future<String> after = call(arrive("m-3"), null, "K-2", undecided());
         PgWire.Held connecting = wire.holdNextConnection();
         int mark = wire.mark();
         clock.advance(WINDOW);   // the window takes the three: their group asks the pool, which opens its second connection

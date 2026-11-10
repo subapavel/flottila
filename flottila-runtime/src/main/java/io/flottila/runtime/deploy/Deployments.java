@@ -21,6 +21,7 @@ import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.flow.Intake;
 import io.flottila.core.flow.Replay;
 import io.flottila.core.flow.SequentialIntake;
+import io.flottila.core.flow.Workers;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.MessageStore;
@@ -222,6 +223,7 @@ public final class Deployments {
     private final PollerLeases leases;
     private final Targets targets;
     private final BooleanSupplier fence;
+    private final Workers workers;
     /** Numbers the owners of the leased consumers built here: {@code <nodeId>#<n>}. */
     private final AtomicLong owners = new AtomicLong();
     /** One deploy, undeploy or restore at a time; {@link #close} takes it to wait for the one running. */
@@ -246,13 +248,22 @@ public final class Deployments {
     }
 
     /**
-     * Deployments whose at-least-once flows save through a {@link SequentialIntake} over {@code messages} and {@code queue}: tests
-     * and tools; the node passes its Postgres intake (D-082).
+     * Deployments whose at-least-once flows save through a {@link SequentialIntake} over {@code messages} and {@code queue}, handing
+     * each item off to the flow's started worker, leased to the node {@code config.nodeId()} (D-121 (a)): tests and tools; the node
+     * passes its Postgres intake (D-082).
      */
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
                        ArchiveStore archives) {
-        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, new SequentialIntake(messages, queue));
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, new Workers());
+    }
+
+    private Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                        ArchiveStore archives, Workers workers) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives,
+                new SequentialIntake(messages, queue, workers, config.nodeId()), new InMemoryPollerLeases(clock),
+                new Targets(config.targets().defaults(), config.targets().overrides(), timer), () -> true, workers);
     }
 
     /** Deployments whose poller leases are held in this process's memory, on {@code clock}: one node alone (D-083). */
@@ -304,6 +315,18 @@ public final class Deployments {
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
                        ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases, targets, fence,
+                new Workers());
+    }
+
+    /**
+     * Deployments whose at-least-once workers register, while started, in {@code workers} — the node's, the one {@code intake}
+     * reserves its hand-off slots in (D-121 (a)); the other constructors give the deployments a registry of their own.
+     */
+    public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence, Workers workers) {
+        this.workers = Objects.requireNonNull(workers, "workers");
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
@@ -1424,7 +1447,7 @@ public final class Deployments {
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
-                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence);
+                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers);
     }
 
     /**
@@ -1490,7 +1513,7 @@ public final class Deployments {
     private List<Flow> consumers(List<Flow> flows, List<String> problems) {
         List<Flow> with = new ArrayList<>(flows.size());
         for (Flow f : flows) {
-            Function<Envelope, Future<Ack>> handler = f.worker() == null ? f.delivery() : f.worker().pollingAfterAccept(f.delivery());
+            Function<Envelope, Future<Ack>> handler = f.delivery();   // an at-least-once save hands its item off to the flow's worker (D-121 A6)
             EndpointConfig from = f.from();
             Component component = components.get(from.scheme());
             try {

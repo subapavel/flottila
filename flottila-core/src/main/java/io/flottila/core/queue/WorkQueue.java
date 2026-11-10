@@ -100,6 +100,21 @@ public interface WorkQueue {
     Future<Void> enqueue(String messageId, String flow, int step, String partitionKey);
 
     /**
+     * Appends a row handed out at once (D-121 A2, the local hand-off): when it heads its key — no other row of ({@code flow},
+     * {@code partitionKey}) exists, held or not, leased or not; a row without a key always heads it — it is written leased to
+     * {@code workerId} for {@code lease}, attempts 1, doubts 0, and answered as that hand-out; otherwise it is a plain row, as
+     * {@link #enqueue} appends it, and the answer is empty. A row written leased is the holder's as a claimed one is: renewed,
+     * completed, held by its attempts, and claimable again once its lease ran out, in doubt.
+     *
+     * <p>This default cannot hand off: it appends a plain row and answers empty.
+     *
+     * @since 0.1
+     */
+    default Future<Optional<Item>> enqueueLeased(String messageId, String flow, int step, String partitionKey, String workerId, Duration lease) {
+        return enqueue(messageId, flow, step, partitionKey).map(Optional.empty());
+    }
+
+    /**
      * Leases up to {@code max} rows to {@code workerId}: a row is claimable when it is not held, its lease is
      * free, it is the oldest row of its key (held rows included) and that key holds no live lease (or it has no key).
      * Each row handed out counts one more attempt; the rows come in seq order. A worker id is its node's id (D-101): another

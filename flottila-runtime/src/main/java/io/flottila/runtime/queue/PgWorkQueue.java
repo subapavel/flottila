@@ -16,7 +16,9 @@ import io.vertx.sqlclient.Tuple;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -47,23 +49,71 @@ import java.util.Optional;
  * incarnation's {@code lease_until}, {@code PgMembership}). The check is one primary-key probe per candidate that has a holder, so the claim
  * keeps FIX-130's bounded plan. A hand-out of a row whose holder left it unsettled counts a doubt ({@code work.doubts}).
  *
+ * <p>Local hand-off (D-121 (a), P2-16a): an enqueue given a holder and a lease ({@link #enqueueLeased}, the {@code SqlClient}
+ * overloads with {@code holder, lease}) writes the row leased to that holder — attempt 1, {@code locked_until} now + lease — when
+ * no other row of its key exists, and answers the leased item; otherwise the row is plain and the answer empty. Every keyed
+ * insert and every keyed complete first takes its key's transaction advisory lock ({@link #lockKeys}, class {@code 0x0121},
+ * {@code hashtext(flow ‖ U+001F ‖ key)}, keys in hash order; the complete takes it inside its own {@code WHERE}), so a same-key
+ * save never reads "no other row" past a completion that has not yet handed the key on (F-30). V15's {@code work_flow_key_seq}
+ * answers the key probes.
+ *
  * @since 0.1
  */
 public final class PgWorkQueue implements WorkQueue {
 
-    private static final String ENQUEUE = "insert into work(id, flow, step, partition_key) values ($1, $2, $3, $4)";
-    /** An item naming its body's record (the intake's, CORE-3 item 6), answering its transaction's id (CORE-4d: an in-doubt commit's). */
-    private static final String ENQUEUE_REF = "insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length) "
-            + "values ($1, $2, $3, $4, $5, $6, $7, $8) returning pg_current_xact_id()::text";
-    /** An item taking its source's ref: the key's ref row and its segment row held for key share, the item inserted from them. */
+    /**
+     * The per-key lock of every keyed insert and keyed complete (D-121 A3, F-30): a transaction advisory lock of two keys — this
+     * class and {@code hashtext(flow U+001F key)} — so a same-key insert waits for the commit of another before its own statement
+     * reads the key's rows, and a keyed complete's next-of-key read sees every same-key row committed before it. Taken in hash
+     * order, the subselect's sort evaluated before the lock (EXPLAIN VERBOSE, PG 17): two groups never wait for each other in a
+     * cycle, colliding hashes included. The argument needs READ COMMITTED (Postgres' default, every transaction here): a statement
+     * after the lock takes a snapshot of its own, so it sees what the lock waited for; under REPEATABLE READ or SERIALIZABLE the
+     * transaction's first snapshot would hide it.
+     */
+    static final int KEY_LOCK_CLASS = 0x0121;
+    /** The key locks of {@code $1}, each {@code flow U+001F key}, once each, in hash order. */
+    static final String KEY_LOCK = "select pg_advisory_xact_lock(" + KEY_LOCK_CLASS + ", h)"
+            + " from (select distinct hashtext(k) as h from unnest($1::text[]) as u(k) order by h) s";
+    /**
+     * The hand-off condition of an insert (D-121 A2) over the holder {@code $h}, the key {@code $4} of flow {@code $2}: a holder,
+     * and no other row of the key, held or not (a row without a key always heads it).
+     */
+    private static String heads(String holder) {
+        return holder + "::text is not null and ($4::text is null or not exists (select 1 from work o where o.flow = $2 and o.partition_key = $4))";
+    }
+
+    /** The lease columns of a row written leased when {@code leased}, plain otherwise; {@code $lease} in seconds. */
+    private static String lease(String leased, String holder, String seconds) {
+        return "case when " + leased + " then " + holder + " end, case when " + leased + " then now() + make_interval(secs => " + seconds
+                + ") end, (" + leased + ")::int";
+    }
+
+    /** A plain item, or leased to {@code $5} for {@code $6} seconds when it heads its key; its seq and attempts answered. */
+    private static final String ENQUEUE = "insert into work(id, flow, step, partition_key, locked_by, locked_until, attempts) "
+            + "select $1, $2, $3, $4, " + lease("l", "$5::text", "$6") + " from (select " + heads("$5") + " as l) h returning seq, attempts";
+    /**
+     * An item naming its body's record (the intake's, CORE-3 item 6), leased to {@code $9} for {@code $10} seconds when it heads its
+     * key, answering its seq, attempts and transaction's id (CORE-4d: an in-doubt commit's).
+     */
+    private static final String ENQUEUE_REF = "insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length, "
+            + "locked_by, locked_until, attempts) select $1, $2, $3, $4, $5, $6, $7, $8, " + lease("l", "$9::text", "$10")
+            + " from (select " + heads("$9") + " as l) h returning seq, attempts, pg_current_xact_id()::text as xid";
+    /**
+     * An item taking its source's ref: the key's ref row and its segment row held for key share, the item inserted from them —
+     * leased to {@code $8} for {@code $9} seconds when it heads its key and the ref lies in the holder's journal (a node claims only
+     * its own bodies, D-105).
+     */
     private static final String ENQUEUE_FROM = """
             with src as (select r.node, r.segment, r.position, r.length from body_refs r
                            join journal_segments s on s.node = r.node and s.segment = r.segment
                           where r.message_id = $5 and r.step = $6 and r.part = $7 and r.lost_at is null for key share),
-            ins as (insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length)
-                    select $1, $2, $3, $4, node, segment, position, length from src)
+            ins as (insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length, locked_by, locked_until, attempts)
+                    select $1, $2, $3, $4, node, segment, position, length, %s
+                      from (select src.*, %s and src.node = $8 as l from src) h
+                    returning seq, attempts)
             select (select count(*) from src),
-                   exists (select 1 from body_refs where message_id = $5 and step = $6 and part = $7 and lost_at is not null)""";
+                   exists (select 1 from body_refs where message_id = $5 and step = $6 and part = $7 and lost_at is not null),
+                   (select seq from ins), (select attempts from ins)""".formatted(lease("l", "$8::text", "$9"), heads("$8"));
 
     private static final String ELIGIBLE = """
             select w1.seq from work w1
@@ -110,8 +160,14 @@ public final class PgWorkQueue implements WorkQueue {
      */
     private static final String CURRENT = " where seq = $1 and attempts = $2 and attempts > 0 and held_at is null";
 
-    /** Only the current holder's row; the flow and key for the fast path's next-of-key claim. */
-    private static final String COMPLETE = "delete from work" + CURRENT + " returning id, flow, partition_key";
+    /**
+     * Only the current holder's row; the flow and key for the fast path's next-of-key claim. A keyed row is deleted under its key's
+     * lock (D-121 A3, F-30), taken in the statement itself: a same-key insert in flight commits first (and the next-of-key read or
+     * claim after this statement sees its row), or waits for this statement's transaction and then finds the key free. Under READ
+     * COMMITTED only (see {@link #KEY_LOCK_CLASS}): the next-of-key read is a later statement, with a snapshot taken after the lock.
+     */
+    private static final String COMPLETE = "delete from work" + CURRENT + " and (partition_key is null or (select true from pg_advisory_xact_lock("
+            + KEY_LOCK_CLASS + ", hashtext(flow || chr(31) || partition_key)))) returning id, flow, partition_key";
 
     private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
 
@@ -148,23 +204,67 @@ public final class PgWorkQueue implements WorkQueue {
         this.store = store;
     }
 
-    @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
-        return enqueue(pool, messageId, flow, step, partitionKey);
+    /**
+     * What an insert of an item answered (D-121 A2): the id of the transaction it ran in ({@code pg_current_xact_id()}, as text) and
+     * the item as handed out when it was written leased, else empty.
+     *
+     * @since 0.1
+     */
+    public record Enqueued(String xid, Optional<Item> leased) {
+        public Enqueued {
+            Objects.requireNonNull(xid, "xid");
+            Objects.requireNonNull(leased, "leased");
+        }
     }
 
-    /** {@link #enqueue(String, String, int, String)} on {@code client}: inside the caller's transaction, visible once it commits (D-082). */
-    public Future<Void> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey) {
-        return client.preparedQuery(ENQUEUE).execute(Tuple.of(messageId, flow, step, partitionKey)).mapEmpty();
+    /** A plain row; a keyed one in a transaction of its own under its key's lock ({@link #lockKeys}). */
+    @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
+        return enqueueLeased(messageId, flow, step, partitionKey, null, null).mapEmpty();
+    }
+
+    /** {@code workerId} null: a plain row. A keyed row is written in a transaction of its own under its key's lock ({@link #lockKeys}). */
+    @Override public Future<Optional<Item>> enqueueLeased(String messageId, String flow, int step, String partitionKey, String workerId, Duration lease) {
+        if (partitionKey == null) return enqueue(pool, messageId, flow, step, null, workerId, lease);
+        return pool.withTransaction(tx -> {
+            Future<Void> locked = lockKeys(tx, List.of(Map.entry(flow, partitionKey)));   // sent before the insert: one round trip
+            Future<Optional<Item>> inserted = enqueue(tx, messageId, flow, step, partitionKey, workerId, lease);
+            return locked.compose(held -> inserted);
+        });
     }
 
     /**
-     * The item on {@code client} naming its body's record {@code body} in the journal of {@code bodyNode} (the intake's, D-105). Answers
-     * the id of the transaction it ran in ({@code pg_current_xact_id()}, as text): a commit whose reply is lost asks
-     * {@code pg_xact_status} of it (CORE-3 item 6).
+     * Takes the key lock (D-121 A3) of each ({@code flow}, {@code key}) of {@code flowKeys} on {@code tx}, once each and in one order
+     * whatever the order given, until {@code tx} ends: sent before a keyed insert of the transaction, so the insert reads its key's
+     * rows only once every other same-key insert or keyed complete in flight committed. Nothing is sent for none.
      */
-    public Future<String> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, String bodyNode, JournalRef body) {
+    public Future<Void> lockKeys(SqlClient tx, Collection<Map.Entry<String, String>> flowKeys) {
+        if (flowKeys.isEmpty()) return Future.succeededFuture();
+        String[] names = flowKeys.stream().map(k -> k.getKey() + '\u001F' + k.getValue()).toArray(String[]::new);
+        return tx.preparedQuery(KEY_LOCK).execute(Tuple.of(names)).mapEmpty();
+    }
+
+    /**
+     * {@link #enqueueLeased} on {@code client}, inside the caller's transaction, visible once it commits (D-082): a keyed row under its
+     * key's lock, which the caller took on {@code client} before ({@link #lockKeys}). {@code holder} null: a plain row.
+     */
+    public Future<Optional<Item>> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, String holder, Duration lease) {
+        return client.preparedQuery(ENQUEUE).execute(Tuple.of(messageId, flow, step, partitionKey, holder, seconds(holder, lease)))
+                .map(rows -> leased(rows.iterator().next(), messageId, flow, step, partitionKey));
+    }
+
+    /**
+     * The item on {@code client} naming its body's record {@code body} in the journal of {@code bodyNode} (the intake's, D-105), written
+     * leased to {@code holder} for {@code lease} when it heads its key (D-121 A2; {@code holder} null: a plain row), under the key's
+     * lock the caller took ({@link #lockKeys}). Answers the id of the transaction it ran in ({@code pg_current_xact_id()}, as text: a
+     * commit whose reply is lost asks {@code pg_xact_status} of it, CORE-3 item 6) and the item when it was written leased.
+     */
+    public Future<Enqueued> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, String bodyNode, JournalRef body,
+                                    String holder, Duration lease) {
         return client.preparedQuery(ENQUEUE_REF).execute(Tuple.wrap(new Object[] {messageId, flow, step, partitionKey, bodyNode, body.segment(),
-                body.position(), body.length()})).map(rows -> rows.iterator().next().getString(0));
+                body.position(), body.length(), holder, seconds(holder, lease)})).map(rows -> {
+                    Row r = rows.iterator().next();
+                    return new Enqueued(r.getString("xid"), leased(r, messageId, flow, step, partitionKey));
+                });
     }
 
     /**
@@ -173,12 +273,41 @@ public final class PgWorkQueue implements WorkQueue {
      * {@code body} and inserts nothing — {@link BodyLostException} when an accepted loss gave that row up ({@code lost_at}).
      */
     public Future<Void> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, BlobKey body) {
+        return enqueue(client, messageId, flow, step, partitionKey, body, null, null).mapEmpty();
+    }
+
+    /**
+     * {@link #enqueue(SqlClient, String, String, int, String, BlobKey)} written leased to {@code holder} for {@code lease} when it heads
+     * its key and the ref lies in the holder's journal (D-121 A2; {@code holder} null: a plain row), under the key's lock the caller
+     * took ({@link #lockKeys}).
+     */
+    public Future<Optional<Item>> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, BlobKey body, String holder,
+                                         Duration lease) {
         return client.preparedQuery(ENQUEUE_FROM).execute(Tuple.wrap(new Object[] {messageId, flow, step, partitionKey, body.messageId(), body.step(),
-                body.part()})).compose(rows -> {
+                body.part(), holder, seconds(holder, lease)})).compose(rows -> {
                     Row r = rows.iterator().next();
-                    if (r.getLong(0) == 1) return Future.<Void>succeededFuture();
+                    if (r.getLong(0) == 1) {
+                        Integer attempts = r.getInteger(3);
+                        return Future.succeededFuture(attempts == 1
+                                ? Optional.of(new Item(r.getLong(2), messageId, flow, step, partitionKey, 1)) : Optional.<Item>empty());
+                    }
                     return Future.failedFuture(r.getBoolean(1) ? new BodyLostException(body) : new BlobNotFoundException(body));
                 });
+    }
+
+    /** The lease in seconds, null without a holder. */
+    private static Double seconds(String holder, Duration lease) {
+        return holder == null ? null : seconds(lease);
+    }
+
+    /** The row an insert answered as handed out — its first hand-out — when it was written leased (attempts 1), else empty. */
+    private static Optional<Item> leased(Row r, String messageId, String flow, int step, String partitionKey) {
+        return r.getInteger("attempts") == 1 ? Optional.of(new Item(r.getLong("seq"), messageId, flow, step, partitionKey, 1)) : Optional.empty();
+    }
+
+    /** The node this queue claims for, its hand-offs leased to (D-121 A2); empty for a queue of any node. */
+    public Optional<String> node() {
+        return Optional.ofNullable(node);
     }
 
     @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {

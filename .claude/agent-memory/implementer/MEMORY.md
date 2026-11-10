@@ -1,17 +1,15 @@
 # implementer — durable facts (seeded from agent/HANDOFF.md at the role split; prune when you add)
 ## Build
-- Agent files (logs, diffs, scratch harnesses, the batch marker) live in `agent/work/` (FIX-111), outside every Maven
-  `target/`, so any `mvn clean` leaves them; P1-08 r2 lost them when they lived in the root `target/`.
+- Agent files (logs, diffs, scratch, batch marker) live in `agent/work/` (FIX-111), outside every Maven `target/` (`mvn clean`).
+  Reviewer diff = `git diff <packet Base> -- . ':!agent' ':!.claude'`: red tests are committed at approval, absent from `git status`.
 - Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
   components need only `-pl flottila-api,flottila-testkit,<module>`.
-- Full check: `mvn -B -ntp -q verify -Pit > agent/work/<task>-verify.log 2>&1`; needs Docker and native Postgres, both die between
-  calls: start detached (NOTES "Build and VM"), check `docker info` first (~31 IT errors "find a Docker environment" = dockerd down).
+- `verify -Pit` needs Docker + native Postgres (die between calls: start detached, NOTES "Build and VM"; ~31 "find a Docker" errors = dockerd down).
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
 - `-q` prints no "Tests run:" lines: count `**/target/{surefire,failsafe}-reports/TEST-*.xml` RECURSIVELY (components/steps are
   nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start.
 - A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
   `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
-- Runtime figures need `-Pit`; a `-Dtest=` verify fails the floor: read surefire XML.
 - Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36 (schema count); public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
   a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
@@ -57,8 +55,10 @@
   .join()` waits uninterruptibly (no catch), for a never-failing close in a finally (P1-09k2). `andThen(Handler<AsyncResult>)` completes after
   the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause; on a platform thread it blocks on a latch.
 - AWS SDK 2.56.0 (javap): `RequestBody.fromFile` sizes at once (missing → UncheckedIOException); no credentialsProvider → `DefaultCredentialsProvider.builder()..build()`.
-- JDK 25 (P2-03b1): a vthread unblocked from a monitor is neither mounted nor queued until `VirtualThread-unblocker` queues it (MXBean misses it).
-  FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
+- P2-16a: Pg ITs save every message with partition key "K-1" ("keyed" in test names = dedupe key): a per-key xact lock blocks every held-COMMIT
+  fixture. `(key is null or (select true from pg_advisory_xact_lock(..)))` in a WHERE runs the lock in the same statement.
+- jqwik keeps a failing sample in the tracked `flottila-core/.jqwik-database` and replays it first (SAMPLE_FIRST): one property killing
+  EVERY mutant = a real bug sample (P2-16a). `git checkout` the file before a diff. Flakes: FlowWorkerOrderingPropertyTest:182 (FIX-155).
 - Vert.x 5.1.10 client (sources: `mvn dependency:get -Dartifact=io.vertx:vertx-core:5.1.10:jar:sources`, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
   loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
   `compose` can end unheard. `req.response().onSuccess(HttpClientResponse::pause)` registered BEFORE `send` runs inline in the head emit.
@@ -106,7 +106,7 @@
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
 - FlowWorker (P2-15a r2): a chain's end always polls once more (an empty claim) before poll()'s future completes: count claims that took items.
   Node.close keeps its `nodes` row (no release): a restart's own items wait for the old lease_until (≤ L); an IT restarting a node expires the row.
-- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1).
+- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1), PgIntakeJournalIT open-save (FIX-159).
 - Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
   on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
 - Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile` drops the `**/*$*`
@@ -115,5 +115,6 @@
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
 - Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp. PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn.
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).
+- P2-16a r3: slot calls moved after the answers race a side-effect check right after `settled(answer)` (wait with `until`).
 - P2-15b r1: a timer armed before an SPI call must be disarmed for a THROW and a NULL answer (requireNonNull inside the disarming try) and a
   throwing `Timer.schedule` in a producer is a failed future; a `<=` boundary on a clock needs a case landing exactly on it (mutant `<`).

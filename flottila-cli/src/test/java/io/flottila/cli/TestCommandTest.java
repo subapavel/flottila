@@ -44,8 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * package problem ({@code problem: <text>} lines, as validate prints them, and no case line) or no test document; 2 on usage.
  *
  * <p>Flow times follow from the fixtures: mock delays and the retry backoff 100 + 200 + 400 ms (attempts 3, multiplier 2); the
- * at-least-once flow's worker polls once after each {@code Accepted} ({@code FlowWorker.pollingAfterAccept}), so its message
- * runs at once, not at the worker's first tick.
+ * at-least-once flow's saved message is handed off to its worker (D-121), so it runs at once, not at the worker's first tick.
  */
 class TestCommandTest {
 

@@ -351,8 +351,10 @@ class PgIntakeGroupEdgeIT {
         connecting.release();
 
         for (Future<String> save : decided) failedWith(save, "a decided member", "abandoned");
-        // a save after them: its slot is the decided group's once that group is done, its connection that group's second one
-        Future<String> after = call(two, a.arrive("m-after", bytes(500, 21)), FLOW, null);
+        // a save after them: its slot is the decided group's once that group is done, its connection that group's second one;
+        // P2-16a (D-121 A3): under another key than the plug's, whose held COMMIT holds K-1's lock
+        Envelope later = a.arrive("m-after", bytes(500, 21));
+        Future<String> after = OnVirtualThread.join(OnVirtualThread.start(() -> two.save(later, JournalWorld.ingress(later), FLOW, "K-2", null, true, undecided())));
         SegmentSweepIT.until(() -> { clock.advance(Duration.ofMillis(50)); return after.isComplete(); }, () -> "the save after them is answered");
         assertTrue(after.succeeded(), "it saved: " + after.cause());
         List<String> sent = PgIntakeRoundTripIT.heads(wire.statementsSince(mark));

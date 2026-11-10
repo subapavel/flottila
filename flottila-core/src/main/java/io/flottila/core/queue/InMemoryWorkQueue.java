@@ -57,6 +57,20 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture();
     }
 
+    /** The row, leased to {@code workerId} under the membership's epoch as a claim leases it, when it heads its key. */
+    @Override public synchronized Future<Optional<Item>> enqueueLeased(String messageId, String flow, int step, String partitionKey, String workerId,
+                                                                      Duration lease) {
+        Objects.requireNonNull(messageId, "messageId");
+        Objects.requireNonNull(flow, "flow");
+        Objects.requireNonNull(workerId, "workerId");
+        Objects.requireNonNull(lease, "lease");
+        long seq = nextSeq++;
+        Row row = new Row(new Item(seq, messageId, flow, step, partitionKey, 0));
+        boolean heads = eligible(row);   // no row of its key is older: none exists, as it is the newest
+        rows.put(seq, row);
+        return Future.succeededFuture(heads ? Optional.of(take(row, workerId, clock.instant(), lease)) : Optional.empty());
+    }
+
     @Override public synchronized Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {
         Instant now = clock.instant();
         List<Item> taken = new ArrayList<>();

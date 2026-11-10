@@ -327,7 +327,9 @@ class FlowWorkerHandoffTest {
         assertEquals(1, w.row(after.id()).attempts());
         w.finish(after.id());
         assertEquals(claims, w.queue.claims().size(), "no claim for the handed-off message: " + w.queue.claims());
-        assertEquals(List.of(b1.id(), b2.id(), b3.id(), late.id(), after.id()), w.entered(), "a new arrival never overtakes a spilled row");
+        // b1 and b2 start together from the start claim: either may pass the gate first (P2-16a implementer: a race, not an order)
+        assertEquals(java.util.Set.of(b1.id(), b2.id()), java.util.Set.copyOf(w.entered().subList(0, 2)), "the start claim's two first");
+        assertEquals(List.of(b3.id(), late.id(), after.id()), w.entered().subList(2, 5), "a new arrival never overtakes a spilled row");
     }
 
     @Test
@@ -459,6 +461,7 @@ class FlowWorkerHandoffTest {
         assertEquals(Optional.empty(), w.holder(k2.id()));
         Envelope l1 = w.accept(delivery, "L");
         assertEquals(Optional.of(NODE), w.holder(l1.id()), "the busy key's slot was given back: the other key's save takes it");
+        w.runOf(l1.id());   // its run at the gate before k1 ends (P2-16a implementer: else k2's hand-on may pass the gate first)
 
         w.finish(k1.id());   // the holder hands its key on by the fast path
         RunGate.Run next = w.runOf(k2.id());

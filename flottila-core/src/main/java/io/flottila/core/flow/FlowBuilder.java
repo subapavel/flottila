@@ -139,6 +139,7 @@ public final class FlowBuilder {
     private boolean stepEvents;   // false: no step is marked (D-094, owner decision 2026-11-03)
     private Targets targets;
     private BooleanSupplier fence = OPEN;
+    private Workers workers = new Workers();
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -246,6 +247,16 @@ public final class FlowBuilder {
         return this;
     }
 
+    /**
+     * Registers the workers built from now on, while started, in {@code workers} — the node's, the one its intake reserves its
+     * hand-off slots in (D-121 (a)); it replaces the registry of an earlier call. Without a call the builder has a registry of its
+     * own, which no intake asks.
+     */
+    public FlowBuilder workers(Workers workers) {
+        this.workers = Objects.requireNonNull(workers, "workers");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory, D-078). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
         return built(flow, baseDir, OPEN).pipeline(true);
@@ -335,9 +346,9 @@ public final class FlowBuilder {
 
     /**
      * The worker {@code workerId} of an at-least-once flow (see {@link FlowWorker}) under {@code policy}: runs at most the flow's
-     * in-flight request limit of items at once and the pipeline without stage 0, leases and polls on the runtime's timer and
-     * parks an item past {@link WorkerPolicy#maxAttempts()} at the flow's first step. Needs the store, the {@link #queue} and
-     * the {@link #dlq}.
+     * in-flight request limit of items at once and the pipeline without stage 0, leases and polls on the runtime's clock and timer,
+     * parks an item past {@link WorkerPolicy#maxAttempts()} at the flow's first step and, while started, is registered in the
+     * {@link #workers} registry. Needs the store, the {@link #queue} and the {@link #dlq}.
      */
     public FlowWorker worker(FlowDefinition flow, Path baseDir, String workerId, WorkerPolicy policy) {
         Objects.requireNonNull(flow, "flow");
@@ -348,7 +359,7 @@ public final class FlowBuilder {
         Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
         Built built = built(flow, baseDir, fence);
         return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), built.pipeline(false),
-                parking, flow.steps().get(0), runtime.timer(), built.producers(), fence);
+                parking, flow.steps().get(0), runtime.clock(), runtime.timer(), built.producers(), fence, workers);
     }
 
     private void requireStoreAndQueue(FlowDefinition flow, String what) {

@@ -1,4 +1,17 @@
 
+## 2026-11-10 — P2-16a local hand-off: a saved item runs on its node without a claim (D-121 (a) draft, F-30) — done, review PASS (r3)
+Context compacted once mid-task (re-verified with git status / log -3). Deviation: ARCHITECTURE §4/§7 + changelog 3.5 (no accept poll)
+Test first: FlowWorkerHandoffTest, PgIntakeHandoffIT, HandoffKeyOrderProperties, WorkQueueContract (red agent/work/P2-16a-red.log);
+after review: FlowWorkerHandoffEdgeTest, FlowWorkerHandoffRefusedRunTest, PgIntakeHandoffGroupIT/LogIT, +R1–R14 IT cases
+Changed: core Workers + FlowWorker.Slot; WorkQueue.enqueueLeased; the intake writes a heading item leased (attempts 1) in its
+transaction; per-key advisory lock on keyed inserts and completes (READ COMMITTED); V15 work(flow, partition_key, seq); accept poll
+gone, lease-end wake instead; claim-room fix (`asking`, found by jqwik); slot calls after the answers, isolated, cleanup suppressed
+Test edits (wrong expectations by design, named in the packet): 12 key-lock ITs, SegmentSweepIT, 17 lease-end core tests, V15 counts
+Checks: verify -Pit (no bench) VERIFIED_PASS 3428 tests, 375 fresh XML · BenchMainIT 2/0 · coverage no decrease · PIT 199/206
+(FlowWorker*/SequentialIntake) · hand mutants M01–M34, R01–R15, O01–O12, r4/r6 logs; survivors argued in the packet
+Review: r1 FAIL (untested paths R1–R3, slot-call order R4), r2 FAIL (lease left renewing N1, primary lost N2), r3 PASS
+Opened: FIX-156 (ledger ack flake), FIX-157 (M20 lost-lease wake), FIX-158 (claimed() loop leak), FIX-159 (open-save flake, base)
+Next: P2-16b (events between nodes, PT30S reconciliation), then CORE-7
 ## 2026-11-10 — P2-15c kill -9 ledger and SIGSTOP acceptance (D-112, F-28) — done, review PASS (r2)
 Test: NodeTakeoverLedgerIT (child JVM nodes, Testcontainers PG) — acceptance, green on today's code; red by hand mutants
 Case 1 kill -9 A at 1000 ACKs: 2000 ACKed, partner distinct 2000, raw duplicates 8 = A in flight 8, Σdoubts 8 = reruns 8, none

@@ -102,9 +102,10 @@ class DeploymentsFenceTest {
         modes.put("orders", "sync");
         OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), DeploymentsTest.flows("shop", modes).zipTo(archives)));
 
+        int askedAtStart = asked.get();   // P2-16a (D-121 A6): the at-least-once worker's one start claim asks the fence; the sync flow does not
         Envelope sync = delivered("shop/orders", Ack.Reply.class);
         assertEquals(List.of(sync.id()), doors.partner().sentTo("partner").stream().map(Envelope::id).toList(), "a sync flow sends under a closed fence");
-        assertEquals(0, asked.get(), "and never asks it");
+        assertEquals(askedAtStart, asked.get(), "and never asks it");
 
         int claimsBefore = queue.claims().size();
         Envelope alo = delivered("shop/audit", Ack.Accepted.class);

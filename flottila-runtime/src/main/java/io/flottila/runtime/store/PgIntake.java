@@ -5,7 +5,10 @@ import io.flottila.api.Envelope;
 import io.flottila.api.Timer;
 import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.batch.OverloadedException;
+import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.flow.Intake;
+import io.flottila.core.flow.Workers;
+import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.journal.JournalRef;
@@ -149,6 +152,8 @@ public final class PgIntake implements Intake {
         final Map<Member, String> firsts = new HashMap<>();   // a key taken: the id its row names
         final Set<Member> gone = new HashSet<>();             // a key taken by a row that is gone
         final List<Member> writing = new ArrayList<>();       // the members writing rows
+        final Map<Member, FlowWorker.Slot> slots = new HashMap<>();   // a member writing rows with a hand-off slot reserved
+        final Map<Member, WorkQueue.Item> leased = new ConcurrentHashMap<>();   // a member whose item was written leased
         final AtomicReference<String> xid = new AtomicReference<>();
 
         Group(List<Member> members) { this.members = members; }
@@ -175,6 +180,7 @@ public final class PgIntake implements Intake {
     private final TieredBlobStore blobs;
     private final PgMessageStore messages;
     private final PgWorkQueue queue;
+    private final Workers workers;   // null: no hand-off
     private final BatchingWriter<Member> writer;
     /** The members whose group's commit is in doubt, by transaction id. */
     private final Map<String, List<TieredBlobStore.Durable>> inDoubt = new ConcurrentHashMap<>();
@@ -186,17 +192,31 @@ public final class PgIntake implements Intake {
     private final LongAdder bytes = new LongAdder();
     private final LongAdder reruns = new LongAdder();
 
-    /** An intake whose every save is a group of one ({@link NodeConfig.IntakeGroup#SINGLE}). */
+    /** An intake whose every save is a group of one ({@link NodeConfig.IntakeGroup#SINGLE}), handing nothing off. */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue) {
-        this(pool, blobs, messages, queue, NO_WINDOW, NodeConfig.IntakeGroup.SINGLE);
+        this(pool, blobs, messages, queue, null, NO_WINDOW, NodeConfig.IntakeGroup.SINGLE);
     }
 
-    /** An intake grouping its saves as {@code group} says, its window on {@code timer}. */
+    /** An intake whose every save is a group of one, handing its items off to the started workers of {@code workers} (D-121 (a)). */
+    public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers) {
+        this(pool, blobs, messages, queue, Objects.requireNonNull(workers, "workers"), NO_WINDOW, NodeConfig.IntakeGroup.SINGLE);
+    }
+
+    /** An intake grouping its saves as {@code group} says, its window on {@code timer}, handing nothing off. */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Timer timer, NodeConfig.IntakeGroup group) {
+        this(pool, blobs, messages, queue, null, timer, group);
+    }
+
+    /**
+     * An intake grouping its saves as {@code group} says, its window on {@code timer}, handing its items off to the started workers
+     * of {@code workers} (null: none), leased to the node of {@code queue} — a queue of no node hands nothing off.
+     */
+    public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group) {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.queue = Objects.requireNonNull(queue, "queue");
+        this.workers = queue.node().isPresent() ? workers : null;
         this.writer = new BatchingWriter<>(this::run, timer, new BatchingWriter.Options(group.max(), group.window(), group.concurrency(),
                 group.max() * group.concurrency() * 16), Member::weight, group.bytes());
     }
@@ -311,7 +331,11 @@ public final class PgIntake implements Intake {
                     .eventually(conn::close)
                     .transform(outcome -> {   // the commit or the rollback acknowledged: the members answered, out of the open saves first
                         if (outcome.succeeded()) return answered(g);
-                        if (outcome.cause() instanceof RolledBack rolledBack) return failed(g.members, rolledBack.getCause());
+                        if (outcome.cause() instanceof RolledBack rolledBack) {
+                            Future<Void> rerun = failed(g.members, rolledBack.getCause());   // answered (or run again) first
+                            cancelSlots(g, false);   // nothing of the group landed; a member run again alone reserves anew
+                            return rerun;
+                        }
                         notCommitted(g, outcome.cause());
                         return Future.succeededFuture();
                     });
@@ -357,10 +381,16 @@ public final class PgIntake implements Intake {
     private Future<Boolean> writes(SqlClient tx, Group g) {
         for (Member m : g.members) if (!g.firsts.containsKey(m) && !g.gone.contains(m)) g.writing.add(m);
         if (g.writing.isEmpty()) return Future.succeededFuture(false);
-        List<Future<?>> replies = new ArrayList<>(1 + 2 * g.writing.size());
+        List<Future<?>> replies = new ArrayList<>(2 + 2 * g.writing.size());
+        List<Map.Entry<String, String>> keys = new ArrayList<>();
+        for (Member m : g.writing) {
+            if (m.partitionKey() != null) keys.add(Map.entry(m.flow(), m.partitionKey()));
+            if (workers != null) workers.reserve(m.flow()).ifPresent(slot -> g.slots.put(m, slot));   // just before its insert (D-121 A1)
+        }
+        replies.add(queue.lockKeys(tx, keys));   // the keys' locks before any keyed insert reads its key (D-121 A3); none without a key
         replies.add(messages.insert(tx, g.writing.stream().map(Member::ingress).toList()));
         for (Member m : g.writing) {
-            replies.add(enqueue(tx, m, g.xid));
+            replies.add(enqueue(tx, m, g));
             if (m.keepInput() && m.durable() != null) replies.add(m.durable().keepIn(tx));
         }
         return Future.join(replies).compose(written -> {
@@ -370,18 +400,68 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * The item: naming the record forced for it (its insert answering the transaction's id, into {@code xid}); taking the kept ref of
-     * a body durable already; naming nothing for another store's body.
+     * The item: naming the record forced for it (its insert answering the transaction's id, into {@code g.xid}); taking the kept ref of
+     * a body durable already; naming nothing for another store's body. With a slot reserved for {@code m}, written leased to the
+     * queue's node for the slot's lease when it heads its key, into {@code g.leased}.
      */
-    private Future<Void> enqueue(SqlClient tx, Member m, AtomicReference<String> xid) {
+    private Future<Void> enqueue(SqlClient tx, Member m, Group g) {
         String id = m.arrived().id();
         TieredBlobStore.Durable durable = m.durable();
-        if (durable == null) return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey());
-        if (durable.ref() == null) return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), m.arrived().body().key());
-        return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), durable.node(), durable.ref()).map(txid -> {
-            xid.set(txid);
-            return null;
+        FlowWorker.Slot slot = g.slots.get(m);
+        String holder = slot == null ? null : queue.node().orElseThrow();
+        java.time.Duration lease = slot == null ? null : slot.lease();
+        if (durable == null) return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), holder, lease).map(item -> leased(g, m, item));
+        if (durable.ref() == null) {
+            return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), m.arrived().body().key(), holder, lease).map(item -> leased(g, m, item));
+        }
+        return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), durable.node(), durable.ref(), holder, lease).map(written -> {
+            g.xid.set(written.xid());
+            return leased(g, m, written.leased());
         });
+    }
+
+    /** {@code m}'s item, if written leased, kept for its slot. */
+    private static Void leased(Group g, Member m, java.util.Optional<WorkQueue.Item> item) {
+        item.ifPresent(i -> g.leased.put(m, i));
+        return null;
+    }
+
+    /**
+     * Once {@code g} committed and its members answered (D-121 A4): each member's reserved slot runs its item written leased, or is
+     * given back (its key busy: the key's holder hands it on) — each call {@link #isolated}; each flow with a member saved without
+     * a slot has its worker woken, once.
+     */
+    private void handOff(Group g) {
+        Set<String> spilled = new java.util.LinkedHashSet<>();
+        for (Member m : g.writing) {
+            FlowWorker.Slot slot = g.slots.get(m);
+            WorkQueue.Item item = g.leased.get(m);
+            if (slot == null) spilled.add(m.flow());
+            else if (item != null) isolated(m, "run", () -> slot.run(item));
+            else isolated(m, "give back", () -> slot.cancel(false));
+        }
+        if (workers != null) spilled.forEach(workers::wake);
+    }
+
+    /**
+     * Every slot of {@code g} given back, each call {@link #isolated}: its group did not commit; {@code mayHaveLanded}, its commit
+     * is in doubt.
+     */
+    private static void cancelSlots(Group g, boolean mayHaveLanded) {
+        g.slots.forEach((m, slot) -> isolated(m, "give back", () -> slot.cancel(mayHaveLanded)));
+    }
+
+    /**
+     * {@code call} on {@code m}'s slot, after the bookkeeping it sits beside: a throw is logged at WARNING and changes no answer nor
+     * skips another slot; an item written leased stays to its lease, claimed at its end.
+     */
+    private static void isolated(Member m, String what, Runnable call) {
+        try {
+            call.run();
+        } catch (RuntimeException | Error thrown) {
+            LOG.log(System.Logger.Level.WARNING, "the hand-off slot of message " + m.arrived().id() + " of flow " + m.flow() + " failed to "
+                    + what + "; an item written leased is claimed at its lease end: " + thrown, thrown);
+        }
     }
 
     /**
@@ -425,9 +505,10 @@ public final class PgIntake implements Intake {
     /**
      * {@code g} done (committed, or rolled back with no member writing rows): each member writing rows committed and answering its
      * own id; each with its key taken out of the open saves, its body evicted, answering the id its key's row names; each whose
-     * key's row is gone failed. Completes once every member is answered.
+     * key's row is gone failed; then the {@linkplain #handOff hand-off}. Completes once every member is answered.
      */
     private Future<Void> answered(Group g) {
+        for (Member m : g.writing) if (m.durable() != null) m.durable().committed();   // the ref indexed, the local copy gone: then the runs read it
         List<Future<String>> answers = new ArrayList<>(g.members.size());
         for (Member m : g.members) {
             String first = g.firsts.get(m);
@@ -438,11 +519,11 @@ public final class PgIntake implements Intake {
                 fail(m, new IllegalStateException("the dedupe key of " + m.arrived().id() + " is taken in flow " + m.flow()
                         + " by a row that is gone (retention): no message to name; not saved"));
             } else {
-                if (m.durable() != null) m.durable().committed();   // the ref indexed, the local copy gone
                 m.answer().tryComplete(m.arrived().id());
             }
             answers.add(m.answer().future());
         }
+        handOff(g);   // after the answers: a slot call never decides one
         return Future.join(answers).<Void>mapEmpty().otherwiseEmpty();
     }
 
@@ -470,7 +551,8 @@ public final class PgIntake implements Intake {
     /**
      * {@code g}'s commit failed with {@code cause}: every member fails with it; with the reply lost ({@link InDoubt}) the members
      * writing rows stay open by its transaction id, the rest — and every member of a commit refused or lost before an id was known —
-     * out of the open saves.
+     * out of the open saves. Then every slot is given back ({@link #cancelSlots}) and, the commit not refused, each flow with a
+     * member saved without a slot has its worker woken.
      */
     private void notCommitted(Group g, Throwable cause) {
         List<Member> open = List.of();
@@ -483,6 +565,11 @@ public final class PgIntake implements Intake {
         for (Member m : g.members) {
             if (!open.contains(m)) rolledBack(m);
             m.answer().tryFail(cause);
+        }
+        boolean mayHaveLanded = !refused(cause);   // the doubt registered and every member answered: then the slots
+        cancelSlots(g, mayHaveLanded);   // in doubt: each slot's worker claims the row at its lease end, if it landed
+        if (mayHaveLanded && workers != null) {
+            for (Member m : g.writing) if (!g.slots.containsKey(m)) workers.wake(m.flow());   // a plain row that may have landed
         }
     }
 

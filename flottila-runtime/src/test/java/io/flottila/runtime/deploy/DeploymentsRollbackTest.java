@@ -290,12 +290,13 @@ class DeploymentsRollbackTest {
     }
 
     /**
-     * Waits until the one message sent since {@code before} (the flow's claims then) completed and the worker polled once after
-     * it finished — a worker polls once after an accepted message and once after each finished item (FlowWorker), so that is
-     * {@code before + 2} — and returns the claims then: the claims counted next are the tick's alone, not that post-finish poll.
+     * Waits until the one message sent since {@code before} (the flow's claims then) completed and the worker claimed it — P2-16a
+     * (D-121 A6): the save wakes the worker (this queue cannot hand off), whose one claim answers less than it asked, so the item's
+     * end claims nothing; that is {@code before + 1} (until P2-16a the accept and the finished item each polled: {@code before + 2})
+     * — and returns the claims then: the claims counted next are the tick's alone.
      */
     long completedAndPolledAfter(String flow, long before) {
-        until(() -> queue.size() == 0 && claimsOf(flow) == before + 2,
+        until(() -> queue.size() == 0 && claimsOf(flow) == before + 1 && queue.claimsSettled(),
                 "the message completed and " + flow + "'s worker polled after it was accepted and after it finished (claims before: " + before + ")");
         return claimsOf(flow);
     }

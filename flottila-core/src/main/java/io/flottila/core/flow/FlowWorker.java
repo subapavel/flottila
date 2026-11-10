@@ -1,6 +1,5 @@
 package io.flottila.core.flow;
 
-import io.flottila.api.Ack;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Envelope;
 import io.flottila.api.Pipeline;
@@ -18,15 +17,18 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 
 /**
  * Runs what an at-least-once {@link Delivery} accepted (ARCHITECTURE §4 lifecycle table, D-049 c, D-055). A round claims the
@@ -80,14 +82,27 @@ import java.util.function.Function;
  * checks the same fence before each send and fails it with a {@link FencedException}, never retried and never parked, and a step's
  * failure under a closed fence is not parked but surfaces as a {@link FencedException} with that failure as its cause (no DLQ row).
  *
- * <p>What polls: {@link #poll()}; a {@linkplain #start() started} worker every {@link WorkerPolicy#pollInterval()} on the
- * timer; the handler of {@link #pollingAfterAccept} after each {@link Ack.Accepted}; and the end of each chain (an item no
- * fast path followed), once, so a backlog drains without waiting for a tick. A poll nobody waits for logs its failure and
- * never throws. {@link #stop()} ends
- * all of that; items already claimed run to their end and keep their lease renewed. A worker built later over the same store
- * and queue finishes what an earlier one accepted. {@link #close()} (FIX-30) closes the producers the builder created for its
- * pipeline once it was stopped and nothing it claimed still runs. Built by {@link FlowBuilder#worker}; it holds only what the builder handed it — the timer,
- * the policy, the parking, the first step and the producers — never the {@code Runtime}.
+ * <p>The local hand-off (D-121 (a), P2-16a). A {@linkplain #start() started} worker is registered in the node's {@link Workers}
+ * until its {@link #stop()}; the intake asks it for a {@link Slot} before its insert ({@link Workers#reserve}) — none while the
+ * node's fence is closed, the worker is stopped, its room ({@code max − running − reserved}, less what a claim in flight asked
+ * for) is taken or a backlog is known — and the item it writes leased to the node (attempts 1, the policy's lease) runs in that
+ * slot after the commit ({@link Slot#run}) as a claimed item does: renewed, fenced, settled, parked past {@link WorkerPolicy#maxAttempts()}. A slot is
+ * never refused once reserved: it runs after {@link #stop()}, and fenced under a closed fence. A slot whose item was not
+ * written leased is given back ({@link Slot#cancel}); one whose commit is in doubt arms the lease-end wake below.
+ *
+ * <p>What claims: {@link #poll()}; {@link #start()}, once, then every {@link WorkerPolicy#pollInterval()} on the timer; a
+ * {@linkplain Workers#wake wake}; and the end of a chain (an item no fast path followed) only while a backlog is known. The
+ * backlog flag is set from the start, by a wake (a save without a slot, a released hold), by a claim that filled the room it
+ * asked for and by a keyed item settled plainly at the chain's bound (its key goes back to the claim); a claim answering less
+ * than it asked clears it, unless a wake came since it was issued. An item left to its lease — its run left it, its settle was
+ * skipped under a closed fence or failed, its lease was found lost, or its hand-off's commit is in doubt — arms the lease-end
+ * wake: one timer at the policy's lease from then, which claims; items left while it is armed fold into it, a later one
+ * arming it again for its own end once it fired. A poll nobody waits for logs its failure and never throws. {@link #stop()}
+ * ends all of that; items already claimed or reserved run to their end and keep their lease renewed. A worker built later
+ * over the same store and queue finishes what an earlier one accepted. {@link #close()} (FIX-30) closes the producers the
+ * builder created for its pipeline once it was stopped and nothing it claimed or reserved still runs. Built by
+ * {@link FlowBuilder#worker}; it holds only what the builder handed it — the clock, the timer, the policy, the parking, the
+ * first step, the producers and the node's {@link Workers} — never the {@code Runtime}.
  *
  * @since 0.1
  */
@@ -108,18 +123,27 @@ public final class FlowWorker {
     private final Timer timer;
     private final Producers producers;
     private final BooleanSupplier fence;
+    private final Clock clock;
+    private final Workers workers;
 
     private final Object lock = new Object();
     private final Map<Long, Lease> running = new HashMap<>();   // guarded by lock: claimed by this worker and not finished
+    private int reserved;                                        // guarded by lock: slots handed out, not yet run or cancelled
     private boolean claiming;                                    // guarded by lock: a claim is in flight
+    private int asking;                                          // guarded by lock: the room the claim in flight asked for, 0 without one
     private Promise<Integer> followUp;                           // guarded by lock: the round after the claim in flight
+    private boolean backlog = true;                              // guarded by lock: rows may wait for a claim (D-121 A6)
+    private long wakes;                                          // guarded by lock: wakes so far; a claim clears the backlog only with none since it began
+    private Timer.Cancellable leaseEnd;                          // guarded by lock: the armed lease-end wake, null: none
+    private Instant laterEnd;                                    // guarded by lock: the end of an item left after it was armed, null: none
     private Timer.Cancellable tick;                              // guarded by lock
     private boolean stopped;                                     // guarded by lock
     private Promise<Void> closed;                                // guarded by lock: null until close(); then the close every call returns
     private final AtomicLong staleSettles = new AtomicLong();
 
     FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, WorkQueue queue, MessageStore store, BlobStore blobs,
-               Pipeline pipeline, Parking parking, StepConfig firstStep, Timer timer, Producers producers, BooleanSupplier fence) {
+               Pipeline pipeline, Parking parking, StepConfig firstStep, Clock clock, Timer timer, Producers producers, BooleanSupplier fence,
+               Workers workers) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.max = max;
@@ -133,29 +157,36 @@ public final class FlowWorker {
         this.timer = Objects.requireNonNull(timer, "timer");
         this.producers = Objects.requireNonNull(producers, "producers");
         this.fence = Objects.requireNonNull(fence, "fence");
+        this.clock = Objects.requireNonNull(clock, "clock");
+        this.workers = Objects.requireNonNull(workers, "workers");
     }
 
     /**
-     * One round: claims up to the flow's in-flight request limit less the items this worker still runs and processes them.
+     * One round: claims up to the flow's in-flight request limit less the items this worker still runs and the slots it reserved,
+     * and processes them.
      * Completes, once every item the round started — the items its fast paths took after them included — is done with —
      * completed, held or left to its lease — with the number
-     * of items the claim returned; 0 without a claim when the node's fence is closed, the worker runs its limit or is stopped. Requested while a claim is
-     * in flight, it returns the one round that starts once that claim returns, shared by every poll requested meanwhile.
+     * of items the claim returned; 0 without a claim when the node's fence is closed, the worker has no room or is stopped. Requested while a claim is
+     * in flight, it returns the one round that starts once that claim returns, shared by every poll requested meanwhile. A claim
+     * that returns the room it asked for keeps the backlog known; one returning less clears it, unless a wake came meanwhile.
      * Fails when the claim fails or throws, or when a completion, fast path or hold in the queue fails; one that answers false
      * or stale ({@link #staleSettles()}) is no failure.
      */
     public Future<Integer> poll() {
         if (!fence.getAsBoolean()) return Future.succeededFuture(0);   // the node's fence closed (D-101 (2)): no TAKE, nothing claimed
         int room;
+        long since;
         synchronized (lock) {
             if (stopped) return Future.succeededFuture(0);
             if (claiming) {
                 if (followUp == null) followUp = Promise.promise();
                 return followUp.future();
             }
-            room = max - running.size();
+            room = max - running.size() - reserved;
             if (room <= 0) return Future.succeededFuture(0);
             claiming = true;
+            asking = room;
+            since = wakes;
         }
         Future<List<WorkQueue.Item>> claim;
         try {
@@ -163,26 +194,103 @@ public final class FlowWorker {
         } catch (Throwable thrown) {   // a queue that throws instead of failing its future: the same failed round, never a wedged worker
             claim = Future.failedFuture(thrown);
         }
-        return claim.transform(this::claimed);
+        return claim.transform(answer -> claimed(answer, room, since));
     }
 
-    /** Polls every {@link WorkerPolicy#pollInterval()} on the timer until {@link #stop()}; a second call, or one after stop, does nothing. */
+    /**
+     * Registers this worker in the node's {@link Workers} for its flow, claims once and then every
+     * {@link WorkerPolicy#pollInterval()} on the timer until {@link #stop()}; a second call, or one after stop, does nothing.
+     */
     public void start() {
         synchronized (lock) {
             if (stopped || tick != null) return;
             tick = timer.schedule(policy.pollInterval(), this::tick);
         }
+        workers.register(flow, this);
+        pollFor("at the start");
     }
 
     /**
-     * Cancels the tick; from now on no round starts. Items already claimed — those of a claim in flight and of a fast path in
-     * flight included — run to their end and keep their lease renewed; a finished item takes no next one and polls no more.
+     * Leaves the node's {@link Workers}, cancels the tick and the lease-end wake; from now on no round starts and no slot is
+     * reserved. Items already claimed — those of a claim in flight and of a fast path in flight included — and slots already
+     * reserved run to their end and keep their lease renewed; a finished item takes no next one and polls no more.
      */
     public void stop() {
         synchronized (lock) {
             stopped = true;
             if (tick != null) tick.cancel();
+            if (leaseEnd != null) leaseEnd.cancel();
+            leaseEnd = null;
+            laterEnd = null;
         }
+        workers.deregister(flow, this);
+    }
+
+    /**
+     * One hand-off reserved in this worker (D-121 A1, A5): the room of one item, taken until it is {@linkplain #run run} with the
+     * item the intake wrote leased to the node or {@linkplain #cancel cancelled}, exactly once. A reserved slot is never refused:
+     * it runs after the worker's stop, and fenced under a closed fence; {@link #close()} waits for it.
+     *
+     * @since 0.1
+     */
+    public final class Slot {
+
+        private final AtomicBoolean used = new AtomicBoolean();
+
+        private Slot() {
+        }
+
+        /** The lease the item is to be written with: the worker's {@link WorkerPolicy#lease()}. */
+        public Duration lease() {
+            return policy.lease();
+        }
+
+        /**
+         * Runs {@code leased} — the item written leased to this worker's node by the save the slot was reserved for, its commit
+         * acknowledged — in this slot, as a claimed item runs: renewed, fenced, settled, parked past its attempts.
+         *
+         * @throws IllegalStateException the slot was run or cancelled already
+         */
+        public void run(WorkQueue.Item leased) {
+            Objects.requireNonNull(leased, "leased");
+            use();
+            handedOff(leased);
+        }
+
+        /**
+         * Gives the room back: the save failed or its item was not written leased (its key busy: the key's holder hands it on).
+         * {@code mayHaveLanded} — the commit is in doubt — arms the lease-end wake, which claims the row once its lease ran out; the
+         * room is back before the wake is armed, so a timer that throws reaches the caller with the room given back.
+         *
+         * @throws IllegalStateException the slot was run or cancelled already
+         */
+        public void cancel(boolean mayHaveLanded) {
+            use();
+            cancelled(mayHaveLanded);
+        }
+
+        private void use() {
+            if (!used.compareAndSet(false, true)) throw new IllegalStateException("a slot of worker " + workerId + " of flow " + flow + " is run or cancelled once");
+        }
+    }
+
+    /** A slot of this worker (see {@link Workers#reserve}); empty while the fence is closed, it is stopped, it has no room or a backlog is known. */
+    Optional<Slot> reserve() {
+        if (!fence.getAsBoolean()) return Optional.empty();   // a node that cannot prove its lease leases nothing to itself
+        synchronized (lock) {
+            if (stopped || backlog || max - running.size() - reserved - asking <= 0) return Optional.empty();   // a claim out holds what it asked
+            reserved++;
+        }
+        return Optional.of(new Slot());
+    }
+
+    /** Rows may wait for a claim: the backlog is known, and a claim starts now if there is room. */
+    void wake(String why) {
+        synchronized (lock) {
+            backlog = true;
+            wakes++;
+        }
+        pollFor(why);
     }
 
     /**
@@ -209,18 +317,6 @@ public final class FlowWorker {
         return close.future();
     }
 
-    /** {@code handler}, polling once after each of its {@link Ack.Accepted} answers; every answer and failure passes through as is. */
-    public Function<Envelope, Future<Ack>> pollingAfterAccept(Function<Envelope, Future<Ack>> handler) {
-        Objects.requireNonNull(handler, "handler");
-        return e -> {
-            Future<Ack> ack = handler.apply(e);
-            ack.onSuccess(a -> {
-                if (a instanceof Ack.Accepted) pollFor("after message " + e.id() + " was accepted");
-            });
-            return ack;
-        };
-    }
-
     /**
      * Completions, fast paths and holds this worker asked for that the queue answered false or stale (Q-1, D-074): the item was
      * claimed again, held or completed meanwhile and was left to its holder.
@@ -228,8 +324,8 @@ public final class FlowWorker {
     public long staleSettles() { return staleSettles.get(); }
 
     /**
-     * The items this worker claimed and still runs: none of them completed, held or left to its lease in the queue yet — what
-     * a {@link #close()} still waits for (FIX-142).
+     * The items this worker claimed or was handed and still runs: none of them completed, held or left to its lease in the queue
+     * yet — what a {@link #close()} still waits for (FIX-142), beside the slots it reserved.
      */
     public int unsettled() {
         synchronized (lock) {
@@ -251,16 +347,22 @@ public final class FlowWorker {
                 "worker " + workerId + " of flow " + flow + ": the poll " + why + " failed: " + failure, failure));
     }
 
-    /** The claim returned: start what this worker does not run yet, then the follow-up round if one was requested. */
-    private Future<Integer> claimed(AsyncResult<List<WorkQueue.Item>> claim) {
+    /**
+     * The claim of {@code asked} items, issued after {@code since} wakes, returned: start what this worker does not run yet, then
+     * the follow-up round if one was requested.
+     */
+    private Future<Integer> claimed(AsyncResult<List<WorkQueue.Item>> claim, int asked, long since) {
         List<Lease> fresh = new ArrayList<>();
         Promise<Integer> next;
         Promise<Void> due;
         synchronized (lock) {
             claiming = false;
+            asking = 0;
             next = followUp;
             followUp = null;
             if (claim.succeeded()) {
+                if (claim.result().size() >= asked) backlog = true;   // filled: more may wait
+                else if (wakes == since) backlog = false;             // drained, and nothing woke it since
                 for (WorkQueue.Item item : claim.result()) {
                     Lease ours = running.get(item.seq());
                     if (ours != null) {   // its lease ran out under a run of ours that is still going: the run takes this claim on
@@ -283,9 +385,92 @@ public final class FlowWorker {
     }
 
     /**
+     * A reserved slot runs {@code item}, written leased to the node (D-121 A4): in the running items from now on, out of the reserved
+     * ones. A run that cannot start — its renewal not armed (the timer threw), or its virtual thread not started once the renewal
+     * was armed — has its lease stopped, is out of the running items again (a close it was the last to hold completes) and its
+     * item left to its lease; the throw is passed on, a throw of that cleanup carried on it as suppressed, never in its place.
+     */
+    private void handedOff(WorkQueue.Item item) {
+        Lease lease = new Lease(item);
+        synchronized (lock) {
+            reserved--;
+            running.put(item.seq(), lease);
+        }
+        Future<Void> ran;
+        try {
+            ran = process(lease, 0);
+        } catch (RuntimeException | Error notStarted) {
+            Promise<Void> due;
+            synchronized (lock) {
+                running.remove(item.seq());
+                due = closeDue();
+            }
+            suppressing(notStarted, lease::stop);   // a renewal armed before the start threw renews no longer
+            suppressing(notStarted, () -> closeProducers(due));
+            suppressing(notStarted, this::leftToLease);
+            throw notStarted;
+        }
+        ran.onFailure(failure -> LOG.log(System.Logger.Level.WARNING, "worker " + workerId + " of flow " + flow
+                + ": the hand-off of message " + item.messageId() + " (work item " + item.seq() + ") failed to settle: " + failure, failure));
+    }
+
+    /** {@code cleanup} after {@code primary} was thrown: a throw of its own is carried on {@code primary} as suppressed, never in its place. */
+    private static void suppressing(Throwable primary, Runnable cleanup) {
+        try {
+            cleanup.run();
+        } catch (RuntimeException | Error also) {
+            primary.addSuppressed(also);
+        }
+    }
+
+    /**
+     * A reserved slot given back — its room and a close it was the last to hold first; {@code mayHaveLanded}: then the lease-end
+     * wake, for its item may be in the queue leased to the node, claimed at its lease end.
+     */
+    private void cancelled(boolean mayHaveLanded) {
+        Promise<Void> due;
+        synchronized (lock) {
+            reserved--;
+            due = closeDue();
+        }
+        closeProducers(due);
+        if (mayHaveLanded) leftToLease();
+    }
+
+    /** An item was left to its lease: the lease-end wake claims it once its lease ran out. */
+    private void leftToLease() {
+        synchronized (lock) {
+            armLeaseEnd();
+        }
+    }
+
+    /**
+     * Under the lock: the lease-end wake for an item left now — armed at the policy's lease from now when none is, else kept as
+     * the later end the armed one re-arms for when it fires (an end it has reached by then is folded into it). Nothing after the stop.
+     */
+    private void armLeaseEnd() {
+        if (stopped) return;
+        if (leaseEnd == null) leaseEnd = timer.schedule(policy.lease(), this::leaseEnded);
+        else laterEnd = clock.instant().plus(policy.lease());   // never before the armed end: one lease on a clock that never goes back
+    }
+
+    /** The lease-end wake fired: armed again for a later end still ahead, then a wake. */
+    private void leaseEnded() {
+        synchronized (lock) {
+            leaseEnd = null;
+            Instant now = clock.instant();
+            if (laterEnd != null && laterEnd.isAfter(now)) {
+                leaseEnd = timer.schedule(Duration.between(now, laterEnd), this::leaseEnded);
+            }
+            laterEnd = null;
+        }
+        wake("at an item's lease end");
+    }
+
+    /**
      * Runs the item — {@code chain} items after the one its chain claimed (D-075) — on a virtual thread of its own under its
-     * renewed lease and settles it in the queue; the item the fast path took next runs in its slot, else the chain ends and polls
-     * once. Completes when the chain's last item is done with.
+     * renewed lease and settles it in the queue; the item the fast path took next runs in its slot, else the chain ends and
+     * claims while a backlog is known. Completes when the chain's last item is done with.
      */
     private Future<Void> process(Lease lease, int chain) {
         WorkQueue.Item item = lease.item;
@@ -296,7 +481,7 @@ public final class FlowWorker {
             try {
                 verdict = verdict(item);
             } finally {
-                lease.stop();
+                if (lease.stop()) leftToLease();   // found lost: whoever holds it now, its lease end is claimed
                 ran.complete(verdict);
             }
         });
@@ -308,18 +493,24 @@ public final class FlowWorker {
     }
 
     /**
-     * Settles the item — not at all while the node's fence is closed; one to complete that has a key, while the worker is not stopped and its chain is shorter than
-     * {@link WorkerPolicy#maxChain()}, by the same-key fast path (D-075): the item the queue hands out with it, if any, is
-     * returned under a lease of its own, in the finished item's slot.
+     * Settles the item — not at all while the node's fence is closed (left to its lease); one to complete that has a key, while the
+     * worker is not stopped and its chain is shorter than {@link WorkerPolicy#maxChain()}, by the same-key fast path (D-075): the
+     * item the queue hands out with it, if any, is returned under a lease of its own, in the finished item's slot. One at the
+     * chain's bound is completed plainly and its key goes back to the claim: the backlog is known.
      */
     private Future<Optional<Lease>> settleOrTake(Lease lease, Verdict verdict, int chain) {
         WorkQueue.Item item = lease.item;
         if (!fence.getAsBoolean()) {   // the node's fence closed (D-101 (2)): no complete, no fast path, no hold
             LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt "
                     + lease.token() + ") finished at worker " + workerId + " while the node's fence is closed: left unsettled for whoever runs it next");
+            leftToLease();
             return Future.succeededFuture(Optional.empty());
         }
-        if (!verdict.complete() || item.partitionKey() == null || chain >= policy.maxChain() || stopped()) {
+        if (!verdict.complete() || item.partitionKey() == null || stopped()) return settle(lease, verdict).map(Optional.empty());
+        if (chain >= policy.maxChain()) {
+            synchronized (lock) {
+                backlog = true;   // the key yields to the claim with its next rows, if any, behind it
+            }
             return settle(lease, verdict).map(Optional.empty());
         }
         int token = lease.token();
@@ -392,22 +583,31 @@ public final class FlowWorker {
 
     /**
      * Completes, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's newest
-     * claim of it; a complete or hold answering false is stale and counted. An unparkable item raises one ERROR whatever its hold answers.
+     * claim of it; a complete or hold answering false is stale and counted. An unparkable item raises one ERROR whatever its hold
+     * answers. An item left — by the run, or by a complete or hold that failed — is left to its lease.
      */
     private Future<Void> settle(Lease lease, Verdict verdict) {
         WorkQueue.Item item = lease.item;
         int token = lease.token();
-        if (verdict.complete()) return queue.complete(item.seq(), token).compose(removed -> {
-            if (!removed) stale(item, token);
+        if (verdict.complete()) return queue.complete(item.seq(), token).transform(removed -> {
+            if (removed.failed()) {
+                leftToLease();
+                return Future.failedFuture(removed.cause());
+            }
+            if (!removed.result()) stale(item, token);
             return Future.succeededFuture();
         });
         Throwable unparkable = verdict.unparkable();
-        if (unparkable == null) return Future.succeededFuture();
+        if (unparkable == null) {
+            leftToLease();
+            return Future.succeededFuture();
+        }
         String alert = "message " + item.messageId() + " of flow " + flow + " was claimed " + token + " times (maxAttempts "
                 + policy.maxAttempts() + ") and could not be parked: " + unparkable + "; work item " + item.seq();
         return queue.hold(item.seq(), token).transform(held -> {
             if (held.failed()) {
                 LOG.log(System.Logger.Level.ERROR, alert + " could not be held either (" + held.cause() + "): it is left to its lease", unparkable);
+                leftToLease();
                 return Future.failedFuture(held.cause());
             }
             if (held.result()) {
@@ -428,23 +628,26 @@ public final class FlowWorker {
                 + ") finished at worker " + workerId + " but was claimed again, held or completed meanwhile; left to its holder, not completed");
     }
 
+    /** A chain's end: out of the running items; a claim while a backlog is known (D-121 A6). */
     private void finished(WorkQueue.Item item) {
         Promise<Void> due;
+        boolean claim;
         synchronized (lock) {
             running.remove(item.seq());
             due = closeDue();
+            claim = backlog;
         }
         closeProducers(due);
-        pollFor("after message " + item.messageId() + " finished");
+        if (claim) pollFor("after message " + item.messageId() + " finished");
     }
 
     /**
-     * The close to run now: the asked one, once nothing runs and no claim is in flight; else null. Under the lock. After the
-     * stop no claim starts and a fast path keeps its item in the slot until the next one takes it, so that state is final: it
-     * is reached once — by the close, a claim's return or a chain's end.
+     * The close to run now: the asked one, once nothing runs, no slot is reserved and no claim is in flight; else null. Under the
+     * lock. After the stop no claim starts, no slot is reserved and a fast path keeps its item in the slot until the next one
+     * takes it, so that state is final: it is reached once — by the close, a claim's return, a slot's cancel or a chain's end.
      */
     private Promise<Void> closeDue() {
-        return closed != null && !claiming && running.isEmpty() ? closed : null;
+        return closed != null && !claiming && running.isEmpty() && reserved == 0 ? closed : null;
     }
 
     private void closeProducers(Promise<Void> due) {
@@ -493,10 +696,15 @@ public final class FlowWorker {
             }
         }
 
-        /** The run ended: nothing is renewed from now on, and the answer of a renewal in flight is ignored. */
-        synchronized void stop() {
+        /**
+         * The run ended (or never started): nothing is renewed from now on, and the answer of a renewal in flight is ignored; true
+         * when it was found lost. No renewal to cancel when the first one could not be armed.
+         */
+        synchronized boolean stop() {
+            boolean lost = renewal == Renewal.LOST;
             renewal = Renewal.ENDED;
-            next.cancel();
+            if (next != null) next.cancel();
+            return lost;
         }
 
         private void renew() {

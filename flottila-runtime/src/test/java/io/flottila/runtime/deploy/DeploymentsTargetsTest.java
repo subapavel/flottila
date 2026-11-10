@@ -98,8 +98,11 @@ class DeploymentsTargetsTest {
             e.put("FLOTTILA_DATA_DIR", tmp.resolve(id).toString());
             e.put("FLOTTILA_STOP_DEADLINE", "PT37S");
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
+            // P2-16a (D-121 A6): no accept poll any more; the intake hands off to, or wakes, the node's workers
+            io.flottila.core.flow.Workers workers = new io.flottila.core.flow.Workers();
             deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(),
-                    messages, dlq, queue, () -> 0L, rows, archives, new SequentialIntake(messages, queue), new InMemoryPollerLeases(rt.clock()), targets);
+                    messages, dlq, queue, () -> 0L, rows, archives, new SequentialIntake(messages, queue, workers, id), new InMemoryPollerLeases(rt.clock()),
+                    targets, () -> true, workers);
             peers.add(this);
         }
 

@@ -1,6 +1,7 @@
 package io.flottila.runtime.journal;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.Envelope;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -72,10 +73,14 @@ class InDoubtSettleIT {
         db.close();
     }
 
-    /** A save whose COMMIT reply is cut: failed, open, its body local. */
-    PgWire.Held lostReply(String id) throws Exception {
+    /**
+     * A save under partition key {@code partition} whose COMMIT reply is cut: failed, open, its body local. P2-16a (D-121 A3): its
+     * transaction, open until the case decides it, holds the key's lock, so the next lost reply goes under another key.
+     */
+    PgWire.Held lostReply(String id, String partition) throws Exception {
         PgWire.Held held = wire.holdNext(PgWire.query("COMMIT"));
-        Future<String> save = a.start(a.arrive(id, bytes(3_000, id.hashCode())), false, undecided());
+        Envelope e = a.arrive(id, bytes(3_000, id.hashCode()));
+        Future<String> save = a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, partition, null, false, undecided());
         held.awaitReached();
         held.cut();
         assertTrue(settled(save).failed(), "fixture: the save whose commit reply was lost fails");
@@ -85,8 +90,8 @@ class InDoubtSettleIT {
 
     @Test
     void aCommitThatLandedSettlesAsCommittedAndOneThatDidNotAsRolledBack() throws Exception {
-        PgWire.Held landed = lostReply("m-landed");
-        PgWire.Held lost = lostReply("m-lost");
+        PgWire.Held landed = lostReply("m-landed", "K-1");
+        PgWire.Held lost = lostReply("m-lost", "K-2");
         assertEquals(2, List.copyOf(a.intake.openSaves()).size(), "fixture: both saves open, their outcome unknown");
 
         landed.commitAfterCut();

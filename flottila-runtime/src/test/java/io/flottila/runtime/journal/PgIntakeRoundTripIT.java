@@ -49,7 +49,13 @@ class PgIntakeRoundTripIT {
     static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
     static Vertx vertx;
 
-    static final List<String> ROWS = List.of("insert into messages", "insert into message_keys", "insert into work");
+    /** The head of the key-lock statement (D-121 A3): {@code select pg_advisory_xact_lock(..)} over the save's partition keys. */
+    static final String KEY_LOCK = "select pg_advisory_xact_lock";
+    /**
+     * The rows turn of a save under partition key {@code K-1}: the key's lock first (P2-16a, D-121 A3: sent with the rows, no wait
+     * of its own), then the record (messages, message_keys) and the item.
+     */
+    static final List<String> ROWS = List.of(KEY_LOCK, "insert into messages", "insert into message_keys", "insert into work");
     static final List<String> CLAIM = List.of("insert into processed_ids", "select from processed_ids");
 
     @TempDir Path tmp;
@@ -117,12 +123,13 @@ class PgIntakeRoundTripIT {
     }
 
     /**
-     * The statement a SQL text is: {@code insert into <table>} (a CTE's insert too), {@code select from <table>}, or the text upper-cased (BEGIN,
+     * The statement a SQL text is: {@link #KEY_LOCK}, {@code insert into <table>} (a CTE's insert too), {@code select from <table>}, or the text upper-cased (BEGIN,
      * COMMIT, ROLLBACK); a Parse keeps its {@code parse } prefix, so a statement prepared again shows in the turn it cost.
      */
     static String head(String sql) {
         if (sql.startsWith("parse ")) return "parse " + head(sql.substring("parse ".length()));
         String s = sql.strip().toLowerCase(Locale.ROOT);
+        if (s.startsWith(KEY_LOCK + "(")) return KEY_LOCK;
         if (s.startsWith("insert into ")) return "insert into " + identifier(s.substring("insert into ".length()));
         if (s.startsWith("with ") && s.contains(" insert into ")) return "insert into " + identifier(s.substring(s.indexOf(" insert into ") + " insert into ".length()));
         if (s.startsWith("select ") && s.contains(" from ")) return "select from " + identifier(s.substring(s.indexOf(" from ") + " from ".length()));
@@ -180,6 +187,24 @@ class PgIntakeRoundTripIT {
         assertEquals(1, a.files.forces(segment) - forcesBefore, "one journal force for the save's record");
         assertEquals(1, count(db.pool(), "select count(*) from messages where id = 'm-rows'"), "its ingress row committed");
         assertEquals(1, count(db.pool(), "select count(*) from work where id = 'm-rows'"), "and its item");
+    }
+
+    /**
+     * Review r3 (R04, PgWorkQueue.lockKeys): a save with no partition key takes no key lock — nothing is sent for none — so its
+     * rows turn is the record and the item only: three waits, no key-lock statement.
+     */
+    @Test
+    void aSaveWithNoPartitionKeySendsNoKeyLock() {
+        Envelope warm = a.arrive("m-warm", bytes(3_000, 21));
+        saved(a.intake.save(warm, JournalWorld.ingress(warm), JournalWorld.FLOW, null, null, false, JournalWorld.undecided()), "m-warm");   // run once
+
+        int mark = wire.mark();
+        Envelope in = a.arrive("m-free", bytes(3_000, 22));
+        saved(a.intake.save(in, JournalWorld.ingress(in), JournalWorld.FLOW, null, null, false, JournalWorld.undecided()), "m-free");
+        assertEquals(List.of(List.of("BEGIN"), List.of("insert into messages", "insert into message_keys", "insert into work"), List.of("COMMIT")),
+                turns(mark), "3 waits and no key-lock statement for a save without a partition key: " + wire.since(mark));
+        assertEquals(0, heads(wire.statementsSince(mark)).stream().filter(KEY_LOCK::equals).count(), "no key lock sent");
+        assertEquals(1, count(db.pool(), "select count(*) from work where id = 'm-free' and partition_key is null"), "its item, unkeyed, committed");
     }
 
     /** A save that keeps its input writes the body's kept ref (KEEP) in the rows turn, after the item: still three waits. */
@@ -241,7 +266,7 @@ class PgIntakeRoundTripIT {
         saved(start(a.arrive("m-warm", bytes(3_000, 8)), null), "m-warm");
         assertEquals(List.of(), wire.since(second).stream().filter(s -> s.type() == 'P').map(s -> head(s.sql())).toList(),
                 "the second save on the one connection sends no Parse: " + wire.since(second));
-        assertEquals(heads(wire.statementsSince(first)).subList(0, 5), heads(wire.statementsSince(second)), "the same statements");
+        assertEquals(heads(wire.statementsSince(first)).subList(0, 2 + ROWS.size()), heads(wire.statementsSince(second)), "the same statements");
         assertEquals(1, wire.since(first).stream().map(PgWire.Sent::conn).distinct().count(), "fixture: both saves on the one connection");
     }
 
