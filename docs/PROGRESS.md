@@ -1,4 +1,13 @@
 
+## 2026-11-10 — P2-15c kill -9 ledger and SIGSTOP acceptance (D-112, F-28) — done, review PASS (r2)
+Test: NodeTakeoverLedgerIT (child JVM nodes, Testcontainers PG) — acceptance, green on today's code; red by hand mutants
+Case 1 kill -9 A at 1000 ACKs: 2000 ACKed, partner distinct 2000, raw duplicates 8 = A in flight 8, Σdoubts 8 = reruns 8, none
+before A's old lease_until, B never superseded (59 s). Case 2 SIGSTOP A with 4 held sends: reset after SIGCONT, nothing after the
+fence, no queued item taken, A exits SUPERSEDED (9 s)
+Mutants (agent/work/P2-15c-mut.log): a send ignores the fence — killed; c rejoin does not wait — killed; d claim ignores the fence —
+killed; b TAKE without liveness — survives by construction (a node claims only its own body_node items until CORE-5)
+Review: r1 FAIL (negatives behind three gates, mutant d not run), r2 PASS · No production change
+Next: P2-16 (local hand-off, no claim), then CORE-7
 ## 2026-11-10 — FIX-145 a pg_xact_status failure pins only its own save (review F7.3, F-29) — done, review PASS (r1)
 Test first: SegmentSweepIT .futureXidDoesNotBlockUnrelatedSegmentCollection, .aFailingStatusQueryLeavesEveryInDoubtSaveOpenAndThe
 SweepRuns, .oneBadXidDoesNotHoldBackAResolvableOne + InDoubtSeam (red agent/work/FIX-145-red.log, FIX-145-red-scratch.log)
