@@ -280,6 +280,18 @@ class FlowWorkerTest {
             return queue.claims().stream().filter(c -> c.items != null).flatMap(c -> c.items.stream()).map(WorkQueue.Item::attempts).toList();
         }
 
+        /**
+         * Advances the clock by the lease and waits for what {@code worker}'s own lease-end wake (D-121 A6) claims there: the
+         * item it left to its lease is claimed again by the worker itself, not by a poll of the test. Returns once that claim
+         * answered and every run it started is settled — completed, held, parked or left to its lease again.
+         */
+        void wokenAtTheLeaseEnd(FlowWorker worker, String workerId) {
+            int before = queue.claimsBy(workerId).size();
+            rt.clock().advance(LEASE);
+            until(() -> queue.claimsBy(workerId).size() > before && queue.claimsInFlight() == 0 && worker.unsettled() == 0,
+                    () -> "the lease-end wake of " + workerId + " claimed and its runs settled: claims " + queue.claims() + ", running " + worker.unsettled());
+        }
+
         void close() {
             workers.forEach(FlowWorker::stop);
             queue.claimsOk();
@@ -1000,7 +1012,11 @@ class FlowWorkerTest {
         w.gate.open();
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt + ": the round claimed the item and ended without failing");
+            if (attempt == 1) {
+                assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1: the round claimed the item and ended without failing");
+            } else {
+                w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
+            }
             w.gate.joinPassed();
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
             assertEquals(attempt, w.partner.sentTo("partner").size(), "attempt " + attempt + " ran and crashed unparked");
@@ -1009,9 +1025,8 @@ class FlowWorkerTest {
             List<String> warned = logs.at(Level.WARNING, in.id()).stream().filter(t -> t.contains(counted)).toList();
             assertEquals(1, warned.size(), "one WARNING naming the message and '" + counted + "': " + logs.all());
             assertTrue(warned.get(0).contains("crashed at crash"), "names the failure: " + warned.get(0));
-            w.rt.clock().advance(LEASE);
         }
-        assertEquals(1, w1.poll().await(5, SECONDS), "the claim past the bound");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound, the lease-end wake's
         w.gate.joinPassed();
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
 
@@ -1071,13 +1086,13 @@ class FlowWorkerTest {
         w.dlq.failParks(new IllegalStateException("dlq down"));
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            w1.poll().otherwiseEmpty().await(5, SECONDS);
+            if (attempt == 1) w1.poll().otherwiseEmpty().await(5, SECONDS);
+            else w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
             w.gate.joinPassed();
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
             assertEquals(attempt, w.partner.sent().size(), "attempt " + attempt + " ran; the DLQ refused the park");
-            w.rt.clock().advance(LEASE);
         }
-        w1.poll().otherwiseEmpty().await(5, SECONDS);
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound, the lease-end wake's
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         long seq = w.rows.snapshot().get(0).seq();
         assertEquals(List.of(new RecordingWorkQueue.HoldCall(seq, maxAttempts + 1, true)), w.queue.holds(),
@@ -1118,12 +1133,13 @@ class FlowWorkerTest {
         w.partner.failNext(100, () -> new NackException("order refused", false));
         w.dlq.failParks(new IllegalStateException("dlq down"));
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            w1.poll().otherwiseEmpty().await(5, SECONDS);
+            if (attempt == 1) w1.poll().otherwiseEmpty().await(5, SECONDS);
+            else w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
             w.gate.joinPassed();
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-            w.rt.clock().advance(LEASE);
         }
-        assertEquals(1, w1.poll().await(5, SECONDS), "fixture: the claim past the bound");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // fixture: the claim past the bound, the lease-end wake's
+        assertEquals(List.of(1, 2, 3), w.claimedAttempts(), "fixture: the claim past the bound");
         long seq = w.rows.snapshot().get(0).seq();
         assertEquals(List.of(new RecordingWorkQueue.HoldCall(seq, maxAttempts + 1, true)), w.queue.holds(), "fixture: past the bound and unparkable, held");
         assertEquals(1, logs.at(Level.SEVERE, in.id()).size(), "fixture: one alert");
@@ -1276,10 +1292,9 @@ class FlowWorkerTest {
         assertEquals(List.of(), logs.at(Level.SEVERE, in.id()));
 
         assertEquals(0, w1.poll().await(5, SECONDS), "leased: nobody claims it before its lease ran out");
-        w.rt.clock().advance(LEASE);
-        assertEquals(1, w1.poll().await(5, SECONDS), "after its lease the item is claimed again");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // after its lease the item is claimed again, by the lease-end wake (D-121 A6)
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-        assertEquals(List.of(1, 2), w.claimedAttempts(), "the second claim is attempt 2");
+        assertEquals(List.of(1, 2), w.claimedAttempts(), "after its lease the item is claimed again: the second claim is attempt 2");
         assertEquals(2, w.partner.sent().size(), "and ran again");
         assertEquals(1, w.rows.size());
     }
@@ -1300,14 +1315,14 @@ class FlowWorkerTest {
         w.partner.failNext(100, () -> new NackException("order refused", false));
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt);
+            if (attempt == 1) assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1");
+            else w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
             assertEquals(attempt, w.partner.sent().size(), "attempt " + attempt + " ran");
             assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "attempt " + attempt + ": no DLQ row, the step body is not durable");
             assertEquals(1, w.rows.size(), "attempt " + attempt + ": left to its lease");
-            w.rt.clock().advance(LEASE);
         }
-        assertEquals(1, w1.poll().await(5, SECONDS), "the claim past the bound");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound, the lease-end wake's
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
 
         assertEquals(maxAttempts, w.partner.sent().size(), "the claim past the bound does not run");
@@ -1351,10 +1366,10 @@ class FlowWorkerTest {
         assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "fixture: the DLQ refused the row");
         assertEquals(1, w.rows.size(), "fixture: left to its lease");
         w.dlq.parksOk();
-        w.rt.clock().advance(LEASE);
 
-        assertEquals(1, w1.poll().await(5, SECONDS), "attempt 2");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // attempt 2, claimed by the lease-end wake (D-121 A6)
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(List.of(1, 2), w.claimedAttempts(), "attempt 2");
         assertEquals(2, w.partner.sent().size(), "attempt 2 ran and the partner refused");
         assertEquals(2, w.stamped.size(), "fixture: stamp ran twice");
         assertFalse(w.stamped.get(0).equals(w.stamped.get(1)), "fixture: the rerun wrote other bytes: " + w.stamped);
@@ -1372,9 +1387,8 @@ class FlowWorkerTest {
         assertTrue(warned.get(0).contains("order refused"), "names the step's failure: " + warned.get(0));
         assertTrue(warned.get(0).contains("the durable body under " + stepBody + " holds other bytes than these"),
                 "and, suppressed, the persist's refusal: " + warned.get(0));
-        w.rt.clock().advance(LEASE);
 
-        assertEquals(1, w1.poll().await(5, SECONDS), "the claim past the bound");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound, the lease-end wake's
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(maxAttempts, w.partner.sent().size(), "the claim past the bound does not run");
         assertEquals(List.of(1, 2, 3), w.claimedAttempts());
@@ -1406,11 +1420,11 @@ class FlowWorkerTest {
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt);
+            if (attempt == 1) assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1");
+            else w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
             assertEquals(attempt, w.storedKeys.size(), "attempt " + attempt + " ran the store step");
             assertEquals(1, w.rows.size(), "attempt " + attempt + ": the crash leaves the item to its lease");
-            w.rt.clock().advance(LEASE);
         }
         assertEquals(List.of(1, 2, 3), w.claimedAttempts(), "fixture: the item's three claims are attempts 1, 2 and 3");
         assertEquals(List.of(Optional.empty(), Optional.of(2), Optional.of(3)), w.seenAttempts,
@@ -1533,9 +1547,8 @@ class FlowWorkerTest {
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(1, w.rows.size(), "fixture: attempt 1 crashed, its item is left to its lease");
         assertTrue(w.stepBodies.persisted(first), "attempt 1's trail made its stamp body durable");
-        w.rt.clock().advance(LEASE);
 
-        assertEquals(1, w1.poll().await(5, SECONDS), "attempt 2");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // attempt 2, claimed by the lease-end wake (D-121 A6)
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(2, w.stamped.size(), "fixture: stamp ran twice");
         assertNotEquals(w.stamped.get(0), w.stamped.get(1), "fixture: the rerun stamped other bytes");
@@ -1621,8 +1634,9 @@ class FlowWorkerTest {
         List<Duration> retryWaits = new CopyOnWriteArrayList<>();
         Timer timer = (delay, task) -> {
             Timer.Cancellable pending = w.rt.timer().schedule(delay, task);
-            // a wait the run schedules on its own thread (flottila-worker-<worker>-<seq>) is a retry's
-            if (Thread.currentThread().getName().startsWith("flottila-worker-")) retryWaits.add(delay);
+            // a wait shorter than the lease that the run schedules on its own thread (flottila-worker-<worker>-<seq>) is a
+            // retry's (the policy's waits are 100 ms to 2 s); the item's lease-end wake (D-121 A6) waits the lease
+            if (Thread.currentThread().getName().startsWith("flottila-worker-") && delay.compareTo(LEASE) < 0) retryWaits.add(delay);
             return pending;
         };
         FlowBuilder b = w.builder(w.runtimeWith(timer));

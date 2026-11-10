@@ -68,7 +68,19 @@ class FlowWorkerFencedParkTest {
             return parked.list(Optional.empty(), Page.MAX_LIMIT).await().items().stream().map(Parked::messageId).toList();
         }
 
-        void nextHandOut() throws Exception {
+        /**
+         * Past the item's lease, its next hand-out: the claim of the worker's own lease-end wake (D-121 A6), not a poll of the
+         * test; returns once that claim answered and its run is settled.
+         */
+        void nextHandOut() {
+            int before = queue.claimsBy("n1").size();
+            rt.clock().advance(LEASE.plusSeconds(1));
+            FlowWorkerTest.until(() -> queue.claimsBy("n1").size() > before && queue.claimsInFlight() == 0 && worker.unsettled() == 0,
+                    () -> "the lease-end wake's claim answered and its run settled: claims " + queue.claims() + ", running " + worker.unsettled());
+        }
+
+        /** Past another lease, a poll of the test: nothing is left to its lease, so no wake claims and only this poll could. */
+        void pollAfterAnotherLease() throws Exception {
             rt.clock().advance(LEASE.plusSeconds(1));
             worker.poll().await(10, SECONDS);
         }
@@ -96,7 +108,7 @@ class FlowWorkerFencedParkTest {
         w.nextHandOut();
         assertEquals(List.of(w.in.id()), w.dlq(), "parked once, past maxAttempts");
         assertEquals(0, w.rows.size(), "and completed");
-        w.nextHandOut();
+        w.pollAfterAnotherLease();
         assertEquals(List.of(w.in.id()), w.dlq(), "parked once only");
     }
 

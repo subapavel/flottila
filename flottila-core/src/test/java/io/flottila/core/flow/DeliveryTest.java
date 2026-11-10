@@ -486,8 +486,9 @@ class DeliveryTest {
         assertEquals(1, partner.sent().size(), "leased: not run again before the lease runs out");
 
         failing.parksOk();
-        rt.clock().advance(WorkerPolicy.DEFAULT.lease());
-        worker.poll().await();
+        rt.clock().advance(WorkerPolicy.DEFAULT.lease());   // the item's lease end: the worker's own lease-end wake claims it (D-121 A6), no poll of the test
+        FlowWorkerTest.until(() -> queue.size() == 0 && worker.unsettled() == 0,
+                () -> "the lease-end wake reran the item and settled it: rows " + queue.snapshot() + ", running " + worker.unsettled());
         List<Parked> parked = failing.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(1, parked.size(), "after the lease the item runs again and its failure is parked");
         assertEquals(in.id(), parked.get(0).messageId());
@@ -511,8 +512,9 @@ class DeliveryTest {
         assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items());
 
         store.readsOk();
-        rt.clock().advance(WorkerPolicy.DEFAULT.lease());
-        worker.poll().await();
+        rt.clock().advance(WorkerPolicy.DEFAULT.lease());   // the item's lease end: the worker's own lease-end wake claims it (D-121 A6), no poll of the test
+        FlowWorkerTest.until(() -> queue.size() == 0 && worker.unsettled() == 0,
+                () -> "the lease-end wake ran the item and completed it: rows " + queue.snapshot() + ", running " + worker.unsettled());
         List<Envelope> got = partner.sentTo("partner");
         assertEquals(1, got.size(), "after the lease the message runs");
         assertEquals(in.id(), got.get(0).id());

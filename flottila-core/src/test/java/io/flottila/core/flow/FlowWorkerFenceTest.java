@@ -140,6 +140,17 @@ class FlowWorkerFenceTest {
 
         List<Long> queued() { return rows.snapshot().stream().map(WorkQueue.Item::seq).toList(); }
 
+        /**
+         * Advances past an item's lease ({@link #advance}) and waits for what {@code worker}'s own lease-end wake (D-121 A6)
+         * claims there — not a poll of the test: its claim answered and every run it started settled.
+         */
+        void wokenPast(Duration total, FlowWorker worker, String node) {
+            int before = queue.claimsBy(node).size();
+            advance(total);
+            until(() -> queue.claimsBy(node).size() > before && queue.claimsInFlight() == 0 && worker.unsettled() == 0,
+                    () -> "the lease-end wake of " + node + " claimed and its runs settled: claims " + queue.claims() + ", running " + worker.unsettled());
+        }
+
         /** Advances the fake clock a second at a time up to {@code total}, each timer task firing at its own second. */
         void advance(Duration total) {
             for (Duration left = total; !left.isZero() && !left.isNegative(); left = left.minusSeconds(1)) {
@@ -251,9 +262,8 @@ class FlowWorkerFenceTest {
         assertEquals(List.of(), h.rows.held(Optional.empty(), 10).await().items(), "nothing held");
         assertEquals(List.of(), h.partner.sent(), "an exhausted item never runs");
 
-        hOpen.set(true);   // witness: the fence open, the next hand-out is held
-        h.advance(LEASE.plusSeconds(1));
-        hw.poll().await(10, SECONDS);
+        hOpen.set(true);   // witness: the fence open, the next hand-out — the lease-end wake's — is held
+        h.wokenPast(LEASE.plusSeconds(1), hw, "n1");
         assertEquals(1, h.queue.holds().size(), "with the fence open the hold is asked: " + h.queue.holds());
         assertEquals(List.of(x.id()), h.rows.held(Optional.empty(), 10).await().items().stream().map(held -> held.item().messageId()).toList());
     }
@@ -353,8 +363,9 @@ class FlowWorkerFenceTest {
         // witness: the fence open, the next hand-out's failure is parked — once
         open.set(true);
         w.gate.open();
-        w.advance(LEASE.plusSeconds(1));
-        assertEquals(1, worker.poll().await(10, SECONDS), "the item handed out again");
+        w.wokenPast(LEASE.plusSeconds(1), worker, "n1");   // the item handed out again, by the lease-end wake
+        assertEquals(List.of(1, 2), w.queue.claimsBy("n1").stream().filter(c -> c.items != null).flatMap(c -> c.items.stream())
+                .map(WorkQueue.Item::attempts).toList(), "the item handed out again");
         assertEquals(2, seen.size(), "the failing step ran again: " + seen);
         assertInstanceOf(ParkedException.class, seen.get(1), "with the fence open the step's failure is parked: " + seen.get(1));
         assertEquals(List.of(in.id()), w.dlqRows().stream().map(Parked::messageId).toList(), "one DLQ row");

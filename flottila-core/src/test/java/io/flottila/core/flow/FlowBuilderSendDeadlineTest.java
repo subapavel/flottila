@@ -260,8 +260,7 @@ class FlowBuilderSendDeadlineTest {
         assertEquals(List.of(), w.queue.completeCalls());
 
         fence.renewTo(T0.plusSeconds(600));
-        w.to(Duration.ofSeconds(10).plus(LEASE).plusSeconds(1));   // past the item's lease
-        Future<Integer> rerun = worker.poll();
+        w.to(Duration.ofSeconds(10).plus(LEASE).plusSeconds(1));   // past the item's lease: the worker's lease-end wake claims it (D-121 A6), no poll of the test
         DeadlinePartner.Call again = w.awaitCall(2);
         assertEquals(in.id(), again.envelope().id(), "the rerun sends under the same message id");
         List<WorkQueue.Item> handed = w.queue.claimsBy("n1").stream().filter(c -> c.items != null).flatMap(c -> c.items.stream()).toList();
@@ -269,8 +268,7 @@ class FlowBuilderSendDeadlineTest {
         assertEquals(1, handed.get(1).doubts(), "the rerun is in doubt: the abandoned run left its item unsettled");
         assertEquals(2, handed.get(1).attempts());
         again.reply();
-        assertEquals(1, rerun.await(10, SECONDS));
-        until(() -> w.rows.size() == 0, () -> "the rerun completes the item: " + w.rows.snapshot());
+        until(() -> w.rows.size() == 0 && worker.unsettled() == 0, () -> "the rerun completes the item: " + w.rows.snapshot());
         assertEquals(List.of(), w.dlqRows());
     }
 
