@@ -131,8 +131,9 @@ class FlowWorkerLifecycleTest {
         w1.start();
         w1.start();
         assertEquals(1, w.rt.timer().pending(), "one tick, however often the worker is started");
+        assertEquals(1, w.queue.claims().size(), "start() claims once (D-121 A6), however often it is called: " + w.queue.claims());
         w.rt.clock().advance(TICK);
-        assertEquals(1, w.queue.claims().size(), "one claim per interval: " + w.queue.claims());
+        assertEquals(2, w.queue.claims().size(), "then one claim per interval: " + w.queue.claims());
         assertEquals(1, w.rt.timer().pending());
     }
 
@@ -152,7 +153,8 @@ class FlowWorkerLifecycleTest {
         for (int i = 0; i < 3; i++) w.rt.clock().advance(TICK);
         assertEquals(0, w1.poll().await(5, SECONDS), "a stopped worker starts no round, not even on an explicit poll");
         assertEquals(0, never.poll().await(5, SECONDS));
-        assertEquals(List.of(), w.queue.claims());
+        assertEquals(List.of(), w.queue.claimsBy("never"), "never started: no claim");
+        assertEquals(1, w.queue.claimsBy("w1").size(), "w1's one start claim (D-121 A6), nothing after its stop: " + w.queue.claims());
     }
 
     @Test
@@ -185,10 +187,11 @@ class FlowWorkerLifecycleTest {
         FlowWorker w1 = w.worker(w.builder(w.runtimeWith(timer)), def, "w1", policy(LEASE, 5));
         w1.start();
         assertEquals(1, timer.tasks.size(), "the first tick");
+        assertEquals(1, w.queue.claims().size(), "start() claims once (D-121 A6)");
         w1.stop();
 
         timer.tasks.get(0).run();   // it had fired already when stop cancelled it
-        assertEquals(List.of(), w.queue.claims(), "no round after stop");
+        assertEquals(1, w.queue.claims().size(), "no round after stop: " + w.queue.claims());
         assertEquals(1, timer.tasks.size(), "and no further tick");
     }
 

@@ -6,7 +6,22 @@ import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
+import io.flottila.api.Pipeline;
+import io.flottila.api.Stage;
+import io.flottila.api.StepConfig;
+import io.flottila.api.StepFactory;
+import io.flottila.api.StepResources;
+import io.flottila.core.dlq.InMemoryDlq;
+import io.flottila.core.flow.FlowBuilder;
+import io.flottila.core.flow.FlowDefinition;
+import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.flow.Intake;
+import io.flottila.core.flow.WorkerPolicy;
+import io.flottila.core.flow.Workers;
+import io.flottila.core.queue.WorkQueue;
+import io.flottila.core.record.MessageStore;
+import io.flottila.core.record.Page;
+import io.flottila.testkit.FakeRuntime;
 import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Recorder;
@@ -22,7 +37,12 @@ import org.junit.jupiter.api.Timeout;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -75,6 +95,24 @@ public abstract class IntakeContract {
 
         /** Every queued item, in queue order. */
         List<Queued> queued();
+
+        /** The node's worker registry the intake reserves its slots in (P2-16a, D-121 A1): no worker registered until a case starts one. */
+        Workers workers();
+
+        /** The store the intake records into: the case's worker reads its timelines there. */
+        MessageStore messages();
+
+        /** The queue the intake enqueues into: the case's worker claims and settles there. */
+        WorkQueue queue();
+
+        /** The node the intake leases its hand-offs to: its worker id (D-101). */
+        String node();
+
+        /** The worker holding a live lease on the item of {@code messageId}, if any. */
+        Optional<String> leaseHolder(String messageId);
+
+        /** The attempts the queue counted for the item of {@code messageId} (0: never handed out); fails when it has none. */
+        int attempts(String messageId);
     }
 
     /** The case's world: an empty store, an empty queue, an empty body store with the durable bound {@link #BOUND}. */
@@ -206,5 +244,112 @@ public abstract class IntakeContract {
         assertTrue(retry.succeeded(), "the sender's retry saves: the abandoned save left nothing in its way: " + retry.cause());
         assertEquals(List.of(new Queued("m-abandoned", FLOW, 1, "K-1")), world.queued(), "one item: the retry's");
         assertEquals(List.of(Recorder.INGRESS), stepNames(world.recorded("m-abandoned")));
+    }
+
+    // --- P2-16a: the local hand-off (D-121 A1, A2, A4)
+
+    /** Counts the claims of the case's worker, every other call straight to the world's queue (a decorator at the store boundary). */
+    static final class CountedClaims implements WorkQueue {
+        final WorkQueue inner;
+        final AtomicInteger claims = new AtomicInteger();
+        final AtomicInteger answered = new AtomicInteger();
+
+        CountedClaims(WorkQueue inner) { this.inner = inner; }
+
+        @Override public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) { return inner.enqueue(messageId, flow, step, partitionKey); }
+        @Override public Future<Optional<Item>> enqueueLeased(String messageId, String flow, int step, String partitionKey, String workerId, Duration lease) {
+            return inner.enqueueLeased(messageId, flow, step, partitionKey, workerId, lease);
+        }
+        @Override public Future<List<Item>> claim(String workerId, String flow, int max, Duration lease) {
+            claims.incrementAndGet();
+            return inner.claim(workerId, flow, max, lease).onComplete(done -> answered.incrementAndGet());
+        }
+        @Override public Future<Boolean> complete(long seq, int attempts) { return inner.complete(seq, attempts); }
+        @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
+            return inner.completeAndTakeNext(seq, attempts, workerId, lease);
+        }
+        @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return inner.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
+        @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }
+        @Override public Future<Boolean> release(long seq) { return inner.release(seq); }
+        @Override public Future<Boolean> hasItems(String flow) { return inner.hasItems(flow); }
+    }
+
+    /** A step ({@code type: hold}) holding each run until its message is released; the run threads by message id. */
+    static final class HoldStep implements StepFactory {
+        final Map<String, List<Thread>> runs = new ConcurrentHashMap<>();
+        final CountDownLatch release = new CountDownLatch(1);
+
+        @Override public String type() { return "hold"; }
+        @Override public String configSchema() { return "{}"; }
+        @Override public Stage create(StepConfig step, StepResources resources) { return this::pass; }
+
+        private Envelope pass(Envelope e, Pipeline rest) {
+            runs.computeIfAbsent(e.id(), id -> new CopyOnWriteArrayList<>()).add(Thread.currentThread());
+            try {
+                if (!release.await(30, TimeUnit.SECONDS)) throw new IllegalStateException("hold: the run of " + e.id() + " was never released");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("hold: interrupted", interrupted);
+            }
+            return rest.apply(e);
+        }
+
+        int runsOf(String id) { return runs.getOrDefault(id, List.of()).size(); }
+    }
+
+    static void until(java.util.function.BooleanSupplier condition, java.util.function.Supplier<String> what) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() - deadline > 0) fail("not within 20 s: " + what.get());
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * P2-16a (D-121 A1, A2, A4): with the flow's worker started on the node, a saved item is written leased to the node with attempts
+     * 1 in the save itself and run once by that worker after the save — no claim but the worker's one start claim (A6).
+     */
+    @Test
+    void aSavedItemIsHandedOffOnceLeasedToTheNode() throws Exception {
+        FakeRuntime rt = FakeRuntime.create();
+        io.flottila.api.Runtime runtime = new io.flottila.api.Runtime(rt.clock(), rt.timer(), rt.ids(), world.bodies(), rt.hasher(), Map.of());
+        HoldStep hold = new HoldStep();
+        CountedClaims queue = new CountedClaims(world.queue());
+        Map<String, Object> doc = new HashMap<>();
+        doc.put("schemaVersion", 1);
+        doc.put("kind", "flow");
+        doc.put("id", FLOW);
+        doc.put("version", "0.1.0");
+        doc.put("from", Map.of("endpoint", "in"));
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "1h"));
+        doc.put("limits", Map.of("maxBodyBytes", FLOW_MAX, "maxInFlight", 2));
+        doc.put("steps", List.of(Map.of("type", "hold", "name", "hold")));
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowWorker worker = new FlowBuilder(runtime, List.of(hold), List.of(), Map.of())
+                .recording(world.messages(), io.flottila.core.record.Meter.system()).queue(queue).dlq(new InMemoryDlq()).workers(world.workers())
+                .worker(def, java.nio.file.Path.of(""), world.node(), new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofMinutes(10)));
+        try {
+            worker.start();
+            until(() -> queue.claims.get() == 1 && queue.answered.get() == 1, () -> "the worker's start claim answered: " + queue.claims + " claims");
+
+            Envelope in = arrive("m-handoff", bytes(300, 7));
+            Future<String> saved = save(in, "K-1", Promise.promise().future());
+            assertTrue(saved.succeeded(), "saved: " + saved.cause());
+            assertEquals(Optional.of(world.node()), world.leaseHolder("m-handoff"), "written leased to the node by the save itself");
+            assertEquals(1, world.attempts("m-handoff"), "its first hand-out: attempts 1");
+            assertEquals(List.of(new Queued("m-handoff", FLOW, 1, "K-1")), world.queued(), "one item, under its key");
+
+            until(() -> hold.runsOf("m-handoff") == 1, () -> "the worker runs the saved item; runs " + hold.runs + ", claims " + queue.claims);
+            assertEquals(1, queue.claims.get(), "run with no claim but the start claim");
+            hold.release.countDown();
+            for (Thread t : hold.runs.get("m-handoff")) t.join(Duration.ofSeconds(20));
+            until(() -> worker.unsettled() == 0 && world.queued().isEmpty(), () -> "the item completed; queued " + world.queued());
+            assertEquals(1, hold.runsOf("m-handoff"), "run once");
+            assertEquals(1, queue.claims.get(), "and no claim at its chain end: no backlog known");
+        } finally {
+            worker.stop();
+            hold.release.countDown();
+        }
     }
 }

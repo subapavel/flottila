@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P2-15a acceptance 5 (D-101 (1), architect decision 1): the node lease costs no statement per message and one renew per
@@ -157,5 +158,96 @@ class PgWorkQueueStatementsIT {
         assertEquals(List.of(), statements(queueWire, 0).stream().filter(s -> !s.startsWith("truncate")).toList(),
                 "an idle node sends nothing else: nothing on the queue's pool");
         assertEquals(0, halts.get());
+    }
+
+    @org.junit.jupiter.api.io.TempDir java.nio.file.Path journalDir;
+
+    /**
+     * P2-16a (D-121 A1, A2, A6; BACKLOG P2-16 "a saved message runs on its node with no claim statement"): node {@code n-h}'s started
+     * worker has a slot, so the message its intake saves is written leased to the node and run by it — the queue's pool, counted at
+     * the wire, carries the save's insert and the completion's delete but no claim statement (a statement locking with
+     * {@code for update skip locked}); the start claim before the mark is one, so the filter sees claims.
+     *
+     * <p>The API assumed (test-author's choice where the packet names none): {@code new PgIntake(Pool, TieredBlobStore, PgMessageStore,
+     * PgWorkQueue, Workers)}; {@code new io.flottila.core.flow.Workers()}; {@code FlowBuilder.workers(Workers)}.
+     */
+    @Test
+    void aHandedOffMessageIssuesNoClaimStatement() throws Exception {
+        String node = "n-h";
+        Pool rows = PgBuilder.pool().connectingTo(new PgConnectOptions().setHost(pg.getHost()).setPort(pg.getMappedPort(5432))
+                .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword())).with(new PoolOptions().setMaxSize(2)).using(vertx).build();
+        io.flottila.runtime.journal.TestJournals.Opened journal = io.flottila.runtime.journal.TestJournals.open(rows, journalDir, node);
+        io.flottila.runtime.store.PgMessageStore messages = new io.flottila.runtime.store.PgMessageStore(pool, new io.flottila.runtime.time.VertxTimer(vertx),
+                io.flottila.core.batch.BatchingWriter.Options.defaults());
+        io.flottila.core.flow.FlowWorker worker = null;
+        try {
+            io.flottila.runtime.blob.TieredBlobStore blobs = new io.flottila.runtime.blob.TieredBlobStore(
+                    new io.flottila.runtime.blob.TieredBlobStore.Config(1L << 20, 1L << 20, 8L << 20, 4L << 20), io.flottila.api.Hasher.sha256(),
+                    journal.journal(), journal.tenant(), pool);
+            PgWorkQueue queue = new PgWorkQueue(pool, node);
+            io.flottila.core.flow.Workers workers = new io.flottila.core.flow.Workers();
+            io.flottila.runtime.store.PgIntake intake = new io.flottila.runtime.store.PgIntake(pool, blobs, messages, queue, workers);
+            io.flottila.testkit.FakeRuntime rt = io.flottila.testkit.FakeRuntime.create();
+            io.flottila.api.Runtime runtime = new io.flottila.api.Runtime(rt.clock(), rt.timer(), rt.ids(), blobs, rt.hasher(), java.util.Map.of());
+            io.flottila.api.StepFactory pass = new io.flottila.api.StepFactory() {
+                @Override public String type() { return "pass"; }
+                @Override public String configSchema() { return "{}"; }
+                @Override public io.flottila.api.Stage create(io.flottila.api.StepConfig step, io.flottila.api.StepResources res) { return io.flottila.api.Stage.of(e -> e); }
+            };
+            java.util.Map<String, Object> doc = new java.util.HashMap<>();
+            doc.put("schemaVersion", 1);
+            doc.put("kind", "flow");
+            doc.put("id", "f");
+            doc.put("version", "0.1.0");
+            doc.put("from", java.util.Map.of("endpoint", "in"));
+            doc.put("delivery", java.util.Map.of("mode", "at-least-once", "timeout", "1h"));
+            doc.put("limits", java.util.Map.of("maxBodyBytes", 65_536, "maxInFlight", 2));
+            doc.put("steps", List.of(java.util.Map.of("type", "pass", "name", "pass")));
+            io.flottila.core.flow.FlowDefinition def = io.flottila.core.flow.FlowDefinition.from(doc);
+            worker = new io.flottila.core.flow.FlowBuilder(runtime, List.of(pass), List.of(), java.util.Map.of())
+                    .recording(messages, io.flottila.core.record.Meter.system()).queue(queue).dlq(new io.flottila.core.dlq.InMemoryDlq()).workers(workers)
+                    .worker(def, java.nio.file.Path.of(""), node, new io.flottila.core.flow.WorkerPolicy(ITEM_LEASE, 5, Duration.ofMinutes(10)));
+            int beforeStart = queueWire.mark();
+            worker.start();
+            io.flottila.core.flow.FlowWorker started = worker;
+            queue.hasItems("f").await(10, SECONDS);   // one round trip on the pool's one connection: a start claim sent before it was answered
+            assertEquals(1, statements(queueWire, beforeStart).stream().filter(PgWorkQueueStatementsIT::isClaim).count(),
+                    "the worker's one start claim crossed the wire (A6): the filter sees claims: " + statements(queueWire, beforeStart));
+            int mark = queueWire.mark();
+
+            io.flottila.api.Body body = blobs.write(io.flottila.api.BlobKey.body("m-h", 0), io.vertx.core.buffer.Buffer.buffer("<order/>"), 65_536).await();
+            io.flottila.api.Envelope in = io.flottila.api.Envelope.ingress("m-h", "f",
+                    io.flottila.api.Headers.empty().with(io.flottila.api.Envelope.H_CONTENT_TYPE, "application/xml"), body);
+            io.flottila.core.record.Snapshot ingress = new io.flottila.core.record.Recorder(new io.flottila.core.record.InMemoryMessageStore(),
+                    java.time.Clock.fixed(T0, java.time.ZoneOffset.UTC), io.flottila.core.record.Meter.system(), java.util.Map.of())
+                    .startSnapshot(in, io.flottila.core.record.Recorder.INGRESS, io.flottila.core.record.RecordingPolicy.DEFAULT);
+            assertEquals("m-h", intake.save(in, ingress, "f", null, null, false, io.vertx.core.Promise.promise().future()).await(20, SECONDS));
+            awaitTrue(() -> rows.query("select count(*) from work").execute().await().iterator().next().getLong(0) == 0 && started.unsettled() == 0,
+                    "the handed-off message ran and completed");
+            queue.hasItems("f").await(10, SECONDS);   // whatever the chain end sent went before this round trip
+
+            List<String> sent = statements(queueWire, mark);
+            assertEquals(List.of(), sent.stream().filter(PgWorkQueueStatementsIT::isClaim).toList(), "no claim statement for a handed-off message: " + sent);
+            assertTrue(sent.stream().anyMatch(t -> t.toLowerCase(java.util.Locale.ROOT).startsWith("insert into work")), "the save's insert crossed this wire: " + sent);
+            assertTrue(sent.stream().anyMatch(t -> t.toLowerCase(java.util.Locale.ROOT).startsWith("delete from work")), "and the completion: " + sent);
+        } finally {
+            if (worker != null) worker.stop();
+            messages.close();
+            journal.close();
+            rows.close().await();
+        }
+    }
+
+    /** A claim: the claim's or the fast path's locking take. */
+    static boolean isClaim(String statement) {
+        return statement.toLowerCase(java.util.Locale.ROOT).contains("for update skip locked");
+    }
+
+    static void awaitTrue(java.util.function.BooleanSupplier condition, String what) {
+        long deadline = System.nanoTime() + SECONDS.toNanos(20);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() - deadline > 0) throw new AssertionError("not within 20 s: " + what);
+            Thread.onSpinWait();
+        }
     }
 }

@@ -68,6 +68,9 @@ final class RecordingWorkQueue implements WorkQueue {
     /** One complete or fast path: the attempts it was fenced by, and whether it removed the row ({@code null}: it failed). */
     record CompleteCall(long seq, int attempts, Boolean answer) {}
 
+    /** One leased enqueue (P2-16a, D-121 A2): what it asked for and what it answered ({@code null}: it failed). */
+    record EnqueueLeasedCall(String messageId, String partitionKey, String workerId, Duration lease, Optional<Item> answer) {}
+
     private record Held(ClaimCall call, String flow, Promise<List<Item>> promise) {}
 
     private final InMemoryWorkQueue delegate;
@@ -77,6 +80,8 @@ final class RecordingWorkQueue implements WorkQueue {
     private final List<HoldCall> holds = new CopyOnWriteArrayList<>();
     private final List<Long> completes = new CopyOnWriteArrayList<>();
     private final List<CompleteCall> completeCalls = new CopyOnWriteArrayList<>();
+    private final List<EnqueueLeasedCall> enqueueLeasedCalls = new CopyOnWriteArrayList<>();
+    private final AtomicReference<Throwable> nextEnqueueFailure = new AtomicReference<>();
     private final Map<String, Integer> handedOut = new ConcurrentHashMap<>();
     private final List<Held> held = new ArrayList<>();   // guarded by this
     private int inFlight;                                 // guarded by this
@@ -152,6 +157,9 @@ final class RecordingWorkQueue implements WorkQueue {
         renewAnswer = null;
     }
 
+    /** The next enqueue — plain or leased — fails with {@code cause} without reaching the delegate (nothing queued); later ones answer as before. */
+    void failNextEnqueue(Throwable cause) { nextEnqueueFailure.set(Objects.requireNonNull(cause, "cause")); }
+
     /** Sampled at every claim call into {@link ClaimCall#runningAtCall}. */
     void probeRunning(IntSupplier probe) { runningProbe = Objects.requireNonNull(probe, "probe"); }
 
@@ -166,6 +174,9 @@ final class RecordingWorkQueue implements WorkQueue {
     List<HoldCall> holds() { return List.copyOf(holds); }
 
     List<Long> completes() { return List.copyOf(completes); }
+
+    /** Every leased enqueue so far, in call order (P2-16a). */
+    List<EnqueueLeasedCall> enqueueLeasedCalls() { return List.copyOf(enqueueLeasedCalls); }
 
     /** Every complete and fast path so far with its attempts and answer, in call order (Q-1). */
     List<CompleteCall> completeCalls() { return List.copyOf(completeCalls); }
@@ -201,7 +212,19 @@ final class RecordingWorkQueue implements WorkQueue {
 
     @Override
     public Future<Void> enqueue(String messageId, String flow, int step, String partitionKey) {
-        return delegate.enqueue(messageId, flow, step, partitionKey);
+        Throwable failure = nextEnqueueFailure.getAndSet(null);
+        return failure != null ? Future.failedFuture(failure) : delegate.enqueue(messageId, flow, step, partitionKey);
+    }
+
+    /** The delegate's leased enqueue (P2-16a, D-121 A2), recorded with its answer; a staged failure reaches no delegate. */
+    @Override
+    public Future<Optional<Item>> enqueueLeased(String messageId, String flow, int step, String partitionKey, String workerId, Duration lease) {
+        Throwable failure = nextEnqueueFailure.getAndSet(null);
+        Future<Optional<Item>> answer = failure != null ? Future.failedFuture(failure)
+                : delegate.enqueueLeased(messageId, flow, step, partitionKey, workerId, lease);
+        enqueueLeasedCalls.add(new EnqueueLeasedCall(messageId, partitionKey, workerId, lease, answer.succeeded() ? answer.result() : null));
+        if (answer.succeeded() && answer.result().isPresent()) handedOut.merge(workerId, 1, Integer::sum);
+        return answer;
     }
 
     @Override

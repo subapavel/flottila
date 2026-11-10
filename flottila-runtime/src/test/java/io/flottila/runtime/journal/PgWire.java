@@ -328,7 +328,10 @@ public final class PgWire implements AutoCloseable {
     public int mark() { return sent.size(); }
 
     /** Every message sent after {@code mark}, in the order the relay read them (one connection: send order). */
-    public List<Sent> since(int mark) { return List.copyOf(sent.subList(mark, sent.size())); }
+    public List<Sent> since(int mark) {
+        List<Sent> all = List.copyOf(sent);   // one snapshot of the copy-on-write list: a subList view throws while the relay appends (P2-16a)
+        return all.subList(mark, all.size());
+    }
 
     /**
      * From now on a server reply carrying a ReadyForQuery reaches the client only once the relay has read everything the client

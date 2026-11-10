@@ -331,7 +331,8 @@ class FlowWorkerFastPathTest {
     /**
      * A1 and A2 share key A: the claim hands out A1 only. A1's run ends: one call completes A1 and leases A2 to the same worker —
      * no claim in between, no plain complete — and A2 runs under a lease of its own, renewed on the timer (A1's ended with its
-     * run). The round waits for the chain it started; once A2 is done ({@code done(empty)}), the chain's end polls once.
+     * run). The round waits for the chain it started; once A2 is done ({@code done(empty)}), the chain ends without a claim: the
+     * round's claim asked 4 and got 1, so no backlog is known (D-121 A6; until P2-16a the chain's end polled once).
      */
     @Test
     void keyedSuccessorTakenByFastPathWithoutAClaim() throws Exception {
@@ -365,9 +366,9 @@ class FlowWorkerFastPathTest {
         second.release();
         assertTrue(round.await(5, SECONDS) >= 1, "the round succeeds once its chain is done");
         second.joined();
-        until(() -> l.recorded.claimsInFlight() == 0 && l.queue.claims().size() == 2, () -> "the chain's end polled: " + l.queue.events());
-        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@1", "take 2@1 -> none", "claim w1 -> []"), l.queue.events(),
-                "A2 ends the chain (nothing left of key A); the chain's end polls once");
+        until(() -> l.recorded.claimsInFlight() == 0, () -> "claims answered: " + l.queue.events());
+        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@1", "take 2@1 -> none"), l.queue.events(),
+                "A2 ends the chain (nothing left of key A); no backlog known: the chain's end claims nothing (D-121 A6)");
         assertEquals(List.of(a1.id(), a2.id()), l.sentIds(), "in key order");
         assertEquals(0, l.rows.size());
         assertEquals(0, w1.staleSettles());
@@ -411,7 +412,9 @@ class FlowWorkerFastPathTest {
     /**
      * maxChain 2: after the claimed A1 the worker takes A2 and A3 by the fast path; A3 is at the bound, so it is completed plainly
      * and the key goes back to the seq-ordered claim — the chain's end polls and the claim hands out A4, which starts a chain of
-     * its own (A5 taken, then nothing left).
+     * its own (A5 taken, then nothing left). D-121 A6 reading (test-author, to confirm): a keyed item completed plainly at the
+     * chain's bound yields its key with rows maybe left, so it sets the backlog flag and its chain end claims; A4's claim asked 4
+     * and got 1, so A5's chain end claims nothing (until P2-16a it polled once more).
      */
     @Test
     void chainYieldsAfterMaxChain() throws Exception {
@@ -424,13 +427,13 @@ class FlowWorkerFastPathTest {
         l.gate.open();
 
         w1.poll().await(5, SECONDS);
-        until(() -> l.recorded.claimsInFlight() == 0 && l.queue.claims().size() == 3, () -> "both chains done: " + l.queue.events());
+        until(() -> l.recorded.claimsInFlight() == 0 && l.queue.claims().size() == 2 && l.rows.size() == 0, () -> "both chains done: " + l.queue.events());
         l.gate.joinPassed();
 
         assertEquals(List.of(
                 "claim w1 -> [1@1]", "take 1@1 -> 2@1", "take 2@1 -> 3@1", "complete 3@1 -> true",
-                "claim w1 -> [4@1]", "take 4@1 -> 5@1", "take 5@1 -> none",
-                "claim w1 -> []"), l.queue.events(), "two items taken after each claim, then the key yields to the claim");
+                "claim w1 -> [4@1]", "take 4@1 -> 5@1", "take 5@1 -> none"), l.queue.events(),
+                "two items taken after each claim, then the key yields to the claim; the last chain's end claims nothing");
         assertEquals(ids, l.sentIds(), "in key order");
         assertEquals(0, l.rows.size());
     }
@@ -499,8 +502,9 @@ class FlowWorkerFastPathTest {
     /**
      * A1's fast path completes A1 and leases A2 to w1 (attempt 1), but its answer is late: before it reaches the worker, A2's
      * lease runs out and a claim of w1 hands A2 out again (attempt 2), and the worker runs it. When the take's answer arrives,
-     * that run goes on and A1's chain ends there: A2 runs once in w1, not a second time in A1's slot; the chain's end polls, the
-     * claim's run settles A2 under its own attempt, and once all is done the worker runs nothing (a poll asks for its whole max).
+     * that run goes on and A1's chain ends there: A2 runs once in w1, not a second time in A1's slot; the claim's run settles A2
+     * under its own attempt, and once all is done the worker runs nothing (a poll asks for its whole max). Both claims answered
+     * less than they asked: no chain end claims (D-121 A6; until P2-16a each chain's end polled).
      */
     @Test
     void aTakenItemAClaimStartedFirstIsNotRunTwice() throws Exception {
@@ -536,9 +540,9 @@ class FlowWorkerFastPathTest {
         claimed.release();
         assertEquals(1, again.await(5, SECONDS), "the claim's round ends with A2's run");
         claimed.joined();
-        until(() -> l.recorded.claimsInFlight() == 0 && l.queue.claims().size() == 4, () -> "both chains' ends polled: " + l.queue.events());
-        assertEquals(List.of("claim w1 -> [1@1]", "claim w1 -> [2@2]", "take 1@1 -> 2@1", "claim w1 -> []", "take 2@2 -> none", "claim w1 -> []"),
-                l.queue.events(), "A1's chain ends at the late answer and polls; A2 is settled by the claim's run, under attempt 2");
+        until(() -> l.recorded.claimsInFlight() == 0 && l.rows.size() == 0, () -> "both chains ended: " + l.queue.events());
+        assertEquals(List.of("claim w1 -> [1@1]", "claim w1 -> [2@2]", "take 1@1 -> 2@1", "take 2@2 -> none"),
+                l.queue.events(), "A1's chain ends at the late answer; A2 is settled by the claim's run, under attempt 2; no chain end claims");
         assertEquals(List.of(a1.id(), a2.id()), l.sentIds(), "A2 sent once");
         assertEquals(0, l.rows.size());
         assertEquals(0, w1.staleSettles());
@@ -612,11 +616,11 @@ class FlowWorkerFastPathTest {
         l.gate.open();
 
         w1.poll().await(5, SECONDS);
-        until(() -> l.recorded.claimsInFlight() == 0 && l.queue.claims().size() == 2, () -> "the chain done: " + l.queue.events());
+        until(() -> l.recorded.claimsInFlight() == 0 && l.rows.size() == 0, () -> "the chain done: " + l.queue.events());
         l.gate.joinPassed();
 
-        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@3", "take 2@3 -> 3@1", "take 3@1 -> none", "claim w1 -> []"), l.queue.events(),
-                "A2 handed out with attempt 3 of 2 is settled as parked, under that attempt, and its key goes on");
+        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@3", "take 2@3 -> 3@1", "take 3@1 -> none"), l.queue.events(),
+                "A2 handed out with attempt 3 of 2 is settled as parked, under that attempt, and its key goes on; the chain end claims nothing (D-121 A6)");
         assertEquals(List.of(), l.gate.runsOf(a2.id()), "A2 never ran");
         assertEquals(List.of(a1.id(), a3.id()), l.sentIds());
         List<Parked> parked = l.dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items();
@@ -639,10 +643,10 @@ class FlowWorkerFastPathTest {
         l.gate.open();
 
         w1.poll().await(5, SECONDS);
-        until(() -> l.recorded.claimsInFlight() == 0 && l.queue.claims().size() == 2, () -> "the chain done: " + l.queue.events());
+        until(() -> l.recorded.claimsInFlight() == 0 && l.rows.size() == 0, () -> "the chain done: " + l.queue.events());
         l.gate.joinPassed();
 
-        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@1", "take 2@1 -> none", "claim w1 -> []"), l.queue.events());
+        assertEquals(List.of("claim w1 -> [1@1]", "take 1@1 -> 2@1", "take 2@1 -> none"), l.queue.events(), "no backlog known: the chain end claims nothing (D-121 A6)");
         List<Parked> parked = l.dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(List.of(a1.id()), parked.stream().map(Parked::messageId).toList(), "A1 parked");
         assertEquals(List.of(a2.id()), l.sentIds(), "A2 went on");

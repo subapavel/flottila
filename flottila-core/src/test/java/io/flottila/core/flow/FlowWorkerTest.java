@@ -534,10 +534,10 @@ class FlowWorkerTest {
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(List.of(in.id()), w.sentIds());
         List<RecordingWorkQueue.ClaimCall> claims = w.queue.claims();
-        assertEquals(3, claims.size(), "the failed claim, exactly one follow-up round, the finished item's poll: " + claims);
+        assertEquals(2, claims.size(), "the failed claim and exactly one follow-up round; it asked 4 and got 1, so the finished item's chain end "
+                + "claims nothing (D-121 A6): " + claims);
         assertSame(cause, claims.get(0).failure);
         assertEquals(List.of(in.id()), claims.get(1).items.stream().map(WorkQueue.Item::messageId).toList(), "the follow-up round claimed the item");
-        assertEquals(List.of(), claims.get(2).items, "the finished item's poll found nothing");
         assertEquals(1, w.queue.peakClaimsInFlight(), "never two claims in flight");
         assertEquals(0, w.rows.size());
     }
@@ -623,56 +623,30 @@ class FlowWorkerTest {
         assertEquals(0, w.rt.timer().pending(), "nothing scheduled any more");
     }
 
+    /**
+     * D-121 A6 (P2-16a): the accept poll is gone — an accepted delivery through an intake without a hand-off (the builder's default)
+     * issues no claim; its item waits for a claim of the started worker, here its tick (until P2-16a: {@code pollingAfterAccept}).
+     */
     @Test
-    void anAcceptedDeliveryPolls() throws Exception {
+    void anAcceptedDeliveryClaimsNothing() throws Exception {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowBuilder b = w.builder();
+        Delivery delivery = b.delivery(def, NO_FILES);
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
-        Function<Envelope, Future<Ack>> handler = w1.pollingAfterAccept(b.delivery(def, NO_FILES));
+        w1.start();
+        until(() -> w.queue.claims().size() == 1 && w.queue.claimsInFlight() == 0, () -> "the start claim");
         w.gate.open();
 
-        Envelope in = w.ingress();
-        assertEquals(new Ack.Accepted(in.id()), handler.apply(in).await(5, SECONDS));
+        Envelope in = w.accept(delivery);
+        assertEquals(1, w.queue.claims().size(), "the accept claims nothing: " + w.queue.claims());
+        assertEquals(List.of(), w.sentIds(), "and runs nothing");
+        w.rt.clock().advance(TICK);
         w.partner.awaitSent(1);
-        assertEquals(List.of(in.id()), w.sentIds(), "the accept polled: no tick, no explicit poll");
+        assertEquals(List.of(in.id()), w.sentIds(), "the tick's claim runs it");
         until(() -> w.rows.size() == 0, () -> "the item completed");
         w.gate.joinPassed();
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-
-        int claims = w.queue.claims().size();
-        w.queue.failClaims(new IllegalStateException("claims down"));
-        Envelope next = w.ingress();
-        assertEquals(new Ack.Accepted(next.id()), handler.apply(next).await(5, SECONDS), "a failing poll never fails the accept");
-        until(() -> w.queue.claims().size() == claims + 1 && w.queue.claimsInFlight() == 0, () -> "the accept's claim");
-        until(() -> !logs.at(Level.WARNING, "claims down").isEmpty() || !logs.at(Level.SEVERE, "claims down").isEmpty(),
-                () -> "the trigger's failure logged: " + logs.all());
-    }
-
-    @Test
-    void aNackDoesNotPoll() throws Exception {
-        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
-        FlowBuilder b = w.builder();
-        Envelope queued = w.accept(b.delivery(def, NO_FILES));   // what a poll would claim
-        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
-
-        Promise<Ack> later = Promise.promise();
-        Future<Ack> nack = w1.pollingAfterAccept(e -> later.future()).apply(w.ingress());
-        later.complete(new Ack.Nack("busy", true));
-        assertEquals(new Ack.Nack("busy", true), nack.await(5, SECONDS), "the Nack passes through");
-        Ack.Reply reply = new Ack.Reply(queued);
-        assertEquals(reply, w1.pollingAfterAccept(e -> Future.succeededFuture(reply)).apply(w.ingress()).await(5, SECONDS));
-        IllegalStateException refused = new IllegalStateException("handler failed");
-        Future<Ack> failed = w1.pollingAfterAccept(e -> Future.<Ack>failedFuture(refused)).apply(w.ingress());
-        until(failed::isComplete, () -> "the failed handler's answer");
-        assertSame(refused, failed.cause(), "a failed handler's future passes through");
-        assertEquals(List.of(), w.queue.claims(), "neither a Nack, a Reply nor a failure polls");
-        assertEquals(1, w.rows.size());
-
-        Future<Ack> accepted = w1.pollingAfterAccept(e -> Future.succeededFuture(new Ack.Accepted(e.id()))).apply(w.ingress());
-        accepted.await(5, SECONDS);
-        until(() -> w.gate.entered() == 1 && w.queue.claimsInFlight() == 0, () -> "the Accepted's poll ran the queued item");
-        assertEquals(1, w.queue.claims().size(), "the same wrapper polls on Accepted, once");
-        assertEquals(List.of(queued.id()), w.queue.claims().get(0).items.stream().map(WorkQueue.Item::messageId).toList());
+        assertEquals(List.of(in.id()), w.queue.claims().get(1).items.stream().map(WorkQueue.Item::messageId).toList(), "claimed by the tick");
     }
 
     @Test
@@ -1877,7 +1851,7 @@ class FlowWorkerTest {
     /** One poll interval passes: the started worker's tick. */
     record Tick() implements Trigger {}
 
-    /** A delivery through {@code pollingAfterAccept}: accepted, then a poll. */
+    /** A delivery accepted: handed off when the worker has a slot (D-121 A1), else a plain row and the backlog flag (P2-16a). */
     record AcceptOne() implements Trigger {}
 
     /** One held run ends: its item finished, it polls once. */
@@ -1904,9 +1878,10 @@ class FlowWorkerTest {
         World world = new World();
         try {
             FlowDefinition def = FlowDefinition.from(flow(max, List.of(RunGate.STEP, TO_PARTNER)));
-            FlowBuilder b = world.builder();
+            Workers workers = new Workers();   // P2-16a: deliveries hand off to the worker's slots instead of polling after the accept
+            FlowBuilder b = world.builder().workers(workers).intake(new SequentialIntake(world.store, world.queue, workers, "w1"));
             FlowWorker worker = world.worker(b, def, "w1", new WorkerPolicy(LEASE, 1_000, TICK));
-            Function<Envelope, Future<Ack>> accepting = worker.pollingAfterAccept(b.delivery(def, NO_FILES));
+            Function<Envelope, Future<Ack>> accepting = b.delivery(def, NO_FILES);
             // running, as seen from outside: handed out to the worker and not yet past the gate (a released run is joined first)
             world.queue.probeRunning(() -> world.queue.handedOutTo("w1") - world.gate.exited());
             worker.start();
