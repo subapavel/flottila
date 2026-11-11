@@ -42,3 +42,13 @@ Ledger, lease/fence, key-lock and fast-path tests run unchanged.
 Reactor verify -Pit (no bench) + BenchMainIT, fresh XML; coverage --baseline-ref HEAD; scoped PIT (FlowWorker, WorkQueue,
 BatchingWriter if touched); hand mutants: drop the attempts check, drop the keyed guard, drop held_at, answer absent as done, retry
 on failure, no flush on close — restored by cp + touch + cmp.
+
+## Red approved (architect 2026-11-11)
+FlowWorkerCompleteUnkeyedTest (4), PgWorkQueueBatchedCompletionIT (9; PgWire DELETE count + statement-level AFTER DELETE trigger
+sizes, BEFORE DELETE trigger refusing `poison%` = a real statement failure), PgWorkQueueBatchedCompletionPropertyIT (15 tries),
+WorkQueueContract.completeUnkeyedCompletesOnlyTheCurrentHoldersUnheldRow + PgBatchedWorkQueueContractIT, JournalBlobStoreIT
+.anUnkeyedItemCompletedByTheBatchLeavesNoIndexEntryToReadItsBodyBy, NodeShutdownWaitsForWorkerSettlementIT.nodeCloseDrainsPending
+CompletionsBeforeThePool. Red: compile (agent/work/CORE-7-red.log), semantic vs a today-like shim (acceptance 101 ≠ 2, -red-queue.log).
+Signatures approved: PgWorkQueue(Pool, String, TieredBlobStore (nullable), Timer); batched completeUnkeyed answers STALE for a keyed
+row; completions() accessors statements/members/stale/refused (members = sent; stale includes keyed/unknown; refused = maxWait
+expiries); `Future<Void> close()` completes once every handed-over member is answered, later members fail. No existing test changed.
