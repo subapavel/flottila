@@ -67,7 +67,7 @@ server in `.mcp.json`.
    and `modelSettings`). Raise to `high` only if PROGRESS.md shows review FAILs on spec grounds.
    The session is the architect only: tests, code, checks and reviews run on subagents whose model
    and effort follow the row's class (AGENTS.md); class-C design goes to the designer (Opus 5.5,
-   xhigh); Fable 5.1 runs only as the gate-reviewer. Do not set `CLAUDE_CODE_EFFORT_LEVEL` in the
+   xhigh); Fable 5.2 runs only as the gate-reviewer. Do not set `CLAUDE_CODE_EFFORT_LEVEL` in the
    environment: it overrides every per-call effort.
 3. Paste the contents of `prompts/PART-B.md` as the first message. The agent reads the repo,
    confirms its understanding in one short message, and starts P0-01.

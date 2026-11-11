@@ -16,7 +16,7 @@ same role.
 | verifier (`.claude/agents/verifier.md`) | claude-sonnet-5-5 | low | bash, read, search | running the checks, reporting observed results |
 | scout (`.claude/agents/scout.md`) | claude-haiku-5-5 | medium | read, search | locating code, requirements, fixtures, prior results; factual context only |
 | reviewer (`.claude/agents/reviewer.md`) | claude-opus-5-5 | high (per call by the task class, below) | read, search | independent review of every completed task |
-| gate-reviewer (`.claude/agents/gate-reviewer.md`) | claude-fable-5-1 | high | read, search | the phase-gate rows only |
+| gate-reviewer (`.claude/agents/gate-reviewer.md`) | claude-fable-5-2 | high | read, search | the phase-gate rows only |
 
 The architect delegates everything that produces or runs code. It never edits `src/`, never
 writes a test, never runs Maven. It writes the spec and the packet, reads the test files to
@@ -32,7 +32,7 @@ defaults; a resumed agent keeps the settings it was started with.
 | A — mechanical | docs, CI scripts, fixtures, mock behaviours, compose files, ledger-only changes | `sonnet`, medium | `sonnet`, medium | `opus`, medium | — |
 | B — standard | a component with its mock, a step, contract-suite cases, a FIX row on existing code, the admin API, the CLI | `opus`, high | `opus`, high | `opus`, high | — |
 | C — hard paths | the batcher, admission, `RequestScope`, `BlobStore` tiers, the WorkQueue claim path, leases and cancel, public types in `flottila-api`, JSON Schemas, concurrency, a security boundary | `opus`, xhigh | `opus`, xhigh | `opus`, xhigh | before the spec, xhigh |
-| G — gate | P1-GATE, GATE | — | — | — | — (the gate-reviewer runs, Fable 5.1 high) |
+| G — gate | P1-GATE, GATE | — | — | — | — (the gate-reviewer runs, Fable 5.2 high) |
 
 A one-line fix the reviewer names resumes the same writer; its closure check runs the reviewer at
 medium. When a row turns out harder than its class (a second review FAIL, a design question the
@@ -41,7 +41,7 @@ calls the designer. Never lower a class mid-task to save tokens.
 
 The architect runs at medium and does not think a design through in its own context: it sends
 class-C design work to the designer, a fresh read-only agent with a small context, and approves
-what comes back. Fable 5.1 runs only as the gate-reviewer. `CLAUDE_CODE_EFFORT_LEVEL` must not be
+what comes back. Fable 5.2 runs only as the gate-reviewer. `CLAUDE_CODE_EFFORT_LEVEL` must not be
 set in the environment: it overrides every per-call effort.
 
 Concurrency: at most two subagents at once beside the architect, and exactly one writer — while

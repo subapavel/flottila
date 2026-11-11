@@ -27,7 +27,7 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
    `agent/work/<task>.diff`. When the diff goes to the reviewer the architect runs
    `touch agent/work/.batch-in-review` (§10). `FAIL` reopens the task at step 4; a second `FAIL`
    reopens it at step 3 with a rewritten spec, drafted by the designer, and raises the row's class
-   if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.1) instead.
+   if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.2) instead.
 7. Commit and push to `main`: `rm -f agent/work/.batch-in-review && git commit …`. Append the
    PROGRESS entry, rewrite HANDOFF, set the row to `done`. These three edits go in the same
    commit as the code.
