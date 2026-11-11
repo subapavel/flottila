@@ -9,7 +9,7 @@
   nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start.
 - A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
   `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
-- Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36 (schema count); public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
+- Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:76, PgDeploymentStoreIT:100, BenchMainIT:36 (schema count); a new /admin JSON field → AdminServerWorkTest field-set pins; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
   a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
 - Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins; killers = the `-q` log's `[ERROR]   ` lines): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`. Pass `-Dsurefire.timeout` on hand runs too (CORE-4c1 r1: a hung @AfterEach close blocked a run 15 min).
@@ -17,7 +17,7 @@
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
 - Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`. JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
-- Mutants offline (`-o`; scratchpad is shared across runs: a fresh per-task dir): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
+- Mutants offline (`-o`; scratchpad is shared across runs: a fresh per-task dir): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`; `find -prune .. -delete` deletes NOTHING (find warns): list, then `xargs rm`.
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
 - Scoped PIT `-pl flottila-api,flottila-testkit,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107). Runtime (FIX-139, ~4 min): `-pl flottila-runtime -am -DmutationThreshold=0`, mutations.xml by `mutatedMethod`.
@@ -89,9 +89,8 @@
 - vertx-pg-client 5.1.10 (javap, P2-16b): `PgConnection.notificationHandler(Handler<PgNotification>)` (`getPayload()`, `getChannel()`),
   `closeHandler`/`exceptionHandler`; a node's own NOTIFY reaches its own LISTEN. PgWire records the client's Terminate as `Sent('X', null, conn)`:
   the positive witness that a client closed a connection (a "count 0 in pg_stat_activity" wait also passes when the statement never ran).
-- vertx-pg 5.1.10 TLS (javap -c PgConnectionFactory, FIX-146): VERIFY_FULL needs a non-empty hostnameVerificationAlgorithm (IAE at connect), verify-* need
+- vertx-pg 5.1.10 TLS (javap -c PgConnectionFactory, FIX-146): VERIFY_FULL needs a non-empty hostnameVerificationAlgorithm (IAE at connect), verify-* need vertx-json-schema 5.1.10 validates `dependentRequired`, path root `""` (FIX-143). A failing core-mutant run prints testkit ComponentContractSelfTest's fixture `[ERROR]` lines: filter them from killers.
   trust options; the name check IS the algorithm (VERIFY_CA+"HTTPS" still checks: equivalent mutant). pgjdbc 42.7.14 parseURL URL-decodes params.
-- vertx-json-schema 5.1.10 validates `dependentRequired`, path root `""` (FIX-143). A failing core-mutant run prints testkit ComponentContractSelfTest's fixture `[ERROR]` lines: filter them from killers.
 ## Findings that came back in review
 - PgIntake: a throw out of answered()/handOff fails the writer save → fail(m) → Durable.rolledBack, a NO-OP after committed() (save gone):
   unobservable via openSaves; kill by a later member's skipped side effect (P2-16b r3). Node wiring of PgIntake/AdminServer signals: no Node IT kills NONE.
@@ -118,3 +117,4 @@
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).
 - P2-15b r1: a timer armed before an SPI call must be disarmed for a THROW and a NULL answer (requireNonNull inside the disarming try) and a
   throwing `Timer.schedule` in a producer is a failed future; a `<=` boundary on a clock needs a case landing exactly on it (mutant `<`).
+- FIX-141: a two-statement "delete then audit insert" in one tx leaves a surviving mutant (audit on the pool inside the tx); one CTE `with gone as (delete .. returning ..) insert into audit .. select .. from gone` makes them inseparable.

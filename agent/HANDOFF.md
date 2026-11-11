@@ -1,11 +1,11 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-139/140/142/143/144/145/146, P2-16a, P2-16b, CORE-7 done; D-110 no size refusal; benchmarks paused
-last commit: `Task: FIX-143` (this commit); 51b0053 `Task: FIX-146`
+state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-139..146, P2-16a, P2-16b, CORE-7 done; D-110 no size refusal; benchmarks paused
+last commit: `Task: FIX-141` (this commit); d2c7382 `Task: FIX-143`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: FIX-141 lost work (ACCEPT_LOSS) in admin with restore/discard + audit; the ordered barrier visible
+next exact action: D-114 sync standby rows FIX-136/137, then FIX-138, then D-119 multi-node deploy FIX-147
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

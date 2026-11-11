@@ -120,7 +120,14 @@ import java.util.function.Supplier;
  * {@code POST /admin/work/{seq}/release} answers 200 {@code {seq}}, 404 for a seq unknown or not held, 400 for a seq that is
  * not a long. A release wakes the row's flow in the node's {@link Workers} (every flow when the queue cannot tell the row) and
  * announces it through the node's {@link WorkSignals} to the node whose journal holds its body ({@code *} when unknown; D-121 (b)
- * B4 (ii)); built without them, a release wakes and announces nothing. Without a queue these routes do not exist (404).
+ * B4 (ii)); built without them, a release wakes and announces nothing. Each held row also carries {@code blocks}, the rows of its
+ * key behind it (D-126). {@code GET /admin/work/lost?limit&after} pages the lost rows — their body given up by an accepted
+ * {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} — the same way ({@code {items:[{seq, messageId, flow, partitionKey, lostAt, blocks}],
+ * next|null}}); {@code POST /admin/work/{seq}/discard} deletes a lost row and writes one {@code audit} row in the same transaction,
+ * answering 200 {@code {seq, auditId}}, 404 for a seq unknown or not lost, 400 for a seq that is not a long or an
+ * {@code X-Flottila-Actor} over 128 characters; the actor is that header ({@code unknown} without one), self-declared under the
+ * shared token. A discard wakes the row's flow and announces it to the node of its key's next row, as a release does. Without a
+ * queue these routes do not exist (404).
  *
  * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays and retries:
  * {@code POST /admin/messages/{id}/replay?from=n} runs steps {@code n..end} of the message's flow as deployed now, and
@@ -144,6 +151,10 @@ public final class AdminServer {
     public static final int DEFAULT_LIMIT = 50;
 
     private static final System.Logger LOG = System.getLogger(AdminServer.class.getName());
+
+    /** The header an admin request declares its actor in, for the audit row (D-126 L4); and its length at most. */
+    static final String ACTOR = "X-Flottila-Actor";
+    static final int ACTOR_MAX = 128;
     private static final String JSON = "application/json";
     private static final String OCTETS = "application/octet-stream";
     private static final String BEARER = "Bearer ";
@@ -379,6 +390,8 @@ public final class AdminServer {
             work.ifPresent(q -> {
                 router.get("/admin/work/held").handler(offload(c -> held(c, q)));
                 router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q, workers, signals)));
+                router.get("/admin/work/lost").handler(offload(c -> lost(c, q)));
+                router.post("/admin/work/:seq/discard").handler(offload(c -> discard(c, q, workers, signals)));
             });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
@@ -632,12 +645,47 @@ public final class AdminServer {
         if (released.isEmpty()) return Json.of(404, error("no held work item " + seq));
         WorkQueue.Released row = released.get();
         row.flow().ifPresentOrElse(workers::wake, workers::wakeAll);
-        try {
-            signals.announce(row.bodyNode().orElse(null), row.flow().orElse(null));
-        } catch (RuntimeException | Error thrown) {   // the release committed: its answer stands, the body's node finds the row by reconciliation
-            LOG.log(System.Logger.Level.WARNING, "announcing released work item " + seq + " failed: " + thrown, thrown);
-        }
+        announce(signals, row.bodyNode().orElse(null), row.flow().orElse(null), "released work item " + seq);
         return Json.of(200, new JsonObject().put("seq", seq));
+    }
+
+    /** Announces {@code flow} to {@code target} after a change committed: a throw is logged, the answer stands. */
+    private static void announce(WorkSignals signals, String target, String flow, String what) {
+        try {
+            signals.announce(target, flow);
+        } catch (RuntimeException | Error thrown) {   // the change committed: its answer stands, the body's node finds the row by reconciliation
+            LOG.log(System.Logger.Level.WARNING, "announcing " + what + " failed: " + thrown, thrown);
+        }
+    }
+
+    private static Reply lost(RoutingContext ctx, WorkQueue work) {
+        return Json.of(200, page(refusable(() -> work.lost(after(ctx), limit(ctx)).await()), AdminServer::lost));
+    }
+
+    /**
+     * 200 {@code {seq, auditId}} for a lost row, discarded and audited (D-126): its flow woken here and, when its key has a next row
+     * whose node is known, that node announced, after the commit; 404 for any other seq (nothing deleted, nothing audited); a seq
+     * that is not a long or an actor over {@link #ACTOR_MAX} characters is 400 before the queue is asked.
+     */
+    private static Reply discard(RoutingContext ctx, WorkQueue work, Workers workers, WorkSignals signals) {
+        long seq = refusable(() -> Long.parseLong(ctx.pathParam("seq")));
+        String actor = actor(ctx.request());
+        Optional<WorkQueue.Discarded> discarded = work.discard(seq, actor, ctx.request().remoteAddress().hostAddress()).await();
+        if (discarded.isEmpty()) return Json.of(404, error("no lost work item " + seq));
+        WorkQueue.Discarded d = discarded.get();
+        workers.wake(d.flow());
+        d.nextNode().ifPresent(node -> announce(signals, node, d.flow(), "the key's next row after discarded work item " + seq));
+        return Json.of(200, new JsonObject().put("seq", seq).put("auditId", d.auditId()));
+    }
+
+    /**
+     * The audit actor (D-126 L4): the request's {@value #ACTOR} header, stripped — self-declared under the shared token, never
+     * authenticated — {@code unknown} when absent or blank; over {@link #ACTOR_MAX} characters a 400.
+     */
+    private static String actor(HttpServerRequest req) {
+        String actor = Objects.requireNonNullElse(req.getHeader(ACTOR), "").strip();
+        if (actor.length() > ACTOR_MAX) throw new Refused(ACTOR + " is at most " + ACTOR_MAX + " characters, was " + actor.length());
+        return actor.isEmpty() ? "unknown" : actor;
     }
 
     /**
@@ -877,7 +925,19 @@ public final class AdminServer {
                 .put("step", i.step())
                 .put("partitionKey", i.partitionKey())
                 .put("attempts", i.attempts())
-                .put("heldAt", h.heldAt().toString());
+                .put("heldAt", h.heldAt().toString())
+                .put("blocks", h.blocks());
+    }
+
+    private static JsonObject lost(WorkQueue.Lost l) {
+        WorkQueue.Item i = l.item();
+        return new JsonObject()
+                .put("seq", i.seq())
+                .put("messageId", i.messageId())
+                .put("flow", i.flow())
+                .put("partitionKey", i.partitionKey())
+                .put("lostAt", l.lostAt().toString())
+                .put("blocks", l.blocks());
     }
 
     private static String hash(Hash h) {

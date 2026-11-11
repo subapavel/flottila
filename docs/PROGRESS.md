@@ -1,4 +1,15 @@
 
+## 2026-11-11 — FIX-141 lost work listed with what it blocks, discard with an audit row (review F7.2, D-126 draft) — done, review PASS (r2)
+Test first: PgWorkQueueLostIT (8), LostWorkAdminIT (5), MigrationsIT V16 (audit columns not null, work_lost index) (red FIX-141-red*.log)
+Changed: V16 `audit` (append-only, all not null) + partial index work_lost; PgWorkQueue lost listing and `blocks` on
+held/lost; DISCARD one statement (delete while lost_at is not null, key advisory lock, audit insert), next-of-key node read
+in the same tx; GET /admin/work/lost, POST /admin/work/:seq/discard (actor = X-Flottila-Actor ≤ 128, else unknown; remote);
+wake + announce shared with release. No restore (bytes gone, D-105). Stale expectations fixed: V16 counts, held `blocks`
+Checks: verify -Pit (no bench) 3599 tests, only FIX-155/FIX-156 flakes (pass alone) · coverage no decrease · mutants M1–M10 +
+r2 A–C killed · generic plan: Index Scan using work_lost (200k rows, 5 lost)
+Found: FIX-167 (a held+lost row is listed twice and its release answers 200 though it can never run; blocks count uncapped)
+Review: r1 FAIL (not-null unchecked, next-of-key predicates and audit time unpinned, no index), r2 PASS
+
 ## 2026-11-11 — FIX-143 an ordered flow states onFailure; block refused until a durable barrier (review F7.4, D-125) — done, review PASS (r2)
 Deviation: F-32 — ARCHITECTURE §4 said an ordered queue blocks by default; it parks and continues (both park sites complete)
 Test first: FlowDefinitionTest (O2 missing key, O3 block, O4 without partitionBy, enum, park readable), FlowWorkerTest

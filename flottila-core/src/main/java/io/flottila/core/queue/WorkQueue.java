@@ -22,7 +22,8 @@ import java.util.Optional;
  * was last handed out with that token, which is at least 1 (a token of 0, a row never handed out, matches no row). A held
  * row is never handed out again, never completed and stays the oldest row of its key, so it blocks the rows behind it until
  * a human deals with it: {@link #held} lists the held rows and {@link #release} hands one back to the claim (D-067), whose
- * holder then completes it.
+ * holder then completes it. A lost row (its body given up, D-105) blocks its key the same way and is never handed out:
+ * {@link #lost} lists the lost rows and {@link #discard} deletes one with an audit row (D-126).
  *
  * @since 0.1
  */
@@ -65,9 +66,46 @@ public interface WorkQueue {
      *
      * @param item the row as last handed out: its attempts are those of the claim that was held
      * @param heldAt the instant of the hold
+     * @param blocks the rows of its key in its flow behind it, which wait while it is held (D-126: the barrier made visible); 0 for
+     *               a row without a key
      * @since 0.1
      */
-    record Held(Item item, Instant heldAt) {}
+    record Held(Item item, Instant heldAt, long blocks) {
+
+        /** A held row whose queue does not count what it blocks (the in-memory one): {@code blocks} 0. */
+        public Held(Item item, Instant heldAt) {
+            this(item, heldAt, 0);
+        }
+    }
+
+    /**
+     * One lost row (D-105, D-126): its body was given up by an accepted {@code FLOTTILA_JOURNAL_ACCEPT_LOSS}, so it is never claimed,
+     * yet it stays the oldest row of its key until an operator {@linkplain #discard discards} it.
+     *
+     * @param item the row as last handed out (attempts 0 when never)
+     * @param lostAt the instant its loss was accepted
+     * @param blocks the rows of its key in its flow behind it, which wait until it is discarded; 0 for a row without a key
+     * @since 0.1
+     */
+    record Lost(Item item, Instant lostAt, long blocks) {}
+
+    /**
+     * What an operator's discard of a lost row did (D-126): the row is deleted and one audit row written, in one transaction.
+     *
+     * @param auditId the id of the audit row written
+     * @param flow the discarded row's flow, to wake
+     * @param nextNode the node whose journal holds the body of its key's next row, if it has a key and that row exists and names its
+     *                 node — the node to announce, as a release does (D-121 (b) B4 (ii)); never null
+     * @throws NullPointerException {@code flow} or {@code nextNode} is null
+     * @since 0.1
+     */
+    record Discarded(long auditId, String flow, Optional<String> nextNode) {
+
+        public Discarded {
+            Objects.requireNonNull(flow, "flow");
+            Objects.requireNonNull(nextNode, "nextNode");
+        }
+    }
 
     /**
      * What a same-key fast path did (Q-1, D-074): {@link #STALE} — the caller no longer held the row, nothing was completed and
@@ -223,6 +261,35 @@ public interface WorkQueue {
      *                                  queue hands out — thrown at the call, not as a failed future
      */
     Future<Page<Held>> held(Optional<String> after, int limit);
+
+    /**
+     * The lost rows of every flow a page at a time, in seq order, as {@link #held} pages the held ones (D-126): up to {@code limit}
+     * rows after the cursor {@code after}, each with the rows of its key behind it, and a cursor to the next page when another lost
+     * row exists.
+     *
+     * <p>This default lists nothing, after checking the limit as {@link #held} does: a queue that holds no bodies never loses one.
+     *
+     * @throws IllegalArgumentException {@code limit} is not 1..{@link Page#MAX_LIMIT} — thrown at the call, not as a failed future
+     * @since 0.1
+     */
+    default Future<Page<Lost>> lost(Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        return Future.succeededFuture(new Page<>(List.of(), Optional.empty()));
+    }
+
+    /**
+     * Deletes {@code seq} only while it is lost (D-126 L3) — a keyed row under its key's lock, as a keyed complete takes it — and in
+     * the same transaction writes one audit row: action {@code work.discard}, subject {@code work/<seq>}, the self-declared
+     * {@code actor}, and a detail naming the row's flow, message id, partition key, lost instant and the caller's {@code remote}
+     * address. Empty when {@code seq} is not lost (unknown, queued, leased or held): nothing deleted, nothing audited.
+     *
+     * <p>This default discards nothing: a queue that holds no bodies has no lost row.
+     *
+     * @since 0.1
+     */
+    default Future<Optional<Discarded>> discard(long seq, String actor, String remote) {
+        return Future.succeededFuture(Optional.empty());
+    }
 
     /**
      * Hands a held row back to the claim: clears the hold and the lease, keeps the attempts, so the row is claimable at once

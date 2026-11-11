@@ -365,7 +365,9 @@ class PgWorkQueueIT {
         }
 
         List<WorkQueue.Held> expected = new ArrayList<>();
-        for (WorkQueue.Item it : List.of(one(t, "h1"), one(t, "h2"), u2, one(t, "h4"))) expected.add(new WorkQueue.Held(it, heldAt(it.seq())));
+        for (WorkQueue.Item it : List.of(one(t, "h1"), one(t, "h2"), u2, one(t, "h4"))) {   // FIX-141: h1 blocks q1, the row of key A behind it
+            expected.add(new WorkQueue.Held(it, heldAt(it.seq()), it.messageId().equals("h1") ? 1 : 0));
+        }
         Page<WorkQueue.Held> all = queue.held(Optional.empty(), Page.MAX_LIMIT).await();
         assertEquals(expected, all.items(), "only held rows, every flow's, in seq order, as last handed out (h3 at attempt 2), with held_at");
         assertEquals(Optional.empty(), all.next());

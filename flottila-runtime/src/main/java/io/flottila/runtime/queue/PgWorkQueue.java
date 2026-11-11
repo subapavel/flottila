@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 /**
  * The Postgres {@link WorkQueue} (ported from proto-m1): {@code SELECT … FOR UPDATE SKIP LOCKED}
@@ -38,7 +39,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@link #complete} and the fast path (D-055, {@code V4__work_attempts}; Q-1, D-074): each is guarded by the one
  * {@code CURRENT} condition, so a held row is never deleted. The same-key fast path completes and claims
  * the next row of the key in one transaction (ARCHITECTURE §7). {@link #held} pages the held rows on V5's {@code work_held}
- * index; {@link #release} clears a hold and its lease and keeps the attempts (D-067).
+ * index; {@link #release} clears a hold and its lease and keeps the attempts (D-067). Each held row, and each lost one {@link #lost}
+ * pages, counts the rows of its key behind it ({@code blocks}); {@link #discard} deletes a lost row under its key's lock and audits
+ * it in the same statement (D-126).
  *
  * <p>Body refs (D-105, CORE-3 items 5, 8, 10): an item names its input body's record by {@code body_node, body_segment,
  * body_position, body_length} (null: a pre-V12 item, its body in {@code bodies}). A queue of a node claims — by the claim and
@@ -226,9 +229,37 @@ public final class PgWorkQueue implements WorkQueue {
 
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
 
+    /**
+     * The rows of {@code w}'s key in its flow behind it (D-126, the barrier made visible), on the index {@code work_flow_key_seq}
+     * (V15); 0 for a row without a key ({@code =} on null matches nothing).
+     */
+    private static final String BLOCKS = "(select count(*) from work o where o.flow = w.flow and o.partition_key = w.partition_key and o.seq > w.seq) as blocks";
+
     /** Every flow's held rows after a seq, in seq order, on the partial index {@code work_held} (V5); $2 is the limit plus one. */
-    private static final String HELD = "select seq, id, flow, step, partition_key, attempts, doubts, held_at from work"
+    private static final String HELD = "select seq, id, flow, step, partition_key, attempts, doubts, held_at, " + BLOCKS + " from work w"
             + " where held_at is not null and seq > $1 order by seq limit $2";
+
+    /** Every flow's lost rows after a seq, in seq order (V13's {@code lost_at}), on the partial index {@code work_lost} (V16); $2 is the limit plus one. */
+    private static final String LOST = "select seq, id, flow, step, partition_key, attempts, doubts, lost_at, " + BLOCKS + " from work w"
+            + " where lost_at is not null and seq > $1 order by seq limit $2";
+
+    /**
+     * Only a lost row (D-126 L3), a keyed one under its key's lock taken in the statement, as {@link #COMPLETE} takes it (D-121 A3),
+     * deleted and audited in one statement — the audit row cannot outlive the delete nor the delete go unaudited: $1 seq, $2 actor,
+     * $3 remote. The flow and key the next-of-key read needs are answered from the audit row's detail.
+     */
+    private static final String DISCARD = "with gone as (delete from work where seq = $1 and lost_at is not null and (partition_key is null or"
+            + " (select true from pg_advisory_xact_lock(" + KEY_LOCK_CLASS + ", hashtext(flow || chr(31) || partition_key))))"
+            + " returning seq, id, flow, partition_key, lost_at)"
+            + " insert into audit(at, actor, action, subject, detail) select now(), $2, 'work.discard', 'work/' || g.seq, jsonb_build_object("
+            + "'flow', g.flow, 'messageId', g.id, 'partitionKey', g.partition_key, 'lostAt', g.lost_at, 'remote', $3::text) from gone g"
+            + " returning id, detail->>'flow' as flow, detail->>'partitionKey' as partition_key";
+
+    /**
+     * The body node of the oldest row left of key $2 of flow $1, read after the delete under the key's lock (a same-key row committed
+     * before the lock is seen); always one row, null when the key has no row left or it names no node.
+     */
+    private static final String NEXT_OF_KEY_NODE = "select (select o.body_node from work o where o.flow = $1 and o.partition_key = $2 order by o.seq limit 1)";
 
     /** Only a held row: the hold and the lease cleared, the attempts kept; its flow and body node answered. */
     private static final String RELEASE = "update work set held_at = null, locked_by = null, locked_until = null where seq = $1 and held_at is not null"
@@ -530,11 +561,43 @@ public final class PgWorkQueue implements WorkQueue {
         long from = after.map(cursor -> Long.parseLong(Page.position(cursor))).orElse(Long.MIN_VALUE);
         return pool.preparedQuery(HELD).execute(Tuple.of(from, limit + 1)).map(rows -> {
             List<Held> page = new ArrayList<>();
-            for (Row r : rows) page.add(new Held(item(r), r.getOffsetDateTime("held_at").toInstant()));
-            if (page.size() <= limit) return new Page<>(page, Optional.empty());
-            List<Held> full = page.subList(0, limit);
-            return new Page<>(full, Optional.of(Page.cursor(Long.toString(full.getLast().item().seq()))));
+            for (Row r : rows) page.add(new Held(item(r), r.getOffsetDateTime("held_at").toInstant(), r.getLong("blocks")));
+            return page(page, limit, Held::item);
         });
+    }
+
+    @Override public Future<Page<Lost>> lost(Optional<String> after, int limit) {
+        Page.requireLimit(limit);
+        long from = after.map(cursor -> Long.parseLong(Page.position(cursor))).orElse(Long.MIN_VALUE);
+        return pool.preparedQuery(LOST).execute(Tuple.of(from, limit + 1)).map(rows -> {
+            List<Lost> page = new ArrayList<>();
+            for (Row r : rows) page.add(new Lost(item(r), r.getOffsetDateTime("lost_at").toInstant(), r.getLong("blocks")));
+            return page(page, limit, Lost::item);
+        });
+    }
+
+    /** {@code rows} read with {@code limit} plus one: the first {@code limit} and, when one more came, the cursor after the last. */
+    private static <T> Page<T> page(List<T> rows, int limit, Function<T, Item> item) {
+        if (rows.size() <= limit) return new Page<>(rows, Optional.empty());
+        List<T> full = rows.subList(0, limit);
+        return new Page<>(full, Optional.of(Page.cursor(Long.toString(item.apply(full.getLast()).seq()))));
+    }
+
+    /**
+     * {@link #DISCARD} and, for a keyed row, {@link #NEXT_OF_KEY_NODE} in one transaction: a failed audit insert fails the
+     * statement, so nothing is deleted. Nothing lost under {@code seq}: the transaction commits empty and nothing is audited.
+     */
+    @Override public Future<Optional<Discarded>> discard(long seq, String actor, String remote) {
+        return pool.withTransaction(tx -> Future.succeededFuture().compose(start -> tx.preparedQuery(DISCARD).execute(Tuple.of(seq, actor, remote))).compose(rows -> {
+            if (rows.rowCount() == 0) return Future.succeededFuture(Optional.<Discarded>empty());
+            Row audited = rows.iterator().next();
+            long auditId = audited.getLong("id");
+            String flow = audited.getString("flow");
+            String key = audited.getString("partition_key");
+            if (key == null) return Future.succeededFuture(Optional.of(new Discarded(auditId, flow, Optional.empty())));
+            return tx.preparedQuery(NEXT_OF_KEY_NODE).execute(Tuple.of(flow, key))
+                    .map(next -> Optional.of(new Discarded(auditId, flow, Optional.ofNullable(next.iterator().next().getString(0)))));
+        }));
     }
 
     @Override public Future<Boolean> release(long seq) {
