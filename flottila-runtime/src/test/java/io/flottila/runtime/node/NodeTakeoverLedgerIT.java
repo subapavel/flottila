@@ -402,17 +402,34 @@ class NodeTakeoverLedgerIT {
         return List.copyOf(acked);
     }
 
-    /** Message {@code i} POSTed until a 202, at most 5 tries (a refused try is not saved, D-082); its id. */
+    /** How long {@link #ack} retries a 503 before it fails with the last answer (FIX-156). */
+    static final Duration ACK_RETRY = Duration.ofSeconds(10);
+
+    /**
+     * Message {@code i} POSTed until a 202; its id. A 503 (admission refused: retryable backpressure, a refused try is not saved,
+     * D-082) is retried with a short growing backoff (10 ms doubling to 200 ms) until {@link #ACK_RETRY} passed, then fails with
+     * the last answer; any other status fails at once.
+     */
     String ack(String host, int i) throws Exception {
         List<String> tries = new ArrayList<>();
-        for (int t = 0; t < 5; t++) {
+        long deadline = System.nanoTime() + ACK_RETRY.toNanos();
+        long backoffMs = 10;
+        while (true) {
             HttpResponse<String> r = http.send(HttpRequest.newBuilder(URI.create("http://" + host + ":" + inPort + "/in")).timeout(Duration.ofSeconds(60))
                     .header("content-type", "application/xml").POST(HttpRequest.BodyPublishers.ofString("<Invoice><Id>" + i + "</Id></Invoice>")).build(),
                     HttpResponse.BodyHandlers.ofString());
             if (r.statusCode() == 202) return r.headers().firstValue("x-message-id").orElseThrow(() -> new AssertionError("a 202 without x-message-id"));
             tries.add(r.statusCode() + " " + r.body());
+            if (r.statusCode() != 503) return fail("message " + i + " to " + host + " was not ACKed, not retryable: " + tries);
+            if (System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(backoffMs) > deadline) {
+                return fail("message " + i + " to " + host + " was not ACKed within " + ACK_RETRY + " (" + tries.size() + " tries, last: "
+                        + tries.getLast() + ")");
+            }
+            // FIX-156: a client's backoff against the child node's real-time admission backpressure (a 503 is retryable, D-082),
+            // not sleep-based timing of an asserted behaviour; no assertion depends on how long this waits.
+            Thread.sleep(backoffMs);
+            backoffMs = Math.min(200, backoffMs * 2);
         }
-        return fail("message " + i + " to " + host + " was not ACKed: " + tries);
     }
 
     static HttpResponse<String> get(int port, String path) {

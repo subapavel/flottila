@@ -1,4 +1,11 @@
 
+## 2026-11-11 — FIX-156 NodeTakeoverLedgerIT ack() backs off on a 503 instead of five back-to-back tries — done, review PASS
+Red: the flake itself, "message N was not ACKed: 503 admission refused … 4/4 requests", 2/6 alone on 32840d4 (agent/work/CORE-17-flake/)
+Change: test fixture only. ack() retries a 503 with 10 ms doubling to 200 ms until 10 s, then fails with tries and last answer;
+any other status fails at once (before: any status got 5 tries). Every IT assertion unchanged. The wait is client backoff (D-082)
+Checks: 10/10 green alone on 32840d4 + the IT (worktree), 6/6 on the CORE-17 tree (agent/work/FIX-156/*-summary.txt) VERIFIED_PASS
+Coverage baseline not rewritten: test-only change, and the working tree carries uncommitted CORE-17 code (found while measuring CORE-17)
+
 ## 2026-11-11 — FIX-169 Postgres 18.6 as the test image, one source for the version, 17.11 CI floor (owner, D-129) — done, review PASS (r2)
 Test first: PostgresImageTest (5), PostgresImageSourcesTest (scan + compose tag + volume, 6) (red FIX-169-red.log, -scan-after.log)
 Change: testkit PostgresImage (postgres:18.6, property flottila.it.postgres); 97 test classes switched; ledger fixture uses $PGDATA;
