@@ -330,7 +330,7 @@ class DeploymentsRedeployEdgeTest {
         AtomicInteger thrown = new AtomicInteger();
         Timer timer = (delay, task) -> {
             Timer.Cancellable scheduled = rt.timer().schedule(delay, task);
-            if (!delay.equals(DeploymentsRedeployTest.TICK)) return scheduled;
+            if (!delay.equals(DeploymentsRedeployTest.firstTick("shop/audit"))) return scheduled;   // audit's worker's tick (B5)
             return () -> {
                 thrown.incrementAndGet();
                 throw new AssertionError("the poll tick cannot be cancelled");

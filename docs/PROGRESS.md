@@ -1,4 +1,17 @@
 
+## 2026-11-11 — P2-16b work events between nodes, PT30S reconciliation (D-121 (b) draft, F-30) — done, review PASS (r2)
+Container restart mid fix round (tree intact, no mutant left: cmp against .r3.bak). Deviation: ARCHITECTURE §4/§7, changelog 3.6
+Test first: FlowWorkerEventsTest, PgWorkSignalsIT, TwoNodeWorkEventsIT, IdleNodeStatementsIT (red agent/work/P2-16b-red*.log)
+Changed: core WorkSignals, WorkEvents (leading edge, one folded statement per 50 ms, cap 64 → `* *`), LocalWorkSignals; runtime
+PgWorkSignals (dedicated LISTEN connection, backoff 100 ms → 5 s until close, wakeAll after every LISTEN); NOTIFY only after commit:
+keyed completion (fast path and plain completeRow) naming the next row's node, admin release (also wakes locally), kept ref on
+another node; WorkerPolicy DEFAULT PT30S, first reconciliation at P + floorMod(hash(flow), P); announce throws isolated and logged
+Test edits (wrong expectations, named in the packet): ~17 tick tests (B5), PgWorkSignalsIT:365, PgIntakeHandoffIT.Claims forward
+Checks: verify -Pit (no bench) 3495 tests, 0 failures, 1 error = FIX-160 test race · coverage no decrease · PIT 465/479 core ·
+hand mutants M1–M24, R1–R8, V1–V6, N1/N5, O1–O3 killed; N2–N4 Node wiring survive → FIX-161
+Review: r1 FAIL (reconnect cap, LISTEN-error close, failed next-row read unpinned), r2 PASS
+Opened: FIX-160 (shutdown IT CME), FIX-161 (Node wiring IT), FIX-162 (spilled wake not isolated)
+Next: CORE-7 (batched completion, class C: designer first)
 ## 2026-11-10 — P2-16a local hand-off: a saved item runs on its node without a claim (D-121 (a) draft, F-30) — done, review PASS (r3)
 Context compacted once mid-task (re-verified with git status / log -3). Deviation: ARCHITECTURE §4/§7 + changelog 3.5 (no accept poll)
 Test first: FlowWorkerHandoffTest, PgIntakeHandoffIT, HandoffKeyOrderProperties, WorkQueueContract (red agent/work/P2-16a-red.log);

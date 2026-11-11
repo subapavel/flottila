@@ -140,6 +140,7 @@ public final class FlowBuilder {
     private Targets targets;
     private BooleanSupplier fence = OPEN;
     private Workers workers = new Workers();
+    private WorkSignals signals = WorkSignals.NONE;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -257,6 +258,15 @@ public final class FlowBuilder {
         return this;
     }
 
+    /**
+     * The node's work events (D-121 (b)) for the workers built from now on: a keyed completion whose key's next row lies on another
+     * node announces it to that node (B4 (i)). It replaces the signals of an earlier call. Without a call nothing is announced.
+     */
+    public FlowBuilder signals(WorkSignals signals) {
+        this.signals = Objects.requireNonNull(signals, "signals");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory, D-078). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
         return built(flow, baseDir, OPEN).pipeline(true);
@@ -359,7 +369,7 @@ public final class FlowBuilder {
         Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
         Built built = built(flow, baseDir, fence);
         return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), built.pipeline(false),
-                parking, flow.steps().get(0), runtime.clock(), runtime.timer(), built.producers(), fence, workers);
+                parking, flow.steps().get(0), runtime.clock(), runtime.timer(), built.producers(), fence, workers, signals);
     }
 
     private void requireStoreAndQueue(FlowDefinition flow, String what) {

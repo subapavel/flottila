@@ -35,6 +35,7 @@ class WorkerPolicyTest {
     void threeArgFormUsesDefaultChain() {
         assertEquals(32, new WorkerPolicy(LEASE, 5, TICK).maxChain(), "the 3-argument form keeps a key for at most 32 fast-path items");
         assertEquals(new WorkerPolicy(LEASE, 5, TICK, 32), new WorkerPolicy(LEASE, 5, TICK), "it is the 4-argument form with 32");
-        assertEquals(new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(1), 32), WorkerPolicy.DEFAULT, "DEFAULT: 30 s, 5, 1 s, 32");
+        assertEquals(new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(30), 32), WorkerPolicy.DEFAULT,
+                "DEFAULT: 30 s, 5, 30 s (P2-16b B5: the reconciliation interval), 32");
     }
 }

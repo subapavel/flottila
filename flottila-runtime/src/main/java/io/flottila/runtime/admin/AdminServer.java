@@ -15,6 +15,8 @@ import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.flow.Replay;
 import io.flottila.core.flow.ReplayRefusedException;
 import io.flottila.core.flow.RowNotRemovedException;
+import io.flottila.core.flow.WorkSignals;
+import io.flottila.core.flow.Workers;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Page;
@@ -112,7 +114,9 @@ import java.util.function.Supplier;
  * <p>With a {@link WorkQueue} (D-067) it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
  * {@code POST /admin/work/{seq}/release} answers 200 {@code {seq}}, 404 for a seq unknown or not held, 400 for a seq that is
- * not a long. Without one these routes do not exist (404).
+ * not a long. A release wakes the row's flow in the node's {@link Workers} (every flow when the queue cannot tell the row) and
+ * announces it through the node's {@link WorkSignals} to the node whose journal holds its body ({@code *} when unknown; D-121 (b)
+ * B4 (ii)); built without them, a release wakes and announces nothing. Without a queue these routes do not exist (404).
  *
  * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays and retries:
  * {@code POST /admin/messages/{id}/replay?from=n} runs steps {@code n..end} of the message's flow as deployed now, and
@@ -222,6 +226,8 @@ public final class AdminServer {
     private final Optional<WorkQueue> work;
     private final Optional<IdGenerator> ids;
     private final Optional<Sampling> sampling;
+    private final Workers workers;
+    private final WorkSignals signals;
     /** The ids whose DLQ retry runs on this node now: a second retry of one is 409 (node-local, D-067). */
     private final Set<String> retrying = ConcurrentHashMap.newKeySet();
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
@@ -233,13 +239,22 @@ public final class AdminServer {
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty());
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
     }
 
     /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}; no replay routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty());
+        this(config, messages, dlq, blobs, health, deployments, work, new Workers(), WorkSignals.NONE);
+    }
+
+    /**
+     * The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}, a release waking its flow
+     * in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)); no replay routes.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty(), workers, signals);
     }
 
     /**
@@ -257,11 +272,20 @@ public final class AdminServer {
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, IdGenerator ids, Optional<Sampling> sampling) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids), sampling);
+        this(config, messages, dlq, blobs, health, deployments, work, ids, sampling, new Workers(), WorkSignals.NONE);
+    }
+
+    /**
+     * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, IdGenerator, Optional)}, a release
+     * waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)): the node's.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, IdGenerator ids, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids), sampling, workers, signals);
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                        Optional<WorkQueue> work, Optional<IdGenerator> ids, Optional<Sampling> sampling) {
+                        Optional<WorkQueue> work, Optional<IdGenerator> ids, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -271,6 +295,8 @@ public final class AdminServer {
         this.work = work;
         this.ids = ids;
         this.sampling = Objects.requireNonNull(sampling, "sampling");
+        this.workers = Objects.requireNonNull(workers, "workers");
+        this.signals = Objects.requireNonNull(signals, "signals");
     }
 
     /** Deploys the listening verticle; completes with the bound port (the actual one when configured 0). */
@@ -318,7 +344,7 @@ public final class AdminServer {
             });
             work.ifPresent(q -> {
                 router.get("/admin/work/held").handler(offload(c -> held(c, q)));
-                router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q)));
+                router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q, workers, signals)));
             });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
@@ -549,10 +575,21 @@ public final class AdminServer {
         return Json.of(200, page(refusable(() -> work.held(after(ctx), limit(ctx)).await()), AdminServer::held));
     }
 
-    /** 200 {@code {seq}} for a held row; 404 for any other seq the queue does not release; a seq that is not a long never reaches it. */
-    private static Reply release(RoutingContext ctx, WorkQueue work) {
+    /**
+     * 200 {@code {seq}} for a held row, released: its flow woken here (every flow when untold) and announced to its body's node ({@code
+     * *} when untold), the release committed; 404 for any other seq the queue does not release; a seq that is not a long never reaches it.
+     */
+    private static Reply release(RoutingContext ctx, WorkQueue work, Workers workers, WorkSignals signals) {
         long seq = refusable(() -> Long.parseLong(ctx.pathParam("seq")));
-        if (!work.release(seq).await()) return Json.of(404, error("no held work item " + seq));
+        Optional<WorkQueue.Released> released = work.releaseRow(seq).await();
+        if (released.isEmpty()) return Json.of(404, error("no held work item " + seq));
+        WorkQueue.Released row = released.get();
+        row.flow().ifPresentOrElse(workers::wake, workers::wakeAll);
+        try {
+            signals.announce(row.bodyNode().orElse(null), row.flow().orElse(null));
+        } catch (RuntimeException | Error thrown) {   // the release committed: its answer stands, the body's node finds the row by reconciliation
+            LOG.log(System.Logger.Level.WARNING, "announcing released work item " + seq + " failed: " + thrown, thrown);
+        }
         return Json.of(200, new JsonObject().put("seq", seq));
     }
 

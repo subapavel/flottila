@@ -82,7 +82,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * <p>One log at the SPI and timer boundary orders it all ({@link #log}): the {@link Doors} events ({@code consumer|start|stop
  * <flow>}, {@code stopped <flow>} when a stop() future completed, {@code close <endpoint> #<n>} at a producer close) and the
- * {@link TracingTimer}'s {@code schedule|cancel <delay>} — a worker's start schedules its poll tick ({@link #TICK}), its stop
+ * {@link TracingTimer}'s {@code schedule|cancel <delay>} — a worker's start schedules its poll tick ({@link #firstTick}), its stop
  * cancels it. The {@link CountingQueue} records the items each claim handed out and every {@code hasItems} call with the rows
  * of that flow at the call. Everything runs in memory on a fake clock: nothing waits on wall time.
  *
@@ -95,8 +95,30 @@ class DeploymentsRedeployTest {
 
     static final String NODE = "node-1";
     static final Duration STOP_DEADLINE = Duration.ofSeconds(37);
-    static final Duration TICK = WorkerPolicy.DEFAULT.pollInterval();
+    /**
+     * P2-16b (D-121 (b) B5): a worker's reconciliation period, {@code WorkerPolicy.DEFAULT}'s PT30S. A worker's start schedules
+     * its first tick {@link #firstTick} after it — the period plus the flow's offset — and each tick schedules the next one
+     * period later.
+     */
+    static final Duration TICK = Duration.ofSeconds(30);
     static final Duration LEASE = WorkerPolicy.DEFAULT.lease();
+    static final Duration SECOND = Duration.ofSeconds(1);
+
+    /**
+     * B5, worked by hand for each fixture flow with a worker: the first reconciliation is due P + floorMod(flow.hashCode(), P in
+     * ms) after the worker's start, P = 30 000 ms. The delay thereby names the flow, and a worker's first tick is told from the
+     * node's stop deadline ({@link #STOP_DEADLINE}, PT37S) and from a lease (PT30S).
+     */
+    static Duration firstTick(String flow) {
+        return switch (flow) {
+            case "shop/audit" -> Duration.parse("PT40.258S");   // "shop/audit".hashCode() = 2112400258, floorMod 30 000 = 10 258 ms
+            case "shop/a" -> Duration.parse("PT57.240S");       // "shop/a".hashCode() = -903152760, floorMod 30 000 = 27 240 ms
+            default -> throw new IllegalArgumentException("no first tick worked out for " + flow);
+        };
+    }
+
+    /** The first-tick delays of every fixture flow with a worker: a worker's start schedules one of these, nothing else does. */
+    static final Set<Duration> FIRST_TICKS = Set.of(firstTick("shop/audit"), firstTick("shop/a"));
     static final String XSL = "<xsl:stylesheet xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" version=\"3.0\">";
 
     @TempDir Path tmp;
@@ -434,7 +456,7 @@ class DeploymentsRedeployTest {
         assertEquals(new Ack.Accepted(alo.id()), within(alo.answer(), "v1's at-least-once answer"), "v1's at-least-once flow still accepts");
         assertTrue(v1Producers.contains(producerOf(alo)), "and its v1 worker sends it on");
         int claims = queue.claims().size();
-        rt.clock().advance(TICK);
+        rt.clock().advance(firstTick("shop/audit"));   // B5: v1 audit's first tick is due its offset past a period after its start
         assertTrue(queue.claims().size() > claims, "v1's worker still polls on its tick: " + queue.claims());
     }
 
@@ -467,14 +489,16 @@ class DeploymentsRedeployTest {
         int firstStop = Math.min(at(l, "stop shop/orders"), at(l, "stop shop/audit"));
         assertTrue(at(l, "consumer shop/orders") < firstStop && at(l, "consumer shop/audit") < firstStop,
                 "v2's consumers are built before anything stops: " + l);
-        assertEquals(1, count(l, "cancel " + TICK), "one poll tick cancelled, v1 audit's worker's: " + l);
-        inOrder(l, "cancel " + TICK, "stop shop/audit");
+        // B5: neither worker reached its first tick (the clock stands still), so each tick is the one due at audit's first tick
+        Duration auditTick = firstTick("shop/audit");
+        assertEquals(1, count(l, "cancel " + auditTick), "one poll tick cancelled, v1 audit's worker's: " + l);
+        inOrder(l, "cancel " + auditTick, "stop shop/audit");
         inOrder(l, "stopped shop/orders", closeOrders);
         int lastOfA = Collections.max(List.of(at(l, "stopped shop/orders"), at(l, "stopped shop/audit"), at(l, closeOrders)));
         int firstOfB = Math.min(at(l, "start shop/orders"), at(l, "start shop/audit"));
         assertTrue(lastOfA < firstOfB, "phase B starts only after every stop of phase A settled, the delivery's producer close included: " + l);
-        assertEquals(1, count(l, "schedule " + TICK), "one poll tick scheduled, v2 audit's worker's: " + l);
-        inOrder(l, "start shop/audit", "schedule " + TICK);
+        assertEquals(1, count(l, "schedule " + auditTick), "one poll tick scheduled, v2 audit's worker's: " + l);
+        inOrder(l, "start shop/audit", "schedule " + auditTick);
         List<String> consumers = consumerEvents(l);
         assertEquals(Set.of("consumer shop/orders", "consumer shop/audit", "stop shop/orders", "stop shop/audit", "start shop/orders", "start shop/audit"),
                 Set.copyOf(consumers), "the two changed flows are rebuilt, stopped and started; ping is not touched: " + l);
@@ -819,7 +843,8 @@ class DeploymentsRedeployTest {
         Ack gone = within(send(auditDoor).answer(), "an answer through the removed audit's consumer");
         assertTrue(gone instanceof Ack.Nack n && n.retryable(), "the removed flow's delivery is stopped: " + gone);
         long polls = queue.claims().stream().filter((NODE + " shop/audit")::equals).count();
-        for (int i = 0; i < 3; i++) rt.clock().advance(TICK);
+        rt.clock().advance(firstTick("shop/audit"));   // three ticks of the removed worker had it run on (B5): its first, then two periods
+        for (int i = 0; i < 2; i++) rt.clock().advance(TICK);
         assertEquals(polls, queue.claims().stream().filter((NODE + " shop/audit")::equals).count(), "the removed worker no longer polls: " + queue.claims());
 
         until(() -> hasItemsCalls("shop/audit").size() == 2, "the removed at-least-once flow is checked before the swap and again once its worker drained: "
@@ -1217,8 +1242,15 @@ class DeploymentsRedeployTest {
         assertResult(List.of(), List.of("shop/audit"), List.of(), r);
         assertEquals(0, heldBy.closes(), "v1's worker producer is not closed while A runs on it: " + doors.producers());
         int renews = queue.renews();
-        for (long s = 0; s < LEASE.toSeconds() + 10; s++) rt.clock().advance(TICK);
+        until(queue::claimsSettled, "no claim in flight on another thread: " + queue.claims());
+        long polls = queue.claims().stream().filter((NODE + " shop/audit")::equals).count();
+        // a second at a time (each renewal on its own step), past A's lease and past v2's first two ticks (B5: its first, then a period)
+        Duration walk = firstTick("shop/audit").plus(TICK);
+        for (long s = 0; s <= walk.toSeconds(); s++) rt.clock().advance(SECOND);
+        assertTrue(walk.compareTo(LEASE) > 0, "fixture: the walk outlasts A's lease");
         assertTrue(queue.renews() >= renews + 3, "A's lease was renewed while it ran: " + queue.renews());
+        until(() -> queue.claims().stream().filter((NODE + " shop/audit")::equals).count() >= polls + 2 && queue.claimsSettled(),
+                "v2's worker polled on its ticks meanwhile: " + queue.claims());
         assertEquals(1, Collections.frequency(queue.claimedIds(), a.id()), "A was claimed once: v2's worker polled and never took it: " + queue.claimedIds());
         assertEquals(0, heldBy.closes());
         assertEquals(0, dlq.size(), "A is not parked");
@@ -1235,7 +1267,8 @@ class DeploymentsRedeployTest {
 
     /**
      * v1 audit runs one item at most: A runs held at the partner, B waits in the queue. v2 sends audit to another endpoint. On
-     * v2's first tick its worker claims B and sends it to v2's endpoint; A finishes on v1's.
+     * its start v2's worker claims B and sends it to v2's endpoint; A finishes on v1's. B5: no tick is needed, and none is
+     * reached — v2's first tick is 30 s and audit's offset away, past A's lease, which the clock never jumps.
      */
     @Test
     void queuedItemsRunOnV2() throws Exception {
@@ -1253,7 +1286,6 @@ class DeploymentsRedeployTest {
         v2.flowDoc("audit").put("steps", to("archive-v2")).getJsonObject("limits").put("maxInFlight", 1);
 
         assertResult(List.of(), List.of("shop/audit"), List.of(), deploy(v2));
-        rt.clock().advance(TICK);
 
         doors.partner().awaitSent(2);
         assertEquals(List.of(b.id()), ids(doors.partner().sentTo("archive-v2")), "B ran on v2: sent to v2's endpoint");

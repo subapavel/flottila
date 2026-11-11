@@ -88,6 +88,8 @@ public final class PgWorkQueue implements WorkQueue {
                 + ") end, (" + leased + ")::int";
     }
 
+    private static final System.Logger LOG = System.getLogger(PgWorkQueue.class.getName());
+
     /** A plain item, or leased to {@code $5} for {@code $6} seconds when it heads its key; its seq and attempts answered. */
     private static final String ENQUEUE = "insert into work(id, flow, step, partition_key, locked_by, locked_until, attempts) "
             + "select $1, $2, $3, $4, " + lease("l", "$5::text", "$6") + " from (select " + heads("$5") + " as l) h returning seq, attempts";
@@ -101,7 +103,7 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * An item taking its source's ref: the key's ref row and its segment row held for key share, the item inserted from them —
      * leased to {@code $8} for {@code $9} seconds when it heads its key and the ref lies in the holder's journal (a node claims only
-     * its own bodies, D-105).
+     * its own bodies, D-105); answering, fifth, the ref's node when it is not the queue's node {@code $10} (D-121 (b) B4 (iii)).
      */
     private static final String ENQUEUE_FROM = """
             with src as (select r.node, r.segment, r.position, r.length from body_refs r
@@ -113,7 +115,8 @@ public final class PgWorkQueue implements WorkQueue {
                     returning seq, attempts)
             select (select count(*) from src),
                    exists (select 1 from body_refs where message_id = $5 and step = $6 and part = $7 and lost_at is not null),
-                   (select seq from ins), (select attempts from ins)""".formatted(lease("l", "$8::text", "$9"), heads("$8"));
+                   (select seq from ins), (select attempts from ins),
+                   (select node from src where node is distinct from $10::text)""".formatted(lease("l", "$8::text", "$9"), heads("$8"));
 
     private static final String ELIGIBLE = """
             select w1.seq from work w1
@@ -148,11 +151,20 @@ public final class PgWorkQueue implements WorkQueue {
             + " order by w1.seq limit $3 for update skip locked))" + ITEM + ") select * from taken order by seq";
 
     /**
-     * The fast path: same rule and the same {@code any(array(..))} take, restricted to one key, one row. Note the parameters: $3 is
-     * the key here, the int limit in CLAIM.
+     * The node of the key's next row for the fast path that took nothing (D-121 (b) B4 (i)): the oldest row of key {@code $3} of flow
+     * {@code $2}, when it is neither held nor lost and its body lies in another journal than the queue's node {@code $5}'s (null for
+     * a queue of any node, which takes every body). The statement's snapshot is the one the take read: the completed row is gone.
      */
-    private static final String CLAIM_NEXT_OF_KEY = TAKE
-            + " where w.seq = any(array(" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked))" + ITEM;
+    private static final String NEXT_NODE = "(select case when o.held_at is null and o.lost_at is null and o.body_node <> $5::text then o.body_node end"
+            + " from work o where o.flow = $2 and o.partition_key = $3 order by o.seq limit 1)";
+
+    /**
+     * The fast path: same rule and the same {@code any(array(..))} take, restricted to one key, one row — always one row answered:
+     * the item taken (null columns: none) and {@link #NEXT_NODE}. Note the parameters: $3 is the key here, the int limit in CLAIM.
+     */
+    private static final String CLAIM_NEXT_OF_KEY = "with taken as (" + TAKE
+            + " where w.seq = any(array(" + ELIGIBLE + " and w1.partition_key = $3 order by w1.seq limit 1 for update skip locked))" + ITEM + ")"
+            + " select t.*, " + NEXT_NODE + " as next_node from (select 1) one left join taken t on true";
 
     /**
      * The holder's claim is the row's current one (D-055, Q-1 / D-074): it exists, is not held and was last handed out with
@@ -169,6 +181,14 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String COMPLETE = "delete from work" + CURRENT + " and (partition_key is null or (select true from pg_advisory_xact_lock("
             + KEY_LOCK_CLASS + ", hashtext(flow || chr(31) || partition_key)))) returning id, flow, partition_key";
 
+    /**
+     * {@link #NEXT_NODE} for a plain keyed complete, a statement of its own after the delete committed (a snapshot taken after the
+     * key's lock was released, so a same-key row committed before it is seen, D-121 A3): $1 the flow, $2 the key, $3 the queue's
+     * node; always one row, null when no row of the key lies elsewhere claimable.
+     */
+    private static final String NEXT_NODE_AFTER = "select (select case when o.held_at is null and o.lost_at is null and o.body_node <> $3::text"
+            + " then o.body_node end from work o where o.flow = $1 and o.partition_key = $2 order by o.seq limit 1)";
+
     private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
 
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
@@ -177,8 +197,9 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String HELD = "select seq, id, flow, step, partition_key, attempts, doubts, held_at from work"
             + " where held_at is not null and seq > $1 order by seq limit $2";
 
-    /** Only a held row: the hold and the lease cleared, the attempts kept. */
-    private static final String RELEASE = "update work set held_at = null, locked_by = null, locked_until = null where seq = $1 and held_at is not null";
+    /** Only a held row: the hold and the lease cleared, the attempts kept; its flow and body node answered. */
+    private static final String RELEASE = "update work set held_at = null, locked_by = null, locked_until = null where seq = $1 and held_at is not null"
+            + " returning flow, body_node";
 
     /** Any row of the flow, held or not: a completed row is deleted ({@link #COMPLETE}). On the index {@code work_flow_seq}. */
     private static final String HAS_ITEMS = "select exists(select 1 from work where flow = $1)";
@@ -279,20 +300,35 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * {@link #enqueue(SqlClient, String, String, int, String, BlobKey)} written leased to {@code holder} for {@code lease} when it heads
      * its key and the ref lies in the holder's journal (D-121 A2; {@code holder} null: a plain row), under the key's lock the caller
-     * took ({@link #lockKeys}).
+     * took ({@link #lockKeys}). Answers the item when it was written leased, and the ref's node when it is not this queue's.
      */
-    public Future<Optional<Item>> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, BlobKey body, String holder,
-                                         Duration lease) {
+    public Future<Copied> enqueue(SqlClient client, String messageId, String flow, int step, String partitionKey, BlobKey body, String holder,
+                                  Duration lease) {
         return client.preparedQuery(ENQUEUE_FROM).execute(Tuple.wrap(new Object[] {messageId, flow, step, partitionKey, body.messageId(), body.step(),
-                body.part(), holder, seconds(holder, lease)})).compose(rows -> {
+                body.part(), holder, seconds(holder, lease), node})).compose(rows -> {
                     Row r = rows.iterator().next();
                     if (r.getLong(0) == 1) {
                         Integer attempts = r.getInteger(3);
-                        return Future.succeededFuture(attempts == 1
-                                ? Optional.of(new Item(r.getLong(2), messageId, flow, step, partitionKey, 1)) : Optional.<Item>empty());
+                        return Future.succeededFuture(new Copied(attempts == 1
+                                ? Optional.of(new Item(r.getLong(2), messageId, flow, step, partitionKey, 1)) : Optional.<Item>empty(),
+                                Optional.ofNullable(r.getString(4))));
                     }
                     return Future.failedFuture(r.getBoolean(1) ? new BodyLostException(body) : new BlobNotFoundException(body));
                 });
+    }
+
+    /**
+     * What an insert taking its source's ref answered (D-121 A2, D-121 (b) B4 (iii)): the item as handed out when it was written
+     * leased, else empty; and the node whose journal holds the ref when it is not this queue's node — the node that may claim the
+     * plain row once its transaction committed.
+     *
+     * @since 0.1
+     */
+    public record Copied(Optional<Item> leased, Optional<String> elsewhere) {
+        public Copied {
+            Objects.requireNonNull(leased, "leased");
+            Objects.requireNonNull(elsewhere, "elsewhere");
+        }
     }
 
     /** The lease in seconds, null without a holder. */
@@ -322,6 +358,27 @@ public final class PgWorkQueue implements WorkQueue {
         });
     }
 
+    /**
+     * The guarded delete, autocommit; for a keyed row then {@link #NEXT_NODE_AFTER}, after the commit. A read that fails after the
+     * delete committed names no node (the reconciliation covers it) and is logged at WARNING: the completion stands.
+     */
+    @Override public Future<Completion> completeRow(long seq, int attempts) {
+        return pool.preparedQuery(COMPLETE).execute(Tuple.of(seq, attempts)).compose(rows -> {
+            if (rows.rowCount() == 0) return Future.succeededFuture(Completion.STALE);
+            Row done = rows.iterator().next();
+            completed(done);
+            String key = done.getString("partition_key");
+            if (key == null) return Future.succeededFuture(Completion.done(Optional.empty()));
+            return pool.preparedQuery(NEXT_NODE_AFTER).execute(Tuple.of(done.getString("flow"), key, node))
+                    .map(next -> new Completion(true, Optional.empty(), Optional.ofNullable(next.iterator().next().getString(0))))
+                    .otherwise(failed -> {
+                        LOG.log(System.Logger.Level.WARNING, "work item " + seq + " of flow " + done.getString("flow") + " completed; reading "
+                                + "the node of its key's next row failed, its reconciliation claim finds it: " + failed, failed);
+                        return Completion.done(Optional.empty());
+                    });
+        });
+    }
+
     /** One transaction: the guarded delete, then — only when it removed the row and the row had a key — the next-of-key claim. */
     @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
         if (lease.isNegative()) return Future.failedFuture(new IllegalArgumentException("negative lease: " + lease));
@@ -331,7 +388,7 @@ public final class PgWorkQueue implements WorkQueue {
             completed(done);
             String key = done.getString("partition_key");
             if (key == null) return Future.succeededFuture(Completion.done(Optional.empty()));
-            return next(conn, workerId, done.getString("flow"), key, lease).map(Completion::done);
+            return next(conn, workerId, done.getString("flow"), key, lease);
         }));
     }
 
@@ -356,7 +413,17 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     @Override public Future<Boolean> release(long seq) {
-        return pool.preparedQuery(RELEASE).execute(Tuple.of(seq)).map(rows -> rows.rowCount() == 1);
+        return releaseRow(seq).map(Optional::isPresent);
+    }
+
+    /** The released row's flow and body node (none: a pre-V12 row, its body in {@code bodies}). */
+    @Override public Future<Optional<Released>> releaseRow(long seq) {
+        return pool.preparedQuery(RELEASE).execute(Tuple.of(seq)).map(rows -> rows.rowCount() == 0 ? Optional.<Released>empty()
+                : Optional.of(released(rows.iterator().next())));
+    }
+
+    private static Released released(Row r) {
+        return new Released(Optional.of(r.getString("flow")), Optional.ofNullable(r.getString("body_node")));
     }
 
     @Override public Future<Boolean> hasItems(String flow) {
@@ -364,9 +431,13 @@ public final class PgWorkQueue implements WorkQueue {
         return pool.preparedQuery(HAS_ITEMS).execute(Tuple.of(flow)).map(rows -> rows.iterator().next().getBoolean(0));
     }
 
-    private Future<Optional<Item>> next(SqlClient conn, String workerId, String flow, String key, Duration lease) {
-        return conn.preparedQuery(CLAIM_NEXT_OF_KEY).execute(Tuple.of(workerId, flow, key, seconds(lease), node))
-                .map(rows -> items(rows).stream().findFirst());
+    /** The next-of-key take: the item taken, or none and the node of the key's next row when that row lies elsewhere ({@link #NEXT_NODE}). */
+    private Future<Completion> next(SqlClient conn, String workerId, String flow, String key, Duration lease) {
+        return conn.preparedQuery(CLAIM_NEXT_OF_KEY).execute(Tuple.of(workerId, flow, key, seconds(lease), node)).map(rows -> {
+            Row r = rows.iterator().next();
+            if (r.getLong("seq") == null) return new Completion(true, Optional.empty(), Optional.ofNullable(r.getString("next_node")));
+            return Completion.done(Optional.of(located(r)));
+        });
     }
 
     /** A completed item's input body is read no more on the hot path: out of the store's index. */
@@ -381,16 +452,19 @@ public final class PgWorkQueue implements WorkQueue {
     /** The items claimed; the store, if any, told where each one's input body lies. */
     private List<Item> items(RowSet<Row> rows) {
         List<Item> items = new ArrayList<>();
-        for (Row r : rows) {
-            Item item = item(r);
-            String bodyNode = r.getString("body_node");
-            if (store != null && bodyNode != null) {
-                store.located(BlobKey.body(item.messageId(), 0), bodyNode,
-                        new JournalRef(r.getLong("body_segment"), r.getLong("body_position"), r.getLong("body_length")));
-            }
-            items.add(item);
-        }
+        for (Row r : rows) items.add(located(r));
         return items;
+    }
+
+    /** The item claimed in {@code r}; the store, if any, told where its input body lies. */
+    private Item located(Row r) {
+        Item item = item(r);
+        String bodyNode = r.getString("body_node");
+        if (store != null && bodyNode != null) {
+            store.located(BlobKey.body(item.messageId(), 0), bodyNode,
+                    new JournalRef(r.getLong("body_segment"), r.getLong("body_position"), r.getLong("body_length")));
+        }
+        return item;
     }
 
     private static Item item(Row r) {

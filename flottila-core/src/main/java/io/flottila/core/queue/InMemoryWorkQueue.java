@@ -129,12 +129,17 @@ public final class InMemoryWorkQueue implements WorkQueue {
     }
 
     @Override public synchronized Future<Boolean> release(long seq) {
+        return releaseRow(seq).map(Optional::isPresent);
+    }
+
+    /** The released row's flow; no body node: this queue holds no bodies. */
+    @Override public synchronized Future<Optional<Released>> releaseRow(long seq) {
         Row r = rows.get(seq);
-        if (r == null || r.heldAt == null) return Future.succeededFuture(false);
+        if (r == null || r.heldAt == null) return Future.succeededFuture(Optional.empty());
         r.heldAt = null;
         r.lockedBy = null;      // the holder cleared with the lease: the next hand-out is in no doubt
         r.lockedUntil = null;
-        return Future.succeededFuture(true);
+        return Future.succeededFuture(Optional.of(new Released(Optional.of(r.item.flow()), Optional.empty())));
     }
 
     @Override public synchronized Future<Boolean> hasItems(String flow) {

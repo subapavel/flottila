@@ -76,23 +76,59 @@ public interface WorkQueue {
      *
      * @param completed the row was removed by this call
      * @param next the next row of the key now leased to the caller; never null, and empty when nothing was completed
-     * @throws NullPointerException {@code next} is null
-     * @throws IllegalArgumentException a next row without a completion
+     * @param nextNode when nothing was taken: the node whose journal holds the key's next row, if that row is not held and lies on
+     *                 another node than the caller's queue claims for — the row that node may claim now (D-121 (b) B4 (i)); never
+     *                 null, and empty otherwise
+     * @throws NullPointerException {@code next} or {@code nextNode} is null
+     * @throws IllegalArgumentException a next row without a completion, or a next node beside a next row or without a completion
      * @since 0.1
      */
-    record Completion(boolean completed, Optional<Item> next) {
+    record Completion(boolean completed, Optional<Item> next, Optional<String> nextNode) {
 
         /** Nothing completed, nothing taken: the row was claimed again, held, completed or unknown. */
         public static final Completion STALE = new Completion(false, Optional.empty());
 
         public Completion {
             Objects.requireNonNull(next, "next");
+            Objects.requireNonNull(nextNode, "nextNode");
             if (!completed && next.isPresent()) throw new IllegalArgumentException("a next row without a completion: " + next.get());
+            if (nextNode.isPresent() && (!completed || next.isPresent())) {
+                throw new IllegalArgumentException("a next node only for a completion that took nothing: " + nextNode.get());
+            }
+        }
+
+        /** A completion with no next node: {@code next} is the row of its key handed out with it, if any. */
+        public Completion(boolean completed, Optional<Item> next) {
+            this(completed, next, Optional.empty());
         }
 
         /** The row was completed; {@code next} is the row of its key handed out with it, if any. */
         public static Completion done(Optional<Item> next) {
             return new Completion(true, next);
+        }
+
+        /** The row was completed and nothing taken: the key's next row lies on {@code node}, for that node to claim. */
+        public static Completion elsewhere(String node) {
+            return new Completion(true, Optional.empty(), Optional.of(node));
+        }
+    }
+
+    /**
+     * What an operator's release handed back to the claim (D-067, D-121 (b) B4 (ii)): the row's flow and the node whose journal
+     * holds its body — each empty when the queue cannot tell (a row of any node, a queue that answers only {@link #release}).
+     *
+     * @param flow the released row's flow; never null
+     * @param bodyNode the node whose journal holds the row's body; never null
+     * @since 0.1
+     */
+    record Released(Optional<String> flow, Optional<String> bodyNode) {
+
+        /** A release whose row the queue cannot tell: every flow, any node. */
+        public static final Released UNTOLD = new Released(Optional.empty(), Optional.empty());
+
+        public Released {
+            Objects.requireNonNull(flow, "flow");
+            Objects.requireNonNull(bodyNode, "bodyNode");
         }
     }
 
@@ -131,6 +167,20 @@ public interface WorkQueue {
     Future<Boolean> complete(long seq, int attempts);
 
     /**
+     * {@link #complete} answering, once the delete committed, what it did as a {@link Completion}: {@link Completion#STALE} when the
+     * caller no longer held {@code seq}; otherwise completed, nothing taken, and — for a keyed row — the node of the key's next row
+     * when that row is neither held nor lost and lies in another journal than the one this queue claims for (D-121 (b) B4 (i): the
+     * node that may claim it now).
+     *
+     * <p>This default completes by {@link #complete} and names no node: a queue that holds no bodies has no other node to tell.
+     *
+     * @since 0.1
+     */
+    default Future<Completion> completeRow(long seq, int attempts) {
+        return complete(seq, attempts).map(removed -> removed ? Completion.done(Optional.empty()) : Completion.STALE);
+    }
+
+    /**
      * Same-key fast path, under the same condition as {@link #complete}: completes {@code seq} and, if it had a key, leases the
      * next row of that key to the same worker in the same round-trip — a hot partition never waits for a new claim round.
      * {@link Completion#STALE} when the caller no longer holds {@code seq}: nothing is completed and nothing taken.
@@ -166,6 +216,18 @@ public interface WorkQueue {
      * leased or queued row is left as it was.
      */
     Future<Boolean> release(long seq);
+
+    /**
+     * {@link #release} answering what it released: empty when {@code seq} was not held (nothing changed), else the row's flow and
+     * body node as far as this queue knows them — what the release wakes, here and on the row's node (D-121 (b) B4 (ii)).
+     *
+     * <p>This default releases by {@link #release} and cannot tell the row: a release answers {@link Released#UNTOLD}.
+     *
+     * @since 0.1
+     */
+    default Future<Optional<Released>> releaseRow(long seq) {
+        return release(seq).map(released -> released ? Optional.of(Released.UNTOLD) : Optional.empty());
+    }
 
     /**
      * {@code true} while any row of {@code flow} exists — due, backing off after a lease ran out, leased or held; a completed row

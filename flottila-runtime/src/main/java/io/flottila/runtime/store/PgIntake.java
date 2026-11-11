@@ -7,6 +7,7 @@ import io.flottila.core.batch.BatchingWriter;
 import io.flottila.core.batch.OverloadedException;
 import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.flow.Intake;
+import io.flottila.core.flow.WorkSignals;
 import io.flottila.core.flow.Workers;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Snapshot;
@@ -46,8 +47,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * The ingress body is made durable in the node's journal first ({@link TieredBlobStore#forced}: appended, or its spill
  * persisted, and forced) — on the caller's thread, before the save joins a group, so no statement of it is sent while the record
  * is not forced and a force that fails saves nothing. A body durable already (no local copy) adds no record and no kept ref: its
- * item copies the key's kept ref ({@link PgWorkQueue#enqueue(SqlClient, String, String, int, String, io.flottila.api.BlobKey)}).
- * A body of another store is persisted there first, its item naming no ref.
+ * item copies the key's kept ref ({@link PgWorkQueue#enqueue(SqlClient, String, String, int, String, io.flottila.api.BlobKey)});
+ * a ref of another node's journal makes a plain row that node claims, announced to it once the commit is acknowledged
+ * ({@link WorkSignals}, D-121 (b) B4 (iii)). A body of another store is persisted there first, its item naming no ref.
  *
  * <p><b>Groups</b> (CORE-6b, D-109). The save then joins a group through a {@link BatchingWriter}: saves waiting while groups are in
  * flight go together, at most {@link NodeConfig.IntakeGroup#max} of them and {@link NodeConfig.IntakeGroup#bytes} bytes (a
@@ -154,6 +156,7 @@ public final class PgIntake implements Intake {
         final List<Member> writing = new ArrayList<>();       // the members writing rows
         final Map<Member, FlowWorker.Slot> slots = new HashMap<>();   // a member writing rows with a hand-off slot reserved
         final Map<Member, WorkQueue.Item> leased = new ConcurrentHashMap<>();   // a member whose item was written leased
+        final Map<Member, String> elsewhere = new ConcurrentHashMap<>();       // a member whose copied ref lies in another node's journal
         final AtomicReference<String> xid = new AtomicReference<>();
 
         Group(List<Member> members) { this.members = members; }
@@ -181,6 +184,7 @@ public final class PgIntake implements Intake {
     private final PgMessageStore messages;
     private final PgWorkQueue queue;
     private final Workers workers;   // null: no hand-off
+    private final WorkSignals signals;
     private final BatchingWriter<Member> writer;
     /** The members whose group's commit is in doubt, by transaction id. */
     private final Map<String, List<TieredBlobStore.Durable>> inDoubt = new ConcurrentHashMap<>();
@@ -199,7 +203,15 @@ public final class PgIntake implements Intake {
 
     /** An intake whose every save is a group of one, handing its items off to the started workers of {@code workers} (D-121 (a)). */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers) {
-        this(pool, blobs, messages, queue, Objects.requireNonNull(workers, "workers"), NO_WINDOW, NodeConfig.IntakeGroup.SINGLE);
+        this(pool, blobs, messages, queue, workers, WorkSignals.NONE);
+    }
+
+    /**
+     * {@link #PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue, Workers)} announcing through {@code signals} each item
+     * that copied a ref of another node's journal, once its commit is acknowledged (D-121 (b) B4 (iii)).
+     */
+    public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, WorkSignals signals) {
+        this(pool, blobs, messages, queue, Objects.requireNonNull(workers, "workers"), NO_WINDOW, NodeConfig.IntakeGroup.SINGLE, signals);
     }
 
     /** An intake grouping its saves as {@code group} says, its window on {@code timer}, handing nothing off. */
@@ -212,6 +224,17 @@ public final class PgIntake implements Intake {
      * of {@code workers} (null: none), leased to the node of {@code queue} — a queue of no node hands nothing off.
      */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group) {
+        this(pool, blobs, messages, queue, workers, timer, group, WorkSignals.NONE);
+    }
+
+    /**
+     * {@link #PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue, Workers, Timer, NodeConfig.IntakeGroup)} announcing through
+     * {@code signals} each item written plain that copied a ref of another node's journal — to that node, for its flow — once its
+     * group's commit is acknowledged (D-121 (b) B4 (iii)).
+     */
+    public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group,
+                    WorkSignals signals) {
+        this.signals = Objects.requireNonNull(signals, "signals");
         this.pool = Objects.requireNonNull(pool, "pool");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
         this.messages = Objects.requireNonNull(messages, "messages");
@@ -412,7 +435,10 @@ public final class PgIntake implements Intake {
         java.time.Duration lease = slot == null ? null : slot.lease();
         if (durable == null) return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), holder, lease).map(item -> leased(g, m, item));
         if (durable.ref() == null) {
-            return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), m.arrived().body().key(), holder, lease).map(item -> leased(g, m, item));
+            return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), m.arrived().body().key(), holder, lease).map(copied -> {
+                copied.elsewhere().ifPresent(node -> g.elsewhere.put(m, node));   // announced once committed (B4 (iii))
+                return leased(g, m, copied.leased());
+            });
         }
         return queue.enqueue(tx, id, m.flow(), 1, m.partitionKey(), durable.node(), durable.ref(), holder, lease).map(written -> {
             g.xid.set(written.xid());
@@ -429,7 +455,8 @@ public final class PgIntake implements Intake {
     /**
      * Once {@code g} committed and its members answered (D-121 A4): each member's reserved slot runs its item written leased, or is
      * given back (its key busy: the key's holder hands it on) — each call {@link #isolated}; each flow with a member saved without
-     * a slot has its worker woken, once.
+     * a slot has its worker woken, once; each member whose item copied a ref of another node's journal is announced to that node, each call {@link
+     * #announce}.
      */
     private void handOff(Group g) {
         Set<String> spilled = new java.util.LinkedHashSet<>();
@@ -441,6 +468,20 @@ public final class PgIntake implements Intake {
             else isolated(m, "give back", () -> slot.cancel(false));
         }
         if (workers != null) spilled.forEach(workers::wake);
+        g.elsewhere.forEach(this::announce);
+    }
+
+    /**
+     * {@code node} told {@code m}'s flow has work, after the commit: a throw is logged at WARNING and changes no answer nor skips
+     * another member — the row stays for that node's reconciliation claim.
+     */
+    private void announce(Member m, String node) {
+        try {
+            signals.announce(node, m.flow());
+        } catch (RuntimeException | Error thrown) {
+            LOG.log(System.Logger.Level.WARNING, "announcing message " + m.arrived().id() + " of flow " + m.flow() + " to node " + node
+                    + " failed; its reconciliation claim finds the row: " + thrown, thrown);
+        }
     }
 
     /**

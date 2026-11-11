@@ -21,6 +21,7 @@ import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.flow.Intake;
 import io.flottila.core.flow.Replay;
 import io.flottila.core.flow.SequentialIntake;
+import io.flottila.core.flow.WorkSignals;
 import io.flottila.core.flow.Workers;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Meter;
@@ -224,6 +225,7 @@ public final class Deployments {
     private final Targets targets;
     private final BooleanSupplier fence;
     private final Workers workers;
+    private final WorkSignals signals;
     /** Numbers the owners of the leased consumers built here: {@code <nodeId>#<n>}. */
     private final AtomicLong owners = new AtomicLong();
     /** One deploy, undeploy or restore at a time; {@link #close} takes it to wait for the one running. */
@@ -326,7 +328,20 @@ public final class Deployments {
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
                        ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence, Workers workers) {
+        this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, records, archives, intake, leases, targets, fence,
+                workers, WorkSignals.NONE);
+    }
+
+    /**
+     * Deployments whose at-least-once workers register in {@code workers} and announce through {@code signals} — the node's work
+     * events (D-121 (b) B4 (i)): a keyed completion whose key's next row lies on another node tells that node.
+     */
+    public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
+                       List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter, DeploymentStore records,
+                       ArchiveStore archives, Intake intake, PollerLeases leases, Targets targets, BooleanSupplier fence, Workers workers,
+                       WorkSignals signals) {
         this.workers = Objects.requireNonNull(workers, "workers");
+        this.signals = Objects.requireNonNull(signals, "signals");
         this.config = Objects.requireNonNull(config, "config");
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.components = Map.copyOf(components);
@@ -1447,7 +1462,7 @@ public final class Deployments {
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
-                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers);
+                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers).signals(signals);
     }
 
     /**

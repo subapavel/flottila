@@ -32,6 +32,7 @@ import io.flottila.runtime.lease.InMemoryPollerLeases;
 import io.flottila.runtime.lease.PollerLeases;
 import io.flottila.runtime.lease.ValkeyPollerLeases;
 import io.flottila.runtime.queue.PgWorkQueue;
+import io.flottila.runtime.queue.PgWorkSignals;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgIntake;
 import io.flottila.runtime.store.PgMessageStore;
@@ -153,9 +154,11 @@ public final class Node implements AutoCloseable {
     private final Runnable closeS3;
     /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
     private final Runnable closeValkey;
+    private final Runnable closeSignals;
 
     private Node(Deployments deployments, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin, int adminPort,
-                 Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
+                 Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey,
+                 Runnable closeSignals) {
         this.deployments = deployments;
         this.lease = lease;
         this.membership = membership;
@@ -169,6 +172,7 @@ public final class Node implements AutoCloseable {
         this.pool = pool;
         this.closeS3 = closeS3;
         this.closeValkey = closeValkey;
+        this.closeSignals = closeSignals;
     }
 
     /**
@@ -201,6 +205,7 @@ public final class Node implements AutoCloseable {
         Journal journal = null;   // once open: closed after the deployments, before the store and the pool its rows go through
         Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pool
         Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
+        Runnable closeSignals = () -> {};   // the work events once built: closed after the deployments, before the stores and the pool
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
         NodeLease lease = null;   // once joined: closed after the deployments, its connection with it
         PgMembership membership = null;
@@ -254,10 +259,14 @@ public final class Node implements AutoCloseable {
             // an at-least-once ingress saves its body, its record and its item in one transaction (D-082)
             // the node's started workers: its intake hands each saved item off to the flow's worker, leased to this node (D-121 (a))
             Workers workers = new Workers();
-            PgIntake intake = new PgIntake(pool, blobs, messages, work, workers, timer, config.intakeGroup());   // grouped saves (D-109)
+            // the work events between the nodes (D-121 (b)): listening on a connection of their own before any worker starts
+            PgWorkSignals signals = new PgWorkSignals(vertx, connectOptions(pg), pool, opened.node(), workers, timer);
+            closeSignals = () -> signals.close().await();
+            signals.start().await();
+            PgIntake intake = new PgIntake(pool, blobs, messages, work, workers, timer, config.intakeGroup(), signals);   // grouped saves (D-109)
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
-                    new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers);   // the node's one Targets (D-099) and fence
+                    new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers, signals);   // the node's one Targets (D-099) and fence
             deployments = restored;
             StepCpu cpu = new StepCpu(StepCpu.Limits.DEFAULT);
             // before the restore: the restored flows' steps are sampled from their first message on (D-094)
@@ -268,13 +277,14 @@ public final class Node implements AutoCloseable {
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health()),
                             "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices),
-                    Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)));
+                    Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)), workers, signals);
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go (CORE-3 item 10); its first pass an interval later, on a virtual thread of its own
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
-            return new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey);
+            return new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey,
+                    closeSignals);
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -290,7 +300,11 @@ public final class Node implements AutoCloseable {
                     try {
                         sampler.ifPresent(CpuSampler::close);
                     } finally {
-                        closeStores(journal, messages, pool, closeS3, closeValkey);
+                        try {
+                            closeSignals.run();   // before the pool it sends on
+                        } finally {
+                            closeStores(journal, messages, pool, closeS3, closeValkey);
+                        }
                     }
                 }
             }
@@ -401,7 +415,8 @@ public final class Node implements AutoCloseable {
 
     /**
      * Closes the deployments (every flow stopped, its lease released, deploys refused), then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
-     * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then closes the journal, then flushes and closes the message store, then closes
+     * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then the work events
+     * (their listening connection; nothing sent from then on), then closes the journal, then flushes and closes the message store, then closes
      * the pool, then the S3 client, then the Valkey client — each step even when the one before failed.
      */
     @Override
@@ -424,7 +439,11 @@ public final class Node implements AutoCloseable {
                             try {
                                 sweeper.close();   // waits for a pass in flight: before the journal and the pool it uses
                             } finally {
-                                closeStores(journal, messages, pool, closeS3, closeValkey);
+                                try {
+                                    closeSignals.run();   // after the flows that announce, before the pool it sends on (D-121 (b) B2)
+                                } finally {
+                                    closeStores(journal, messages, pool, closeS3, closeValkey);
+                                }
                             }
                         }
                     }

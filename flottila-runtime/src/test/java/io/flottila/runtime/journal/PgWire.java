@@ -130,6 +130,7 @@ public final class PgWire implements AutoCloseable {
         final Socket client;
         volatile HeldReply replyHold;
         volatile FatalReply fatalReply;
+        volatile ErrorReply errorReply;
         /** ReadyForQuery messages forwarded to the client: the turn of the next message read. */
         volatile long delivered;
         /** SSL or GSS requests forwarded whose one-byte answer the server has not sent yet. */
@@ -215,13 +216,13 @@ public final class PgWire implements AutoCloseable {
      * transaction committed — are swallowed; the client gets an ErrorResponse of severity FATAL with SQLSTATE {@code 57P01} instead and
      * the connection is closed on both sides. {@link #awaitDone} returns once that happened.
      */
-    static final class FatalReply {
+    public static final class FatalReply {
         private final Predicate<Sent> matches;
         private final CountDownLatch done = new CountDownLatch(1);
 
         private FatalReply(Predicate<Sent> matches) { this.matches = matches; }
 
-        void awaitDone() throws InterruptedException {
+        public void awaitDone() throws InterruptedException {
             if (!done.await(20, TimeUnit.SECONDS)) throw new AssertionError("no reply to a matching message was replaced within 20 s");
         }
     }
@@ -229,7 +230,7 @@ public final class PgWire implements AutoCloseable {
     private final List<FatalReply> fatalReplies = new CopyOnWriteArrayList<>();
 
     /** Replaces the reply to the next frontend message {@code matches} accepts by a FATAL 57P01 error ({@link FatalReply}). */
-    FatalReply fatalReplyTo(Predicate<Sent> matches) {
+    public FatalReply fatalReplyTo(Predicate<Sent> matches) {
         FatalReply f = new FatalReply(matches);
         fatalReplies.add(f);
         return f;
@@ -247,6 +248,67 @@ public final class PgWire implements AutoCloseable {
         java.nio.ByteBuffer msg = java.nio.ByteBuffer.allocate(1 + 4 + body.length);
         msg.put((byte) 'E').putInt(4 + body.length).put(body);
         return msg.array();
+    }
+
+    /**
+     * The server's answer to a frontend message replaced by a plain ERROR (P2-16b review r1 V2: a hot standby answers {@code LISTEN}
+     * with "cannot execute LISTEN during recovery", SQLSTATE 25006): once the first message {@code matches} accepts is forwarded, the
+     * server's answer up to and including its ReadyForQuery is swallowed; the client gets an ErrorResponse of severity ERROR and
+     * {@code message}, then a ReadyForQuery (idle) — the connection stays open on both sides, usable. {@link #awaitDone} returns
+     * once the client was sent the replacement.
+     */
+    public static final class ErrorReply {
+        private final Predicate<Sent> matches;
+        private final String sqlState;
+        private final String message;
+        private final CountDownLatch done = new CountDownLatch(1);
+
+        private ErrorReply(Predicate<Sent> matches, String sqlState, String message) {
+            this.matches = matches;
+            this.sqlState = sqlState;
+            this.message = message;
+        }
+
+        public void awaitDone() throws InterruptedException {
+            if (!done.await(20, TimeUnit.SECONDS)) throw new AssertionError("no reply to a matching message was replaced within 20 s");
+        }
+
+        /** ErrorResponse (severity ERROR, {@code sqlState}, {@code message}), then ReadyForQuery idle. */
+        byte[] bytes() {
+            java.io.ByteArrayOutputStream fields = new java.io.ByteArrayOutputStream();
+            for (String f : List.of("SERROR", "VERROR", "C" + sqlState, "M" + message)) {
+                fields.writeBytes(f.getBytes(StandardCharsets.UTF_8));
+                fields.write(0);
+            }
+            fields.write(0);
+            byte[] body = fields.toByteArray();
+            java.nio.ByteBuffer msg = java.nio.ByteBuffer.allocate(1 + 4 + body.length + 6);
+            msg.put((byte) 'E').putInt(4 + body.length).put(body);
+            msg.put((byte) 'Z').putInt(5).put((byte) 'I');
+            return msg.array();
+        }
+    }
+
+    private final List<ErrorReply> errorReplies = new CopyOnWriteArrayList<>();
+
+    /** Replaces the reply to the next frontend message {@code matches} accepts by a plain ERROR ({@link ErrorReply}). */
+    public ErrorReply errorReplyTo(Predicate<Sent> matches, String sqlState, String message) {
+        ErrorReply e = new ErrorReply(matches, sqlState, message);
+        errorReplies.add(e);
+        return e;
+    }
+
+    /** The end of the first complete ReadyForQuery in {@code b} (messages from offset 0), -1 while none is complete yet. */
+    private static int endOfReady(byte[] b) {
+        int i = 0;
+        while (i + 5 <= b.length) {
+            int length = ((b[i + 1] & 0xff) << 24) | ((b[i + 2] & 0xff) << 16) | ((b[i + 3] & 0xff) << 8) | (b[i + 4] & 0xff);
+            int end = i + 1 + length;
+            if (end > b.length) return -1;
+            if (b[i] == 'Z') return end;
+            i = end;
+        }
+        return -1;
     }
 
     /** Holds the reply to the next frontend message {@code matches} accepts ({@link HeldReply}). */
@@ -444,6 +506,12 @@ public final class PgWire implements AutoCloseable {
                         break;
                     }
                 }
+                for (ErrorReply e : errorReplies) {
+                    if (e.matches.test(recorded) && errorReplies.remove(e)) {
+                        conn.errorReply = e;   // set before the message goes: its answer is replaced
+                        break;
+                    }
+                }
                 if (!replyHolds.isEmpty()) {
                     for (HeldReply r : replyHolds) {
                         if (r.matches.test(recorded) && replyHolds.remove(r)) {
@@ -534,8 +602,27 @@ public final class PgWire implements AutoCloseable {
         byte[] header = new byte[5];   // a backend message's type and length, as far as read
         int headerFill = 0;
         long payloadLeft = 0;          // bytes of the current message's payload still to come
+        java.io.ByteArrayOutputStream swallowed = new java.io.ByteArrayOutputStream();   // an answer an ErrorReply replaces, so far
         try (InputStream in = from.getInputStream(); OutputStream out = to.getOutputStream()) {
-            for (int n; (n = in.read(buffer)) >= 0; ) {
+            for (int read; (read = in.read(buffer)) >= 0; ) {
+                byte[] chunk = buffer;
+                int n = read;
+                ErrorReply error = conn.errorReply;
+                ErrorReply replaced = null;
+                if (error != null) {   // the answer swallowed up to its ReadyForQuery, an ERROR and an idle ReadyForQuery in its place
+                    swallowed.write(buffer, 0, read);
+                    byte[] got = swallowed.toByteArray();
+                    int end = endOfReady(got);
+                    if (end < 0) continue;
+                    conn.errorReply = null;
+                    swallowed.reset();
+                    java.io.ByteArrayOutputStream instead = new java.io.ByteArrayOutputStream();
+                    instead.writeBytes(error.bytes());
+                    instead.write(got, end, got.length - end);
+                    chunk = instead.toByteArray();
+                    n = chunk.length;
+                    replaced = error;
+                }
                 FatalReply fatal = conn.fatalReply;
                 if (fatal != null) {   // the answer swallowed, a FATAL error in its place, the connection gone
                     conn.fatalReply = null;
@@ -562,7 +649,7 @@ public final class PgWire implements AutoCloseable {
                         conn.negotiations.decrementAndGet();   // the one-byte answer to an SSL or GSS request
                         i++;
                     } else {
-                        header[headerFill++] = buffer[i++];
+                        header[headerFill++] = chunk[i++];
                         if (headerFill == header.length) {
                             if (header[0] == 'Z') ready++;
                             payloadLeft = (((header[1] & 0xffL) << 24) | ((header[2] & 0xff) << 16) | ((header[3] & 0xff) << 8) | (header[4] & 0xff)) - 4;
@@ -574,8 +661,9 @@ public final class PgWire implements AutoCloseable {
                     if (countTurns) conn.awaitDrained();
                     conn.delivered += ready;   // before the client can answer it: what it sends next is of a later turn
                 }
-                out.write(buffer, 0, n);
+                out.write(chunk, 0, n);
                 out.flush();
+                if (replaced != null) replaced.done.countDown();
             }
         } catch (IOException e) {
             // either side closed

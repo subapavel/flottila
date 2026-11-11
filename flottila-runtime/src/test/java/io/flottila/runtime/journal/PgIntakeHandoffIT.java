@@ -136,6 +136,7 @@ class PgIntakeHandoffIT {
             });
         }
         @Override public Future<Boolean> complete(long seq, int attempts) { return inner.complete(seq, attempts); }
+        @Override public Future<Completion> completeRow(long seq, int attempts) { return inner.completeRow(seq, attempts); }
         @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
             return inner.completeAndTakeNext(seq, attempts, workerId, lease);
         }
@@ -488,7 +489,9 @@ class PgIntakeHandoffIT {
         assertEquals(0, w.attempts());
         assertEquals(List.of(), hold.entries("m-plain"), "no slot ran it");
 
-        rt.clock().advance(Duration.ofMinutes(10));   // the worker's tick
+        // the worker's first tick (P2-16b B5): its period, ten minutes, plus the flow's offset floorMod("orders".hashCode(), 600 000 ms):
+        // "orders".hashCode() = -1008770331, floorMod 600 000 = 429 669 ms
+        rt.clock().advance(Duration.ofMinutes(10).plusMillis(429_669));
         until(() -> hold.entries("m-plain").size() == 1, () -> "claimed at the tick; claims " + claims.calls + ", items " + claims.items);
         assertEquals(List.of("enter m-plain@1"), hold.entries("m-plain"), "its first hand-out, by the claim");
         assertEquals(2, claims.calls.get(), "the start claim and the tick's");

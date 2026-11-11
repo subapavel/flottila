@@ -132,7 +132,8 @@ class FlowWorkerLifecycleTest {
         w1.start();
         assertEquals(1, w.rt.timer().pending(), "one tick, however often the worker is started");
         assertEquals(1, w.queue.claims().size(), "start() claims once (D-121 A6), however often it is called: " + w.queue.claims());
-        w.rt.clock().advance(TICK);
+        // P2-16b B5: the one pending task is the reconciliation, first due an interval plus the flow's offset after the start
+        w.rt.clock().advance(w.rt.timer().nextDelay());
         assertEquals(2, w.queue.claims().size(), "then one claim per interval: " + w.queue.claims());
         assertEquals(1, w.rt.timer().pending());
     }

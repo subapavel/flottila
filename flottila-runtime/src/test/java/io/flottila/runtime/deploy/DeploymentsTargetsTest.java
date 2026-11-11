@@ -203,7 +203,9 @@ class DeploymentsTargetsTest {
         assertNotSame(v1, v2, "fixture: the redeploy swapped a/audit");
         Envelope second = envelope("a/audit");
         assertEquals(new Ack.Accepted(second.id()), within(v2.deliver(second), "B's accept"));
-        rt.clock().advance(DeploymentsRedeployTest.TICK);   // v2's worker claims B on its tick, if not at once
+        // B's save wakes v2's worker (D-121 A6), which claims it at once: its first tick (B5: 30 s past its start and a/audit's
+        // offset, 17 789 ms) is past B's lease and is never reached here
+        until(() -> queue.claimedIds().contains(second.id()), "v2's worker claims B at once: " + queue.claimedIds());
 
         until(() -> n.partner().waiting() == 1, "v2's send of B waits for the permit v1's send of A holds: " + n.targets.gauges() + ", claimed " + queue.claimedIds());
         assertEquals(List.of(first.id()), n.doors.partner().sent().stream().map(Envelope::id).toList(), "the partner has A only while B waits");

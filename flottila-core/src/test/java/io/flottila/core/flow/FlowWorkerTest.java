@@ -577,17 +577,22 @@ class FlowWorkerTest {
         assertEquals(0, w.rows.size());
     }
 
+    /**
+     * P2-16b B5 (rewritten from the 1.5 s tick: the first tick is now offset by the flow's hash): the reconciliation comes every
+     * interval, the first an interval plus {@code floorMod("orders".hashCode(), 30 000) = 9 669} ms after the start (worked
+     * example; a 30 s interval, so the offset is the spec's {@code floorMod(hash(flow), 30 s)}).
+     */
     @Test
     void theTimerPollsOnItsInterval() {
-        Duration every = Duration.ofMillis(1_500);
+        Duration every = Duration.ofSeconds(30);
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowWorker w1 = w.worker(def, "w1", new WorkerPolicy(LEASE, 5, every));
         w1.start();
         until(() -> w.queue.claimsInFlight() == 0, () -> "start settled");
         int c0 = w.queue.claims().size();
-        assertEquals(every, w.rt.timer().nextDelay(), "the first tick is due one poll interval after start");
+        assertEquals(every.plusMillis(9_669), w.rt.timer().nextDelay(), "the first tick is due one interval plus the flow's offset after start");
 
-        w.rt.clock().advance(every);
+        w.rt.clock().advance(every.plusMillis(9_669));
         until(() -> w.queue.claims().size() == c0 + 1 && w.queue.claimsInFlight() == 0, () -> "the first tick's claim: " + w.queue.claims());
         assertEquals(every, w.rt.timer().nextDelay(), "the next tick an interval later");
         w.rt.clock().advance(every);
@@ -652,7 +657,8 @@ class FlowWorkerTest {
         Envelope in = w.accept(delivery);
         assertEquals(1, w.queue.claims().size(), "the accept claims nothing: " + w.queue.claims());
         assertEquals(List.of(), w.sentIds(), "and runs nothing");
-        w.rt.clock().advance(TICK);
+        // P2-16b B5: the worker's reconciliation, an interval plus the flow's offset after its start, claims it
+        for (int s = 0; s < 31 && w.queue.claims().size() == 1; s++) w.rt.clock().advance(TICK);
         w.partner.awaitSent(1);
         assertEquals(List.of(in.id()), w.sentIds(), "the tick's claim runs it");
         until(() -> w.rows.size() == 0, () -> "the item completed");
@@ -1777,7 +1783,7 @@ class FlowWorkerTest {
         }
         WorkerPolicy smallest = new WorkerPolicy(Duration.ofNanos(1), 1, Duration.ofNanos(1));
         assertEquals(1, smallest.maxAttempts(), "the smallest positive values are a policy");
-        assertEquals(new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(1)), WorkerPolicy.DEFAULT);
+        assertEquals(new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(30)), WorkerPolicy.DEFAULT, "P2-16b B5: a 30 s reconciliation");
     }
 
     @Test
@@ -1794,7 +1800,10 @@ class FlowWorkerTest {
         assertEquals(WorkerPolicy.DEFAULT.lease().dividedBy(3), w.rt.timer().nextDelay(), "renewed at a third of the default lease");
         w1.start();
         until(() -> w.queue.claimsInFlight() == 0, () -> "start settled");
-        assertEquals(WorkerPolicy.DEFAULT.pollInterval(), w.rt.timer().nextDelay(), "ticks at the default poll interval");
+        w.gate.open();   // P2-16b B5: the run ends and its renewal is cancelled, so the one pending task is the reconciliation
+        until(() -> w1.unsettled() == 0 && w.rt.timer().pending() == 1, () -> "the run settled, its renewal cancelled");
+        assertEquals(WorkerPolicy.DEFAULT.pollInterval().plusMillis(9_669), w.rt.timer().nextDelay(),
+                "reconciles at the default interval plus floorMod(\"orders\".hashCode(), 30 000) = 9 669 ms");
     }
 
     @Test

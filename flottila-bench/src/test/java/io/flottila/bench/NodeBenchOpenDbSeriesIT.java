@@ -31,8 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * pg_stat_statements preloaded, {@code fsync} on with {@code wal_sync_method=fsync} (pg_stat_wal.wal_sync counts only then) and
  * {@code track_wal_io_timing} on. The record's {@code db} object carries one non-null entry per backlog sample for the commits
  * and the WAL syncs, summing at least to one commit per intake group of the accepted messages (a group holds at most 64, the
- * node's default, NodeConfig.IntakeGroup.defaults); the work queue's CLAIM and COMPLETE are among the top statements, and the
- * sampler's own reads are not. A database without the extension records the statements as null with a note, never as none.
+ * node's default, NodeConfig.IntakeGroup.defaults); the intake's leased insert of a work row and the work queue's COMPLETE are
+ * among the top statements, and the sampler's own reads are not. P2-16b (D-121 (b) B5): the worker reconciles — claims — every
+ * 30 s, first 30 s and the flow's offset after its start, past the 3-s window; the intake hands each row off leased to the worker
+ * (D-121 A1), so the window holds no CLAIM: that statement was among the top only while a 1-s tick claimed thrice in it. A database without the extension records the statements as null with a note, never as none.
  */
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class NodeBenchOpenDbSeriesIT {
@@ -51,7 +53,7 @@ class NodeBenchOpenDbSeriesIT {
     @AfterAll static void stop() { pg.stop(); }
 
     @Test
-    void anAckOpenLoopRecordsCommitAndWalSyncDeltasPerSampleAndTheClaimAndCompleteAmongTheTopStatements() throws Exception {
+    void anAckOpenLoopRecordsCommitAndWalSyncDeltasPerSampleAndTheLeasedInsertAndCompleteAmongTheTopStatements() throws Exception {
         String db = database(true);
         JsonObject open = run(db, "it-open-db");
 
@@ -76,7 +78,8 @@ class NodeBenchOpenDbSeriesIT {
         assertTrue(top.size() <= 12, "at most the top 12: " + top.encode());
         List<String> queries = new ArrayList<>();
         for (int i = 0; i < top.size(); i++) queries.add(top.getJsonObject(i).getString("query").toLowerCase(Locale.ROOT));
-        assertTrue(queries.stream().anyMatch(q -> q.contains("update work w set locked_by")), "the work queue's CLAIM: " + queries);
+        assertTrue(queries.stream().anyMatch(q -> q.startsWith("insert into work(") && q.contains("locked_by")),
+                "the intake's insert of a work row leased to the worker (its hand-off): " + queries);
         assertTrue(queries.stream().anyMatch(q -> q.startsWith("delete from work")), "the work queue's COMPLETE: " + queries);
         assertTrue(queries.stream().noneMatch(q -> q.contains("pg_stat_statements") || q.contains("pg_stat_wal")
                 || q.contains("pg_stat_database") || q.contains("pg_stat_user_tables")), "the node's statements, not the sampler's: " + queries);

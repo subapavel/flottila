@@ -90,8 +90,9 @@ import java.util.function.BooleanSupplier;
  * never refused once reserved: it runs after {@link #stop()}, and fenced under a closed fence. A slot whose item was not
  * written leased is given back ({@link Slot#cancel}); one whose commit is in doubt arms the lease-end wake below.
  *
- * <p>What claims: {@link #poll()}; {@link #start()}, once, then every {@link WorkerPolicy#pollInterval()} on the timer; a
- * {@linkplain Workers#wake wake}; and the end of a chain (an item no fast path followed) only while a backlog is known. The
+ * <p>What claims: {@link #poll()}; {@link #start()}, once, then every {@link WorkerPolicy#pollInterval()} on the timer (the
+ * reconciliation, D-121 (b) B5: its first an interval plus the flow's offset after the start); a {@linkplain Workers#wake wake} —
+ * a work event from another node among them ({@link WorkSignals}); and the end of a chain (an item no fast path followed) only while a backlog is known. The
  * backlog flag is set from the start, by a wake (a save without a slot, a released hold), by a claim that filled the room it
  * asked for and by a keyed item settled plainly at the chain's bound (its key goes back to the claim); a claim answering less
  * than it asked clears it, unless a wake came since it was issued. An item left to its lease — its run left it, its settle was
@@ -102,7 +103,7 @@ import java.util.function.BooleanSupplier;
  * over the same store and queue finishes what an earlier one accepted. {@link #close()} (FIX-30) closes the producers the
  * builder created for its pipeline once it was stopped and nothing it claimed or reserved still runs. Built by
  * {@link FlowBuilder#worker}; it holds only what the builder handed it — the clock, the timer, the policy, the parking, the
- * first step, the producers and the node's {@link Workers} — never the {@code Runtime}.
+ * first step, the producers, the node's {@link Workers} and its {@link WorkSignals} — never the {@code Runtime}.
  *
  * @since 0.1
  */
@@ -125,6 +126,7 @@ public final class FlowWorker {
     private final BooleanSupplier fence;
     private final Clock clock;
     private final Workers workers;
+    private final WorkSignals signals;
 
     private final Object lock = new Object();
     private final Map<Long, Lease> running = new HashMap<>();   // guarded by lock: claimed by this worker and not finished
@@ -143,7 +145,7 @@ public final class FlowWorker {
 
     FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, WorkQueue queue, MessageStore store, BlobStore blobs,
                Pipeline pipeline, Parking parking, StepConfig firstStep, Clock clock, Timer timer, Producers producers, BooleanSupplier fence,
-               Workers workers) {
+               Workers workers, WorkSignals signals) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.max = max;
@@ -159,6 +161,7 @@ public final class FlowWorker {
         this.fence = Objects.requireNonNull(fence, "fence");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.workers = Objects.requireNonNull(workers, "workers");
+        this.signals = Objects.requireNonNull(signals, "signals");
     }
 
     /**
@@ -198,13 +201,16 @@ public final class FlowWorker {
     }
 
     /**
-     * Registers this worker in the node's {@link Workers} for its flow, claims once and then every
-     * {@link WorkerPolicy#pollInterval()} on the timer until {@link #stop()}; a second call, or one after stop, does nothing.
+     * Registers this worker in the node's {@link Workers} for its flow, claims once and then reconciles every
+     * {@link WorkerPolicy#pollInterval()} on the timer until {@link #stop()}, the first reconciliation an interval plus
+     * {@code floorMod(flow.hashCode(), interval in ms)} ms after this call (D-121 (b) B5: the flows of one node do not claim
+     * together; an interval below 1 ms has no offset); a second call, or one after stop, does nothing.
      */
     public void start() {
         synchronized (lock) {
             if (stopped || tick != null) return;
-            tick = timer.schedule(policy.pollInterval(), this::tick);
+            long every = Math.max(1, policy.pollInterval().toMillis());
+            tick = timer.schedule(policy.pollInterval().plusMillis(Math.floorMod(flow.hashCode(), every)), this::tick);
         }
         workers.register(flow, this);
         pollFor("at the start");
@@ -518,8 +524,9 @@ public final class FlowWorker {
     }
 
     /**
-     * What the fast path answered for {@code item}: stale (counted and logged, nothing taken), nothing left of its key, or the
-     * next item, which takes the finished one's slot — unless a claim of this worker answered after the take started it
+     * What the fast path answered for {@code item}: stale (counted and logged, nothing taken), nothing taken — the key's next row,
+     * if it lies on another node, announced to that node ({@link WorkSignals}, D-121 (b) B4 (i)), the fast path's commit
+     * acknowledged —, or the next item, which takes the finished one's slot — unless a claim of this worker answered after the take started it
      * already, under a newer token: then that run goes on and this chain ends.
      */
     private Optional<Lease> taken(WorkQueue.Item item, int token, WorkQueue.Completion taken) {
@@ -527,7 +534,10 @@ public final class FlowWorker {
             stale(item, token);
             return Optional.empty();
         }
-        if (taken.next().isEmpty()) return Optional.empty();
+        if (taken.next().isEmpty()) {
+            taken.nextNode().ifPresent(this::announce);   // committed: the key's next row is that node's to claim (B4 (i))
+            return Optional.empty();
+        }
         WorkQueue.Item next = taken.next().get();
         synchronized (lock) {
             if (running.containsKey(next.seq())) return Optional.empty();
@@ -582,19 +592,34 @@ public final class FlowWorker {
     }
 
     /**
+     * {@code node} told this flow has work, after the commit that made it so: a throw is logged at WARNING and changes no answer — the
+     * row stays for that node's reconciliation claim.
+     */
+    private void announce(String node) {
+        try {
+            signals.announce(node, flow);
+        } catch (RuntimeException | Error thrown) {
+            LOG.log(System.Logger.Level.WARNING, "announcing flow " + flow + " to node " + node + " failed; its reconciliation claim finds the row: "
+                    + thrown, thrown);
+        }
+    }
+
+    /**
      * Completes, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's newest
-     * claim of it; a complete or hold answering false is stale and counted. An unparkable item raises one ERROR whatever its hold
+     * claim of it; a complete or hold answering false is stale and counted. A complete naming the node of its key's next row
+     * announces it there ({@link WorkSignals}, D-121 (b) B4 (i)), the delete committed. An unparkable item raises one ERROR whatever its hold
      * answers. An item left — by the run, or by a complete or hold that failed — is left to its lease.
      */
     private Future<Void> settle(Lease lease, Verdict verdict) {
         WorkQueue.Item item = lease.item;
         int token = lease.token();
-        if (verdict.complete()) return queue.complete(item.seq(), token).transform(removed -> {
+        if (verdict.complete()) return queue.completeRow(item.seq(), token).transform(removed -> {
             if (removed.failed()) {
                 leftToLease();
                 return Future.failedFuture(removed.cause());
             }
-            if (!removed.result()) stale(item, token);
+            if (!removed.result().completed()) stale(item, token);
+            removed.result().nextNode().ifPresent(this::announce);   // committed: the key's next row is that node's (B4 (i))
             return Future.succeededFuture();
         });
         Throwable unparkable = verdict.unparkable();

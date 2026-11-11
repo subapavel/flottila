@@ -97,6 +97,7 @@ class DeploymentsRollbackTest {
     static final String NODE = "node-1";
     static final Duration STOP_DEADLINE = DeploymentsRedeployTest.STOP_DEADLINE;
     static final Duration TICK = DeploymentsRedeployTest.TICK;
+    static final Duration AUDIT_FIRST_TICK = DeploymentsRedeployTest.firstTick("shop/audit");
     static final String TICK_STUCK = "the poll tick cannot be cancelled";
     static final Pattern FAILED_FLOWS = Pattern.compile("flows \\[([^\\]]*)\\] FAILED");
 
@@ -141,7 +142,7 @@ class DeploymentsRollbackTest {
         env.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(2L * 1024 * 1024));
         Timer ticksMayThrow = (delay, task) -> {
             Timer.Cancellable scheduled = timer.schedule(delay, task);
-            if (!delay.equals(TICK)) return scheduled;
+            if (!DeploymentsRedeployTest.FIRST_TICKS.contains(delay)) return scheduled;   // a worker's tick before it first fired (B5)
             return () -> {
                 if (tickCancelsThrow) throw new IllegalStateException(TICK_STUCK);
                 return scheduled.cancel();
@@ -279,11 +280,13 @@ class DeploymentsRollbackTest {
     }
 
     /**
-     * Advances the clock one tick from settled claims and asserts {@code flow}'s worker claimed exactly once on it: waits for that
-     * claim and for no other thread to be able to claim, then counts one snapshot. Two claims per tick fail it.
+     * Advances the clock to the first tick of {@code flow}'s worker — started since the clock last moved: B5, its first tick is
+     * due {@link DeploymentsRedeployTest#firstTick} after its start, the next one a period later — from settled claims and asserts
+     * the worker claimed exactly once on it: waits for that claim and for no other thread to be able to claim, then counts one
+     * snapshot. Two claims per tick fail it.
      */
-    void assertOneClaimPerTick(String flow, long polls, String what) {
-        rt.clock().advance(TICK);
+    void assertOneClaimOnTheFirstTick(String flow, long polls, String what) {
+        rt.clock().advance(DeploymentsRedeployTest.firstTick(flow));
         until(() -> claimsOf(flow) >= polls + 1 && queue.claimsSettled(), "the tick's claim of " + flow + " and nothing in flight: " + queue.claims());
         List<String> claims = queue.claims();
         assertEquals(polls + 1, claims.stream().filter((NODE + " " + flow)::equals).count(), what + ": " + claims);
@@ -459,7 +462,7 @@ class DeploymentsRollbackTest {
         assertTrue(auditOut.ordinal() > producersBefore + v3Producers.size(), "audit's rebuilt worker sends it: " + auditOut);
         assertEquals(Map.of("flow", "shop/audit@1.0.3", "package", "shop@1.0.0", "revision", "r1"), versions(alo.id()), "audit runs with v1's stamps");
         completedAndPolledAfter("shop/audit", claimsBefore);
-        assertOneClaimPerTick("shop/audit", settledClaimsOf("shop/audit"), "one worker polls audit per tick, the rebuilt one");
+        assertOneClaimOnTheFirstTick("shop/audit", settledClaimsOf("shop/audit"), "one worker polls audit per tick, the rebuilt one");
         assertRefusesRetryable(extraV3, within(extraV3.deliver(envelope("shop/extra")), "a message on v3's extra"));
         for (Doors.Out o : running) assertEquals(1, o.closes(), "the producers running before v3 are closed once: " + o);
         assertEquals(6, doors.openProducers().size(), "open: one producer per rebuilt flow and one per its replay (D-067): " + doors.producers());
@@ -512,7 +515,7 @@ class DeploymentsRollbackTest {
     @Test
     void aFailedRollbackListsFailedAnd500sNamingIt() throws Exception {
         String sha1 = deploy(shop(), "r1").pkg().archiveSha256();
-        assertOneClaimPerTick("shop/audit", settledClaimsOf("shop/audit"), "fixture: a running audit worker shows as one claim per tick");
+        assertOneClaimOnTheFirstTick("shop/audit", settledClaimsOf("shop/audit"), "fixture: a running audit worker shows as one claim per tick");
         Map<String, DeployedFlow> before = byId(deployments.flows());
         List<DeployedPackage> packagesBefore = deployments.packages();
         PackageDraft v2 = changed(changed(removed(shop(), "ping"), "orders", "v2"), "audit", "v2");
@@ -554,7 +557,7 @@ class DeploymentsRollbackTest {
         assertEquals(List.of("partner", "partner"), doors.openProducers().stream().map(Doors.Out::endpoint).toList(),
                 "orders' delivery and replay producers; no producer of audit (archive) is open");
         long polls = claimsOf("shop/audit");
-        rt.clock().advance(TICK.multipliedBy(3));
+        rt.clock().advance(AUDIT_FIRST_TICK.plus(TICK.multipliedBy(2)));   // three ticks of a worker started by the rollback (B5)
         assertEquals(polls, claimsOf("shop/audit"), "no worker of the FAILED audit polls: " + queue.claims());
         Sent sync = send("shop/orders");
         assertInstanceOf(Ack.Reply.class, within(sync.answer(), "orders' answer"));
@@ -662,7 +665,7 @@ class DeploymentsRollbackTest {
         assertEquals(new Ack.Accepted(alo.id()), within(alo.answer(), "audit's answer"), "audit serves");
         assertEquals(0, producerOf(alo).closes(), "and a running worker sends it on");
         completedAndPolledAfter("shop/audit", claimsBefore);
-        assertOneClaimPerTick("shop/audit", settledClaimsOf("shop/audit"), "one worker polls audit per tick");
+        assertOneClaimOnTheFirstTick("shop/audit", settledClaimsOf("shop/audit"), "one worker polls audit per tick");
     }
 
     /**
@@ -1011,7 +1014,7 @@ class DeploymentsRollbackTest {
                         .filter(o -> o.endpoint().equals("partner")).toList();   // v2's build is done: orders' delivery and replay producers, ping's spare two
                 Doors.Door ordersV2 = ordersStart.door();
                 Doors.Door auditV2 = doors.door("shop/audit");
-                untilWhile(d, () -> auditV2.started() && liveTasks(TICK) == 1, "v2's audit and its worker started: " + timer.all());
+                untilWhile(d, () -> auditV2.started() && liveTasks(AUDIT_FIRST_TICK) == 1, "v2's audit and its worker started: " + timer.all());
                 tickCancelsThrow = true;
                 ordersStart.fail("address in use");
                 DeployRefusedException refused = joinRefused(d, "v2, whose orders does not start");

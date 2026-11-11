@@ -8,15 +8,17 @@ import java.util.Objects;
  *
  * @param lease how long a claim leases an item; renewed every third of it while the item runs
  * @param maxAttempts how many claims an item may have; one claimed past it is parked without a run (at least 1)
- * @param pollInterval how often a {@linkplain FlowWorker#start() started} worker polls
+ * @param pollInterval how often a {@linkplain FlowWorker#start() started} worker reconciles: one claim every interval, the first
+ *                     an interval plus {@code floorMod(flow.hashCode(), interval in ms)} ms after its start, so the flows of one
+ *                     node do not claim together (D-121 (b) B5; work events wake it in between, {@link WorkSignals})
  * @param maxChain how many items of one key a worker takes by the same-key fast path after the item it claimed before the key
  *                 goes back to the seq-ordered claim (D-075; at least 0, 0 = the fast path is off; 32 unmeasured)
  * @since 0.1
  */
 public record WorkerPolicy(Duration lease, int maxAttempts, Duration pollInterval, int maxChain) {
 
-    /** 30 s lease, 5 attempts, a poll every second, a chain of at most 32 fast-path items. */
-    public static final WorkerPolicy DEFAULT = new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(1));
+    /** 30 s lease, 5 attempts, a reconciliation every 30 s (B5, PT30S; B7: no env key until P2-16c), a chain of at most 32 fast-path items. */
+    public static final WorkerPolicy DEFAULT = new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(30));
 
     public WorkerPolicy {
         Objects.requireNonNull(lease, "lease");
