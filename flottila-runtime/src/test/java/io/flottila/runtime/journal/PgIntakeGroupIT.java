@@ -10,6 +10,7 @@ import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.store.PgIntake;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -77,7 +78,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(180)
 class PgIntakeGroupIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     static final String FLOW = JournalWorld.FLOW;

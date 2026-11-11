@@ -1,5 +1,6 @@
 package io.flottila.runtime.node;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServer;
@@ -77,7 +78,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(value = 15, unit = TimeUnit.MINUTES)
 class NodeTakeoverLedgerIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration BOUND = Duration.ofSeconds(120);
     static final String A = "node-a";
     static final String B = "node-b";

@@ -5,6 +5,7 @@ import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.core.queue.WorkQueue.Completion;
 import io.flottila.core.queue.WorkQueue.Item;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -44,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PgWorkQueueNextOfKeyPlanIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final int DEPTH = 50_000;
     static final int KEYS = 100;
     static final String NODE = "n1";

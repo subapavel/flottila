@@ -2,6 +2,7 @@ package io.flottila.runtime.queue;
 
 import io.flottila.api.BlobKey;
 import io.flottila.core.queue.WorkQueue;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -33,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class PgWorkQueueEventSourcesIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration LEASE = Duration.ofSeconds(30);
     static Vertx vertx;
     static Pool pool;

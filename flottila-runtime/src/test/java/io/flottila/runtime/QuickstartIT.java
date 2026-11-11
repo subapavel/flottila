@@ -7,6 +7,7 @@ import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -81,7 +82,7 @@ class QuickstartIT {
     /** The node's admin token: deploy.sh sends it from FLOTTILA_ADMIN_TOKEN, the case's own admin requests carry it too. */
     static final String TOKEN = "quickstart-it-token";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 

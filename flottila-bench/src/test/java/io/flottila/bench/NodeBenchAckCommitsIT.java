@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -39,7 +40,7 @@ class NodeBenchAckCommitsIT {
     static final Map<String, String> SERVER = Map.of("fsync", "on", "wal_sync_method", "fsync", "full_page_writes", "off",
             "commit_delay", "7", "commit_siblings", "3", "synchronous_commit", "off");
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17").withCommand("postgres",
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name()).withCommand("postgres",
             "-c", "fsync=on", "-c", "wal_sync_method=fsync", "-c", "full_page_writes=off",
             "-c", "commit_delay=7", "-c", "commit_siblings=3", "-c", "synchronous_commit=off");
     static final AtomicInteger cases = new AtomicInteger();

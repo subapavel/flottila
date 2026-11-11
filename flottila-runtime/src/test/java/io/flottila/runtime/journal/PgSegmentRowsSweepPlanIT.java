@@ -3,6 +3,7 @@ package io.flottila.runtime.journal;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -69,7 +70,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PgSegmentRowsSweepPlanIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final String NODE = "n1";
     static final String OTHER_NODE = "n2";
     static final String PREP_NODE = "prep";

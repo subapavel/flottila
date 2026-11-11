@@ -1,6 +1,7 @@
 package io.flottila.runtime.journal;
 
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.pgclient.PgConnection;
@@ -53,7 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class JournalKeysIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     static final SecretKey MASTER = new SecretKeySpec(material(101, 32), "AES");

@@ -146,9 +146,11 @@ BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate`
   null, a field no sample could read is JSON null, and either way its reason is in the object's `notes` — never 0.
   - `db` (ack and sync; the echo self-test has none): one statement per sample on a Postgres session of its own (never the
     node's pool nor the bench's; application_name `flottila-bench-sampler`, statement_timeout 10 s; its one commit per sample
-    is in `xactCommit`). `xactCommit` Δ pg_stat_database.xact_commit of the run's database; `walSync`, `walSyncTimeMs`,
-    `walFpi`, `walBytes` Δ pg_stat_wal (the cluster's; `walSync` / `walSyncTimeMs` null unless fsync is on and wal_sync_method
-    is fdatasync, fsync or fsync_writethrough — the only cases pg_stat_wal counts — and `walSyncTimeMs` also null with
+    is in `xactCommit`). `xactCommit` Δ pg_stat_database.xact_commit of the run's database; `walFpi`, `walBytes` Δ pg_stat_wal
+    (the cluster's); `walSync`, `walSyncTimeMs` Δ pg_stat_wal.wal_sync / wal_sync_time on 16 and 17, Δ the sum of pg_stat_io
+    fsyncs / fsync_time where object = 'wal' and context = 'normal' on 18 (D-129: the same count, issue_xlog_fsync, cluster-wide;
+    a new segment's `init` fsync is in neither) — null unless fsync is on and wal_sync_method is fdatasync, fsync or
+    fsync_writethrough (the only cases either counts), and `walSyncTimeMs` also null with
     track_wal_io_timing off); `workDeadTup` / `workLiveTup` pg_stat_user_tables n_dead_tup / n_live_tup of `work` as read (not
     deltas), `workHotUpd` / `workUpd` Δ n_tup_hot_upd / n_tup_upd (all null when the schema has no `work` statistics row);
     `workAutovacuum` / `workAutoanalyze` `[{sample, at}]` for each new last_autovacuum / last_autoanalyze time a sample saw
@@ -156,9 +158,8 @@ BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate`
     the window's first and last sample — `queryid`, `query`, `calls`, `totalExecTimeMs`, `sharedBlks` (hit + read), each a
     window delta, summed per queryid over the run's database (`dbid`), only those called in the window, the sampler's own statements (they name the pg_stat_ views) left
     out — null when pg_stat_statements cannot be read in the run's database (probed once when the sampler opens: the
-    extension must be created there and the server must preload it, `shared_preload_libraries`). Columns as PostgreSQL 16 and
-    17 name them (checked with `\d` on 16.15 and the 17 image); PostgreSQL 18 moved wal_sync out of pg_stat_wal, where the
-    read fails and every field is null with the error. The cumulative pg_stat counters are what backends have published: a
+    extension must be created there and the server must preload it, `shared_preload_libraries`). Columns as PostgreSQL 16, 17
+    and 18 name them (16 and 17 checked with `\d` on 16.15 and the 17 image; the 18 source run by the bench ITs on 18.6, FIX-169). The cumulative pg_stat counters are what backends have published: a
     busy backend publishes up to 1 s late and one that goes idle up to 10 s late (PGSTAT_IDLE_INTERVAL), so the per-second
     entries and the window's sum are shifted by that lag at both ends; pg_stat_statements updates when a statement ends, no lag.
   - `pgCpu`: `cpuMs` per sample from `--pg-cpu-source` — a cgroup v2 directory, or the postmaster's pid: utime + stime +

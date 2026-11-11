@@ -18,6 +18,10 @@ docker compose --profile history up -d clickhouse      # optional
 docker compose --profile history down -v               # stop and remove every volume
 ```
 
+Postgres runs `postgres:18.6` with its volume at `/var/lib/postgresql` (D-129). A `pg-data` volume made by the earlier
+`postgres:17.11` cannot be reused (the 18 image refuses to start on it): run `docker compose --profile history down -v` once
+before the first `up` after the upgrade; it deletes every volume of this demo stack (database, node archives, S3 objects, SFTP keys and files, ClickHouse).
+
 - Admin API and `/health`: `localhost:8081`; the demo's http-in: `localhost:8080`; its async door `http-in-async`: `localhost:8082/invoice/async` (answers 202).
 - Postgres password: `FLOTTILA_PG_PASSWORD` (default `flottila`). S3: bucket `flottila`, one Admin identity written at start
   from `FLOTTILA_S3_ACCESS_KEY` / `FLOTTILA_S3_SECRET_KEY` (an http endpoint, allowed in `dev`).

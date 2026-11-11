@@ -29,6 +29,7 @@ import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -102,7 +103,7 @@ class StepBodiesIT {
     static final int ABOVE = 5000;   // spill, above the durable bound
     static final Duration LEASE = Duration.ofSeconds(30);
     static final Duration STOP_BOUND = Duration.ofHours(1);   // on the fake timer: never reached, a stop waits for its flights
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool admin;   // the test's own sessions: truncate, counts, rows as another session sees them, lease expiry
 

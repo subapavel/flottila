@@ -1,5 +1,6 @@
 package io.flottila.runtime.journal;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -25,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class PgSegmentRowsReadIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     CaseDatabase db;

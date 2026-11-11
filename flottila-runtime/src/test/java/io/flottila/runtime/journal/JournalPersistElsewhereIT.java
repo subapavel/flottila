@@ -3,6 +3,7 @@ package io.flottila.runtime.journal;
 import io.flottila.api.BlobKey;
 import io.flottila.runtime.blob.RemoteBodyException;
 import io.flottila.runtime.blob.TieredBlobStore;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -34,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class JournalPersistElsewhereIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static CaseDatabase db;
 

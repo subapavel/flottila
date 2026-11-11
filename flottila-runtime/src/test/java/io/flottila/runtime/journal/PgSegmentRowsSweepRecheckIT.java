@@ -1,6 +1,7 @@
 package io.flottila.runtime.journal;
 
 import io.flottila.runtime.db.Migrations;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -45,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class PgSegmentRowsSweepRecheckIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final String NODE = "n1";
     static final Instant KEPT_SINCE = Instant.parse("2026-03-01T00:00:00Z");
     static final Instant FRESH = Instant.parse("2026-06-01T00:00:00Z");

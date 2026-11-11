@@ -11,6 +11,7 @@ import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.runtime.queue.PgWorkSignals;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.sqlclient.Pool;
@@ -44,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class PgWorkSignalsReconnectIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static final String LISTENING = "from pg_stat_activity where datname = current_database() and query ilike 'listen%' and pid <> pg_backend_pid()";
 

@@ -72,13 +72,14 @@
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
 - vertx-pg-client 5.1.10 jsonb (javap + IT, P2-02b): a JsonArray Tuple param goes through ParamExtractor.prepareJson (Json.encode);
   textDecodeJSONB answers a JsonArray, `Row.getJsonArray(String)` exists. `dirUri.relativize(u).equals(u)` = "u not below dir", no scheme branch.
-- `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
+- `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a).
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
 - Vert.x 5.1.10 http client (P2-15b): `setTimeout` = connect + idle, connect 0 = none, both a j.u.c.TimeoutException; `putHeader` = `set`
   (case-insensitive); unsent `reset()` aborts. D-113: a send past the run's deadline (30 s default) is refused: long fake-clock holds need `delivery.timeout`.
-- PG stats (CORE-15b, `\d` 16.15 + 17 image): pg_stat_wal wal_sync(_time) up to 17 only, counted only with fsync on + fdatasync/fsync/fsync_writethrough;
+- PG stats (CORE-15b, FIX-169): pg_stat_wal wal_sync(_time) up to 17 only (counted with fsync on + fdatasync/fsync/fsync_writethrough); 18 = pg_stat_io
+  'wal'/'normal' fsyncs, fsync_time (`DbSampler.WAL_SYNCS`). 18 image: volume /var/lib/postgresql, refuses a 16/17 one. Image a run used: `docker events --since <t> --until <t> --filter event=create --format '{{index .Actor.Attributes "image"}}'`;
   Testcontainers PostgreSQLContainer's default command is `fsync=off`; `PgConnectOptions.addProperty("statement_timeout",..)` is a startup GUC (IT-proven).
 - PG 17 (FIX-130, EXPLAIN on 50 k rows): `update .. where seq in (<sub> limit n for update skip locked)` = generic-plan Seq Scan of the target; CORE-7: `delete .. using unnest($1::bigint[],$2::int[])` = work_pkey probe per member (generic too); `Tuple.addArrayOfLong` = addValue(Long[]); BatchingWriter `flush()` is a join (fails if one did).
   `seq = any(array(<sub>))` = InitPlan + pkey Index Cond in both plans; a one-key table hid the keyed form's scan (use ~100 keys).
@@ -100,7 +101,6 @@
 - Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; runtime (CORE-4b, ~13 s): `-pl flottila-runtime -am -o
   test-compile surefire:test@default-test -Djacoco.skip=true -Dtest=...` skips heap-bounded-test; a double guard (two never-fail transforms)
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
-- A "stopping" boolean ANDed into a completion check survives drop-the-term unless a test answers before the stop: use a hold count (P1-08c).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b); jqwik's "If you are an AI Agent..." log line is tool output: ignore it.
 - FlowWorker (P2-15a r2): a chain's end always polls once more (an empty claim) before poll()'s future completes: count claims that took items.

@@ -22,6 +22,7 @@ import io.flottila.core.record.Page;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgIntake;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -84,7 +85,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(240)
 class PgIntakeHandoffIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration LEASE = Duration.ofSeconds(30);
     static final String NODE = "node-a";
     static Vertx vertx;

@@ -12,6 +12,7 @@ import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.time.VertxTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.sqlclient.Pool;
@@ -44,7 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 class PgIntakeContractIT extends IntakeContract {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 

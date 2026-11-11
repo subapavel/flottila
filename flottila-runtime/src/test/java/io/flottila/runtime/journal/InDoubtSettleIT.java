@@ -2,6 +2,7 @@ package io.flottila.runtime.journal;
 
 import io.flottila.api.BlobKey;
 import io.flottila.api.Envelope;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -35,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(240)
 class InDoubtSettleIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     @TempDir Path tmp;

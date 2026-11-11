@@ -4,7 +4,7 @@
 # the node's data directory (its deployment archives) live in named volumes: `docker compose down -v` removes both together.
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18.6
     container_name: flottila-postgres
     environment:
       POSTGRES_DB: flottila
@@ -13,7 +13,8 @@ services:
     ports:
       - "127.0.0.1:${FLOTTILA_PG_HOST_PORT:-5432}:5432"
     volumes:
-      - flottila-pg:/var/lib/postgresql/data
+      # the 18 image keeps PGDATA at /var/lib/postgresql/18/docker and refuses a mount at .../data; a 16/17 volume is not reused
+      - flottila-pg:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
       interval: 2s

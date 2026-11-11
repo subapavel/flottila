@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -30,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class NodeBenchOpenAckIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
 
     @TempDir Path dir;

@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -15,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** The harness end to end on a container (numbers are not recorded from here — only native runs count, CLAUDE.md). */
 class BenchMainIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
 
     @BeforeAll static void start() { pg.start(); }
 
@@ -35,7 +36,9 @@ class BenchMainIT {
         assertEquals(500L, json.getLong("rowsInMessages"));
         assertEquals("16", json.getString("schemaVersion"), "V1 m1 schema + V2 snapshot columns (P1-04) + V3 DLQ by reference (P1-05) + V4 work attempts (P1-08b) + V5 admin paging (P1-09a) + V6 bodies (P1-09h) + V7 deployments (P1-09c3a) + V8 processed_ids (P2-02D) + V9 deployment dependencies (P2-02b) + V10 retention indexes (P2-07) + V11 payloads dropped (P2-07c) + V12 body journal (CORE-4c1) + V13 journal losses (CORE-4c3) + V14 node lease (P2-15a) + V15 work key index (P2-16a) + V16 audit (FIX-141)");
         assertEquals(false, json.getBoolean("syncCommit"), "observed with show synchronous_commit on a pooled connection, not echoed from the flag");
-        assertTrue(json.getString("postgres").startsWith("17."), "server_version of the container: " + json.getString("postgres"));
+        // the major of the image this run started (PostgresImage, D-129), not a literal: the record reads it from the server
+        String major = PostgresImage.name().replaceFirst("^.*:(\\d+).*$", "$1") + ".";
+        assertTrue(json.getString("postgres").startsWith(major), "server_version of the container: " + json.getString("postgres"));
         assertEquals("test", json.getString("commit"));
         assertTrue(json.getDouble("p99Ms") >= json.getDouble("p50Ms"));
         assertTrue(json.getDouble("throughputPerSecond") > 0);

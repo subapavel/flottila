@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
@@ -35,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class StreamHeapNodeIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
 
     @TempDir Path dir;
 

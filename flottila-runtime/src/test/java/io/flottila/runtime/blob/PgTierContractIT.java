@@ -5,6 +5,7 @@ import io.flottila.api.Hasher;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.journal.TestJournals;
 import io.flottila.testkit.DurableBlobStoreContract;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -28,7 +29,7 @@ import java.nio.file.Path;
  */
 class PgTierContractIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final long MIB = 1L << 20;
     static Vertx vertx;
     static Pool pool;

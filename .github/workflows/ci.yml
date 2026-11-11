@@ -46,8 +46,19 @@ jobs:
           [ "$missing" = 0 ]
 
   build:
-    name: build · unit · integration (-Pit) · ArchUnit · coverage floors · no-decrease
+    name: "build · unit · integration (-Pit) · ArchUnit · coverage floors · no-decrease · Postgres ${{ matrix.postgres }}"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # D-129: supported Postgres 17 and 18. main runs the pinned PostgresImage.NAME (postgres:18.6) and every gate below;
+        # floor runs the same -Pit suite on the supported floor through the flottila.it.postgres property, tests only.
+        # postgres:19 joins after its GA (FIX-169b), never an RC image.
+        include:
+          - postgres: main 18.6
+            image-args: ''
+          - postgres: floor 17.11
+            image-args: -Dflottila.it.postgres=postgres:17.11
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -56,14 +67,18 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
       - name: Verify (unit + Testcontainers ITs, ArchUnit, JaCoCo floors incl. the ITs)
-        run: mvn -B -ntp verify -Pit
+        run: mvn -B -ntp verify -Pit ${{ matrix.image-args }}
       - name: The demo package validates through the launcher (D-079)
+        if: matrix.image-args == ''
         run: bin/flottila validate packages/demo
       - name: The demo package's flow tests pass through the launcher (D-080)
+        if: matrix.image-args == ''
         run: bin/flottila test packages/demo
       - name: Coverage gate self-test
+        if: matrix.image-args == ''
         run: python3 -m unittest ci.test_coverage_check
       - name: Coverage no-decrease against the previous main commit
+        if: matrix.image-args == ''
         env:
           BEFORE: ${{ github.event.before }}
         run: |
@@ -79,12 +94,13 @@ jobs:
           echo "baseline from $ref"
           python3 ci/coverage_check.py --baseline-ref "$ref"
       - name: "Committed baseline describes this commit (D-018/D-029: every task commit runs --write; ±2 pp noise band)"
+        if: matrix.image-args == ''
         run: python3 ci/coverage_check.py --check-baseline
       - name: Test and coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-reports
+          name: build-reports-${{ strategy.job-index }}
           path: |
             **/target/surefire-reports/*.xml
             **/target/failsafe-reports/*.xml
@@ -151,6 +167,8 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: maven
       - name: Start native Postgres
+        # the runner's packaged Postgres, deliberately not pinned to PostgresImage (D-129): its version is recorded with the
+        # numbers in bench/RESULTS.md; the bench ITs in the build job run on the pinned image
         run: |
           sudo systemctl start postgresql
           # CREATEDB: bench/run.sh creates the flottila_bench database itself

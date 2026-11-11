@@ -9,6 +9,7 @@ import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -89,7 +90,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(240)
 class SegmentSweepIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration INTERVAL = Duration.ofSeconds(10);
     static final Duration GRACE = Duration.ofMinutes(1);
     static final Duration KEEP = Duration.ofHours(1);

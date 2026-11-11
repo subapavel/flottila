@@ -8,6 +8,7 @@ import io.flottila.api.Keys;
 import io.flottila.api.Props;
 import io.flottila.core.dlq.Parked;
 import io.flottila.runtime.store.PgDlq;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.pgclient.PgConnection;
@@ -45,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(120)
 class PgDlqJournalIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration BOUND = Duration.ofSeconds(20);
     static final Instant T = Instant.parse("2026-11-04T00:00:00Z");
     static Vertx vertx;

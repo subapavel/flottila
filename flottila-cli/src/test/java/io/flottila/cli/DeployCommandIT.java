@@ -4,6 +4,7 @@ import io.flottila.cli.CliRuns.Ran;
 import io.flottila.runtime.Main;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -62,7 +63,7 @@ class DeployCommandIT {
     static final Duration BOUND = Duration.ofSeconds(60);
     static final String TOKEN = "deploy-command-it-token";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 

@@ -1,6 +1,7 @@
 package io.flottila.runtime;
 
 import io.flottila.runtime.node.TestJournalKey;
+import io.flottila.testkit.PostgresImage;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -74,7 +75,7 @@ class MainProcessIT {
     /** The exit status of a JVM that SIGTERM ended after its shutdown hooks ran: 128 + 15, observed on JDK 25 / Linux. */
     static final int SIGTERM_EXIT = 128 + 15;
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17")
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name())
             .withCommand("postgres", "-c", "fsync=off", "-c", "log_min_messages=debug1", "-c", "log_line_prefix=[db=%d] ");
     static final AtomicInteger cases = new AtomicInteger();
 

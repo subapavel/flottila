@@ -20,6 +20,7 @@ import io.flottila.runtime.node.PgMembership;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -76,7 +77,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(240)
 class IdleNodeStatementsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Instant T0 = Instant.parse("2026-11-10T08:00:00Z");
     static final Duration L = Duration.ofSeconds(30);
     static final Duration R = Duration.ofSeconds(5);

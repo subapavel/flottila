@@ -3,6 +3,7 @@ package io.flottila.runtime.journal;
 import io.flottila.api.Envelope;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -46,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class PgIntakeRoundTripIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     /** The head of the key-lock statement (D-121 A3): {@code select pg_advisory_xact_lock(..)} over the save's partition keys. */

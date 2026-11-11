@@ -21,6 +21,7 @@ import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.InMemoryBlobStore;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -108,7 +109,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(60)
 class PgIntakeIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static final long BOUND = 1000;
     static final long FLOW_MAX = 4 * BOUND;

@@ -16,6 +16,7 @@ import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.queue.PgWorkSignals;
 import io.flottila.runtime.store.PgIntake;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -91,7 +92,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(240)
 class TwoNodeWorkEventsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration LEASE = Duration.ofSeconds(30);
     static Vertx vertx;
 

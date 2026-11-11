@@ -4,6 +4,7 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.runtime.journal.PgWire;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -65,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(120)
 class PgWorkQueueBatchedCompletionIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final String FLOW = "orders";
     static final String NODE = "n1";
     static final Duration LEASE = Duration.ofMinutes(5);

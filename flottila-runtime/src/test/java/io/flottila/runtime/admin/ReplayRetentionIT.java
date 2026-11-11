@@ -25,6 +25,7 @@ import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeIds;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
@@ -81,7 +82,7 @@ class ReplayRetentionIT {
     static final Duration BOUND = Duration.ofSeconds(20);
     static final long MIB = 1L << 20;
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
     static HttpClientAgent client;

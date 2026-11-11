@@ -1,5 +1,6 @@
 package io.flottila.runtime.node;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -20,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class NodeConnectOptionsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     @BeforeAll

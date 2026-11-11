@@ -34,6 +34,7 @@ import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -102,7 +103,7 @@ class PartnerFailureParkIT {
     static final Duration LEASE = Duration.ofSeconds(30);
     static final int MAX_ATTEMPTS = 5;
     static final int RETRIES = 3;
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool admin;   // the test's own sessions: truncate, counts, rows as another session sees them
 

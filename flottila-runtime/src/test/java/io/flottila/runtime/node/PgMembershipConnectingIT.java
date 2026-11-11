@@ -1,6 +1,7 @@
 package io.flottila.runtime.node;
 
 import io.flottila.core.node.Membership;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgConnectOptions;
@@ -34,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PgMembershipConnectingIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration L = Duration.ofSeconds(30);
     static Vertx vertx;
     PgConnection admin;

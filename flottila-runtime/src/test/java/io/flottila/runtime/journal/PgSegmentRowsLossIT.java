@@ -5,6 +5,7 @@ import io.flottila.runtime.journal.JournalFixture.Settings;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Tuple;
 import org.junit.jupiter.api.AfterAll;
@@ -43,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PgSegmentRowsLossIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Pattern PRINTED = Pattern.compile("FLOTTILA_JOURNAL_ACCEPT_LOSS=([0-9a-f-]{36}:[0-9a-f]+)");
     static Vertx vertx;
 

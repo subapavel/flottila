@@ -26,6 +26,7 @@ import io.flottila.runtime.node.PlainComponent;
 import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.testkit.PostgresImage;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -126,7 +127,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class NodeIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
     static Pool observer;

@@ -90,8 +90,8 @@ import java.util.zip.ZipOutputStream;
  * as a session of the run's database reads them from pg_settings ({@link #SETTINGS}, text values) and the node's Postgres pool
  * ({@code poolSize}); an ack record adds {@code commitsPerMessage} (Δ pg_stat_database.xact_commit of the database — the
  * ingress, the worker, the recording and every poll, read-only ones included — over the window's messages) and
- * {@code walSyncsPerMessage} (Δ pg_stat_wal.wal_sync of the cluster, 0 under fsync off or an open_* wal_sync_method; the
- * column exists up to Postgres 17). Both counters are read after {@link #STATS_FLUSH} without a request on each side of the
+ * {@code walSyncsPerMessage} (Δ of the cluster's WAL syncs, {@link DbSampler#WAL_SYNCS}: pg_stat_wal.wal_sync up to
+ * Postgres 17, pg_stat_io's WAL fsyncs from 18; 0 under fsync off or an open_* wal_sync_method). Both counters are read after {@link #STATS_FLUSH} without a request on each side of the
  * window: a backend publishes its counts at most once a second while busy and 10 s after it went idle (Postgres 15+; a commit
  * that touched no relation waits for the backend's next one that did), so a read at once would miss the window's last second
  * and count the warm-up's.
@@ -200,7 +200,7 @@ public final class NodeBenchMain {
             "full_page_writes");
     /** The database's commits and the cluster's WAL syncs, as published. */
     static final String COUNTERS = "select (select xact_commit from pg_stat_database where datname = current_database()),"
-            + " (select wal_sync from pg_stat_wal)";
+            + " " + DbSampler.WAL_SYNCS;
 
     static final String STYLESHEET = """
             <xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="3.0">
@@ -678,7 +678,7 @@ public final class NodeBenchMain {
     /** The database's counters at one instant. */
     record Snapshot(long walBytes, long journalBytes, long parked) {}
 
-    /** pg_stat_database.xact_commit of the run's database and pg_stat_wal.wal_sync at one instant. */
+    /** pg_stat_database.xact_commit of the run's database and the cluster's WAL syncs ({@link DbSampler#WAL_SYNCS}) at one instant. */
     record Counters(long commits, long walSyncs) {}
 
     /** A status and a body. */

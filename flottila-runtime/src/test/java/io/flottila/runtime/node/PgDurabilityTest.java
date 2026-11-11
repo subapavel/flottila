@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>FIX-137 B5 (owner decision, D-128): {@code ha} also refuses a role that may not run {@code pg_logical_emit_message} (the
  * duplicate's commit barrier), naming {@code GRANT EXECUTE ON FUNCTION pg_catalog.pg_logical_emit_message(...) TO <user>} and
  * D-128, listed after the statistics refusal; {@code local} runs no barrier and ignores it. The argument list is not pinned
- * here: postgres:17 has {@code (boolean, text, text, boolean)}, not the three-argument form (observed, 17.11);
+ * here: PG 17 has {@code (boolean, text, text, boolean)}, not the three-argument form (observed, 17.11);
  * {@code PgPromotionLedgerIT.haRefusesARoleThatMayNotRunTheDuplicateBarrier} runs the named GRANT verbatim.
  *
  * <p>Shape assumed (FIX-136 test-author): {@code PgDurability.verdict(Durability, Server)} → {@code Verdict(Optional<String>

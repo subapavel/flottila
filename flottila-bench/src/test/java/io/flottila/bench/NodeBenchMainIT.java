@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -36,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class NodeBenchMainIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static final int MESSAGES = 40;
 
@@ -74,7 +75,9 @@ class NodeBenchMainIT {
         assertEquals(true, json.getBoolean("syncCommit"), "observed on the server: " + json.encode());
         assertEquals("test", json.getString("commit"));
         assertNotNull(json.getString("date"), "the record carries its date");
-        assertTrue(json.getString("postgres").startsWith("17."), "server_version of the container: " + json.getString("postgres"));
+        // the major of the image this run started (PostgresImage, D-129), not a literal: the record reads it from the server
+        String major = PostgresImage.name().replaceFirst("^.*:(\\d+).*$", "$1") + ".";
+        assertTrue(json.getString("postgres").startsWith(major), "server_version of the container: " + json.getString("postgres"));
         JsonObject machine = json.getJsonObject("machine");
         assertNotNull(machine, "the record carries the machine: " + json.encode());
         assertEquals(BenchMain.machine().getString("label"), machine.getString("label"), "the machine label picks the baseline (D-037)");

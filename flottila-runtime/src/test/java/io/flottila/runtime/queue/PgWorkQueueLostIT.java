@@ -2,6 +2,7 @@ package io.flottila.runtime.queue;
 
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Page;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -49,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class PgWorkQueueLostIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration LEASE = Duration.ofSeconds(30);
     static final Instant LOST_AT = Instant.parse("2026-11-04T10:00:00Z");
     static Vertx vertx;

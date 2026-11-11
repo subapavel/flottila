@@ -10,6 +10,7 @@ import io.flottila.api.Props;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.record.Page;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.pgclient.PgBuilder;
@@ -54,7 +55,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PgDlqIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
     static PgConnectOptions connect;

@@ -46,8 +46,22 @@ final class DbSampler implements OpenLoop.Sampler {
     /** Every field of a reading. */
     static final List<String> FIELDS = List.of("xactCommit", "walSync", "walSyncTimeMs", "walFpi", "walBytes", "workDeadTup", "workLiveTup",
             "workHotUpd", "workUpd", "workLastAutovacuum", "workLastAutoanalyze", "statements");
-    /** The wal_sync_method values whose syncs pg_stat_wal.wal_sync counts (with fsync on; PostgreSQL 14 to 17). */
+    /**
+     * The wal_sync_method values whose syncs the cluster's WAL sync count counts (with fsync on; pg_stat_wal.wal_sync in
+     * PostgreSQL 14 to 17, pg_stat_io's WAL fsyncs from 18).
+     */
     static final Set<String> COUNTED_SYNC_METHODS = Set.of("fdatasync", "fsync", "fsync_writethrough");
+    /**
+     * The cluster's WAL syncs as one SQL expression for PostgreSQL 16 to 18: pg_stat_wal.wal_sync up to 17; 18 dropped the
+     * column for pg_stat_io's {@code fsyncs} of object {@code wal}, context {@code normal} (the commit's sync, as wal_sync
+     * counted it; {@code init} is a new segment's). {@code to_jsonb} reads the column by name, so the statement parses on
+     * both; on 17 pg_stat_io has no {@code wal} rows.
+     */
+    static final String WAL_SYNCS = "coalesce((select (to_jsonb(s) ->> 'wal_sync')::bigint from pg_stat_wal s),"
+            + " (select sum(fsyncs)::bigint from pg_stat_io where object = 'wal' and context = 'normal'))";
+    /** The time of {@link #WAL_SYNCS} in ms: pg_stat_wal.wal_sync_time up to 17, pg_stat_io's WAL fsync_time from 18. */
+    static final String WAL_SYNC_TIME = "coalesce((select (to_jsonb(s) ->> 'wal_sync_time')::float8 from pg_stat_wal s),"
+            + " (select sum(fsync_time)::float8 from pg_stat_io where object = 'wal' and context = 'normal'))";
 
     private final Supplier<JsonObject> source;
     private final List<JsonObject> readings = new ArrayList<>();
@@ -144,7 +158,7 @@ final class DbSampler implements OpenLoop.Sampler {
     }
 
     /**
-     * One reading from the columns of {@link PgSource}'s statement ({@code row}, by column name): pg_stat_wal's sync figures
+     * One reading from the columns of {@link PgSource}'s statement ({@code row}, by column name): the WAL sync figures
      * only where it counts them (fsync on and a counted wal_sync_method; the time also needs track_wal_io_timing on), the
      * {@code work} figures only where pg_stat_user_tables has its row, the statements only when {@code statementsNote} is null
      * (else it is their note).
@@ -220,7 +234,8 @@ final class DbSampler implements OpenLoop.Sampler {
         /** One reading: the columns {@link #reading} takes, with {@code statements} the statements' JSON text or null. */
         static String reading(boolean statements) {
             return "select (select xact_commit from pg_stat_database where datname = current_database()) as xact_commit,"
-                    + " w.wal_sync, w.wal_sync_time, w.wal_fpi, w.wal_bytes::bigint as wal_bytes, current_setting('fsync') as fsync,"
+                    + " " + WAL_SYNCS + " as wal_sync, " + WAL_SYNC_TIME + " as wal_sync_time,"
+                    + " w.wal_fpi, w.wal_bytes::bigint as wal_bytes, current_setting('fsync') as fsync,"
                     + " current_setting('wal_sync_method') as wal_sync_method, current_setting('track_wal_io_timing') as track_wal_io_timing,"
                     + " current_schema() as schema, t.relid as work_relid, t.n_dead_tup, t.n_live_tup, t.n_tup_hot_upd, t.n_tup_upd,"
                     + " t.last_autovacuum, t.last_autoanalyze, " + (statements ? STATEMENTS : "null::text") + " as statements"

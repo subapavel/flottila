@@ -13,6 +13,7 @@ import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -70,7 +71,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(120)
 class AtLeastOnceIntakeIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 

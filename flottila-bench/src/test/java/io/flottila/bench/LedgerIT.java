@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
@@ -64,7 +65,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 600, unit = TimeUnit.SECONDS)
 class LedgerIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
     static final String BUCKET = "flottila-ledger-it";
     static final AtomicInteger cases = new AtomicInteger();

@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
@@ -42,7 +43,7 @@ class NodeBenchOpenDbSeriesIT {
     /** The most messages one intake group commits together (NodeConfig.IntakeGroup.defaults: 64). */
     static final int GROUP_MAX = 64;
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17").withCommand("postgres", "-c", "fsync=on",
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name()).withCommand("postgres", "-c", "fsync=on",
             "-c", "wal_sync_method=fsync", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "track_wal_io_timing=on");
     static final AtomicInteger cases = new AtomicInteger();
 

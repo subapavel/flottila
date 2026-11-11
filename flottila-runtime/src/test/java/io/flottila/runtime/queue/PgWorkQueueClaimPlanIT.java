@@ -3,6 +3,7 @@ package io.flottila.runtime.queue;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -42,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Assumptions: {@code claim} prepares exactly one statement, whose parameters stay $1 worker, $2 flow, $3 room, $4 lease seconds,
  * $5 node.
  *
- * <p>The bound: a claimed row costs about 15 buffers in today's custom plan on postgres:17 (16 per row at room 10 and at room 64):
+ * <p>The bound: a claimed row costs about 15 buffers in today's custom plan on PG 17 (16 per row at room 10 and at room 64):
  * its entry in the seq-ordered index and its heap page, the re-fetch by primary key (root, leaf, heap), the new row version (heap
  * and free-space map) and an entry in each of the two indexes. 20 per row leaves headroom; the 50 fixed buffers cover the index
  * descents and the 400 leased and held rows the claim steps over at the head (under 10 heap pages). A scan of the 50 400 rows
@@ -51,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PgWorkQueueClaimPlanIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final int DEPTH = 50_000;
     static final int LEASED = 200;
     static final int HELD = 200;

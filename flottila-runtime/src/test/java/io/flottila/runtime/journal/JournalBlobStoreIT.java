@@ -10,6 +10,7 @@ import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.testkit.DurableBlobStoreContract;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -65,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(120)
 class JournalBlobStoreIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static CaseDatabase db;
 

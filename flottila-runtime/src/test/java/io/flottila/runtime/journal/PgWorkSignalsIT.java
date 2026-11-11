@@ -18,6 +18,7 @@ import io.flottila.core.record.Meter;
 import io.flottila.core.record.Page;
 import io.flottila.runtime.queue.PgWorkSignals;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -74,7 +75,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(180)
 class PgWorkSignalsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration LEASE = Duration.ofSeconds(30);
     static final Duration QUIET = Duration.ofMinutes(10);
     static final Duration WINDOW = Duration.ofMillis(50);

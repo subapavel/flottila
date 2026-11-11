@@ -2,6 +2,7 @@ package io.flottila.runtime.journal;
 
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.runtime.queue.PgWorkQueue;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -30,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(60)
 class WorkClaimIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration LEASE = Duration.ofSeconds(30);
     static Vertx vertx;
     CaseDatabase db;

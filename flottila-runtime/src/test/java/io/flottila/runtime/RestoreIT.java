@@ -7,6 +7,7 @@ import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServer;
@@ -79,7 +80,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class RestoreIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final LocalStackContainer localstack = new LocalStackContainer("localstack/localstack:4").withServices("s3");
     static final String BUCKET = "flottila-restore-it";
     static final String REVISION = "9df3f78";

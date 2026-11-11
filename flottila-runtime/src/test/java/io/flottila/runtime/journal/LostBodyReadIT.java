@@ -12,6 +12,7 @@ import io.flottila.api.Props;
 import io.flottila.core.dlq.Parked;
 import io.flottila.runtime.blob.RemoteBodyException;
 import io.flottila.runtime.blob.TieredBlobStore;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -61,7 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LostBodyReadIT {
 
     static final String LOST = "body lost by ACCEPT_LOSS";
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     @TempDir Path tmp;

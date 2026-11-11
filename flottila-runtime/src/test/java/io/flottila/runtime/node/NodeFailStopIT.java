@@ -1,5 +1,6 @@
 package io.flottila.runtime.node;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.pgclient.PgConnection;
@@ -35,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NodeFailStopIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final String NODE = "node-failstop";
     static Vertx vertx;
 

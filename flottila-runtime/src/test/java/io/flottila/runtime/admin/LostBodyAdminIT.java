@@ -25,6 +25,7 @@ import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.FakeIds;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
@@ -84,7 +85,7 @@ class LostBodyAdminIT {
     static final long MIB = 1L << 20;
     static final String LOST = "body lost by ACCEPT_LOSS";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
     static HttpClientAgent client;

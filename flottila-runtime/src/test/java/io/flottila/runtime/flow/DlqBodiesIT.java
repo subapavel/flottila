@@ -30,6 +30,7 @@ import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -106,7 +107,7 @@ class DlqBodiesIT {
     /** The ingress header that sets the size of the body {@code rewrite} hands on. */
     static final String H_SIZE = "x-size";
     static final Duration LEASE = Duration.ofSeconds(30);
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool admin;   // the test's own sessions: truncate, counts, rows as another session sees them, lease expiry
 

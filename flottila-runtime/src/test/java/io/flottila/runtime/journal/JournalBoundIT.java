@@ -3,6 +3,7 @@ package io.flottila.runtime.journal;
 import io.flottila.api.BlobKey;
 import io.flottila.api.Envelope;
 import io.flottila.runtime.blob.TieredBlobStore;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Tuple;
@@ -56,7 +57,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(240)
 class JournalBoundIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final long MAX = 1L << 20;
     static final long EDGE = MAX - MAX / 16;          // 983 040
     static final double EIGHTY = 0.8 * MAX;           // 838 860.8

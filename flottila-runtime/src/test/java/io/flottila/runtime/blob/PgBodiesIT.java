@@ -14,6 +14,7 @@ import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.journal.TestJournals;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -85,7 +86,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class PgBodiesIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static final Hasher HASHER = Hasher.sha256();
     static final long BOUND = 1000;   // the durable bound of every store here

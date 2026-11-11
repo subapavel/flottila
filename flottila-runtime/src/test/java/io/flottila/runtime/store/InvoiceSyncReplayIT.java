@@ -22,6 +22,7 @@ import io.flottila.schemas.Schemas;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -64,7 +65,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InvoiceSyncReplayIT {
 
     static final Path DEMO = Path.of("../packages/demo");
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
     static Buffer invoice;

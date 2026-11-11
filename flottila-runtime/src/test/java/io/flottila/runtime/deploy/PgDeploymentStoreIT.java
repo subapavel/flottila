@@ -1,6 +1,7 @@
 package io.flottila.runtime.deploy;
 
 import io.flottila.runtime.db.Migrations;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -31,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class PgDeploymentStoreIT extends DeploymentStoreContract {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
 

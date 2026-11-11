@@ -1,11 +1,11 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-136, FIX-137, FIX-139..146, P2-16a, P2-16b, CORE-7 done; D-110 no size refusal
-last commit: `Task: FIX-137` (this commit); 5bb62fb `Task: FIX-136`
+state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-136, FIX-137, FIX-139..146, FIX-169, P2-16a, P2-16b, CORE-7 done; D-110 no size refusal
+last commit: `Task: FIX-169` (this commit); 5ea57a1 `Task: FIX-137`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: FIX-169 Postgres 18 as main test image (+19 after 2026-11-19 GA), supported versions in ARCHITECTURE; then FIX-138, FIX-147
+next exact action: owner 2026-11-11: indicative bench r2000/r3000 ×2 as the P2-15a baseline, same PG as then; then CORE-17
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

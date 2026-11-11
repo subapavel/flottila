@@ -18,6 +18,7 @@ import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -84,7 +85,7 @@ class LostWorkAdminIT {
     static final Instant LOST_AT = Instant.parse("2026-11-04T10:00:00Z");
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
     static HttpClientAgent client;

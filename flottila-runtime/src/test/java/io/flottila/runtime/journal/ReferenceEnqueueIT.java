@@ -9,6 +9,7 @@ import io.flottila.api.Props;
 import io.flottila.core.dlq.Parked;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -56,7 +57,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(120)
 class ReferenceEnqueueIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final Duration BOUND = Duration.ofSeconds(20);
     static final Instant T = Instant.parse("2026-11-04T10:00:00Z");
     static final String FLOW = "invoice-sync";

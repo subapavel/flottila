@@ -11,6 +11,7 @@ import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.node.TestJournalKey;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonArray;
@@ -83,7 +84,7 @@ class NodeShutdownWaitsForWorkerSettlementIT {
 
     static final String FLOW = "settle/relay";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 

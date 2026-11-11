@@ -1,6 +1,7 @@
 package io.flottila.runtime.node;
 
 import io.flottila.runtime.db.Migrations;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnection;
@@ -78,7 +79,7 @@ class PgTlsIT {
                 : dockerHost.chars().allMatch(c -> c == '.' || Character.isDigit(c)) ? ",ip:" + dockerHost : ",dns:" + dockerHost);
         pg = tlsOnly(ca.server("server", "localhost", san));
         misnamed = tlsOnly(ca.server("misnamed", MISNAMED_HOST, "dns:" + MISNAMED_HOST));
-        plain = new PostgreSQLContainer("postgres:17");   // the image's defaults: ssl off, pg_hba "host all all all scram-sha-256"
+        plain = new PostgreSQLContainer(PostgresImage.name());   // the image's defaults: ssl off, pg_hba "host all all all scram-sha-256"
         pg.start();
         misnamed.start();
         plain.start();
@@ -99,7 +100,7 @@ class PgTlsIT {
     }
 
     /**
-     * postgres:17 serving {@code server} with TLS on and a pg_hba that admits TCP only over TLS ({@code hostssl}); the key is copied
+     * The Postgres of {@link PostgresImage#name()} serving {@code server} with TLS on and a pg_hba that admits TCP only over TLS ({@code hostssl}); the key is copied
      * in, then owned by postgres with mode 0600 (the server refuses to start otherwise) before the image's entrypoint runs.
      */
     static PostgreSQLContainer tlsOnly(TestCertificates.Server server) {
@@ -107,7 +108,7 @@ class PgTlsIT {
         String script = "mkdir -p /certs && cp /certs-in/* /certs/ && chown postgres:postgres /certs/* && chmod 600 /certs/server.key"
                 + " && exec docker-entrypoint.sh postgres -c fsync=off -c ssl=on -c ssl_cert_file=/certs/server.crt"
                 + " -c ssl_key_file=/certs/server.key -c hba_file=/certs/pg_hba.conf";
-        return new PostgreSQLContainer("postgres:17")
+        return new PostgreSQLContainer(PostgresImage.name())
                 .withCopyToContainer(Transferable.of(server.certificate(), 0644), "/certs-in/server.crt")
                 .withCopyToContainer(Transferable.of(server.key(), 0600), "/certs-in/server.key")
                 .withCopyToContainer(Transferable.of(hba.getBytes(StandardCharsets.US_ASCII), 0644), "/certs-in/pg_hba.conf")

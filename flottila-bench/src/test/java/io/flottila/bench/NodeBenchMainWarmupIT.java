@@ -3,6 +3,7 @@ package io.flottila.bench;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.queue.PgWorkQueue;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgBuilder;
@@ -40,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class NodeBenchMainWarmupIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final String DB = "warmupbench";
 
     @TempDir Path dir;

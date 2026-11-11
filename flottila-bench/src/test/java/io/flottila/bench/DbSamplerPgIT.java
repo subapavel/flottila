@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgConnectOptions;
@@ -31,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DbSamplerPgIT {
 
     /** Testcontainers' default fsync off; pg_stat_statements preloaded, created in no database but the dbid case's. */
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17").withCommand("postgres", "-c", "fsync=off", "-c",
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name()).withCommand("postgres", "-c", "fsync=off", "-c",
             "shared_preload_libraries=pg_stat_statements");
     static Vertx vertx;
 

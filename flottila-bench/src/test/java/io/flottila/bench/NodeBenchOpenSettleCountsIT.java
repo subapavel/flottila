@@ -1,6 +1,7 @@
 package io.flottila.bench;
 
 import io.flottila.runtime.db.Migrations;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.sqlclient.Pool;
@@ -29,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class NodeBenchOpenSettleCountsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
 
     @BeforeAll static void start() { pg.start(); }
 

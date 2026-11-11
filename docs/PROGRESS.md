@@ -1,4 +1,14 @@
 
+## 2026-11-11 — FIX-169 Postgres 18.6 as the test image, one source for the version, 17.11 CI floor (owner, D-129) — done, review PASS (r2)
+Test first: PostgresImageTest (5), PostgresImageSourcesTest (scan + compose tag + volume, 6) (red FIX-169-red.log, -scan-after.log)
+Change: testkit PostgresImage (postgres:18.6, property flottila.it.postgres); 97 test classes switched; ledger fixture uses $PGDATA;
+compose files on 18.6 with the volume at /var/lib/postgresql (QUICKSTART: `docker compose down -v` once); CI matrix main 18.6 +
+floor 17.11; bench DbSampler/NodeBenchMain read WAL syncs from pg_stat_io on 18 (PG 18 dropped pg_stat_wal.wal_sync)
+Stale expectations fixed: BenchMainIT:39-41, NodeBenchMainIT:78-80 asserted "17." (now the image's major)
+Checks: verify -Pit on 18.6 3677 tests, 1 failure ComponentContractSelfTest:337 (6/6 alone → FIX-170) EXECUTED_FAIL · runtime -Pit
+on 17.11 3361/0 VERIFIED_PASS · bench -Pit 255/0 on both · coverage no decrease · M1, M2, M4, M5 killed; M3 accepted (init fsyncs)
+Review: r1 FAIL (RESULTS method note, D-129 claimed a green run, BACKLOG done-when), r2 PASS. Follow-ups: FIX-169b, FIX-170, FIX-171
+
 ## 2026-11-11 — FIX-137 WAL barrier for a duplicate-only intake group under ha (review F3.2, D-128) — done, review PASS (r2)
 Context compacted once (re-read HANDOFF, git status, git log -3 before changing anything).
 Test first: PgPromotionLedgerIT.aRetriedDuplicateAfterATerminatedSyncWaitIsNot202UntilReplicated and

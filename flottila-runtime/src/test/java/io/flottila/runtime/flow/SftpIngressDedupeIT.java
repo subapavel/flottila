@@ -25,6 +25,7 @@ import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.FakeIds;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -79,7 +80,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SftpIngressDedupeIT {
 
     static final Path DEMO = Path.of("../packages/demo");
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
 

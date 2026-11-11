@@ -7,6 +7,7 @@ import io.flottila.api.Envelope;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.queue.PgWorkQueue;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -57,7 +58,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(120)
 class JournalReadIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     @TempDir Path tmp;

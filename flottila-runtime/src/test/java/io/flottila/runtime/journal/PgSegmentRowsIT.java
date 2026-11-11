@@ -4,6 +4,7 @@ import io.flottila.runtime.journal.JournalFixture.Settings;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
@@ -48,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PgSegmentRowsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     @TempDir Path tmp;

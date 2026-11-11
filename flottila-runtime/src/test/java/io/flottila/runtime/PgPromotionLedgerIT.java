@@ -7,6 +7,7 @@ import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServer;
@@ -54,7 +55,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * FIX-136 (D-127 draft, D-114, D-115, review F3.1): what an accepted (202) id survives, measured with a ledger — the ids the
- * node answered 202 for, looked up on the standby once it is promoted. Two postgres:17 containers on one Testcontainers network:
+ * node answered 202 for, looked up on the standby once it is promoted. Two Postgres containers (PostgresImage) on one Testcontainers network:
  * the primary ({@code primary}), and a standby cloned from it with {@code pg_basebackup -R} streaming as {@code standby1}
  * ({@code cluster_name}). The standby's receipt is stopped by {@code primary_conninfo=''} and a reload (the primary's
  * {@code pg_stat_replication} empties); the primary is SIGKILLed (docker kill) and the standby promoted with {@code pg_promote}.
@@ -65,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 @Timeout(300)
 class PgPromotionLedgerIT {
 
-    static final String IMAGE = "postgres:17";
+    static final String IMAGE = PostgresImage.name();
     static final String DB = "ledger";
     static final String STANDBY = "standby1";
     static final String INTAKE = "intake";
@@ -91,14 +92,15 @@ class PgPromotionLedgerIT {
         network = Network.newNetwork();
         primary = new PostgreSQLContainer(IMAGE).withNetwork(network).withNetworkAliases("primary");
         primary.start();
-        Container.ExecResult hba = primary.execInContainer("sh", "-c", "echo 'host replication all all scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf");
+        Container.ExecResult hba = primary.execInContainer("sh", "-c", "echo 'host replication all all scram-sha-256' >> \"$PGDATA/pg_hba.conf\"");
         assertEquals(0, hba.getExitCode(), "fixture: replication allowed: " + hba.getStderr());
         onPrimary("select pg_reload_conf()");
         onPrimary("create database " + DB);
         standby = new GenericContainer<>(DockerImageName.parse(IMAGE)).withNetwork(network).withNetworkAliases("standby").withExposedPorts(5432)
                 .withEnv("PGPASSWORD", primary.getPassword())
-                .withCommand("bash", "-c", "set -e; chmod 700 /var/lib/postgresql/data; "
-                        + "gosu postgres pg_basebackup -h primary -p 5432 -U " + primary.getUsername() + " -D /var/lib/postgresql/data -R -X stream -c fast; "
+                // $PGDATA is the image's data directory (/var/lib/postgresql/data on 17, /var/lib/postgresql/18/docker on 18)
+                .withCommand("bash", "-c", "set -e; mkdir -p \"$PGDATA\"; chown postgres:postgres \"$PGDATA\"; chmod 700 \"$PGDATA\"; "
+                        + "gosu postgres pg_basebackup -h primary -p 5432 -U " + primary.getUsername() + " -D \"$PGDATA\" -R -X stream -c fast; "
                         + "exec gosu postgres postgres -c hot_standby=on -c cluster_name=" + STANDBY)
                 .waitingFor(Wait.forLogMessage(".*ready to accept read-only connections.*", 1).withStartupTimeout(Duration.ofSeconds(120)));
         standby.start();
@@ -239,7 +241,7 @@ class PgPromotionLedgerIT {
     /**
      * FIX-137 B5 (owner decision, D-128): under {@code ha} the duplicate's commit barrier runs {@code pg_logical_emit_message}, so
      * a role that may not run it is refused at start, before migrating, naming the GRANT for its user — never found out at the
-     * first duplicate. The signature is read from postgres:17, not assumed: the text variant the barrier resolves to is
+     * first duplicate. The signature is read from the running image, not assumed: the text variant the barrier resolves to is
      * {@code (boolean,text,text,boolean)} there (17.11; the three-argument form does not exist). EXECUTE is revoked from PUBLIC
      * and from the role (pg_monitor granted, so only the EXECUTE is missing); the role's own barrier statement is denied. Witness:
      * the GRANT the refusal names, run verbatim on the primary, lets the same node start and migrate.
@@ -251,7 +253,7 @@ class PgPromotionLedgerIT {
         String url = primaryUrl(DB);
         String signature = query(url, primary.getUsername(), primary.getPassword(), "select string_agg(oid::regprocedure::text, ' | ') from pg_proc "
                 + "where proname = 'pg_logical_emit_message' and pronamespace = 'pg_catalog'::regnamespace and proargtypes[2] = 'text'::regtype");
-        assertEquals("pg_logical_emit_message(boolean,text,text,boolean)", signature, "fixture: postgres:17's text variant");
+        assertEquals("pg_logical_emit_message(boolean,text,text,boolean)", signature, "fixture: the image's text variant");
         assertEquals(null, query(url, primary.getUsername(), primary.getPassword(),
                 "select to_regprocedure('pg_catalog.pg_logical_emit_message(boolean,text,text)')::text"), "fixture: no three-argument form on 17");
         execute(url, "revoke execute on function pg_catalog." + signature + " from public");   // pg_proc is per database: the node's

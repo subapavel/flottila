@@ -5,6 +5,7 @@ import io.flottila.api.Hasher;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -89,7 +90,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NodeJournalIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
 
     static final String KEY = "FLOTTILA_JOURNAL_KEY";
