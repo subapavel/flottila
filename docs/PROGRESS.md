@@ -1,4 +1,15 @@
 
+## 2026-11-11 — FIX-172 finite wait and queue for a pooled Postgres connection (CORE-17 O2, D-132) — done, review PASS (r2)
+Test first: NodeConfigPoolWaitTest (17), NodePoolWaitIT A2 intake 503 within the wait, A3 admin read 503, A4 claim survives, A5 queue
+(red FIX-172-red-config.log, -red-it.log, -r2-red.log); AdminServerTest:1013 by the implementer, approved (only kill of exact-class)
+Change: Pg poolWait/poolQueue; FLOTTILA_PG_POOL_WAIT PT0.001S..PT1M (PT5S), FLOTTILA_PG_POOL_QUEUE 1..65536 (1024), refused naming
+the key in the NodeConfig ctor; Node sets connectionTimeout + maxWaitQueueSize on both pools; admin read refused by the pool → 503
+"the database pool is busy; retry" (exact VertxException or ConnectionPoolTooBusyException, no message match). Client default was 30 s, unbounded
+Checks: verify -Pit 3735/0/0/0 fresh XML (FIX-172-xml.txt), coverage no decrease VERIFIED_PASS; mutants M1–M7 + 5 range/body killed
+Found: the wait covers the connect (cold first connection 140–380 ms) — docs warn below ~1 s; NodePoolWaitIT warms one node per JVM
+Residual → FIX-172b: transaction-path admin routes 500 (NoStackTraceThrowable), replay 502, intake queue bound unpinned, queue message range
+Review: r1 FAIL (docs claimed every admin request, D-132 cause, BACKLOG done-when, XML evidence, unapproved test), r2 PASS
+
 ## 2026-11-11 — CORE-17 Postgres pools by role: intake apart from work, sessions named by role (F-27 I4, D-130 draft) — done, review PASS (r3)
 Deviation: F-33 (the D-130 split of 16 = 5 + 11 starved the workers; default total 21 = 5 intake + 16 work, 23 connections per node)
 Test first: NodeConfigPoolsTest, NodeConfigIntakeGroupTest, NodeConnectOptionsTest:78, NodePoolRolesIT :170/:197 (red CORE-17-red*.log);

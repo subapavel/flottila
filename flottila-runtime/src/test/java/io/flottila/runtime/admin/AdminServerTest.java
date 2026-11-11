@@ -28,6 +28,9 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxException;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
+import io.vertx.sqlclient.ClosedConnectionException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
 import io.vertx.core.http.HttpClientResponse;
@@ -47,6 +50,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1000,6 +1004,37 @@ class AdminServerTest {
         assertJsonError(405, send(HttpMethod.POST, "/admin/dlq", "Bearer " + TOKEN).await(10, TimeUnit.SECONDS), "a method the route does not take (the router's own error)");
     }
 
+    /**
+     * FIX-172 (D-132): a read the node's Postgres pool refused — its wait queue full ({@link ConnectionPoolTooBusyException}), its
+     * wait elapsed or the pool closed (exactly a {@link VertxException}) — is retryable, 503 {error}; a subclass of
+     * VertxException (a closed connection, any other) stays a store failure, 500.
+     */
+    @Test
+    void aReadThePoolRefusedIs503AndAnyOtherVertxFailure500() throws Exception {
+        start();
+        recordInvoice();
+        messages.failTimeline.set("m-boom");
+        Map<String, Integer> cases = new LinkedHashMap<>();
+        Map<String, Throwable> failures = new LinkedHashMap<>();
+        failures.put("the wait queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        cases.put("the wait queue full", 503);
+        failures.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
+        cases.put("the wait elapsed", 503);
+        failures.put("a closed connection", ClosedConnectionException.INSTANCE);
+        cases.put("a closed connection", 500);
+        failures.put("another VertxException subclass", new VertxException("not the pool's") { });
+        cases.put("another VertxException subclass", 500);
+        for (Map.Entry<String, Throwable> c : failures.entrySet()) {
+            messages.timelineFailure.set(c.getValue());
+            Answer a = admin("/admin/messages/m-boom");
+            assertJsonError(cases.get(c.getKey()), a, c.getKey());
+            if (a.status() == 503) {   // review r1: a fixed text, never the client's message (it may name the server or the pool)
+                assertEquals("the database pool is busy; retry", a.error(), c.getKey() + ": the 503's {error}");
+                assertFalse(a.body().toString().contains(c.getValue().getMessage()), c.getKey() + ": the client's message is not shown: " + a.body());
+            }
+        }
+    }
+
     // --- store-boundary fakes: delegate to the in-memory stores, record the calling thread
 
     record Call(String what, String thread, boolean virtual, boolean eventLoop) {}
@@ -1012,6 +1047,7 @@ class AdminServerTest {
     final class RecordingStore implements MessageStore {
         final InMemoryMessageStore inner = new InMemoryMessageStore();
         final AtomicReference<String> failTimeline = new AtomicReference<>();
+        final AtomicReference<Throwable> timelineFailure = new AtomicReference<>(new IllegalStateException("store down"));
         final CountDownLatch reached = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
         volatile boolean holding;
@@ -1022,7 +1058,7 @@ class AdminServerTest {
 
         @Override public Future<List<Snapshot>> timeline(String messageId) {
             saw("timeline");
-            if (messageId.equals(failTimeline.get())) return Future.failedFuture(new IllegalStateException("store down"));
+            if (messageId.equals(failTimeline.get())) return Future.failedFuture(timelineFailure.get());
             if (holding) {
                 holding = false;
                 reached.countDown();

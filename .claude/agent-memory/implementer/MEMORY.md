@@ -24,8 +24,7 @@
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
 - coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
   scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a).
-- Disk (FIX-136): every node-starting IT refuses when /tmp has < FLOTTILA_JOURNAL_MAX_BYTES (16 GiB) usable ("cannot hold
-  FLOTTILA_JOURNAL_MAX_BYTES", ~28 NodeIT/NodeJournalIT/SegmentSweepIT errors): `df /tmp` first; delete finished tasks' scratch copies (~0.5 GB each).
+- Disk (FIX-136): node-starting ITs refuse when /tmp has < 16 GiB usable (FLOTTILA_JOURNAL_MAX_BYTES, ~28 errors): `df /tmp` first; delete old scratch copies.
 ## APIs
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
   `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
@@ -33,8 +32,9 @@
   `Router.router(Vertx)`, `get(String)`/`route(String)` → `Route.handler(Handler<RoutingContext>)`, `Router.errorHandler(int, Handler)`
   answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`; `Router.post`; RouterImpl never pauses. Pg `UPDATE…RETURNING` has no order (P1-09c1).
   Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.
-- Vert.x 5.1.10 pool acquire (javap SimpleConnectionPool$Acquire, CORE-6b): an idle conn on the CALLER's event loop, else a NEW conn below
-  max, else any idle one; a vthread caller is a fresh context: "the pool's one open connection" fixtures fail (warm conn left idle).
+- Vert.x 5.1.10 pool acquire (javap, CORE-6b): idle conn on the CALLER's loop, else NEW below max, else any idle; vthread = fresh context. Refusals
+  (FIX-172): queue full `ConnectionPoolTooBusyException`; wait elapsed on pool.query = plain `VertxException("Timeout waiting for connection")` (same class as
+  "Pool closed"), on getConnection `NoStackTraceThrowable("Timeout")`: only the message tells. The wait covers the connect: a cold JVM's first node start takes 140-380 ms.
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
 - vertx-sql-client 5.1.10 (javap -c Pool): `Pool`, `SqlConnection` extend `SqlClient`; `withTransaction(fn)` = getConnection → begin →

@@ -1,11 +1,11 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, 17, P2-15a..c, FIX-136, FIX-137, FIX-139..146, FIX-156, FIX-169, P2-16a, P2-16b, CORE-7 done
-last commit: `Task: CORE-17` (this commit); fb5d711 D-131 gate-reviewer Fable 5.2; d393dba `Task: FIX-156`
+state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, 17, P2-15a..c, FIX-136, FIX-137, FIX-139..146, FIX-156, FIX-172, FIX-169, P2-16a, P2-16b, CORE-7 done
+last commit: `Task: FIX-172` (this commit); 286ab27 `Task: CORE-17`; fb5d711 D-131
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: FIX-172 (finite pool wait queue + acquire timeout); owner: F-33 23 connections/node; CONSIDER-12
+next exact action: FIX-172b (typed pool refusal on the transaction path) or FIX-138 [C]; owner: F-33 23 connections/node
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

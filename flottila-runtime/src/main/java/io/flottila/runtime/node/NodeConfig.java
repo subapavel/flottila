@@ -86,7 +86,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5). The intake pool's share of the Postgres
      * connections is at least 1 and below their total, so each pool keeps a connection (D-130 draft). The intake's groups in flight leave the
      * intake pool a connection: at most max(1, intake pool size − 1) of them (CORE-6b, D-130 draft). The node lease is renewed at least four times a lease
-     * (D-101 (1)): a renew or two may fail without closing the fence.
+     * (D-101 (1)): a renew or two may fail without closing the fence. Each pool's wait for a connection is PT0.001S to PT1M and its
+     * wait queue 1 to 65536 callers (D-132): an in-process {@link Pg} is held to the ranges the env reader names.
      */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
@@ -123,6 +124,14 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_CONCURRENCY " + intakeGroup.concurrency() + " is above max(1, FLOTTILA_PG_POOL_INTAKE "
                     + pg.intakePoolSize() + " - 1): each group in flight holds a connection of the intake pool, and it keeps one for the"
                     + " intake's other statements");
+        }
+        if (pg.poolWait().compareTo(POOL_WAIT_MIN) < 0 || pg.poolWait().compareTo(POOL_WAIT_MAX) > 0) {   // Durations compared: no toMillis overflow
+            throw new IllegalArgumentException("FLOTTILA_PG_POOL_WAIT " + pg.poolWait() + " must be from " + POOL_WAIT_MIN + " to " + POOL_WAIT_MAX
+                    + ": the longest a caller waits for a pooled connection (D-132)");
+        }
+        if (pg.poolQueue() < 1 || pg.poolQueue() > POOL_QUEUE_MAX) {
+            throw new IllegalArgumentException("FLOTTILA_PG_POOL_QUEUE " + pg.poolQueue() + " must be from 1 to " + POOL_QUEUE_MAX
+                    + ": the most callers waiting per pool (D-132)");
         }
     }
 
@@ -235,10 +244,21 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param intakePoolSize {@code FLOTTILA_PG_POOL_INTAKE}, 1 to 1023 and below {@code poolSize} (D-130 draft): the intake pool's
      *                       share — the at-least-once saves and the journal's segment rows; unset, {@link #intakeDefault}; the work
      *                       pool keeps the rest ({@link #workPoolSize}). The split is checked by the {@link NodeConfig} constructor, not here
+     * @param poolWait {@code FLOTTILA_PG_POOL_WAIT}, PT0.001S to PT1M (PT5S, the save timeout; FIX-172, D-132): the longest a caller
+     *                 waits for a connection of either pool before the pool refuses it; the range is checked by the {@link NodeConfig}
+     *                 constructor, not here
+     * @param poolQueue {@code FLOTTILA_PG_POOL_QUEUE}, 1 to 65536 (1024; FIX-172, D-132): the most callers waiting per pool; the next
+     *                  one is refused at once; the range is checked by the {@link NodeConfig} constructor, not here
      * @since 0.1
      */
     public record Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
-                     Durability durability, int intakePoolSize) {
+                     Durability durability, int intakePoolSize, Duration poolWait, int poolQueue) {
+
+        /** {@code FLOTTILA_PG_POOL_WAIT} unset: the save timeout (ARCHITECTURE §4). */
+        public static final Duration POOL_WAIT_DEFAULT = Duration.ofSeconds(5);
+
+        /** {@code FLOTTILA_PG_POOL_QUEUE} unset. */
+        public static final int POOL_QUEUE_DEFAULT = 1024;
 
         /**
          * What an accepted message survives on the Postgres side (D-127 draft, D-114, D-115), checked once at the node's start
@@ -298,11 +318,32 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             Objects.requireNonNull(sslMode, "sslMode");
             Objects.requireNonNull(sslRootCert, "sslRootCert");
             Objects.requireNonNull(durability, "durability");
+            Objects.requireNonNull(poolWait, "poolWait");
             if (sslMode != SslMode.DISABLE && sslRootCert.isEmpty()) {
                 throw new IllegalArgumentException("FLOTTILA_PG_SSL_MODE " + sslMode + " (FLOTTILA_PG_HOST " + host
                         + ") needs FLOTTILA_PG_SSL_ROOT_CERT, the PEM CA that signs the server's certificate: set it, or set FLOTTILA_PG_SSL_MODE=disable"
                         + " for a server reached in plaintext on purpose");
             }
+        }
+
+        /**
+         * The pools' wait and queue at their defaults ({@link #POOL_WAIT_DEFAULT}, {@link #POOL_QUEUE_DEFAULT}): in-process callers;
+         * env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the connections of both pools at most
+         * @param sslMode how the link is secured
+         * @param sslRootCert the CA of a verifying mode
+         * @param durability what an accepted message survives
+         * @param intakePoolSize the intake pool's share
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
+                  Durability durability, int intakePoolSize) {
+            this(host, port, database, user, password, poolSize, sslMode, sslRootCert, durability, intakePoolSize, POOL_WAIT_DEFAULT, POOL_QUEUE_DEFAULT);
         }
 
         /**
@@ -378,7 +419,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         @Override
         public String toString() {
             return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize
-                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + ", durability=" + durability + ", intakePoolSize=" + intakePoolSize + "]";
+                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + ", durability=" + durability + ", intakePoolSize=" + intakePoolSize
+                    + ", poolWait=" + poolWait + ", poolQueue=" + poolQueue + "]";
         }
     }
 
@@ -554,6 +596,9 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Duration NODE_LEASE_DEFAULT = Duration.ofSeconds(30);
     private static final Duration NODE_LEASE_RENEW_DEFAULT = Duration.ofSeconds(5);
     private static final Duration NODE_LEASE_MAX = Duration.ofMinutes(10);
+    private static final Duration POOL_WAIT_MIN = Duration.ofMillis(1);
+    private static final Duration POOL_WAIT_MAX = Duration.ofMinutes(1);
+    private static final int POOL_QUEUE_MAX = 65536;
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
@@ -576,7 +621,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Pg pg = new Pg(pgHost, (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
                 env.getOrDefault("FLOTTILA_PG_DATABASE", "flottila"), env.getOrDefault("FLOTTILA_PG_USER", "flottila"),
                 env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), poolSize, sslMode(env, pgHost), sslRootCert(env),
-                durability(env, deployed(name)), intakePoolSize);
+                durability(env, deployed(name)), intakePoolSize, duration(env, "FLOTTILA_PG_POOL_WAIT", Pg.POOL_WAIT_DEFAULT),
+                (int) number(env, "FLOTTILA_PG_POOL_QUEUE", Pg.POOL_QUEUE_DEFAULT, Integer.MIN_VALUE, Integer.MAX_VALUE));   // ranges: the constructor
         long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, MEMORY_TIER_MIN, Integer.MAX_VALUE);
         long memoryBudget = number(env, "FLOTTILA_BLOB_MEMORY_BUDGET", 256 * MIB, 1, Long.MAX_VALUE);
         if (memoryTier > memoryBudget) {

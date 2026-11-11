@@ -34,9 +34,11 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.VerticleBase;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.file.AsyncFile;
 import io.vertx.core.file.OpenOptions;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
@@ -84,8 +86,12 @@ import java.util.function.Supplier;
  * one is UP, else 503 {@code {"status":"DOWN","checks":{..}}}. Every error body is {@code {error}}: 400 for a
  * parameter that does not parse or a limit or cursor a page store refuses, 401 without the token, 404 for what is not
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
- * take, 500 for anything else — a store that failed, a recorded header no response may carry, a stored body whose stream
- * fails before the head is out (after it, the response is reset).
+ * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
+ * pool closed by a stopping node; D-132: retryable; its {@code error} a fixed text), 500 for anything else — a store that failed,
+ * a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the response is
+ * reset). An admin read answers 503 when the node's Postgres pool refuses it; a route whose store takes a pooled connection for a
+ * transaction (DLQ retry and discard, deploy) still answers 500 on a wait timeout, and a replay reports it as its run's 502 FAILED
+ * (FIX-172b).
  *
  * <p>With a {@link Deployments} (D-059, D-060 b) it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
  * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
@@ -474,9 +480,20 @@ public final class AdminServer {
         } catch (Refused refused) {   // a bad limit, cursor, key or step number: only what the routes map to Refused
             return Json.of(400, error("bad request: " + refused.getMessage()));
         } catch (Throwable failed) {   // a store that failed, a header no response may carry, a checked one thrown sneakily by an await: a 500, never a hang
+            if (refusedByThePool(failed)) return Json.of(503, error("the database pool is busy; retry"));   // fixed: the client's message is not shown
             LOG.log(System.Logger.Level.WARNING, "admin request " + ctx.request().path() + " failed", failed);
             return Json.of(500, error("internal error"));
         }
+    }
+
+    /**
+     * The node's Postgres pool refused the caller a connection (D-132), retryable: its wait queue was full
+     * ({@link ConnectionPoolTooBusyException}), or it failed with exactly a {@link VertxException} — the pool's wait for a
+     * connection elapsed, or the pool is closed because the node stops (both by the client's type, never by its message). A
+     * subclass of it (a closed connection, a server's error) is no refusal.
+     */
+    private static boolean refusedByThePool(Throwable failed) {
+        return failed instanceof ConnectionPoolTooBusyException || failed.getClass() == VertxException.class;
     }
 
     /**

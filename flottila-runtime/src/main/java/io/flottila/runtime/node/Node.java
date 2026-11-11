@@ -67,6 +67,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
@@ -214,9 +215,10 @@ public final class Node implements AutoCloseable {
         // anything touches Postgres; from here on every failed start closes both again. One source of the options (D-124), each
         // session named by its role (D-130 draft): the two pools, the membership and the LISTEN connection connect alike.
         // Both sizes and both options come before either pool is built; an intake share at or above the total never gets here,
-        // because the NodeConfig constructor refuses it (D-130 P5)
-        PoolOptions intakeSize = new PoolOptions().setMaxSize(pg.intakePoolSize());
-        PoolOptions workSize = new PoolOptions().setMaxSize(pg.workPoolSize());
+        // because the NodeConfig constructor refuses it (D-130 P5). Each pool waits at most FLOTTILA_PG_POOL_WAIT for a connection
+        // and queues at most FLOTTILA_PG_POOL_QUEUE callers (D-132): never the client's unbounded queue and 30 s wait
+        PoolOptions intakeSize = bounded(new PoolOptions().setMaxSize(pg.intakePoolSize()), pg);
+        PoolOptions workSize = bounded(new PoolOptions().setMaxSize(pg.workPoolSize()), pg);
         PgConnectOptions intakeConnect = connectOptions(pg, "intake", config.nodeId());
         PgConnectOptions workConnect = connectOptions(pg, "work", config.nodeId());
         Pool intakePool = PgBuilder.pool().connectingTo(intakeConnect).with(intakeSize).using(vertx).build();   // the ACK path's only pool
@@ -374,6 +376,16 @@ public final class Node implements AutoCloseable {
                     .setHostnameVerificationAlgorithm(pg.sslMode() == NodeConfig.Pg.SslMode.VERIFY_FULL ? "HTTPS" : ""));
         }
         return options;
+    }
+
+    /**
+     * {@code options} with {@code pg}'s bounds on the wait for a pooled connection (D-132): a caller waits at most
+     * {@link NodeConfig.Pg#poolWait() poolWait} (in whole milliseconds), at most {@link NodeConfig.Pg#poolQueue() poolQueue} callers
+     * wait, and the pool refuses the rest at once.
+     */
+    private static PoolOptions bounded(PoolOptions options, NodeConfig.Pg pg) {
+        return options.setConnectionTimeout(Math.toIntExact(pg.poolWait().toMillis())).setConnectionTimeoutUnit(TimeUnit.MILLISECONDS)
+                .setMaxWaitQueueSize(pg.poolQueue());
     }
 
     /**
