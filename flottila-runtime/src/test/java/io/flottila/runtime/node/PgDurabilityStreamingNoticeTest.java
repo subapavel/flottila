@@ -21,7 +21,7 @@ class PgDurabilityStreamingNoticeTest {
     void localNamesTheStreamingStandbysOnly() {
         PgDurability.Server server = new PgDurability.Server("intake", "on", false, "", true, List.of(
                 new PgDurability.Standby("standby-b", "streaming", "async"), new PgDurability.Standby("standby-c", "catchup", "async"),
-                new PgDurability.Standby("standby-d", null, null)));
+                new PgDurability.Standby("standby-d", null, null)), true);
         PgDurability.Verdict verdict = PgDurability.verdict(Durability.LOCAL, server);
         assertEquals(Optional.empty(), verdict.refusal());
         List<String> named = verdict.notices().stream().filter(n -> n.contains("standby-b")).toList();
@@ -33,7 +33,7 @@ class PgDurabilityStreamingNoticeTest {
     @Test
     void localWithoutAStreamingStandbyStatesOnlyItsPromise() {
         PgDurability.Server server = new PgDurability.Server("intake", "on", false, "", false, List.of(
-                new PgDurability.Standby("standby-c", "catchup", "async"), new PgDurability.Standby("standby-d", null, null)));
+                new PgDurability.Standby("standby-c", "catchup", "async"), new PgDurability.Standby("standby-d", null, null)), true);
         List<String> notices = PgDurability.verdict(Durability.LOCAL, server).notices();
         assertEquals(1, notices.size(), "the promise alone: " + notices);
         assertTrue(notices.getFirst().contains("survives a Postgres crash"), notices.getFirst());

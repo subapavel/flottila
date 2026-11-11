@@ -237,6 +237,49 @@ class PgPromotionLedgerIT {
     }
 
     /**
+     * FIX-137 B5 (owner decision, D-128): under {@code ha} the duplicate's commit barrier runs {@code pg_logical_emit_message}, so
+     * a role that may not run it is refused at start, before migrating, naming the GRANT for its user — never found out at the
+     * first duplicate. The signature is read from postgres:17, not assumed: the text variant the barrier resolves to is
+     * {@code (boolean,text,text,boolean)} there (17.11; the three-argument form does not exist). EXECUTE is revoked from PUBLIC
+     * and from the role (pg_monitor granted, so only the EXECUTE is missing); the role's own barrier statement is denied. Witness:
+     * the GRANT the refusal names, run verbatim on the primary, lets the same node start and migrate.
+     */
+    @Test
+    void haRefusesARoleThatMayNotRunTheDuplicateBarrier() throws Exception {
+        synchronousStandbys(STANDBY);
+        intakeRole(true);
+        String url = primaryUrl(DB);
+        String signature = query(url, primary.getUsername(), primary.getPassword(), "select string_agg(oid::regprocedure::text, ' | ') from pg_proc "
+                + "where proname = 'pg_logical_emit_message' and pronamespace = 'pg_catalog'::regnamespace and proargtypes[2] = 'text'::regtype");
+        assertEquals("pg_logical_emit_message(boolean,text,text,boolean)", signature, "fixture: postgres:17's text variant");
+        assertEquals(null, query(url, primary.getUsername(), primary.getPassword(),
+                "select to_regprocedure('pg_catalog.pg_logical_emit_message(boolean,text,text)')::text"), "fixture: no three-argument form on 17");
+        execute(url, "revoke execute on function pg_catalog." + signature + " from public");   // pg_proc is per database: the node's
+        execute(url, "revoke execute on function pg_catalog." + signature + " from " + INTAKE);
+        assertEquals("f", query(url, primary.getUsername(), primary.getPassword(),
+                "select has_function_privilege('" + INTAKE + "', 'pg_catalog." + signature + "', 'EXECUTE')"), "fixture: EXECUTE revoked");
+        SQLException denied = org.junit.jupiter.api.Assertions.assertThrows(SQLException.class,
+                () -> execute(url, INTAKE, INTAKE, "select pg_current_xact_id(), pg_logical_emit_message(true, 'flottila', '')"),
+                "fixture: the role's barrier statement is denied");
+        assertTrue(denied.getMessage().contains("permission denied for function pg_logical_emit_message"), "fixture: " + denied.getMessage());
+
+        Map<String, String> env = env(INTAKE, INTAKE);
+        env.put("FLOTTILA_PG_DURABILITY", "ha");
+        List<String> refused = refusedStart(env);
+        java.util.regex.Matcher grant = Pattern.compile("GRANT EXECUTE ON FUNCTION pg_catalog\\.pg_logical_emit_message\\([^)]*\\) TO "
+                + INTAKE + "(?![A-Za-z0-9_])").matcher(String.join("\n", refused));
+        assertTrue(grant.find(), "names GRANT EXECUTE ON FUNCTION pg_catalog.pg_logical_emit_message(...) TO " + INTAKE + ": " + refused);
+        assertEquals(List.of(), tables(), "refused before migrating: the database is untouched");
+
+        execute(url, grant.group());   // the fix the refusal names, verbatim, in the node's database: it must name a function 17 has
+        assertEquals("t", query(url, primary.getUsername(), primary.getPassword(),
+                "select has_function_privilege('" + INTAKE + "', 'pg_catalog." + signature + "', 'EXECUTE')"), "the named GRANT restores the EXECUTE");
+        Node node = startNode(env);
+        assertEquals(200, NodeIT.get(node.adminPort(), "/health").statusCode(), "witness: with the EXECUTE granted the ha node starts");
+        assertTrue(tables().contains("public.flyway_schema_history"), "witness for 'untouched': a started node migrates: " + tables());
+    }
+
+    /**
      * The ledger's self-test (it can see a loss) and P5's local notice. Under {@code local} with the standby streaming
      * asynchronously: five ids accepted and seen on the standby, then the standby's receipt stopped and five more accepted —
      * local does not wait for a standby. After the kill and the promotion exactly the five later ids are missing. The node's
@@ -267,6 +310,54 @@ class PgPromotionLedgerIT {
                 "a notice names the streaming standby and ha: " + texts);
     }
 
+    /**
+     * FIX-137 (D-128, review F3.2): a save whose commit waited for its standby and was ended by a backend termination is committed
+     * locally only, and its sender got 503. The sender's retry with the same dedupe key finds the key taken (D-084): under
+     * {@code ha} it is answered 202 only once that earlier save is on the synchronous standby (the duplicate's commit barrier
+     * waits with it), never at once from a key no standby holds. The in endpoint dedupes by its path ({@link KeyedByPath}): every
+     * POST to {@code /in} carries one key. Receipt stopped: the first POST's COMMIT is seen waiting (SyncRep) before its backend is
+     * terminated; its retry waits too and gets 503 at saveTimeout (5 s); receipt resumed, a retry gets 202 naming the one message,
+     * and that message is on the standby promoted after a SIGKILL.
+     */
+    @Test
+    void aRetriedDuplicateAfterATerminatedSyncWaitIsNot202UntilReplicated() throws Exception {
+        synchronousStandbys(STANDBY);
+        intakeRole(true);
+        Map<String, String> env = env(INTAKE, INTAKE);
+        env.put("FLOTTILA_PG_DURABILITY", "ha");
+        Node node = startKeyedNode(env);
+        String id;
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = deploy(client, node);
+            String conninfo = stopReceipt();
+
+            java.util.concurrent.CompletableFuture<HttpResponse<String>> first = client.sendAsync(
+                    NodeIT.request("POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-D1", "S1"), "application/xml"), HttpResponse.BodyHandlers.ofString());
+            until(() -> commitWaiters(INTAKE) == 1, () -> "fixture: the first save's COMMIT waits for the standby (SyncRep): " + activity(INTAKE));
+            assertEquals("1", query(primary.getJdbcUrl(), primary.getUsername(), primary.getPassword(),
+                    "select count(*) filter (where pg_terminate_backend(pid)) from pg_stat_activity where usename = '" + INTAKE
+                            + "' and wait_event = 'SyncRep' and query ~* '^\\s*commit'"), "fixture: the waiting backend terminated");
+            HttpResponse<String> terminated = first.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(503, terminated.statusCode(), "fixture: the terminated save is no 202: " + terminated.statusCode() + " " + terminated.body());
+            assertEquals(List.of("1"), rows(primaryUrl(DB), "select count(*) from messages where step = 0"),
+                    "fixture: the terminated save committed locally (the residual the barrier closes)");
+
+            HttpResponse<String> retried = NodeIT.send(client, "POST", inPort, "/in", InvoiceAsyncIT.invoice("INV-D1", "S1"), "application/xml");
+            assertEquals(503, retried.statusCode(), "the retry finds its key taken by a save no standby holds: no 202 while receipt is stopped, "
+                    + "503 at saveTimeout: " + retried.statusCode() + " " + retried.body());
+            assertTrue(commitWaiters(INTAKE) >= 1, "the retry's commit still waits for the standby (SyncRep): " + activity(INTAKE));
+
+            resumeReceipt(conninfo);
+            until(() -> commitWaiters(INTAKE) == 0, () -> "the waiting commits complete once the standby receives: " + streaming());
+            id = accept(client, inPort, "INV-D1");
+        }
+        assertEquals(List.of(id), rows(primaryUrl(DB), "select id from messages where step = 0"),
+                "the 202 names the one message: the terminated save's, never a second one");
+        close(node);
+        killThePrimaryAndPromote();
+        assertEquals(Set.of(), missing(List.of(id)), "the id the sender holds a 202 for is on the promoted standby");
+    }
+
     // ------------------------------------------------------------------------------------------------------------- the node
 
     Map<String, String> env(String user, String password) throws Exception {
@@ -293,6 +384,34 @@ class PgPromotionLedgerIT {
                 Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
         nodes.add(node);
         return node;
+    }
+
+    /** {@link #startNode} with the http component deduping its in endpoints by the request path ({@link KeyedByPath}). */
+    Node startKeyedNode(Map<String, String> env) throws Exception {
+        SaxonXml xml = new SaxonXml();
+        NodeConfig config = NodeConfig.from(env);
+        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new KeyedByPath(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids()))),
+                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
+        nodes.add(node);
+        return node;
+    }
+
+    /** The real http component, its in endpoints naming {@link HttpComponent#PATH} as their dedupe key (D-084): one key per path. */
+    record KeyedByPath(HttpComponent http) implements io.flottila.api.Component {
+        @Override public String scheme() { return http.scheme(); }
+        @Override public String configSchema() { return http.configSchema(); }
+        @Override public io.flottila.api.Consumer consumer(io.flottila.api.EndpointConfig cfg,
+                java.util.function.Function<io.flottila.api.Envelope, io.vertx.core.Future<io.flottila.api.Ack>> handler) {
+            return http.consumer(cfg, handler);
+        }
+        @Override public io.flottila.api.Producer producer(io.flottila.api.EndpointConfig cfg) { return http.producer(cfg); }
+        @Override public io.vertx.core.Future<io.flottila.api.Health> health() { return http.health(); }
+        @Override public java.util.Optional<java.net.InetSocketAddress> listensOn(io.flottila.api.EndpointConfig cfg) { return http.listensOn(cfg); }
+        @Override public boolean polls(io.flottila.api.EndpointConfig cfg) { return http.polls(cfg); }
+        @Override public java.util.Optional<String> target(io.flottila.api.EndpointConfig cfg) { return http.target(cfg); }
+        @Override public java.util.Optional<io.flottila.api.Key<String>> dedupeBy(io.flottila.api.EndpointConfig cfg) {
+            return java.util.Optional.of(HttpComponent.PATH);
+        }
     }
 
     /** The causes of the refused start of a node over {@code env}; fails when it starts. */
@@ -415,6 +534,21 @@ class PgPromotionLedgerIT {
             return r.getLong(1);
         } catch (SQLException e) {
             throw new AssertionError("reading pg_stat_activity: " + e, e);
+        }
+    }
+
+    /** Backends of {@code user} whose COMMIT waits for a synchronous standby to confirm it (SyncRep). */
+    long commitWaiters(String user) {
+        return Long.parseLong(query(primary.getJdbcUrl(), primary.getUsername(), primary.getPassword(), "select count(*) from pg_stat_activity where usename = '"
+                + user + "' and wait_event = 'SyncRep' and query ~* '^\\s*commit'"));
+    }
+
+    /** {@code user}'s backends as {@code wait_event query}, for a failure message. */
+    List<String> activity(String user) {
+        try {
+            return rows(primary.getJdbcUrl(), "select coalesce(wait_event, '-') || ' ' || coalesce(query, '') from pg_stat_activity where usename = '" + user + "'");
+        } catch (SQLException e) {
+            return List.of("reading pg_stat_activity: " + e);
         }
     }
 

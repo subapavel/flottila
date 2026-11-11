@@ -90,10 +90,23 @@ import java.util.concurrent.locks.ReentrantLock;
  * member's: it writes its rows and commits with the group, so a group that fails or is rolled back leaves the key free. A key
  * not inserted is taken — by a committed save, by an open one this statement waited for (READ COMMITTED) and that committed, or by
  * an earlier member of the group: the member writes nothing — no savepoint, its neighbours unaffected — {@code abandoned} is not
- * asked for it, and once the group is done (committed, or rolled back when no member writes rows) this store's copy of its body is
+ * asked for it, and once the group is done (committed, or — no member writing rows — rolled back, or under {@code ha} committed
+ * behind its barrier) this store's copy of its body is
  * evicted (its record, forced already, stays unreferenced in the journal; a body of another store keeps what its persist made
  * durable) and its save succeeds with the id the key's row names. A taken key whose row is gone when read (the retention job)
  * fails its save. A group without a key runs no claim turn.
+ *
+ * <p>Under the {@code ha} profile ({@link NodeConfig.Pg.Durability#HA}, D-128) a group with no row to write sends, after the
+ * rows' turn would have been, {@link #BARRIER} alone and then COMMIT. It takes a transaction id and writes one transactional
+ * logical message (a WAL record, no row): Postgres makes a commit wait for its synchronous standby only when its transaction holds
+ * an id and wrote WAL before the commit record (an id alone commits without waiting), and that wait covers every earlier record,
+ * so a duplicate is answered only once the save its key names is on a synchronous standby too (a save committed locally whose
+ * wait was ended answers its sender 503 and its retry no 202 before that). EXECUTE on {@code pg_logical_emit_message} is an
+ * {@code ha} precondition: the node's start check refuses a role without it, naming the GRANT (PUBLIC has it by default; any
+ * {@code wal_level} from {@code replica}). A failed barrier statement — that EXECUTE revoked after the start included — fails
+ * the group as any failed statement does; a barrier commit refused or lost fails every member as
+ * a commit of no transaction id known does: no answer, each out of the open saves, retryable. Under {@code local} such a group
+ * rolls back.
  *
  * @since 0.1
  */
@@ -107,6 +120,8 @@ public final class PgIntake implements Intake {
             + "on p.scope = c.s and p.key_hash = sha256(convert_to(c.k, 'UTF8'))";
     /** Each transaction id's status: committed, aborted, in progress, or null for one too old to be known. */
     static final String XACT_STATUS = "select x, pg_xact_status(x::xid8) from unnest($1::text[]) x";
+    /** Under ha, the statement of a group with no row to write: an id taken and a WAL record written, so its commit waits (D-128). */
+    static final String BARRIER = "select pg_current_xact_id(), pg_logical_emit_message(true, 'flottila', '')";
 
     private static final System.Logger LOG = System.getLogger(PgIntake.class.getName());
 
@@ -185,6 +200,8 @@ public final class PgIntake implements Intake {
     private final PgWorkQueue queue;
     private final Workers workers;   // null: no hand-off
     private final WorkSignals signals;
+    /** Under ha a group with no row to write commits behind {@link #BARRIER} (D-128); under local it rolls back. */
+    private final boolean barrier;
     private final BatchingWriter<Member> writer;
     /** The members whose group's commit is in doubt, by transaction id. */
     private final Map<String, List<TieredBlobStore.Durable>> inDoubt = new ConcurrentHashMap<>();
@@ -234,6 +251,18 @@ public final class PgIntake implements Intake {
      */
     public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group,
                     WorkSignals signals) {
+        this(pool, blobs, messages, queue, workers, timer, group, signals, NodeConfig.Pg.Durability.LOCAL);
+    }
+
+    /**
+     * {@link #PgIntake(Pool, TieredBlobStore, PgMessageStore, PgWorkQueue, Workers, Timer, NodeConfig.IntakeGroup, WorkSignals)} under
+     * the Postgres profile {@code durability} (D-128): under {@link NodeConfig.Pg.Durability#HA} a group with no row to write runs
+     * {@link #BARRIER} (a transaction id and one WAL record), so its commit waits for the synchronous standby before its members are
+     * answered; under {@link NodeConfig.Pg.Durability#LOCAL} it rolls back. Every other constructor is {@code LOCAL}.
+     */
+    public PgIntake(Pool pool, TieredBlobStore blobs, PgMessageStore messages, PgWorkQueue queue, Workers workers, Timer timer, NodeConfig.IntakeGroup group,
+                    WorkSignals signals, NodeConfig.Pg.Durability durability) {
+        this.barrier = Objects.requireNonNull(durability, "durability") == NodeConfig.Pg.Durability.HA;
         this.signals = Objects.requireNonNull(signals, "signals");
         this.pool = Objects.requireNonNull(pool, "pool");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
@@ -376,8 +405,9 @@ public final class PgIntake implements Intake {
     }
 
     /**
-     * {@code g} in one transaction on {@code conn}: committed when a member writes rows and none is abandoned at the check, rolled
-     * back with a success when no member writes rows, else rolled back and failed {@link RolledBack} with the cause. A commit the
+     * {@code g} in one transaction on {@code conn}: committed when a member writes rows and none is abandoned at the check; when no
+     * member writes rows, committed behind {@link #BARRIER} under ha and rolled back with a success under local; else (a failed
+     * statement, the barrier's included) rolled back and failed {@link RolledBack} with the cause. A commit the
      * server refused with an error reply of severity ERROR (a known abort: the session survives it) fails with its own cause; one
      * whose reply never came, or answered FATAL or PANIC (the session ends; the commit may have landed), fails with {@link InDoubt}
      * once the transaction id is known (a member naming a record), else with its own failure.
@@ -387,9 +417,11 @@ public final class PgIntake implements Intake {
             if (began.failed()) return Future.<Void>failedFuture(new RolledBack(began.cause()));
             return Future.<Void>succeededFuture().compose(start -> claim(conn, g))
                     .compose(claimed -> writes(conn, g))
+                    .compose(written -> written || !barrier ? Future.succeededFuture(written)
+                            : conn.query(BARRIER).execute().map(true))   // nothing written, under ha: an id and a WAL record, so the commit waits
                     .transform(done -> {
                         if (done.failed()) return began.result().rollback().transform(rolled -> Future.<Void>failedFuture(new RolledBack(done.cause())));
-                        if (!done.result()) return began.result().rollback().otherwiseEmpty();   // nothing written: the duplicates answer
+                        if (!done.result()) return began.result().rollback().otherwiseEmpty();   // nothing written, under local: the duplicates answer
                         return began.result().commit().recover(lost -> Future.failedFuture(refused(lost) || g.xid.get() == null ? lost   // refused: a known abort
                                 : new InDoubt(g.xid.get(), lost)));
                     });

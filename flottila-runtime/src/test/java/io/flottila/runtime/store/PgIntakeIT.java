@@ -13,7 +13,10 @@ import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.node.NodeConfig;
+import io.flottila.core.flow.WorkSignals;
 import io.flottila.runtime.journal.JournalRef;
+import io.flottila.runtime.journal.PgWire;
 import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.time.VertxTimer;
@@ -92,6 +95,15 @@ import static org.junit.jupiter.api.Assertions.fail;
  * row. "The body is durable" reads that row's ref back from the journal ({@link #kept}); "no body row" covers both tables. The
  * shape: {@code save(…, String dedupeKey, boolean keepInput, BooleanSupplier abandoned)}, {@code TieredBlobStore.Config(treeLimit,
  * memoryTier, memoryBudget, durableMax)}, {@code new TieredBlobStore(Config, Hasher, Journal, int tenantKeyId, Pool)}.
+ *
+ * <p>FIX-137 (D-128, review F3.2): under the {@code ha} profile a group with no row to write (a duplicate alone) commits a
+ * transaction holding a transaction id before it answers — the commit record whose synchronous-standby wait covers the earlier
+ * save — where {@code local} rolls back and takes no id. Witness: the server's next transaction id (the snapshot's xmax, read by
+ * another session, which assigns none) and {@code pg_xact_status} of the id taken; autovacuum is off so only the case moves the
+ * counter. A barrier whose statement or commit fails is no answer and a retry is answered: the failure is staged by a
+ * {@link PgWire} relay replacing the server's reply. The shape assumed (B3, test-author's proposal): {@code PgIntake(Pool,
+ * TieredBlobStore, PgMessageStore, PgWorkQueue, Workers, Timer, NodeConfig.IntakeGroup, WorkSignals, NodeConfig.Pg.Durability)},
+ * every other constructor {@code LOCAL}.
  */
 @Timeout(60)
 class PgIntakeIT {
@@ -862,5 +874,129 @@ class PgIntakeIT {
         nothingOf("m-1");
         assertEquals(List.of("m-2/K-1"), work());
         assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-2", STARTED)), processed());
+    }
+
+    // --- the commit barrier of a group with nothing to write, under ha (FIX-137, D-128)
+
+    /** An intake over {@code through} under {@code profile}: every save a group of one, handing nothing off. */
+    PgIntake intakeUnder(Pool through, NodeConfig.Pg.Durability profile) {
+        return new PgIntake(through, blobs, messages, new PgWorkQueue(through, "node-1"), null, new VertxTimer(vertx), NodeConfig.IntakeGroup.SINGLE,
+                WorkSignals.NONE, profile);
+    }
+
+    /** The id the server assigns next (the snapshot's xmax); reading it assigns none. */
+    long nextXid() {
+        return Long.parseLong(other.query("select pg_snapshot_xmax(pg_current_snapshot())::text").execute().await().iterator().next().getString(0));
+    }
+
+    /** {@code pg_xact_status} of {@code xid}: committed, aborted or in progress. */
+    String xactStatus(long xid) {
+        return other.preparedQuery("select pg_xact_status($1::text::xid8)").execute(Tuple.of(String.valueOf(xid))).await().iterator().next().getString(0);
+    }
+
+    /** Autovacuum off and no worker of it running: the server's id counter moves with the case's own transactions only. */
+    void quiet() {
+        sql("alter system set autovacuum = off");
+        sql("select pg_reload_conf()");
+        until(() -> "off".equals(other.query("show autovacuum").execute().await().iterator().next().getString(0))
+                && other.query("select count(*) from pg_stat_activity where backend_type = 'autovacuum worker'").execute().await().iterator().next().getLong(0) == 0,
+                "fixture: autovacuum off, no worker running");
+    }
+
+    /** The first save of {@link #KEY}, as {@code m-1}, by the case's own intake. */
+    void firstSaveOfTheKey() {
+        Future<String> saved = saveKeyed(arrive("m-1", bytes(300, 30)), KEY, Promise.promise().future());
+        assertEquals("m-1", saved.result(), "fixture: the key's first save: " + saved.cause());
+    }
+
+    /** Only {@code m-1} of the key in Postgres: its rows, one processed_ids row naming it. */
+    void onlyTheFirstSave(String... duplicates) {
+        savedWhole("m-1");
+        for (String d : duplicates) nothingOf(d);
+        assertEquals(1, count("messages"), "one ingress row");
+        assertEquals(List.of("m-1/K-1"), work(), "one item");
+        assertEquals(List.of(new Processed(SCOPE, sha256(KEY), "m-1", STARTED)), processed(), "one key row, the first save's");
+    }
+
+    @Test
+    void underHaADuplicateAloneCommitsATransactionIdBeforeItAnswers() {
+        PgIntake ha = intakeUnder(pool, NodeConfig.Pg.Durability.HA);
+        Future<String> saved = settled(saveKeyed(ha, arrive("m-1", bytes(300, 30)), SCOPE, KEY, Promise.promise().future()));
+        assertEquals("m-1", saved.result(), "fixture: the key's first save: " + saved.cause());
+        Envelope again = arrive("m-2", bytes(300, 30));
+        quiet();
+        long next = nextXid();
+
+        Future<String> duplicate = settled(saveKeyed(ha, again, SCOPE, KEY, Promise.promise().future()));
+        assertTrue(duplicate.succeeded(), "a duplicate is a successful save: " + duplicate.cause());
+        assertEquals("m-1", duplicate.result(), "it answers the first message's id");
+        assertEquals(next + 1, nextXid(), "the duplicate's transaction took one transaction id: a commit record, whose wait covers the first save's");
+        assertEquals("committed", xactStatus(next), "and it committed that id, never a rollback");
+        onlyTheFirstSave("m-2");
+    }
+
+    @Test
+    void underLocalADuplicateAloneTakesNoTransactionId() {
+        PgIntake local = intakeUnder(pool, NodeConfig.Pg.Durability.LOCAL);
+        Future<String> saved = settled(saveKeyed(local, arrive("m-1", bytes(300, 30)), SCOPE, KEY, Promise.promise().future()));
+        assertEquals("m-1", saved.result(), "fixture: the key's first save: " + saved.cause());
+        Envelope again = arrive("m-2", bytes(300, 30));
+        quiet();
+        long next = nextXid();
+
+        Future<String> duplicate = settled(saveKeyed(local, again, SCOPE, KEY, Promise.promise().future()));
+        assertEquals("m-1", duplicate.result(), "a duplicate answers the first message's id: " + duplicate.cause());
+        assertEquals(next, nextXid(), "under local the duplicate's transaction rolls back holding no transaction id");
+        onlyTheFirstSave("m-2");
+    }
+
+    /** A failure armed on a {@link PgWire}: done once the relay replaced a reply. */
+    interface Armed {
+        void awaitDone() throws InterruptedException;
+    }
+
+    /**
+     * Under ha, over a relay whose reply to what {@code arm} names is replaced by a failure: the duplicate's save fails with
+     * {@code failure} (no answer, so no 202), and the sender's retry with the same key is answered the first id.
+     */
+    void aFailedBarrierIsNoAnswerAndItsRetryIs(java.util.function.Function<PgWire, Armed> arm, String failure) throws Exception {
+        firstSaveOfTheKey();
+        PgWire wire = new PgWire(pg.getHost(), pg.getMappedPort(5432));
+        Pool relayed = PgBuilder.pool().connectingTo(new PgConnectOptions().setHost("127.0.0.1").setPort(wire.port()).setDatabase(database)
+                .setUser(pg.getUsername()).setPassword(pg.getPassword()))
+                .with(new PoolOptions().setMaxSize(1).setConnectionTimeout(POOL_WAIT_SECONDS).setConnectionTimeoutUnit(TimeUnit.SECONDS)).using(vertx).build();
+        try {
+            PgIntake ha = intakeUnder(relayed, NodeConfig.Pg.Durability.HA);
+            Armed armed = arm.apply(wire);
+            Future<String> duplicate = settled(saveKeyed(ha, arrive("m-2", bytes(300, 31)), SCOPE, KEY, Promise.promise().future()));
+            assertTrue(duplicate.failed(), "a failed barrier is no answer: the sender gets no 202 — answered " + duplicate.result());
+            assertTrue(causes(duplicate.cause()).stream().anyMatch(c -> c.contains(failure)), "with the barrier's failure: " + causes(duplicate.cause()));
+            armed.awaitDone();   // witness: the failure is the relay's replaced reply
+
+            Future<String> retried = settled(saveKeyed(ha, arrive("m-3", bytes(300, 32)), SCOPE, KEY, Promise.promise().future()));
+            assertEquals("m-1", retried.result(), "the failure was retryable: the retry answers the first id — " + retried.cause());
+        } finally {
+            wire.close();   // first: a relayed connection open on it would hold the pool's close
+            relayed.close().await();
+        }
+        onlyTheFirstSave("m-2", "m-3");
+    }
+
+    @Test
+    void underHaARefusedBarrierStatementIsNoAnswerAndItsRetryIs() throws Exception {
+        aFailedBarrierIsNoAnswerAndItsRetryIs(wire -> wire.errorReplyTo(s -> (s.type() == 'Q' || s.type() == 'P') && s.sql() != null
+                && s.sql().toLowerCase(java.util.Locale.ROOT).contains("pg_current_xact_id"), "XX000", "barrier refused by the test")::awaitDone,
+                "barrier refused by the test");
+    }
+
+    @Test
+    void underHaARefusedBarrierCommitIsNoAnswerAndItsRetryIs() throws Exception {
+        aFailedBarrierIsNoAnswerAndItsRetryIs(wire -> wire.errorReplyTo(PgWire.query("COMMIT"), "40001", "commit refused by the test")::awaitDone,
+                "commit refused by the test");
+    }
+
+    @Test
+    void underHaALostBarrierCommitIsNoAnswerAndItsRetryIs() throws Exception {
+        aFailedBarrierIsNoAnswerAndItsRetryIs(wire -> wire.fatalReplyTo(PgWire.query("COMMIT"))::awaitDone, "administrator command");
     }
 }

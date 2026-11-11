@@ -112,9 +112,9 @@
 - CORE-15b (2026-11-05): an 'in order, after the previous finished' promise needs a start/end event test; a final list order alone passes a parallel mutant. | FIX-130 (2026-11-05): BACKLOG done-when clauses that HANDOFF moves to a later task need the row amended at the commit. | FIX-127 (2026-11-05): a measurement clause moved between tasks needs the run in RESULTS before PASS.
 - P2-15b/FIX-140: an arm-before-call timer needs every non-throw failure path disarmed (null answer); a predicate split into two sites needs a boundary case at each; a new SQL exists needs a hand mutant per predicate.
 - CORE-7 (2026-11-11): batch latency bounds in a doc: count the backlog ahead and every in-flight slot, not one batch (BatchingWriter.takeLocked); a failure-path close needs its own mutant.
-- FIX-160 (2026-11-11): COW subList view under concurrent append → CME; grep `.subList(` on fields filled from other threads; demand per-run XML counts, a -q log holds none.
-- FIX-144 (2026-11-11): readiness flags: read each supplier's lock (Journal lock, NodeLease monitor) for I/O held under it; a clear-first-act needs a held-phase read.
+- FIX-160/144 (2026-11-11): grep `.subList(` on fields filled from other threads (COW view → CME); demand per-run XML counts; readiness flags: check I/O held under each supplier's lock.
 - FIX-146 (2026-11-11): shared-config wiring is pinned per call site only where an earlier link cannot fail first (Node:238 before :239); fail-closed needs a plaintext-server case.
 - FIX-143 (2026-11-11): a finding's 'no test does X': grep sibling test classes (FastPath, Handoff) first; FlowWorker has two park→complete sites (:574/:583 bound, :584-585 in-run).
 - FIX-141 (2026-11-11): a schema test that strips `not null` leaves not-null untested; a next-of-key read is untested when the successor is the only row left; a filter on a rare column needs a partial index.
 - FIX-136 (2026-11-11): a durability promise in a § must list every 202 path (the duplicate answer, F3.2) and every runtime setting change a start-only check misses.
+- FIX-137 (2026-11-11): when a residual is removed from a list in a D-row or §, re-read the item before the gap (a bare 'closed by X' attaches to it); constructor javadocs keep the pre-amendment theory.

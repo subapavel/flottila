@@ -1,4 +1,16 @@
 
+## 2026-11-11 — FIX-137 WAL barrier for a duplicate-only intake group under ha (review F3.2, D-128) — done, review PASS (r2)
+Context compacted once (re-read HANDOFF, git status, git log -3 before changing anything).
+Test first: PgPromotionLedgerIT.aRetriedDuplicateAfterATerminatedSyncWaitIsNot202UntilReplicated and
+.haRefusesARoleThatMayNotRunTheDuplicateBarrier; PgIntakeIT 5 ha/local barrier cases; PgDurabilityTest B5 cases + properties
+(red FIX-137-red*.log, FIX-137-b5-red*.log)
+Change: under ha a group with nothing written runs `pg_current_xact_id(), pg_logical_emit_message(true,'flottila','')` and
+commits (an xid alone writes no WAL, so xact.c skips the SyncRep wait — B1 amended); local keeps the rollback. Owner decision:
+EXECUTE on pg_logical_emit_message(boolean,text,text,boolean) is an ha start condition, refused naming the GRANT; ha needs PG ≥ 17
+Checks: targeted 29+2+7+26+38 /0 VERIFIED_PASS · verify -Pit EXECUTED_FAIL only on flakes NodeTakeoverLedgerIT:246 (FIX-156),
+FlowWorkerOrderingPropertyTest:182 (FIX-155), JournalDirForceOrderTest:98 (new → FIX-168) · coverage no decrease · M1–M5, M1–M7 killed
+Review: r1 FAIL (D-127 residual wording, 9-arg ctor javadoc pre-amendment), r2 PASS. Follow-ups: FIX-168, FIX-169 (PG 18/19, owner)
+
 ## 2026-11-11 — FIX-136 Postgres durability profiles local | ha (review F3.1, D-114/D-115, D-127 draft) — done, review PASS (r2)
 Test first: NodeConfigTest durability cases, NodeConnectOptionsTest pin, PgDurabilityTest (+2 jqwik), PgPromotionLedgerIT (two
 postgres:17 with streaming replication, SIGKILL + pg_promote: every 202 survives under ha; async standby loses exactly the
