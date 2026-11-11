@@ -1,4 +1,17 @@
 
+## 2026-11-11 — FIX-136 Postgres durability profiles local | ha (review F3.1, D-114/D-115, D-127 draft) — done, review PASS (r2)
+Test first: NodeConfigTest durability cases, NodeConnectOptionsTest pin, PgDurabilityTest (+2 jqwik), PgPromotionLedgerIT (two
+postgres:17 with streaming replication, SIGKILL + pg_promote: every 202 survives under ha; async standby loses exactly the
+unreplicated ids under local), NodeIT rewrite of the D-061 refusal (red FIX-136-red*.log)
+Changed: FLOTTILA_PG_DURABILITY (dev/ci → local, deployed → ha); every session pinned synchronous_commit=on,
+statement_timeout=0; PgDurability start check replaces requireSynchronousCommit (recovery, names, pg_read_all_stats, a sync or
+quorum standby streaming); notices on /health. No runtime watch (D-115) → CONSIDER-11; managed PG → ISSUE-5
+Stale expectations fixed: NodeConfigTest:102, NodeIT/NodeJournalIT deployed nodes set local. Finding: PG 17 statement_timeout
+does not cut a SyncRep wait
+Checks: verify -Pit (no bench) 3652/0/0/0 (run 2; run 1 hit /tmp space) · bench parts green · coverage no decrease · mutants
+M1–M13, M11b, X1–X5 killed
+Review: r1 FAIL (stale start javadoc; residuals F3.2 and the later-reload case unwritten), r2 PASS
+
 ## 2026-11-11 — FIX-141 lost work listed with what it blocks, discard with an audit row (review F7.2, D-126 draft) — done, review PASS (r2)
 Test first: PgWorkQueueLostIT (8), LostWorkAdminIT (5), MigrationsIT V16 (audit columns not null, work_lost index) (red FIX-141-red*.log)
 Changed: V16 `audit` (append-only, all not null) + partial index work_lost; PgWorkQueue lost listing and `blocks` on

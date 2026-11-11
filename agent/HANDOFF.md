@@ -1,15 +1,15 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-139..146, P2-16a, P2-16b, CORE-7 done; D-110 no size refusal; benchmarks paused
-last commit: `Task: FIX-141` (this commit); d2c7382 `Task: FIX-143`
+state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-136, FIX-139..146, P2-16a, P2-16b, CORE-7 done; D-110 no size refusal; benchmarks paused
+last commit: `Task: FIX-136` (this commit); 2717a0f `Task: FIX-141`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: D-114 sync standby rows FIX-136/137, then FIX-138, then D-119 multi-node deploy FIX-147
+next exact action: FIX-137 duplicate-only intake group commits a WAL barrier before its 202 (designer P8); then FIX-138, FIX-147
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
-open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2, ISSUE-3 answered; ISSUE-4 answered 2026-11-04 (D-106)
+open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-5 (managed PG vs ha, FIX-136); ISSUE-2..4 answered
 open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..64, 68,71..75,77..84,86..104,109,112,113; CONSIDER-1..3,5..9 (owner)
 pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..97, D-099, D-100
 owner at hand-over: F-18 (5 ms target; load regression until FIX-95); D-064/65B/67A/72/73

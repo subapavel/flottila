@@ -9,6 +9,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.URI;
 import java.nio.file.Path;
@@ -98,7 +99,8 @@ class NodeConfigTest {
                 () -> assertEquals(Path.of("/srv/flottila"), c.dataDir()),
                 () -> assertEquals(Duration.ofSeconds(90), c.stopDeadline(), "ISO-8601"),
                 () -> assertEquals(MIB, c.maxPackageBytes()),
-                () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32, NodeConfig.Pg.SslMode.DISABLE, Optional.empty()), c.pg()),
+                () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+                        NodeConfig.Pg.Durability.HA), c.pg(), "FIX-136: prod, FLOTTILA_PG_DURABILITY unset: ha"),
                 () -> assertEquals(new NodeConfig.Blobs(4 * MIB, 512 * 1024, 8 * GIB, 2 * MIB), c.blobs()));
     }
 
@@ -716,5 +718,50 @@ class NodeConfigTest {
             String m = String.valueOf(c.getMessage());
             assertFalse(m.contains("ops") || m.contains(":pa") || m.contains("ss@"), "no fragment down the cause chain: " + c);
         }
+    }
+
+    // --- FIX-136 (D-127 draft, P1): the Postgres durability profile
+
+    static final String DURABILITY = "FLOTTILA_PG_DURABILITY";
+
+    /**
+     * {@code FLOTTILA_PG_DURABILITY} unset is {@code local} in a non-deployed environment (dev, ci) and {@code ha} in every
+     * deployed one, whatever the host: a loopback {@code FLOTTILA_PG_HOST} (the default {@code localhost}, as a proxy at
+     * 127.0.0.1 would be) does not default a production node to local, and a remote host does not default a ci node to ha.
+     */
+    @ParameterizedTest(name = "FLOTTILA_ENV={0}, FLOTTILA_PG_HOST={1}: {2}")
+    @CsvSource({"dev, localhost, LOCAL", "ci, localhost, LOCAL", "ci, db.internal, LOCAL", "test, localhost, HA", "prod, localhost, HA",
+            "prod, 127.0.0.1, HA", "staging, db.internal, HA"})
+    void durabilityIsLocalInDevAndCiAndHaWhenDeployed(String env, String host, NodeConfig.Pg.Durability expected) {
+        Map<String, String> e = with(with(with(minimal(), "FLOTTILA_ENV", env), "FLOTTILA_PG_HOST", host), "FLOTTILA_PG_SSL_MODE", "disable");
+        assertEquals(expected, NodeConfig.from(e).pg().durability(), "unset: local when not deployed, ha when deployed (P1)");
+    }
+
+    /** Either value as written wins over the environment's default, both ways; the spellings are {@code local} and {@code ha}. */
+    @ParameterizedTest(name = "FLOTTILA_ENV={0}, FLOTTILA_PG_DURABILITY={1}")
+    @CsvSource({"ci, ha, HA", "dev, ha, HA", "prod, local, LOCAL", "test, local, LOCAL", "ci, local, LOCAL", "prod, ha, HA"})
+    void aWrittenDurabilityIsReadAsWritten(String env, String written, NodeConfig.Pg.Durability expected) {
+        NodeConfig.Pg pg = NodeConfig.from(with(with(minimal(), "FLOTTILA_ENV", env), DURABILITY, written)).pg();
+        assertEquals(expected, pg.durability());
+        assertEquals(written, pg.durability().toString(), "the profile prints as FLOTTILA_PG_DURABILITY spells it");
+    }
+
+    /** An in-process {@code Pg} (the 6-argument constructor, env parsing never uses it) is {@code local}. */
+    @Test
+    void aPgBuiltInProcessIsLocal() {
+        assertEquals(NodeConfig.Pg.Durability.LOCAL, new NodeConfig.Pg("db.internal", 5432, "flottila", "flottila", "", 4).durability());
+    }
+
+    /** Any other value, a near miss in case or space and the empty value included, is refused naming the key and both values. */
+    @ParameterizedTest(name = "FLOTTILA_PG_DURABILITY=''{0}''")
+    @ValueSource(strings = {"sync", "LOCAL", "Ha", " ha", "ha ", "", "remote_apply", "on"})
+    void anUnknownDurabilityIsRefusedNamingTheKey(String value) {
+        Map<String, String> env = with(minimal(), DURABILITY, value);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(env), DURABILITY + " refused: '" + value + "'");
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains(DURABILITY), "names the key: " + message);
+        String rest = message.replace(DURABILITY, "");
+        assertTrue(java.util.regex.Pattern.compile("(?<![A-Za-z_])local(?![A-Za-z_])").matcher(rest).find(), "names the value local: " + message);
+        assertTrue(java.util.regex.Pattern.compile("(?<![A-Za-z_])ha(?![A-Za-z_])").matcher(rest).find(), "names the value ha: " + message);
     }
 }

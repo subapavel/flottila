@@ -202,6 +202,10 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
     public boolean deployed() {
+        return deployed(env);
+    }
+
+    private static boolean deployed(String env) {
         return !env.equals("dev") && !env.equals("ci");
     }
 
@@ -219,9 +223,38 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param sslRootCert {@code FLOTTILA_PG_SSL_ROOT_CERT}: the PEM CA bundle that signs the server's certificate, required by a
      *                    verifying mode (never a silent fallback to plaintext or to an unverified link), refused at start when given but
      *                    missing, unreadable or empty; not a secret
+     * @param durability {@code FLOTTILA_PG_DURABILITY}: {@code local} or {@code ha} (D-127 draft); unset, {@code local} in a
+     *                   non-deployed environment ({@code dev}, {@code ci}) and {@code ha} in every deployed one, whatever the host
      * @since 0.1
      */
-    public record Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert) {
+    public record Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
+                     Durability durability) {
+
+        /**
+         * What an accepted message survives on the Postgres side (D-127 draft, D-114, D-115), checked once at the node's start
+         * ({@code PgDurability}). Both profiles pin the node's sessions to {@code synchronous_commit=on} and refuse a server in
+         * recovery.
+         *
+         * @since 0.1
+         */
+        public enum Durability {
+            /** A single server's commit: an accepted message survives a Postgres crash, not a promotion or the loss of its host. */
+            LOCAL("local"),
+            /** A commit that waited for a synchronous (or quorum) standby: it survives the promotion of such a standby too. */
+            HA("ha");
+
+            private final String spelling;
+
+            Durability(String spelling) {
+                this.spelling = spelling;
+            }
+
+            /** As written in {@code FLOTTILA_PG_DURABILITY}. */
+            @Override
+            public String toString() {
+                return spelling;
+            }
+        }
 
         /**
          * How the node's Postgres links are secured (D-124). TLS without verification ({@code require}, {@code prefer}) is not
@@ -254,6 +287,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         public Pg {
             Objects.requireNonNull(sslMode, "sslMode");
             Objects.requireNonNull(sslRootCert, "sslRootCert");
+            Objects.requireNonNull(durability, "durability");
             if (sslMode != SslMode.DISABLE && sslRootCert.isEmpty()) {
                 throw new IllegalArgumentException("FLOTTILA_PG_SSL_MODE " + sslMode + " (FLOTTILA_PG_HOST " + host
                         + ") needs FLOTTILA_PG_SSL_ROOT_CERT, the PEM CA that signs the server's certificate: set it, or set FLOTTILA_PG_SSL_MODE=disable"
@@ -262,7 +296,24 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
 
         /**
-         * A plaintext link ({@link SslMode#DISABLE}, no CA): in-process callers; env parsing never uses it.
+         * The {@link Durability#LOCAL local} profile: in-process callers; env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the pool's connections at most
+         * @param sslMode how the link is secured
+         * @param sslRootCert the CA of a verifying mode
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert) {
+            this(host, port, database, user, password, poolSize, sslMode, sslRootCert, Durability.LOCAL);
+        }
+
+        /**
+         * A plaintext link ({@link SslMode#DISABLE}, no CA) under the {@link Durability#LOCAL local} profile: in-process callers;
+         * env parsing never uses it.
          *
          * @param host the server's host
          * @param port its port
@@ -279,7 +330,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         @Override
         public String toString() {
             return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize
-                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + "]";
+                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + ", durability=" + durability + "]";
         }
     }
 
@@ -471,7 +522,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         String pgHost = env.getOrDefault("FLOTTILA_PG_HOST", "localhost");
         Pg pg = new Pg(pgHost, (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
                 env.getOrDefault("FLOTTILA_PG_DATABASE", "flottila"), env.getOrDefault("FLOTTILA_PG_USER", "flottila"),
-                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), (int) number(env, "FLOTTILA_PG_POOL_SIZE", 16, 1, 1024), sslMode(env, pgHost), sslRootCert(env));
+                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), (int) number(env, "FLOTTILA_PG_POOL_SIZE", 16, 1, 1024), sslMode(env, pgHost), sslRootCert(env),
+                durability(env, deployed(name)));
         long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, MEMORY_TIER_MIN, Integer.MAX_VALUE);
         long memoryBudget = number(env, "FLOTTILA_BLOB_MEMORY_BUDGET", 256 * MIB, 1, Long.MAX_VALUE);
         if (memoryTier > memoryBudget) {
@@ -486,6 +538,17 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.poolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT));
+    }
+
+    /** {@code FLOTTILA_PG_DURABILITY} as written; unset, {@code ha} when {@code deployed}, else {@code local} (D-127 draft). */
+    private static Pg.Durability durability(Map<String, String> env, boolean deployed) {
+        String raw = env.get("FLOTTILA_PG_DURABILITY");
+        if (raw == null) return deployed ? Pg.Durability.HA : Pg.Durability.LOCAL;
+        for (Pg.Durability profile : Pg.Durability.values()) {
+            if (profile.toString().equals(raw)) return profile;
+        }
+        throw new IllegalArgumentException("FLOTTILA_PG_DURABILITY must be local (a single server's commit) or ha (a commit that waits for a "
+                + "synchronous standby), was '" + raw + "'");
     }
 
     /** {@code FLOTTILA_PG_SSL_MODE} as written; unset, {@code disable} on a loopback {@code host}, else {@code verify-full} (D-124). */

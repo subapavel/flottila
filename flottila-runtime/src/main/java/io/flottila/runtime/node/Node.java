@@ -66,7 +66,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -81,16 +80,16 @@ import java.util.function.Function;
  * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — and, in a deployed environment, the dir archive
  * store and an S3 endpoint over plain http (D-070) before it touches Postgres, and loads the body journal's master key (D-106:
  * from {@code FLOTTILA_JOURNAL_KEY_FILE}, {@code FLOTTILA_JOURNAL_KEY} or the opted-in generated one; none refuses the start, so a
- * keyless node migrates nothing). It then refuses a
- * {@code synchronous_commit} other than {@code on}, {@code remote_write} or {@code remote_apply} (D-061) before it migrates, so a
- * refused node leaves its database untouched, migrates the database, opens the body journal in {@code FLOTTILA_JOURNAL_DIR} (D-105:
+ * keyless node migrates nothing). It then checks its durability profile ({@code FLOTTILA_PG_DURABILITY}, D-127 draft, D-061
+ * amended: {@link PgDurability}) in one read before it migrates, so a refused node leaves its database untouched, migrates the
+ * database, opens the body journal in {@code FLOTTILA_JOURNAL_DIR} (D-105:
  * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), builds
  * the blob store on it (CORE-4c2: bodies in the journal under the {@code default} tenant's key, their refs in the pool, bounded by
  * {@code FLOTTILA_BLOB_DURABLE_MAX}; no spool), joins the membership as a new incarnation of its node id (D-101 (1), F-28: a
  * {@link NodeLease} over a {@link PgMembership} on a connection of its own, renewed every {@code FLOTTILA_NODE_LEASE_RENEW}; its
  * fence fences every at-least-once worker the deployments build; superseded, the node halts — the process exits with
- * {@value #SUPERSEDED}) and states its notices once — one journal copy (D-101 (5), until CORE-5) and, when no other member is
- * live, that nobody takes its items over —, opens the stores (the work queue claiming only what this journal holds) and the
+ * {@value #SUPERSEDED}) and states its notices once — the profile's, one journal copy (D-101 (5), until CORE-5) and, when no
+ * other member is live, that nobody takes its items over —, opens the stores (the work queue claiming only what this journal holds) and the
  * archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
  * node builds; without it in the node's memory, with one WARNING), builds the {@link Deployments} (D-059) over them and the node's
@@ -124,12 +123,6 @@ public final class Node implements AutoCloseable {
 
     /** Where a mock lives, whatever scheme it is bound to (the testkit's RecordingComponent included); names, never classes (F-4). */
     private static final List<String> MOCK_PACKAGES = List.of("io.flottila.components.mock", "io.flottila.testkit");
-
-    /**
-     * The {@code synchronous_commit} values a node accepts (D-061). {@code off} does not wait for the WAL flush; {@code local}
-     * waits for the local flush only and is refused because it does not wait for a standby.
-     */
-    private static final Set<String> SYNCHRONOUS_COMMIT = Set.of("on", "remote_write", "remote_apply");
 
     /** The tenant whose journal key seals the node's bodies until tenants are configured (D-105). */
     private static final String TENANT = "default";
@@ -192,8 +185,11 @@ public final class Node implements AutoCloseable {
      *
      * @param components builds the node's components, once, from the node's own context
      * @throws IllegalStateException two components for one scheme, a deployed environment and a mock binding among the components,
-     *                               the dir archive store or an S3 endpoint over plain http, or a {@code synchronous_commit} other than on, remote_write or remote_apply ({@code off} does
-     *                               not wait for the WAL flush, {@code local} for a synchronous standby)
+     *                               the dir archive store or an S3 endpoint over plain http, or a Postgres the durability profile
+     *                               refuses ({@link PgDurability}): under both profiles a session that does not commit with
+     *                               {@code synchronous_commit=on} and a server in recovery; under {@code ha} also an empty
+     *                               {@code synchronous_standby_names}, a role without the privileges of {@code pg_read_all_stats},
+     *                               and no sync or quorum standby streaming
      * @throws IllegalArgumentException no journal master key, or one that is no base64 of 256 bits
      * @throws IOException the restore's data directory cannot be written, a
      *                     {@code journal_keys} row cannot be unwrapped (named by its key id), or the journal cannot be opened
@@ -235,7 +231,8 @@ public final class Node implements AutoCloseable {
 
             // the master key before any Postgres statement: a node without one migrates nothing (D-106)
             SecretKey master = config.journalKey().load(config.journal().dir(), JournalFiles.real());
-            requireSynchronousCommit(pool);   // before the migration: a refused node leaves its database untouched
+            // the durability profile before the migration: a refused node leaves its database untouched (D-127 draft)
+            List<String> durability = PgDurability.check(pool, pg.durability());
             Migrations.migrate(jdbcUrl(pg), pg.user(), pg.password());
             JournalKeys keys = JournalKeys.load(pool, master);
             Journal opened = Journal.open(config.journal(), clock, timer, keys, JournalFiles.real(), new PgSegmentRows(pool), UUID::randomUUID);
@@ -247,7 +244,7 @@ public final class Node implements AutoCloseable {
             membership = PgMembership.connecting(vertx, connect);   // its own connection, never the pool's
             lease = new NodeLease(config.nodeId(), membership, config.nodeLease(), config.nodeLeaseRenew(), System::nanoTime, timer, Node::halt);
             lease.start().await();
-            List<String> notices = notices(config, membership.others(config.nodeId()).await());
+            List<String> notices = notices(config, durability, membership.others(config.nodeId()).await());
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
@@ -346,14 +343,18 @@ public final class Node implements AutoCloseable {
      * (ARCHITECTURE §4 Writer) for every SQL text up to {@value #STATEMENT_CACHE_SQL_LIMIT} characters, so a connection parses a
      * statement once; pipelining stays at the client's default (D-109: a turn's statements are sent together). Every session runs
      * with {@code jit} off, a startup parameter (FIX-130, F-27 addendum): the node's statements touch a bounded number of rows, yet
-     * an estimate that grows with a table's size crossed jit_above_cost and every claim compiled its plan. The link is secured as
+     * an estimate that grows with a table's size crossed jit_above_cost and every claim compiled its plan. Every session also
+     * commits with {@code synchronous_commit=on} and runs with {@code statement_timeout=0}, startup parameters above a database's or
+     * a role's own setting under both durability profiles (D-127 draft, D-061 amended): a commit waits for its WAL flush and, when
+     * the server names synchronous standbys, for them, and no timeout cancels that wait (the node's save timeout bounds the
+     * caller's answer instead). The link is secured as
      * {@code pg}'s {@link NodeConfig.Pg#sslMode() sslMode} says (D-124): a verifying mode trusts the PEM CA of
      * {@link NodeConfig.Pg#sslRootCert() sslRootCert} only, and {@code verify-full} checks the server's name against the host dialled.
      */
     public static PgConnectOptions connectOptions(NodeConfig.Pg pg) {
         PgConnectOptions options = new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user())
                 .setPassword(pg.password()).setCachePreparedStatements(true).setPreparedStatementCacheSqlLimit(STATEMENT_CACHE_SQL_LIMIT)
-                .addProperty("jit", "off").setSslMode(io.vertx.pgclient.SslMode.of(pg.sslMode().toString()));
+                .addProperty("jit", "off").addProperty("synchronous_commit", "on").addProperty("statement_timeout", "0").setSslMode(io.vertx.pgclient.SslMode.of(pg.sslMode().toString()));
         if (pg.sslMode() != NodeConfig.Pg.SslMode.DISABLE) {
             // the client refuses verify-full without an algorithm; an empty one checks no name (verify-ca)
             options.setSslOptions(new ClientSSLOptions().setTrustOptions(new PemTrustOptions().addCertPath(pg.sslRootCert().orElseThrow().toString()))
@@ -401,19 +402,6 @@ public final class Node implements AutoCloseable {
         }
     }
 
-    /**
-     * D-061: an ACK promises a commit that survives a crash, so the node's sessions must commit with {@code synchronous_commit}
-     * {@code on}, {@code remote_write} or {@code remote_apply}. {@code off} does not wait for the WAL flush; {@code local} waits
-     * for the local flush, and is refused because it does not wait for a standby.
-     */
-    private static void requireSynchronousCommit(Pool pool) {
-        String value = pool.query("show synchronous_commit").execute().await().iterator().next().getString(0);
-        if (!SYNCHRONOUS_COMMIT.contains(value)) {
-            throw new IllegalStateException("Postgres synchronous_commit is " + value + " for the node's sessions; it must be on, remote_write or"
-                    + " remote_apply (D-061): off acknowledges a commit before its WAL flush, local does not wait for a synchronous standby");
-        }
-    }
-
     /** The port the admin server bound: the actual one when {@code FLOTTILA_ADMIN_PORT} is 0. */
     public int adminPort() { return adminPort; }
 
@@ -421,15 +409,19 @@ public final class Node implements AutoCloseable {
     public MessageStore messages() { return messages; }
 
     /**
-     * What the admin health names beside its checks: a generated master key, which lies beside the data it protects (D-106); one
-     * journal copy (D-101 (5)); and, with no {@code others} live at the start, that no other node takes this one's items over. The
-     * last two are logged here, once.
+     * What the admin health names beside its checks: a generated master key, which lies beside the data it protects (D-106); the
+     * {@code durability} notices of the start's Postgres check (D-127 draft); one journal copy (D-101 (5)); and, with no
+     * {@code others} live at the start, that no other node takes this one's items over. All but the first are logged here, once.
      */
-    private static List<String> notices(NodeConfig config, int others) {
+    private static List<String> notices(NodeConfig config, List<String> durability, int others) {
         List<String> notices = new ArrayList<>();
         if (config.journalKey().generates()) {
             notices.add("the journal's master key is generated (FLOTTILA_JOURNAL_KEY_GENERATE=true) and lies beside the data it protects: "
                     + "for a single dev node only; give every other node FLOTTILA_JOURNAL_KEY_FILE (D-106)");
+        }
+        for (String notice : durability) {
+            notices.add(notice);
+            LOG.log(System.Logger.Level.WARNING, notice);
         }
         notices.add(ONE_COPY);
         LOG.log(System.Logger.Level.WARNING, ONE_COPY);

@@ -2,6 +2,10 @@ package io.flottila.runtime.node;
 
 import io.vertx.pgclient.PgConnectOptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,5 +38,22 @@ class NodeConnectOptionsTest {
     void theOptionsLetAConnectionPipeline() {
         int limit = Node.connectOptions(PG).getPipeliningLimit();
         assertTrue(limit > 1, "a connection sends a turn's statements before their replies (D-109): pipelining limit " + limit);
+    }
+
+    /**
+     * FIX-136 P2 (D-127 draft, D-061 amended): every session of the node commits with {@code synchronous_commit=on} and runs
+     * without a statement timeout, under both profiles: startup parameters, so the pool, the membership connection and LISTEN
+     * carry them on every (re)connect, above a database's or a role's own setting. {@code jit=off} stays (FIX-130).
+     */
+    @ParameterizedTest(name = "FLOTTILA_PG_DURABILITY={0}")
+    @ValueSource(strings = {"local", "ha"})
+    void connectOptionsPinSynchronousCommitAndNoStatementTimeout(String durability) {
+        Map<String, String> env = NodeConfigTest.with(NodeConfigTest.minimal(), "FLOTTILA_PG_DURABILITY", durability);
+        NodeConfig.Pg pg = NodeConfig.from(env).pg();
+        assertEquals(durability, pg.durability().toString(), "fixture: the profile asked for");
+        Map<String, String> startup = Node.connectOptions(pg).getProperties();
+        assertEquals("on", startup.get("synchronous_commit"), "the commit waits for the WAL flush (and a synchronous standby): " + startup);
+        assertEquals("0", startup.get("statement_timeout"), "no timeout cancels a commit's wait for its standby: " + startup);
+        assertEquals("off", startup.get("jit"), "FIX-130's pin is kept: " + startup);
     }
 }

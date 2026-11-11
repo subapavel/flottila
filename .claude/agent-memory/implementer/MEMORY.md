@@ -24,8 +24,9 @@
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
 - coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
   scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a).
+- Disk (FIX-136): every node-starting IT refuses when /tmp has < FLOTTILA_JOURNAL_MAX_BYTES (16 GiB) usable ("cannot hold
+  FLOTTILA_JOURNAL_MAX_BYTES", ~28 NodeIT/NodeJournalIT/SegmentSweepIT errors): `df /tmp` first; delete finished tasks' scratch copies (~0.5 GB each).
 ## APIs
-- JDK 25 `FileChannel.write(ByteBuffer[],off,len)` on Linux writes at most IOV_MAX (1024) buffers per call: loop to write all (CORE-4a, I01 mutant).
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
   `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
 - vertx-web 5.1.10 (javap, P1-09a; fetch with `mvn dependency:get -Dartifact=io.vertx:vertx-web:5.1.10` if ~/.m2 lacks it):
@@ -72,9 +73,6 @@
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
 - vertx-pg-client 5.1.10 jsonb (javap + IT, P2-02b): a JsonArray Tuple param goes through ParamExtractor.prepareJson (Json.encode);
   textDecodeJSONB answers a JsonArray, `Row.getJsonArray(String)` exists. `dirUri.relativize(u).equals(u)` = "u not below dir", no scheme branch.
-- Apache MINA SSHD 2.20.0 (javap, P2-02): SFTP answers wait CoreModuleProperties.IDLE_TIMEOUT (also closes an idle session);
-  NIO2 pools "-nio2" and "-nio2-resume" both sized by NIO_WORKERS; setUpDefaultClient reads ~/.ssh/config unless
-  HostConfigEntryResolver.EMPTY; a client session can still be isOpen() after the server counted it closed (idle DISCONNECT race).
 - `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
@@ -85,6 +83,8 @@
   Testcontainers PostgreSQLContainer's default command is `fsync=off`; `PgConnectOptions.addProperty("statement_timeout",..)` is a startup GUC (IT-proven).
 - PG 17 (FIX-130, EXPLAIN on 50 k rows): `update .. where seq in (<sub> limit n for update skip locked)` = generic-plan Seq Scan of the target; CORE-7: `delete .. using unnest($1::bigint[],$2::int[])` = work_pkey probe per member (generic too); `Tuple.addArrayOfLong` = addValue(Long[]); BatchingWriter `flush()` is a join (fails if one did).
   `seq = any(array(<sub>))` = InitPlan + pkey Index Cond in both plans; a one-key table hid the keyed form's scan (use ~100 keys).
+- FIX-136: `Set.of(..).contains(null)` throws NPE (jqwik found it); `jsonb_agg(..)` of pg_stat_replication in one select avoids a left join's phantom null row
+  (`Row.getJsonArray(int)`, elements iterate as JsonArray). Startup params `synchronous_commit`/`statement_timeout` beat ALTER DATABASE/ROLE (IT).
 - PG 17 (FIX-127): a correlated `exists` (under `or`) is an AlternativeSubPlan; the planner kept the per-row Seq Scan (early exit) x 200 candidates; a materialized CTE + `not exists` = one scan, Hash Right Anti Join. Commit between two withTransaction statements: java.lang.reflect.Proxy on Pool (`invokeDefault` for defaults, wrap getConnection).
 - vertx-pg-client 5.1.10 (javap, P2-16b): `PgConnection.notificationHandler(Handler<PgNotification>)` (`getPayload()`, `getChannel()`),
   `closeHandler`/`exceptionHandler`; a node's own NOTIFY reaches its own LISTEN. PgWire records the client's Terminate as `Sent('X', null, conn)`:

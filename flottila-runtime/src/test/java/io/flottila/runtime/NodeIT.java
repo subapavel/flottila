@@ -204,6 +204,7 @@ class NodeIT {
     @Test
     void startMigratesAndServesHealth() throws Exception {
         Map<String, String> env = env("prod");
+        env.put("FLOTTILA_PG_DURABILITY", "local");   // FIX-136: a deployed node defaults to ha; the case's one Postgres has no standby
         env.put("FLOTTILA_BLOB_TREE_LIMIT", "65536");
         // P1-09c3a (D-070): a deployed node refuses the dir archive store and a plain-http endpoint; it builds its S3 client at
         // start and contacts S3 only to restore a recorded package (none here), so an https endpoint nothing listens on will do
@@ -1733,45 +1734,66 @@ class NodeIT {
     }
 
     /**
-     * D-061: a node refuses to start unless {@code synchronous_commit} is {@code on}, {@code remote_write} or {@code remote_apply}
-     * for its sessions — an ACK promises a commit that survives a crash. Set on the case database: {@code off} stops {@code Main}
-     * with one {@code flottila:} line and exit 1; {@code local} fails {@code Node.start}, which closes the pool it opened; the
-     * same database with {@code remote_write} starts — the refusal is the setting's, nothing else's.
+     * FIX-136 P2 (D-127 draft). Rewritten from aNodeRefusesAsynchronousCommit: D-061 is amended by the session pin — its start
+     * refusal of a database-level async commit is replaced by the node's startup parameters {@code synchronous_commit=on} and
+     * {@code statement_timeout=0}, which a session's start sets above any database or role default. The case database runs
+     * {@code synchronous_commit=off} and a 45 s statement timeout for every new session (witness: a plain session shows both); the
+     * node starts on it anyway, and the session its at-least-once intake commits on — seen by a BEFORE INSERT trigger on
+     * {@code messages} noting that session's own settings — commits {@code on} without a statement timeout.
      */
     @Test
-    void aNodeRefusesAsynchronousCommit() throws Exception {
+    void aDatabaseLevelAsynchronousCommitDoesNotWeakenTheNodesSessions() throws Exception {
         synchronousCommit("off");
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        PrintStream err = new PrintStream(bytes, true, StandardCharsets.UTF_8);
-        int code = OnVirtualThread.call(() -> Main.run(env("ci"), err));
-        List<String> lines = bytes.toString(StandardCharsets.UTF_8).lines().toList();
-        assertEquals(1, code, "a node that does not start exits with 1: " + lines);
-        assertEquals(1, lines.size(), "one line on stderr, no stack trace: " + lines);
-        assertTrue(lines.get(0).startsWith("flottila:"), lines.get(0));
-        assertTrue(lines.get(0).contains("synchronous_commit") && lines.get(0).contains("off"), "the line names the setting and its value: " + lines.get(0));
-        until(() -> connections() == 0, "the refused node left no connection to its database");
-        assertEquals(List.of(), tables(), "the check runs before migrate: the refused node left its database untouched, no flyway_schema_history");
-
-        synchronousCommit("local");
-        NodeConfig config = NodeConfig.from(env("ci"));
-        Set<String> before = Set.copyOf(vertx.deploymentIDs());
-        Exception refused = null;
-        try {
-            node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new PlainComponent("sftp")), List.of(), List.of()));
-        } catch (Exception expected) {
-            refused = expected;
+        try (Connection admin = DriverManager.getConnection(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
+             Statement alter = admin.createStatement()) {
+            alter.execute("ALTER DATABASE \"" + database + "\" SET statement_timeout = '45s'");
         }
-        assertNotNull(refused, "local commits only wait for the local flush: refused too (the node started on port " + (node == null ? "?" : node.adminPort()) + ")");
-        assertTrue(causes(refused).stream().anyMatch(c -> c.contains("synchronous_commit")), "names the setting: " + causes(refused));
-        node = null;
-        until(() -> connections() == 0, "the failed start closed the pool it opened: no connection to the case database is left");
-        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "no verticle stays deployed");
-        assertEquals(List.of(), tables(), "refused before migrate: still no flyway_schema_history, no table at all");
+        PgConnection plain = PgConnection.connect(vertx, options(database)).await();
+        try {
+            assertEquals("off", plain.query("show synchronous_commit").execute().await().iterator().next().getString(0),
+                    "witness: a new session of the case database commits asynchronously");
+            assertEquals("45s", plain.query("show statement_timeout").execute().await().iterator().next().getString(0),
+                    "witness: and runs with the database's statement timeout");
+        } finally {
+            plain.close().await();
+        }
 
-        synchronousCommit("remote_write");
-        start(env("ci"), ctx -> List.of(new PlainComponent("sftp")));
-        assertEquals(200, get(node.adminPort(), "/health").statusCode(), "remote_write commits synchronously: the node starts on the same database");
-        assertTrue(tables().contains("public.flyway_schema_history"), "witness for the refusals: a started node migrates, so the history table shows: " + tables());
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        io.vertx.core.http.HttpServer partner = partner(new CopyOnWriteArrayList<>(), Future.succeededFuture(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+            startDemoNode(env("ci"));   // before FIX-136: refused, "synchronous_commit is off for the node's sessions"
+            assertEquals(200, get(node.adminPort(), "/health").statusCode(), "the node starts on the database whose default is off");
+            HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip(files), "application/zip");
+            assertEquals(200, put.statusCode(), put.body());
+
+            PgConnection ddl = PgConnection.connect(vertx, options(database)).await();
+            try {
+                ddl.query("create table commit_settings(sc text, st text)").execute().await();
+                ddl.query("create function note_settings() returns trigger language plpgsql as $$ begin insert into commit_settings "
+                        + "values (current_setting('synchronous_commit'), current_setting('statement_timeout')); return new; end $$").execute().await();
+                ddl.query("create trigger note_settings before insert on messages for each row execute function note_settings()").execute().await();
+            } finally {
+                ddl.close().await();
+            }
+
+            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            assertEquals(202, accepted.statusCode(), accepted.body());
+            PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+            try {
+                List<String> seen = new java.util.ArrayList<>();
+                for (io.vertx.sqlclient.Row r : reader.query("select sc || ' ' || st from commit_settings").execute().await()) seen.add(r.getString(0));
+                assertFalse(seen.isEmpty(), "witness: the trigger saw the intake's insert of the ingress row");
+                assertEquals(List.of(), seen.stream().filter(s -> !s.equals("on 0")).toList(),
+                        "the intake's session commits on, without a statement timeout, over the database's off and 45s: " + seen);
+            } finally {
+                reader.close().await();
+            }
+        } finally {
+            partner.close().await();
+        }
     }
 
     /** D-061: {@code remote_apply} waits for the standby to apply the commit — accepted, as {@code remote_write} is. */
