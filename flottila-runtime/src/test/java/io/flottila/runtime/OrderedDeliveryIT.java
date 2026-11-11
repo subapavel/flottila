@@ -318,18 +318,18 @@ class OrderedDeliveryIT {
 
             startNode("node-x");   // the same node id: the same data directory, its journal holds the bodies
             NodeIT.until(() -> partner.arrivals.size() == 3, "X, restarted, reruns K/S1; rows " + rows());
-            assertEquals(List.of("K/S1"), partner.arrivals.subList(2, 3), "the rerun; arrivals " + partner.arrivals);
+            assertEquals(List.of("K/S1"), List.copyOf(partner.arrivals).subList(2, 3), "the rerun; arrivals " + partner.arrivals);
             assertEquals("node-x@2", row(m1), "X claimed K/S1 as its second attempt once the lease ran out; rows " + rows());
             assertEquals("null@0", row(m2), "K/S2 still waits for its key while the rerun runs; rows " + rows());
 
             partner.releaseLatest("K/S1");   // the rerun; X's first run stays held at the partner
             NodeIT.until(() -> partner.arrivals.size() == 4, "the key goes on after the rerun; rows " + rows());
-            assertEquals(List.of("K/S1", "K/S2"), partner.arrivals.subList(2, 4), "K/S2 next; arrivals " + partner.arrivals);
+            assertEquals(List.of("K/S1", "K/S2"), List.copyOf(partner.arrivals).subList(2, 4), "K/S2 next; arrivals " + partner.arrivals);
             assertEquals("node-x@1", row(m2), "on the restarted X; rows " + rows());
             assertEquals("gone", row(m1), "the rerun completed K/S1");
             partner.releaseLatest("K/S2");
             NodeIT.until(() -> partner.arrivals.size() == 5, "then K/S3; rows " + rows());
-            assertEquals(List.of("K/S1", "K/S2", "K/S3"), partner.arrivals.subList(2, 5), "the key in accept order after the restart");
+            assertEquals(List.of("K/S1", "K/S2", "K/S3"), List.copyOf(partner.arrivals).subList(2, 5), "the key in accept order after the restart");
             assertEquals("node-x@1", row(m3), "K/S3 on X as well; rows " + rows());
             partner.releaseLatest("K/S3");
             NodeIT.until(() -> rows().isEmpty(), "every row completed; rows " + rows());

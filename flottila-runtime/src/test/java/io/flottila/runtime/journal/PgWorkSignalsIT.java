@@ -319,7 +319,8 @@ class PgWorkSignalsIT {
         rt.clock().advance(Duration.ofMillis(1));
         barrier();
         assertEquals(2, notifyStatements(mark), "the window's later announces: one statement at its end: " + poolWire.since(mark));
-        List<String> folded = observed.subList(2, observed.size() - 1);
+        List<String> seen = List.copyOf(observed);
+        List<String> folded = seen.subList(2, seen.size() - 1);
         assertEquals(Set.of("w1 n-a n-b orders", "w1 n-a n-b invoices", "w1 n-a * orders"), Set.copyOf(folded), "the distinct payloads, a null target as *");
         assertEquals(3, folded.size(), "each once: " + folded);
     }

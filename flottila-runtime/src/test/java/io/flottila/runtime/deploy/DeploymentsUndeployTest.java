@@ -327,7 +327,8 @@ class DeploymentsUndeployTest {
         assertTrue(door.stopped(), "its consumer is stopped: " + door.history());
         assertStoppedDelivery(node, door);
         until(() -> node.doors.openProducers().isEmpty(), "its producer is closed: " + node.doors.producers());
-        List<String> since = List.copyOf(log.subList(mark, log.size()));
+        List<String> all = List.copyOf(log);
+        List<String> since = all.subList(mark, all.size());
         assertEquals(1, since.stream().filter("delete invoice"::equals).count(), "one delete of invoice's record: " + since);
         assertTrue(since.indexOf("delete invoice") < since.indexOf("stop " + FLOW), "the record delete (the commit point) comes before the stop: " + since);
         assertTrue(shelf.holds(invoice.sha()), "invoice's archive stays in the archive store");
@@ -836,7 +837,8 @@ class DeploymentsUndeployTest {
 
         assertTrue(carries(failed, "the queue's database is unreachable"), "the failure names the cause: " + failed + " / " + rootOf(failed));
         assertFalse(node.queue.hasItemsCalls().isEmpty(), "fixture: the queue was asked: " + node.queue.hasItemsCalls());
-        assertEquals(List.of(), log.subList(mark, log.size()).stream().filter(e -> e.startsWith("delete ")).toList(), "no delete was called: " + log);
+        List<String> sinceMark = List.copyOf(log);
+        assertEquals(List.of(), sinceMark.subList(mark, sinceMark.size()).stream().filter(e -> e.startsWith("delete ")).toList(), "no delete was called: " + log);
         assertEquals(rows, records.rows(), "shop's record stays");
         assertEquals(listed, node.deployments.packages(), "shop is listed as before");
         assertEquals(flows, node.deployments.flows(), "its flows too");

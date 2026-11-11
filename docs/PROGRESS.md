@@ -1,4 +1,12 @@
 
+## 2026-11-11 — FIX-160 test race: COW subList views read under concurrent append — done, review PASS (r2)
+Test-only. NodeShutdownWaitsForWorkerSettlementIT:363 streamed a live CopyOnWriteArrayList subList the log handler appends to (CME)
+Changed: snapshot (`List.copyOf`) before every subList; lazy failure messages via until(BooleanSupplier, Supplier<String>); same
+fix in JournalKill9IT, OrderedDeliveryIT, ReplayRetentionIT, LostBodyAdminIT, PgWorkSignalsIT, DeploymentsUndeployTest
+Checks: NodeShutdownWaitsForWorkerSettlementIT 20/20 runs exit 0, 4/0/0/0 each (agent/work/FIX-160-v.summary, v1..20.xml) ·
+touched classes 33/0/0/0 (FIX-160-touched.log) · coverage baseline not rewritten (no production change; partial-run reports)
+Review: r1 FAIL (per-run counts missing from -q logs), r2 PASS on the XML evidence
+
 ## 2026-11-11 — CORE-7 batched completion of unkeyed work items (D-122 draft, F-31) — done, review PASS (r2)
 Context compacted mid task (re-verified git status/log). Deviation: ARCHITECTURE §4 fence (D-101 (2) amended), §7, changelog 3.7, F-31
 Test first: FlowWorkerCompleteUnkeyedTest, PgWorkQueueBatchedCompletionIT (100 completions → 2 statements, red 101),

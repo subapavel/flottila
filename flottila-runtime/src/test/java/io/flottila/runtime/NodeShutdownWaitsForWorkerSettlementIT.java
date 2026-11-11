@@ -49,6 +49,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
@@ -221,12 +222,23 @@ class NodeShutdownWaitsForWorkerSettlementIT {
 
     /** Spins (yielding, never sleeping) until {@code condition} holds; fails after 20 s naming what never happened. */
     static void until(BooleanSupplier condition, String what) {
+        until(condition, () -> what);
+    }
+
+    /** As {@link #until(BooleanSupplier, String)}, the failure message built only when it fails, from the state then. */
+    static void until(BooleanSupplier condition, Supplier<String> what) {
         long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
         while (!condition.getAsBoolean()) {
-            if (System.nanoTime() > deadline) fail("not within 20 s: " + what);
+            if (System.nanoTime() > deadline) fail("not within 20 s: " + what.get());
             Thread.onSpinWait();
             Thread.yield();
         }
+    }
+
+    /** The lines appended from index {@code from} on, read from a snapshot of the live list, never a view of it. */
+    static List<String> since(List<String> lines, int from) {
+        List<String> snapshot = List.copyOf(lines);
+        return snapshot.subList(from, snapshot.size());
     }
 
     /** Every record of the {@code io.flottila} loggers as "LEVEL message", from now until the handler is removed. */
@@ -360,8 +372,9 @@ class NodeShutdownWaitsForWorkerSettlementIT {
             Thread.setDefaultUncaughtExceptionHandler((t, failure) -> uncaught.add(t + ": " + failure));
             int logged = lines.size();
             hold.countDown();
-            until(() -> lines.subList(logged, lines.size()).stream().anyMatch(l -> (l.startsWith("WARNING ") || l.startsWith("SEVERE ")) && l.contains(id)),
-                    "the worker's run ends after the release and its failure is logged naming " + id + ": " + lines.subList(logged, lines.size()));
+            // a snapshot every time: the handler appends while we read, and a live COW subList throws on growth (FIX-160)
+            until(() -> since(lines, logged).stream().anyMatch(l -> (l.startsWith("WARNING ") || l.startsWith("SEVERE ")) && l.contains(id)),
+                    () -> "the worker's run ends after the release and its failure is logged naming " + id + ": " + since(lines, logged));
             until(() -> carrier.closes() > 0, "the worker's run ended (its settle tried or skipped): the worker closes its producers at its chain's end: " + carrier);
             assertEquals(claimed, workRows(id), "a worker finishing after the stores closed does not settle: the row is as claimed");
             assertEquals(List.of(), uncaught, "the late finish throws nowhere");

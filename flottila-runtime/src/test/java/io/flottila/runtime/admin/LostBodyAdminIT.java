@@ -229,7 +229,8 @@ class LostBodyAdminIT {
         saysLost(send(HttpMethod.POST, "/admin/messages/" + x.id() + "/replay?from=1"), 409, x.id(), "a replay of a lost body");
         saysLost(send(HttpMethod.POST, "/admin/dlq/" + x.id() + "/retry"), 409, x.id(), "a DLQ retry of a lost body");
         assertEquals(ran, probe.total(), "no step ran");
-        for (String id : minted.subList(mintedBefore, minted.size())) assertEquals(List.of(), messages.timeline(id).await(), "no row under " + id);
+        List<String> mintedNow = List.copyOf(minted);   // a snapshot: the id generator appends from other threads
+        for (String id : mintedNow.subList(mintedBefore, mintedNow.size())) assertEquals(List.of(), messages.timeline(id).await(), "no row under " + id);
         assertTrue(dlq.get(x.id()).await().isPresent(), "the refused retry keeps its DLQ row, for the operator");
 
         saysLost(send(HttpMethod.GET, "/admin/messages/" + x.id() + "/steps/0/body"), 410, x.id(), "the GET of a lost body: gone for good");

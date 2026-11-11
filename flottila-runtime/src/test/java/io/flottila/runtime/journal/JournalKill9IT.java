@@ -80,9 +80,9 @@ class JournalKill9IT {
         try {
             if (!enough.await(BOUND_SECONDS, TimeUnit.SECONDS)) {
                 fail("the child acknowledged " + acks.get() + " of " + KILL_AFTER + " records within " + BOUND_SECONDS + " s; out: "
-                        + lines.subList(Math.max(0, lines.size() - 5), lines.size()) + "; err: " + Files.readString(stderr));
+                        + tail(lines, 5) + "; err: " + Files.readString(stderr));
             }
-            assertTrue(child.isAlive(), "killed mid-run, while it still appends: " + lines.subList(Math.max(0, lines.size() - 3), lines.size()));
+            assertTrue(child.isAlive(), () -> "killed mid-run, while it still appends: " + tail(lines, 3));
         } finally {
             child.destroyForcibly();
         }
@@ -137,5 +137,11 @@ class JournalKill9IT {
                     options.add("append=true");
                     return "-javaagent:" + jar + "=" + String.join(",", options);
                 });
+    }
+
+    /** The last {@code n} lines, from a snapshot: the reader thread appends while the message is built (FIX-160). */
+    static List<String> tail(List<String> lines, int n) {
+        List<String> snapshot = List.copyOf(lines);
+        return snapshot.subList(Math.max(0, snapshot.size() - n), snapshot.size());
     }
 }

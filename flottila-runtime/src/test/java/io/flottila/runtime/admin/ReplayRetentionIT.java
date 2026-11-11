@@ -249,7 +249,8 @@ class ReplayRetentionIT {
         assertEquals(409, refused.status(), refused.body().toString());
         assertEquals(new JsonObject().put("error", "the body of step 1 of message " + r + " (" + input + ") was removed by retention"), refused.json());
         assertEquals(ran, probe.total(), "no step ran");
-        for (String id : minted.subList(mintedBefore, minted.size())) assertEquals(List.of(), messages.timeline(id).await(), "no row under " + id);
+        List<String> mintedNow = List.copyOf(minted);   // a snapshot: the id generator appends from other threads
+        for (String id : mintedNow.subList(mintedBefore, mintedNow.size())) assertEquals(List.of(), messages.timeline(id).await(), "no row under " + id);
 
         Answer body = send(HttpMethod.GET, "/admin/messages/" + r + "/steps/1/body");
         assertEquals(404, body.status(), body.body().toString());
