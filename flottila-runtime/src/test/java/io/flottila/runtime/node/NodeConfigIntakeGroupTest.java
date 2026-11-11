@@ -16,7 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * CORE-6b packet item 7 (D-109): the intake group's keys, read by NodeConfig (the only env reader), each with its default, finite
  * and range-checked, a refusal an {@link IllegalArgumentException} naming the key — {@code FLOTTILA_INTAKE_GROUP_MAX} 64 (1..1024),
  * {@code FLOTTILA_INTAKE_GROUP_BYTES} 1 MiB (64 KiB..64 MiB), {@code FLOTTILA_INTAKE_GROUP_WINDOW} PT0.001S (PT0S..PT0.05S, whole
- * milliseconds), {@code FLOTTILA_INTAKE_GROUP_CONCURRENCY} 4 (1..64, below {@code FLOTTILA_PG_POOL_SIZE}: refused naming both).
+ * milliseconds), {@code FLOTTILA_INTAKE_GROUP_CONCURRENCY} 4 (1..64, below the intake pool {@code FLOTTILA_PG_POOL_INTAKE}: refused
+ * naming both — CORE-17, D-130 draft amends D-109's bound "over FLOTTILA_PG_POOL_SIZE").
  *
  * <p>The API assumed (test-author): {@code NodeConfig.intakeGroup()} answering {@code record NodeConfig.IntakeGroup(int max, long
  * bytes, Duration window, int concurrency)}; {@code IntakeGroup.SINGLE} is a group of one with no window.
@@ -28,6 +29,7 @@ class NodeConfigIntakeGroupTest {
     static final String WINDOW = "FLOTTILA_INTAKE_GROUP_WINDOW";
     static final String CONCURRENCY = "FLOTTILA_INTAKE_GROUP_CONCURRENCY";
     static final String POOL = "FLOTTILA_PG_POOL_SIZE";
+    static final String INTAKE = "FLOTTILA_PG_POOL_INTAKE";
 
     static NodeConfig.IntakeGroup read(String... pairs) {
         Map<String, String> env = minimal();
@@ -47,7 +49,7 @@ class NodeConfigIntakeGroupTest {
         assertEquals(Duration.ofMillis(50), read(WINDOW, "PT0.05S").window());
         assertEquals(Duration.ofMillis(7), read(WINDOW, "PT0.007S").window(), "a value between the edges, as given");
         assertEquals(1, read(CONCURRENCY, "1").concurrency());
-        assertEquals(64, read(CONCURRENCY, "64", POOL, "65").concurrency(), "64 below a pool of 65");
+        assertEquals(64, read(CONCURRENCY, "64", POOL, "1024", INTAKE, "65").concurrency(), "64 below an intake pool of 65");
 
         List<List<String>> refused = List.of(
                 List.of(MAX, "0"), List.of(MAX, "1025"), List.of(MAX, "-1"), List.of(MAX, "many"),
@@ -63,16 +65,22 @@ class NodeConfigIntakeGroupTest {
         }
     }
 
-    /** Architect (CORE-6b red approved): an unset concurrency is min(4, max(1, pool - 1)); an explicit one above the bound is refused. */
+    /**
+     * Architect (CORE-6b red approved; CORE-17 rewrite approved: the bound is over the intake pool now): an unset concurrency is
+     * min(4, max(1, intake - 1)); an explicit one above the bound is refused.
+     */
     @Test
-    void anUnsetConcurrencyDefaultsBelowThePool() {
-        assertEquals(3, read(POOL, "4").concurrency(), "pool 4, concurrency unset: min(4, 3)");
-        assertEquals(1, read(POOL, "1").concurrency(), "pool 1, concurrency unset: max(1, 0)");
-        assertEquals(1, read(POOL, "2").concurrency(), "pool 2, concurrency unset: min(4, 1)");
-        assertEquals(4, read(POOL, "16").concurrency(), "pool 16, concurrency unset: min(4, 15)");
-        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> read(POOL, "4", CONCURRENCY, "4"),
-                "pool 4 with an explicit concurrency 4 is refused");
-        assertTrue(e.getMessage().contains(CONCURRENCY) && e.getMessage().contains(POOL), "naming both keys: " + e.getMessage());
+    void anUnsetConcurrencyDefaultsBelowTheIntakePool() {
+        assertEquals(3, read(INTAKE, "4").concurrency(), "intake 4 (of 21), concurrency unset: min(4, 3)");
+        assertEquals(1, read(INTAKE, "1").concurrency(), "intake 1, concurrency unset: max(1, 0)");
+        assertEquals(1, read(INTAKE, "2").concurrency(), "intake 2, concurrency unset: min(4, 1)");
+        assertEquals(4, read(POOL, "32", INTAKE, "16").concurrency(), "intake 16 (of 32), concurrency unset: min(4, 15)");
+        assertEquals(1, read(POOL, "4").concurrency(), "pool 4, intake unset (2): min(4, 1) — no longer min(4, 3) over the pool");
+        assertEquals(3, read(POOL, "8").concurrency(), "pool 8, intake unset (4): min(4, 3)");
+        assertEquals(4, read(POOL, "16").concurrency(), "pool 16, intake unset (5): min(4, 4)");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> read(INTAKE, "4", CONCURRENCY, "4"),
+                "intake 4 with an explicit concurrency 4 is refused");
+        assertTrue(e.getMessage().contains(CONCURRENCY) && e.getMessage().contains(INTAKE), "naming both keys: " + e.getMessage());
     }
 
     @Test
@@ -84,17 +92,21 @@ class NodeConfigIntakeGroupTest {
     }
 
     @Test
-    void concurrencyNotBelowThePoolIsRefusedNamingBoth() {
+    void concurrencyNotBelowTheIntakePoolIsRefusedNamingBoth() {
         for (String[] refused : new String[][] {{"4", "4"}, {"5", "4"}, {"16", "16"}, {"64", "16"}}) {
-            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> read(CONCURRENCY, refused[0], POOL, refused[1]),
-                    "concurrency " + refused[0] + " over a pool of " + refused[1] + " is refused");
-            assertTrue(e.getMessage().contains(CONCURRENCY) && e.getMessage().contains(POOL), "the refusal names both keys: " + e.getMessage());
+            // a total of 1024: only the intake pool can bound the concurrency
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> read(CONCURRENCY, refused[0], POOL, "1024", INTAKE, refused[1]),
+                    "concurrency " + refused[0] + " over an intake pool of " + refused[1] + " is refused");
+            assertTrue(e.getMessage().contains(CONCURRENCY) && e.getMessage().contains(INTAKE), "the refusal names both keys: " + e.getMessage());
         }
-        assertEquals(3, read(CONCURRENCY, "3", POOL, "4").concurrency(), "one below the pool is accepted");
-        assertEquals(4, read(POOL, "5").concurrency(), "the default 4 below a pool of 5");
-        assertEquals(1, read(CONCURRENCY, "1", POOL, "1").concurrency(), "the bound is max(1, pool - 1): one over a pool of one");
-        IllegalArgumentException two = assertThrows(IllegalArgumentException.class, () -> read(CONCURRENCY, "2", POOL, "1"),
-                "two over a pool of one is above max(1, pool - 1)");
-        assertTrue(two.getMessage().contains(CONCURRENCY) && two.getMessage().contains(POOL), "naming both keys: " + two.getMessage());
+        assertEquals(3, read(CONCURRENCY, "3", INTAKE, "4").concurrency(), "one below the intake pool is accepted");
+        assertEquals(4, read(INTAKE, "5").concurrency(), "the default 4 below an intake pool of 5");
+        assertEquals(1, read(CONCURRENCY, "1", INTAKE, "1").concurrency(), "the bound is max(1, intake - 1): one over an intake pool of one");
+        IllegalArgumentException two = assertThrows(IllegalArgumentException.class, () -> read(CONCURRENCY, "2", INTAKE, "1"),
+                "two over an intake pool of one is above max(1, intake - 1)");
+        assertTrue(two.getMessage().contains(CONCURRENCY) && two.getMessage().contains(INTAKE), "naming both keys: " + two.getMessage());
+        IllegalArgumentException overIntake = assertThrows(IllegalArgumentException.class, () -> read(CONCURRENCY, "8", POOL, "9", INTAKE, "8"),
+                "8 is below the total 9 (the old bound) but above max(1, 8 - 1) of the intake pool");
+        assertTrue(overIntake.getMessage().contains(CONCURRENCY) && overIntake.getMessage().contains(INTAKE), "naming both keys: " + overIntake.getMessage());
     }
 }

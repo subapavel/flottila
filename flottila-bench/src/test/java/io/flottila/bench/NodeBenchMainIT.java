@@ -203,7 +203,7 @@ class NodeBenchMainIT {
             assertEquals(text(db, "select setting from pg_settings where name = '" + name + "'"), String.valueOf(json.getValue(name)),
                     name + " as pg_settings shows it on the run's database: " + json.encode());
         }
-        assertEquals(16, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default): " + json.encode());
+        assertEquals(21, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default, F-33): " + json.encode());
         assertNotNull(json.getDouble("commitsPerMessage"), "the ack record carries commitsPerMessage: " + json.encode());
         assertTrue(json.getDouble("commitsPerMessage") >= 1.0, "each 202 is at least one commit: " + json.encode());
         // fsync off: pg_stat_wal.wal_sync does not count, the field is there and zero

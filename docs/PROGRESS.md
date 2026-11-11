@@ -1,4 +1,16 @@
 
+## 2026-11-11 — CORE-17 Postgres pools by role: intake apart from work, sessions named by role (F-27 I4, D-130 draft) — done, review PASS (r3)
+Deviation: F-33 (the D-130 split of 16 = 5 + 11 starved the workers; default total 21 = 5 intake + 16 work, 23 connections per node)
+Test first: NodeConfigPoolsTest, NodeConfigIntakeGroupTest, NodeConnectOptionsTest:78, NodePoolRolesIT :170/:197 (red CORE-17-red*.log);
+r2 NodeConfigPoolsTest:126/:144, NodePoolRolesIT:198 listen; r3 default 21 (CORE-17-r3-red*.log); InProcess + JournalRowsIT by implementer
+Change: NodeConfig.Pg intakePoolSize, FLOTTILA_PG_POOL_INTAKE, NodeConfig ctor refuses a split leaving either pool none; Node builds
+intake (PgIntake, journal segment rows, durability check) and work pools, application_name flottila-<role>@<node>; bench JSON intakePoolSize
+Checks: verify -Pit 3713/0/0/0 fresh XML, NodeTakeoverLedgerIT 6/6 alone (after FIX-156), bench 255/0, coverage no decrease VERIFIED_PASS
+Mutants: split refusal both terms, formula, bound, names, close, default 21 killed; M8 equivalent, M12/M14 accepted
+Bench (indicative, RESULTS top): at 21/5 ACK p99 51–63 ms vs one pool 81–104, backlog flat; 16/5 grew +25–45 k at r2000 all
+Review: r1 FAIL (in-process split, no measurement, §4), r2 FAIL (takeover flake 10/11, RESULTS, P5), r3 PASS. CONSIDER-12 warm intake
+Owner: F-33 asks whether 23 connections per node is acceptable against max_connections
+
 ## 2026-11-11 — FIX-156 NodeTakeoverLedgerIT ack() backs off on a 503 instead of five back-to-back tries — done, review PASS
 Red: the flake itself, "message N was not ACKed: 503 admission refused … 4/4 requests", 2/6 alone on 32840d4 (agent/work/CORE-17-flake/)
 Change: test fixture only. ack() retries a 503 with 10 ms doubling to 200 ms until 10 s, then fails with tries and last answer;

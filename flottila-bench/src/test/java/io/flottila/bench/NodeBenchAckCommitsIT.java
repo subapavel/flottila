@@ -66,7 +66,7 @@ class NodeBenchAckCommitsIT {
         for (String name : List.of("commit_siblings", "wal_sync_method", "fsync", "full_page_writes")) {
             assertEquals(SERVER.get(name), setting(json, name), name + " as pg_settings shows it, not a default: " + json.encode());
         }
-        assertEquals(16, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default; the bench does not set it): " + json.encode());
+        assertEquals(21, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default, F-33; the bench does not set it): " + json.encode());
     }
 
     @Test

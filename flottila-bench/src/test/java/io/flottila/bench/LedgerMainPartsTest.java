@@ -62,7 +62,7 @@ class LedgerMainPartsTest {
         assertEquals("ledger-node-2", node.nodeId());
         assertEquals(0, node.admin().port());
         assertFalse(node.deployed(), "env dev: the run's nodes are not deployed ones");
-        assertEquals(new NodeConfig.Pg("db.local", 6543, "x_bench", "u", "p", 16), node.pg());
+        assertEquals(new NodeConfig.Pg("db.local", 6543, "x_bench", "u", "p", 21), node.pg(), "the FLOTTILA_PG_POOL_SIZE default, 5 intake + 16 work (F-33)");
 
         LedgerMain.Options s3 = LedgerMain.options(new String[] {"--db", "x_bench", "--s3-endpoint", "http://127.0.0.1:4566", "--s3-region", "eu-west-1",
                 "--s3-bucket", "b", "--s3-prefix", "pre", "--s3-access-key", "ak", "--s3-secret-key", "sk"});

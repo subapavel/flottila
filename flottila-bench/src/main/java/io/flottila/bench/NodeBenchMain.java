@@ -449,7 +449,8 @@ public final class NodeBenchMain {
                 // observed on a session opened as the node's were, not the flag
                 .put("syncCommit", "on".equals(server.getString(0))).put("postgres", server.getString(1))
                 .put("schemaVersion", migrated.schemaVersion()).put("bodyBytes", body.length()).put("machine", BenchMain.machine())
-                .put("date", Instant.now().toString()).put("commit", o.commit()).put("poolSize", config.pg().poolSize());
+                .put("date", Instant.now().toString()).put("commit", o.commit()).put("poolSize", config.pg().poolSize())
+                .put("intakePoolSize", config.pg().intakePoolSize());   // CORE-17 (D-130 draft): the intake pool's share of poolSize
         for (Row r : pool.query("select name, setting from pg_settings where name in ('" + String.join("', '", SETTINGS) + "')").execute().await()) {
             json.put(r.getString(0), r.getString(1));
         }

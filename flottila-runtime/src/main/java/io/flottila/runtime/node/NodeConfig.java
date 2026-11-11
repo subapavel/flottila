@@ -67,7 +67,8 @@ import java.util.regex.Pattern;
  * @param intakeGroup the intake's group commit (CORE-6b, D-109): {@code FLOTTILA_INTAKE_GROUP_MAX} (64, 1..1024; 1 = no grouping),
  *                    {@code FLOTTILA_INTAKE_GROUP_BYTES} (1 MiB, 64 KiB..64 MiB), {@code FLOTTILA_INTAKE_GROUP_WINDOW} (PT0.001S,
  *                    PT0S..PT0.05S in whole milliseconds), {@code FLOTTILA_INTAKE_GROUP_CONCURRENCY} (1..64, at most
- *                    max(1, {@code FLOTTILA_PG_POOL_SIZE} − 1); unset, min(4, that bound)); draft defaults until CORE-GATE
+ *                    max(1, {@code FLOTTILA_PG_POOL_INTAKE} − 1), the intake pool's bound (D-130 draft amends D-109's bound over
+ *                    {@code FLOTTILA_PG_POOL_SIZE}); unset, min(4, that bound)); draft defaults until CORE-GATE
  * @param nodeLease {@code FLOTTILA_NODE_LEASE} (D-101 (1), F-28), ISO-8601, above zero and at most PT10M (PT30S): the node's
  *                  lease in the membership; its fence closes half a lease after its last renewed send
  * @param nodeLeaseRenew {@code FLOTTILA_NODE_LEASE_RENEW}, ISO-8601, above zero and at most a quarter of the lease (PT5S): how
@@ -82,8 +83,9 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
-     * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5). The intake's groups in flight leave the
-     * pool a connection: at most max(1, pool size − 1) of them (CORE-6b). The node lease is renewed at least four times a lease
+     * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5). The intake pool's share of the Postgres
+     * connections is at least 1 and below their total, so each pool keeps a connection (D-130 draft). The intake's groups in flight leave the
+     * intake pool a connection: at most max(1, intake pool size − 1) of them (CORE-6b, D-130 draft). The node lease is renewed at least four times a lease
      * (D-101 (1)): a renew or two may fail without closing the fence.
      */
     public NodeConfig {
@@ -113,9 +115,14 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
-        if (intakeGroup.concurrency() > IntakeGroup.bound(pg.poolSize())) {
-            throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_CONCURRENCY " + intakeGroup.concurrency() + " is above max(1, FLOTTILA_PG_POOL_SIZE "
-                    + pg.poolSize() + " - 1): each group in flight holds a connection, and the pool keeps one for the rest of the node");
+        if (pg.intakePoolSize() < 1 || pg.intakePoolSize() >= pg.poolSize()) {
+            throw new IllegalArgumentException("FLOTTILA_PG_POOL_INTAKE " + pg.intakePoolSize() + " must be at least 1 and below FLOTTILA_PG_POOL_SIZE "
+                    + pg.poolSize() + ": the total of both pools, and each pool keeps at least one connection (D-130)");
+        }
+        if (intakeGroup.concurrency() > IntakeGroup.bound(pg.intakePoolSize())) {
+            throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_CONCURRENCY " + intakeGroup.concurrency() + " is above max(1, FLOTTILA_PG_POOL_INTAKE "
+                    + pg.intakePoolSize() + " - 1): each group in flight holds a connection of the intake pool, and it keeps one for the"
+                    + " intake's other statements");
         }
     }
 
@@ -128,12 +135,12 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 journal, journalKey, journalSweep, intakeGroup, NODE_LEASE_DEFAULT, NODE_LEASE_RENEW_DEFAULT);
     }
 
-    /** A node whose intake groups have the default keys for its pool ({@link IntakeGroup#defaults}), as {@link #from} reads an env without them. */
+    /** A node whose intake groups have the default keys for its intake pool ({@link IntakeGroup#defaults}), as {@link #from} reads an env without them. */
     public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
                       Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
                       Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep) {
         this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
-                journal, journalKey, journalSweep, IntakeGroup.defaults(pg.poolSize()));
+                journal, journalKey, journalSweep, IntakeGroup.defaults(pg.intakePoolSize()));
     }
 
     /** A node whose sweeper has the default keys (PT10S, PT1M, PT1H), as {@link #from} reads an env without them. */
@@ -217,7 +224,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param database {@code FLOTTILA_PG_DATABASE} (flottila)
      * @param user {@code FLOTTILA_PG_USER} (flottila)
      * @param password {@code FLOTTILA_PG_PASSWORD} (empty)
-     * @param poolSize {@code FLOTTILA_PG_POOL_SIZE}, 1 to 1024 (16)
+     * @param poolSize {@code FLOTTILA_PG_POOL_SIZE}, 2 to 1024 (21 = 5 intake + 16 work, F-33): the pooled connections of both pools together (D-130 draft)
      * @param sslMode {@code FLOTTILA_PG_SSL_MODE}: {@code disable}, {@code verify-ca} or {@code verify-full} (D-124); unset,
      *                {@code disable} on a loopback host ({@code localhost}, {@code 127.0.0.1}, {@code ::1}), else {@code verify-full}
      * @param sslRootCert {@code FLOTTILA_PG_SSL_ROOT_CERT}: the PEM CA bundle that signs the server's certificate, required by a
@@ -225,10 +232,13 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      *                    missing, unreadable or empty; not a secret
      * @param durability {@code FLOTTILA_PG_DURABILITY}: {@code local} or {@code ha} (D-127 draft); unset, {@code local} in a
      *                   non-deployed environment ({@code dev}, {@code ci}) and {@code ha} in every deployed one, whatever the host
+     * @param intakePoolSize {@code FLOTTILA_PG_POOL_INTAKE}, 1 to 1023 and below {@code poolSize} (D-130 draft): the intake pool's
+     *                       share — the at-least-once saves and the journal's segment rows; unset, {@link #intakeDefault}; the work
+     *                       pool keeps the rest ({@link #workPoolSize}). The split is checked by the {@link NodeConfig} constructor, not here
      * @since 0.1
      */
     public record Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
-                     Durability durability) {
+                     Durability durability, int intakePoolSize) {
 
         /**
          * What an accepted message survives on the Postgres side (D-127 draft, D-114, D-115), checked once at the node's start
@@ -296,6 +306,24 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
 
         /**
+         * The intake pool's share by {@link #intakeDefault} of {@code poolSize}: in-process callers; env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the connections of both pools at most
+         * @param sslMode how the link is secured
+         * @param sslRootCert the CA of a verifying mode
+         * @param durability what an accepted message survives
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
+                  Durability durability) {
+            this(host, port, database, user, password, poolSize, sslMode, sslRootCert, durability, intakeDefault(poolSize));
+        }
+
+        /**
          * The {@link Durability#LOCAL local} profile: in-process callers; env parsing never uses it.
          *
          * @param host the server's host
@@ -303,7 +331,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
          * @param database the database
          * @param user the user
          * @param password the user's password
-         * @param poolSize the pool's connections at most
+         * @param poolSize the connections of both pools at most
          * @param sslMode how the link is secured
          * @param sslRootCert the CA of a verifying mode
          */
@@ -320,17 +348,37 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
          * @param database the database
          * @param user the user
          * @param password the user's password
-         * @param poolSize the pool's connections at most
+         * @param poolSize the connections of both pools at most
          */
         public Pg(String host, int port, String database, String user, String password, int poolSize) {
             this(host, port, database, user, password, poolSize, SslMode.DISABLE, Optional.empty());
+        }
+
+        /**
+         * The intake pool's share when {@code FLOTTILA_PG_POOL_INTAKE} is unset: max(1, min(5, {@code poolSize} / 2)) — 5 of 21 (the
+         * default), 4 of 8, 2 of 4, 1 of 2 —, so the work pool keeps at least as many for {@code poolSize} ≥ 2.
+         *
+         * @param poolSize the connections of both pools
+         * @return the intake pool's connections at most
+         */
+        public static int intakeDefault(int poolSize) {
+            return Math.max(1, Math.min(5, poolSize / 2));
+        }
+
+        /**
+         * The work pool's share: everything but the intake pool.
+         *
+         * @return {@code poolSize - intakePoolSize}
+         */
+        public int workPoolSize() {
+            return poolSize - intakePoolSize;
         }
 
         /** The password redacted: a log line never carries it; the mode and the CA's path are shown. */
         @Override
         public String toString() {
             return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize
-                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + ", durability=" + durability + "]";
+                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + ", durability=" + durability + ", intakePoolSize=" + intakePoolSize + "]";
         }
     }
 
@@ -351,14 +399,17 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
          */
         public static final IntakeGroup SINGLE = new IntakeGroup(1, 64 * MIB, Duration.ZERO, 1024);
 
-        /** Groups in flight at most over a pool of {@code poolSize}: max(1, poolSize − 1), one connection left for the rest of the node. */
-        static int bound(int poolSize) {
-            return Math.max(1, poolSize - 1);
+        /**
+         * Groups in flight at most over an intake pool of {@code intakePoolSize}: max(1, intakePoolSize − 1), one connection left for
+         * the intake's other statements (D-130 draft).
+         */
+        static int bound(int intakePoolSize) {
+            return Math.max(1, intakePoolSize - 1);
         }
 
-        /** The draft defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight. */
-        public static IntakeGroup defaults(int poolSize) {
-            return new IntakeGroup(64, MIB, Duration.ofMillis(1), Math.min(4, bound(poolSize)));
+        /** The draft defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight over an intake pool of {@code intakePoolSize}. */
+        public static IntakeGroup defaults(int intakePoolSize) {
+            return new IntakeGroup(64, MIB, Duration.ofMillis(1), Math.min(4, bound(intakePoolSize)));
         }
     }
 
@@ -520,10 +571,12 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         AdminServer.Config admin = new AdminServer.Config(env.getOrDefault("FLOTTILA_ADMIN_HOST", "127.0.0.1"),
                 (int) number(env, "FLOTTILA_ADMIN_PORT", 8081, 0, 65535), Optional.ofNullable(env.get("FLOTTILA_ADMIN_TOKEN")));
         String pgHost = env.getOrDefault("FLOTTILA_PG_HOST", "localhost");
+        int poolSize = (int) number(env, "FLOTTILA_PG_POOL_SIZE", 21, 2, 1024);
+        int intakePoolSize = (int) number(env, "FLOTTILA_PG_POOL_INTAKE", Pg.intakeDefault(poolSize), 1, 1023);
         Pg pg = new Pg(pgHost, (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
                 env.getOrDefault("FLOTTILA_PG_DATABASE", "flottila"), env.getOrDefault("FLOTTILA_PG_USER", "flottila"),
-                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), (int) number(env, "FLOTTILA_PG_POOL_SIZE", 16, 1, 1024), sslMode(env, pgHost), sslRootCert(env),
-                durability(env, deployed(name)));
+                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), poolSize, sslMode(env, pgHost), sslRootCert(env),
+                durability(env, deployed(name)), intakePoolSize);
         long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, MEMORY_TIER_MIN, Integer.MAX_VALUE);
         long memoryBudget = number(env, "FLOTTILA_BLOB_MEMORY_BUDGET", 256 * MIB, 1, Long.MAX_VALUE);
         if (memoryTier > memoryBudget) {
@@ -536,7 +589,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
-                MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.poolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
+                MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT));
     }
 
@@ -585,11 +638,11 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     /**
-     * The {@code FLOTTILA_INTAKE_GROUP_*} keys over a pool of {@code poolSize}: each range-checked naming its key; the concurrency's
-     * bound by the pool is the record's ({@link NodeConfig#NodeConfig}).
+     * The {@code FLOTTILA_INTAKE_GROUP_*} keys over an intake pool of {@code intakePoolSize}: each range-checked naming its key; the
+     * concurrency's bound by the intake pool is the record's ({@link NodeConfig#NodeConfig}).
      */
-    private static IntakeGroup intakeGroup(Map<String, String> env, int poolSize) {
-        IntakeGroup defaults = IntakeGroup.defaults(poolSize);
+    private static IntakeGroup intakeGroup(Map<String, String> env, int intakePoolSize) {
+        IntakeGroup defaults = IntakeGroup.defaults(intakePoolSize);
         return new IntakeGroup((int) number(env, "FLOTTILA_INTAKE_GROUP_MAX", defaults.max(), 1, 1024),
                 number(env, "FLOTTILA_INTAKE_GROUP_BYTES", defaults.bytes(), 64 * 1024, 64 * MIB), groupWindow(env, defaults.window()),
                 (int) number(env, "FLOTTILA_INTAKE_GROUP_CONCURRENCY", defaults.concurrency(), 1, 64));

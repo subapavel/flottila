@@ -74,17 +74,19 @@ import java.util.function.Function;
  * A running node (D-057 b amended): the Postgres stores, the blob store, the components and the admin API on its caller's
  * Vert.x. {@link #start} and {@link #close} block on Vert.x futures: call them on a virtual thread.
  *
- * <p>{@code start} builds the pool (no connection yet), the timer, ids and clock, builds the components from them and from the
+ * <p>{@code start} builds the two pools (D-130 draft: the intake pool of {@code FLOTTILA_PG_POOL_INTAKE} connections for the
+ * at-least-once saves and the journal's segment rows, the work pool of the rest of {@code FLOTTILA_PG_POOL_SIZE} for everything
+ * else; no connection yet), the timer, ids and clock, builds the components from them and from the
  * node's blob store (bound once the journal is open, see below), refuses two components
  * for one scheme (in every environment) and, in a deployed environment, a mock binding — the scheme {@code mock}, or a component
  * class in {@code io.flottila.components.mock..} or {@code io.flottila.testkit..} — and, in a deployed environment, the dir archive
  * store and an S3 endpoint over plain http (D-070) before it touches Postgres, and loads the body journal's master key (D-106:
  * from {@code FLOTTILA_JOURNAL_KEY_FILE}, {@code FLOTTILA_JOURNAL_KEY} or the opted-in generated one; none refuses the start, so a
  * keyless node migrates nothing). It then checks its durability profile ({@code FLOTTILA_PG_DURABILITY}, D-127 draft, D-061
- * amended: {@link PgDurability}) in one read before it migrates, so a refused node leaves its database untouched, migrates the
+ * amended: {@link PgDurability}) in one read on the intake pool before it migrates, so a refused node leaves its database untouched, migrates the
  * database, opens the body journal in {@code FLOTTILA_JOURNAL_DIR} (D-105:
  * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), builds
- * the blob store on it (CORE-4c2: bodies in the journal under the {@code default} tenant's key, their refs in the pool, bounded by
+ * the blob store on it (CORE-4c2: bodies in the journal under the {@code default} tenant's key, their refs in the work pool, bounded by
  * {@code FLOTTILA_BLOB_DURABLE_MAX}; no spool), joins the membership as a new incarnation of its node id (D-101 (1), F-28: a
  * {@link NodeLease} over a {@link PgMembership} on a connection of its own, renewed every {@code FLOTTILA_NODE_LEASE_RENEW}; its
  * fence fences every at-least-once worker the deployments build; superseded, the node halts — the process exits with
@@ -97,22 +99,22 @@ import java.util.function.Function;
  * {@link CpuSampler} when {@code FLOTTILA_CPU_SAMPLING} sets a period (D-094), restores
  * what the pool's records name ({@link Deployments#restore}, D-070: rows that cannot be read or a data directory that cannot be
  * written fail the start; a package or a flow that cannot be restored is listed FAILED and the node starts), builds the
- * {@link Retention} job over the pool, the clock and the timer ({@code FLOTTILA_RETENTION_*}, D-088) and only then starts the admin
+ * {@link Retention} job over the work pool, the clock and the timer ({@code FLOTTILA_RETENTION_*}, D-088) and only then starts the admin
  * server with the deploy, work, replay and retry routes, the flows' CPU (the sampler's aggregate, read every 5 s on the node's timer and failed once a read failed, or off) and the health checks
  * {@code postgres}, {@code deployments} (DOWN while
  * anything is listed FAILED, {@link Deployments#health}) and {@code journal} ({@link Journal#health}: DOWN once it failed and
  * stopped, DEGRADED while a segment row is retried), then the
  * retention job, whose first run begins at once and does not hold
  * the start, then the journal's {@link SegmentSweeper} ({@code FLOTTILA_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
- * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the node lease
- * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening
+ * restored flows stop while the pools are open; a stop that fails is added to the start's failure as suppressed), then the node lease
+ * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the journal, the store, the intake pool, the work pool, the S3 client, the Valkey client — so nothing is left running, listening
  * or pooled; {@code /ready}'s lifecycle is UP only once the start returns (D-123). {@code close} first marks the node not ready
  * ({@code /ready} 503), then closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
  * released, while the admin port still answers — then stops renewing the node lease and closes its connection (the row expires;
  * a peer or the next start takes the items over), then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
  * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then the work queue's completion
  * batch (every completion handed over answered first, D-122), then the work events, then closes the journal (its spills and persists in flight first; its {@code LOCK}
- * given up), then flushes and closes the message store, then closes the pool, then the S3
+ * given up), then flushes and closes the message store, then closes the intake pool, then the work pool, then the S3
  * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
  *
  * @since 0.1
@@ -148,6 +150,9 @@ public final class Node implements AutoCloseable {
     private final SegmentSweeper sweeper;
     private final Journal journal;
     private final PgMessageStore messages;
+    /** The intake pool (D-130 draft): the at-least-once saves and the journal's segment rows. */
+    private final Pool intake;
+    /** The work pool (D-130 draft): every other statement of the node. */
     private final Pool pool;
     /** Closes the S3 client of an s3 archive store; nothing for a dir store. */
     private final Runnable closeS3;
@@ -160,8 +165,8 @@ public final class Node implements AutoCloseable {
     private final AtomicBoolean ready;
 
     private Node(Deployments deployments, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin, int adminPort,
-                 Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey,
-                 Runnable closeSignals, Runnable closeWork, AtomicBoolean ready) {
+                 Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool intake, Pool pool, Runnable closeS3,
+                 Runnable closeValkey, Runnable closeSignals, Runnable closeWork, AtomicBoolean ready) {
         this.deployments = deployments;
         this.lease = lease;
         this.membership = membership;
@@ -172,6 +177,7 @@ public final class Node implements AutoCloseable {
         this.sweeper = sweeper;
         this.journal = journal;
         this.messages = messages;
+        this.intake = intake;
         this.pool = pool;
         this.closeS3 = closeS3;
         this.closeValkey = closeValkey;
@@ -204,17 +210,22 @@ public final class Node implements AutoCloseable {
         Clock clock = Clock.systemUTC();
         NodeConfig.Blobs tiers = config.blobs();
         NodeConfig.Pg pg = config.pg();
-        // building the pool connects nowhere (connections open on the first query), so the refusals below still come before
-        // anything touches Postgres; from here on every failed start closes it again
-        PgConnectOptions connect = connectOptions(pg);   // one source (D-124): the pool, the membership and the LISTEN connect alike
-        Pool pool = PgBuilder.pool()
-                .connectingTo(connect)
-                .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
+        // building a pool connects nowhere (connections open on the first query), so the refusals below still come before
+        // anything touches Postgres; from here on every failed start closes both again. One source of the options (D-124), each
+        // session named by its role (D-130 draft): the two pools, the membership and the LISTEN connection connect alike.
+        // Both sizes and both options come before either pool is built; an intake share at or above the total never gets here,
+        // because the NodeConfig constructor refuses it (D-130 P5)
+        PoolOptions intakeSize = new PoolOptions().setMaxSize(pg.intakePoolSize());
+        PoolOptions workSize = new PoolOptions().setMaxSize(pg.workPoolSize());
+        PgConnectOptions intakeConnect = connectOptions(pg, "intake", config.nodeId());
+        PgConnectOptions workConnect = connectOptions(pg, "work", config.nodeId());
+        Pool intakePool = PgBuilder.pool().connectingTo(intakeConnect).with(intakeSize).using(vertx).build();   // the ACK path's only pool
+        Pool pool = PgBuilder.pool().connectingTo(workConnect).with(workSize).using(vertx).build();
         PgMessageStore messages = null;
-        Journal journal = null;   // once open: closed after the deployments, before the store and the pool its rows go through
-        Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pool
+        Journal journal = null;   // once open: closed after the deployments, before the store and the pools its rows go through
+        Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pools
         Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
-        Runnable closeSignals = () -> {};   // the work events once built: closed after the deployments, before the stores and the pool
+        Runnable closeSignals = () -> {};   // the work events once built: closed after the deployments, before the stores and the pools
         Runnable closeWork = () -> {};   // the work queue's completion batch once built: closed after the deployments, before the signals
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
         NodeLease lease = null;   // once joined: closed after the deployments, its connection with it
@@ -232,16 +243,16 @@ public final class Node implements AutoCloseable {
             // the master key before any Postgres statement: a node without one migrates nothing (D-106)
             SecretKey master = config.journalKey().load(config.journal().dir(), JournalFiles.real());
             // the durability profile before the migration: a refused node leaves its database untouched (D-127 draft)
-            List<String> durability = PgDurability.check(pool, pg.durability());
+            List<String> durability = PgDurability.check(intakePool, pg.durability());   // on the sessions that commit the saves
             Migrations.migrate(jdbcUrl(pg), pg.user(), pg.password());
             JournalKeys keys = JournalKeys.load(pool, master);
-            Journal opened = Journal.open(config.journal(), clock, timer, keys, JournalFiles.real(), new PgSegmentRows(pool), UUID::randomUUID);
-            journal = opened;
+            Journal opened = Journal.open(config.journal(), clock, timer, keys, JournalFiles.real(), new PgSegmentRows(intakePool), UUID::randomUUID);
+            journal = opened;   // its segment rows on the intake pool: a save's persist waits for them, never for the work pool
             TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
                     tiers.durableMax()), hasher, opened, keys.keyOf(TENANT), pool);
             late.bind(blobs);   // before any flow is built: every body a component writes is this store's
             // the node lease (D-101): after the journal's LOCK (one process per journal joins), before any flow is built (each is fenced)
-            membership = PgMembership.connecting(vertx, connect);   // its own connection, never the pool's
+            membership = PgMembership.connecting(vertx, connectOptions(pg, "membership", config.nodeId()));   // its own connection, never a pool's
             lease = new NodeLease(config.nodeId(), membership, config.nodeLease(), config.nodeLeaseRenew(), System::nanoTime, timer, Node::halt);
             lease.start().await();
             List<String> notices = notices(config, durability, membership.others(config.nodeId()).await());
@@ -273,11 +284,12 @@ public final class Node implements AutoCloseable {
             // the node's started workers: its intake hands each saved item off to the flow's worker, leased to this node (D-121 (a))
             Workers workers = new Workers();
             // the work events between the nodes (D-121 (b)): listening on a connection of their own before any worker starts
-            PgWorkSignals signals = new PgWorkSignals(vertx, connect, pool, opened.node(), workers, timer);
+            PgWorkSignals signals = new PgWorkSignals(vertx, connectOptions(pg, "listen", config.nodeId()), pool, opened.node(), workers, timer);
             closeSignals = () -> signals.close().await();
             signals.start().await();
-            PgIntake intake = new PgIntake(pool, blobs, messages, work, workers, timer, config.intakeGroup(), signals,
-                    config.pg().durability());   // grouped saves (D-109); under ha a duplicate commits behind a barrier (D-128)
+            // grouped saves (D-109) on the intake pool (D-130 draft); under ha a duplicate commits behind a barrier (D-128); the wake and
+            // the announce after a commit are fire-and-forget on the work pool
+            PgIntake intake = new PgIntake(intakePool, blobs, messages, work, workers, timer, config.intakeGroup(), signals, config.pg().durability());
             Deployments restored = new Deployments(config, runtime, byScheme, clock, timer, stepFactories, expressions, messages, dlq, work,
                     Meter.system(), new PgDeploymentStore(pool), archives, intake, leases,
                     new Targets(config.targets().defaults(), config.targets().overrides(), timer), lease, workers, signals);   // the node's one Targets (D-099) and fence
@@ -301,8 +313,8 @@ public final class Node implements AutoCloseable {
             // the segments no row pins go (CORE-3 item 10); its first pass an interval later, on a virtual thread of its own
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
-            Node node = new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey,
-                    closeSignals, closeWork, ready);
+            Node node = new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, intakePool, pool, closeS3,
+                    closeValkey, closeSignals, closeWork, ready);
             ready.set(true);   // the start's last act: from here /ready may answer UP
             return node;
         } catch (Throwable failure) {
@@ -326,7 +338,7 @@ public final class Node implements AutoCloseable {
                             try {
                                 closeSignals.run();   // before the pool it sends on
                             } finally {
-                                closeStores(journal, messages, pool, closeS3, closeValkey);
+                                closeStores(journal, messages, intakePool, pool, closeS3, closeValkey);
                             }
                         }
                     }
@@ -362,6 +374,15 @@ public final class Node implements AutoCloseable {
                     .setHostnameVerificationAlgorithm(pg.sslMode() == NodeConfig.Pg.SslMode.VERIFY_FULL ? "HTTPS" : ""));
         }
         return options;
+    }
+
+    /**
+     * {@link #connectOptions(NodeConfig.Pg)} — the one source of the server, the credentials, the session pins and TLS — with the
+     * session named {@code flottila-<role>@<nodeId>} ({@code application_name}, D-130 draft), so {@code pg_stat_activity} shows
+     * which pool or connection of which node a session is: {@code intake}, {@code work}, {@code membership} or {@code listen}.
+     */
+    public static PgConnectOptions connectOptions(NodeConfig.Pg pg, String role, String nodeId) {
+        return connectOptions(pg).addProperty("application_name", "flottila-" + role + "@" + nodeId);
     }
 
     /**
@@ -455,7 +476,7 @@ public final class Node implements AutoCloseable {
      * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then the work queue's
      * completion batch (waits until every completion handed over is answered, D-122), then the work events
      * (their listening connection; nothing sent from then on), then closes the journal, then flushes and closes the message store, then closes
-     * the pool, then the S3 client, then the Valkey client — each step even when the one before failed.
+     * the intake pool, then the work pool, then the S3 client, then the Valkey client — each step even when the one before failed.
      */
     @Override
     public void close() {
@@ -484,7 +505,7 @@ public final class Node implements AutoCloseable {
                                     try {
                                         closeSignals.run();   // after the flows that announce, before the pool it sends on (D-121 (b) B2)
                                     } finally {
-                                        closeStores(journal, messages, pool, closeS3, closeValkey);
+                                        closeStores(journal, messages, intake, pool, closeS3, closeValkey);
                                     }
                                 }
                             }
@@ -498,31 +519,39 @@ public final class Node implements AutoCloseable {
     /**
      * Closes the journal (none yet: nothing to close; a failed close is thrown unchecked once the rest is closed, unless a later
      * close throws too: that one is thrown, as between the others), then
-     * flushes and closes the store (none yet: nothing to flush), then closes the pool, then the S3 client (none: nothing), then the
-     * Valkey client (none: nothing) — each even when the one before failed.
+     * flushes and closes the store (none yet: nothing to flush), then closes the intake pool, then the work pool, then the S3 client
+     * (none: nothing), then the Valkey client (none: nothing) — each even when the one before failed.
      */
-    private static void closeStores(Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private static void closeStores(Journal journal, PgMessageStore messages, Pool intake, Pool pool, Runnable closeS3, Runnable closeValkey) {
         try {
             if (journal != null) journal.close();
         } catch (IOException e) {
             throw new UncheckedIOException("the journal did not close", e);
         } finally {
-            closeStores(messages, pool, closeS3, closeValkey);
+            closeStores(messages, intake, pool, closeS3, closeValkey);
         }
     }
 
-    private static void closeStores(PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey) {
+    private static void closeStores(PgMessageStore messages, Pool intake, Pool pool, Runnable closeS3, Runnable closeValkey) {
         try {
             if (messages != null) messages.close();
         } finally {
             try {
-                pool.close().await();
+                intake.close().await();
             } finally {
-                try {
-                    closeS3.run();
-                } finally {
-                    closeValkey.run();
-                }
+                closePool(pool, closeS3, closeValkey);
+            }
+        }
+    }
+
+    private static void closePool(Pool pool, Runnable closeS3, Runnable closeValkey) {
+        try {
+            pool.close().await();
+        } finally {
+            try {
+                closeS3.run();
+            } finally {
+                closeValkey.run();
             }
         }
     }

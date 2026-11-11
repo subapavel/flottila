@@ -63,7 +63,7 @@ class NodeConfigTest {
                 () -> assertEquals(Path.of("/var/lib/flottila"), c.dataDir()),
                 () -> assertEquals(Duration.ofSeconds(10), c.stopDeadline()),
                 () -> assertEquals(64 * MIB, c.maxPackageBytes()),
-                () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 16), c.pg()),
+                () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 21), c.pg(), "21 = 5 intake + 16 work (F-33)"),
                 () -> assertEquals(new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), c.blobs(), "durableMax defaults to 1 MiB (D-059)"));
     }
 

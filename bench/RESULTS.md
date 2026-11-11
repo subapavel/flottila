@@ -1,5 +1,45 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## CORE-17 indicative — one shared pool vs pools by role, A/B/A/B + diagnostics — cloud VM, 4 vCPU @ 2.10 GHz (NOT CORE-GATE)
+
+Date 2026-11-11. Same host and PostgreSQL 16.15 cluster as the FIX-169 entry below (fsync on, synchronous_commit on), the same
+base-run.sh settings (open, ack, concurrency 512, max in flight 256, ramp PT30S, window PT3M, BENCH_IO_DEVICE vda, BENCH_PG_CPU
+postmaster, BENCH_PG_STATEMENTS 1), each tree built by bench/run.sh, nothing else running. Trees: **A** = 32840d4 clean (one pool
+of 16, 18 connections per node); **B1/B2** = CORE-17 review-round-2 tree (JSON commit "32840d4+dirty"; default 16 = 5 intake + 11
+work); **B3/B4** = the CORE-17 tree as committed (JSON commit "32840d4+dirty"; only a Node.java comment changed after the runs; default 21 = 5 + 16, 23 connections); **D0–D3** = the B1/B2 tree with a scratch bench
+patch passing `FLOTTILA_PG_POOL_SIZE` / `FLOTTILA_PG_POOL_INTAKE` (JSON commit "unknown"). Order A1 B1 A2 B2, then D1 D2 D3 D0, then
+B3 B4. All exit 0, valid, settled, work 0, timeouts 0. Raw agent/work/CORE-17-ab/, CORE-17-diag/ (not committed). Completes/s ≈ accepted ÷ 180 s.
+
+r3000 recording none — ACK p50 / p99 / p99.9 ms · accepted / 503 · backlogGrowth · warmupFailed · pool/intake
+| run | ACK ms | accepted / 503 | backlog | warmupFailed | pool |
+|---|---|---|---|---|---|
+| A1 | 18.9 / 87.1 / 157.5 | 537 893 / 2 107 | 0 | 414 | 16 shared |
+| A2 | 16.2 / 81.0 / 137.7 | 538 415 / 1 585 | −1 | 393 | 16 shared |
+| B1 | 14.4 / 53.5 / 147.2 | 538 775 / 1 225 | +1 | 321 | 16/5 |
+| B2 | 16.7 / 60.8 / 121.6 | 539 239 / 761 | +33 | 256 | 16/5 |
+| B3 | 15.5 / 58.1 / 126.5 | 539 193 / 807 | +14 | 69 | 21/5 |
+| B4 | 17.7 / 63.4 / 134.2 | 538 994 / 1 006 | +61 | 255 | 21/5 |
+
+r2000 recording all
+| run | ACK ms | accepted / 503 | backlog | warmupFailed | pool |
+|---|---|---|---|---|---|
+| A1 | 33.5 / 103.8 / 209.2 | 358 995 / 1 005 | +26 | 396 | 16 shared |
+| A2 | 26.7 / 98.4 / 267.4 | 358 750 / 1 250 | +34 | 542 | 16 shared |
+| B1 | 13.9 / 49.3 / 137.7 | 359 750 / 250 | **+24 945** | 47 | 16/5 |
+| B2 | 16.0 / 53.2 / 131.2 | 359 763 / 237 | **+44 657** | 16 | 16/5 |
+| D0 | 15.6 / 51.0 / 166.6 | 359 347 / 653 | **+40 840** | 0 | 16/5 |
+| D1 | 18.5 / 52.9 / 178.6 | 359 471 / 529 | −138 | 42 | 21/5 |
+| D2 | 37.4 / 144.4 / 226.1 | 357 741 / 2 259 | +217 | 265 | 16/2 |
+| D3 | 19.2 / 59.4 / 135.4 | 359 777 / 223 | +1 000 | 93 | 24/8 |
+| B3 | 18.2 / 50.6 / 159.4 | 359 636 / 364 | 0 | 187 | 21/5 |
+| B4 | 19.4 / 56.5 / 130.1 | 359 776 / 224 | +60 | 46 | 21/5 |
+
+Same-commit spread: A r3000 p99 81–87, r2000 p99 98–104; B3/B4 r3000 p99 58–63, r2000 p99 51–57 ms. Reading (indicative only): at
+21 = 5 + 16 the ACK p99 under worker load lies below A's whole spread in both shapes, 503s are lower, and the r2000 recording-all
+backlog stays flat; 16 = 5 + 11 had the same ACK gain but starved the workers (F-33). The comparison is not like-for-like: B3/B4 hold
+23 connections per node against A's 18. D*-activity.txt (5 pg_stat_activity samples per run): intake sessions 0–3 of 5 active,
+work sessions mostly waiting on LWLock WALWrite / IO WALSync — the work pool's size sets the backlog, the intake pool's sets ACK latency.
+
 ## Indicative after FIX-169 — r2000 / r3000 twice, the P2-15a baseline repeated — cloud VM, 4 vCPU @ 2.10 GHz (owner request; NOT CORE-GATE)
 
 Date 2026-11-11. Commit 45948fe (clean worktree). Owner: "not real test results, only whether we are on a good path". Same host
@@ -478,7 +518,7 @@ Processor @ 2.80GHz" (model hidden), MemTotal 16 477 352 kB, /dev/vda virtio-blk
 an fdatasync reaches on the host can be read from inside, so "durable" means what the guest's fdatasync returns. Java 25.0.5,
 native PostgreSQL 16.15 (Ubuntu), default configuration; every record reads from pg_settings `synchronous_commit` on
 (ALTER DATABASE by the bench), `commit_delay` 0 (214 in the commit_delay rows), `commit_siblings` 5, `wal_sync_method`
-fdatasync, `fsync` on, `full_page_writes` on; node Pg pool 16 (`poolSize`). The 5432 cluster's pg_wal is on /dev/vda ext4
+fdatasync, `fsync` on, `full_page_writes` on; node Pg pool 16 (`poolSize`, the default then; a record from CORE-17 on also carries `intakePoolSize`, the intake pool's share of it, D-130, and the default total is 21 = 5 + 16, F-33). The 5432 cluster's pg_wal is on /dev/vda ext4
 (`df -T`, target/P2-08b-cleanup.log). `pg_test_fsync -s 5`, one 8 kB write, rerun after the cells with the command lines and
 exit codes logged (target/P2-08b-fsync2.log): `-f /var/lib/postgresql/16/main/pg_wal/p208b_pg_test_fsync.tmp` fdatasync
 2628 ops/s (381 µs/op), open_datasync 3104 ops/s (322 µs/op); `-f /dev/shm/p208b_pg_test_fsync.tmp` (the FLOOR's pg_wal

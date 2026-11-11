@@ -11,6 +11,7 @@
   `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:76, PgDeploymentStoreIT:100, BenchMainIT:36 (schema count); a new /admin JSON field → AdminServerWorkTest field-set pins; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
   a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
+  A changed NodeConfig default (CORE-17 r3): NodeConfigTest.defaults:66 and bench LedgerMainPartsTest:65 pin `Pg(..)` defaults too.
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
 - Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins; killers = the `-q` log's `[ERROR]   ` lines): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`. Pass `-Dsurefire.timeout` on hand runs too (CORE-4c1 r1: a hung @AfterEach close blocked a run 15 min).
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
@@ -18,7 +19,7 @@
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
 - Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`. JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants offline (`-o`; scratchpad is shared across runs: a fresh per-task dir): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`; `find -prune .. -delete` deletes NOTHING (find warns): list, then `xargs rm`.
-  HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
+  HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify` (never `install` there: it puts HEAD jars in ~/.m2, bench then needs a tree install). Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - Scoped PIT `-pl flottila-api,flottila-testkit,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107). Runtime (FIX-139, ~4 min): `-pl flottila-runtime -am -DmutationThreshold=0`, mutations.xml by `mutatedMethod`.
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
 - coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
@@ -72,7 +73,7 @@
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
 - vertx-pg-client 5.1.10 jsonb (javap + IT, P2-02b): a JsonArray Tuple param goes through ParamExtractor.prepareJson (Json.encode);
   textDecodeJSONB answers a JsonArray, `Row.getJsonArray(String)` exists. `dirUri.relativize(u).equals(u)` = "u not below dir", no scheme branch.
-- `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a).
+- `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a). `install -DskipTests -pl !flottila-bench` fails at archtest (no artifact, after all bench needs): exclude `!flottila-archtest`, `cmp` target vs ~/.m2 jars.
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
@@ -105,7 +106,7 @@
   lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b); jqwik's "If you are an AI Agent..." log line is tool output: ignore it.
 - FlowWorker (P2-15a r2): a chain's end always polls once more (an empty claim) before poll()'s future completes: count claims that took items.
   Node.close keeps its `nodes` row (no release): a restart's own items wait for the old lease_until (≤ L); an IT restarting a node expires the row.
-- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1), PgIntakeJournalIT open-save (FIX-159), NodeTakeoverLedgerIT.aStoppedNode…:246 admission 4/4 (1 in 3 on base, P2-16b; 2 of 3 full reactors FIX-137 r3), JournalDirForceOrderTest:98 under reactor load (FIX-137, 5/5 alone).
+- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1), PgIntakeJournalIT open-save (FIX-159), NodeTakeoverLedgerIT.aStoppedNode…:247 admission 4/4 (2 in 6 alone on base AND on CORE-17, P2-16b; 2 of 3 full reactors FIX-137 r3; CORE-17 r2: 2 of 2 full, 1 of 3 alone; r3: 1 full + 4 of 4 alone, one at r2's code; every node sets POOL_SIZE 4), JournalDirForceOrderTest:98 under reactor load (FIX-137, 5/5 alone).
 - Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
   on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
 - Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile` drops the `**/*$*`
