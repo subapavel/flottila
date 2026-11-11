@@ -1,4 +1,15 @@
 
+## 2026-11-11 — FIX-143 an ordered flow states onFailure; block refused until a durable barrier (review F7.4, D-125) — done, review PASS (r2)
+Deviation: F-32 — ARCHITECTURE §4 said an ordered queue blocks by default; it parks and continues (both park sites complete)
+Test first: FlowDefinitionTest (O2 missing key, O3 block, O4 without partitionBy, enum, park readable), FlowWorkerTest
+.aKeyedItemParkedPastMaxAttemptsLetsTheNextItemOfItsKeyRun, SchemasTest, DemoFlowsTest, invalid fixtures (red FIX-143-red*.log)
+Changed: FlowDefinition.onFailure (park | block) with load refusals; flow.schema.json enum + dependentRequired both ways;
+demo flows invoice-async, invoice-sync, sftp-invoice state park; FlowWorker unchanged. Test fixtures with partitionBy gained
+`onFailure: park` (O6, a new required key — reason in the commit body)
+Checks: verify -Pit (no bench) 3577 tests; recount found 3 stale mutant-run failures, unmutated reruns core 631/0, schemas
+293/0 · coverage no decrease · PIT FlowDefinition 59/60 (survivor unchanged :190) · mutants M1–M5, S1, H1, H2 killed
+Review: r1 FAIL (F-32 evidence false, one park site unnamed, D-055 marker, mutant and count evidence missing), r2 PASS
+
 ## 2026-11-11 — FIX-146 Postgres TLS with CA and hostname verification (review F9.1, D-124 draft keys) — done, review PASS (r2)
 Test first: NodeConfigPgTlsTest, PgTlsIT (ssl=on hostssl-only servers + a plaintext one, keytool certs at test time; right CA,
 wrong CA, name mismatch, disable refused, verifying mode vs plaintext refused, start's migration verified via a forwarder),

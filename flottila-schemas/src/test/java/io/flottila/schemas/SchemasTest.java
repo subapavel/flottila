@@ -55,6 +55,37 @@ class SchemasTest {
         assertTrue(r.problems().isEmpty());
     }
 
+    /**
+     * FIX-143 O1 (F-32): a keyed flow states its failure behaviour, {@code onFailure}, one of {@code park} and {@code block}; the
+     * schema admits both (core refuses {@code block} until FIX-141) and nothing else, at the key's own path.
+     */
+    @Test
+    void aKeyedFlowStatesItsFailureBehaviourAsParkOrBlock() {
+        String flow = """
+                schemaVersion: 1
+                kind: flow
+                id: orders
+                version: 1.0.0
+                from: { endpoint: http-in }
+                delivery: { mode: at-least-once }
+                limits: { maxBodyBytes: 1024 }
+                partitionBy: orderId
+                onFailure: %s
+                steps:
+                  - { type: extractKey, name: key, language: header, key: orderId, xpath: x-order }
+                  - { type: to, name: out, endpoint: echo }
+                """;
+        for (String value : List.of("park", "block")) {
+            Schemas.Report r = Schemas.FLOW.validate(Documents.yaml(flow.formatted(value)));
+            assertTrue(r.valid(), value + ": " + r);
+        }
+        for (String value : List.of("stop", "Park", "\"\"")) {
+            Schemas.Report r = Schemas.FLOW.validate(Documents.yaml(flow.formatted(value)));
+            assertFalse(r.valid(), value + " is no failure behaviour");
+            assertTrue(r.problems().stream().anyMatch(p -> p.path().equals("/onFailure")), value + ": refused at /onFailure: " + r);
+        }
+    }
+
     /** D-100: {@code delivery.timeout}, the time each run of a message has, is an optional duration in every delivery mode. */
     @Test
     void aFlowMayGiveItsMessagesADeliveryTimeout() {

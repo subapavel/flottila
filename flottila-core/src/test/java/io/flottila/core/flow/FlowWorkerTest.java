@@ -1052,6 +1052,52 @@ class FlowWorkerTest {
         assertEquals(List.of(), logs.at(Level.WARNING, "attempt " + (maxAttempts + 1) + " of"), "the claim past the bound is no failed attempt");
     }
 
+    /**
+     * FIX-143 O5 (F-32): {@code onFailure: park} is today's behaviour — an item of a key parked past maxAttempts is completed, so
+     * the key's next item runs after it; until the park the next item waits behind it. Making {@code block} real changes this case.
+     */
+    @Test
+    void aKeyedItemParkedPastMaxAttemptsLetsTheNextItemOfItsKeyRun() throws Exception {
+        int maxAttempts = 1;
+        Map<String, Object> doc = flow(4, List.of(
+                Map.of("type", "extractKey", "name", "key", "language", "header", "key", "customer", "xpath", "x-customer"), TO_PARTNER));
+        doc.put("partitionBy", "customer");
+        doc.put("onFailure", "park");
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowBuilder b = w.builder();
+        Delivery delivery = b.delivery(def, NO_FILES);
+        List<Envelope> accepted = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            Envelope in = w.rt.ingress("orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml").with("x-customer", "c1"), ORDER);
+            assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await(), "fixture: accepted");
+            accepted.add(in);
+        }
+        String first = accepted.get(0).id();
+        String second = accepted.get(1).id();
+        assertEquals(List.of("c1", "c1"), w.rows.snapshot().stream().map(WorkQueue.Item::partitionKey).toList(), "fixture: both items of one key");
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+        w.partner.failNext(1, () -> new NackException("order refused", false));
+        w.dlq.failParks(new IllegalStateException("dlq down"));   // attempt 1 fails and is left to its lease: not parked in its run
+
+        w1.poll().otherwiseEmpty().await(5, SECONDS);
+        until(() -> w.queue.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "attempt 1 settled: claims " + w.queue.claims());
+        assertEquals(List.of(first), w.sentIds(), "attempt 1 of the key's first item ran and failed; the key's next item waits behind it");
+        assertEquals(List.of(first, second), w.rows.snapshot().stream().map(WorkQueue.Item::messageId).toList(), "both items queued");
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "fixture: nothing parked yet");
+
+        w.dlq.parksOk();
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound: parked without a run, completed
+        w.drain(w1);
+        until(() -> w.queue.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "every run settled: claims " + w.queue.claims());
+
+        assertEquals(List.of(first, second), w.sentIds(), "the parked item is not sent again; the key's next item ran after its park");
+        Parked p = w.parkedRow();
+        assertEquals(first, p.messageId(), "the key's first item is parked");
+        assertTrue(p.error().contains("AttemptsExhaustedException"), "parked past maxAttempts: " + p.error());
+        assertEquals(List.of(), w.queue.holds(), "parked, not held: nothing blocks the key");
+        assertEquals(0, w.rows.size(), "both items completed");
+    }
+
     @Test
     void aCrashLoopCountsAsAttempts() throws Exception {
         int maxAttempts = 2;

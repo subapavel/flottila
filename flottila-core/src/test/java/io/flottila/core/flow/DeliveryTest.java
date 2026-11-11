@@ -1558,6 +1558,7 @@ class DeliveryTest {
         HeldIntake intake = new HeldIntake();
         Map<String, Object> doc = flow("at-least-once", List.of(ORDER_KEY, TO_PARTNER));
         doc.put("partitionBy", "orderId");
+        doc.put("onFailure", "park");
         doc.put("recording", Map.of("level", "off"));
         Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
         String id = rt.ids().next();

@@ -105,6 +105,19 @@ class DemoFlowsTest {
         assertEquals("invoiceId", async.getString("partitionBy"), "invoices of one id are delivered in order");
     }
 
+    /** FIX-143 O6 (F-32): every demo flow keyed by {@code partitionBy} states that a parked item lets its key continue. */
+    @Test
+    void everyKeyedDemoFlowStatesItParksOnFailure() throws IOException {
+        List<String> keyed = new ArrayList<>();
+        for (String id : demo().flowIds()) {
+            JsonObject flow = flow(id);
+            if (flow.getString("partitionBy") == null) continue;
+            keyed.add(id);
+            assertEquals("park", flow.getString("onFailure"), id + " has partitionBy " + flow.getString("partitionBy") + ": onFailure park");
+        }
+        assertEquals(List.of("invoice-async", "invoice-sync", "sftp-invoice"), keyed.stream().sorted().toList(), "the demo's keyed flows");
+    }
+
     @Test
     void theAsyncHttpDoorListensOnItsOwnPortAtItsPath() throws IOException {
         JsonObject door = endpoint("http-in-async");

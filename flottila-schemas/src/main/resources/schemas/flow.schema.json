@@ -6,6 +6,7 @@
   "type": "object",
   "required": ["schemaVersion", "kind", "id", "version", "from", "delivery", "limits", "steps"],
   "additionalProperties": false,
+  "dependentRequired": { "partitionBy": ["onFailure"], "onFailure": ["partitionBy"] },
   "properties": {
     "schemaVersion": { "const": 1 },
     "kind": { "const": "flow" },
@@ -43,6 +44,7 @@
       }
     },
     "partitionBy": { "$ref": "#/$defs/keyName", "description": "at-least-once: the key of the flow's one extractKey step (no split or to before it; earlier steps do not apply to the key), evaluated at the durable save on the received body; items of one key run one at a time in accept order; no value = unordered, over 256 characters = refused (400). No effect on sync and at-most-once flows (D-075)." },
+    "onFailure": { "enum": ["park", "block"], "description": "Required with partitionBy and only with it (F-32, D-125): what an item that failed past its attempts does to its key. park = the item is parked and the key's next item runs; block = the key waits for the parked item, refused at load until the durable barrier with release and discard exists (FIX-141)." },
     "forwardHeaders": {
       "type": "array",
       "uniqueItems": true,

@@ -185,7 +185,7 @@ class TestCommandEdgeTest {
                     send: fixtures/long-key.xml
                     expect: { error: "timed out" }
                 """));
-        CliRuns.rewrite(pkg.resolve("flows/async-order.yaml"), Map.of("recording:", "partitionBy: orderId\nrecording:"));
+        CliRuns.rewrite(pkg.resolve("flows/async-order.yaml"), Map.of("recording:", "partitionBy: orderId\nonFailure: park\nrecording:"));
         Files.writeString(pkg.resolve("fixtures/long-key.xml"), "<Order><Id>" + "k".repeat(300) + "</Id><Customer>Acme Corp</Customer></Order>");
 
         Ran ran = run("test", pkg.toString());

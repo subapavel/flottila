@@ -17,6 +17,7 @@ limits:
   maxInFlight: 16
   maxInFlightBytes: 16777216
 partitionBy: invoiceId
+onFailure: park
 forwardHeaders: [Content-Type, X-Request-Id]
 retry:
   attempts: 3

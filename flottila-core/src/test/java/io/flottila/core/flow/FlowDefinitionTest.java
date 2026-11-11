@@ -22,6 +22,7 @@ class FlowDefinitionTest {
                 Map.entry("delivery", Map.of("mode", "sync")),
                 Map.entry("limits", Map.of("maxBodyBytes", 1048576, "maxInFlight", 16)),
                 Map.entry("partitionBy", "invoiceId"),
+                Map.entry("onFailure", "park"),
                 Map.entry("forwardHeaders", List.of("Content-Type")),
                 Map.entry("retry", Map.of("attempts", 3, "initial", "100ms", "max", "2s")),
                 Map.entry("steps", List.of(
@@ -41,6 +42,7 @@ class FlowDefinitionTest {
         assertEquals(Optional.of(16L), f.maxInFlight());
         assertEquals(Optional.empty(), f.maxInFlightBytes());
         assertEquals(Optional.of("invoiceId"), f.partitionBy());
+        assertEquals(Optional.of("park"), f.onFailure());
         assertEquals(List.of("Content-Type"), f.forwardHeaders());
         assertEquals(new RetryPolicy(3, Duration.ofMillis(100), Duration.ofSeconds(2), 2.0), f.retry());
         assertEquals(3, f.steps().size());
@@ -52,6 +54,80 @@ class FlowDefinitionTest {
         assertEquals("PARTNER", to.config().get("byProp"));
         assertEquals(List.of("partner-domestic"), f.referencedEndpoints(), "endpoints a producer is needed for (from is a consumer)");
         assertEquals(false, f.steps().get(0).retryable(), "retryable defaults to false");
+    }
+
+    /** A flow document in {@code mode} keyed by {@code invoiceId} (or unkeyed when null), with {@code onFailure} when not null. */
+    static Map<String, Object> keyed(String mode, String partitionBy, Object onFailure) {
+        Map<String, Object> doc = new java.util.HashMap<>(demo());
+        doc.put("delivery", Map.of("mode", mode));
+        doc.remove("partitionBy");
+        doc.remove("onFailure");
+        if (partitionBy != null) doc.put("partitionBy", partitionBy);
+        if (onFailure != null) doc.put("onFailure", onFailure);
+        return doc;
+    }
+
+    /** FIX-143 O5 (F-32): {@code onFailure: park} on a keyed flow loads and is readable; an unkeyed flow states none. */
+    @Test
+    void aKeyedFlowThatParksOnFailureLoadsWithTheValueReadable() {
+        for (String mode : List.of("sync", "at-least-once", "at-most-once")) {
+            FlowDefinition f = FlowDefinition.from(keyed(mode, "invoiceId", "park"));
+            assertEquals(Optional.of("invoiceId"), f.partitionBy(), mode);
+            assertEquals(Optional.of("park"), f.onFailure(), mode + ": the flow's stated failure behaviour");
+        }
+        assertEquals(Optional.empty(), FlowDefinition.from(keyed("at-least-once", null, null)).onFailure(), "no key, no failure behaviour");
+    }
+
+    /** FIX-143 O2: a keyed flow that does not state its failure behaviour is refused, so nobody gets park by accident. */
+    @Test
+    void aKeyedFlowWithoutOnFailureIsRefusedNamingTheKeyAndItsChoices() {
+        for (String mode : List.of("sync", "at-least-once", "at-most-once")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed(mode, "invoiceId", null)),
+                    mode + ": partitionBy without onFailure");
+            String m = e.getMessage();
+            assertTrue(m.contains("onFailure"), mode + ": names the missing key: " + m);
+            assertTrue(m.contains("partitionBy"), mode + ": names why it is needed: " + m);
+            assertTrue(m.contains("park"), mode + ": names park, which continues the key after a parked item: " + m);
+            assertTrue(m.contains("block"), mode + ": says block is not available yet: " + m);
+        }
+    }
+
+    /** FIX-143 O3: {@code onFailure: block} is refused until a durable barrier exists (FIX-141), never silently parked. */
+    @Test
+    void blockOnFailureIsRefusedUntilTheDurableBarrierExists() {
+        for (String mode : List.of("sync", "at-least-once", "at-most-once")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed(mode, "invoiceId", "block")),
+                    mode + ": onFailure block");
+            String m = e.getMessage();
+            assertTrue(m.contains("onFailure"), mode + ": names the key: " + m);
+            assertTrue(m.contains("block"), mode + ": names the refused value: " + m);
+            assertTrue(m.contains("FIX-141"), mode + ": names the durable barrier it waits for: " + m);
+        }
+    }
+
+    /** FIX-143 O4: {@code onFailure} on a flow without {@code partitionBy} has no key to block or continue: refused. */
+    @Test
+    void onFailureWithoutPartitionByIsRefused() {
+        for (String mode : List.of("sync", "at-least-once")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed(mode, null, "park")),
+                    mode + ": onFailure park without partitionBy");
+            String m = e.getMessage();
+            assertTrue(m.contains("onFailure"), mode + ": names the key: " + m);
+            assertTrue(m.contains("partitionBy"), mode + ": names what it needs: " + m);
+        }
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed("at-least-once", null, "block")),
+                "onFailure block without partitionBy: refused whichever rule answers first");
+        assertTrue(e.getMessage().contains("onFailure"), e.getMessage());
+    }
+
+    /** FIX-143 O1: the value is one of park and block; anything else is refused naming the key, never taken for park. */
+    @Test
+    void anOnFailureValueOutsideParkAndBlockIsRefused() {
+        for (Object value : List.<Object>of("stop", "Park", "", true)) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> FlowDefinition.from(keyed("at-least-once", "invoiceId", value)),
+                    "onFailure " + value);
+            assertTrue(e.getMessage().contains("onFailure"), value + ": names the key: " + e.getMessage());
+        }
     }
 
     @Test

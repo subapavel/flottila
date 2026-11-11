@@ -16,8 +16,7 @@
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
-- Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`.
-- JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
+- Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`. JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants offline (`-o`; scratchpad is shared across runs: a fresh per-task dir): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
@@ -92,6 +91,7 @@
   the positive witness that a client closed a connection (a "count 0 in pg_stat_activity" wait also passes when the statement never ran).
 - vertx-pg 5.1.10 TLS (javap -c PgConnectionFactory, FIX-146): VERIFY_FULL needs a non-empty hostnameVerificationAlgorithm (IAE at connect), verify-* need
   trust options; the name check IS the algorithm (VERIFY_CA+"HTTPS" still checks: equivalent mutant). pgjdbc 42.7.14 parseURL URL-decodes params.
+- vertx-json-schema 5.1.10 validates `dependentRequired`, path root `""` (FIX-143). A failing core-mutant run prints testkit ComponentContractSelfTest's fixture `[ERROR]` lines: filter them from killers.
 ## Findings that came back in review
 - PgIntake: a throw out of answered()/handOff fails the writer save → fail(m) → Durable.rolledBack, a NO-OP after committed() (save gone):
   unobservable via openSaves; kill by a later member's skipped side effect (P2-16b r3). Node wiring of PgIntake/AdminServer signals: no Node IT kills NONE.

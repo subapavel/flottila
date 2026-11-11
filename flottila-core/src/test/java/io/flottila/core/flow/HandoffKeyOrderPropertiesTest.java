@@ -118,6 +118,7 @@ class HandoffKeyOrderPropertiesTest {
                 Map.of("type", "keys", "name", "keys"), RunGate.STEP);
         Map<String, Object> doc = FlowWorkerTest.flow(maxInFlight, steps);
         doc.put("partitionBy", "customer");
+        doc.put("onFailure", "park");
         FlowDefinition def = FlowDefinition.from(doc);
         Delivery delivery = b.delivery(def, NO_FILES);
         FlowWorker worker = b.worker(def, NO_FILES, "w1", new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofMinutes(10)));

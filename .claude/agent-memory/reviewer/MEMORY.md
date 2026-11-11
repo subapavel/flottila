@@ -1,6 +1,5 @@
 # reviewer — recurring findings by area (seeded from PROGRESS.md at the role split; prune when you add)
-- Streams: a stream handed over paused that nobody resumes (TieredBlobStore, P1-06 round 2); an attach-time resume that undoes the store's own back-pressure pause (round 3). Look at every `pause()` / `resume()` pair across the component ↔ store boundary.
-- Bounds: an error-path body or reply buffered without a limit (http producer non-2xx, P1-06 round 1); a reply above the limit leaving the client response paused until the timeout.
+- Streams: a stream handed over paused that nobody resumes (TieredBlobStore, P1-06 round 2); an attach-time resume that undoes the store's own back-pressure pause (round 3). Look at every `pause()` / `resume()` pair across the component ↔ store boundary. Bounds: an error-path body or reply buffered without a limit (http producer non-2xx, P1-06 round 1); a reply above the limit leaving the client response paused until the timeout.
 - Event loop: parsing untrusted input (`Long.parseLong` on content-length) or doing I/O on the event loop thread; the virtual-thread rule is per message, verticles own sockets only.
 - Tests that pass for the wrong reason: timing observed against wall time (P0-04); two fresh id generators making an identity assertion vacuous (P1-06 round 5); a mock answering every endpoint from one handler (P1-06 round 1); `off`/`yes`/`no` read as YAML booleans (P1-03).
 - Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06). Since FIX-7: failure recorded under the monitor before the pause and before the promise fails; check that order on every new catch.
@@ -118,3 +117,4 @@
 - FIX-160 (2026-11-11): COW subList view under concurrent append → CME; grep `.subList(` on fields filled from other threads; demand per-run XML counts, a -q log holds none.
 - FIX-144 (2026-11-11): readiness flags: read each supplier's lock (Journal lock, NodeLease monitor) for I/O held under it; a clear-first-act needs a held-phase read.
 - FIX-146 (2026-11-11): shared-config wiring is pinned per call site only where an earlier link cannot fail first (Node:238 before :239); fail-closed needs a plaintext-server case.
+- FIX-143 (2026-11-11): a finding's 'no test does X': grep sibling test classes (FastPath, Handoff) first; FlowWorker has two park→complete sites (:574/:583 bound, :584-585 in-run).

@@ -1,0 +1,13 @@
+# expect: /onFailure
+schemaVersion: 1
+kind: flow
+id: f
+version: 1.0.0
+from: { endpoint: e }
+delivery: { mode: at-least-once }
+limits: { maxBodyBytes: 10 }
+partitionBy: orderId
+onFailure: stop
+steps:
+  - { type: extractKey, name: key, language: header, key: orderId, xpath: x-order }
+  - { type: to, name: out, endpoint: e }

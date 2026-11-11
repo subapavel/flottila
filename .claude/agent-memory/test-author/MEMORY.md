@@ -71,7 +71,7 @@
 - Process tests (P1-09d3 `MainProcessIT`): child cp `surefire.test.class.path`, JaCoCo agent from the test JVM's `-javaagent` arg, env cleared
   (JAVA_TOOL_OPTIONS = stderr line); SIGTERM exit 143; "main returned" = jcmd Thread.print has DestroyJavaVM, no "main"; closed-vs-died: pg debug1 "unexpected EOF" (no Terminate). P2-05a: `launch(env, how)`, `packagedJar()` (target/ after package); runtime `QuickstartIT` runs deploy/quickstart scripts (child env PATH+HOME only: inherited proxy vars hijack curl). D-072: one http in-listener per port per node, exact path match.
 - jqwik writes `.jqwik-database` into the cwd (core's is tracked). JDK 25 ZipFile: reads both entries of a byte-patched duplicate name, inflates actual size
-  whatever the CEN says, keeps `/abs`, `..` names; helpers `replaced`/`claimingUncompressedSize` in runtime `deploy/PackageArchiveTest`. json-schema Basic: one violation = several problems.
+  whatever the CEN says, keeps `/abs`, `..` names; helpers `replaced`/`claimingUncompressedSize` in runtime `deploy/PackageArchiveTest`. json-schema Basic: one violation = several problems; an unknown root key (additionalProperties false) is reported AT its own path (`/key`), so a new key's `# expect: /key` invalid fixture is green before the key exists (FIX-143).
 - Pg IT event order (P1-09j DlqBodiesIT): "no DLQ row while the insert waits" let a Future.all mutant pass (its insert lags the lock-wait
   probe); a BEFORE INSERT audit trigger noting exists(committed bodies row) kills it. Lease expiry: `update work set locked_until = now() - 1s`;
   a second `worker.poll()` is a barrier (joins the in-flight follow-up claim). `verify -Pit -Dit.test=X` runs X twice (two failsafe executions).
