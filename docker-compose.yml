@@ -51,6 +51,9 @@ services:
       FLOTTILA_JOURNAL_KEY_GENERATE: "true"
       FLOTTILA_PG_HOST: postgres
       FLOTTILA_PG_PASSWORD: flottila
+      # the stack's own network reaches Postgres as 'postgres', which defaults to verify-full: this dev stack's Postgres serves no
+      # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and FLOTTILA_PG_SSL_ROOT_CERT
+      FLOTTILA_PG_SSL_MODE: disable
       FLOTTILA_ADMIN_HOST: 0.0.0.0
       # an admin API off loopback needs a token: the node refuses to start without one (export it, docs/QUICKSTART.md)
       FLOTTILA_ADMIN_TOKEN: ${FLOTTILA_ADMIN_TOKEN:-}

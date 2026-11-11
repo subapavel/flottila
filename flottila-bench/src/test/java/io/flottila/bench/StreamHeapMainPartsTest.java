@@ -114,7 +114,9 @@ class StreamHeapMainPartsTest {
     @Test
     void theNodeEnvironmentIsADevNodeOnTheRunsDatabase() {
         StreamHeapMain.Options o = StreamHeapMain.options(new String[] {"--db", "x_bench", "--host", "db.local", "--port", "6543", "--user", "u", "--password", "p"});
-        NodeConfig node = NodeConfig.from(StreamHeapMain.nodeEnv(o, Path.of("/data/node"), 4321));
+        Map<String, String> env = new java.util.HashMap<>(StreamHeapMain.nodeEnv(o, Path.of("/data/node"), 4321));
+        env.put("FLOTTILA_PG_SSL_MODE", "disable");   // FIX-146: a remote host (db.local) defaults to verify-full, refused without a CA
+        NodeConfig node = NodeConfig.from(env);
         assertEquals(Path.of("/data/node"), node.dataDir());
         assertEquals(4321, node.admin().port());
         assertEquals("db.local", node.pg().host());

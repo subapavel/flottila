@@ -6,13 +6,9 @@
 - Failure paths that forget state: `TieredBlobStore` sink failure not setting `failure` (P1-06). Since FIX-7: failure recorded under the monitor before the pause and before the promise fails; check that order on every new catch.
 - A test that covers a branch is not one that fails when the branch is wrong: name `sed`-style mutants; the verifier restores by `cp`/`touch` (an `mv` restore leaves the mutant compiled, FIX-7 r2). A PASS without a mutant or a PIT figure on the touched class is weak.
 - Ask first for: the scoped PIT report of the touched classes (a test that kills no mutant is fake), the `git diff --stat`, and the packet's named red tests — check they are the ones in the diff.
-- Decision under the monitor, call after it: every post-monitor in.resume() (sink, re-check, start()) needs a
-  post-check (`if (x && failed()) in.pause()`) and a "what lands in between" question (FIX-10 round 2).
-- Comments about failure precedence: check every entry point (fail()'s over() early return drops, FIX-10).
-- TieredBlobStore: test a pause after the first one, and the attach and failure paths of the re-check (FIX-10).
-- A new entry into a guarded section (start()'s re-issue into pauseAndReCheck) breaks "one at a time" unless every
-  setter checks the flag; check each setter, not the packet's invariant (FIX-10 round 3).
-- A hold before a call takes effect cannot pin "undone by a later call"; the hold must come after the effect (FIX-10 r3).
+- Decision under the monitor, call after it: every post-monitor in.resume() (sink, re-check, start()) needs a post-check (`if (x && failed()) in.pause()`) and a "what lands in between" question (FIX-10 round 2).
+- Comments about failure precedence: check every entry point (fail()'s over() early return drops, FIX-10). TieredBlobStore: test a pause after the first one, and the attach and failure paths of the re-check (FIX-10). A hold before a call takes effect cannot pin "undone by a later call"; the hold must come after the effect (FIX-10 r3).
+- A new entry into a guarded section (start()'s re-issue into pauseAndReCheck) breaks "one at a time" unless every setter checks the flag; check each setter, not the packet's invariant (FIX-10 round 3).
 - "Decided" is not "resumed": a guard reading a flag the sink cleared (`!sourcePaused`) does not mean the sink's resume has taken effect (FIX-10 round 4, TieredBlobStore:285).
 - A resume in flight (the hand-over) plus a second party's resume decided during it makes two resumes for one pause. Check every resumer against every resume that may still be in flight.
 - Read JaCoCo's missed branches in new choreography code before the mutants. An uncovered branch there has twice hidden the bug (D-050).
@@ -121,3 +117,4 @@
 - CORE-7 (2026-11-11): batch latency bounds in a doc: count the backlog ahead and every in-flight slot, not one batch (BatchingWriter.takeLocked); a failure-path close needs its own mutant.
 - FIX-160 (2026-11-11): COW subList view under concurrent append → CME; grep `.subList(` on fields filled from other threads; demand per-run XML counts, a -q log holds none.
 - FIX-144 (2026-11-11): readiness flags: read each supplier's lock (Journal lock, NodeLease monitor) for I/O held under it; a clear-first-act needs a held-phase read.
+- FIX-146 (2026-11-11): shared-config wiring is pinned per call site only where an earlier link cannot fail first (Node:238 before :239); fail-closed needs a plaintext-server case.

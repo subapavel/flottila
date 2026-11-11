@@ -53,7 +53,8 @@ class LedgerMainPartsTest {
     void bothNodesShareTheArchiveDirectoryWithoutS3OptionsAndUseThePathStyleS3StoreWithThem() {
         LedgerMain.Options dir = LedgerMain.options(new String[] {"--db", "x_bench", "--host", "db.local", "--port", "6543", "--user", "u", "--password", "p"});
         assertEquals(Map.of(), dir.s3(), "no --s3-* option: the dir store");
-        Map<String, String> env = LedgerMain.nodeEnv(dir, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/archives"), 0);
+        Map<String, String> env = new java.util.HashMap<>(LedgerMain.nodeEnv(dir, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/archives"), 0));
+        env.put("FLOTTILA_PG_SSL_MODE", "disable");   // FIX-146: a remote host (db.local) defaults to verify-full, refused without a CA
         NodeConfig node = NodeConfig.from(env);
         assertEquals(NodeConfig.Archives.Store.DIR, node.archives().store());
         assertEquals(Path.of("/data/archives"), node.archives().dir(), "the archive directory both nodes are given, not one under a data directory");

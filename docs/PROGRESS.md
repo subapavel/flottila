@@ -1,4 +1,16 @@
 
+## 2026-11-11 — FIX-146 Postgres TLS with CA and hostname verification (review F9.1, D-124 draft keys) — done, review PASS (r2)
+Test first: NodeConfigPgTlsTest, PgTlsIT (ssl=on hostssl-only servers + a plaintext one, keytool certs at test time; right CA,
+wrong CA, name mismatch, disable refused, verifying mode vs plaintext refused, start's migration verified via a forwarder),
+ComposeStackTest explicit disable; NodeConfigTest/LedgerMainPartsTest/StreamHeapMainPartsTest set disable (red FIX-146-red*.log)
+Changed: FLOTTILA_PG_SSL_MODE disable|verify-ca|verify-full (loopback → disable, else verify-full), FLOTTILA_PG_SSL_ROOT_CERT
+(missing/unreadable/empty refused naming both keys); one PgConnectOptions for pool, membership, LISTEN; Flyway URL with
+sslmode + encoded sslrootcert; both compose files set disable; implementer test NodeJdbcUrlTest
+Checks: verify -Pit (no bench) 3566/0/0/0 fresh XML · bench 257/0 · coverage no decrease · mutants r1 16/17 + r2 5/5 killed;
+survivors equivalent (VERIFY_CA keeping HTTPS; REQUIRE — one Vert.x branch with the given trust and algorithm)
+Found: FIX-165 (IPv6 host unbracketed in JDBC URL), FIX-166 (bench's own PG links carry no TLS)
+Review: r1 FAIL (migration call site and plaintext-server fallback unpinned, tautological URL test, javadoc, bench wording), r2 PASS
+
 ## 2026-11-11 — FIX-144 readiness and liveness endpoints (review F4.4, D-123) — done, review PASS (r1)
 Test first: AdminServerTest liveAnswers200WithoutReadingAnyCheck, readyIsDownNamingEachFailedCheck, readyAnswersWithoutAwaiting,
 liveAndReadyNeedNoTokenWhileAdminDoes; NodeIT fencedNodeIsNotReadyButRemainsLive, drainDropsReadinessBeforeListenersStop,

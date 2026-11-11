@@ -5,7 +5,8 @@
 # against the baselines recorded in bench/RESULTS.md. Only numbers from native Linux runs are
 # recorded in RESULTS.md, by hand, with machine, date, configuration and commit.
 #
-# Environment: PGHOST (localhost), PGPORT (5432), PGUSER (flottila), PGPASSWORD (flottila),
+# Environment: PGHOST (localhost — loopback: the node benches start nodes with FLOTTILA_PG_SSL_MODE's loopback default disable;
+# a remote PGHOST defaults to verify-full for the nodes, but the bench's own migration and pool links carry no TLS — FIX-166, D-124), PGPORT (5432), PGUSER (flottila), PGPASSWORD (flottila),
 # BENCH_DB (flottila_bench — created if missing, via psql as PGUSER), BENCH_MESSAGES (20000),
 # BENCH_WARMUP (1000), BENCH_CONCURRENCY (64), BENCH_MACHINE (the machine label the run is judged
 # against in RESULTS.md, D-037; unset → "host:<hostname>", which no baseline matches: set it on purpose,

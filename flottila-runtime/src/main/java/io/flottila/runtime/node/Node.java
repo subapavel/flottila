@@ -40,6 +40,8 @@ import io.flottila.runtime.store.Retention;
 import io.flottila.runtime.time.VertxTimer;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.core.net.ClientSSLOptions;
+import io.vertx.core.net.PemTrustOptions;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
 import io.vertx.redis.client.Redis;
@@ -56,6 +58,8 @@ import javax.crypto.SecretKey;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -206,8 +210,9 @@ public final class Node implements AutoCloseable {
         NodeConfig.Pg pg = config.pg();
         // building the pool connects nowhere (connections open on the first query), so the refusals below still come before
         // anything touches Postgres; from here on every failed start closes it again
+        PgConnectOptions connect = connectOptions(pg);   // one source (D-124): the pool, the membership and the LISTEN connect alike
         Pool pool = PgBuilder.pool()
-                .connectingTo(connectOptions(pg))
+                .connectingTo(connect)
                 .with(new PoolOptions().setMaxSize(pg.poolSize())).using(vertx).build();
         PgMessageStore messages = null;
         Journal journal = null;   // once open: closed after the deployments, before the store and the pool its rows go through
@@ -231,7 +236,7 @@ public final class Node implements AutoCloseable {
             // the master key before any Postgres statement: a node without one migrates nothing (D-106)
             SecretKey master = config.journalKey().load(config.journal().dir(), JournalFiles.real());
             requireSynchronousCommit(pool);   // before the migration: a refused node leaves its database untouched
-            Migrations.migrate("jdbc:postgresql://" + pg.host() + ":" + pg.port() + "/" + pg.database(), pg.user(), pg.password());
+            Migrations.migrate(jdbcUrl(pg), pg.user(), pg.password());
             JournalKeys keys = JournalKeys.load(pool, master);
             Journal opened = Journal.open(config.journal(), clock, timer, keys, JournalFiles.real(), new PgSegmentRows(pool), UUID::randomUUID);
             journal = opened;
@@ -239,7 +244,7 @@ public final class Node implements AutoCloseable {
                     tiers.durableMax()), hasher, opened, keys.keyOf(TENANT), pool);
             late.bind(blobs);   // before any flow is built: every body a component writes is this store's
             // the node lease (D-101): after the journal's LOCK (one process per journal joins), before any flow is built (each is fenced)
-            membership = PgMembership.connecting(vertx, connectOptions(pg));   // its own connection, never the pool's
+            membership = PgMembership.connecting(vertx, connect);   // its own connection, never the pool's
             lease = new NodeLease(config.nodeId(), membership, config.nodeLease(), config.nodeLeaseRenew(), System::nanoTime, timer, Node::halt);
             lease.start().await();
             List<String> notices = notices(config, membership.others(config.nodeId()).await());
@@ -271,7 +276,7 @@ public final class Node implements AutoCloseable {
             // the node's started workers: its intake hands each saved item off to the flow's worker, leased to this node (D-121 (a))
             Workers workers = new Workers();
             // the work events between the nodes (D-121 (b)): listening on a connection of their own before any worker starts
-            PgWorkSignals signals = new PgWorkSignals(vertx, connectOptions(pg), pool, opened.node(), workers, timer);
+            PgWorkSignals signals = new PgWorkSignals(vertx, connect, pool, opened.node(), workers, timer);
             closeSignals = () -> signals.close().await();
             signals.start().await();
             PgIntake intake = new PgIntake(pool, blobs, messages, work, workers, timer, config.intakeGroup(), signals);   // grouped saves (D-109)
@@ -341,11 +346,29 @@ public final class Node implements AutoCloseable {
      * (ARCHITECTURE §4 Writer) for every SQL text up to {@value #STATEMENT_CACHE_SQL_LIMIT} characters, so a connection parses a
      * statement once; pipelining stays at the client's default (D-109: a turn's statements are sent together). Every session runs
      * with {@code jit} off, a startup parameter (FIX-130, F-27 addendum): the node's statements touch a bounded number of rows, yet
-     * an estimate that grows with a table's size crossed jit_above_cost and every claim compiled its plan.
+     * an estimate that grows with a table's size crossed jit_above_cost and every claim compiled its plan. The link is secured as
+     * {@code pg}'s {@link NodeConfig.Pg#sslMode() sslMode} says (D-124): a verifying mode trusts the PEM CA of
+     * {@link NodeConfig.Pg#sslRootCert() sslRootCert} only, and {@code verify-full} checks the server's name against the host dialled.
      */
     public static PgConnectOptions connectOptions(NodeConfig.Pg pg) {
-        return new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user()).setPassword(pg.password())
-                .setCachePreparedStatements(true).setPreparedStatementCacheSqlLimit(STATEMENT_CACHE_SQL_LIMIT).addProperty("jit", "off");
+        PgConnectOptions options = new PgConnectOptions().setHost(pg.host()).setPort(pg.port()).setDatabase(pg.database()).setUser(pg.user())
+                .setPassword(pg.password()).setCachePreparedStatements(true).setPreparedStatementCacheSqlLimit(STATEMENT_CACHE_SQL_LIMIT)
+                .addProperty("jit", "off").setSslMode(io.vertx.pgclient.SslMode.of(pg.sslMode().toString()));
+        if (pg.sslMode() != NodeConfig.Pg.SslMode.DISABLE) {
+            // the client refuses verify-full without an algorithm; an empty one checks no name (verify-ca)
+            options.setSslOptions(new ClientSSLOptions().setTrustOptions(new PemTrustOptions().addCertPath(pg.sslRootCert().orElseThrow().toString()))
+                    .setHostnameVerificationAlgorithm(pg.sslMode() == NodeConfig.Pg.SslMode.VERIFY_FULL ? "HTTPS" : ""));
+        }
+        return options;
+    }
+
+    /**
+     * The JDBC URL Flyway migrates over (D-034), secured as {@link #connectOptions} is: {@code sslmode} always, {@code sslrootcert}
+     * when a CA is given (URL-encoded: the driver decodes its parameters).
+     */
+    static String jdbcUrl(NodeConfig.Pg pg) {
+        String url = "jdbc:postgresql://" + pg.host() + ":" + pg.port() + "/" + pg.database() + "?sslmode=" + pg.sslMode();
+        return pg.sslRootCert().map(ca -> url + "&sslrootcert=" + URLEncoder.encode(ca.toString(), StandardCharsets.UTF_8)).orElse(url);
     }
 
     /**

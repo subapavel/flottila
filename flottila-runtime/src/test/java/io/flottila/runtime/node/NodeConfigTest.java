@@ -84,6 +84,7 @@ class NodeConfigTest {
         env.put("FLOTTILA_PG_USER", "node");
         env.put("FLOTTILA_PG_PASSWORD", "pw");
         env.put("FLOTTILA_PG_POOL_SIZE", "32");
+        env.put("FLOTTILA_PG_SSL_MODE", "disable");   // FIX-146: a remote host defaults to verify-full (NodeConfigPgTlsTest reads the TLS keys)
         env.put("FLOTTILA_BLOB_TREE_LIMIT", "4194304");
         env.put("FLOTTILA_BLOB_MEMORY_TIER", "524288");
         env.put("FLOTTILA_BLOB_MEMORY_BUDGET", "8589934592");   // 8 GiB: sizes are long
@@ -97,7 +98,7 @@ class NodeConfigTest {
                 () -> assertEquals(Path.of("/srv/flottila"), c.dataDir()),
                 () -> assertEquals(Duration.ofSeconds(90), c.stopDeadline(), "ISO-8601"),
                 () -> assertEquals(MIB, c.maxPackageBytes()),
-                () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32), c.pg()),
+                () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32, NodeConfig.Pg.SslMode.DISABLE, Optional.empty()), c.pg()),
                 () -> assertEquals(new NodeConfig.Blobs(4 * MIB, 512 * 1024, 8 * GIB, 2 * MIB), c.blobs()));
     }
 
@@ -180,8 +181,8 @@ class NodeConfigTest {
     void toStringHidesThePasswordAndTheToken() {
         String password = "pg-secret-4711";
         String token = "admin-token-0815";
-        NodeConfig c = NodeConfig.from(with(with(with(minimal(), "FLOTTILA_PG_PASSWORD", password), "FLOTTILA_ADMIN_TOKEN", token),
-                "FLOTTILA_PG_HOST", "db.internal"));
+        NodeConfig c = NodeConfig.from(with(with(with(with(minimal(), "FLOTTILA_PG_PASSWORD", password), "FLOTTILA_ADMIN_TOKEN", token),
+                "FLOTTILA_PG_HOST", "db.internal"), "FLOTTILA_PG_SSL_MODE", "disable"));   // FIX-146: else verify-full, refused without a CA
         assertEquals(password, c.pg().password(), "the password is read: the checks below are not vacuous");
         assertEquals(Optional.of(token), c.admin().token(), "the token is read");
         for (Object shown : new Object[] {c, c.pg(), c.admin()}) {

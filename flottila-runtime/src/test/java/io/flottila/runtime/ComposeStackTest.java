@@ -417,4 +417,23 @@ class ComposeStackTest {
         assertTrue(readme.contains("inbox") && (readme.contains("docker compose cp") || readme.contains("sftp ")), "how to drop a file into the sftp inbox");
         assertTrue(readme.toLowerCase(java.util.Locale.ROOT).contains("fingerprint") && readme.contains("ssh-keygen"), "the fingerprint command");
     }
+
+    // ---- FIX-146 T4: a stack that reaches Postgres by a non-loopback name says it runs it in plaintext, never implicitly ------------
+
+    @Test
+    void everyServiceReachingPostgresByANameSetsItsSslModeExplicitly() throws IOException {
+        int reaching = 0;
+        for (Path file : NODE_PORTS.keySet()) {
+            JsonNode services = new ObjectMapper(new YAMLFactory()).readTree(file.toFile()).path("services");
+            for (var service : (Iterable<Map.Entry<String, JsonNode>>) services::fields) {
+                Map<String, String> env = environment(service.getValue());
+                String host = env.get("FLOTTILA_PG_HOST");
+                if (host == null || List.of("localhost", "127.0.0.1", "::1").contains(host)) continue;
+                reaching++;
+                assertEquals("disable", env.get("FLOTTILA_PG_SSL_MODE"), file + ": " + service.getKey() + " reaches Postgres as '" + host
+                        + "', whose default is verify-full: the stack's plaintext link must be written down (FIX-146 T4)");
+            }
+        }
+        assertEquals(2, reaching, "witness: the node of each stack reaches Postgres by its service name (not vacuous)");
+    }
 }

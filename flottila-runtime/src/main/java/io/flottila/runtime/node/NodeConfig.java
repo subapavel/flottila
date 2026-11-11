@@ -8,8 +8,11 @@ import io.flottila.runtime.journal.MasterKeySource;
 import io.flottila.runtime.journal.SweepConfig;
 import io.flottila.runtime.store.Retention;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
@@ -211,13 +214,72 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param user {@code FLOTTILA_PG_USER} (flottila)
      * @param password {@code FLOTTILA_PG_PASSWORD} (empty)
      * @param poolSize {@code FLOTTILA_PG_POOL_SIZE}, 1 to 1024 (16)
+     * @param sslMode {@code FLOTTILA_PG_SSL_MODE}: {@code disable}, {@code verify-ca} or {@code verify-full} (D-124); unset,
+     *                {@code disable} on a loopback host ({@code localhost}, {@code 127.0.0.1}, {@code ::1}), else {@code verify-full}
+     * @param sslRootCert {@code FLOTTILA_PG_SSL_ROOT_CERT}: the PEM CA bundle that signs the server's certificate, required by a
+     *                    verifying mode (never a silent fallback to plaintext or to an unverified link), refused at start when given but
+     *                    missing, unreadable or empty; not a secret
      * @since 0.1
      */
-    public record Pg(String host, int port, String database, String user, String password, int poolSize) {
-        /** The password redacted: a log line never carries it. */
+    public record Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert) {
+
+        /**
+         * How the node's Postgres links are secured (D-124). TLS without verification ({@code require}, {@code prefer}) is not
+         * offered: it gives no protection against an active attacker.
+         *
+         * @since 0.1
+         */
+        public enum SslMode {
+            /** Plaintext: a loopback server, or a stack that writes its plaintext link down. */
+            DISABLE("disable"),
+            /** TLS, the server's certificate signed by the CA; its name is not checked. */
+            VERIFY_CA("verify-ca"),
+            /** TLS, the server's certificate signed by the CA and naming the host dialled. */
+            VERIFY_FULL("verify-full");
+
+            private final String spelling;
+
+            SslMode(String spelling) {
+                this.spelling = spelling;
+            }
+
+            /** As written in {@code FLOTTILA_PG_SSL_MODE} (and in libpq's and the JDBC driver's {@code sslmode}). */
+            @Override
+            public String toString() {
+                return spelling;
+            }
+        }
+
+        /** A verifying mode carries its CA: a link is never verified against nothing. */
+        public Pg {
+            Objects.requireNonNull(sslMode, "sslMode");
+            Objects.requireNonNull(sslRootCert, "sslRootCert");
+            if (sslMode != SslMode.DISABLE && sslRootCert.isEmpty()) {
+                throw new IllegalArgumentException("FLOTTILA_PG_SSL_MODE " + sslMode + " (FLOTTILA_PG_HOST " + host
+                        + ") needs FLOTTILA_PG_SSL_ROOT_CERT, the PEM CA that signs the server's certificate: set it, or set FLOTTILA_PG_SSL_MODE=disable"
+                        + " for a server reached in plaintext on purpose");
+            }
+        }
+
+        /**
+         * A plaintext link ({@link SslMode#DISABLE}, no CA): in-process callers; env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the pool's connections at most
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize) {
+            this(host, port, database, user, password, poolSize, SslMode.DISABLE, Optional.empty());
+        }
+
+        /** The password redacted: a log line never carries it; the mode and the CA's path are shown. */
         @Override
         public String toString() {
-            return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize + "]";
+            return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize
+                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + "]";
         }
     }
 
@@ -368,6 +430,8 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
     private static final Set<String> HTTP = Set.of("http", "https");
     private static final Set<String> REDIS = Set.of("redis", "rediss");
+    /** The {@code FLOTTILA_PG_HOST} values that default to {@code FLOTTILA_PG_SSL_MODE=disable} (D-124): written as-is, never resolved. */
+    private static final Set<String> PG_LOOPBACK = Set.of("localhost", "127.0.0.1", "::1");
     /** The one path of a Valkey URI that is printed: its database number. */
     private static final Pattern DB = Pattern.compile("/\\d+");
     /** The longest ttl and renew period of a poller lease. */
@@ -404,9 +468,10 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         }
         AdminServer.Config admin = new AdminServer.Config(env.getOrDefault("FLOTTILA_ADMIN_HOST", "127.0.0.1"),
                 (int) number(env, "FLOTTILA_ADMIN_PORT", 8081, 0, 65535), Optional.ofNullable(env.get("FLOTTILA_ADMIN_TOKEN")));
-        Pg pg = new Pg(env.getOrDefault("FLOTTILA_PG_HOST", "localhost"), (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
+        String pgHost = env.getOrDefault("FLOTTILA_PG_HOST", "localhost");
+        Pg pg = new Pg(pgHost, (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
                 env.getOrDefault("FLOTTILA_PG_DATABASE", "flottila"), env.getOrDefault("FLOTTILA_PG_USER", "flottila"),
-                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), (int) number(env, "FLOTTILA_PG_POOL_SIZE", 16, 1, 1024));
+                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), (int) number(env, "FLOTTILA_PG_POOL_SIZE", 16, 1, 1024), sslMode(env, pgHost), sslRootCert(env));
         long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, MEMORY_TIER_MIN, Integer.MAX_VALUE);
         long memoryBudget = number(env, "FLOTTILA_BLOB_MEMORY_BUDGET", 256 * MIB, 1, Long.MAX_VALUE);
         if (memoryTier > memoryBudget) {
@@ -421,6 +486,39 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.poolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
                 duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT));
+    }
+
+    /** {@code FLOTTILA_PG_SSL_MODE} as written; unset, {@code disable} on a loopback {@code host}, else {@code verify-full} (D-124). */
+    private static Pg.SslMode sslMode(Map<String, String> env, String host) {
+        String raw = env.get("FLOTTILA_PG_SSL_MODE");
+        if (raw == null) return PG_LOOPBACK.contains(host) ? Pg.SslMode.DISABLE : Pg.SslMode.VERIFY_FULL;
+        for (Pg.SslMode mode : Pg.SslMode.values()) {
+            if (mode.toString().equals(raw)) return mode;
+        }
+        throw new IllegalArgumentException("FLOTTILA_PG_SSL_MODE must be disable, verify-ca or verify-full (TLS without verification is not offered), was '"
+                + raw + "'");
+    }
+
+    /**
+     * {@code FLOTTILA_PG_SSL_ROOT_CERT} as given, once its first byte was read, under any mode: a missing file, a directory, a file
+     * the node cannot read and an empty file (a CA that trusts nothing) are refused at start naming both keys, never at the first
+     * handshake; whether a mode needs a CA at all, {@link Pg}'s constructor checks.
+     */
+    private static Optional<Path> sslRootCert(Map<String, String> env) {
+        Optional<Path> ca = Optional.ofNullable(env.get("FLOTTILA_PG_SSL_ROOT_CERT")).map(Path::of);
+        if (ca.isPresent()) {
+            int first;
+            try (InputStream in = Files.newInputStream(ca.get())) {
+                first = in.read();
+            } catch (IOException e) {
+                throw new IllegalArgumentException("FLOTTILA_PG_SSL_ROOT_CERT " + ca.get() + " (the CA of FLOTTILA_PG_SSL_MODE) cannot be read: " + e, e);
+            }
+            if (first < 0) {
+                throw new IllegalArgumentException("FLOTTILA_PG_SSL_ROOT_CERT " + ca.get() + " (the CA of FLOTTILA_PG_SSL_MODE) is empty: a CA without a"
+                        + " certificate trusts nothing");
+            }
+        }
+        return ca;
     }
 
     /**
