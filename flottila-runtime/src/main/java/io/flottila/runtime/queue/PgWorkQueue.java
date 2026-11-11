@@ -3,11 +3,15 @@ package io.flottila.runtime.queue;
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
 import io.flottila.api.BodyLostException;
+import io.flottila.api.Timer;
+import io.flottila.core.batch.BatchingWriter;
+import io.flottila.core.batch.OverloadedException;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Page;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.journal.JournalRef;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
@@ -17,10 +21,12 @@ import io.vertx.sqlclient.Tuple;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The Postgres {@link WorkQueue} (ported from proto-m1): {@code SELECT … FOR UPDATE SKIP LOCKED}
@@ -56,6 +62,16 @@ import java.util.Optional;
  * {@code hashtext(flow ‖ U+001F ‖ key)}, keys in hash order; the complete takes it inside its own {@code WHERE}), so a same-key
  * save never reads "no other row" past a completion that has not yet handed the key on (F-30). V15's {@code work_flow_key_seq}
  * answers the key probes.
+ *
+ * <p>Batched completion (D-122, CORE-7): a queue built with a timer ({@link #PgWorkQueue(Pool, String, TieredBlobStore, Timer)})
+ * completes unkeyed rows ({@link #completeUnkeyed}) through one {@link BatchingWriter}: one autocommit {@link #COMPLETE_BATCH} for
+ * up to {@value #BATCH_MEMBERS} members, sent at once when no batch is in flight, else gathered behind it (window zero, no timer),
+ * {@value #BATCH_IN_FLIGHT} in flight, {@value #BATCH_BACKLOG} waiting; a member that finds no room waits {@link #BATCH_MAX_WAIT} at
+ * most, then fails and is counted refused. Each row is fenced by its own attempts token; a member whose row the statement did not
+ * delete — re-claimed, held, keyed, never handed out, unknown — answers STALE. A failed statement fails every member with its
+ * cause and is not retried (a retry would answer done for a member gone stale meanwhile); each row is left to its lease.
+ * {@link #close} refuses later members and answers those handed over. The other constructors complete unkeyed rows by
+ * {@link #completeRow}, one statement each.
  *
  * @since 0.1
  */
@@ -189,6 +205,23 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String NEXT_NODE_AFTER = "select (select case when o.held_at is null and o.lost_at is null and o.body_node <> $3::text"
             + " then o.body_node end from work o where o.flow = $1 and o.partition_key = $2 order by o.seq limit 1)";
 
+    /** Members of one {@link #COMPLETE_BATCH} at most (D-122 C3). */
+    static final int BATCH_MEMBERS = 256;
+    /** Batch statements in flight at most. */
+    static final int BATCH_IN_FLIGHT = 2;
+    /** Members waiting for a statement at most. */
+    static final int BATCH_BACKLOG = 8192;
+    /** How long a member waits for room in a full backlog before it fails, refused. */
+    static final Duration BATCH_MAX_WAIT = Duration.ofSeconds(5);
+
+    /**
+     * The batched completion of unkeyed rows (D-122 C2), autocommit: each pair ({@code $1[i]}, {@code $2[i]}) deletes its row only
+     * while it is the current holder's ({@link #CURRENT}'s condition) and the row has no key; the rows deleted are answered.
+     */
+    private static final String COMPLETE_BATCH = "delete from work w using unnest($1::bigint[], $2::int[]) c(seq, attempts)"
+            + " where w.seq = c.seq and w.attempts = c.attempts and w.attempts > 0 and w.held_at is null and w.partition_key is null"
+            + " returning w.seq, w.attempts, w.id";
+
     private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
 
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
@@ -207,6 +240,22 @@ public final class PgWorkQueue implements WorkQueue {
     private final Pool pool;
     private final String node;              // null: any node's items
     private final TieredBlobStore store;    // null: no index to tell
+    private final BatchingWriter<Member> batch;   // null: unkeyed rows complete one statement each
+    private final AtomicLong statements = new AtomicLong();
+    private final AtomicLong members = new AtomicLong();
+    private final AtomicLong stale = new AtomicLong();
+    private final AtomicLong refused = new AtomicLong();
+
+    /** One completion handed to the batch: the row, its holder's token, and its answer. */
+    private record Member(long seq, int attempts, Promise<Completion> answer) {}
+
+    /**
+     * What the batched completion did since the queue was built (D-122): batch statements sent, members sent in them, members
+     * answered STALE (keyed and unknown rows included), members refused after waiting {@link #BATCH_MAX_WAIT} for room.
+     *
+     * @since 0.1
+     */
+    public record Completions(long statements, long members, long stale, long refused) {}
 
     /** A queue that claims any item, its body on any node. */
     public PgWorkQueue(Pool pool) {
@@ -223,6 +272,19 @@ public final class PgWorkQueue implements WorkQueue {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.node = node;
         this.store = store;
+        this.batch = null;
+    }
+
+    /**
+     * {@link #PgWorkQueue(Pool, String, TieredBlobStore)} ({@code store} null: no index to tell) completing unkeyed rows in batches
+     * (D-122), {@code timer} bounding a member's wait for room.
+     */
+    public PgWorkQueue(Pool pool, String node, TieredBlobStore store, Timer timer) {
+        this.pool = Objects.requireNonNull(pool, "pool");
+        this.node = Objects.requireNonNull(node, "node");
+        this.store = store;
+        this.batch = new BatchingWriter<>(this::completeBatch, timer,
+                new BatchingWriter.Options(BATCH_MEMBERS, Duration.ZERO, BATCH_IN_FLIGHT, BATCH_BACKLOG, BATCH_MAX_WAIT));
     }
 
     /**
@@ -376,6 +438,69 @@ public final class PgWorkQueue implements WorkQueue {
                                 + "the node of its key's next row failed, its reconciliation claim finds it: " + failed, failed);
                         return Completion.done(Optional.empty());
                     });
+        });
+    }
+
+    /**
+     * Batched (a queue built with a timer): the row joins the next {@link #COMPLETE_BATCH}, answered once it committed — done for a
+     * row it deleted, STALE for any other (a keyed row included); failed with the statement's cause, with
+     * {@link OverloadedException} when no room came within {@link #BATCH_MAX_WAIT}, with IllegalStateException after {@link #close}.
+     * Otherwise {@link #completeRow}.
+     */
+    @Override public Future<Completion> completeUnkeyed(long seq, int attempts) {
+        if (batch == null) return completeRow(seq, attempts);
+        Member m = new Member(seq, attempts, Promise.promise());
+        batch.saveWaiting(m).onFailure(failed -> {
+            if (failed instanceof OverloadedException) refused.incrementAndGet();
+            m.answer().tryFail(failed);
+        });
+        return m.answer().future();
+    }
+
+    /** The batched completion's counts so far; all zero for a queue that completes one statement each. */
+    public Completions completions() {
+        return new Completions(statements.get(), members.get(), stale.get(), refused.get());
+    }
+
+    /**
+     * Refuses further batched completions and completes once every member handed over before was answered (never failing);
+     * a queue that completes one statement each has nothing to wait for.
+     */
+    public Future<Void> close() {
+        if (batch == null) return Future.succeededFuture();
+        batch.close();
+        return batch.flush().otherwiseEmpty();
+    }
+
+    /**
+     * One batch statement for {@code batch}: every member answered before the statement's future completes — done once for each
+     * row deleted (a second member of the same row and token is STALE), STALE otherwise; a failed statement answers nothing here
+     * (the writer fails each member with its cause).
+     */
+    private Future<Void> completeBatch(List<Member> batch) {
+        Long[] seqs = new Long[batch.size()];
+        Integer[] tokens = new Integer[batch.size()];
+        for (int i = 0; i < seqs.length; i++) {
+            seqs[i] = batch.get(i).seq();
+            tokens[i] = batch.get(i).attempts();
+        }
+        statements.incrementAndGet();
+        members.addAndGet(seqs.length);
+        return pool.preparedQuery(COMPLETE_BATCH).execute(Tuple.tuple().addArrayOfLong(seqs).addArrayOfInteger(tokens)).map(rows -> {
+            Map<Long, Integer> deleted = new HashMap<>();
+            for (Row done : rows) {
+                completed(done);
+                deleted.put(done.getLong("seq"), done.getInteger("attempts"));
+            }
+            for (Member m : batch) {
+                if (deleted.remove(m.seq(), m.attempts())) {
+                    m.answer().tryComplete(Completion.done(Optional.empty()));
+                } else {
+                    stale.incrementAndGet();
+                    m.answer().tryComplete(Completion.STALE);
+                }
+            }
+            return null;
         });
     }
 

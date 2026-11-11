@@ -52,3 +52,20 @@ CompletionsBeforeThePool. Red: compile (agent/work/CORE-7-red.log), semantic vs 
 Signatures approved: PgWorkQueue(Pool, String, TieredBlobStore (nullable), Timer); batched completeUnkeyed answers STALE for a keyed
 row; completions() accessors statements/members/stale/refused (members = sent; stale includes keyed/unknown; refused = maxWait
 expiries); `Future<Void> close()` completes once every handed-over member is answered, later members fail. No existing test changed.
+
+## Implementer r1 (2026-11-11)
+Handback: all reds green, none edited. Plan probe not added (PG 17.11 generic plan probes work_pkey per member, CORE-7-plan.txt).
+Close: writer close then flush under the writer lock; Node.closeWork after flows/lease/sweeper, before signals and stores.
+Approved implementer test: PgWorkQueueCompletionEdgesIT (4: after-close and failed statement not refused; timerless queue keyed
+row single statement; duplicate member done once). Hand mutants 13/13 killed (CORE-7-mut.log). Reactor: 1 error =
+NodeTakeoverLedgerIT:246 (FIX-156 signature, fixture holds sends so no completion runs), passes alone 2/2.
+
+## Review r1 FAIL (2026-11-11) → fix round
+F1 delay bound wording false (§4, §7, changelog, D-122, F-31): reworded by the architect to the code's behaviour (2 in flight +
+≤ 8192 backlog ahead, no time bound; the 5 s is only the wait for room). F2 D-101 (2) amendment marker added in DECISIONS.
+F3 Node.start failure path closeWork unpinned: verifier runs M14; if it survives, accepted survivor — a missing close on a
+failed start only leaves rows to their lease (no loss, no duplicate beyond at-least-once). Edges IT approved by the reviewer.
+Obs 3 (unbounded close wait) → FIX-163.
+M14 (Node.java:311 start-failure `closeWork.run()` → `;`): survived — 74 run, the only error is FIX-160's test-side CME at
+NodeShutdownWaitsForWorkerSettlementIT:363 (until():225), no assertion (agent/work/CORE-7-m14.log; restore cmp identical).
+Accepted survivor: a failed start that skips the queue close leaves members to their lease — no loss, at-least-once rerun only.

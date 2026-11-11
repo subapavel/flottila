@@ -101,12 +101,13 @@ import java.util.function.Function;
  * retention job, whose first run begins at once and does not hold
  * the start, then the journal's {@link SegmentSweeper} ({@code FLOTTILA_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
  * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the node lease
- * and its connection, then the sampler, then the journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening
+ * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening
  * or pooled. {@code close} first
  * closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
  * released, while the admin port still answers — then stops renewing the node lease and closes its connection (the row expires;
  * a peer or the next start takes the items over), then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
- * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then closes the journal (its spills and persists in flight first; its {@code LOCK}
+ * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then the work queue's completion
+ * batch (every completion handed over answered first, D-122), then the work events, then closes the journal (its spills and persists in flight first; its {@code LOCK}
  * given up), then flushes and closes the message store, then closes the pool, then the S3
  * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
  *
@@ -155,10 +156,12 @@ public final class Node implements AutoCloseable {
     /** Closes the Valkey client of the poller leases; nothing when they are held in memory. */
     private final Runnable closeValkey;
     private final Runnable closeSignals;
+    /** Closes the work queue's completion batch (D-122): what was handed over is answered through the open pool. */
+    private final Runnable closeWork;
 
     private Node(Deployments deployments, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin, int adminPort,
                  Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey,
-                 Runnable closeSignals) {
+                 Runnable closeSignals, Runnable closeWork) {
         this.deployments = deployments;
         this.lease = lease;
         this.membership = membership;
@@ -173,6 +176,7 @@ public final class Node implements AutoCloseable {
         this.closeS3 = closeS3;
         this.closeValkey = closeValkey;
         this.closeSignals = closeSignals;
+        this.closeWork = closeWork;
     }
 
     /**
@@ -206,6 +210,7 @@ public final class Node implements AutoCloseable {
         Runnable closeS3 = () -> {};   // the S3 client once built: closed after the pool
         Runnable closeValkey = () -> {};   // the Valkey client once built: closed last
         Runnable closeSignals = () -> {};   // the work events once built: closed after the deployments, before the stores and the pool
+        Runnable closeWork = () -> {};   // the work queue's completion batch once built: closed after the deployments, before the signals
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
         NodeLease lease = null;   // once joined: closed after the deployments, its connection with it
         PgMembership membership = null;
@@ -237,7 +242,9 @@ public final class Node implements AutoCloseable {
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
-            PgWorkQueue work = new PgWorkQueue(pool, opened.node(), blobs);   // claims what this journal holds, its claims indexed
+            // claims what this journal holds, its claims indexed; unkeyed completions in batches (D-122)
+            PgWorkQueue work = new PgWorkQueue(pool, opened.node(), blobs, timer);
+            closeWork = () -> work.close().await();
             ArchiveStore archives = new DirArchiveStore(config.archives().dir());
             if (config.s3().isPresent()) {
                 NodeConfig.S3 settings = config.s3().get();
@@ -284,7 +291,7 @@ public final class Node implements AutoCloseable {
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
             return new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey,
-                    closeSignals);
+                    closeSignals, closeWork);
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -301,9 +308,13 @@ public final class Node implements AutoCloseable {
                         sampler.ifPresent(CpuSampler::close);
                     } finally {
                         try {
-                            closeSignals.run();   // before the pool it sends on
+                            closeWork.run();   // after the flows that complete, before the pool it deletes through
                         } finally {
-                            closeStores(journal, messages, pool, closeS3, closeValkey);
+                            try {
+                                closeSignals.run();   // before the pool it sends on
+                            } finally {
+                                closeStores(journal, messages, pool, closeS3, closeValkey);
+                            }
                         }
                     }
                 }
@@ -415,7 +426,8 @@ public final class Node implements AutoCloseable {
 
     /**
      * Closes the deployments (every flow stopped, its lease released, deploys refused), then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
-     * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then the work events
+     * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then the work queue's
+     * completion batch (waits until every completion handed over is answered, D-122), then the work events
      * (their listening connection; nothing sent from then on), then closes the journal, then flushes and closes the message store, then closes
      * the pool, then the S3 client, then the Valkey client — each step even when the one before failed.
      */
@@ -440,9 +452,13 @@ public final class Node implements AutoCloseable {
                                 sweeper.close();   // waits for a pass in flight: before the journal and the pool it uses
                             } finally {
                                 try {
-                                    closeSignals.run();   // after the flows that announce, before the pool it sends on (D-121 (b) B2)
+                                    closeWork.run();   // after the flows that complete, before the pool it deletes through (D-122)
                                 } finally {
-                                    closeStores(journal, messages, pool, closeS3, closeValkey);
+                                    try {
+                                        closeSignals.run();   // after the flows that announce, before the pool it sends on (D-121 (b) B2)
+                                    } finally {
+                                        closeStores(journal, messages, pool, closeS3, closeValkey);
+                                    }
                                 }
                             }
                         }

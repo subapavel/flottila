@@ -1,11 +1,11 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-139/140/142/145, P2-16a, P2-16b done; D-110 no size refusal; benchmarks paused
-last commit: `Task: P2-16b` (this commit); 7ab4898 `Task: P2-16a`
+state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-139/140/142/145, P2-16a, P2-16b, CORE-7 done; D-110 no size refusal; benchmarks paused
+last commit: `Task: CORE-7` (this commit); f47df4f `Task: P2-16b`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: CORE-7 batched completion (class C): designer draft, then packet; FIX-160 before the next long IT round
+next exact action: FIX-160 (NodeShutdownWaitsForWorkerSettlementIT:363 CME test race), then review fixes FIX-141/143/144/146
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

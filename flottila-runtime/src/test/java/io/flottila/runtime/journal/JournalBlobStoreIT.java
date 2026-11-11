@@ -448,4 +448,33 @@ class JournalBlobStoreIT {
         assertTrue(afterComplete.failed(), "completed by complete: its body is read by no index entry");
         assertInstanceOf(BlobNotFoundException.class, afterComplete.cause(), String.valueOf(afterComplete.cause()));
     }
+
+    /**
+     * CORE-7 C2 (D-122) "returned → forget the body": an unkeyed item completed by the batched queue's {@code completeUnkeyed} takes
+     * its input body's index entry with it, as {@code complete} does above: at level none its body then reads nowhere.
+     */
+    @Test
+    void anUnkeyedItemCompletedByTheBatchLeavesNoIndexEntryToReadItsBodyBy() throws Exception {
+        JournalWorld a = world("node-a");
+        PgWorkQueue queue = new PgWorkQueue(db.pool(), "node-a", a.blobs,
+                new io.flottila.testkit.FakeTimer(io.flottila.testkit.FakeClock.at(java.time.Instant.parse("2026-11-11T10:00:00Z"))));
+        try {
+            Buffer bytes = bytes(2_000, 74);
+            Envelope e = a.arrive("m-batched", bytes);
+            assertTrue(settled(a.intake.save(e, JournalWorld.ingress(e), JournalWorld.FLOW, null, null, false, JournalWorld.undecided())).succeeded(),
+                    "fixture: saved unkeyed at level none");
+            List<WorkQueue.Item> claimed = queue.claim("w-1", JournalWorld.FLOW, 1, Duration.ofMinutes(5)).await();
+            assertEquals(List.of("m-batched"), claimed.stream().map(WorkQueue.Item::messageId).toList(), "fixture: claimed");
+            assertNull(claimed.getFirst().partitionKey(), "fixture: no partition key");
+            assertEquals(bytes, opened(a.blobs, e.body().key()).result(), "witness: its body reads while its item is there");
+
+            WorkQueue.Completion done = queue.completeUnkeyed(claimed.getFirst().seq(), claimed.getFirst().attempts()).await();
+            assertTrue(done.completed(), "fixture: completed by the batch");
+            Future<Buffer> after = opened(a.blobs, e.body().key());
+            assertTrue(after.failed(), "completed by the batch: its body is read by no index entry");
+            assertInstanceOf(BlobNotFoundException.class, after.cause(), String.valueOf(after.cause()));
+        } finally {
+            queue.close().await();
+        }
+    }
 }

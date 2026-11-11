@@ -181,6 +181,20 @@ public interface WorkQueue {
     }
 
     /**
+     * {@link #completeRow} for a row without a partition key, which a queue may gather with other such completions into one
+     * statement (D-122): the answer comes once the delete committed. Each row is fenced by its own token, so a member the caller
+     * no longer holds answers {@link Completion#STALE} and its neighbours complete; a batching queue answers STALE for a keyed row
+     * too, which it never completes this way.
+     *
+     * <p>This default completes by {@link #completeRow}, a keyed row included.
+     *
+     * @since 0.1
+     */
+    default Future<Completion> completeUnkeyed(long seq, int attempts) {
+        return completeRow(seq, attempts);
+    }
+
+    /**
      * Same-key fast path, under the same condition as {@link #complete}: completes {@code seq} and, if it had a key, leases the
      * next row of that key to the same worker in the same round-trip — a hot partition never waits for a new claim round.
      * {@link Completion#STALE} when the caller no longer holds {@code seq}: nothing is completed and nothing taken.

@@ -1,4 +1,18 @@
 
+## 2026-11-11 — CORE-7 batched completion of unkeyed work items (D-122 draft, F-31) — done, review PASS (r2)
+Context compacted mid task (re-verified git status/log). Deviation: ARCHITECTURE §4 fence (D-101 (2) amended), §7, changelog 3.7, F-31
+Test first: FlowWorkerCompleteUnkeyedTest, PgWorkQueueBatchedCompletionIT (100 completions → 2 statements, red 101),
+PgWorkQueueBatchedCompletionPropertyIT, WorkQueueContract unkeyed case, PgBatchedWorkQueueContractIT, JournalBlobStoreIT and
+NodeShutdownWaitsForWorkerSettlementIT cases (red agent/work/CORE-7-red*.log); implementer added PgWorkQueueCompletionEdgesIT
+Changed: core WorkQueue.completeUnkeyed, FlowWorker.settle routes unkeyed items to it; runtime PgWorkQueue batch over BatchingWriter
+(256 / PT0S / 2 in flight / 8192 / PT5S, constants), one autocommit unnest DELETE fenced by attempts, held and keyed rows excluded,
+absent = STALE, failed statement fails all, no retry; Node closes the queue after flows, before signals and pool
+Checks: verify -Pit (no bench) 3520 tests, 0 failures, 1 error = FIX-156 flake (passes alone 2/2) · BenchMainIT 2/2 · coverage no
+decrease · PIT FlowWorker/WorkQueue 195/204 (survivors on untouched lines) · hand mutants 13/13 killed; M14 (start-failure close)
+survives, accepted (rows left to their lease) · generic plan one work_pkey probe per member (CORE-7-plan.txt)
+Found: FIX-163 (close wait unbounded). F-31 (2): every row is still deleted; keyed rows keep one transaction per message
+Review: r1 FAIL (delay-bound wording false, D-101 marker missing, start-failure close unpinned), r2 PASS
+
 ## 2026-11-11 — P2-16b work events between nodes, PT30S reconciliation (D-121 (b) draft, F-30) — done, review PASS (r2)
 Container restart mid fix round (tree intact, no mutant left: cmp against .r3.bak). Deviation: ARCHITECTURE §4/§7, changelog 3.6
 Test first: FlowWorkerEventsTest, PgWorkSignalsIT, TwoNodeWorkEventsIT, IdleNodeStatementsIT (red agent/work/P2-16b-red*.log)

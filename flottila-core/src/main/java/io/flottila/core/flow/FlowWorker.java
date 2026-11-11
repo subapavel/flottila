@@ -606,14 +606,16 @@ public final class FlowWorker {
 
     /**
      * Completes, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's newest
-     * claim of it; a complete or hold answering false is stale and counted. A complete naming the node of its key's next row
+     * claim of it; an item without a partition key completes by {@link WorkQueue#completeUnkeyed} (a batch, D-122), a keyed one
+     * by {@link WorkQueue#completeRow}; a complete or hold answering false is stale and counted. A complete naming the node of its key's next row
      * announces it there ({@link WorkSignals}, D-121 (b) B4 (i)), the delete committed. An unparkable item raises one ERROR whatever its hold
      * answers. An item left — by the run, or by a complete or hold that failed — is left to its lease.
      */
     private Future<Void> settle(Lease lease, Verdict verdict) {
         WorkQueue.Item item = lease.item;
         int token = lease.token();
-        if (verdict.complete()) return queue.completeRow(item.seq(), token).transform(removed -> {
+        if (verdict.complete()) return (item.partitionKey() == null ? queue.completeUnkeyed(item.seq(), token)
+                : queue.completeRow(item.seq(), token)).transform(removed -> {
             if (removed.failed()) {
                 leftToLease();
                 return Future.failedFuture(removed.cause());

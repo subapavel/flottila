@@ -371,6 +371,79 @@ class NodeShutdownWaitsForWorkerSettlementIT {
         }
     }
 
+    /** Backends of the case database waiting on a lock in a DELETE of work, {@code waitedAtLeast} into their statement. */
+    int deletesWaiting(Connection c, Duration waitedAtLeast) {
+        try (PreparedStatement q = c.prepareStatement("select count(*) from pg_stat_activity where datname = current_database() "
+                + "and wait_event_type = 'Lock' and query ilike 'delete from work%' and now() - query_start >= make_interval(secs => ?)")) {
+            q.setDouble(1, waitedAtLeast.toMillis() / 1000.0);
+            try (ResultSet r = q.executeQuery()) {
+                r.next();
+                return r.getInt(1);
+            }
+        } catch (SQLException e) {
+            throw new AssertionError("reading pg_stat_activity", e);
+        }
+    }
+
+    /**
+     * CORE-7 C2 (D-122): {@code Node.close} closes the work queue's completion batcher after the flows and before the pool, so a
+     * completion still pending in it is answered through the open pool. Two messages; a fixture session locks a's row {@code for
+     * update}; a's send is released first, its settle's DELETE waits on the row lock (pg_stat_activity), then b's, whose settle gathers
+     * behind it. The stop deadline (PT1S) passes with both unsettled (the settle waits for its batch's answer: "2 unsettled items");
+     * close goes on and waits in the batcher's close — still not returned once the DELETE has waited 3 s — until the lock goes. Then
+     * close returns and both rows are gone: deleted through the still-open pool (a batcher closed after the pool, or never, fails
+     * the gathered member and leaves b's row).
+     */
+    @Test
+    void nodeCloseDrainsPendingCompletionsBeforeThePool() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        Handler handler = capture(lines);
+        try {
+            Map<String, String> env = env("PT1S");
+            env.put("FLOTTILA_PG_POOL_SIZE", "8");
+            Doors doors = new Doors();
+            AtomicReference<ComponentContext> ctx = new AtomicReference<>();
+            Node node = startWith(env, doors, ctx);
+            assertEquals(200, put(node.adminPort(), settle("1.0.0").zip()).statusCode(), "fixture: settle deploys");
+
+            CountDownLatch holdA = holdNextSend(doors);
+            String a = accepted(doors, ctx.get());
+            doors.partner().awaitSent(1);
+            CountDownLatch holdB = holdNextSend(doors);
+            String b = accepted(doors, ctx.get());
+            doors.partner().awaitSent(2);
+            assertEquals(1, workRows(a).size(), "fixture: a's row");
+            assertEquals(1, workRows(b).size(), "fixture: b's row");
+
+            try (Connection locker = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword());
+                 Connection reader = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword())) {
+                locker.setAutoCommit(false);
+                try (PreparedStatement lock = locker.prepareStatement("select 1 from work where id = ? for update")) {
+                    lock.setString(1, a);
+                    lock.executeQuery().close();
+                }
+                holdA.countDown();
+                until(() -> deletesWaiting(reader, Duration.ZERO) == 1, "a's settle sends its DELETE, which waits on the row lock");
+                holdB.countDown();
+
+                open.remove(node);
+                closing = OnVirtualThread.start(node::close);
+                until(() -> lines.stream().anyMatch(l -> l.contains("unsettled")), "the stop deadline passes: " + lines);
+                String warning = lines.stream().filter(l -> l.contains("unsettled")).findFirst().orElseThrow();
+                assertTrue(warning.contains("2 unsettled item"), "both settles wait for their batch's answer: " + warning);
+                until(() -> closing.isDone() || deletesWaiting(reader, Duration.ofSeconds(3)) == 1,
+                        "close returns, or a's DELETE has waited 3 s on the lock");
+                assertFalse(closing.isDone(), "Node.close waits for the completions pending in the batcher while the lock holds them");
+                locker.rollback();
+            }
+            OnVirtualThread.join(closing);
+            assertEquals(List.of(), workRows(a), "a completed through the open pool");
+            assertEquals(List.of(), workRows(b), "b, gathered behind a, completed through the open pool before it closed");
+        } finally {
+            Logger.getLogger("io.flottila").removeHandler(handler);
+        }
+    }
+
     /**
      * Control (D-063, FIX-30; green before the fix): a hot-swap of the flow (its yaml changed) while the old version's send is
      * held at the partner (stop deadline PT2M) answers 200 within the request's 20 s, swapping the flow, and the producer the

@@ -96,4 +96,37 @@ public abstract class WorkQueueContract {
         assertEquals(List.of(1, 1), again.stream().map(WorkQueue.Item::doubts).toList(),
                 "the hand-out wrote its holder: a re-take counts a doubt, as after a claim (A5)");
     }
+
+    /**
+     * CORE-7 C1/C2 (D-122): {@code completeUnkeyed(seq, attempts)} of a row without a partition key completes it only while it is the
+     * current holder's — handed out with these attempts (at least 1) and not held — answering done with nothing next and no node;
+     * any other call (a stale token, a held row, a row never handed out, a row already gone) answers STALE and changes nothing.
+     */
+    @Test
+    void completeUnkeyedCompletesOnlyTheCurrentHoldersUnheldRow() {
+        await(queue.enqueue("u1", "t", 1, null));
+        await(queue.enqueue("u2", "t", 1, null));
+        await(queue.enqueue("u3", "t", 1, null));
+        List<WorkQueue.Item> taken = await(queue.claim(NODE, "t", 3, LEASE));
+        assertEquals(List.of("u1", "u2", "u3"), taken.stream().map(WorkQueue.Item::messageId).toList(), "fixture: claimed in seq order");
+        await(queue.enqueue("u4", "t", 1, null));   // never handed out: attempts 0
+        WorkQueue.Item u1 = taken.get(0);
+        WorkQueue.Item u2 = taken.get(1);
+        WorkQueue.Item u3 = taken.get(2);
+        assertTrue(await(queue.hold(u3.seq(), 1)), "fixture: u3 held");
+
+        assertEquals(new WorkQueue.Completion(true, Optional.empty(), Optional.empty()), await(queue.completeUnkeyed(u1.seq(), 1)),
+                "the current holder's row: done, nothing next, no node");
+        assertEquals(WorkQueue.Completion.STALE, await(queue.completeUnkeyed(u1.seq(), 1)), "a row already gone is stale");
+        assertEquals(WorkQueue.Completion.STALE, await(queue.completeUnkeyed(u2.seq(), 2)), "another token than its hand-out's is stale");
+        assertEquals(WorkQueue.Completion.STALE, await(queue.completeUnkeyed(u3.seq(), 1)), "a held row is stale: never deleted");
+        long u4 = u3.seq() + 1;
+        assertEquals(WorkQueue.Completion.STALE, await(queue.completeUnkeyed(u4, 0)), "a row never handed out matches no token, 0 included");
+        assertEquals(new WorkQueue.Completion(true, Optional.empty(), Optional.empty()), await(queue.completeUnkeyed(u2.seq(), 1)),
+                "the stale call changed nothing: u2 completes by its own token");
+
+        expireLeases();
+        assertEquals(List.of(new WorkQueue.Item(u4, "u4", "t", 1, null, 1)), await(queue.claim(NODE, "t", 10, LEASE)),
+                "u1 and u2 are gone, u3 is held; only u4 is claimable, at its first hand-out");
+    }
 }
