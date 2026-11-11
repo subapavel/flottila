@@ -71,13 +71,17 @@ import java.util.function.Supplier;
 
 /**
  * The admin read API (D-057 a, GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step, the
- * payload after step n, key search and the DLQ a page at a time ({@code {items, next|null}}), and {@code /health}.
+ * payload after step n, key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
+ * {@code /live} and {@code /ready} (D-123).
  *
  * <p>A verticle owns the socket and routes on its event loop; every route body runs on a fresh virtual thread — it awaits
  * the stores, encodes the answer and checks its headers there — and the answer is written back on the verticle's context.
  * {@code /admin/**} needs {@code Authorization: Bearer <token>} when a token is configured (the scheme in any case, the
  * token compared with {@link MessageDigest#isEqual}); without one it is open, which only a loopback bind allows.
- * {@code /health} is open and shows status only, never a check's detail. Every error body is {@code {error}}: 400 for a
+ * {@code /health} is open and shows status only, never a check's detail. {@code /live} and {@code /ready} are open too:
+ * {@code /live} answers 200 {@code {"status":"UP"}} while the server runs and reads nothing; {@code /ready} reads its
+ * {@link Readiness} inputs on the request, awaits nothing, and answers 200 {@code {"status":"UP","checks":{..}}} when every
+ * one is UP, else 503 {@code {"status":"DOWN","checks":{..}}}. Every error body is {@code {error}}: 400 for a
  * parameter that does not parse or a limit or cursor a page store refuses, 401 without the token, 404 for what is not
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
  * take, 500 for anything else — a store that failed, a recorded header no response may carry, a stored body whose stream
@@ -186,17 +190,45 @@ public final class AdminServer {
      * @param checks the checks, by name
      * @param snapshotWriteFailures read on every request
      * @param notices shown as the answer's {@code notices} array when not empty
+     * @param readiness what {@code /ready} reports
      */
-    public record HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures, List<String> notices) {
+    public record HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures, List<String> notices, Readiness readiness) {
         public HealthProbe {
             checks = Map.copyOf(checks);
             Objects.requireNonNull(snapshotWriteFailures, "snapshotWriteFailures");
             notices = List.copyOf(notices);
+            Objects.requireNonNull(readiness, "readiness");
         }
 
-        /** No notices. */
+        /** No readiness inputs: {@code /ready} is UP on every check while the server answers ({@link Readiness#ALWAYS}). */
+        public HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures, List<String> notices) {
+            this(checks, snapshotWriteFailures, notices, Readiness.ALWAYS);
+        }
+
+        /** No notices, no readiness inputs ({@link Readiness#ALWAYS}). */
         public HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures) {
             this(checks, snapshotWriteFailures, List.of());
+        }
+    }
+
+    /**
+     * What {@code /ready} reports (D-123): four in-memory inputs, true is UP, each read on every request and never awaited — so
+     * {@code /ready} needs no deadline.
+     *
+     * @param lifecycle the node finished its start and its close has not begun
+     * @param fence the node lease's fence is open
+     * @param journal the journal is UP: neither failed nor in outage (DEGRADED is DOWN here)
+     * @param deployments no package or flow is listed FAILED
+     */
+    public record Readiness(BooleanSupplier lifecycle, BooleanSupplier fence, BooleanSupplier journal, BooleanSupplier deployments) {
+        /** Every input UP: what a server built without readiness inputs reports. */
+        public static final Readiness ALWAYS = new Readiness(() -> true, () -> true, () -> true, () -> true);
+
+        public Readiness {
+            Objects.requireNonNull(lifecycle, "lifecycle");
+            Objects.requireNonNull(fence, "fence");
+            Objects.requireNonNull(journal, "journal");
+            Objects.requireNonNull(deployments, "deployments");
         }
     }
 
@@ -324,6 +356,8 @@ public final class AdminServer {
         public Future<?> start() {
             Router router = Router.router(vertx);
             router.get("/health").handler(offload(AdminServer.this::health));
+            router.get("/live").handler(offload(c -> Json.of(200, new JsonObject().put("status", Health.Status.UP.name()))));   // reads nothing (D-123)
+            router.get("/ready").handler(offload(AdminServer.this::ready));
             router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check (D-069)
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
@@ -518,6 +552,19 @@ public final class AdminServer {
                 .put("snapshotWriteFailures", health.snapshotWriteFailures().getAsLong());
         if (!health.notices().isEmpty()) answer.put("notices", new JsonArray(health.notices()));
         return Json.of(up ? 200 : 503, answer);
+    }
+
+    /** {@code /ready}: each input read now, none awaited; 200 when all are UP, else 503, each named. */
+    private Reply ready(RoutingContext ctx) {
+        Readiness r = health.readiness();
+        JsonObject checks = new JsonObject().put("lifecycle", status(r.lifecycle())).put("fence", status(r.fence()))
+                .put("journal", status(r.journal())).put("deployments", status(r.deployments()));
+        boolean up = !checks.getMap().containsValue(Health.Status.DOWN.name());
+        return Json.of(up ? 200 : 503, new JsonObject().put("status", (up ? Health.Status.UP : Health.Status.DOWN).name()).put("checks", checks));
+    }
+
+    private static String status(BooleanSupplier input) {
+        return (input.getAsBoolean() ? Health.Status.UP : Health.Status.DOWN).name();
     }
 
     private Reply timeline(RoutingContext ctx) {

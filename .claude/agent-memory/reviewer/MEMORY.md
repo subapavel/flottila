@@ -120,3 +120,4 @@
 - P2-15b/FIX-140: an arm-before-call timer needs every non-throw failure path disarmed (null answer); a predicate split into two sites needs a boundary case at each; a new SQL exists needs a hand mutant per predicate.
 - CORE-7 (2026-11-11): batch latency bounds in a doc: count the backlog ahead and every in-flight slot, not one batch (BatchingWriter.takeLocked); a failure-path close needs its own mutant.
 - FIX-160 (2026-11-11): COW subList view under concurrent append → CME; grep `.subList(` on fields filled from other threads; demand per-run XML counts, a -q log holds none.
+- FIX-144 (2026-11-11): readiness flags: read each supplier's lock (Journal lock, NodeLease monitor) for I/O held under it; a clear-first-act needs a held-phase read.

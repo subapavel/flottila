@@ -64,6 +64,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 /**
@@ -102,8 +103,8 @@ import java.util.function.Function;
  * the start, then the journal's {@link SegmentSweeper} ({@code FLOTTILA_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
  * restored flows stop while the pool is open; a stop that fails is added to the start's failure as suppressed), then the node lease
  * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the journal, the store, the pool, the S3 client, the Valkey client — so nothing is left running, listening
- * or pooled. {@code close} first
- * closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
+ * or pooled; {@code /ready}'s lifecycle is UP only once the start returns (D-123). {@code close} first marks the node not ready
+ * ({@code /ready} 503), then closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
  * released, while the admin port still answers — then stops renewing the node lease and closes its connection (the row expires;
  * a peer or the next start takes the items over), then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
  * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then the work queue's completion
@@ -158,10 +159,12 @@ public final class Node implements AutoCloseable {
     private final Runnable closeSignals;
     /** Closes the work queue's completion batch (D-122): what was handed over is answered through the open pool. */
     private final Runnable closeWork;
+    /** The {@code lifecycle} input of {@code /ready} (D-123): set once the start finished, cleared as the close's first act. */
+    private final AtomicBoolean ready;
 
     private Node(Deployments deployments, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin, int adminPort,
                  Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool pool, Runnable closeS3, Runnable closeValkey,
-                 Runnable closeSignals, Runnable closeWork) {
+                 Runnable closeSignals, Runnable closeWork, AtomicBoolean ready) {
         this.deployments = deployments;
         this.lease = lease;
         this.membership = membership;
@@ -177,6 +180,7 @@ public final class Node implements AutoCloseable {
         this.closeValkey = closeValkey;
         this.closeSignals = closeSignals;
         this.closeWork = closeWork;
+        this.ready = ready;
     }
 
     /**
@@ -280,18 +284,24 @@ public final class Node implements AutoCloseable {
             sampler = config.cpuSampling().map(period -> CpuSampler.start(period, cpu, clock, timer, CpuSampler.READ_EVERY));
             restored.restore();   // before the admin port opens: what the pool recorded runs before a deploy can be taken (D-070)
             Retention retention = new Retention(pool, clock, timer, config.retention());
+            AtomicBoolean ready = new AtomicBoolean();   // /ready's lifecycle: DOWN until the start finished (a failed start never sets it)
+            // /ready's inputs are in-memory reads (D-123): the fence, the journal's and the deployments' health — both synchronous
+            AdminServer.Readiness readiness = new AdminServer.Readiness(ready::get, lease,
+                    () -> opened.health().status() == Health.Status.UP, () -> restored.health().status() == Health.Status.UP);
             AdminServer admin = new AdminServer(config.admin(), messages, dlq, blobs,
                     new AdminServer.HealthProbe(Map.of("postgres", () -> pool.query("select 1").execute().map(Health.up()),
                             "deployments", () -> Future.succeededFuture(restored.health()),
-                            "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices),
+                            "journal", () -> Future.succeededFuture(opened.health())), messages::failed, notices, readiness),
                     Optional.of(restored), work, ids, sampler.map(s -> new AdminServer.Sampling(s.period(), s.since(), cpu, s::failed)), workers, signals);
             int port = admin.start(vertx).await();
             retention.start();   // its first run on a virtual thread of its own: the start does not wait for it
             // the segments no row pins go (CORE-3 item 10); its first pass an interval later, on a virtual thread of its own
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
-            return new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey,
-                    closeSignals, closeWork);
+            Node node = new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, pool, closeS3, closeValkey,
+                    closeSignals, closeWork, ready);
+            ready.set(true);   // the start's last act: from here /ready may answer UP
+            return node;
         } catch (Throwable failure) {
             // refused, the records unreadable, or nothing listens (a port in use, an address not bound; a checked failure arrives
             // sneakily): close what was opened for it — the deployments first, so the restored flows stop while the pool is open —
@@ -425,7 +435,7 @@ public final class Node implements AutoCloseable {
     public Journal journal() { return journal; }
 
     /**
-     * Closes the deployments (every flow stopped, its lease released, deploys refused), then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
+     * Marks the node not ready ({@code /ready} 503 from here, D-123), then closes the deployments (every flow stopped, its lease released, deploys refused), then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
      * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then the work queue's
      * completion batch (waits until every completion handed over is answered, D-122), then the work events
      * (their listening connection; nothing sent from then on), then closes the journal, then flushes and closes the message store, then closes
@@ -433,6 +443,7 @@ public final class Node implements AutoCloseable {
      */
     @Override
     public void close() {
+        ready.set(false);   // first (D-123 R3): /ready is 503 while the listeners still drain, the admin port still answering
         try {
             deployments.close();
         } finally {

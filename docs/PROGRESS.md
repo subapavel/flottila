@@ -1,4 +1,15 @@
 
+## 2026-11-11 — FIX-144 readiness and liveness endpoints (review F4.4, D-123) — done, review PASS (r1)
+Test first: AdminServerTest liveAnswers200WithoutReadingAnyCheck, readyIsDownNamingEachFailedCheck, readyAnswersWithoutAwaiting,
+liveAndReadyNeedNoTokenWhileAdminDoes; NodeIT fencedNodeIsNotReadyButRemainsLive, drainDropsReadinessBeforeListenersStop,
+journalInOutageNodeIsNotReady, failedFlowNodeIsNotReady, liveDoesNotTouchPostgres (red: compile + 404 vs shim, FIX-144-red*.log)
+Changed: AdminServer GET /live (constant) and GET /ready (lifecycle, fence, journal UP, deployments; in-memory, no await, no
+token), Readiness record, 4-arg HealthProbe (2/3-arg = ALWAYS); Node ready flag set last in start, cleared first in close
+Checks: verify -Pit (no bench) 3530 tests, 0 failures, 1 error = FIX-156 flake · coverage no decrease (runtime 99.4/99.6) ·
+hand mutants M1, M3–M5 killed; M2 (ready set early) survives, accepted (visible only with FIX-164's leaked admin port)
+Found: FIX-164 (start failure leaves a started admin server open). Docker healthchecks still use /health (unchanged)
+Review: r1 PASS
+
 ## 2026-11-11 — FIX-160 test race: COW subList views read under concurrent append — done, review PASS (r2)
 Test-only. NodeShutdownWaitsForWorkerSettlementIT:363 streamed a live CopyOnWriteArrayList subList the log handler appends to (CME)
 Changed: snapshot (`List.copyOf`) before every subList; lazy failure messages via until(BooleanSupplier, Supplier<String>); same

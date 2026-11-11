@@ -1,6 +1,7 @@
 package io.flottila.runtime;
 
 import io.flottila.api.Ack;
+import io.flottila.api.BlobKey;
 import io.flottila.api.Component;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
@@ -92,9 +93,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.logging.Handler;
@@ -106,6 +109,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -1974,5 +1978,198 @@ class NodeIT {
     static Object leaseUntil(PgConnection reader) {
         var rows = reader.query("select lease_until from nodes where node = 'node-it'").execute().await();
         return rows.size() == 0 ? null : rows.iterator().next().getValue(0);
+    }
+
+    // --- FIX-144 (D-123): GET /live and GET /ready over the node's real wiring
+    //
+    // No sleep: each case spins (to a 20 s deadline) on a condition. The node's lease runs on its own clock (System::nanoTime and
+    // the Vert.x timer: Node.start takes no clock), so the fence closes the way a real outage closes it — the node's renews wait
+    // on its nodes row, which a test session holds, for half a lease (FLOTTILA_NODE_LEASE PT2S, renewed every PT0.5S).
+
+    static final List<String> READINESS = List.of("lifecycle", "fence", "journal", "deployments");
+
+    /** The /ready body the spec (R2) gives: {@code status}, and every check UP but those named {@code down}. */
+    static JsonObject readyBody(String status, String... down) {
+        JsonObject checks = new JsonObject();
+        for (String name : READINESS) checks.put(name, List.of(down).contains(name) ? "DOWN" : "UP");
+        return new JsonObject().put("status", status).put("checks", checks);
+    }
+
+    static final JsonObject LIVE = new JsonObject().put("status", "UP");
+
+    /** {@code GET path}, its status asserted, its JSON body. */
+    static JsonObject answer(int port, String path, int status) throws Exception {
+        HttpResponse<String> r = get(port, path);
+        assertEquals(status, r.statusCode(), path + ": " + r.body());
+        return new JsonObject(r.body());
+    }
+
+    /** Asks {@code GET path} until it answers {@code status} (20 s, no sleep); that answer's JSON body. */
+    static JsonObject answering(int port, String path, int status) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (true) {
+            HttpResponse<String> r = get(port, path);
+            if (r.statusCode() == status) return new JsonObject(r.body());
+            if (System.nanoTime() > deadline) fail("not within 20 s: " + path + " answering " + status + "; last " + r.statusCode() + " " + r.body());
+            Thread.onSpinWait();
+        }
+    }
+
+    /** The node's backends of the case database waiting on a lock in an {@code update nodes} (its renews). */
+    long renewsWaitingOnALock() {
+        return observer.preparedQuery("select count(*) from pg_stat_activity where datname = $1 and wait_event_type = 'Lock' and query ilike '%update nodes%'")
+                .execute(Tuple.of(database)).await().iterator().next().getLong(0);
+    }
+
+    /**
+     * R2 fence, R1: a test session holds the node's {@code nodes} row, so its renews wait; half a lease after the last renewed
+     * send its fence closes — /ready 503 naming fence DOWN (lifecycle, journal, deployments UP) while /live stays 200. Released,
+     * the renews go through, the fence opens again and /ready is 200 (read on every request).
+     */
+    @Test
+    void fencedNodeIsNotReadyButRemainsLive() throws Exception {
+        Map<String, String> env = env("dev");
+        env.put("FLOTTILA_NODE_LEASE", "PT2S");
+        env.put("FLOTTILA_NODE_LEASE_RENEW", "PT0.5S");
+        start(env, ctx -> List.of());
+        int port = node.adminPort();
+
+        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
+        try {
+            Transaction tx = holder.begin().await();
+            try {
+                int held = holder.query("select 1 from nodes where node = 'node-it' for no key update").execute().await().size();
+                assertEquals(1, held, "fixture: the node's row is held");
+                until(() -> renewsWaitingOnALock() > 0, "fixture: a renew of the node waits on its held row");
+
+                JsonObject fenced = answering(port, "/ready", 503);
+                assertEquals(readyBody("DOWN", "fence"), fenced, "the fence closed (no renew answered for half a lease): not ready, fence named");
+                assertEquals(LIVE, answer(port, "/live", 200), "a fenced node is still live");
+            } finally {
+                tx.rollback().await();
+            }
+        } finally {
+            holder.close().await();
+        }
+        assertEquals(readyBody("UP"), answering(port, "/ready", 200), "the renews answer again: the fence opens and the node is ready again");
+    }
+
+    /**
+     * R3: Node.close drops readiness before its deployments stop the listeners. A sync delivery is held at the partner; the
+     * close reaches the door's stop (held, draining that open answer): /ready is 503 naming lifecycle DOWN — the fence and the
+     * rest still UP — /live 200, and the listener still answers the delivery it took once the partner does.
+     */
+    @Test
+    void drainDropsReadinessBeforeListenersStop() throws Exception {
+        Doors doors = new Doors();
+        AtomicReference<ComponentContext> context = new AtomicReference<>();
+        NodeConfig config = NodeConfig.from(env("ci"));
+        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> {
+            context.set(ctx);
+            return List.of(doors);
+        }, List.of(), List.of()));
+        int port = node.adminPort();
+        putOk(port, "shop", doorsPackage("shop", "a").zip());
+
+        CountDownLatch partner = doors.partner().holdNext(1);
+        Doors.Gate stop = doors.holdStopOf("shop/a");
+        try {
+            ComponentContext ctx = context.get();
+            String id = ctx.ids().next();
+            Envelope e = Envelope.ingress(id, "shop/a", Headers.empty(),
+                    ctx.blobs().write(BlobKey.body(id, 0), Buffer.buffer("<invoice/>"), 1024).await());
+            Future<Ack> delivery = doors.door("shop/a").deliver(e);
+            doors.partner().awaitSent(1);   // the sync answer is open on the listener until the partner answers
+
+            Node closed = node;
+            node = null;
+            closing = OnVirtualThread.start(closed::close);
+            assertTrue(stop.reached().await(20, TimeUnit.SECONDS), "fixture: close reached the listener's stop (it drains its open answer)");
+            assertFalse(delivery.isComplete(), "fixture: the delivery is still open, held at the partner");
+
+            assertEquals(readyBody("DOWN", "lifecycle"), answer(port, "/ready", 503), "closing: not ready while the listener still drains");
+            assertEquals(LIVE, answer(port, "/live", 200), "a draining node is still live");
+
+            partner.countDown();
+            Ack ack = delivery.await(20, TimeUnit.SECONDS);
+            assertInstanceOf(Ack.Reply.class, ack, "the listener still answers the delivery it took after readiness dropped: " + ack);
+        } finally {
+            partner.countDown();
+            stop.release();
+        }
+    }
+
+    /**
+     * R2 journal (FIX-144 deviation: the in-process node's journal cannot be fail-stopped — Node.start opens it over the real
+     * files — so the outage stands in, the rule's DEGRADED-counts-DOWN half): a trigger refuses the next segment's
+     * {@code journal_segments} row, the pre-open retries and the journal is DEGRADED on /health; /ready is 503 naming journal
+     * DOWN, /live 200. The trigger dropped, the retry goes in and /ready is 200 again.
+     */
+    @Test
+    void journalInOutageNodeIsNotReady() throws Exception {
+        Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword()); Statement s = c.createStatement()) {
+            s.execute("""
+                    create function fix144_refuse_next_segment() returns trigger language plpgsql as $$
+                    begin
+                      if exists (select 1 from journal_segments where node = new.node) then
+                        raise exception 'fixture: the next journal segment''s row is refused';
+                      end if;
+                      return new;
+                    end $$""");
+            s.execute("create trigger fix144_refuse_next_segment before insert on journal_segments for each row execute function fix144_refuse_next_segment()");
+        }
+        start(env("dev"), ctx -> List.of());
+        int port = node.adminPort();
+        until(() -> {
+            try {
+                HttpResponse<String> h = get(port, "/health");
+                return "DEGRADED".equals(new JsonObject(h.body()).getJsonObject("checks").getString("journal"));
+            } catch (Exception e) {
+                throw new AssertionError("GET /health", e);
+            }
+        }, "fixture: the journal is DEGRADED on /health (its pre-open's row refused)");
+
+        assertEquals(readyBody("DOWN", "journal"), answer(port, "/ready", 503), "a journal in outage: not ready, journal named");
+        assertEquals(LIVE, answer(port, "/live", 200), "a node whose journal is in outage is still live");
+
+        try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword()); Statement s = c.createStatement()) {
+            s.execute("drop trigger fix144_refuse_next_segment on journal_segments");
+        }
+        assertEquals(readyBody("UP"), answering(port, "/ready", 200), "the retried row went in: the journal is UP and the node ready again");
+    }
+
+    /** R2 deployments: a node restored with a FAILED flow is not ready — /ready 503 naming deployments DOWN — and live. */
+    @Test
+    void failedFlowNodeIsNotReady() throws Exception {
+        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        Doors second = new Doors();
+        second.failStartOf("shop/b", "address in use");
+        node = startWith(env("ci"), second);
+        int port = node.adminPort();
+        assertEquals("FAILED", itemOf(listed(port, "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b did not start on restore");
+
+        assertEquals(readyBody("DOWN", "deployments"), answer(port, "/ready", 503), "a FAILED flow: not ready, deployments named");
+        assertEquals(LIVE, answer(port, "/live", 200), "a node with a FAILED flow is still live");
+    }
+
+    /**
+     * R1: /live touches no Postgres. The case database stops taking connections and the node's backends are ended: /health
+     * reports postgres DOWN (the node's PG is unreachable), /live still answers 200 {"status":"UP"}.
+     */
+    @Test
+    void liveDoesNotTouchPostgres() throws Exception {
+        start(env("dev"), ctx -> List.of());
+        int port = node.adminPort();
+        try {
+            observer.query("alter database \"" + database + "\" with allow_connections false").execute().await();
+            observer.preparedQuery("select pg_terminate_backend(pid) from pg_stat_activity where datname = $1").execute(Tuple.of(database)).await();
+            JsonObject health = answering(port, "/health", 503);
+            assertEquals("DOWN", health.getJsonObject("checks").getString("postgres"), "fixture: the node's Postgres is unreachable: " + health.encode());
+
+            for (int i = 0; i < 3; i++) assertEquals(LIVE, answer(port, "/live", 200), "live without Postgres");
+        } finally {
+            observer.query("alter database \"" + database + "\" with allow_connections true").execute().await();
+        }
     }
 }

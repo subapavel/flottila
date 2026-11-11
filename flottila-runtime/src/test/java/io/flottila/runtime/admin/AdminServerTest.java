@@ -26,6 +26,7 @@ import io.flottila.testkit.InMemoryBlobStore;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
@@ -57,7 +58,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -749,6 +752,201 @@ class AdminServerTest {
         assertEquals("UP", u.getString("status"));
         assertEquals(new JsonObject().put("postgres", "UP"), u.getJsonObject("checks"));
         assertEquals(7L, u.getLong("snapshotWriteFailures"), "UP, and the failed snapshot writes are counted (read per request)");
+    }
+
+    // --- FIX-144 (D-123): GET /live and GET /ready
+    //
+    // The shape these cases assume (FIX-144 test-author): AdminServer.Readiness(BooleanSupplier lifecycle, BooleanSupplier fence,
+    // BooleanSupplier journal, BooleanSupplier deployments) — true is UP, each read on the request — carried by the HealthProbe
+    // HealthProbe(checks, snapshotWriteFailures, notices, Readiness readiness); /ready names its checks lifecycle, fence,
+    // journal, deployments.
+
+    static final List<String> READINESS = List.of("lifecycle", "fence", "journal", "deployments");
+
+    /** The readiness inputs, each UP until a case sets it, and how often any of them was read. */
+    final Map<String, AtomicBoolean> inputs = Map.of("lifecycle", new AtomicBoolean(true), "fence", new AtomicBoolean(true),
+            "journal", new AtomicBoolean(true), "deployments", new AtomicBoolean(true));
+    final AtomicInteger inputReads = new AtomicInteger();
+
+    BooleanSupplier input(String name) {
+        AtomicBoolean value = inputs.get(name);
+        return () -> {
+            inputReads.incrementAndGet();
+            return value.get();
+        };
+    }
+
+    /** A server with the token, the /health {@code checks} and the readiness inputs above. */
+    void startWithReadiness(Map<String, Supplier<Future<Health>>> checks) throws Exception {
+        AdminServer.Readiness readiness = new AdminServer.Readiness(input("lifecycle"), input("fence"), input("journal"), input("deployments"));
+        AdminServer server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, blobs,
+                new AdminServer.HealthProbe(checks, writeFailures::get, List.of(), readiness));
+        port = server.start(vertx).await(10, TimeUnit.SECONDS);
+        started.add(server);
+    }
+
+    /** The /ready body the spec (R2) gives: {@code status}, and every check UP but those named {@code down}. */
+    static JsonObject readyBody(String status, String... down) {
+        JsonObject checks = new JsonObject();
+        for (String name : READINESS) checks.put(name, List.of(down).contains(name) ? "DOWN" : "UP");
+        return new JsonObject().put("status", status).put("checks", checks);
+    }
+
+    static void spinUntil(BooleanSupplier condition, Supplier<String> what) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) fail("not within 10 s: " + what.get());
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * R1: /live answers 200 {"status":"UP"} and nothing else, whatever the node's readiness, without asking a /health check
+     * (one throws, one never completes), reading a readiness input or touching a store. Witnesses: /ready reads the inputs and
+     * /health asks its checks through the same counters.
+     */
+    @Test
+    void liveAnswers200WithoutReadingAnyCheck() throws Exception {
+        AtomicInteger asked = new AtomicInteger();
+        Promise<Health> never = Promise.promise();
+        Map<String, Supplier<Future<Health>>> checks = Map.of(
+                "postgres", () -> {
+                    asked.incrementAndGet();
+                    throw new IllegalStateException("fixture: a check that throws");
+                },
+                "journal", () -> {
+                    asked.incrementAndGet();
+                    return never.future();
+                });
+        inputs.values().forEach(v -> v.set(false));   // not ready on any count: liveness is not readiness
+        startWithReadiness(checks);
+        try {
+            calls.clear();
+            for (int i = 0; i < 3; i++) {
+                Answer live = get("/live", null);
+                assertEquals(200, live.status(), "live while the server runs, not ready on any count: " + live.body());
+                assertNotNull(live.contentType(), "a content-type");
+                assertTrue(live.contentType().startsWith("application/json"), live.contentType());
+                assertEquals(new JsonObject().put("status", "UP"), live.json(), "the status only");
+            }
+            assertEquals(0, asked.get(), "/live asked no /health check");
+            assertEquals(0, inputReads.get(), "/live read no readiness input");
+            assertEquals(List.of(), calls, "/live touched no store");
+
+            // witnesses: the counters count
+            assertEquals(503, get("/ready", null).status(), "fixture: every input is DOWN");
+            assertTrue(inputReads.get() > 0, "witness: /ready reads the inputs through the counter");
+            get("/health", null);   // answers at once: the throwing check ends it (in whichever order the checks are asked)
+            assertTrue(asked.get() > 0, "witness: /health asks its checks through the counter");
+        } finally {
+            never.tryComplete(Health.up());
+        }
+    }
+
+    /**
+     * R2: /ready is 200 {"status":"UP","checks":{...}} with every check UP; one check DOWN makes it 503 {"status":"DOWN"} naming
+     * that one DOWN and the others UP — each of the four in turn, two at once both named — every input read again on each request
+     * (back to 200 once they are UP again). A /health check DOWN (postgres) is no readiness input: /ready never asks it.
+     */
+    @Test
+    void readyIsDownNamingEachFailedCheck() throws Exception {
+        postgres.set(Future.succeededFuture(Health.down("fixture: /health's postgres check is DOWN")));
+        startWithReadiness(Map.of("postgres", () -> {
+            saw("health");
+            return postgres.get();
+        }));
+
+        Answer up = get("/ready", null);
+        assertEquals(200, up.status(), up.body().toString());
+        assertTrue(up.contentType().startsWith("application/json"), up.contentType());
+        assertEquals(readyBody("UP"), up.json(), "every check UP, by name");
+
+        for (String name : READINESS) {
+            inputs.get(name).set(false);
+            Answer down = get("/ready", null);
+            assertEquals(503, down.status(), name + " DOWN: " + down.body());
+            assertTrue(down.contentType().startsWith("application/json"), down.contentType());
+            assertEquals(readyBody("DOWN", name), down.json(), "the body names " + name + " DOWN, the others UP");
+            inputs.get(name).set(true);
+        }
+
+        inputs.get("lifecycle").set(false);
+        inputs.get("journal").set(false);
+        Answer two = get("/ready", null);
+        assertEquals(503, two.status(), two.body().toString());
+        assertEquals(readyBody("DOWN", "lifecycle", "journal"), two.json(), "both DOWN checks are named");
+        inputs.get("lifecycle").set(true);
+        inputs.get("journal").set(true);
+
+        Answer again = get("/ready", null);
+        assertEquals(200, again.status(), "read on every request: UP again: " + again.body());
+        assertEquals(readyBody("UP"), again.json());
+        assertFalse(calls.stream().anyMatch(c -> c.what().equals("health")), "/ready asked no /health check: " + calls);
+    }
+
+    /**
+     * R2: /ready awaits nothing — a /health in flight on a check that never completes does not delay it: /ready answers 200
+     * while that /health still waits, without asking the check itself or touching a store.
+     */
+    @Test
+    void readyAnswersWithoutAwaiting() throws Exception {
+        AtomicInteger asked = new AtomicInteger();
+        Promise<Health> never = Promise.promise();
+        startWithReadiness(Map.of("postgres", () -> {
+            asked.incrementAndGet();
+            return never.future();
+        }));
+        try {
+            calls.clear();
+            Future<Answer> health = send("/health", null);
+            spinUntil(() -> asked.get() == 1, () -> "fixture: /health asks its check (asked " + asked.get() + ")");
+
+            Answer ready = get("/ready", null);   // within get's 10 s bound; a /ready that awaited the check never answers
+            assertEquals(200, ready.status(), ready.body().toString());
+            assertEquals(readyBody("UP"), ready.json());
+            assertFalse(health.isComplete(), "the /health in flight still waits for its check: /ready did not wait for it");
+            assertEquals(1, asked.get(), "/ready asked no /health check");
+            assertEquals(List.of(), calls, "/ready touched no store");
+
+            never.complete(Health.up());
+            assertEquals(200, health.await(10, TimeUnit.SECONDS).status(), "fixture: the /health answers once its check does");
+        } finally {
+            never.tryComplete(Health.up());
+        }
+    }
+
+    /**
+     * FIX-144 (implementer): a probe built without readiness inputs (the 2- and 3-arg HealthProbe) is ready on every check while
+     * the server answers — /health DOWN (its postgres check) is no readiness input — and /live is 200.
+     */
+    @Test
+    void aProbeWithoutReadinessInputsIsReadyOnEveryCheck() throws Exception {
+        postgres.set(Future.succeededFuture(Health.down("fixture: /health's postgres check is DOWN")));
+        start();
+        assertEquals(503, get("/health", null).status(), "fixture: /health is DOWN");
+        Answer ready = get("/ready", null);
+        assertEquals(200, ready.status(), ready.body().toString());
+        assertEquals(readyBody("UP"), ready.json());
+        assertEquals(new JsonObject().put("status", "UP"), get("/live", null).json());
+    }
+
+    /** R1, R2: /live and /ready need no token — none or a wrong one — while /admin/** does (the server has one). */
+    @Test
+    void liveAndReadyNeedNoTokenWhileAdminDoes() throws Exception {
+        startWithReadiness(Map.of());
+        List<String> authorizations = new ArrayList<>();
+        authorizations.add(null);
+        authorizations.add("Bearer wrong");
+        for (String auth : authorizations) {
+            Answer live = get("/live", auth);
+            assertEquals(200, live.status(), "/live with Authorization " + auth + ": " + live.body());
+            assertEquals(new JsonObject().put("status", "UP"), live.json());
+            Answer ready = get("/ready", auth);
+            assertEquals(200, ready.status(), "/ready with Authorization " + auth + ": " + ready.body());
+            assertEquals(readyBody("UP"), ready.json());
+        }
+        assertJsonError(401, get("/admin/dlq", null), "/admin/dlq without the token");
+        assertEquals(200, admin("/admin/dlq").status(), "/admin/dlq with the token");
     }
 
     // --- threads and errors
