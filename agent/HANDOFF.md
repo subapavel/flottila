@@ -5,7 +5,7 @@ state: RUNNING core rework; CORE-0..4, 6a, 6b, 15, P2-15a..c, FIX-136, FIX-137, 
 last commit: `Task: FIX-169` (this commit); 5ea57a1 `Task: FIX-137`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: owner 2026-11-11: indicative bench r2000/r3000 ×2 as the P2-15a baseline, same PG as then; then CORE-17
+next exact action: CORE-17 pool by role (class C: designer first); indicative bench after FIX-169 recorded (RESULTS top)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

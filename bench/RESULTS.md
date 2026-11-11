@@ -1,5 +1,32 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## Indicative after FIX-169 — r2000 / r3000 twice, the P2-15a baseline repeated — cloud VM, 4 vCPU @ 2.10 GHz (owner request; NOT CORE-GATE)
+
+Date 2026-11-11. Commit 45948fe (clean worktree). Owner: "not real test results, only whether we are on a good path". Same host
+shape as the baseline below (Intel Xeon @ 2.10 GHz × 4 vCPU, KVM; kernel 6.18.44-fc-v378, JDK 25.0.5), the same native
+PostgreSQL 16.15 cluster, the baseline's script agent/work/base-run.sh with paths renamed (session scratchpad, not committed: open, ack,
+recording none, concurrency 512, max in flight 256, ramp PT30S, window PT3M, BENCH_IO_DEVICE vda, BENCH_PG_CPU postmaster,
+BENCH_PG_STATEMENTS 1). Four runs back to back, nothing else running. Raw agent/work/ind-r{2000,3000}-{1,2}.json, ind-machine.txt
+(not committed). All exit 0, valid, settled, work 0, timeouts 0; warmupFailed 482 / 336 / 271 / 405 (outside the window, FIX-123).
+Completes/s is not a JSON field: with work 0 after settle and the backlog flat, completes ≈ accepted ÷ 180 s (shown with ≈).
+
+| run | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog growth | completes/s | Postgres CPU | bench JVM CPU | CLAIM ms (calls) |
+|---|---|---|---|---|---|---|---|
+| r2000-1 | 359 362 / 638 | 8.90 / 46.07 / 163.06 | +0.001 % | ≈ 1 997 | 1.17 | 1.63 | 1.16 (788) |
+| r3000-1 | 537 686 / 2 314 | 19.09 / 81.55 / 191.61 | +0.027 % | ≈ 2 987 | 1.32 | 1.63 | 3.66 (6 822) |
+| r2000-2 | 360 000 / 0 | 8.75 / 35.92 / 84.87 | −0.001 % | ≈ 2 000 | 1.16 | 1.63 | 0.85 (569) |
+| r3000-2 | 538 529 / 1 471 | 22.62 / 80.80 / 142.65 | −0.000 % | ≈ 2 992 | 1.37 | 1.64 | 3.77 (8 455) |
+
+DB series (window means): xact commits/s 3 036 / 3 672 / 3 062 / 3 589; walSync/s 959 / 615 / 984 / 531. `delete from work`
+(batched completion, CORE-7) 0.17 / 0.11 ms per call at r2000 with 101 943 / 105 563 calls (≈ 3.5 items per statement).
+
+Reading, against the baseline below (same shape, same Postgres): r3000 now holds in both runs — backlog flat (was +6 % / +21 %),
+503s 1.5–2.3 k (was 14 k / 47 k), ACK p50 19–23 ms (was 55–73), p99 81–82 ms (was 128–153). r2000: p99 36–46 ms (was 67–75),
+p50 unchanged at ≈ 9 ms. Postgres CPU per message fell: 1.32–1.37 cores at ≈ 2 990 msg/s against 1.28 at 2 170–2 750. CLAIM
+calls dropped by two orders of magnitude at r2000 (569–788 against 75–157 k: event-driven pickup and local hand-off, P2-16a/b).
+The ceiling on this host is now above 3 000 msg/s; r3000 is no longer over it, so the new ceiling is not measured here. One run
+pair per rate on a shared cloud VM: a direction, not a number to plan on.
+
 ## Baseline after P2-15a — r2000 / r3000 twice, one host — cloud VM, 4 vCPU @ 2.10 GHz (owner request; NOT CORE-GATE)
 
 Date 2026-11-06. Commit aa4ca58 (clean worktree). Settings as the P2-15a preview below; four runs back to back, nothing else
