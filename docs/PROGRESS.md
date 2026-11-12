@@ -1,4 +1,15 @@
 
+## 2026-11-12 — CORE-14b same-id DLQ restart (D-135 [CORE-14b]) — done, review PASS (r3)
+- context compacted (one line, CLAUDE.md); re-verified with git status / git log -3.
+- `POST /admin/dlq/{id}/restart` → 202 {id, attempt}: one transaction deletes the DLQ row (re-checked: step 1, attempt k, no replayOf) and inserts a
+  step-1 work row with the same id, the copied ingress ref, `max_attempts` = k + 1 and the kept partition key; 404/409/422 per D-135; wakes and announces.
+- V17: `work.max_attempts`, `dlq.partition_key`. API: `WorkQueue.restart`, `Item.maxAttempts`, `Parked.partitionKey`.
+- Red: FlowWorkerRetryTest :679/:716/:745/:780, WorkQueueContract :261/:288, DlqRestartIT :162/:237, AdminDlqRestartIT, MigrationsIT:555;
+  r1 PgWorkQueueRestartIT :119/:129/:140 (stale-read re-check).
+- Found: CORE-14a broke the CLI flow tests (partner-down cases past the 10m horizon under 3 × PT5M; gate check 8 4/6). Fixed (O9): demo and
+  flowtest at-least-once flows name `delivery.retries {count: 1, interval: 1s}`; expectations 700ms→2400ms, retries 3→7, sent 4→8. FIX-174 filed.
+- Evidence: whole reactor verify -Pit 16/16 modules, 4167 tests 0/0/0 (agent/work/CORE-14b-r4-*); demo 6/6; 46 hand mutants killed; PIT 95 %.
+
 ## 2026-11-12 — CORE-14a retries on a schedule, then park (D-135, draft) — done, review PASS (r3)
 
 - Red first: FlowWorkerRetryTest (15 cases + T1/T2), RetrySchedulePropertiesTest, FlowDefinitionRetriesTest, WorkQueueContract

@@ -78,7 +78,12 @@ public final class Parking {
      * is bound on the calling thread, that the key is durable: the trail does not persist it again (D-066).
      */
     public Future<Parked> park(Envelope e, StepConfig step, Throwable failure) {
-        Parked parked = Parked.of(e, step, failure, clock.instant(), versions);
+        return park(e, step, failure, Optional.empty());
+    }
+
+    /** {@link #park(Envelope, StepConfig, Throwable)} keeping {@code partitionKey} on the row: a worker's park of a keyed item (CORE-14b O7). */
+    public Future<Parked> park(Envelope e, StepConfig step, Throwable failure, Optional<String> partitionKey) {
+        Parked parked = Parked.of(e, step, failure, clock.instant(), versions, partitionKey);
         Optional<Trail> run = Trail.current();   // read here, on the run's thread: the persist answers on another
         return persist(e.body()).onSuccess(durable -> run.ifPresent(t -> t.durable(e.body().key()))).compose(durable -> dlq.park(parked)).map(parked);
     }

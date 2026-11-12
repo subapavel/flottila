@@ -53,11 +53,12 @@ import java.util.function.BooleanSupplier;
  *
  * <p>Retries on a schedule, then park (CORE-14a, D-135 draft). The worker runs under a {@link RetryPolicy} — the flow's
  * {@code delivery.retries}, else the node's default ({@link FlowBuilder#retries}) — whose count bounds the hand-outs of an item
- * to count + 1, doubts included: a takeover of an item an earlier holder left unsettled is an attempt too, and runs at once. A run
+ * to count + 1, doubts included — the row's own {@link WorkQueue.Item#maxAttempts()} instead when it has one (a row an operator
+ * restarted, CORE-14b P8: its one more attempt): a takeover of an item an earlier holder left unsettled is an attempt too, and runs at once. A run
  * that fails is a failed attempt unless it failed with a {@link FencedException}, an interrupt or an {@link Error}, which leave the
  * item to its lease. A failed attempt whose failure is final — the first {@link Fault} in its cause chain a {@link NackException}
  * that is not retryable, or of kind MALFORMED or INVALID — or that was the bound's last hand-out parks the ingress envelope at
- * step 1 with the {@link Envelope#ATTEMPT} it failed at and completes the item; any other is deferred
+ * step 1 with the {@link Envelope#ATTEMPT} it failed at, keeping the item's partition key on the row (O7), and completes the item; any other is deferred
  * ({@link WorkQueue#defer}) by the wait before the next retry, {@code delayBefore(attempt)}, logged at WARNING: no thread waits
  * across the interval, the row is claimable at its due by any node allowed to claim it, with the same message id. A defer that
  * fails leaves the item to its lease and fails the round; one that answers false is stale, as a stale complete is. The worker wakes
@@ -618,9 +619,12 @@ public final class FlowWorker {
         }
     }
 
-    /** How many hand-outs a message has, doubts included (P1): its first run and one per retry of the schedule. */
-    private int bound() {
-        return retries.attempts() + 1;
+    /**
+     * How many hand-outs {@code item} has, doubts included (P1): its row's own bound when it has one (a restarted row, CORE-14b P8),
+     * else its first run and one per retry of the schedule.
+     */
+    private int bound(WorkQueue.Item item) {
+        return item.maxAttempts() > 0 ? item.maxAttempts() : retries.attempts() + 1;
     }
 
     /**
@@ -630,7 +634,7 @@ public final class FlowWorker {
      */
     private Verdict verdict(WorkQueue.Item item) {
         String id = item.messageId();
-        boolean exhausted = item.attempts() > bound();
+        boolean exhausted = item.attempts() > bound(item);
         Envelope ingress;
         try {
             Optional<Snapshot> in = store.timeline(id).await().stream().filter(s -> Recorder.INGRESS.equals(s.stepName())).findFirst();
@@ -642,16 +646,16 @@ public final class FlowWorker {
             if (item.attempts() > 1) ingress = ingress.with(Envelope.ATTEMPT, item.attempts());   // a rerun's step bodies under keys of its own (D-066)
             if (exhausted) {
                 if (!fence.getAsBoolean()) {   // a park is a settle (D-101 (2)): never from a closed fence, whose items another node may take and park
-                    throw new FencedException("message " + id + " of flow " + flow + " is past its " + bound() + " hand-outs and not parked: the node's"
+                    throw new FencedException("message " + id + " of flow " + flow + " is past its " + bound(item) + " hand-outs and not parked: the node's"
                             + " fence is closed; left unsettled for whoever runs it next");
                 }
-                parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), bound())).await();
+                parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), bound(item)), Optional.ofNullable(item.partitionKey())).await();
                 return Verdict.COMPLETE;
             }
         } catch (Throwable failure) {
             if (exhausted && !(failure instanceof FencedException)) return Verdict.hold(failure);   // fenced: not a failed park, never held
             LOG.log(System.Logger.Level.WARNING, "message " + id + " of flow " + flow + " could not be run at worker " + workerId + " (attempt " + item.attempts()
-                    + " of " + bound() + ") and is left to its lease (" + policy.lease() + "): " + failure, failure);
+                    + " of " + bound(item) + ") and is left to its lease (" + policy.lease() + "): " + failure, failure);
             return Verdict.LEAVE;
         }
         Throwable failure = null;
@@ -674,12 +678,12 @@ public final class FlowWorker {
      * next retry, {@link RetryPolicy#delayBefore delayBefore(attempt)}.
      */
     private Verdict failed(WorkQueue.Item item, Envelope ingress, Throwable failure) {
-        String run = "message " + item.messageId() + " of flow " + flow + " failed at worker " + workerId + " (attempt " + item.attempts() + " of " + bound() + ")";
+        String run = "message " + item.messageId() + " of flow " + flow + " failed at worker " + workerId + " (attempt " + item.attempts() + " of " + bound(item) + ")";
         if (failure instanceof FencedException || failure instanceof InterruptedException || failure instanceof Error) {
             LOG.log(System.Logger.Level.WARNING, run + ", no failed attempt, and is left to its lease (" + policy.lease() + "): " + failure, failure);
             return Verdict.LEAVE;
         }
-        if (!isFinal(failure) && item.attempts() < bound()) {
+        if (!isFinal(failure) && item.attempts() < bound(item)) {
             Duration wait = retries.delayBefore(item.attempts());
             LOG.log(System.Logger.Level.WARNING, run + "; its retry waits " + wait + ": " + failure, failure);
             return Verdict.defer(wait);
@@ -689,7 +693,7 @@ public final class FlowWorker {
             return Verdict.LEAVE;
         }
         try {
-            parking.park(ingress.with(Envelope.ATTEMPT, item.attempts()), firstStep, failure).await();
+            parking.park(ingress.with(Envelope.ATTEMPT, item.attempts()), firstStep, failure, Optional.ofNullable(item.partitionKey())).await();
             return Verdict.COMPLETE;   // the DLQ row is the failure's record
         } catch (Throwable parkFailure) {   // an interrupted await too: the park may still land, the rerun parks again
             failure.addSuppressed(parkFailure);
@@ -762,8 +766,8 @@ public final class FlowWorker {
             leftToLease();
             return Future.succeededFuture();
         }
-        String alert = "message " + item.messageId() + " of flow " + flow + " was claimed " + token + " times (" + bound()
-                + " hand-outs: its retries and its first run) and could not be parked: " + unparkable + "; work item " + item.seq();
+        String alert = "message " + item.messageId() + " of flow " + flow + " was claimed " + token + " times (" + bound(item)
+                + " hand-outs its bound allows) and could not be parked: " + unparkable + "; work item " + item.seq();
         return queue.hold(item.seq(), token).transform(held -> {
             if (held.failed()) {
                 LOG.log(System.Logger.Level.ERROR, alert + " could not be held either (" + held.cause() + "): it is left to its lease", unparkable);

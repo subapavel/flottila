@@ -80,3 +80,48 @@ I4 (implementer, after T1/T2) retriesDue gets a `stopped` check (PIT :259); Flow
    (drop one of the double logs or fix the sentence). Then mutants :680/:684/:685 rerun by hand.
 Docs (architect): §4 "before every park and every defer".
 I4 done; M21 (retriesDue stopped check, race-only, fake timer cannot reach) accepted unpinned by the architect.
+
+## Acceptance CORE-14b (red first, test-author; after 22d9baa)
+P8 as written. Core FlowWorkerRetryTest.restartRunsItOnce: a restarted row sends once with the same id at attempt k+1; failing,
+it is parked again and nothing runs after +1d. WorkQueueContract (InMemory + Pg): restartedRowRunsOnceThenExhausted (a row whose
+max_attempts = k+1 is handed out once more, then exhausted). DlqRestartIT.restartIsOneTransactionWithTheSameId: an injected failure
+leaves the DLQ row and no work row; then a deduping mock partner sees one effect (FIX-138's case). AdminDlqRestartIT: 202 {id,
+attempt} / 404 no row / 422 a row the worker did not park (step ≠ 1 or REPLAY_OF); a restarted item runs on a node that may claim it.
+V17 migration test (column exists, null = flow bound). `/retry` unchanged (new copy).
+
+## Red approved 14b (architect, 2026-11-12)
+API: `int WorkQueue.Item.maxAttempts()` (0 = flow bound); `Future<Boolean> WorkQueue.restart(String messageId, String flow,
+String partitionKey, int attempt)` (abstract; every fixture implements it); POST /admin/dlq/{id}/restart → 202 {id, attempt: k+1}
+/ 404 / 422; V17. Tests: FlowWorkerRetryTest :679/:716/:745, WorkQueueContract:261, DlqRestartIT:162, AdminDlqRestartIT
+:204/:230/:236, MigrationsIT:554; the 16 → 17 version expectations (10 MigrationsIT cases, PgDeploymentStoreIT:101,
+PgMessageStoreIT:77) accepted as forced by V17. Fixtures ParkedRows, contract hook parked(id, flow, k).
+O7 Partition key (decision): the DLQ row keeps it. V17 also adds `dlq.partition_key text` (null for earlier rows); the worker's
+   park writes the item's key; restart enqueues under it (tail of its key, new seq). A row of a keyed flow (`partitionBy`
+   set) whose key is null (parked before V17) answers 422 "parked before its key was kept; use /retry"; an unkeyed flow's
+   null is fine. Tests to add (test-author): a keyed restart heads behind the key's later rows in seq order and keeps the key;
+   the pre-V17 keyed row → 422; the worker's park writes the key (Pg IT); V17 migration covers both columns.
+Red approved O7: FlowWorkerRetryTest:780, WorkQueueContract:288, DlqRestartIT:237, AdminDlqRestartIT:316 (fixture now a real
+Deployments, accepted), MigrationsIT:555; API `Optional<String> Parked.partitionKey()` (14th component, 13-arg ctor kept).
+O8 a restart whose flow is not deployed on this node answers 409 "flow <f> is not deployed" and changes nothing (implementer's own case).
+
+## Review 14b r1 FAIL → fix round (architect)
+Docs done by the architect: §7 WorkQueue row names the restart; D-135 [CORE-14b] 404 re-check wording, /retry race, announce-to-every-node (not "as /release").
+R1 (test-author, red): PgWorkQueueRestartIT — park at k=3, restart(id, flow, null, 2) → false, DLQ row kept, no work row; also a step ≠ 1 row and a replayOf row → false, unchanged.
+R2 (implementer): RESTART `d` adds `and step = 1 and props->>'attempt' = $4::text and props->'replayOf' is null`; false → 404 in the route.
+   Move RESTART's javadoc+constant so HAS_ITEMS keeps its javadoc (PgWorkQueue ~:280).
+R3 (verifier): mutants M1–M4 (reviewer's) + one per new `d` predicate; scoped PIT on FlowWorker, InMemoryWorkQueue, Parked, Parking;
+   per-module surefire/failsafe counts from TEST-*.xml after a full verify -Pit; `git status --short`.
+Accepted: (b) in-memory DLQ row left (test wiring only); BenchMainIT 16→17 pin (forced by V17, named in the commit body).
+Red approved r1 (14b): PgWorkQueueRestartIT :119 attempt mismatch, :129 step ≠ 1, :140 replayOf (3/3 red, CORE-14b-r1-red.log). Route false→404 already pinned by AdminDlqRestartTest.
+R4 (r2 FAIL): the r1 verify ran 13 of 16 modules (archtest, cli, components/mock missing) — whole-reactor verify -Pit by the verifier; WorkQueue.restart javadoc names step 1 / attempt k / no replayOf.
+
+## r2 verify: CORE-14a regression in flottila-cli (architect)
+Fact (diagnosis, agent/work/CORE-14b-cli-{9f80ee7,22d9baa}.log): since 22d9baa the CLI flow-test runner's node takes the default 3 × PT5M; the
+partner-down cases of async-order (flowtest fixture), demo invoice-async and sftp-invoice reach VirtualTime.HORIZON 10m unsettled; TestCommandTest
+6/27 fail; `bin/flottila test packages/demo` 4/6 (gate check 8). CORE-14a's evidence never ran the cli module.
+O9 (decision): option 2 — each of the three at-least-once fixture/demo flows names `delivery.retries {count: 1, interval: 1s}`, so the demo shows one
+   scheduled retry and then the park; expectations (test yaml + TestCommandTest) move to the observed values (flow time, retries, sent count, dlq 1),
+   with the yaml comments. No runner or production code change. Folded into the CORE-14b commit (the branch must be green); the commit body names the
+   CORE-14a regression. The runner's 10m horizon against the node default (a package without `delivery.retries` cannot settle a partner-down case,
+   and `expect.retries` mixes step retries with ingress reruns) → FIX-174 (filed).
+R5 (test-author): the yaml + expectation changes, whole cli module and `bin/flottila test packages/demo` green.

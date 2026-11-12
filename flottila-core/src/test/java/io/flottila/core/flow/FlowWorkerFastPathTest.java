@@ -207,6 +207,8 @@ class FlowWorkerFastPathTest {
 
         @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return inner.defer(seq, real(seq, attempts), delay); }
 
+        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return inner.restart(messageId, flow, partitionKey, attempt); }
+
         @Override public Future<Boolean> hold(long seq, int attempts) {
             return inner.hold(seq, real(seq, attempts)).andThen(r -> events.add("hold " + seq + "@" + attempts + " -> "
                     + (r.succeeded() ? r.result() : "failed")));

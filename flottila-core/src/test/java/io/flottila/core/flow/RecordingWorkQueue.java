@@ -300,6 +300,12 @@ final class RecordingWorkQueue implements WorkQueue {
         return done;
     }
 
+    /** The delegate's restart (CORE-14b P8), not recorded. */
+    @Override
+    public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+        return delegate.restart(messageId, flow, partitionKey, attempt);
+    }
+
     /** The delegate's defer (CORE-14a P3), recorded with the clock at the call and its answer; a staged failure reaches no delegate. */
     @Override
     public Future<Boolean> defer(long seq, int attempts, Duration delay) {

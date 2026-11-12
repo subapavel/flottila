@@ -29,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * clock (Postgres: the database's {@code now()}), its holder cleared, its seq, id, attempts, doubts and body kept; {@code false} when
  * the caller no longer holds it, nothing changed. A deferred row still heads its key; its next hand-out counts one more attempt and
  * no doubt.
+ *
+ * <p>CORE-14b P8 (D-135): {@code Future<Boolean> WorkQueue.restart(String messageId, String flow, String partitionKey, int attempt)} and
+ * {@code int WorkQueue.Item.maxAttempts()} (0 = the flow's bound; Postgres: V17 {@code work.max_attempts}, null = 0). The Postgres
+ * queue restarts only a message with a DLQ row, deleting it in the same transaction ({@code DlqRestartIT}).
  */
 @Timeout(60)
 public abstract class WorkQueueContract {
@@ -47,6 +51,13 @@ public abstract class WorkQueueContract {
      * and {@code locked_until} move {@code d} into the past, so the database clock's {@code now()} meets them as if {@code d} had passed.
      */
     protected abstract void passTime(Duration d);
+
+    /**
+     * CORE-14b: {@code messageId} of {@code flow} is parked by its worker after {@code attempt} attempts — Postgres: its DLQ row and its
+     * ingress body's kept ref on {@link #NODE} ({@link ParkedRows}), which the Postgres restart deletes and copies; the in-memory queue
+     * has no DLQ: nothing.
+     */
+    protected abstract void parked(String messageId, String flow, int attempt);
 
     protected WorkQueue queue;
 
@@ -237,5 +248,61 @@ public abstract class WorkQueueContract {
         WorkQueue.Item l1Again = claimedOne("n3", "t");
         assertEquals(new WorkQueue.Item(l1.seq(), "l1", "t", 1, null, 3), l1Again, "its next hand-out: attempt 3");
         assertEquals(1, l1Again.doubts(), "its doubt kept, none added");
+    }
+
+    // --- CORE-14b P8: restart
+
+    /**
+     * {@code restart(id, flow, key, k)} of a message parked after k attempts appends its row at step 1, due at once and unleased, as
+     * handed out k times with its own bound k + 1: its next hand-out is attempt k + 1, maxAttempts k + 1, no doubt; a takeover after
+     * that hand-out is attempt k + 2, past its bound (the worker parks it unsent). A plain row's maxAttempts is 0: the flow's bound.
+     */
+    @Test
+    void restartedRowRunsOnceThenExhausted() {
+        await(queue.enqueue("p1", "t", 1, null));
+        parked("r1", "t", 3);
+        assertTrue(await(queue.restart("r1", "t", null, 3)), "the parked message is restarted");
+
+        List<WorkQueue.Item> taken = await(queue.claim(NODE, "t", 10, LEASE));
+        assertEquals(List.of("p1", "r1"), taken.stream().map(WorkQueue.Item::messageId).toList(), "both due at once, in seq order");
+        WorkQueue.Item plain = taken.get(0);
+        WorkQueue.Item once = taken.get(1);
+        assertEquals(List.of(1, 0), List.of(plain.attempts(), plain.maxAttempts()), "a plain row: no bound of its own (0 = the flow's)");
+        assertEquals(1, once.step(), "restarted at step 1");
+        assertEquals(List.of(4, 4, 0), List.of(once.attempts(), once.maxAttempts(), once.doubts()),
+                "handed out once more as attempt k + 1 = 4 of its bound 4, in no doubt");
+        assertTrue(await(queue.complete(plain.seq(), 1)), "fixture: p1 done");
+
+        expireLeases();
+        WorkQueue.Item again = claimedOne("n2", "t");
+        assertEquals(once.seq(), again.seq(), "the same row");
+        assertEquals(List.of(5, 4, 1), List.of(again.attempts(), again.maxAttempts(), again.doubts()),
+                "its takeover: attempt 5, past its bound 4 — exhausted —, in doubt");
+    }
+
+    /**
+     * O7: a keyed restart enqueues under the kept key at the tail of that key — a new seq behind the key's rows queued meanwhile —
+     * and is handed out only once they are done, still keyed, as attempt k + 1 of its bound k + 1.
+     */
+    @Test
+    void aKeyedRestartJoinsTheTailOfItsKey() {
+        await(queue.enqueue("k1", "t", 1, "K"));
+        WorkQueue.Item k1 = claimedOne(NODE, "t");
+        await(queue.enqueue("k2", "t", 1, "K"));
+        parked("r1", "t", 1);
+        assertTrue(await(queue.restart("r1", "t", "K", 1)), "the parked message is restarted under its key");
+
+        assertEquals(List.of(), await(queue.claim("n2", "t", 10, LEASE)), "K is busy with k1: nothing of K, the restart included");
+        assertTrue(await(queue.complete(k1.seq(), k1.attempts())), "fixture: k1 done");
+        WorkQueue.Item k2 = claimedOne("n2", "t");
+        assertEquals("k2", k2.messageId(), "k2, queued before the restart, goes first: the restart joined the tail of K");
+        assertEquals(List.of(), await(queue.claim("n2", "t", 10, LEASE)), "the restart waits behind k2");
+        assertTrue(await(queue.complete(k2.seq(), k2.attempts())), "fixture: k2 done");
+
+        WorkQueue.Item r1 = claimedOne("n2", "t");
+        assertEquals("r1", r1.messageId());
+        assertTrue(r1.seq() > k2.seq(), "a new seq behind k2: " + r1.seq() + " vs " + k2.seq());
+        assertEquals("K", r1.partitionKey(), "it keeps its key");
+        assertEquals(List.of(2, 2), List.of(r1.attempts(), r1.maxAttempts()), "attempt k + 1 = 2 of its bound 2");
     }
 }

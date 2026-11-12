@@ -27,4 +27,9 @@ class InMemoryWorkQueueContractTest extends WorkQueueContract {
     protected void passTime(Duration d) {
         clock.advance(d);
     }
+
+    @Override
+    protected void parked(String messageId, String flow, int attempt) {
+        // the in-memory queue has no DLQ: its restart appends the row whatever the caller parked
+    }
 }

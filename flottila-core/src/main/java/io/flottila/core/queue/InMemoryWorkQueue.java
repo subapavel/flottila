@@ -120,6 +120,15 @@ public final class InMemoryWorkQueue implements WorkQueue {
         return Future.succeededFuture(true);
     }
 
+    /** Appends the row whatever was parked: this queue has no DLQ (the Postgres one deletes its row in the same transaction). */
+    @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+        Objects.requireNonNull(messageId, "messageId");
+        Objects.requireNonNull(flow, "flow");
+        long seq = nextSeq++;
+        rows.put(seq, new Row(new Item(seq, messageId, flow, 1, partitionKey, attempt, 0, attempt + 1)));
+        return Future.succeededFuture(true);
+    }
+
     @Override public synchronized Future<Boolean> hold(long seq, int attempts) {
         Row r = rows.get(seq);
         if (!current(r, attempts)) return Future.succeededFuture(false);
@@ -232,7 +241,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         r.lockedBy = Objects.requireNonNull(workerId, "workerId");
         r.lockedEpoch = members.epoch(workerId);
         r.lockedUntil = now.plus(lease);
-        r.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts() + 1, i.doubts() + doubt);
+        r.item = new Item(i.seq(), i.messageId(), i.flow(), i.step(), i.partitionKey(), i.attempts() + 1, i.doubts() + doubt, i.maxAttempts());
         return r.item;
     }
 }

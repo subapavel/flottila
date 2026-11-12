@@ -1,6 +1,7 @@
 # invoice-sync's twin at-least-once (D-075): the invoice is saved and queued under its invoiceId, the sender gets 202 after the durable
 # save and a worker sends it on through the Postgres work queue, one invoice of an id at a time, in accept order. A partner that keeps
-# failing parks the message in the DLQ after the retries. Its own door (http-in-async, :8082): two http endpoints cannot share a port.
+# failing fails the run after the step retries; the run is retried once from the ingress after 1 s (delivery.retries) and then
+# parks the message in the DLQ. Its own door (http-in-async, :8082): two http endpoints cannot share a port.
 schemaVersion: 1
 kind: flow
 id: invoice-async
@@ -11,6 +12,7 @@ from:
 delivery:
   mode: at-least-once
   saveTimeout: 5s
+  retries: { count: 1, interval: 1s }
   queue: postgres
 recording:
   level: all

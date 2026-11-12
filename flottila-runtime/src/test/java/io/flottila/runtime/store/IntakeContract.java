@@ -270,6 +270,7 @@ public abstract class IntakeContract {
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return inner.renew(seq, attempts, lease); }
         @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return inner.defer(seq, attempts, delay); }
+        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return inner.restart(messageId, flow, partitionKey, attempt); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return inner.release(seq); }

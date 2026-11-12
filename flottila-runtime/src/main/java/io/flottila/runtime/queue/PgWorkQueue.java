@@ -51,7 +51,9 @@ import java.util.function.Function;
  * its own node); a queue without a node claims any. A queue given the node's store tells it the ref of every item it claims
  * (its location index, the hot path's reads) and that a completed item's body is read no more. An enqueue that adds no record
  * (a replay's or a DLQ retry's) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
- * share — in one statement: no source is a {@link BlobNotFoundException}. An item whose body an accepted
+ * share — in one statement: no source is a {@link BlobNotFoundException}. A {@linkplain #restart restart} (CORE-14b P8) deletes the
+ * message's DLQ row and inserts its row from the ingress body's kept ref in one statement; its row carries its own bound
+ * ({@code max_attempts}, V17). An item whose body an accepted
  * {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} gave up ({@code lost_at}, V13) is held for good: never claimed, so never run or parked.
  *
  * <p>Holder liveness (D-101 (1), V14): a worker id is its node's id. A row whose lease ran out is claimable by another node only
@@ -160,7 +162,8 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String TAKE = "update work w set locked_by = $1, locked_until = now() + make_interval(secs => $4), attempts = w.attempts + 1,"
             + " doubts = w.doubts + (w.locked_by is not null)::int";
 
-    private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts, doubts, body_node, body_segment, body_position, body_length";
+    private static final String ITEM = " returning seq, id, flow, step, partition_key, attempts, doubts, max_attempts, body_node, body_segment, body_position,"
+            + " body_length";
 
     /**
      * Handed out in seq order, as {@code InMemoryWorkQueue} does: an UPDATE's RETURNING has no order of its own. The UPDATE takes
@@ -245,11 +248,11 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String BLOCKS = "(select count(*) from work o where o.flow = w.flow and o.partition_key = w.partition_key and o.seq > w.seq) as blocks";
 
     /** Every flow's held rows after a seq, in seq order, on the partial index {@code work_held} (V5); $2 is the limit plus one. */
-    private static final String HELD = "select seq, id, flow, step, partition_key, attempts, doubts, held_at, " + BLOCKS + " from work w"
+    private static final String HELD = "select seq, id, flow, step, partition_key, attempts, doubts, max_attempts, held_at, " + BLOCKS + " from work w"
             + " where held_at is not null and seq > $1 order by seq limit $2";
 
     /** Every flow's lost rows after a seq, in seq order (V13's {@code lost_at}), on the partial index {@code work_lost} (V16); $2 is the limit plus one. */
-    private static final String LOST = "select seq, id, flow, step, partition_key, attempts, doubts, lost_at, " + BLOCKS + " from work w"
+    private static final String LOST = "select seq, id, flow, step, partition_key, attempts, doubts, max_attempts, lost_at, " + BLOCKS + " from work w"
             + " where lost_at is not null and seq > $1 order by seq limit $2";
 
     /**
@@ -273,6 +276,29 @@ public final class PgWorkQueue implements WorkQueue {
     /** Only a held row: the hold and the lease cleared, the attempts kept; its flow and body node answered. */
     private static final String RELEASE = "update work set held_at = null, locked_by = null, locked_until = null where seq = $1 and held_at is not null"
             + " returning flow, body_node";
+
+    /**
+     * The restart (CORE-14b P8, D-135): {@code d} locks the DLQ row of message {@code $1} of flow {@code $2} the worker parked at step 1
+     * after attempt {@code $4} (prop {@code attempt}), not a replay's (no prop {@code replayOf}) — a concurrent remove of it
+     * (a {@code /retry}, another restart) commits first and leaves none, or waits for this statement —, {@code src} holds its ingress
+     * body's kept ref ({@code <id>/0/body}) and that ref's segment row for key share, as {@code ENQUEUE_FROM} does; {@code gone}
+     * deletes the locked row, and {@code ins} inserts the work row only from what {@code gone} deleted and that ref: step 1 under key
+     * {@code $3}, attempts {@code $4} (k), {@code max_attempts} k + 1, due at once, unleased. One statement: a failure of either half
+     * fails both. Answers the rows inserted, the rows locked and whether an accepted loss gave the ref up; a row deleted without a
+     * ref (locked, none inserted) is rolled back by {@link #restart}'s transaction.
+     */
+    private static final String RESTART = """
+            with d as (select id from dlq where id = $1::text and flow = $2::text and step = 1 and props->>'attempt' = $4::int::text
+                           and props->'replayOf' is null for update),
+            src as (select r.node, r.segment, r.position, r.length from body_refs r
+                      join journal_segments s on s.node = r.node and s.segment = r.segment
+                     where r.message_id = $1::text and r.step = 0 and r.part = 'body' and r.lost_at is null for key share),
+            gone as (delete from dlq where id in (select id from d) returning id),
+            ins as (insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length, attempts, max_attempts)
+                    select $1::text, $2::text, 1, $3::text, src.node, src.segment, src.position, src.length, $4::int, $4::int + 1 from src, gone
+                    returning seq)
+            select (select count(*) from ins), (select count(*) from d),
+                   exists (select 1 from body_refs where message_id = $1::text and step = 0 and part = 'body' and lost_at is not null)""";
 
     /** Any row of the flow, held or not: a completed row is deleted ({@link #COMPLETE}). On the index {@code work_flow_seq}. */
     private static final String HAS_ITEMS = "select exists(select 1 from work where flow = $1)";
@@ -566,6 +592,28 @@ public final class PgWorkQueue implements WorkQueue {
         return pool.preparedQuery(DEFER).execute(Tuple.of(seq, attempts, delay.toNanos() / 1e9)).map(rows -> rows.rowCount() == 1);
     }
 
+    /**
+     * {@link #RESTART} in a transaction of its own, a keyed row under its key's lock ({@link #lockKeys}) as every keyed insert:
+     * {@code true} when the DLQ row was deleted and the work row inserted; {@code false} without a DLQ row of {@code messageId} in
+     * {@code flow} the worker parked at step 1 after attempt {@code attempt} (a replay's row is none), nothing written; without its
+     * ingress body's kept ref {@link BlobNotFoundException} ({@link BodyLostException} when an accepted loss gave it up), the failed
+     * future rolling the delete back: nothing changed.
+     */
+    @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+        List<Map.Entry<String, String>> key = partitionKey == null ? List.of() : List.of(Map.entry(flow, partitionKey));
+        return PgTx.inTransaction(pool, tx -> {
+            Future<Void> locked = lockKeys(tx, key);   // sent before the insert: one round trip
+            Future<RowSet<Row>> restarted = tx.preparedQuery(RESTART).execute(Tuple.of(messageId, flow, partitionKey, attempt));
+            return locked.compose(held -> restarted).compose(rows -> {
+                Row r = rows.iterator().next();
+                if (r.getLong(0) == 1) return Future.succeededFuture(true);
+                if (r.getLong(1) == 0) return Future.succeededFuture(false);
+                BlobKey body = BlobKey.body(messageId, 0);
+                return Future.failedFuture(r.getBoolean(2) ? new BodyLostException(body) : new BlobNotFoundException(body));
+            });
+        });
+    }
+
     @Override public Future<Boolean> hold(long seq, int attempts) {
         return pool.preparedQuery(HOLD).execute(Tuple.of(seq, attempts)).map(rows -> rows.rowCount() == 1);
     }
@@ -670,7 +718,8 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     private static Item item(Row r) {
+        Integer bound = r.getInteger("max_attempts");   // null: the flow's bound (V17)
         return new Item(r.getLong("seq"), r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("partition_key"), r.getInteger("attempts"),
-                r.getInteger("doubts"));
+                r.getInteger("doubts"), bound == null ? 0 : bound);
     }
 }

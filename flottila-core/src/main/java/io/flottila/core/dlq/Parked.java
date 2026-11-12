@@ -11,6 +11,7 @@ import io.flottila.api.StepConfig;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * A message parked in the dead letter queue (ARCHITECTURE §6: "final failure → DLQ row (by reference to the body)"):
@@ -23,10 +24,12 @@ import java.util.Objects;
  * @param error the failure, as text
  * @param parkedAt when, on the runtime's clock
  * @param bodyKey where the step's input body lives
+ * @param partitionKey the partition key of the work item a worker parked (CORE-14b O7, D-135): what a restart enqueues under; empty
+ *                     for an unkeyed item, for a park outside a worker (a step's, a replay's) and for a row parked before it was kept
  * @since 0.1
  */
 public record Parked(String messageId, String flow, int step, String stepName, String error, Instant parkedAt, Headers headers, Props props, Keys keys,
-                     Hash bodyHash, long bodySize, BlobKey bodyKey, Map<String, String> versions) {
+                     Hash bodyHash, long bodySize, BlobKey bodyKey, Map<String, String> versions, Optional<String> partitionKey) {
 
     public Parked {
         Objects.requireNonNull(messageId, "messageId");
@@ -39,14 +42,21 @@ public record Parked(String messageId, String flow, int step, String stepName, S
         Objects.requireNonNull(keys, "keys");
         Objects.requireNonNull(bodyHash, "bodyHash");
         Objects.requireNonNull(bodyKey, "bodyKey");
+        Objects.requireNonNull(partitionKey, "partitionKey");
         if (step < 1) throw new IllegalArgumentException("a parked step is 1 or more (ingress never parks), was " + step);
         if (bodySize < 0) throw new IllegalArgumentException("bodySize < 0");
         versions = Map.copyOf(versions);
     }
 
-    /** The row for {@code failure} of {@code step}, whose input was {@code e}. */
-    public static Parked of(Envelope e, StepConfig step, Throwable failure, Instant at, Map<String, String> versions) {
+    /** A row that keeps no partition key. */
+    public Parked(String messageId, String flow, int step, String stepName, String error, Instant parkedAt, Headers headers, Props props, Keys keys,
+                  Hash bodyHash, long bodySize, BlobKey bodyKey, Map<String, String> versions) {
+        this(messageId, flow, step, stepName, error, parkedAt, headers, props, keys, bodyHash, bodySize, bodyKey, versions, Optional.empty());
+    }
+
+    /** The row for {@code failure} of {@code step}, whose input was {@code e}; it keeps {@code partitionKey}. */
+    public static Parked of(Envelope e, StepConfig step, Throwable failure, Instant at, Map<String, String> versions, Optional<String> partitionKey) {
         return new Parked(e.id(), e.flow(), step.index(), step.name(), failure.toString(), at, e.headers(), e.props(), e.keys(),
-                e.body().hash(), e.body().size(), e.body().key(), versions);
+                e.body().hash(), e.body().size(), e.body().key(), versions, partitionKey);
     }
 }

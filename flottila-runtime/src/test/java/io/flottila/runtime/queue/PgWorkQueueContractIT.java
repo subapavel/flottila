@@ -55,4 +55,10 @@ class PgWorkQueueContractIT extends WorkQueueContract {
         pool.preparedQuery("update work set available_at = available_at - make_interval(secs => $1), locked_until = locked_until - make_interval(secs => $1)")
                 .execute(io.vertx.sqlclient.Tuple.of(d.toNanos() / 1e9)).await();
     }
+
+    @Override
+    protected void parked(String messageId, String flow, int attempt) {
+        pool.query("truncate dlq, body_refs, journal_segments").execute().await();
+        ParkedRows.park(pool, ParkedRows.byTheWorker(messageId, flow, attempt), NODE);
+    }
 }

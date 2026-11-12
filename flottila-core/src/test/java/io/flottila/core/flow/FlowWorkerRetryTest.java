@@ -66,6 +66,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The API assumed (CORE-14a, test-author): {@code Future<Boolean> WorkQueue.defer(long seq, int attempts, Duration delay)};
  * {@code WorkerPolicy(Duration lease, Duration pollInterval)} (maxAttempts gone, maxChain 32); {@code FlowBuilder retries(RetryPolicy
  * nodeDefault)}, the node's default for a flow naming no {@code delivery.retries} — without a call 3 × PT5M, multiplier 1 (O1).
+ *
+ * <p>The API assumed (CORE-14b P8, test-author): {@code int WorkQueue.Item.maxAttempts()} — the row's own bound on its hand-outs,
+ * 0 = the flow's (count + 1); {@code Future<Boolean> WorkQueue.restart(String messageId, String flow, String partitionKey, int attempt)}
+ * — appends a row of step 1 as handed out {@code attempt} (k) times, unleased, no doubt, maxAttempts k + 1, so its next hand-out is
+ * attempt k + 1; the worker's bound for an item is its maxAttempts when not 0. O7: {@code Optional<String> Parked.partitionKey()} —
+ * the worker's park keeps the item's key, empty for an unkeyed item.
  */
 @Timeout(60)
 class FlowWorkerRetryTest {
@@ -230,6 +236,7 @@ class FlowWorkerRetryTest {
         assertEquals(in.body().key(), p.bodyKey(), "the ingress body, not the step's output");
         assertEquals(in.body().hash(), p.bodyHash());
         assertEquals(Optional.of(attempt), p.props().get(Envelope.ATTEMPT), "with the attempt it was parked after");
+        assertEquals(Optional.empty(), p.partitionKey(), "O7: an unkeyed item's park keeps no key");
         assertEquals(0, w.rows.size(), "its row completed");
     }
 
@@ -644,5 +651,156 @@ class FlowWorkerRetryTest {
             w.retryAt(worker, "n1", dues.get(k), k + 2);
         }
         parkedIngress(in, 4);
+    }
+
+    // --- CORE-14b P8: the same-id manual restart
+
+    /**
+     * The in-memory half of {@code POST /admin/dlq/{id}/restart}: {@code in}'s DLQ row (attempt {@code k}) out, its work row in —
+     * {@code WorkQueue.restart(id, flow, key, k)}: step 1, as handed out k times, its bound k + 1 (Postgres does both in one
+     * transaction: DlqRestartIT).
+     */
+    void restart(Envelope in, int k) {
+        restart(in, k, null);
+    }
+
+    /** {@link #restart(Envelope, int)} under the key {@code partitionKey} the DLQ row kept (O7). */
+    void restart(Envelope in, int k, String partitionKey) {
+        assertTrue(w.parked.get(in.id()).await().isPresent(), "fixture: " + in.id() + " is parked");
+        w.parked.remove(in.id()).await();
+        assertTrue(w.rows.restart(in.id(), "orders", partitionKey, k).await(), "the in-memory queue appends the restarted row");
+        assertEquals(1, w.rows.size(), "fixture: one row, the restarted one");
+    }
+
+    /** The last item {@code worker} was handed out by a claim. */
+    WorkQueue.Item lastTaken(String worker) {
+        return w.queue.claimsBy(worker).stream().filter(c -> c.items != null && !c.items.isEmpty()).reduce((a, b) -> b).orElseThrow().items.getLast();
+    }
+
+    /**
+     * P8: count 1 → parked after 2 sends (k = 2, the flow's bound). Restarted, the row is handed out once more as attempt 3 with
+     * maxAttempts 3 — past the flow's bound of 2, so only the row's own bound lets it run — sends once with the same id and, failing,
+     * is parked again at attempt 3, not deferred; nothing runs after a day.
+     */
+    @Test
+    void restartRunsItOnce() throws Exception {
+        w.partner.failNext(10, FlowWorkerRetryTest::downstream);
+        FlowBuilder b = w.builder();
+        FlowDefinition def = FlowDefinition.from(flow(retries(1, "1m"), List.of(REWRITE, TO_PARTNER)));
+        FlowWorker worker = w.started(b, def, "n1");
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        w.sent(worker, 1);
+        w.retryAt(worker, "n1", w.t0.plus(Duration.ofMinutes(1)), 2);
+        parkedIngress(in, 2);
+        assertEquals(1, w.queue.deferCalls().size(), "fixture: one retry before the park");
+
+        restart(in, 2);
+        assertEquals(1, worker.poll().await(5, SECONDS), "the restarted row is due at once");
+        w.sent(worker, 3);
+        WorkQueue.Item taken = lastTaken("n1");
+        assertEquals(in.id(), taken.messageId(), "the same message");
+        assertEquals(1, taken.step());
+        assertEquals(3, taken.attempts(), "handed out as attempt k + 1");
+        assertEquals(3, taken.maxAttempts(), "its own bound, k + 1");
+        assertEquals(0, taken.doubts(), "a restarted row is in no doubt");
+        assertEquals(List.of(in.id(), in.id(), in.id()), w.sentIds(), "the restart sends under the same id");
+        assertEquals(Optional.of(3), w.partner.sent().get(2).get(Envelope.ATTEMPT), "the restart runs as attempt 3");
+        parkedIngress(in, 3);
+        assertEquals(1, w.queue.deferCalls().size(), "its one attempt was its last: not deferred: " + w.queue.deferCalls());
+
+        w.rt.clock().advance(Duration.ofDays(1));
+        assertEquals(0, worker.poll().await(5, SECONDS), "a day later nothing is due");
+        w.settled(worker);
+        assertEquals(3, w.partner.sent().size(), "nothing sent after the second park");
+        assertEquals(1, w.dlq().size(), "parked once again");
+    }
+
+    /**
+     * P8: the row's bound also cuts the flow's: count 3 (bound 4), a final NACK parks attempt 1 at once (k = 1). Restarted, attempt 2
+     * (maxAttempts 2) fails retryably — with retries left under the flow's count it would be deferred — and is parked again at once.
+     */
+    @Test
+    void aRestartAfterAParkAtOnceRunsOnceNotTheFlowsCount() throws Exception {
+        w.partner.failNext(1, () -> new NackException("refused for good", false));
+        w.partner.failNext(10, FlowWorkerRetryTest::downstream);
+        FlowBuilder b = w.builder();
+        FlowDefinition def = FlowDefinition.from(flow(retries(3, "1m"), List.of(REWRITE, TO_PARTNER)));
+        FlowWorker worker = w.started(b, def, "n1");
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        w.sent(worker, 1);
+        parkedIngress(in, 1);
+
+        restart(in, 1);
+        assertEquals(1, worker.poll().await(5, SECONDS), "the restarted row is due at once");
+        w.sent(worker, 2);
+        assertEquals(2, lastTaken("n1").maxAttempts(), "its bound k + 1 = 2, not the flow's 4");
+        assertEquals(Optional.of(2), w.partner.sent().get(1).get(Envelope.ATTEMPT));
+        assertEquals(List.of(), w.queue.deferCalls(), "the restart's failure is not deferred by the flow's schedule");
+        parkedIngress(in, 2);
+
+        w.rt.clock().advance(Duration.ofDays(1));
+        assertEquals(0, worker.poll().await(5, SECONDS), "a day later nothing is due");
+        w.settled(worker);
+        assertEquals(2, w.partner.sent().size(), "nothing sent after the second park");
+    }
+
+    /**
+     * P8 with P5: the restarted row's one hand-out goes to a node that dies (attempt 2 of maxAttempts 2); its takeover, attempt 3, is
+     * past the row's bound — though within the flow's 4 — so it is parked unsent (attempt 3), never run a second time.
+     */
+    @Test
+    void aRestartedRowTakenOverInDoubtIsParkedUnsent() throws Exception {
+        w.partner.failNext(1, () -> new NackException("refused for good", false));
+        FlowBuilder b = w.builder();
+        FlowDefinition def = FlowDefinition.from(flow(retries(3, "1m"), List.of(REWRITE, TO_PARTNER)));
+        FlowWorker worker = w.started(b, def, "n1");
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        w.sent(worker, 1);
+        parkedIngress(in, 1);
+
+        restart(in, 1);
+        List<WorkQueue.Item> lost = w.rows.claim("crashed", "orders", 1, LEASE).await();
+        assertEquals(1, lost.size(), "fixture: the restart's hand-out to a node that is gone");
+        assertEquals(List.of(2, 2), List.of(lost.get(0).attempts(), lost.get(0).maxAttempts()), "its one attempt: 2 of 2");
+        w.rt.clock().advance(LEASE.plusSeconds(1));
+
+        assertEquals(1, worker.poll().await(5, SECONDS), "the takeover claims it");
+        w.settled(worker);
+        WorkQueue.Item taken = lastTaken("n1");
+        assertEquals(List.of(3, 1, 2), List.of(taken.attempts(), taken.doubts(), taken.maxAttempts()), "attempt 3, in doubt, bound 2");
+        assertEquals(1, w.partner.sent().size(), "past the row's bound: not sent again");
+        parkedIngress(in, 3);
+    }
+
+    /**
+     * O7: a keyed item's park keeps its key on the DLQ row ({@code Parked.partitionKey()}); restarted under it, the row runs under that
+     * key, once, as attempt 2.
+     */
+    @Test
+    void aKeyedParkKeepsItsKeyAndItsRestartRunsUnderIt() throws Exception {
+        w.partner.failNext(1, FlowWorkerRetryTest::downstream);
+        FlowBuilder b = w.builder();
+        Map<String, Object> doc = flow(retries(0, "1m"), List.of(
+                Map.of("type", "extractKey", "name", "key", "language", "header", "key", "customer", "xpath", "x-customer"), REWRITE, TO_PARTNER));
+        doc.put("partitionBy", "customer");
+        doc.put("onFailure", "park");
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowWorker worker = w.started(b, def, "n1");
+        Envelope in = w.rt.ingress("orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml").with("x-customer", "c1"),
+                Buffer.buffer("<order id=\"1\"/>"));
+        assertEquals(new Ack.Accepted(in.id()), b.delivery(def, NO_FILES).apply(in).await(5, SECONDS));
+        w.sent(worker, 1);
+        List<Parked> all = w.dlq();
+        assertEquals(1, all.size(), "parked at once (count 0): " + all);
+        assertEquals(Optional.of("c1"), all.get(0).partitionKey(), "the park keeps the item's key");
+
+        restart(in, 1, "c1");
+        assertEquals(1, worker.poll().await(5, SECONDS), "the restarted row is due at once");
+        w.sent(worker, 2);
+        WorkQueue.Item taken = lastTaken("n1");
+        assertEquals(List.of("c1", "2", "2"), List.of(String.valueOf(taken.partitionKey()), String.valueOf(taken.attempts()), String.valueOf(taken.maxAttempts())),
+                "under its key, attempt 2 of its bound 2");
+        assertEquals(0, w.rows.size(), "the restarted run succeeded: completed");
+        assertEquals(List.of(), w.dlq(), "not parked again");
     }
 }

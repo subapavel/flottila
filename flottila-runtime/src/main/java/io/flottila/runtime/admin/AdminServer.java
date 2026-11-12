@@ -12,6 +12,7 @@ import io.flottila.core.admission.TargetLimit;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
+import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.Replay;
 import io.flottila.core.flow.ReplayRefusedException;
 import io.flottila.core.flow.RowNotRemovedException;
@@ -152,6 +153,12 @@ import java.util.function.Supplier;
  * refused a connection (D-133) is 503 with the fixed text, retryable. A retry that went through but whose row could not be
  * removed is 500 naming the new message, the pool's refusal of that removal included (the run went through: retrying would run
  * it again, D-133).
+ *
+ * <p>With a {@link Deployments} and a queue (CORE-14b P8, D-135 draft), {@code POST /admin/dlq/{id}/restart} runs a message its
+ * flow's worker parked once more under its own id — where {@code /retry} runs a new copy: the DLQ row out and the work row in, in
+ * one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow not deployed
+ * here, its ingress body no longer kept), 422 (a flow that is not at-least-once, a row its worker did not park, or a keyed flow's row
+ * parked before its key was kept).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
@@ -401,6 +408,7 @@ public final class AdminServer {
                 });
             });
             work.ifPresent(q -> {
+                deployments.ifPresent(d -> router.post("/admin/dlq/:id/restart").handler(offload(c -> restart(c, d, q))));
                 router.get("/admin/work/held").handler(offload(c -> held(c, q)));
                 router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q, workers, signals)));
                 router.get("/admin/work/lost").handler(offload(c -> lost(c, q)));
@@ -735,6 +743,47 @@ public final class AdminServer {
         } finally {
             retrying.remove(id);
         }
+    }
+
+    /**
+     * {@code POST /admin/dlq/{id}/restart} (CORE-14b P8, D-135 draft): the parked message runs once more under its own id, from step 1,
+     * as attempt k + 1 of its own bound. 404 without a DLQ row; 409 when its flow is not deployed here; 422 when its flow is not
+     * at-least-once, when its worker did not park it — a row at a step other than 1, a replay's ({@code replayOf}), one without an
+     * {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked before V17,
+     * O7); nothing written for any of them. Then {@link WorkQueue#restart}: the DLQ row out and the work row in, under the kept key, in
+     * one transaction — false (the row went meanwhile) is 404, an ingress body no longer kept 409, nothing changed. 202
+     * {@code {id, attempt: k + 1}} once it committed: the flow woken here and announced to every node (the row's body node claims it).
+     */
+    private Reply restart(RoutingContext ctx, Deployments deployments, WorkQueue work) {
+        String id = ctx.pathParam("id");
+        Optional<Parked> found = dlq.get(id).await();
+        if (found.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
+        Parked row = found.get();
+        String flow = row.flow();
+        Optional<FlowDefinition> def = deployments.definition(flow);
+        if (def.isEmpty()) return Json.of(409, error("flow " + flow + " is not deployed on this node; message " + id + " is not restarted"));
+        if (!"at-least-once".equals(def.get().deliveryMode())) {
+            return Json.of(422, error("message " + id + " of flow " + flow + " is not restarted: the flow is " + def.get().deliveryMode()
+                    + ", only an at-least-once flow's worker runs a restart; use /retry"));
+        }
+        Object attempt = row.props().asMap().get(Envelope.ATTEMPT.name());
+        if (row.step() != 1 || row.props().get(Envelope.REPLAY_OF).isPresent() || !(attempt instanceof Integer k) || k < 1) {
+            return Json.of(422, error("message " + id + " was not parked by its flow's worker (step " + row.step() + ", attempt " + attempt
+                    + (row.props().get(Envelope.REPLAY_OF).isPresent() ? ", a replay" : "") + "): it cannot be restarted; use /retry"));
+        }
+        if (def.get().partitionBy().isPresent() && row.partitionKey().isEmpty()) {
+            return Json.of(422, error("message " + id + " of the keyed flow " + flow + " was parked before its key was kept; use /retry"));
+        }
+        boolean restarted;
+        try {
+            restarted = work.restart(id, flow, row.partitionKey().orElse(null), k).await();
+        } catch (BlobNotFoundException | BodyLostException gone) {
+            return Json.of(409, error("message " + id + " is not restarted: its ingress body is no longer kept (" + gone.getMessage() + ")"));
+        }
+        if (!restarted) return Json.of(404, error("no DLQ row for message " + id + " any more"));
+        workers.wake(flow);
+        announce(signals, null, flow, "restarted message " + id);
+        return Json.of(202, new JsonObject().put("id", id).put("attempt", k + 1));
     }
 
     /** The {@code from} parameter: an int of at least 1, else (missing, not an int) a 400. */

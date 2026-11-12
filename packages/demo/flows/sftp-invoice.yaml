@@ -1,5 +1,6 @@
 # A file dropped in the SFTP inbox, the same transformation at least once: the file is deleted after the durable save (the consumer's
-# job), the invoice is sent to the domestic partner through the Postgres work queue; a partner that keeps failing parks it in the DLQ.
+# job), the invoice is sent to the domestic partner through the Postgres work queue; a partner that keeps failing parks it in the DLQ after
+# one scheduled retry of the run, 1 s later (delivery.retries).
 schemaVersion: 1
 kind: flow
 id: sftp-invoice
@@ -10,6 +11,7 @@ from:
 delivery:
   mode: at-least-once
   saveTimeout: 5s
+  retries: { count: 1, interval: 1s }
   queue: postgres
 recording:
   level: all

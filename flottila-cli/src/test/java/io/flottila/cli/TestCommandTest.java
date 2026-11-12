@@ -44,23 +44,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * package problem ({@code problem: <text>} lines, as validate prints them, and no case line) or no test document; 2 on usage.
  *
  * <p>Flow times follow from the fixtures: mock delays and the retry backoff 100 + 200 + 400 ms (attempts 3, multiplier 2); the
- * at-least-once flow's saved message is handed off to its worker (D-121), so it runs at once, not at the worker's first tick.
+ * at-least-once flow's saved message is handed off to its worker (D-121), so it runs at once, not at the worker's first tick. A
+ * failed at-least-once run reruns from the ingress after its flow's {@code delivery.retries} interval (count 1, 1 s, D-135) and
+ * then parks: a partner-down case is two runs of 700 ms each, 1 s apart (2400 ms), with 3 + 3 step retries and 1 rerun (retries 7).
  */
 class TestCommandTest {
 
     /** {@code bin/flottila test packages/demo} — CI's step. */
     static final List<String> DEMO_REPORT = List.of(
             "PASS invoice-async: domestic invoice (flow time 20ms)",
-            "PASS invoice-async: partner down (flow time 700ms)",
+            "PASS invoice-async: partner down (flow time 2400ms)",
             "PASS invoice-sync: domestic invoice (flow time 20ms)",
             "PASS invoice-sync: partner down (flow time 700ms)",
             "PASS sftp-invoice: invoice file (flow time 20ms)",
-            "PASS sftp-invoice: partner down (flow time 700ms)",
+            "PASS sftp-invoice: partner down (flow time 2400ms)",
             "6 cases: 6 passed, 0 failed");
 
     /** The {@code flowtest} fixture: test documents in path order (async-order before sync-order), cases in order. */
     static final List<String> FLOWTEST_REPORT = List.of(
-            "PASS async-order: partner down (flow time 700ms)",
+            "PASS async-order: partner down (flow time 2400ms)",
             "PASS async-order: happy path (flow time 250ms)",
             "PASS sync-order: happy path (flow time 300ms)",
             "PASS sync-order: partner down (flow time 750ms)",
@@ -89,7 +91,8 @@ class TestCommandTest {
     /**
      * CI's step (P2-06, GATE checks 3-5): the demo's three flows pass every case — invoice-sync (a sync flow: {@code dlq: 0,
      * status: 503, retries: 3}), invoice-async over its http door (202, one send, 503 and the DLQ) and sftp-invoice fed an SFTP
-     * fixture file (one send of the transformed body, 503 and the DLQ). The partner-down cases end after 100 + 200 + 400 ms of retries.
+     * fixture file (one send of the transformed body, 503 and the DLQ). invoice-sync's partner-down case ends after 100 + 200 + 400 ms
+     * of retries; the two at-least-once ones after two such runs 1 s apart (delivery.retries count 1): 2400 ms, retries 7.
      */
     @Test
     @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
@@ -117,12 +120,12 @@ class TestCommandTest {
 
         assertEquals(List.of(
                 "PASS invoice-async: domestic invoice (flow time 20ms)",
-                "FAIL invoice-async: partner down (flow time 700ms)",
+                "FAIL invoice-async: partner down (flow time 2400ms)",
                 "  expect.dlq: expected 0, was 1",
                 "PASS invoice-sync: domestic invoice (flow time 20ms)",
                 "PASS invoice-sync: partner down (flow time 700ms)",
                 "PASS sftp-invoice: invoice file (flow time 20ms)",
-                "FAIL sftp-invoice: partner down (flow time 700ms)",
+                "FAIL sftp-invoice: partner down (flow time 2400ms)",
                 "  expect.dlq: expected 0, was 1",
                 "6 cases: 4 passed, 2 failed"), ran.outLines(), ran.toString());
         assertEquals(1, ran.exit(), ran.toString());
@@ -159,8 +162,10 @@ class TestCommandTest {
     }
 
     /**
-     * Async, partner down: the sender has its 202 at once, the worker's send fails the first try and 3 retries (4 sends of the one
-     * message), then the message is parked once. The wrong expectations make the report show what the case observed.
+     * Async, partner down: the sender has its 202 at once, the worker's send fails the first try and 3 step retries (4 sends), the
+     * run is retried once from the ingress 1 s later (delivery.retries count 1) with 4 more sends, then the message is parked once:
+     * 8 sends of the one message, retries 3 + 3 + 1 = 7, flow time 700 + 1000 + 700 ms. The wrong expectations make the report
+     * show what the case observed.
      */
     @Test
     @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
@@ -187,11 +192,11 @@ class TestCommandTest {
         Ran ran = run("test", pkg.toString());
 
         assertEquals(List.of(
-                "FAIL async-order: partner down (flow time 700ms)",
+                "FAIL async-order: partner down (flow time 2400ms)",
                 "  expect.status: expected 200, was 202",
                 "  expect.dlq: expected 0, was 1",
-                "  expect.retries: expected 0, was 3",
-                "  expect.sent.partner.count: expected 1, was 4",
+                "  expect.retries: expected 0, was 7",
+                "  expect.sent.partner.count: expected 1, was 8",
                 "1 cases: 0 passed, 1 failed"), ran.outLines(), ran.toString());
         assertEquals(1, ran.exit(), ran.toString());
     }
@@ -231,7 +236,7 @@ class TestCommandTest {
     }
 
     /**
-     * A case starts from nothing: after a partner-down case (4 sends of message m-1, one DLQ row) the next case's mocks, stores,
+     * A case starts from nothing: after a partner-down case (8 sends of message m-1 over two runs, one DLQ row) the next case's mocks, stores,
      * ids and clock are fresh — it sees one send, no retry, no DLQ row, and its flow time starts at zero again.
      */
     @Test
@@ -248,7 +253,7 @@ class TestCommandTest {
                     send: fixtures/order.xml
                     mocks:
                       partner: { fail: 503 }
-                    expect: { dlq: 1, retries: 3 }
+                    expect: { dlq: 1, retries: 7 }
                   - name: after it
                     send: fixtures/order.xml
                     expect:
@@ -261,7 +266,7 @@ class TestCommandTest {
         Ran ran = run("test", pkg.toString());
 
         assertEquals(List.of(
-                "PASS async-order: partner down (flow time 700ms)",
+                "PASS async-order: partner down (flow time 2400ms)",
                 "FAIL async-order: after it (flow time 250ms)",
                 "  expect.dlq: expected 9, was 0",
                 "  expect.retries: expected 9, was 0",

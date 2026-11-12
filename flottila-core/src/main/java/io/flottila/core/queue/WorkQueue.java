@@ -38,13 +38,20 @@ public interface WorkQueue {
      * @param doubts how many of its hand-outs were of a row an earlier holder had been handed and left unsettled (D-101,
      *               derived, nothing written per send): that holder may have sent before it died or was fenced, so the run is in
      *               doubt; 0 on a first hand-out and on a row an operator {@linkplain #release released}
+     * @param maxAttempts the row's own bound on its hand-outs, which a {@linkplain #restart restart} writes (CORE-14b, D-135); 0 = the
+     *                    flow's bound. Not compared either: it is the row's, the same for each of its hand-outs
      * @since 0.1
      */
-    record Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts, int doubts) {
+    record Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts, int doubts, int maxAttempts) {
 
-        /** An item in no doubt. */
+        /** An item in no doubt, bound by its flow. */
         public Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts) {
             this(seq, messageId, flow, step, partitionKey, attempts, 0);
+        }
+
+        /** An item bound by its flow ({@code maxAttempts} 0). */
+        public Item(long seq, String messageId, String flow, int step, String partitionKey, int attempts, int doubts) {
+            this(seq, messageId, flow, step, partitionKey, attempts, doubts, 0);
         }
 
         @Override public boolean equals(Object o) {
@@ -55,7 +62,7 @@ public interface WorkQueue {
             return handOut().hashCode();
         }
 
-        /** What names the hand-out: every component but {@code doubts}. */
+        /** What names the hand-out: every component but {@code doubts} and {@code maxAttempts}. */
         private List<Object> handOut() {
             return Arrays.asList(seq, messageId, flow, step, partitionKey, attempts);
         }
@@ -257,6 +264,21 @@ public interface WorkQueue {
      * @since 0.1
      */
     Future<Boolean> defer(long seq, int attempts, Duration delay);
+
+    /**
+     * Appends {@code messageId}'s row again after an operator's restart of its park (CORE-14b P8, D-135 draft): of {@code flow}, step 1,
+     * under {@code partitionKey} (null: none) at the tail of that key — a new seq behind the key's rows queued meanwhile —, due at once,
+     * unleased, as handed out {@code attempt} times (k, the attempts it was parked after) with no doubt and its own bound
+     * {@link Item#maxAttempts()} k + 1: its next hand-out is attempt k + 1, its last; a takeover of that hand-out is past it.
+     * {@code true} when appended. A queue with a DLQ in its store (Postgres) restarts only a message with the DLQ row of {@code flow}
+     * at step 1 with attempt k and no replayOf (a replay's row is none), deleting that row and copying its ingress body's kept ref in
+     * the same transaction: {@code false} otherwise, nothing written;
+     * a row whose kept ref is gone fails {@code BlobNotFoundException} ({@code BodyLostException} when an accepted loss gave it up),
+     * nothing changed. A queue without one (in memory) always appends.
+     *
+     * @since 0.1
+     */
+    Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt);
 
     /**
      * Marks {@code seq} held, under the same condition as {@link #renew}: it is never claimed again and blocks its key

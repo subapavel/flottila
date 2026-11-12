@@ -240,8 +240,8 @@ class DemoFlowsTest {
         assertEquals(0, expect.getInteger("dlq", 0));
         JsonObject down = caseWith(doc, DemoFlowsTest::partnerDown, "with the partner failing 503");
         assertEquals(1, down.getJsonObject("expect").getInteger("dlq"), "parked once");
-        assertEquals(flow("invoice-async").getJsonObject("retry").getInteger("attempts"), down.getJsonObject("expect").getInteger("retries"),
-                "retries per policy");
+        assertEquals(retriesPerPolicy("invoice-async"), down.getJsonObject("expect").getInteger("retries"),
+                "retries per policy: retry.attempts step retries in each of the delivery.retries.count + 1 runs, plus the count reruns from the ingress (D-135)");
         assertEquals(202, down.getJsonObject("expect").getInteger("status"), "the sender had its 202 before the partner failed");
     }
 
@@ -265,5 +265,21 @@ class DemoFlowsTest {
         assertEquals("4711", sent.getString("equals"));
         JsonObject down = caseWith(doc, DemoFlowsTest::partnerDown, "with the partner failing 503");
         assertEquals(1, down.getJsonObject("expect").getInteger("dlq"), "parked once");
+        assertEquals(retriesPerPolicy("sftp-invoice"), down.getJsonObject("expect").getInteger("retries"),
+                "retries per policy: retry.attempts step retries in each of the delivery.retries.count + 1 runs, plus the count reruns from the ingress (D-135)");
+    }
+
+    /**
+     * What a partner-down case of at-least-once flow {@code id} counts as retries under D-135: each run (the first and the
+     * {@code delivery.retries.count} scheduled reruns from the ingress) retries the step {@code retry.attempts} times, and each
+     * rerun counts once. The demo's policy (attempts 3, count 1): 3 + 3 + 1 = 7, the worked example of the test documents.
+     */
+    private static int retriesPerPolicy(String id) throws IOException {
+        JsonObject flow = flow(id);
+        int attempts = flow.getJsonObject("retry").getInteger("attempts");
+        JsonObject reruns = flow.getJsonObject("delivery").getJsonObject("retries");
+        assertTrue(reruns != null && reruns.getInteger("count") != null, id + " names its delivery.retries count: " + flow.getJsonObject("delivery"));
+        int count = reruns.getInteger("count");
+        return attempts * (count + 1) + count;
     }
 }

@@ -103,6 +103,7 @@ class DeploymentsRedeployEdgeTest {
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return counting.renew(seq, attempts, lease); }
         @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return counting.defer(seq, attempts, delay); }
+        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return counting.restart(messageId, flow, partitionKey, attempt); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return counting.hold(seq, attempts); }
         @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return counting.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return counting.release(seq); }

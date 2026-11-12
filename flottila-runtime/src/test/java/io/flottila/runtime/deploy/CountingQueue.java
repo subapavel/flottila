@@ -128,6 +128,8 @@ public final class CountingQueue implements WorkQueue {
         });
     }
 
+    @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return inner.restart(messageId, flow, partitionKey, attempt); }
+
     @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
 
     @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }

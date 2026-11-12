@@ -494,6 +494,15 @@ public final class Deployments {
     }
 
     /**
+     * The definition of the flow {@code flowId} ({@code <package>/<flow>}) deployed here now, {@link DeployedFlow.State#RUNNING} or
+     * FAILED — what an admin restart reads its delivery mode and its {@code partitionBy} from (CORE-14b P8, O7); empty for a flow not
+     * deployed here. During a deploy, the version listed before it.
+     */
+    public Optional<FlowDefinition> definition(String flowId) {
+        return deployed.values().stream().flatMap(d -> d.flows().stream()).filter(f -> f.id().equals(flowId)).findFirst().map(f -> f.recipe().def());
+    }
+
+    /**
      * Deploys the package archive {@code archive} as {@code name}, or redeploys it when the package runs already; see the class
      * comment for the order. Blocking: on a virtual thread.
      *
