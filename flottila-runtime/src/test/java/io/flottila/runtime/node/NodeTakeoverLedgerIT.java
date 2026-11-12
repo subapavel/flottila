@@ -301,6 +301,7 @@ class NodeTakeoverLedgerIT {
         env.put("FLOTTILA_ENV", "dev");
         env.put("FLOTTILA_NODE_ID", id);
         env.put("FLOTTILA_ADMIN_PORT", String.valueOf(admin));
+        env.put("FLOTTILA_PEER_PORT", "0");   // two nodes on one host: each its own peer port, like its admin port (CORE-5a)
         env.put("FLOTTILA_DATA_DIR", data.toString());
         env.put("FLOTTILA_ARCHIVE_DIR", dir.resolve("archives").toString());   // shared: B and A's restart restore the package from it
         env.put("FLOTTILA_PG_HOST", pg.getHost());

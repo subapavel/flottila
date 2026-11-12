@@ -698,6 +698,11 @@ public final class Journal implements AutoCloseable {
         return config.node();
     }
 
+    /** This journal's id ({@code journal_nodes.journal_id}, its segments' headers): what a peer's READ names it by (CORE-5a W3). */
+    public UUID id() {
+        return format.journal();
+    }
+
     /** {@code FLOTTILA_JOURNAL_RECORD_MAX}: the largest body {@link #append} takes; a longer one is {@link #spill spilled}. */
     public long recordMax() {
         return config.recordMax();
@@ -1094,7 +1099,11 @@ public final class Journal implements AutoCloseable {
             throw new IllegalArgumentException("the record at " + ref + " is longer than any segment record (FLOTTILA_JOURNAL_RECORD_MAX "
                     + config.recordMax() + "): a large body is read with stream()");
         }
-        byte[] rec = channels.pread(ref.segment(), file, ref.position(), (int) ref.length());
+        return plain(ref, channels.pread(ref.segment(), file, ref.position(), (int) ref.length()), key);
+    }
+
+    /** The plaintext of {@code rec}, the whole record at {@code ref}, checked as {@link #read(JournalRef, BlobKey)} checks it. */
+    private byte[] plain(JournalRef ref, byte[] rec, BlobKey key) throws IOException {
         RecordFormat.Header h = checked(ref, rec, rec.length, key);
         SecretKey recordKey = recordKey(ref, h);
         try {
@@ -1119,6 +1128,57 @@ public final class Journal implements AutoCloseable {
         Path file = located(ref);
         if (ref.length() <= longestRecord) return new ByteArrayInputStream(read(ref, key));
         return chunks(file, ref, key);
+    }
+
+    /**
+     * {@link #stream(JournalRef, BlobKey)} of a record that lies in another node's journal at {@code ref}, its bytes as they lie
+     * there — from its first one, in order — read from {@code raw} (the peer link's READ, CORE-5a S7): checked here by CRC32C,
+     * against {@code key} and by AEAD under this journal's tenant keys, exactly as a local record is; a record of
+     * {@code ref}'s length longer than this journal's segment records is read as a large one, one chunk at a time. Closing the
+     * answer closes {@code raw}, and so does a failure here; {@code raw} ending before the record does is corrupt.
+     */
+    public InputStream stream(JournalRef ref, BlobKey key, InputStream raw) throws IOException {
+        byte[] small;
+        try {
+            if (ref.length() > longestRecord) {
+                byte[] head = whole(ref, raw, (int) Math.min(ref.length(), RecordFormat.MAX_HEADER));
+                RecordFormat.Header h = checked(ref, head, head.length, key);
+                return LargeRecord.reader(raw, ref, h, recordKey(ref, h), head);
+            }
+            small = plain(ref, whole(ref, raw, (int) ref.length()), key);
+        } catch (IOException | RuntimeException | Error e) {
+            try {
+                raw.close();
+            } catch (IOException x) {
+                e.addSuppressed(x);
+            }
+            throw e;
+        }
+        raw.close();   // the small record read whole: its stream is done (closed once on every path)
+        return new ByteArrayInputStream(small);
+    }
+
+    /** The first {@code n} bytes of {@code raw}; fewer are a record cut off: corrupt. */
+    private static byte[] whole(JournalRef ref, InputStream raw, int n) throws IOException {
+        byte[] b = raw.readNBytes(n);
+        if (b.length < n) throw corrupt(ref, "ends after " + b.length + " of its bytes", null);
+        return b;
+    }
+
+    /**
+     * The bytes of the record at {@code ref} as they lie in its segment, unchecked: what this node's peer link sends a reader on
+     * another node, which checks them ({@link #stream(JournalRef, BlobKey, InputStream)}, CORE-5a). The stream reads a channel of
+     * its own of the segment file from the record's first byte on — its caller reads {@code ref.length()} of them; closing it closes
+     * the channel.
+     *
+     * @throws IOException no record can lie at {@code ref} (a segment this journal does not hold, or past the last record
+     *                     written and forced), or the file cannot be opened
+     */
+    public InputStream raw(JournalRef ref) throws IOException {
+        try (JournalIo.Owned ch = new JournalIo.Owned(files.open(located(ref), Set.of(StandardOpenOption.READ)))) {
+            ch.get().position(ref.position());
+            return java.nio.channels.Channels.newInputStream(ch.handOn());
+        }
     }
 
     /** The file of {@code ref}'s segment, once it is a place a record can lie at; else an {@link IOException}. */

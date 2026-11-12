@@ -1,11 +1,11 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 6a, 6b, 7, 9, 12, 14a, 14b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..137, 138a, 139..146, 156, 169, 172, 172b, 172c, 173 done
-last commit: `Task: FIX-138a` (this commit); d44ea64 `Task: CORE-14b`; 22d9baa `Task: CORE-14a`
+state: RUNNING core rework; CORE-0..4, 5a, 6a, 6b, 7, 9, 12, 14a, 14b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..137, 138a, 139..146, 156, 169, 172(b,c), 173 done
+last commit: `Task: CORE-5a` (this commit); 46325b8 D-138; 5d56904 `Task: FIX-138a`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: CORE-5 [C] journal copies (HA); then FIX-138b, FIX-175, FIX-174; owner: F-33, D-134..136, F-34, CONSIDER-13/14
+next exact action: CORE-5b [C] replication + ACK (designer → advisor); FIX-177 before 5c; then FIX-138b, 175, 174; owner: F-33, D-134..139, F-34
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

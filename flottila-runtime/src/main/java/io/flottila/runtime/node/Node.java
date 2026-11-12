@@ -28,6 +28,9 @@ import io.flottila.runtime.journal.JournalFiles;
 import io.flottila.runtime.journal.JournalKeys;
 import io.flottila.runtime.journal.PgSegmentRows;
 import io.flottila.runtime.journal.SegmentSweeper;
+import io.flottila.runtime.journal.peer.PeerIdentity;
+import io.flottila.runtime.journal.peer.PeerReads;
+import io.flottila.runtime.journal.peer.PeerServer;
 import io.flottila.runtime.lease.InMemoryPollerLeases;
 import io.flottila.runtime.lease.PollerLeases;
 import io.flottila.runtime.lease.ValkeyPollerLeases;
@@ -86,12 +89,15 @@ import java.util.function.Function;
  * keyless node migrates nothing). It then checks its durability profile ({@code FLOTTILA_PG_DURABILITY}, D-127 draft, D-061
  * amended: {@link PgDurability}) in one read on the intake pool before it migrates, so a refused node leaves its database untouched, migrates the
  * database, opens the body journal in {@code FLOTTILA_JOURNAL_DIR} (D-105:
- * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), builds
- * the blob store on it (CORE-4c2: bodies in the journal under the {@code default} tenant's key, their refs in the work pool, bounded by
- * {@code FLOTTILA_BLOB_DURABLE_MAX}; no spool), joins the membership as a new incarnation of its node id (D-101 (1), F-28: a
- * {@link NodeLease} over a {@link PgMembership} on a connection of its own, renewed every {@code FLOTTILA_NODE_LEASE_RENEW}; its
- * fence fences every at-least-once worker the deployments build; superseded, the node halts — the process exits with
- * {@value #SUPERSEDED}) and states its notices once — the profile's, one journal copy (D-101 (5), until CORE-5) and, when no
+ * every {@code journal_keys} row unwrapped under the master key, then its {@code LOCK}, its identity and its segment rows), opens
+ * the peer link's listener on {@code FLOTTILA_PEER_BIND}:{@code FLOTTILA_PEER_PORT} (CORE-5a: other nodes READ this journal's records
+ * through it, under the master key's proof), joins the membership as a new incarnation of its node id with the link's address
+ * ({@code FLOTTILA_PEER_HOST} and the port it bound; D-101 (1), F-28: a
+ * {@link NodeLease} over a {@link PgMembership} on a connection of its own, renewed every {@code FLOTTILA_NODE_LEASE_RENEW}, each renew
+ * answering the live peers' addresses; its fence fences every at-least-once worker the deployments build; superseded, the node halts —
+ * the process exits with {@value #SUPERSEDED}), builds the blob store on the journal (CORE-4c2: bodies in the journal under the
+ * {@code default} tenant's key, their refs in the work pool, bounded by {@code FLOTTILA_BLOB_DURABLE_MAX}; no spool; a body in another
+ * live node's journal read through the peer link, CORE-5a) and states its notices once — the profile's, one journal copy (D-101 (5), until CORE-5) and, when no
  * other member is live, that nobody takes its items over —, opens the stores (the work queue claiming only what this journal holds) and the
  * archive store (an s3 store over
  * one S3 client the node builds) and the poller leases (D-083: in the Valkey of {@code FLOTTILA_VALKEY_URI} over one client the
@@ -108,13 +114,15 @@ import java.util.function.Function;
  * retention job, whose first run begins at once and does not hold
  * the start, then the journal's {@link SegmentSweeper} ({@code FLOTTILA_JOURNAL_SWEEP_*}, its first pass an interval later); when any of this fails, what was opened closes again — the deployments first (the
  * restored flows stop while the pools are open; a stop that fails is added to the start's failure as suppressed), then the node lease
- * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the journal, the store, the intake pool, the work pool, the S3 client, the Valkey client — so nothing is left running, listening
+ * and its connection, then the sampler, then the work queue's completion batch, then the work events, then the peer link (its reads,
+ * then its listener), then the journal, the store, the intake pool, the work pool, the S3 client, the Valkey client — so nothing is left running, listening
  * or pooled; {@code /ready}'s lifecycle is UP only once the start returns (D-123). {@code close} first marks the node not ready
  * ({@code /ready} 503), then closes the deployments — no deploy is taken any more and every deployed flow stops within {@code FLOTTILA_STOP_DEADLINE}, its lease
  * released, while the admin port still answers — then stops renewing the node lease and closes its connection (the row expires;
  * a peer or the next start takes the items over), then closes the sampler (if one runs), then stops the admin server, then closes the retention job (no next run; the
  * batch in flight commits or rolls back first), then the sweeper (its pass in flight ends first), then the work queue's completion
- * batch (every completion handed over answered first, D-122), then the work events, then closes the journal (its spills and persists in flight first; its {@code LOCK}
+ * batch (every completion handed over answered first, D-122), then the work events, then the peer link (its reads, then its
+ * listener), then closes the journal (its spills and persists in flight first; its {@code LOCK}
  * given up), then flushes and closes the message store, then closes the intake pool, then the work pool, then the S3
  * client, then the Valkey client, each step even when the one before failed; Vert.x stays its caller's.
  *
@@ -164,10 +172,13 @@ public final class Node implements AutoCloseable {
     private final Runnable closeWork;
     /** The {@code lifecycle} input of {@code /ready} (D-123): set once the start finished, cleared as the close's first act. */
     private final AtomicBoolean ready;
+    /** The peer link (CORE-5a): this node's reads of other nodes' journals and its listener for theirs. */
+    private final PeerReads peerReads;
+    private final PeerServer peerServer;
 
     private Node(Deployments deployments, NodeLease lease, PgMembership membership, Optional<CpuSampler> sampler, AdminServer admin, int adminPort,
                  Retention retention, SegmentSweeper sweeper, Journal journal, PgMessageStore messages, Pool intake, Pool pool, Runnable closeS3,
-                 Runnable closeValkey, Runnable closeSignals, Runnable closeWork, AtomicBoolean ready) {
+                 Runnable closeValkey, Runnable closeSignals, Runnable closeWork, AtomicBoolean ready, PeerReads peerReads, PeerServer peerServer) {
         this.deployments = deployments;
         this.lease = lease;
         this.membership = membership;
@@ -185,6 +196,8 @@ public final class Node implements AutoCloseable {
         this.closeSignals = closeSignals;
         this.closeWork = closeWork;
         this.ready = ready;
+        this.peerReads = peerReads;
+        this.peerServer = peerServer;
     }
 
     /**
@@ -232,6 +245,8 @@ public final class Node implements AutoCloseable {
         Deployments deployments = null;   // once built: closed first, its flows stopping while the pool is open
         NodeLease lease = null;   // once joined: closed after the deployments, its connection with it
         PgMembership membership = null;
+        PeerServer peerServer = null;   // once listening: closed with the reads, after the work events, before the journal it serves
+        PeerReads peerReads = null;
         Optional<CpuSampler> sampler = Optional.empty();   // once started: closed after the deployments
         try {
             LateBlobStore late = new LateBlobStore(tiers.treeLimit());   // the node's store once the journal it writes to is open
@@ -250,13 +265,24 @@ public final class Node implements AutoCloseable {
             JournalKeys keys = JournalKeys.load(pool, master);
             Journal opened = Journal.open(config.journal(), clock, timer, keys, JournalFiles.real(), new PgSegmentRows(intakePool), UUID::randomUUID);
             journal = opened;   // its segment rows on the intake pool: a save's persist waits for them, never for the work pool
-            TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
-                    tiers.durableMax()), hasher, opened, keys.keyOf(TENANT), pool);
-            late.bind(blobs);   // before any flow is built: every body a component writes is this store's
+            // the peer link (CORE-5a): listening before the join, which writes where (its actual port); its HELLO names the joined epoch
+            List<SecretKey> masters = List.of(master);
+            java.util.concurrent.atomic.AtomicLong epoch = new java.util.concurrent.atomic.AtomicLong();   // the join's, once it answered
+            peerServer = PeerServer.listen(vertx, config.peer(), () -> new PeerIdentity(config.nodeId(), epoch.get(), opened.id(), masters), opened, timer)
+                    .await();
             // the node lease (D-101): after the journal's LOCK (one process per journal joins), before any flow is built (each is fenced)
-            membership = PgMembership.connecting(vertx, connectOptions(pg, "membership", config.nodeId()));   // its own connection, never a pool's
+            membership = PgMembership.connecting(vertx, connectOptions(pg, "membership", config.nodeId()), config.peer().address(peerServer.port()));   // its own connection, never a pool's
             lease = new NodeLease(config.nodeId(), membership, config.nodeLease(), config.nodeLeaseRenew(), System::nanoTime, timer, Node::halt);
             lease.start().await();
+            epoch.set(membership.epoch());
+            // a body in another live node's journal is read through its link, at the address the last renew answered (S7)
+            PgMembership members = membership;
+            PeerReads reads = new PeerReads(vertx, config.peer(), new PeerIdentity(config.nodeId(), epoch.get(), opened.id(), masters), opened, timer,
+                    members::peerAddress);
+            peerReads = reads;
+            TieredBlobStore blobs = new TieredBlobStore(new TieredBlobStore.Config(tiers.treeLimit(), tiers.memoryTier(), tiers.memoryBudget(),
+                    tiers.durableMax()), hasher, opened, keys.keyOf(TENANT), pool, reads);
+            late.bind(blobs);   // before any flow is built: every body a component writes is this store's
             List<String> notices = notices(config, durability, membership.others(config.nodeId()).await());
             Runtime runtime = new Runtime(clock, timer, ids, blobs, hasher, byScheme);
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
@@ -316,7 +342,7 @@ public final class Node implements AutoCloseable {
             SegmentSweeper sweeper = new SegmentSweeper(opened, new PgSegmentRows(pool), intake::openSaves, config.journalSweep(), clock, timer);
             sweeper.start();
             Node node = new Node(restored, lease, membership, sampler, admin, port, retention, sweeper, opened, messages, intakePool, pool, closeS3,
-                    closeValkey, closeSignals, closeWork, ready);
+                    closeValkey, closeSignals, closeWork, ready, peerReads, peerServer);
             ready.set(true);   // the start's last act: from here /ready may answer UP
             return node;
         } catch (Throwable failure) {
@@ -340,7 +366,11 @@ public final class Node implements AutoCloseable {
                             try {
                                 closeSignals.run();   // before the pool it sends on
                             } finally {
-                                closeStores(journal, messages, intakePool, pool, closeS3, closeValkey);
+                                try {
+                                    closePeers(peerReads, peerServer);   // before the journal it serves
+                                } finally {
+                                    closeStores(journal, messages, intakePool, pool, closeS3, closeValkey);
+                                }
                             }
                         }
                     }
@@ -480,6 +510,15 @@ public final class Node implements AutoCloseable {
         }
     }
 
+    /** Closes the peer link's reads (none yet: nothing), then its listener (none: nothing), the listener even when the reads' close threw. */
+    private static void closePeers(PeerReads reads, PeerServer server) {
+        try {
+            if (reads != null) reads.close().await();
+        } finally {
+            if (server != null) server.close().await();
+        }
+    }
+
     /** The node's body journal (CORE-4c2's store writes through it). */
     public Journal journal() { return journal; }
 
@@ -487,7 +526,8 @@ public final class Node implements AutoCloseable {
      * Marks the node not ready ({@code /ready} 503 from here, D-123), then closes the deployments (every flow stopped, its lease released, deploys refused), then stops the node lease and closes its connection, then the CPU sampler (if one runs), then stops the admin server, then closes the
      * retention job (waits for its batch in flight), then the segment sweeper (waits for its pass in flight), then the work queue's
      * completion batch (waits until every completion handed over is answered, D-122), then the work events
-     * (their listening connection; nothing sent from then on), then closes the journal, then flushes and closes the message store, then closes
+     * (their listening connection; nothing sent from then on), then the peer link (its reads, then its listener), then closes the
+     * journal, then flushes and closes the message store, then closes
      * the intake pool, then the work pool, then the S3 client, then the Valkey client — each step even when the one before failed.
      */
     @Override
@@ -517,7 +557,11 @@ public final class Node implements AutoCloseable {
                                     try {
                                         closeSignals.run();   // after the flows that announce, before the pool it sends on (D-121 (b) B2)
                                     } finally {
-                                        closeStores(journal, messages, intake, pool, closeS3, closeValkey);
+                                        try {
+                                            closePeers(peerReads, peerServer);   // after the flows that read, before the journal it serves
+                                        } finally {
+                                            closeStores(journal, messages, intake, pool, closeS3, closeValkey);
+                                        }
                                     }
                                 }
                             }

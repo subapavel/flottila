@@ -20,5 +20,12 @@ The documented fallback (CLAUDE.md, D-008): `javap -cp <jar>` on the resolved ja
 plus the `-sources.jar` fetched with `mvn dependency:sources` for Javadoc. Work continues on
 that basis; no task is blocked by this issue.
 
+## Update 2026-11-12 (architect)
+Context7 answers again from the main session (`/eclipse-vertx/vert.x`, newest indexed 5.1.8). Two limits remain:
+- Subagents (test-author, implementer) have no MCP tools, so they cannot call it.
+- Its Vert.x core snippets are prose with unresolved `{@link examples…}` placeholders, not method signatures.
+The architect queries Context7 for concepts and passes the result into the packet. `javap` on the resolved jar (5.1.10) stays the
+authority for signatures, as CLAUDE.md allows when Context7 is ambiguous.
+
 ## Owner's answer
 (left empty; the owner fills it in and the next session reads it)

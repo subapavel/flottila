@@ -4,6 +4,7 @@ import io.vertx.core.Future;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -23,11 +24,19 @@ public interface Membership {
      * @param renewed the renewing node's row was renewed: its epoch is the current one and nobody released it
      * @param live the members whose lease runs now, the renewing one included when renewed
      * @param expired the other members whose lease ran out and that nobody released, by node id
+     * @param peers where the peer link of each other member whose lease runs now listens ({@code host:port}), by node id; a
+     *              member that joined without an address is live but not among them (CORE-5a)
      * @since 0.1
      */
-    record Renewal(boolean renewed, int live, List<String> expired) {
+    record Renewal(boolean renewed, int live, List<String> expired, Map<String, String> peers) {
         public Renewal {
             expired = List.copyOf(Objects.requireNonNull(expired, "expired"));
+            peers = Map.copyOf(Objects.requireNonNull(peers, "peers"));
+        }
+
+        /** A renewal that answers no peer addresses: a membership without the peer link's addresses. */
+        public Renewal(boolean renewed, int live, List<String> expired) {
+            this(renewed, live, expired, Map.of());
         }
     }
 

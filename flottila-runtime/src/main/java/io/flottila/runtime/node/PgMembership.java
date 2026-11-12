@@ -12,8 +12,11 @@ import io.vertx.sqlclient.Tuple;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -46,54 +49,100 @@ public final class PgMembership implements Membership {
             update work set available_at = greatest(available_at, (select lease_until from old))
              where locked_by = $1 and held_at is null and exists (select 1 from old where lease_until is not null)""";
 
-    private static final String UPSERT = "insert into nodes(node, epoch, lease_until) values ($1, 1, now() + make_interval(secs => $2))"
-            + " on conflict (node) do update set epoch = nodes.epoch + 1, lease_until = excluded.lease_until returning epoch";
+    /** The row's epoch bumped and its lease started; its peer address ($3, null: none) written, a rejoin's overwriting the last (V18). */
+    private static final String UPSERT = "insert into nodes(node, epoch, lease_until, peer_address) values ($1, 1, now() + make_interval(secs => $2), $3)"
+            + " on conflict (node) do update set epoch = nodes.epoch + 1, lease_until = excluded.lease_until, peer_address = excluded.peer_address returning epoch";
 
-    /** Renews and reports in one statement: the SELECT reads the rows as they were before the UPDATE, so the renewing row is counted by {@code me}. */
+    /**
+     * Renews and reports in one statement: the SELECT reads the rows as they were before the UPDATE, so the renewing row is counted
+     * by {@code me}; the live others' peer addresses come as two arrays in the same order (node, address), the address-less left out.
+     */
     private static final String RENEW = """
             with me as (update nodes set lease_until = now() + make_interval(secs => $3)
-                         where node = $1 and epoch = $2 and lease_until is not null returning node)
+                         where node = $1 and epoch = $2 and lease_until is not null returning node),
+            peers as (select node, peer_address from nodes where node <> $1 and lease_until >= now() and peer_address is not null)
             select (select count(*) from me) = 1,
                    ((select count(*) from me) + (select count(*) from nodes where node <> $1 and lease_until >= now()))::int,
-                   array(select node from nodes where node <> $1 and lease_until < now() order by node)""";
+                   array(select node from nodes where node <> $1 and lease_until < now() order by node),
+                   array(select node from peers order by node), array(select peer_address from peers order by node)""";
 
     private static final String RELEASE = "update nodes set lease_until = null where node = any($1) and lease_until < now() returning node";
 
     private static final String OTHERS = "select count(*)::int from nodes where node <> $1 and lease_until >= now()";
 
     private final Supplier<Future<SqlConnection>> connector;   // null: the one connection given
+    private final String peerAddress;                           // null: none (a node without the peer link's address)
     private Future<SqlConnection> connection;                   // guarded by this: null until the next call connects
     private boolean closed;                                     // guarded by this
+    private volatile Map<String, String> peers = Map.of();      // the last renew's answer
+    private volatile long epoch;                                // the last join's answer
 
-    /** A membership on {@code connection}, dedicated to it; closing it is the caller's. */
+    /** A membership on {@code connection}, dedicated to it; closing it is the caller's. Its joins write no peer address. */
     public PgMembership(SqlConnection connection) {
+        this(connection, null);
+    }
+
+    /**
+     * A membership on {@code connection}, dedicated to it; closing it is the caller's. Its joins write {@code peerAddress}
+     * ({@code host:port}, where this node's peer link listens; null: none) into the node's row (V18).
+     */
+    public PgMembership(SqlConnection connection, String peerAddress) {
         this.connector = null;
+        this.peerAddress = peerAddress;
         this.connection = Future.succeededFuture(Objects.requireNonNull(connection, "connection"));
     }
 
-    private PgMembership(Supplier<Future<SqlConnection>> connector) {
+    private PgMembership(Supplier<Future<SqlConnection>> connector, String peerAddress) {
         this.connector = connector;
+        this.peerAddress = peerAddress;
     }
 
-    /** A membership on a connection of its own to {@code options}, opened on the first call and again after it closed. */
+    /** A membership on a connection of its own to {@code options}, opened on the first call and again after it closed; no peer address. */
     public static PgMembership connecting(Vertx vertx, PgConnectOptions options) {
+        return connecting(vertx, options, null);
+    }
+
+    /**
+     * A membership on a connection of its own to {@code options}, opened on the first call and again after it closed; its joins
+     * write {@code peerAddress} (null: none).
+     */
+    public static PgMembership connecting(Vertx vertx, PgConnectOptions options, String peerAddress) {
         Objects.requireNonNull(vertx, "vertx");
         Objects.requireNonNull(options, "options");
-        return new PgMembership(() -> PgConnection.connect(vertx, options).map(c -> c));
+        return new PgMembership(() -> PgConnection.connect(vertx, options).map(c -> c), peerAddress);
     }
 
     @Override public Future<Long> join(String node, Duration lease) {
         return connection().compose(conn -> conn.begin().compose(tx -> conn.preparedQuery(RERUN_AFTER_OLD_LEASE).execute(Tuple.of(node))
-                .compose(moved -> conn.preparedQuery(UPSERT).execute(Tuple.of(node, seconds(lease))))
-                .compose(rows -> tx.commit().map(rows.iterator().next().getLong(0)),
+                .compose(moved -> conn.preparedQuery(UPSERT).execute(Tuple.of(node, seconds(lease), peerAddress)))
+                .compose(rows -> tx.commit().map(rows.iterator().next().getLong(0)).onSuccess(e -> epoch = e),
                         failure -> tx.rollback().transform(rolledBack -> Future.<Long>failedFuture(failure)))));
     }
 
     @Override public Future<Renewal> renew(String node, long epoch, Duration lease) {
         return connection().compose(conn -> conn.preparedQuery(RENEW).execute(Tuple.of(node, epoch, seconds(lease)))).map(rows -> {
             Row r = rows.iterator().next();
-            return new Renewal(r.getBoolean(0), r.getInteger(1), List.of(r.getArrayOfStrings(2)));
+            String[] nodes = r.getArrayOfStrings(3);
+            String[] addresses = r.getArrayOfStrings(4);
+            Map<String, String> peers = new HashMap<>();
+            for (int i = 0; i < nodes.length; i++) peers.put(nodes[i], addresses[i]);
+            Renewal renewal = new Renewal(r.getBoolean(0), r.getInteger(1), List.of(r.getArrayOfStrings(2)), peers);
+            this.peers = renewal.peers();
+            return renewal;
         });
+    }
+
+    /** The epoch the last join answered; 0 before one did. */
+    public long epoch() {
+        return epoch;
+    }
+
+    /**
+     * Where {@code node}'s peer link listens as the last answered renew found it ({@link Renewal#peers}): empty for this node, a
+     * node whose lease ran out or that was released, one without an address, and before the first renew answered.
+     */
+    public Optional<String> peerAddress(String node) {
+        return Optional.ofNullable(peers.get(node));
     }
 
     @Override public Future<List<String>> release(List<String> peers) {

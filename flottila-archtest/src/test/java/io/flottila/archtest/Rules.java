@@ -122,4 +122,22 @@ final class Rules {
     static final ArchRule RUNTIME_NEVER_NAMES_THE_MOCK = noClasses().that().resideInAPackage(RUNTIME)
             .should().dependOnClassesThat().resideInAPackage("io.flottila.components.mock..")
             .because("a deployed node refuses a mock binding (ARCHITECTURE §11); no runtime class, Main included, names one (F-4)");
+
+    /** The one package that may open a raw TCP socket with Vert.x's {@code io.vertx.core.net.Net*} types (F-35, CORE-5a). */
+    static final String PEER_LINK = "io.flottila.runtime.journal.peer..";
+
+    /**
+     * {@code io.vertx.core.net.Net*} (NetServer, NetClient, NetSocket, their options): the classes the peer link opens its sockets
+     * with. When the rule was added (CORE-5a, grep of every src/main) no other production class used one — the admin listener
+     * and the http doors are Vert.x HTTP servers, the store clients their own libraries — so the peer link is the only user
+     * listed; a new raw-socket user is an architecture change: finding first.
+     */
+    static final DescribedPredicate<JavaClass> VERTX_NET = describe("io.vertx.core.net.Net*",
+            c -> c.getPackageName().equals("io.vertx.core.net") && c.getSimpleName().startsWith("Net"));
+
+    static final ArchRule ONLY_THE_PEER_LINK_OPENS_RAW_TCP = noClasses().that().resideInAPackage("io.flottila..")
+            .and().resideOutsideOfPackage(PEER_LINK)
+            .should().dependOnClassesThat(VERTX_NET)
+            .because("nothing but the Component SPI and the runtime's own listeners opens a socket; the node-to-node journal link is "
+                    + "the one raw TCP user (F-35, CORE-5a)");
 }

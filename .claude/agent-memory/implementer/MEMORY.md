@@ -25,8 +25,9 @@
 - coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
   scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a). Disk: node ITs need >= 16 GiB free in /tmp (`df /tmp`).
 ## APIs
-- `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
-  `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
+- `/usr/bin/javap` is JDK 21: JDK 22+ API only shows with `/opt/temurin-25/bin/javap`. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
+- *HeapTest (-Xmx48m fork, G1 1 MiB regions): a 1 MiB + header array spans TWO humongous regions; a red run by the test-author's launcher is not the fork
+  (CORE-5a r2: :150 passed there, OOMs in surefire). `-DargLine` does not reach heap-bounded; `JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Xlog:gc*:file=..-%p.log"` does.
 - vertx-web 5.1.10 (javap, P1-09a):
   `Router.router(Vertx)`, `get(String)`/`route(String)` → `Route.handler(Handler<RoutingContext>)`, `Router.errorHandler(int, Handler)`
   answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`; `Router.post`; RouterImpl never pauses. Pg `UPDATE…RETURNING` has no order (P1-09c1). Vert.x 5 `VerticleBase` (`start()/stop()`, `vertx`, `context`).
@@ -69,8 +70,8 @@
 - TieredBlobStore spool files are per write since FIX-35: `<id>/<step>-<part>-<n>.blob` (n per store); a write that replaces a
   spool entry unlinks its own file off-thread; a missing file reads the row only for a `Stored` persist flagged durable, else
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
-- vertx-pg-client 5.1.10 jsonb (javap + IT, P2-02b): a JsonArray Tuple param goes through ParamExtractor.prepareJson (Json.encode);
-  textDecodeJSONB answers a JsonArray, `Row.getJsonArray(String)` exists. `dirUri.relativize(u).equals(u)` = "u not below dir", no scheme branch.
+- Vert.x 5.1.10 NetSocket (CORE-5a): bytes arriving while its handler is null are DROPPED: connect from a fixed context's loop, set handlers in the callback. Arm a
+  watchdog before the first write (a fake peer's clock advance raced it). A new default port (peer 8083) clashes in two-process node ITs: `FLOTTILA_PEER_PORT=0`.
 - `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a); whole `clean verify -Pit` incl. bench ~24 min (FIX-138a: runtime 15, bench 7). `install -DskipTests -pl !flottila-bench` fails at archtest (no artifact, after all bench needs): exclude `!flottila-archtest`, `cmp` target vs ~/.m2 jars.
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own

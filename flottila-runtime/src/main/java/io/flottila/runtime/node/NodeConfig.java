@@ -8,6 +8,7 @@ import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.journal.JournalConfig;
 import io.flottila.runtime.journal.MasterKeySource;
 import io.flottila.runtime.journal.SweepConfig;
+import io.flottila.runtime.journal.peer.PeerConfig;
 import io.flottila.runtime.store.Retention;
 
 import java.io.IOException;
@@ -78,13 +79,19 @@ import java.util.regex.Pattern;
  * @param retries the node's default schedule of retries for an at-least-once flow that names no {@code delivery.retries}
  *                (CORE-14a P1, D-135 draft): {@code FLOTTILA_RETRIES_COUNT} (3, 0..100) retries {@code FLOTTILA_RETRIES_INTERVAL}
  *                (PT5M, ISO-8601, PT1S..PT24H) apart, without growth: multiplier 1, the interval its own cap
+ * @param peer the peer link's keys (CORE-5a S11, draft): {@code FLOTTILA_PEER_BIND} (0.0.0.0), {@code FLOTTILA_PEER_PORT} (8083,
+ *             0..65535, 0 any free port; 8082 is the compose async door), {@code FLOTTILA_PEER_HOST} (the node id),
+ *             {@code FLOTTILA_PEER_TIMEOUT} (PT2S, PT0.1S..PT30S), {@code FLOTTILA_PEER_READS} (16, 1..256 per peer)
+ * @param journalCopies {@code FLOTTILA_JOURNAL_COPIES} (CORE-5 S10, S11, draft): 1 or 2; unset 1 in dev and ci, 2 in every
+ *                      deployed environment. A generated master key ({@code FLOTTILA_JOURNAL_KEY_GENERATE=true}) is one node's
+ *                      alone, which no peer could read with (D-106): with more than one copy it is refused
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
                          MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
-                         Duration nodeLeaseRenew, RetryPolicy retries) {
+                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
@@ -107,6 +114,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(journalSweep, "journalSweep");
         Objects.requireNonNull(intakeGroup, "intakeGroup");
         Objects.requireNonNull(retries, "retries");
+        Objects.requireNonNull(peer, "peer");
+        if (journalCopies < 1 || journalCopies > COPIES_MAX) {
+            throw new IllegalArgumentException("FLOTTILA_JOURNAL_COPIES must be between 1 and " + COPIES_MAX + ", was " + journalCopies);
+        }
+        if (journalKey.generates() && journalCopies > 1) {
+            throw new IllegalArgumentException("FLOTTILA_JOURNAL_KEY_GENERATE=true with FLOTTILA_JOURNAL_COPIES " + journalCopies + ": a generated master key"
+                    + " is this node's alone and no peer could read its bodies with it (D-106); give every node FLOTTILA_JOURNAL_KEY_FILE, or set"
+                    + " FLOTTILA_JOURNAL_COPIES=1 for a single dev node");
+        }
         if (retries.attempts() > RETRIES_COUNT_MAX) {
             throw new IllegalArgumentException("FLOTTILA_RETRIES_COUNT " + retries.attempts() + " must be from 0 to " + RETRIES_COUNT_MAX);
         }
@@ -149,6 +165,19 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException("FLOTTILA_PG_POOL_QUEUE " + pg.poolQueue() + " must be from 1 to " + POOL_QUEUE_MAX
                     + ": the most callers waiting per pool (D-132)");
         }
+    }
+
+    /**
+     * A node whose peer link and copies have the default keys (port 8083 on 0.0.0.0, the node id as its host, PT2S, 16 reads;
+     * one copy in dev and ci, two when deployed), as {@link #from} reads an env without them.
+     */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries,
+                new PeerConfig(PEER_BIND, PeerConfig.PORT, nodeId, PeerConfig.TIMEOUT, PeerConfig.READS), deployed(env) ? COPIES_MAX : 1);
     }
 
     /** A node whose node lease has the default keys (PT30S, renewed every PT5S), as {@link #from} reads an env without them. */
@@ -238,7 +267,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew);
+                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
@@ -627,6 +656,9 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Duration POOL_WAIT_MIN = Duration.ofMillis(1);
     private static final Duration POOL_WAIT_MAX = Duration.ofMinutes(1);
     private static final int POOL_QUEUE_MAX = 65536;
+    private static final String PEER_BIND = "0.0.0.0";
+    /** The most {@code FLOTTILA_JOURNAL_COPIES}: the owner's and one holder's (CORE-5 O2, draft). */
+    private static final int COPIES_MAX = 2;
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
@@ -664,7 +696,16 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
-                duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env));
+                duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),
+                (int) number(env, "FLOTTILA_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX));
+    }
+
+    /** The {@code FLOTTILA_PEER_*} keys (CORE-5a S11): each range-checked naming its key. */
+    private static PeerConfig peer(Map<String, String> env, String nodeId) {
+        return new PeerConfig(env.getOrDefault("FLOTTILA_PEER_BIND", PEER_BIND), (int) number(env, "FLOTTILA_PEER_PORT", PeerConfig.PORT, 0, 65535),
+                env.getOrDefault("FLOTTILA_PEER_HOST", nodeId),
+                span(env, "FLOTTILA_PEER_TIMEOUT", PeerConfig.TIMEOUT, PeerConfig.TIMEOUT_MIN.toString(), PeerConfig.TIMEOUT_MAX.toString()),
+                (int) number(env, "FLOTTILA_PEER_READS", PeerConfig.READS, 1, PeerConfig.READS_MAX));
     }
 
     /** The {@code FLOTTILA_RETRIES_*} keys (CORE-14a P1): each range-checked naming its key; no growth, the interval its own cap. */

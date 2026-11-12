@@ -100,3 +100,28 @@ O6 key rotation order: a listener accepts a dialer's key only if it knows it, so
 ## Owner 2026-11-12
 The owner accepted the advisor's recommendations O1–O5, including the functional gate condition: D-138; GATE.md §CORE-GATE condition 4b
 (two processes, copies 2, kill -9 of either node, survivor takes over, no loss, 3 of 3 runs per node); condition 7 needs CORE-5a..5e.
+
+## 5a review r1 FAIL → fix round (architect)
+Docs done by the architect: §4 (proven-before-large frames, head-of-line FIX-177, current key only FIX-178, 4 MiB + 1 KiB), §7 and F-35
+(Vert.x Net* in journal.peer only; JDK sockets FIX-180), D-139 (rotation's link side + the journal_keys rewrap, FIX-178; RECORD_MAX equal, FIX-181).
+Rows filed: FIX-177..181. Accepted: COPIES default 2 deployed (draft); known-checks-previous-first equivalent; both fixture edits.
+R1 pre-auth bound: until a link is proven, a frame whose announced length exceeds the HELLO (then PROOF) size is refused at the length;
+   PeerServer holds at most 64 links in their handshake (PeerConfig.HANDSHAKES_MAX), a further accept is closed at once.
+R2 dial failure: a synchronous throw of connect, PeerHandshake.dialer or PeerLink.open completes `dialed` failed (RemoteBodyException,
+   retryable), closes the socket if any, releases the permit; the next read redials. PeerServer: a throw of PeerLink.open closes the socket.
+R3 paused-link bound: the watchdog no longer skips a paused link: paused with no consumer progress for a whole FLOTTILA_PEER_TIMEOUT
+   closes the link, failing its reads (RemoteBodyException); a reader still draining keeps it (head-of-line → FIX-177).
+R4 PeerIdentity.toString names node, epoch, journal and the key fingerprints, never key bytes or SecretKeySpec's hash.
+R5 BYTES with an empty payload is a protocol refusal (link closed), never a read() returning 0.
+Tests (test-author): PeerReadHeapTest stall check made real (observe the link paused / node-b not reading, no sleep) + a two-reads-both-held
+   case (PeerLink:132); NodePeerReadIT: two Nodes, one Postgres, FLOTTILA_PEER_PORT 0, a body saved on A read on B (pins Journal.id(),
+   the published bound port, members::peerAddress); pre-auth oversize length refused + handshake bound; dial throw (port 70000 in
+   peer_address, or a throwing Timer) fails the read and the next read redials; abandoned paused consumer → link closed within the timeout
+   on the fake timer, other reads fail; PeerIdentity.toString has no key bytes; empty BYTES refused.
+Mutants for r2 (reviewer): hold-never-pauses vs PeerReadHeapTest, drop PeerLink:132, pre-auth cap dropped, dial throw not failed,
+   paused-link bound dropped, Journal.id() another UUID, published port from config, PeerIdentity.toString default.
+Red approved r2 (architect): PeerProtocolTest :360 (R1 ×4 red), :398 (R1 red), :524 :540 (R2 red), :554 (R2 server red), :736 (R3 red),
+:436 empty BYTES value (R5 red), :701 (R3 pins, replaces r1 aLinkPausedByItsReaderOutlivesTheTimeout); PeerIdentityTest:35 (R4 red);
+PeerReadHeapTest :78 (green; kills hold-never-pauses), :150 (green; kills drop PeerLink:132), socketMax fixture fix (readAllLines);
+NodePeerReadIT:123 (green; kills port-from-config). API: PeerConfig.HANDSHAKES_MAX public static final int 64. Logs CORE-5a-r2-red-*.log.
+R6 (test-author finding): PeerReads.Read.read(b, off, 0) returns 0 at once (InputStream contract); implementer adds its unit case.

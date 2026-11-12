@@ -8,9 +8,11 @@ import io.vertx.core.buffer.Buffer;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
+import java.io.ByteArrayInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.security.GeneralSecurityException;
@@ -92,11 +94,47 @@ final class LargeRecord {
      * place or edited fails the read as {@link JournalCorruptException}, before any byte of it. Closing it closes {@code ch}.
      */
     static InputStream reader(FileChannel ch, JournalRef ref, RecordFormat.Header h, SecretKey recordKey, byte[] head) {
-        return new Reader(ch, ref, h, recordKey, head);
+        return new Reader(new Source() {
+            @Override public void read(long at, byte[] into, int length) throws IOException {
+                JournalIo.read(ch, at, into, length);
+            }
+
+            @Override public void close() throws IOException {
+                ch.close();
+            }
+        }, ref, h, recordKey, head);
+    }
+
+    /**
+     * {@link #reader(FileChannel, JournalRef, RecordFormat.Header, SecretKey, byte[])} of the large record whose bytes, from its
+     * first one, are {@code head} and then {@code rest} in order — another node's record as its peer link hands it over (CORE-5a).
+     * Closing it closes {@code rest}.
+     */
+    static InputStream reader(InputStream rest, JournalRef ref, RecordFormat.Header h, SecretKey recordKey, byte[] head) {
+        InputStream all = new SequenceInputStream(new ByteArrayInputStream(head), rest);
+        return new Reader(new Source() {
+            private long consumed;   // the bytes of the record read or skipped so far
+
+            @Override public void read(long at, byte[] into, int length) throws IOException {
+                all.skipNBytes(at - ref.position() - consumed);   // the reader goes forward only: past the header, into the first chunk
+                int n = all.readNBytes(into, 0, length);
+                consumed = at - ref.position() + n;
+                if (n < length) throw new EOFException("the record ends at " + (ref.position() + consumed) + ", before " + (at + length));
+            }
+
+            @Override public void close() throws IOException {
+                all.close();
+            }
+        }, ref, h, recordKey, head);
+    }
+
+    /** Where a large record's bytes come from: positional reads of its chunks in order; a source that ends first is an {@link EOFException}. */
+    private interface Source extends java.io.Closeable {
+        void read(long at, byte[] into, int length) throws IOException;
     }
 
     private static final class Reader extends InputStream {
-        private final FileChannel ch;
+        private final Source ch;
         private final JournalRef ref;
         private final RecordFormat.Header h;
         private final SecretKey key;
@@ -109,7 +147,7 @@ final class LargeRecord {
         private int pos;
         private int have;
 
-        Reader(FileChannel ch, JournalRef ref, RecordFormat.Header h, SecretKey key, byte[] head) {
+        Reader(Source ch, JournalRef ref, RecordFormat.Header h, SecretKey key, byte[] head) {
             this.ch = ch;
             this.ref = ref;
             this.h = h;
@@ -145,7 +183,7 @@ final class LargeRecord {
             int n = (int) Math.min(CHUNK, h.plainSize() - (long) next * CHUNK);
             long at = ref.position() + h.end() + (long) next * (CHUNK + TAG);
             try {
-                JournalIo.read(ch, at, sealed, n + TAG);
+                ch.read(at, sealed, n + TAG);
             } catch (EOFException cut) {
                 throw Journal.corrupt(ref, "ends inside its chunk " + next + " of " + chunks, cut);
             }

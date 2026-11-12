@@ -1,4 +1,17 @@
 
+## 2026-11-12 — CORE-5a peer link + node-to-node body read (D-139, draft) — done, review PASS (r3)
+- Context compacted once (re-read HANDOFF, git status, git log -3). Deviation: F-35 (an internal node-to-node link beside the Component SPI).
+- `journal.peer`: framing v1 + HMAC under the env master key (W7 proof, fingerprint choice of current/previous), READ → BYTES/MISS by
+  (owner, journal id, segment), FLOTTILA_PEER_READS per peer, pause-based flow control; V18 `nodes.peer_address` in the join and the renew;
+  TieredBlobStore reads own journal → live owner; FLOTTILA_PEER_* and FLOTTILA_JOURNAL_COPIES read, KEY_GENERATE refused above 1 copy.
+- Red: PeerLinkTest, PeerReadIT, PeerReadHeapTest (-Xmx48m), PgMembershipPeersIT, NodeConfigPeerTest, MigrationsIT:587, archtest
+  ONLY_THE_PEER_LINK_OPENS_RAW_TCP (packet "Red approved 5a"); r2 PeerProtocolTest/PeerIdentityTest/NodePeerReadIT; r3 PeerKnownAnswerTest.
+- r1 FAIL: pre-auth 4 MiB allocation, a throwing dial hung, paused link unbounded, heap test vacuous, no Node IT, toString key hash, docs.
+  r2 FAIL: no known-answer vector for the pre-auth fingerprint / HKDF. r3 PASS (proof literals recomputed by the architect).
+- Filed: FIX-177 (head-of-line), FIX-178 (previous key + rotation), FIX-179 (peer port clash), FIX-180 (JDK sockets in ArchUnit), FIX-181.
+- Evidence: whole reactor verify -Pit 16/16, 4295 tests 0/0/0 (agent/work/CORE-5a-r3-*); 30+ hand mutants killed (CORE-5a-*mutants.txt,
+  -r3-mut-*); demo 6/6; coverage no decrease. D-054 data: class C (test-author ×4, implementer ×2, reviewer ×3); review rounds 3.
+
 ## 2026-11-12 — FIX-138a retry keeps the id, replay mints one (D-136, draft) — done, review PASS (r2)
 - `POST /admin/dlq/{id}/retry` is now the same-id restart (CORE-14b handler; 422 texts name `/replay`); `/restart` removed (404);
   `POST /admin/dlq/{id}/replay` is the former new-copy retry, `?from=` → 400. F-29 F4.1: the documented route no longer escapes dedupe.

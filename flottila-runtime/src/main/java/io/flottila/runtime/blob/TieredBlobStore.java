@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -63,9 +64,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * save committed ({@link Durable#committed}) and by a claim of this node's work ({@link #located}), emptied by the completion
  * ({@link #forget}), at most {@link Config#indexEntries()} entries, the oldest segment's first out; then the key's
  * {@code body_refs} row, then (an ingress key) the work row of its message, then its pre-V12 {@code bodies} row, then
- * {@link BlobNotFoundException}. A ref whose segment row is gone reads as removed (never written); a ref on another node fails
- * retryable, naming that node ({@link RemoteBodyException}; CORE-5 adds peer reads), and exists there. Without Postgres a key
- * not held locally is not found and every persist is refused.
+ * {@link BlobNotFoundException}. A ref whose segment row is gone reads as removed (never written); a ref on another node — it
+ * exists there — is read through the {@link RemoteBodies} the store was given (CORE-5a: READ from that node, its journal id the
+ * one {@code journal_nodes} holds for it), whose failure is a retryable {@link RemoteBodyException} naming that node; a store
+ * without them fails it so at once. Without Postgres a key not held locally is not found and every persist is refused.
  *
  * @since 0.1
  */
@@ -201,14 +203,18 @@ public final class TieredBlobStore implements BlobStore {
      * its segment row is there, and whether an accepted loss gave it up (V12/V13 {@code lost_at}).
      */
     private static final String FIND = """
-            select 0 as o, r.node, r.segment, r.position, r.length, s.node is not null as live, r.lost_at is not null as lost from body_refs r
+            select 0 as o, r.node, r.segment, r.position, r.length, s.node is not null as live, r.lost_at is not null as lost,
+                   coalesce((select journal_id from journal_nodes j where j.node = r.node), $5) from body_refs r
               left join journal_segments s on s.node = r.node and s.segment = r.segment
              where r.message_id = $1 and r.step = $2 and r.part = $3
             union all
-            select 1, w.body_node, w.body_segment, w.body_position, w.body_length, s.node is not null, w.lost_at is not null from work w
+            select 1, w.body_node, w.body_segment, w.body_position, w.body_length, s.node is not null, w.lost_at is not null,
+                   coalesce((select journal_id from journal_nodes j where j.node = w.body_node), $5) from work w
               left join journal_segments s on s.node = w.body_node and s.segment = w.body_segment
              where $4 and w.id = $1 and w.body_node is not null
             order by o limit 1""";
+    /** The journal id a node without a {@code journal_nodes} row is asked under: no journal has it, so its owner answers MISS. */
+    private static final UUID NO_JOURNAL = new UUID(0, 0);
 
     private final Config config;
     private final Hasher hasher;
@@ -218,6 +224,7 @@ public final class TieredBlobStore implements BlobStore {
     private final String node;
     private final long memoryTier;   // the memory tier, at most RECORD_MAX: an in-memory body is always one record
     private final Pool pool;          // null: no Postgres, nothing durable
+    private final RemoteBodies remote;   // another node's bodies
     private final PgBodies bodies;    // the pre-V12 rows, read only; null without Postgres
     private final long queueHighWater;
     private final Map<BlobKey, Stored> objects = new ConcurrentHashMap<>();
@@ -263,20 +270,28 @@ public final class TieredBlobStore implements BlobStore {
 
     /** A store without Postgres: bodies live in memory and in the journal's spill; {@link #persist} refuses every key. */
     public TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId) {
-        this(config, hasher, journal, tenantKeyId, null, DEFAULT_QUEUE_HIGH_WATER);
+        this(config, hasher, journal, tenantKeyId, null, null, DEFAULT_QUEUE_HIGH_WATER);
     }
 
-    /** The node's store: bodies made durable in {@code journal} under the tenant key {@code tenantKeyId}, their refs on {@code pool}. */
+    /**
+     * The node's store: bodies made durable in {@code journal} under the tenant key {@code tenantKeyId}, their refs on {@code pool};
+     * a body in another node's journal fails retryable ({@link RemoteBodyException}).
+     */
     public TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, Pool pool) {
-        this(config, hasher, journal, tenantKeyId, Objects.requireNonNull(pool, "pool"), DEFAULT_QUEUE_HIGH_WATER);
+        this(config, hasher, journal, tenantKeyId, Objects.requireNonNull(pool, "pool"), null, DEFAULT_QUEUE_HIGH_WATER);
+    }
+
+    /** The node's store, reading a body in another node's journal through {@code remote} (CORE-5a: the peer link's reads). */
+    public TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, Pool pool, RemoteBodies remote) {
+        this(config, hasher, journal, tenantKeyId, Objects.requireNonNull(pool, "pool"), Objects.requireNonNull(remote, "remote"), DEFAULT_QUEUE_HIGH_WATER);
     }
 
     /** Test seam: a small high-water mark makes the pause / resume of the source deterministic. */
     TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, long queueHighWater) {
-        this(config, hasher, journal, tenantKeyId, null, queueHighWater);
+        this(config, hasher, journal, tenantKeyId, null, null, queueHighWater);
     }
 
-    private TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, Pool pool, long queueHighWater) {
+    private TieredBlobStore(Config config, Hasher hasher, Journal journal, int tenantKeyId, Pool pool, RemoteBodies remote, long queueHighWater) {
         this.config = Objects.requireNonNull(config, "config");
         this.hasher = Objects.requireNonNull(hasher, "hasher");
         this.journal = Objects.requireNonNull(journal, "journal");
@@ -287,6 +302,9 @@ public final class TieredBlobStore implements BlobStore {
         this.budget = new MemoryBudget(config.memoryBudgetBytes());
         this.queueHighWater = queueHighWater;
         this.pool = pool;
+        this.remote = remote != null ? remote : (key, owner, of, ref) -> {
+            throw new RemoteBodyException(key, owner, node);
+        };
         this.bodies = pool == null ? null : new PgBodies(pool, PgBodies.MAX_BOUND);
         this.index = new LocationIndex(config.indexEntries());
     }
@@ -435,7 +453,11 @@ public final class TieredBlobStore implements BlobStore {
             if (row.isEmpty()) throw noObject(key);
             return new ByteArrayInputStream(row.get().getBytes());
         }
-        JournalRef ref = readable(key, found.get());
+        Found f = found.get();
+        if (f.lost()) throw new BodyLostException(key);
+        if (!f.live()) throw noObject(key);
+        if (!node.equals(f.node())) return remote.open(key, f.node(), f.journal(), f.ref());
+        JournalRef ref = f.ref();
         try {
             return journal.stream(ref, key);
         } catch (IOException e) {
@@ -445,22 +467,17 @@ public final class TieredBlobStore implements BlobStore {
     }
 
     /**
-     * {@code found}'s ref when this node can read it: a ref an accepted loss gave up is lost (whether its segment row is there or
-     * not), one whose segment row is gone is removed, another node's is elsewhere.
+     * A ref Postgres names for a key, whether its segment row is there, whether it was given up, and the journal id of its node
+     * ({@link #NO_JOURNAL} for a node without a {@code journal_nodes} row).
      */
-    private JournalRef readable(BlobKey key, Found found) {
-        if (found.lost()) throw new BodyLostException(key);
-        if (!found.live()) throw noObject(key);
-        if (!node.equals(found.node())) throw new RemoteBodyException(key, found.node(), node);
-        return found.ref();
-    }
-
-    /** A ref Postgres names for a key, whether its segment row is there, and whether it was given up. */
-    private record Found(String node, JournalRef ref, boolean live, boolean lost) { }
+    private record Found(String node, JournalRef ref, boolean live, boolean lost, UUID journal) { }
 
     private Future<Optional<Found>> find(BlobKey key) {
-        return pool.preparedQuery(FIND).execute(Tuple.of(key.messageId(), key.step(), key.part(), ingress(key))).map(rows -> {
-            for (Row r : rows) return Optional.of(new Found(r.getString(1), new JournalRef(r.getLong(2), r.getLong(3), r.getLong(4)), r.getBoolean(5), r.getBoolean(6)));
+        return pool.preparedQuery(FIND).execute(Tuple.of(key.messageId(), key.step(), key.part(), ingress(key), NO_JOURNAL)).map(rows -> {
+            for (Row r : rows) {
+                return Optional.of(new Found(r.getString(1), new JournalRef(r.getLong(2), r.getLong(3), r.getLong(4)), r.getBoolean(5), r.getBoolean(6),
+                        r.getUUID(7)));
+            }
             return Optional.empty();
         });
     }
