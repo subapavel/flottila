@@ -152,7 +152,7 @@ jobs:
       - name: Tear down
         if: always()
         working-directory: deploy/compose
-        run: docker compose --profile history down -v
+        run: docker compose --profile history --profile kafka down -v
 
   bench:
     name: bench (native Postgres on the runner)

@@ -28,7 +28,7 @@
         "mode": { "enum": ["sync", "at-least-once", "at-most-once"], "description": "ARCHITECTURE §4 message lifecycle per delivery mode." },
         "saveTimeout": { "$ref": "#/$defs/duration", "description": "at-least-once: the durable save deadline before NACK/503 (default 5s)." },
         "timeout": { "$ref": "#/$defs/duration", "description": "Every mode: the time each run of a message has; its deadline is the run's start plus this (sync after admission, each at-least-once claim, each replay or retry). A send waiting for a busy target waits no longer, a send is not started after it and its producer cuts it there (D-113); nothing else cancels the run at it yet. Positive; default 30s (D-100)." },
-        "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once only: the work queue behind the durable save; absent or postgres = the node's Postgres work queue; kafka is refused at deploy until the Kafka hand-over lands (D-075)." }
+        "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once only: the work queue behind the durable save; absent or postgres = the node's Postgres work queue; kafka names the optional Kafka add-on (O-1), not in this build: refused at deploy (D-075)." }
       }
     },
     "recording": { "$ref": "#/$defs/recording" },

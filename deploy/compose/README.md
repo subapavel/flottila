@@ -1,8 +1,9 @@
 # The gate stack (`deploy/compose`)
 
 A demo stack for GATE checks 1-2 (D-085), not production: the node runs `FLOTTILA_ENV=dev`. Services: `postgres`, `valkey`
-(persistence off), `s3` (SeaweedFS), `kafka` (KRaft, not wired), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `netns` (holds the published ports and the network namespace of the node and the echo), `flottila` (the node), `echo` (the demo's partner),
-`deploy` (one-shot: `flottila deploy /packages/demo`), and `clickhouse` under the `history` profile (not wired).
+(persistence off), `s3` (SeaweedFS), `sftp-keys` (one-shot: the SFTP host key), `sftp`, `netns` (holds the published ports and the network namespace of the node and the echo), `flottila` (the node), `echo` (the demo's partner),
+`deploy` (one-shot: `flottila deploy /packages/demo`), `clickhouse` under the `history` profile (not wired), and `kafka` (KRaft, the optional event-broker add-on, O-1) under the
+`kafka` profile, off by default and not wired: a plain `up` does not start it.
 
 ```sh
 mvn -B -ntp -q package -DskipTests -pl flottila-runtime,flottila-cli -am   # the jars the node image and `deploy` use
@@ -15,11 +16,12 @@ curl -H "Authorization: Bearer $FLOTTILA_ADMIN_TOKEN" localhost:8081/admin/packa
 curl -X POST --data-binary @../../packages/demo/fixtures/sample-invoice.xml localhost:8080/in        # flow invoice-sync: the reply is the ACK
 curl -X POST --data-binary @../../packages/demo/fixtures/sample-invoice.xml localhost:8082/invoice/async   # flow invoice-async: 202 after the durable save
 docker compose --profile history up -d clickhouse      # optional
-docker compose --profile history down -v               # stop and remove every volume
+docker compose --profile kafka up -d kafka             # optional: the event-broker add-on
+docker compose --profile history --profile kafka down -v   # stop and remove every volume
 ```
 
 Postgres runs `postgres:18.6` with its volume at `/var/lib/postgresql` (D-129). A `pg-data` volume made by the earlier
-`postgres:17.11` cannot be reused (the 18 image refuses to start on it): run `docker compose --profile history down -v` once
+`postgres:17.11` cannot be reused (the 18 image refuses to start on it): run `docker compose --profile history --profile kafka down -v` once
 before the first `up` after the upgrade; it deletes every volume of this demo stack (database, node archives, S3 objects, SFTP keys and files, ClickHouse).
 
 - Admin API and `/health`: `localhost:8081`; the demo's http-in: `localhost:8080`; its async door `http-in-async`: `localhost:8082/invoice/async` (answers 202).

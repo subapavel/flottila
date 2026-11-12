@@ -1,4 +1,17 @@
 
+## 2026-11-12 — CORE-9 Kafka out of the core (D-134, draft; CORE-REWORK O-1) — done, review PASS (r3)
+
+- Context compacted before this task; re-verified with git status / git log -3.
+- Red first: ComposeStackTest kafkaOnlyUnderTheKafkaProfile, theDefaultUpStartsNeitherKafkaNorClickhouse; DeploymentsQueueTest.kafkaRefusedWithOneLine
+  (red observed, agent/work/CORE-9-red-head.log); NoKafkaClientTest in api, core, runtime, components http/mock/sftp, steps xslt/validate
+  (green pins, red under pom hand mutants M1 runtime / M2 core, CORE-9-red-mutants.log).
+- Compose: `kafka` only under profile `kafka`; a plain `up` no longer starts it; CI teardown and READMEs carry `--profile kafka`.
+- `queue: kafka` refusal and the flow schema name Kafka the optional add-on. No Kafka client existed in src/main; none may reach any core classpath.
+- CORE-GATE condition 6 evidence: `verify -Pit` with no Kafka container — NodeIT sync, replay, DLQ-retry cases, InvoiceAsyncIT, AtLeastOnceIntakeIT green
+  (CORE-9-xml.txt; run 1 hit known flake FIX-168, rerun alone green; run 2 -rf :flottila-runtime exit 0). Coverage no decrease.
+- Docs: ARCHITECTURE §2/§3 + changelog 3.13, GATE check 1, D-134 draft (compose topology) amending D-085, HANDOVER drafts, QUICKSTART.
+  The remaining Kafka text in §2/§3/§7/§8 stays with CORE-12.
+
 ## 2026-11-12 — FIX-173 work-queue answers no longer depend on flow order on deploy and undeploy (D-133 [FIX-173]) — done, review PASS (r2)
 Test first: DeploymentsRedeployTest:1065, DeploymentsUndeployTest:914 aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder,
 DeploymentsUndeployTest itemsOfOneFlowOutrankAPoolRefusalOfAnotherInEitherFlowOrder (red FIX-173-red.log, -r2-red*.log); CountingQueue per-flow hook

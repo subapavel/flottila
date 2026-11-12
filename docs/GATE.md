@@ -6,10 +6,10 @@ covers the Phase 2 pieces the two demo flows need; see `agent/BACKLOG.md`.
 
 ## Checks
 
-1. **Stack.** `cd deploy/compose && docker compose up -d` starts runtime, Postgres, Kafka, Valkey,
+1. **Stack.** `cd deploy/compose && docker compose up -d` starts runtime, Postgres, Valkey,
    S3, plus two demo helpers: an SFTP server with an inbox and a partner echo endpoint.
    `GET /health` is green within 60 s. ClickHouse is in the same file under profile `history`
-   (present, not wired — see "Postponed").
+   (present, not wired — see "Postponed"); Kafka, an optional add-on, under profile `kafka` (CORE-9).
 2. **Deploy from git.** `packages/demo` in the repo (flows, XSLT, XSD, fixtures, `*.test.yaml`,
    `package.yaml`) is deployed at stack start by `flottila deploy`; `flottila validate` passes on
    it. Every message records the package version it ran with.

@@ -92,7 +92,7 @@ import java.util.stream.Stream;
  * manifest's name, its dependencies ({@link #dependencies}, D-087), a component for every scheme, every endpoint's config (its environment's keys laid over it) against
  * its component's {@code configSchema()}, no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
  * no flow from an out endpoint, every flow definition, no {@code delivery.queue} on a flow that is not at-least-once and none of
- * {@code kafka} until the Kafka hand-over lands (D-075), no at-least-once flow above {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), no
+ * {@code kafka}, the optional add-on not in this build (O-1, D-075), no at-least-once flow above {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), no
  * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API or a running flow of
  * another package listens (D-072: one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), and
  * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
@@ -1136,7 +1136,7 @@ public final class Deployments {
             if (queued != null && !AT_LEAST_ONCE.equals(def.deliveryMode())) {
                 problems.add("flow '" + id + "' is " + def.deliveryMode() + " and sets delivery.queue " + queued + ": only an at-least-once flow has a work queue");
             } else if ("kafka".equals(queued)) {
-                problems.add("flow '" + id + "' sets delivery.queue kafka: the Kafka hand-over is not built yet (Phase 2, later); omit it or use postgres");
+                problems.add("flow '" + id + "' sets delivery.queue kafka: Kafka is an optional add-on, not in this build; omit it or use postgres");
             }
             long durableMax = config.blobs().durableMax();
             if (AT_LEAST_ONCE.equals(def.deliveryMode()) && def.maxBodyBytes() > durableMax) {

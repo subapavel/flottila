@@ -78,6 +78,7 @@
 | 2026-11-11 | 3.10 | §4 Postgres pools by role: the wait for a pooled connection and the wait queue are finite on both pools — `FLOTTILA_PG_POOL_WAIT` (PT0.001S..PT1M, default PT5S) and `FLOTTILA_PG_POOL_QUEUE` (1..65536, default 1024), replacing the client's 30 s wait and unbounded queue; a refused caller is retryable (intake 503, an admin read 503, claim retried; transaction-path admin routes still 500, a replay's run 502 FAILED, FIX-172b); the wait covers the connect (D-132, FIX-172) | — |
 | 2026-11-11 | 3.11 | §4 Postgres pools by role: a pool's refusal on the transaction path is typed — every store's transaction acquires through `PgTx.inTransaction` (and the intake's group through the same acquire), a failed acquire is a `PoolRefusedException` (cause kept, by where it failed, never by type or message); the admin routes answer 503 for a pool refusal (the work queue's discard, a deploy's work-queue question, an undeploy's work-queue question and record delete included [FIX-172c]), except a DLQ retry that ran and whose row removal the pool refused (500 naming the new message); a replay's or a DLQ retry's run the pool refused is 503, not 502 FAILED; a deploy whose record write the pool refused is 503 (kind BUSY) with the refusal's own `{error}` line; the 3.10 entry's "transaction-path admin routes still 500" and its route list (DLQ discard does not exist; DLQ retry and deploy were not 500 by their transactions) are retired; `FLOTTILA_PG_POOL_QUEUE` refused from the env naming 1..65536 (D-133, FIX-172b) | — |
 | 2026-11-12 | 3.12 | §4: a pool refusal of a work-queue question is 503 only when every failed question was the pool's; a real failure outranks it (500), an undeploy's held items too (409) (D-133, FIX-173) | — |
+| 2026-11-12 | 3.13 | §2, §3: Kafka is an optional add-on, not part of the core; no core path depends on it; compose runs it only under profile `kafka`; the remaining Kafka text in §3/§4/§7/§8 is rewritten by CORE-12 (D-134, CORE-9) | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -136,7 +137,7 @@ The language question is closed: Java 25 on Vert.x 5.1, one runtime, no second l
 | Runtime language / platform | Java 25 (LTS), Vert.x 5.1.x core, plain `Future` + `ReadStream`/`WriteStream`; Mutiny not required | Final |
 | Threading | One plain JDK virtual thread per in-flight message, bounded per flow by a semaphore counting requests and bytes; verticles do I/O only | Final (replaces VIRTUAL\_THREAD verticle per flow) |
 | Persistence of truth | PostgreSQL is the single source of truth (state, queues, config, partner directory, wallet) | Final |
-| Message backbone | Apache Kafka (KRaft, Apache 2) for async hand-over, ingest and replay; Redpanda only as a customer-supplied broker; NATS dropped | Final |
+| Message backbone | None in the core: hand-over, ingest and replay run on Postgres and the journal (CORE-REWORK O-1). Apache Kafka (KRaft, Apache 2) is an optional event-broker add-on (`queue: kafka`, a Kafka-backed `/xi` door); Redpanda only as a customer-supplied broker; NATS dropped | Final (amended 3.13) |
 | Monitoring history & payload search | ClickHouse, mandatory core component, read through pg\_clickhouse so Postgres is the single query surface | Final |
 | Object storage | S3 API; backend is the customer's choice (AWS, R2, SeaweedFS, Ceph RGW, Garage) | Final |
 | Cache | Node-local Caffeine + Valkey as shared cache/locks/rate limits | Final |
@@ -154,13 +155,13 @@ Two process types and five shared data components; every runtime node is identic
 
 &#91;embedded content: system topology · 2 process types, 5 data components\]
 
-Runtime nodes talk to all five stores; the control plane talks only to Postgres (and reads ClickHouse through pg\_clickhouse). Postgres is the single query surface for the UI: ClickHouse is reached through the pg\_clickhouse foreign data wrapper (reads only; ingest goes runtime → batches → Kafka → ClickHouse Kafka engine).
+Runtime nodes talk to all five stores; the control plane talks only to Postgres (and reads ClickHouse through pg\_clickhouse). Postgres is the single query surface for the UI: ClickHouse is reached through the pg\_clickhouse foreign data wrapper (reads only; ingest will run without Kafka, through the mover — CORE-10, pending; CORE-REWORK Q-3; Kafka is an optional add-on, 3.13).
 
 | Component | Role | HA / scale | Mandatory |
 | --- | --- | --- | --- |
 | Runtime node | endpoints, pipelines, workers, pollers; Micrometer + OTel exporters | N identical nodes, LB in front, SIGTERM drain | yes |
 | PostgreSQL | state, work queues (SKIP LOCKED), ordered XI queues, flow/partner config, wallet, processed-ids, DLQ, last-N-hours monitoring | synchronous standby + failover (`ha`) or single server (`local`), `FLOTTILA_PG_DURABILITY` (§4, D-127); supported versions 17 and 18 (§4, D-129) | yes |
-| Apache Kafka (KRaft) | async hand-over between endpoint and flow, monitoring ingest, replay source, durable `/xi` door during Postgres failover | 3 brokers; tiered storage to S3 | yes |
+| Apache Kafka (KRaft) | optional event-broker add-on (CORE-REWORK O-1): `queue: kafka` and a Kafka-backed `/xi` door; no core path uses it (compose profile `kafka`) | 3 brokers; tiered storage to S3 | no (add-on) |
 | ClickHouse | monitoring history, metrics, payload search (XPath/JSONPath via keys-as-columns + JSON projection) | replicated; hot NVMe → S3 by TTL | yes |
 | S3-compatible store | bodies above memory tier, archive, Kafka/CH cold tiers | customer backend | yes |
 | Valkey | warm config copy, partner OAuth tokens, global throttles, poller leases, distributed locks, UI sessions; persistence off | Sentinel or cluster | yes |

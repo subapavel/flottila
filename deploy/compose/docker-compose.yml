@@ -1,6 +1,6 @@
-# The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3), Kafka and an SFTP server beside one Flottila node,
+# The gate stack (GATE checks 1-2, D-085): Postgres, Valkey, SeaweedFS (S3) and an SFTP server beside one Flottila node,
 # the demo's partner echo and a one-shot that deploys packages/demo; a one-shot (sftp-keys) makes the SFTP host key first. A demo stack, not production: the node runs FLOTTILA_ENV=dev
-# so the manual deploy and the http S3 endpoint are allowed. Kafka and ClickHouse are present, not wired (GATE "Postponed").
+# so the manual deploy and the http S3 endpoint are allowed. Kafka is the optional event-broker add-on (O-1), off by default: start it with --profile kafka; ClickHouse (--profile history) is present, not wired.
 # Build the host jars first: mvn -B -ntp -q package -DskipTests -pl flottila-runtime,flottila-cli -am
 # Then:  FLOTTILA_ADMIN_TOKEN=<token> docker compose up -d --build        (see README.md)
 services:
@@ -52,8 +52,9 @@ services:
       retries: 40
 
   kafka:
-    # KRaft, one node; not wired to the node in Phase 2
+    # the optional event-broker add-on (O-1): KRaft, one node, not wired to the node; started only with --profile kafka
     image: apache/kafka:3.9.1
+    profiles: ["kafka"]
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
       interval: 5s

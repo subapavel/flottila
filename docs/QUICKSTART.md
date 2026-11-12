@@ -82,5 +82,5 @@ docker compose down -v          # also remove the volumes: the next start is emp
 
 After a rebuild of the jar, `docker compose up -d --build --force-recreate` replaces all containers (`netns` holds the namespace, so the node and the echo restart independently); the node restores the deployed demo from its volume.
 
-The fuller gate stack (Postgres, Valkey, SeaweedFS S3, Kafka, SFTP, the node, the echo and an automatic deploy of the demo) is in
-[`deploy/compose/`](../deploy/compose/README.md).
+The fuller gate stack (Postgres, Valkey, SeaweedFS S3, SFTP, the node, the echo and an automatic deploy of the demo) is in
+[`deploy/compose/`](../deploy/compose/README.md); Kafka, an optional add-on, starts only with `--profile kafka`.

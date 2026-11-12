@@ -105,9 +105,73 @@ class ComposeStackTest {
         for (var it = services().fields(); it.hasNext(); ) {
             var e = it.next();
             if (e.getKey().equals("clickhouse")) continue;
-            assertFalse(e.getValue().has("profiles"), e.getKey() + " must start without a profile");
             assertFalse(e.getValue().path("depends_on").toString().contains("clickhouse"), e.getKey() + " must not wait for clickhouse");
         }
+    }
+
+    // ---- CORE-9 (O-1): Kafka is the optional event-broker add-on, off by default ------------------------------------------------
+
+    /** The profiles of a service as written ({@code profiles: [...]}); empty when it has none. */
+    private static List<String> profiles(JsonNode service) {
+        List<String> out = new ArrayList<>();
+        service.path("profiles").forEach(p -> out.add(p.asText()));
+        return out;
+    }
+
+    /** The services a service waits for, whether its depends_on is written as a list or as a map. */
+    private static List<String> dependencies(JsonNode service) {
+        List<String> out = new ArrayList<>();
+        JsonNode dependsOn = service.path("depends_on");
+        if (dependsOn.isObject()) dependsOn.fieldNames().forEachRemaining(out::add);
+        else dependsOn.forEach(d -> out.add(d.asText()));
+        return out;
+    }
+
+    @Test
+    void kafkaOnlyUnderTheKafkaProfile() throws IOException {
+        JsonNode kafka = service("kafka");
+        assertTrue(kafka.path("profiles").isArray(), "kafka's profiles is a list, was " + kafka.path("profiles"));
+        assertEquals(List.of("kafka"), profiles(kafka), "kafka is under profiles: [kafka] and no other");
+    }
+
+    @Test
+    void theDefaultUpStartsNeitherKafkaNorClickhouse() throws IOException {
+        Set<String> unprofiled = new java.util.TreeSet<>();
+        services().fields().forEachRemaining(e -> {
+            if (!e.getValue().has("profiles")) unprofiled.add(e.getKey());
+        });
+        assertEquals(new java.util.TreeSet<>(Set.of("postgres", "valkey", "s3", "sftp-keys", "sftp", "netns", "flottila", "echo", "deploy")),
+                unprofiled, "a plain `docker compose up` starts exactly these: everything but kafka and clickhouse");
+    }
+
+    @Test
+    void noServiceWaitsForKafka() throws IOException {
+        List<String> named = new ArrayList<>();
+        for (var it = services().fields(); it.hasNext(); ) {
+            var e = it.next();
+            List<String> deps = dependencies(e.getValue());
+            named.addAll(deps);
+            assertFalse(deps.stream().anyMatch(d -> d.toLowerCase(java.util.Locale.ROOT).contains("kafka")),
+                    e.getKey() + " must not wait for kafka: depends_on " + deps);
+        }
+        // witness (not vacuous): the depends_on maps are read — the node waits for postgres and sftp-keys, the echo for netns
+        assertTrue(named.contains("postgres") && named.contains("netns") && named.contains("sftp-keys"), "depends_on read: " + named);
+    }
+
+    @Test
+    void noServiceIsConfiguredForKafka() throws IOException {
+        int keys = 0;
+        for (var it = services().fields(); it.hasNext(); ) {
+            var e = it.next();
+            if (e.getKey().equals("kafka")) continue; // the broker's own settings are not a wiring to it
+            Map<String, String> env = environment(e.getValue());
+            keys += env.size();
+            for (String key : env.keySet()) {
+                assertFalse(key.toUpperCase(java.util.Locale.ROOT).contains("KAFKA"), e.getKey() + " sets " + key + ": nothing is wired to Kafka (O-1)");
+            }
+        }
+        // witness (not vacuous): the environments are read — the node alone sets FLOTTILA_ENV, FLOTTILA_PG_HOST and more
+        assertTrue(environment(service("flottila")).containsKey("FLOTTILA_ENV") && keys >= 10, "environment keys read: " + keys);
     }
 
     @Test
