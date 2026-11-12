@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * In-memory {@link WorkQueue} with the exact eligibility rule of the Postgres claim (not held, oldest
+ * In-memory {@link WorkQueue} with the exact eligibility rule of the Postgres claim (not held, due, oldest
  * row of its key, no live lease on the key; another node's row only once its holder has no live row in the
  * {@link InMemoryMembership}, a restarted node's own rows only after its old lease's end, D-101, D-112), the same attempts, doubts and
  * fencing (D-055, D-074), leases on an injected {@link Clock}. Single process only; state whose loss loses messages belongs
@@ -30,6 +30,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         long lockedEpoch;     // the holder's epoch in the membership at the hand-out
         Instant lockedUntil;
         Instant heldAt;       // null: not held
+        Instant availableAt;  // null: due; else not claimed before it (a defer, CORE-14a)
         Row(Item item) { this.item = item; }
     }
 
@@ -76,7 +77,7 @@ public final class InMemoryWorkQueue implements WorkQueue {
         List<Item> taken = new ArrayList<>();
         for (Row r : rows.values()) {
             if (taken.size() >= max) break;
-            if (!r.item.flow().equals(flow) || r.heldAt != null || live(r, now) || !eligible(r) || !released(r, workerId, now)) continue;
+            if (!r.item.flow().equals(flow) || r.heldAt != null || notDue(r, now) || live(r, now) || !eligible(r) || !released(r, workerId, now)) continue;
             taken.add(take(r, workerId, now, lease));
         }
         return Future.succeededFuture(taken);
@@ -105,6 +106,17 @@ public final class InMemoryWorkQueue implements WorkQueue {
         Row r = rows.get(seq);
         if (!current(r, attempts)) return Future.succeededFuture(false);
         r.lockedUntil = clock.instant().plus(lease);
+        return Future.succeededFuture(true);
+    }
+
+    /** Not before {@code delay} from now on the injected clock; the holder and the lease cleared, the item as it was. */
+    @Override public synchronized Future<Boolean> defer(long seq, int attempts, Duration delay) {
+        Objects.requireNonNull(delay, "delay");
+        Row r = rows.get(seq);
+        if (!current(r, attempts)) return Future.succeededFuture(false);
+        r.availableAt = clock.instant().plus(delay);
+        r.lockedBy = null;      // no one's: the next hand-out is in no doubt
+        r.lockedUntil = null;
         return Future.succeededFuture(true);
     }
 
@@ -159,6 +171,11 @@ public final class InMemoryWorkQueue implements WorkQueue {
     /** All rows in seq order (tests). */
     public synchronized List<Item> snapshot() {
         return rows.values().stream().map(r -> r.item).toList();
+    }
+
+    /** Deferred past {@code now}. */
+    private static boolean notDue(Row r, Instant now) {
+        return r.availableAt != null && r.availableAt.isAfter(now);
     }
 
     private static boolean live(Row r, Instant now) {

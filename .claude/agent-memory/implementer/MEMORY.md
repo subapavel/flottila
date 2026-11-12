@@ -7,8 +7,7 @@
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
 - `-q` prints no "Tests run:" lines: count `**/target/{surefire,failsafe}-reports/TEST-*.xml` RECURSIVELY (components/steps are
   nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start. `find .` also hits `agent/work/FIX-169-bench18-reports` (60 archived bench XMLs): exclude `./agent`.
-- A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
-  `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
+- A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both. `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:76, PgDeploymentStoreIT:100, BenchMainIT:36 (schema count); a new /admin JSON field → AdminServerWorkTest field-set pins; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
   a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
   A changed NodeConfig default (CORE-17 r3): NodeConfigTest.defaults:66 and bench LedgerMainPartsTest:65 pin `Pg(..)` defaults too.
@@ -17,18 +16,18 @@
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
+- FlowBuilder's default intake (2-arg SequentialIntake) hands nothing off: a test that waits for a run after `accept` needs `.workers(reg).intake(new SequentialIntake(store, queue, reg, node))` (CORE-14a). Pg `work.available_at` gates every claim.
 - Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`. JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
 - Mutants offline (`-o`; scratchpad is shared across runs: a fresh per-task dir): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`; `find -prune .. -delete` deletes NOTHING (find warns): list, then `xargs rm`.
   HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify` (never `install` there: it puts HEAD jars in ~/.m2, bench then needs a tree install). Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
 - Scoped PIT `-pl flottila-api,flottila-testkit,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107). Runtime (FIX-139, ~4 min): `-pl flottila-runtime -am -DmutationThreshold=0`, mutations.xml by `mutatedMethod`.
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
 - coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
-  scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a).
-- Disk (FIX-136): node-starting ITs refuse when /tmp has < 16 GiB usable (FLOTTILA_JOURNAL_MAX_BYTES, ~28 errors): `df /tmp` first; delete old scratch copies.
+  scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a). Disk: node ITs need >= 16 GiB free in /tmp (`df /tmp`).
 ## APIs
 - `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
   `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
-- vertx-web 5.1.10 (javap, P1-09a; fetch with `mvn dependency:get -Dartifact=io.vertx:vertx-web:5.1.10` if ~/.m2 lacks it):
+- vertx-web 5.1.10 (javap, P1-09a):
   `Router.router(Vertx)`, `get(String)`/`route(String)` → `Route.handler(Handler<RoutingContext>)`, `Router.errorHandler(int, Handler)`
   answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`; `Router.post`; RouterImpl never pauses. Pg `UPDATE…RETURNING` has no order (P1-09c1).
   Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.

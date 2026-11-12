@@ -72,7 +72,7 @@ class FlowWorkerHandoffTest {
     static final Map<String, Object> PROBE = Map.of("type", "probe", "name", "probe");
 
     static WorkerPolicy policy() {
-        return new WorkerPolicy(LEASE, 5, TICK);
+        return new WorkerPolicy(LEASE, TICK);
     }
 
     /** Waits (spinning, never sleeping) until {@code condition} holds; fails after a 5 s bound naming what it waited for. */

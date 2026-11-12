@@ -1473,14 +1473,15 @@ public final class Deployments {
     /**
      * A builder over {@code endpoints} that stamps every message with {@code package=<name>@<version>} and, when given, {@code revision};
      * it marks the steps with StepEvents only when the node samples CPU time (D-094, owner decision 2026-11-03), and its {@code to}
-     * steps send under the node's {@link Targets} (D-099).
+     * steps send under the node's {@link Targets} (D-099); its at-least-once workers retry under the node's default schedule
+     * ({@code FLOTTILA_RETRIES_*}, CORE-14a P1) when a flow names no {@code delivery.retries}.
      */
     private FlowBuilder builder(String name, String version, Optional<String> revision, Map<String, EndpointConfig> endpoints) {
         Map<String, String> versions = new HashMap<>();
         versions.put("package", name + "@" + version);
         revision.ifPresent(r -> versions.put("revision", r));
         return new FlowBuilder(runtime, steps, languages, endpoints).recording(messages, meter).dlq(dlq).queue(queue).intake(intake).versions(versions)
-                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers).signals(signals);
+                .stepEvents(config.cpuSampling().isPresent()).targets(targets).fence(fence).workers(workers).signals(signals).retries(config.retries());
     }
 
     /**

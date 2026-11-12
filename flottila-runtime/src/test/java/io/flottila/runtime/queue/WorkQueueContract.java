@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -22,6 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The API assumed: {@code Future<Optional<WorkQueue.Item>> WorkQueue.enqueueLeased(String messageId, String flow, int step,
  * String partitionKey, String workerId, Duration lease)}.
+ *
+ * <p>CORE-14a P3 (D-135 draft): {@code Future<Boolean> WorkQueue.defer(long seq, int attempts, Duration delay)} — under the token
+ * (the CURRENT condition of complete, renew and hold), the row is claimable again only {@code delay} after the call on the queue's
+ * clock (Postgres: the database's {@code now()}), its holder cleared, its seq, id, attempts, doubts and body kept; {@code false} when
+ * the caller no longer holds it, nothing changed. A deferred row still heads its key; its next hand-out counts one more attempt and
+ * no doubt.
  */
 @Timeout(60)
 public abstract class WorkQueueContract {
@@ -34,6 +41,12 @@ public abstract class WorkQueueContract {
 
     /** Every live lease of the queue runs out now (the in-memory clock moves past it; Postgres' locked_until goes into the past). */
     protected abstract void expireLeases();
+
+    /**
+     * {@code d} passes for every row of the queue (CORE-14a): the in-memory clock moves by {@code d}; Postgres' {@code available_at}
+     * and {@code locked_until} move {@code d} into the past, so the database clock's {@code now()} meets them as if {@code d} had passed.
+     */
+    protected abstract void passTime(Duration d);
 
     protected WorkQueue queue;
 
@@ -128,5 +141,101 @@ public abstract class WorkQueueContract {
         expireLeases();
         assertEquals(List.of(new WorkQueue.Item(u4, "u4", "t", 1, null, 1)), await(queue.claim(NODE, "t", 10, LEASE)),
                 "u1 and u2 are gone, u3 is held; only u4 is claimable, at its first hand-out");
+    }
+
+    // --- CORE-14a P3: defer
+
+    static final Duration DELAY = Duration.ofMinutes(10);
+    /** Short of {@link #DELAY} by more than a Postgres case's own run time, so its database clock cannot reach the due meanwhile. */
+    static final Duration SHORT_OF_DELAY = Duration.ofMinutes(9);
+
+    WorkQueue.Item claimedOne(String workerId, String flow) {
+        List<WorkQueue.Item> taken = await(queue.claim(workerId, flow, 1, LEASE));
+        assertEquals(1, taken.size(), "fixture: one row claimed: " + taken);
+        return taken.get(0);
+    }
+
+    @Test
+    void deferredNotClaimedBeforeItsTime() {
+        await(queue.enqueue("u1", "t", 1, null));
+        WorkQueue.Item first = claimedOne(NODE, "t");
+        assertTrue(await(queue.defer(first.seq(), first.attempts(), DELAY)), "the current holder defers its row");
+
+        assertEquals(List.of(), await(queue.claim(NODE, "t", 10, LEASE)), "not due: its holder's claim gets nothing");
+        assertEquals(List.of(), await(queue.claim("n2", "t", 10, LEASE)), "nor another worker's");
+        assertTrue(await(queue.hasItems("t")), "the deferred row is still there");
+        passTime(SHORT_OF_DELAY);
+        assertEquals(List.of(), await(queue.claim("n2", "t", 10, LEASE)), "still not due " + SHORT_OF_DELAY + " later");
+        passTime(DELAY.minus(SHORT_OF_DELAY));
+        assertEquals(List.of(new WorkQueue.Item(first.seq(), "u1", "t", 1, null, 2)), await(queue.claim("n2", "t", 10, LEASE)),
+                "due: the same row, same seq and id, its next hand-out attempt 2");
+    }
+
+    @Test
+    void deferredHeadsItsKey() {
+        await(queue.enqueue("k1", "t", 1, "K"));
+        await(queue.enqueue("k2", "t", 1, "K"));
+        WorkQueue.Item k1 = claimedOne(NODE, "t");
+        assertEquals("k1", k1.messageId(), "fixture: the head of K");
+        assertTrue(await(queue.defer(k1.seq(), k1.attempts(), DELAY)));
+        await(queue.enqueue("u1", "t", 1, null));
+
+        List<WorkQueue.Item> unkeyed = await(queue.claim("n2", "t", 10, LEASE));
+        assertEquals(List.of("u1"), unkeyed.stream().map(WorkQueue.Item::messageId).toList(),
+                "the claim runs (u1), but k2 does not overtake its deferred head");
+        assertTrue(await(queue.complete(unkeyed.get(0).seq(), unkeyed.get(0).attempts())), "fixture: u1 done, so its lease cannot run out in the delay");
+        passTime(DELAY);
+        assertEquals(List.of("k1"), await(queue.claim("n2", "t", 10, LEASE)).stream().map(WorkQueue.Item::messageId).toList(),
+                "due: the head of K again, and only it");
+    }
+
+    @Test
+    void staleDeferMatchesNothing() {
+        await(queue.enqueue("u1", "t", 1, null));
+        await(queue.enqueue("h1", "t", 1, null));
+        await(queue.enqueue("n0", "t", 1, null));
+        List<WorkQueue.Item> taken = await(queue.claim(NODE, "t", 2, LEASE));
+        WorkQueue.Item u1 = taken.get(0);
+        WorkQueue.Item h1 = taken.get(1);
+        assertTrue(await(queue.hold(h1.seq(), h1.attempts())), "fixture: h1 held");
+        expireLeases();
+        WorkQueue.Item again = claimedOne("n2", "t");
+        assertEquals(new WorkQueue.Item(u1.seq(), "u1", "t", 1, null, 2), again, "fixture: u1 handed out again to n2");
+        long n0 = h1.seq() + 1;
+
+        assertFalse(await(queue.defer(u1.seq(), 1, DELAY)), "the first holder's token is superseded: stale");
+        assertFalse(await(queue.defer(u1.seq(), 3, DELAY)), "a token never handed out: stale");
+        assertFalse(await(queue.defer(h1.seq(), h1.attempts(), DELAY)), "a held row is never deferred");
+        assertFalse(await(queue.defer(n0, 0, DELAY)), "a row never handed out matches no token, 0 included");
+        assertFalse(await(queue.defer(n0 + 1_000, 1, DELAY)), "an unknown row");
+
+        assertEquals(List.of(), await(queue.claim(NODE, "t", 10, LEASE)).stream().filter(i -> i.seq() == u1.seq()).toList(),
+                "the stale defers changed nothing: u1 stays n2's");
+        assertEquals(1, await(queue.held(Optional.empty(), 10)).items().size(), "h1 stays held");
+        assertTrue(await(queue.complete(u1.seq(), 2)), "n2 completes u1 by its own token");
+    }
+
+    @Test
+    void deferredHandOutCountsNoDoubt() {
+        await(queue.enqueue("d1", "t", 1, null));
+        await(queue.enqueue("l1", "t", 1, null));
+        List<WorkQueue.Item> taken = await(queue.claim(NODE, "t", 2, LEASE));
+        WorkQueue.Item d1 = taken.get(0);
+        assertTrue(await(queue.defer(d1.seq(), d1.attempts(), DELAY)), "d1 deferred; l1 left to its lease");
+
+        passTime(DELAY);
+        List<WorkQueue.Item> again = await(queue.claim("n2", "t", 10, LEASE));
+        assertEquals(List.of("d1", "l1"), again.stream().map(WorkQueue.Item::messageId).toList(), "both due for n2");
+        assertEquals(List.of(2, 2), again.stream().map(WorkQueue.Item::attempts).toList(), "each hand-out counts an attempt");
+        assertEquals(List.of(0, 1), again.stream().map(WorkQueue.Item::doubts).toList(),
+                "the defer cleared d1's holder: no doubt; l1, left unsettled, counts one (the witness)");
+
+        WorkQueue.Item l1 = again.get(1);
+        assertTrue(await(queue.complete(again.get(0).seq(), 2)), "fixture: d1 done by n2");
+        assertTrue(await(queue.defer(l1.seq(), l1.attempts(), DELAY)), "l1, in doubt, deferred by n2");
+        passTime(DELAY);
+        WorkQueue.Item l1Again = claimedOne("n3", "t");
+        assertEquals(new WorkQueue.Item(l1.seq(), "l1", "t", 1, null, 3), l1Again, "its next hand-out: attempt 3");
+        assertEquals(1, l1Again.doubts(), "its doubt kept, none added");
     }
 }

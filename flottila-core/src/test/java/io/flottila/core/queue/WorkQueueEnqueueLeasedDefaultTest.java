@@ -26,6 +26,7 @@ class WorkQueueEnqueueLeasedDefaultTest {
         @Override public Future<Boolean> complete(long seq, int attempts) { return rows.complete(seq, attempts); }
         @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) { return rows.completeAndTakeNext(seq, attempts, workerId, lease); }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return rows.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return rows.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return rows.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return rows.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return rows.release(seq); }

@@ -188,7 +188,7 @@ class FlowBuilderContextTest {
         FlowBuilder b = builder().recording(new InMemoryMessageStore(), () -> 0).dlq(new InMemoryDlq()).queue(queue);
         FlowDefinition def = flow("ctx-worker", "at-least-once", "7s", List.of(step("probe", "p"), step("crash-first", "c")));
         Delivery accepting = b.delivery(def, NO_FILES);
-        FlowWorker worker = b.worker(def, NO_FILES, "w1", new WorkerPolicy(LEASE, 3, Duration.ofSeconds(1)));
+        FlowWorker worker = b.worker(def, NO_FILES, "w1", new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
         try {
             Envelope in = ingress("ctx-worker");
             assertEquals(new Ack.Accepted(in.id()), accepting.apply(in).await(5, TimeUnit.SECONDS), "fixture: saved and queued");

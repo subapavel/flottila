@@ -910,4 +910,26 @@ class InMemoryWorkQueueTest {
         assertEquals(x.attempts() + 1, taken.get(0).attempts(), "the takeover counts an attempt (D-055)");
         assertEquals(1, taken.get(0).doubts(), "taken over unsettled: in doubt");
     }
+
+    /**
+     * CORE-14a (implementer): w1's lease on x1 ran out and w2 claimed x1 again (attempt 2): w1's defer is stale — false, the row
+     * stays w2's and due — while w2's defer, by its own token, holds x1 back until its due and clears the holder.
+     */
+    @Test
+    void aStaleDeferChangesNothingAndTheCurrentOneHoldsTheRowBack() {
+        enqueue("x1", null);
+        WorkQueue.Item mine = claim("w1", 10, LEASE).get(0);
+        clock.advance(LEASE);
+        WorkQueue.Item theirs = claim("w2", 10, LEASE).get(0);
+        assertEquals(mine.seq(), theirs.seq(), "fixture: claimed again");
+        Map<Long, String> before = state();
+
+        assertFalse(queue.defer(mine.seq(), mine.attempts(), Duration.ofMinutes(10)).await(), "the old holder's defer is stale");
+        assertEquals(before, state(), "x1 unchanged: still w2's");
+        assertTrue(queue.defer(theirs.seq(), theirs.attempts(), Duration.ofMinutes(10)).await(), "w2's defer, by its token");
+        assertEquals(Optional.empty(), queue.leaseHolder(theirs.seq()), "deferred: held by nobody");
+        assertEquals(List.of(), claim("w3", 10, LEASE), "not due before its delay");
+        clock.advance(Duration.ofMinutes(10));
+        assertEquals(List.of(theirs.seq()), claim("w3", 10, LEASE).stream().map(WorkQueue.Item::seq).toList(), "due: claimed again");
+    }
 }

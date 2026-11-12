@@ -9,7 +9,6 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepFactory;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.dlq.Parked;
-import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.node.FencedException;
 import io.flottila.core.node.InMemoryMembership;
 import io.flottila.core.node.Membership;
@@ -111,7 +110,7 @@ class FlowWorkerFenceTest {
         }
 
         FlowWorker worker(FlowBuilder b, FlowDefinition def, String node, int maxAttempts) {
-            FlowWorker w = b.worker(def, NO_FILES, node, FlowWorkerTest.policy(LEASE, maxAttempts));
+            FlowWorker w = FlowWorkerTest.policy(LEASE, maxAttempts).worker(b, def, node);
             workers.add(w);
             return w;
         }
@@ -346,7 +345,7 @@ class FlowWorkerFenceTest {
         FlowDefinition def = FlowDefinition.from(atLeastOnce(List.of(RunGate.STEP, Map.of("type", "probe", "name", "probe"),
                 Map.of("type", "boom", "name", "x"))));
         Envelope in = w.accept(b.delivery(def, NO_FILES));
-        FlowWorker worker = w.worker(b, def, "n1", 5);
+        FlowWorker worker = w.worker(b, def, "n1", 2);   // CORE-14a: count 1, so the second hand-out's failure is its last and parks
 
         Future<Integer> round = worker.poll();   // claimed with the fence open
         until(() -> w.gate.entered() == 1, () -> "the run at the gate: " + w.gate.runs());
@@ -354,7 +353,7 @@ class FlowWorkerFenceTest {
         w.gate.runsOf(in.id()).get(0).release();
         assertEquals(1, round.await(10, SECONDS));
         assertEquals(1, seen.size(), "the failing step ran: " + seen);
-        assertInstanceOf(FencedException.class, seen.get(0), "the park of a step's failure under a closed fence fails fenced: " + seen.get(0));
+        assertInstanceOf(IllegalStateException.class, seen.get(0), "CORE-14a P6: no per-step park, the step's failure reaches the worker as it is: " + seen.get(0));
         assertEquals(List.of(), w.dlqRows(), "no DLQ row from a closed fence");
         assertEquals(List.of(), w.queue.completeCalls(), "nor a complete");
         assertEquals(List.of(), w.queue.holds(), "nor a hold");
@@ -367,8 +366,10 @@ class FlowWorkerFenceTest {
         assertEquals(List.of(1, 2), w.queue.claimsBy("n1").stream().filter(c -> c.items != null).flatMap(c -> c.items.stream())
                 .map(WorkQueue.Item::attempts).toList(), "the item handed out again");
         assertEquals(2, seen.size(), "the failing step ran again: " + seen);
-        assertInstanceOf(ParkedException.class, seen.get(1), "with the fence open the step's failure is parked: " + seen.get(1));
-        assertEquals(List.of(in.id()), w.dlqRows().stream().map(Parked::messageId).toList(), "one DLQ row");
+        assertInstanceOf(IllegalStateException.class, seen.get(1), "the step's failure as it is: the worker parks it: " + seen.get(1));
+        assertEquals(List.of(in.id()), w.dlqRows().stream().map(Parked::messageId).toList(), "with the fence open the last hand-out's failure is parked: one DLQ row");
+        assertEquals(1, w.dlqRows().get(0).step(), "the ingress, at step 1 (CORE-14a P6)");
+        assertEquals(Optional.of(2), w.dlqRows().get(0).props().get(Envelope.ATTEMPT), "with the attempt it failed at");
         assertEquals(0, w.rows.size(), "and the item completed");
     }
 

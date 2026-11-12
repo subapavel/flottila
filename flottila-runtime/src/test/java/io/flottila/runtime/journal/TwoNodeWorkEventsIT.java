@@ -150,7 +150,7 @@ class TwoNodeWorkEventsIT {
         final FlowWorker worker;
 
         EventNode(String id) throws Exception {
-            this(id, new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10)));
+            this(id, new WorkerPolicy(LEASE, Duration.ofMinutes(10)));
         }
 
         /** As {@link #EventNode(String)}, its worker under {@code policy}. */
@@ -263,7 +263,7 @@ class TwoNodeWorkEventsIT {
      */
     @Test
     void aKeyedCompletionAtTheChainBoundWhoseNextRowLiesOnAnotherNodeRunsItThere() throws Exception {
-        EventNode a = new EventNode("node-a", new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10), 0)).started();
+        EventNode a = new EventNode("node-a", new WorkerPolicy(LEASE, Duration.ofMinutes(10), 0)).started();
         EventNode b = new EventNode("node-b").started();
         plainKeyedCompletionRunsTheNextRowOnB(a, b, () -> { });
     }

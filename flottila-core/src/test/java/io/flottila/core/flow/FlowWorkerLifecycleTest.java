@@ -81,6 +81,7 @@ class FlowWorkerLifecycleTest {
         @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
             return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
         }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return delegate.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
         @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return delegate.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return delegate.release(seq); }
@@ -99,7 +100,7 @@ class FlowWorkerLifecycleTest {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowBuilder noDlq = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
                 .recording(w.store, Meter.system()).queue(w.queue);
-        String refused = assertThrows(IllegalStateException.class, () -> noDlq.worker(def, NO_FILES, "w1", policy(LEASE, 5))).getMessage();
+        String refused = assertThrows(IllegalStateException.class, () -> policy(LEASE, 5).worker(noDlq, def, "w1")).getMessage();
         assertTrue(refused.contains("DLQ") && refused.contains("dlq(...)"), refused);
     }
 

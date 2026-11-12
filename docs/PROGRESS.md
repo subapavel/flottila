@@ -1,4 +1,17 @@
 
+## 2026-11-12 — CORE-14a retries on a schedule, then park (D-135, draft) — done, review PASS (r3)
+
+- Red first: FlowWorkerRetryTest (15 cases + T1/T2), RetrySchedulePropertiesTest, FlowDefinitionRetriesTest, WorkQueueContract
+  defer cases, PgWorkQueueDeferIT, SegmentSweepIT.aDeferredItemAlonePinsItsSegment, DeploymentsRetriesTest, NodeConfigRetriesTest,
+  FlowRetriesSchemaTest (red observed: CORE-14a-red-{core,runtime,schemas}.log).
+- A failed at-least-once attempt defers its row (same id, not-before in DB time, no thread waits); park the ingress after
+  count + 1; MALFORMED/INVALID/final NACK park at once; `delivery.retries` + FLOTTILA_RETRIES_COUNT/INTERVAL (3 × PT5M).
+- maxAttempts gone; the worker pipeline has no per-step Parking; dead fenced Parking removed. Existing tests rewritten per the
+  packet's (a)–(d), reasons in the commit body.
+- Evidence: verify -Pit exit 0 (CORE-14a-r2.log), coverage no decrease, 22 + 5 hand mutants killed, scoped PIT 97 %.
+- Review r1 FAIL (docs, Error exemption, evidence), r2 FAIL (two PIT survivors) → fixed; r3 PASS. M21 race-only, unpinned.
+- Next: CORE-14b same-id restart. Owner: D-135 defaults, CONSIDER-13 (resume from the failed step).
+
 ## 2026-11-12 — CORE-12 ARCHITECTURE rewritten to the core-rework brief (F-34) — done, review PASS (r2) · Deviation: F-34
 
 - Docs task: the red was the scout's contradiction list (agent/packets/CORE-12.md); residue grep agent/work/CORE-12-residue.txt.

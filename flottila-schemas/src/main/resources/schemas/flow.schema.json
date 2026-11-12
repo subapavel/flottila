@@ -28,7 +28,19 @@
         "mode": { "enum": ["sync", "at-least-once", "at-most-once"], "description": "ARCHITECTURE §4 message lifecycle per delivery mode." },
         "saveTimeout": { "$ref": "#/$defs/duration", "description": "at-least-once: the durable save deadline before NACK/503 (default 5s)." },
         "timeout": { "$ref": "#/$defs/duration", "description": "Every mode: the time each run of a message has; its deadline is the run's start plus this (sync after admission, each at-least-once claim, each replay or retry). A send waiting for a busy target waits no longer, a send is not started after it and its producer cuts it there (D-113); nothing else cancels the run at it yet. Positive; default 30s (D-100)." },
-        "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once only: the work queue behind the durable save; absent or postgres = the node's Postgres work queue; kafka names the optional Kafka add-on (O-1), not in this build: refused at deploy (D-075)." }
+        "queue": { "enum": ["postgres", "kafka"], "description": "at-least-once only: the work queue behind the durable save; absent or postgres = the node's Postgres work queue; kafka names the optional Kafka add-on (O-1), not in this build: refused at deploy (D-075)." },
+        "retries": {
+          "type": "object",
+          "description": "at-least-once only (refused at load on sync and at-most-once): the schedule of a failed message's retries (CORE-14a, D-135 draft). A failed run waits interval × multiplier^(k−1), capped at maxInterval, before retry k — a work item with a not-before time, never a sleeping thread — and after count + 1 runs the message is parked at step 1. Omitted = the node's FLOTTILA_RETRIES_COUNT / FLOTTILA_RETRIES_INTERVAL (3 × 5m). The durations are checked at load: interval 1s..24h, maxInterval interval..24h.",
+          "required": ["count", "interval"],
+          "additionalProperties": false,
+          "properties": {
+            "count": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Retries after the first run; 0 = park at the first failure." },
+            "interval": { "$ref": "#/$defs/duration", "description": "The wait before the first retry, 1s..24h." },
+            "multiplier": { "type": "number", "minimum": 1, "description": "Growth of the wait per retry; default 1." },
+            "maxInterval": { "$ref": "#/$defs/duration", "description": "Cap of the wait, from the interval to 24h; default the interval." }
+          }
+        }
       }
     },
     "recording": { "$ref": "#/$defs/recording" },

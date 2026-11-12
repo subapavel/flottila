@@ -49,4 +49,10 @@ class PgWorkQueueContractIT extends WorkQueueContract {
     protected void expireLeases() {
         pool.query("update work set locked_until = now() - interval '1 second' where locked_until is not null").execute().await();
     }
+
+    @Override
+    protected void passTime(java.time.Duration d) {
+        pool.preparedQuery("update work set available_at = available_at - make_interval(secs => $1), locked_until = locked_until - make_interval(secs => $1)")
+                .execute(io.vertx.sqlclient.Tuple.of(d.toNanos() / 1e9)).await();
+    }
 }

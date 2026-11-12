@@ -207,7 +207,7 @@ class PgWorkQueueStatementsIT {
             io.flottila.core.flow.FlowDefinition def = io.flottila.core.flow.FlowDefinition.from(doc);
             worker = new io.flottila.core.flow.FlowBuilder(runtime, List.of(pass), List.of(), java.util.Map.of())
                     .recording(messages, io.flottila.core.record.Meter.system()).queue(queue).dlq(new io.flottila.core.dlq.InMemoryDlq()).workers(workers)
-                    .worker(def, java.nio.file.Path.of(""), node, new io.flottila.core.flow.WorkerPolicy(ITEM_LEASE, 5, Duration.ofMinutes(10)));
+                    .worker(def, java.nio.file.Path.of(""), node, new io.flottila.core.flow.WorkerPolicy(ITEM_LEASE, Duration.ofMinutes(10)));
             int beforeStart = queueWire.mark();
             worker.start();
             io.flottila.core.flow.FlowWorker started = worker;

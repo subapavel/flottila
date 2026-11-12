@@ -2,10 +2,11 @@ package io.flottila.core.flow;
 
 import io.flottila.api.BlobStore;
 import io.flottila.api.Envelope;
+import io.flottila.api.Fault;
+import io.flottila.api.NackException;
 import io.flottila.api.Pipeline;
 import io.flottila.api.StepConfig;
 import io.flottila.api.Timer;
-import io.flottila.core.dlq.ParkedException;
 import io.flottila.core.dlq.Parking;
 import io.flottila.core.node.FencedException;
 import io.flottila.core.queue.WorkQueue;
@@ -21,11 +22,15 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
@@ -36,22 +41,35 @@ import java.util.function.BooleanSupplier;
  * the items it still runs — rebuilds each message's ingress envelope from its {@code ingress} snapshot and the blob store
  * (same id, step 0, headers, props, keys, the body by its recorded key; from the item's second claim on the claim's attempts
  * as {@link Envelope#ATTEMPT}, so the rerun's step bodies get keys of their own, D-066) and runs the pipeline without stage
- * 0 — the save recorded it — on one virtual thread per item. While an item runs its lease is renewed every third of the
+ * 0 — the save recorded it, and its steps are not wrapped by {@link Parking}: a failed run is this worker's to judge — on one
+ * virtual thread per item. While an item runs its lease is renewed every third of the
  * {@link WorkerPolicy#lease()} on the timer, fenced by the claim's attempts: a slow healthy message is never claimed twice at
  * once; a renewal that fails is tried again a third of the lease later; a lease found lost is logged and no longer renewed.
  *
  * <p>The run is bound to a {@link Trail} seeded with the ingress body's key (D-064, D-066, F-10): its step bodies are
- * persisted and its rows written when the pipeline ended — succeeded, parked or thrown, an {@link Error} included — and the
+ * persisted and its rows written when the pipeline ended — succeeded or thrown, an {@link Error} included — and the
  * item is settled only after that trail closed, so a crash before that leaves the item to a rerun that records again. What the
  * trail could not persist or write never changes what is done with the item.
  *
- * <p>An item is completed only when its message is done with: the pipeline succeeded; a step failed and the message was
- * parked (the DLQ row is its record, nothing is logged); or the timeline was read and holds no ingress snapshot (a ghost that
- * can never be rebuilt: logged at WARNING and completed, never a poison loop). Any other failure — the DLQ refusing the park,
- * the store read failing, an {@link Error} — leaves the item to its lease, logged at WARNING with the message id and the
- * cause: the sender holds a 202 for it, so it runs again once the lease runs out. An item claimed more often than
- * {@link WorkerPolicy#maxAttempts()} allows does not run again: its ingress envelope is parked at step 1 with an
- * {@link AttemptsExhaustedException} and the item completed; if the timeline cannot be read, the envelope cannot be rebuilt or
+ * <p>Retries on a schedule, then park (CORE-14a, D-135 draft). The worker runs under a {@link RetryPolicy} — the flow's
+ * {@code delivery.retries}, else the node's default ({@link FlowBuilder#retries}) — whose count bounds the hand-outs of an item
+ * to count + 1, doubts included: a takeover of an item an earlier holder left unsettled is an attempt too, and runs at once. A run
+ * that fails is a failed attempt unless it failed with a {@link FencedException}, an interrupt or an {@link Error}, which leave the
+ * item to its lease. A failed attempt whose failure is final — the first {@link Fault} in its cause chain a {@link NackException}
+ * that is not retryable, or of kind MALFORMED or INVALID — or that was the bound's last hand-out parks the ingress envelope at
+ * step 1 with the {@link Envelope#ATTEMPT} it failed at and completes the item; any other is deferred
+ * ({@link WorkQueue#defer}) by the wait before the next retry, {@code delayBefore(attempt)}, logged at WARNING: no thread waits
+ * across the interval, the row is claimable at its due by any node allowed to claim it, with the same message id. A defer that
+ * fails leaves the item to its lease and fails the round; one that answers false is stale, as a stale complete is. The worker wakes
+ * itself at the earliest due it set — one timer task; it keeps at most {@value #MAX_DUES} dues, a due dropped past them waits
+ * for the reconciliation — and its wake claims.
+ *
+ * <p>An item is completed only when its message is done with: the pipeline succeeded; the message was parked (the DLQ row is
+ * its record, nothing is logged); or the timeline was read and holds no ingress snapshot (a ghost that can never be rebuilt:
+ * logged at WARNING and completed, never a poison loop). A park that fails, the store read failing, the rebuild failing, an
+ * {@link Error} — leaves the item to its lease, logged at WARNING with the message id and the cause: the sender holds a 202 for
+ * it, so it runs again once the lease runs out. An item handed out more often than its bound allows does not run again: its
+ * ingress envelope is parked at step 1 with an {@link AttemptsExhaustedException} and the item completed; if the timeline cannot be read, the envelope cannot be rebuilt or
  * the park fails, the item is held — never claimed again, blocking its key — and one ERROR line names the message, the flow,
  * the attempts and the cause, whatever the hold answers; a hold that fails is named in it too and leaves the item to its
  * lease (a ghost is completed as above). A claim that returns an item this worker still runs starts no second run: the run
@@ -62,7 +80,7 @@ import java.util.function.BooleanSupplier;
  * <p>The queue completes or holds an item only for its current holder (D-074). A complete that answers false — the item was
  * claimed again, held or completed meanwhile — leaves the row to its holder as it is, logged once at WARNING with the message,
  * the flow, the work item, the attempt and the worker, and counted by {@link #staleSettles()}; the round succeeds and the
- * complete is never tried again. A hold that answers false is counted the same way and its ERROR says the item was not held.
+ * complete is never tried again; so is a defer that answers false. A hold that answers false is counted the same way and its ERROR says the item was not held.
  *
  * <p>Same-key fast path (D-075): an item to complete that has a partition key is settled, while the worker is not stopped and
  * its chain is shorter than {@link WorkerPolicy#maxChain()}, by {@link WorkQueue#completeAndTakeNext}; the next item of its key
@@ -70,39 +88,39 @@ import java.util.function.BooleanSupplier;
  * room a claim asks for is unchanged — under a lease of its own, on a virtual thread of its own, one more in the chain (the
  * claimed item is 0). A stale answer is counted and logged as a stale complete is and takes nothing; a failed one fails the
  * round. Any other item — no key, left to its lease or held, the worker stopped, the chain at its bound — is settled as above
- * and ends its chain, and the key goes back to the seq-ordered claim. A next item past {@link WorkerPolicy#maxAttempts()} is
- * parked as a claimed one is, and its key goes on.
+ * and ends its chain, and the key goes back to the seq-ordered claim; a deferred item, too, ends its chain and still heads its
+ * key. A next item past its bound is parked as a claimed one is, and its key goes on.
  *
  * <p>The node's fence (D-101 (2), {@link FlowBuilder#fence}) is checked before every claim — closed, a round claims nothing and
- * answers 0 —, before every complete, fast path and hold, and before
- * an item past {@link WorkerPolicy#maxAttempts()} is parked: while it is closed the node cannot prove its lease is live and
- * another node may take its items over, so a finished item is settled not at all — no complete, no fast path, no hold — and
- * is left unsettled, its run's outcome to whoever runs it next (one WARNING per item); an item past the bound is not parked
- * (no DLQ row a later holder could write again) and is never held for it, but left to its lease. The at-least-once {@code to}
- * checks the same fence before each send and fails it with a {@link FencedException}, never retried and never parked, and a step's
- * failure under a closed fence is not parked but surfaces as a {@link FencedException} with that failure as its cause (no DLQ row).
+ * answers 0 —, before every complete, fast path, defer and hold, and before every park: while it is closed the node cannot
+ * prove its lease is live and another node may take its items over, so a finished item is settled not at all — no complete, no
+ * fast path, no defer, no hold — and is left unsettled, its run's outcome to whoever runs it next (one WARNING per item: the
+ * run's own when its run left the item to its lease — a fenced, interrupted or crashed run, a final failure not parked —, else
+ * the settle's); a message is not parked (no DLQ row a later holder could write again) and an item past the bound is never
+ * held for it, but left to its lease. The at-least-once {@code to} checks the same fence before each send and fails it with a {@link FencedException},
+ * never retried, never deferred and never parked.
  *
  * <p>The local hand-off (D-121 (a), P2-16a). A {@linkplain #start() started} worker is registered in the node's {@link Workers}
  * until its {@link #stop()}; the intake asks it for a {@link Slot} before its insert ({@link Workers#reserve}) — none while the
  * node's fence is closed, the worker is stopped, its room ({@code max − running − reserved}, less what a claim in flight asked
  * for) is taken or a backlog is known — and the item it writes leased to the node (attempts 1, the policy's lease) runs in that
- * slot after the commit ({@link Slot#run}) as a claimed item does: renewed, fenced, settled, parked past {@link WorkerPolicy#maxAttempts()}. A slot is
+ * slot after the commit ({@link Slot#run}) as a claimed item does: renewed, fenced, settled, deferred or parked. A slot is
  * never refused once reserved: it runs after {@link #stop()}, and fenced under a closed fence. A slot whose item was not
  * written leased is given back ({@link Slot#cancel}); one whose commit is in doubt arms the lease-end wake below.
  *
  * <p>What claims: {@link #poll()}; {@link #start()}, once, then every {@link WorkerPolicy#pollInterval()} on the timer (the
  * reconciliation, D-121 (b) B5: its first an interval plus the flow's offset after the start); a {@linkplain Workers#wake wake} —
- * a work event from another node among them ({@link WorkSignals}); and the end of a chain (an item no fast path followed) only while a backlog is known. The
+ * a work event from another node among them ({@link WorkSignals}), and the retry wake among them; and the end of a chain (an item no fast path followed) only while a backlog is known. The
  * backlog flag is set from the start, by a wake (a save without a slot, a released hold), by a claim that filled the room it
  * asked for and by a keyed item settled plainly at the chain's bound (its key goes back to the claim); a claim answering less
  * than it asked clears it, unless a wake came since it was issued. An item left to its lease — its run left it, its settle was
  * skipped under a closed fence or failed, its lease was found lost, or its hand-off's commit is in doubt — arms the lease-end
  * wake: one timer at the policy's lease from then, which claims; items left while it is armed fold into it, a later one
  * arming it again for its own end once it fired. A poll nobody waits for logs its failure and never throws. {@link #stop()}
- * ends all of that; items already claimed or reserved run to their end and keep their lease renewed. A worker built later
+ * ends all of that, the retry wake and its dues included (the deferred rows wait in the queue for whoever claims them); items already claimed or reserved run to their end and keep their lease renewed. A worker built later
  * over the same store and queue finishes what an earlier one accepted. {@link #close()} (FIX-30) closes the producers the
  * builder created for its pipeline once it was stopped and nothing it claimed or reserved still runs. Built by
- * {@link FlowBuilder#worker}; it holds only what the builder handed it — the clock, the timer, the policy, the parking, the
+ * {@link FlowBuilder#worker}; it holds only what the builder handed it — the clock, the timer, the policy, the retries, the parking, the
  * first step, the producers, the node's {@link Workers} and its {@link WorkSignals} — never the {@code Runtime}.
  *
  * @since 0.1
@@ -111,10 +129,14 @@ public final class FlowWorker {
 
     private static final System.Logger LOG = System.getLogger(FlowWorker.class.getName());
 
+    /** The most retry dues a worker keeps for its wake (CORE-14a P4); a due dropped past them is found by its reconciliation claim. */
+    static final int MAX_DUES = 1024;
+
     private final String flow;
     private final String workerId;
     private final int max;
     private final WorkerPolicy policy;
+    private final RetryPolicy retries;
     private final WorkQueue queue;
     private final MessageStore store;
     private final BlobStore blobs;
@@ -139,17 +161,21 @@ public final class FlowWorker {
     private Timer.Cancellable leaseEnd;                          // guarded by lock: the armed lease-end wake, null: none
     private Instant laterEnd;                                    // guarded by lock: the end of an item left after it was armed, null: none
     private Timer.Cancellable tick;                              // guarded by lock
+    private final TreeSet<Instant> dues = new TreeSet<>();      // guarded by lock: when the rows this worker deferred are due, at most MAX_DUES
+    private Timer.Cancellable retryWake;                         // guarded by lock: the one wake, armed at dues.first(); null: none
+    private Instant retryWakeAt;                                 // guarded by lock: what it is armed for; null: none
     private boolean stopped;                                     // guarded by lock
     private Promise<Void> closed;                                // guarded by lock: null until close(); then the close every call returns
     private final AtomicLong staleSettles = new AtomicLong();
 
-    FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, WorkQueue queue, MessageStore store, BlobStore blobs,
+    FlowWorker(String flow, String workerId, int max, WorkerPolicy policy, RetryPolicy retries, WorkQueue queue, MessageStore store, BlobStore blobs,
                Pipeline pipeline, Parking parking, StepConfig firstStep, Clock clock, Timer timer, Producers producers, BooleanSupplier fence,
                Workers workers, WorkSignals signals) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.workerId = Objects.requireNonNull(workerId, "workerId");
         this.max = max;
         this.policy = Objects.requireNonNull(policy, "policy");
+        this.retries = Objects.requireNonNull(retries, "retries");
         this.queue = Objects.requireNonNull(queue, "queue");
         this.store = Objects.requireNonNull(store, "store");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
@@ -172,7 +198,7 @@ public final class FlowWorker {
      * of items the claim returned; 0 without a claim when the node's fence is closed, the worker has no room or is stopped. Requested while a claim is
      * in flight, it returns the one round that starts once that claim returns, shared by every poll requested meanwhile. A claim
      * that returns the room it asked for keeps the backlog known; one returning less clears it, unless a wake came meanwhile.
-     * Fails when the claim fails or throws, or when a completion, fast path or hold in the queue fails; one that answers false
+     * Fails when the claim fails or throws, or when a completion, fast path, defer or hold in the queue fails; one that answers false
      * or stale ({@link #staleSettles()}) is no failure.
      */
     public Future<Integer> poll() {
@@ -228,6 +254,10 @@ public final class FlowWorker {
             if (leaseEnd != null) leaseEnd.cancel();
             leaseEnd = null;
             laterEnd = null;
+            if (retryWake != null) retryWake.cancel();
+            retryWake = null;
+            retryWakeAt = null;
+            dues.clear();   // the rows wait in the queue for whichever worker claims them at their due
         }
         workers.deregister(flow, this);
     }
@@ -324,7 +354,7 @@ public final class FlowWorker {
     }
 
     /**
-     * Completions, fast paths and holds this worker asked for that the queue answered false or stale (Q-1, D-074): the item was
+     * Completions, fast paths, defers and holds this worker asked for that the queue answered false or stale (Q-1, D-074): the item was
      * claimed again, held or completed meanwhile and was left to its holder.
      */
     public long staleSettles() { return staleSettles.get(); }
@@ -460,6 +490,38 @@ public final class FlowWorker {
         else laterEnd = clock.instant().plus(policy.lease());   // never before the armed end: one lease on a clock that never goes back
     }
 
+    /**
+     * A row this worker deferred is due at {@code due}, {@code delay} from now (P4): kept among the dues — the latest dropped past
+     * {@link #MAX_DUES}, for the reconciliation claim — and the one retry wake armed at it when it is the earliest. Nothing after the stop.
+     */
+    private void deferredUntil(Instant due, Duration delay) {
+        synchronized (lock) {
+            if (stopped) return;
+            dues.add(due);
+            if (dues.size() > MAX_DUES) dues.pollLast();
+            if (retryWakeAt != null && !due.isBefore(retryWakeAt)) return;   // the armed wake comes first (a dropped due is never the earliest)
+            if (retryWake != null) retryWake.cancel();
+            retryWakeAt = due;
+            retryWake = timer.schedule(delay, this::retriesDue);   // the delay from now, never negative: never before the due
+        }
+    }
+
+    /** The retry wake fired: the dues it reached are gone, the wake armed again at the earliest left, then a wake that claims. */
+    private void retriesDue() {
+        synchronized (lock) {
+            if (stopped) return;   // stop() cancelled the wake; one already firing claims nothing after the stop
+            Instant now = clock.instant();
+            dues.headSet(now, true).clear();
+            retryWake = null;
+            retryWakeAt = null;
+            if (!dues.isEmpty()) {   // each left is after now: a positive delay
+                retryWakeAt = dues.first();
+                retryWake = timer.schedule(Duration.between(now, retryWakeAt), this::retriesDue);
+            }
+        }
+        wake("at a retry's due");
+    }
+
     /** The lease-end wake fired: armed again for a later end still ahead, then a wake. */
     private void leaseEnded() {
         synchronized (lock) {
@@ -507,8 +569,10 @@ public final class FlowWorker {
     private Future<Optional<Lease>> settleOrTake(Lease lease, Verdict verdict, int chain) {
         WorkQueue.Item item = lease.item;
         if (!fence.getAsBoolean()) {   // the node's fence closed (D-101 (2)): no complete, no fast path, no hold
-            LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt "
-                    + lease.token() + ") finished at worker " + workerId + " while the node's fence is closed: left unsettled for whoever runs it next");
+            if (!Verdict.LEAVE.equals(verdict)) {   // a run that left its item logged why already: one WARNING per item
+                LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt "
+                        + lease.token() + ") finished at worker " + workerId + " while the node's fence is closed: left unsettled for whoever runs it next");
+            }
             leftToLease();
             return Future.succeededFuture(Optional.empty());
         }
@@ -531,7 +595,7 @@ public final class FlowWorker {
      */
     private Optional<Lease> taken(WorkQueue.Item item, int token, WorkQueue.Completion taken) {
         if (!taken.completed()) {
-            stale(item, token);
+            stale(item, token, "completed");
             return Optional.empty();
         }
         if (taken.next().isEmpty()) {
@@ -554,41 +618,99 @@ public final class FlowWorker {
         }
     }
 
-    /** Runs the message from its ingress snapshot, or parks it there when it is past the bound; what to do with its item. */
+    /** How many hand-outs a message has, doubts included (P1): its first run and one per retry of the schedule. */
+    private int bound() {
+        return retries.attempts() + 1;
+    }
+
+    /**
+     * Runs the message from its ingress snapshot, or parks it there when it is past the bound; what to do with its item. Anything
+     * that fails before the run — the timeline read, the rebuild — leaves the item to its lease (past the bound: holds it); the
+     * run's failure is {@link #failed}'s to judge.
+     */
     private Verdict verdict(WorkQueue.Item item) {
         String id = item.messageId();
-        boolean exhausted = item.attempts() > policy.maxAttempts();
+        boolean exhausted = item.attempts() > bound();
+        Envelope ingress;
         try {
             Optional<Snapshot> in = store.timeline(id).await().stream().filter(s -> Recorder.INGRESS.equals(s.stepName())).findFirst();
             if (in.isEmpty()) {
                 LOG.log(System.Logger.Level.WARNING, "message " + id + " of flow " + flow + " has no ingress snapshot to resume from; its item is completed");
                 return Verdict.COMPLETE;
             }
-            Envelope ingress = Replay.rebuild(in.get(), id, flow, in.get().props(), blobs);
+            ingress = Replay.rebuild(in.get(), id, flow, in.get().props(), blobs);
             if (item.attempts() > 1) ingress = ingress.with(Envelope.ATTEMPT, item.attempts());   // a rerun's step bodies under keys of its own (D-066)
             if (exhausted) {
                 if (!fence.getAsBoolean()) {   // a park is a settle (D-101 (2)): never from a closed fence, whose items another node may take and park
-                    throw new FencedException("message " + id + " of flow " + flow + " is past maxAttempts " + policy.maxAttempts()
-                            + " and not parked: the node's fence is closed; left unsettled for whoever runs it next");
+                    throw new FencedException("message " + id + " of flow " + flow + " is past its " + bound() + " hand-outs and not parked: the node's"
+                            + " fence is closed; left unsettled for whoever runs it next");
                 }
-                parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), policy.maxAttempts())).await();
-            } else {
-                Trail trail = new Trail(List.of(ingress.body().key()));   // its seed: the delivery made the ingress durable (D-058)
-                try {
-                    trail.apply(pipeline, ingress);
-                } finally {   // an Error too: a crashed run's bodies and rows are kept, and a rerun re-records what is missing
-                    trail.close().toCompletionStage().toCompletableFuture().join();   // never fails; waits through an interrupt
-                }
+                parking.park(ingress, firstStep, new AttemptsExhaustedException(id, item.attempts(), bound())).await();
+                return Verdict.COMPLETE;
             }
-            return Verdict.COMPLETE;
-        } catch (ParkedException parked) {
-            return Verdict.COMPLETE;   // the DLQ row is the failure's record
         } catch (Throwable failure) {
             if (exhausted && !(failure instanceof FencedException)) return Verdict.hold(failure);   // fenced: not a failed park, never held
-            LOG.log(System.Logger.Level.WARNING, "message " + id + " of flow " + flow + " failed at worker " + workerId + " (attempt " + item.attempts()
-                    + " of " + policy.maxAttempts() + ") and is left to its lease (" + policy.lease() + "): " + failure, failure);
+            LOG.log(System.Logger.Level.WARNING, "message " + id + " of flow " + flow + " could not be run at worker " + workerId + " (attempt " + item.attempts()
+                    + " of " + bound() + ") and is left to its lease (" + policy.lease() + "): " + failure, failure);
             return Verdict.LEAVE;
         }
+        Throwable failure = null;
+        Trail trail = new Trail(List.of(ingress.body().key()));   // its seed: the delivery made the ingress durable (D-058)
+        try {
+            trail.apply(pipeline, ingress);
+        } catch (Throwable thrown) {   // a checked one too: await() rethrows a failed future's checked cause as is
+            failure = thrown;
+        } finally {   // an Error too: a crashed run's bodies and rows are kept, and a rerun re-records what is missing
+            trail.close().toCompletionStage().toCompletableFuture().join();   // never fails; waits through an interrupt
+        }
+        return failure == null ? Verdict.COMPLETE : failed(item, ingress, failure);
+    }
+
+    /**
+     * What a run that failed with {@code failure} does with its item (P2, P6): a {@link FencedException}, an interrupt or an
+     * {@link Error} is no failed attempt — left to its lease; a failure that is final ({@link #isFinal}) or that of the last hand-out
+     * the bound allows parks {@code ingress} at the flow's first step with the {@link Envelope#ATTEMPT} it failed at — only while the
+     * node's fence is open, and a park that fails leaves the item to its lease —; any other is deferred by the wait before the
+     * next retry, {@link RetryPolicy#delayBefore delayBefore(attempt)}.
+     */
+    private Verdict failed(WorkQueue.Item item, Envelope ingress, Throwable failure) {
+        String run = "message " + item.messageId() + " of flow " + flow + " failed at worker " + workerId + " (attempt " + item.attempts() + " of " + bound() + ")";
+        if (failure instanceof FencedException || failure instanceof InterruptedException || failure instanceof Error) {
+            LOG.log(System.Logger.Level.WARNING, run + ", no failed attempt, and is left to its lease (" + policy.lease() + "): " + failure, failure);
+            return Verdict.LEAVE;
+        }
+        if (!isFinal(failure) && item.attempts() < bound()) {
+            Duration wait = retries.delayBefore(item.attempts());
+            LOG.log(System.Logger.Level.WARNING, run + "; its retry waits " + wait + ": " + failure, failure);
+            return Verdict.defer(wait);
+        }
+        if (!fence.getAsBoolean()) {   // a park is a settle (D-101 (2)): another node may take the item over and park it too
+            LOG.log(System.Logger.Level.WARNING, run + " and is not parked: the node's fence is closed; left unsettled for whoever runs it next: " + failure, failure);
+            return Verdict.LEAVE;
+        }
+        try {
+            parking.park(ingress.with(Envelope.ATTEMPT, item.attempts()), firstStep, failure).await();
+            return Verdict.COMPLETE;   // the DLQ row is the failure's record
+        } catch (Throwable parkFailure) {   // an interrupted await too: the park may still land, the rerun parks again
+            failure.addSuppressed(parkFailure);
+            LOG.log(System.Logger.Level.WARNING, run + ", could not be parked (" + parkFailure + ") and is left to its lease (" + policy.lease() + "): "
+                    + failure, failure);
+            return Verdict.LEAVE;
+        }
+    }
+
+    /**
+     * The first {@link Fault} in {@code failure}'s cause chain fails for good (P2): a {@link NackException} that is not retryable,
+     * any other of kind {@link Fault.Kind#MALFORMED} or {@link Fault.Kind#INVALID} — the same message fails again however often it
+     * runs. A chain without a fault, or one that loops before it reaches one, is not final.
+     */
+    static boolean isFinal(Throwable failure) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable t = failure; t != null && seen.add(t); t = t.getCause()) {
+            if (t instanceof NackException nack) return !nack.retryable();
+            if (t instanceof Fault fault) return fault.kind() == Fault.Kind.MALFORMED || fault.kind() == Fault.Kind.INVALID;
+        }
+        return false;
     }
 
     /**
@@ -605,11 +727,12 @@ public final class FlowWorker {
     }
 
     /**
-     * Completes, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's newest
+     * Completes, defers, holds or leaves the item as the run decided, fenced by the lease's token — the attempts of this worker's newest
      * claim of it; an item without a partition key completes by {@link WorkQueue#completeUnkeyed} (a batch, D-122), a keyed one
-     * by {@link WorkQueue#completeRow}; a complete or hold answering false is stale and counted. A complete naming the node of its key's next row
+     * by {@link WorkQueue#completeRow}; a complete, defer or hold answering false is stale and counted; a deferred one's due goes to the
+     * retry wake. A complete naming the node of its key's next row
      * announces it there ({@link WorkSignals}, D-121 (b) B4 (i)), the delete committed. An unparkable item raises one ERROR whatever its hold
-     * answers. An item left — by the run, or by a complete or hold that failed — is left to its lease.
+     * answers. An item left — by the run, or by a complete, defer or hold that failed — is left to its lease.
      */
     private Future<Void> settle(Lease lease, Verdict verdict) {
         WorkQueue.Item item = lease.item;
@@ -620,8 +743,18 @@ public final class FlowWorker {
                 leftToLease();
                 return Future.failedFuture(removed.cause());
             }
-            if (!removed.result().completed()) stale(item, token);
+            if (!removed.result().completed()) stale(item, token, "completed");
             removed.result().nextNode().ifPresent(this::announce);   // committed: the key's next row is that node's (B4 (i))
+            return Future.succeededFuture();
+        });
+        Duration wait = verdict.delay();
+        if (wait != null) return queue.defer(item.seq(), token, wait).transform(deferred -> {
+            if (deferred.failed()) {
+                leftToLease();
+                return Future.failedFuture(deferred.cause());
+            }
+            if (deferred.result()) deferredUntil(clock.instant().plus(wait), wait);   // the queue's due is no later: its now() came first
+            else stale(item, token, "deferred");
             return Future.succeededFuture();
         });
         Throwable unparkable = verdict.unparkable();
@@ -629,8 +762,8 @@ public final class FlowWorker {
             leftToLease();
             return Future.succeededFuture();
         }
-        String alert = "message " + item.messageId() + " of flow " + flow + " was claimed " + token + " times (maxAttempts "
-                + policy.maxAttempts() + ") and could not be parked: " + unparkable + "; work item " + item.seq();
+        String alert = "message " + item.messageId() + " of flow " + flow + " was claimed " + token + " times (" + bound()
+                + " hand-outs: its retries and its first run) and could not be parked: " + unparkable + "; work item " + item.seq();
         return queue.hold(item.seq(), token).transform(held -> {
             if (held.failed()) {
                 LOG.log(System.Logger.Level.ERROR, alert + " could not be held either (" + held.cause() + "): it is left to its lease", unparkable);
@@ -648,11 +781,11 @@ public final class FlowWorker {
         });
     }
 
-    /** A complete or fast path the queue answered stale: counted, one WARNING, never tried again (D-074). */
-    private void stale(WorkQueue.Item item, int token) {
+    /** A complete, fast path or defer the queue answered stale: counted, one WARNING, never tried again (D-074); {@code not} what was not done. */
+    private void stale(WorkQueue.Item item, int token, String not) {
         staleSettles.incrementAndGet();
         LOG.log(System.Logger.Level.WARNING, "message " + item.messageId() + " of flow " + flow + " (work item " + item.seq() + ", attempt " + token
-                + ") finished at worker " + workerId + " but was claimed again, held or completed meanwhile; left to its holder, not completed");
+                + ") finished at worker " + workerId + " but was claimed again, held or completed meanwhile; left to its holder, not " + not);
     }
 
     /** A chain's end: out of the running items; a claim while a backlog is known (D-121 A6). */
@@ -681,12 +814,17 @@ public final class FlowWorker {
         if (due != null) producers.close().onComplete(due);
     }
 
-    /** What a run decided for its item: complete it, leave it to its lease, or hold it ({@code unparkable}: past the bound, the park failed). */
-    private record Verdict(boolean complete, Throwable unparkable) {
-        static final Verdict COMPLETE = new Verdict(true, null);
-        static final Verdict LEAVE = new Verdict(false, null);
+    /**
+     * What a run decided for its item: complete it, leave it to its lease, hold it ({@code unparkable}: past the bound, the park
+     * failed) or defer it by {@code delay} (a failed attempt with retries left, P3).
+     */
+    private record Verdict(boolean complete, Throwable unparkable, Duration delay) {
+        static final Verdict COMPLETE = new Verdict(true, null, null);
+        static final Verdict LEAVE = new Verdict(false, null, null);
 
-        static Verdict hold(Throwable unparkable) { return new Verdict(false, unparkable); }
+        static Verdict hold(Throwable unparkable) { return new Verdict(false, unparkable, null); }
+
+        static Verdict defer(Duration delay) { return new Verdict(false, null, delay); }
     }
 
     /** Where the renewals of a lease stand: one scheduled or in flight, stopped as lost, or ended with the run. */

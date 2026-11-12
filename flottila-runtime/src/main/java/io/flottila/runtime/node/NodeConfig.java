@@ -1,6 +1,8 @@
 package io.flottila.runtime.node;
 
 import io.flottila.core.admission.Targets;
+import io.flottila.core.flow.FlowBuilder;
+import io.flottila.core.flow.RetryPolicy;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.journal.JournalConfig;
@@ -73,13 +75,16 @@ import java.util.regex.Pattern;
  *                  lease in the membership; its fence closes half a lease after its last renewed send
  * @param nodeLeaseRenew {@code FLOTTILA_NODE_LEASE_RENEW}, ISO-8601, above zero and at most a quarter of the lease (PT5S): how
  *                       often the node renews it
+ * @param retries the node's default schedule of retries for an at-least-once flow that names no {@code delivery.retries}
+ *                (CORE-14a P1, D-135 draft): {@code FLOTTILA_RETRIES_COUNT} (3, 0..100) retries {@code FLOTTILA_RETRIES_INTERVAL}
+ *                (PT5M, ISO-8601, PT1S..PT24H) apart, without growth: multiplier 1, the interval its own cap
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
                          Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
                          MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
-                         Duration nodeLeaseRenew) {
+                         Duration nodeLeaseRenew, RetryPolicy retries) {
 
     /**
      * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
@@ -101,6 +106,17 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(journalKey, "journalKey");
         Objects.requireNonNull(journalSweep, "journalSweep");
         Objects.requireNonNull(intakeGroup, "intakeGroup");
+        Objects.requireNonNull(retries, "retries");
+        if (retries.attempts() > RETRIES_COUNT_MAX) {
+            throw new IllegalArgumentException("FLOTTILA_RETRIES_COUNT " + retries.attempts() + " must be from 0 to " + RETRIES_COUNT_MAX);
+        }
+        if (retries.initial().compareTo(RETRIES_INTERVAL_MIN) < 0 || retries.initial().compareTo(RETRIES_INTERVAL_MAX) > 0) {
+            throw new IllegalArgumentException("FLOTTILA_RETRIES_INTERVAL " + retries.initial() + " must be from " + RETRIES_INTERVAL_MIN + " to "
+                    + RETRIES_INTERVAL_MAX);
+        }
+        if (retries.max().compareTo(RETRIES_INTERVAL_MAX) > 0) {   // the env reader's is the interval itself; an in-process one may grow, never past the range
+            throw new IllegalArgumentException("FLOTTILA_RETRIES_INTERVAL's cap " + retries.max() + " must be at most " + RETRIES_INTERVAL_MAX);
+        }
         if (!nodeLease.isPositive() || nodeLease.compareTo(NODE_LEASE_MAX) > 0) {
             throw new IllegalArgumentException("FLOTTILA_NODE_LEASE " + nodeLease + " must be above zero and at most " + NODE_LEASE_MAX);
         }
@@ -142,6 +158,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                       IntakeGroup intakeGroup) {
         this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
                 journal, journalKey, journalSweep, intakeGroup, NODE_LEASE_DEFAULT, NODE_LEASE_RENEW_DEFAULT);
+    }
+
+    /** A node whose retries have the default keys (3 × PT5M, {@link FlowBuilder#DEFAULT_RETRIES}), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, FlowBuilder.DEFAULT_RETRIES);
     }
 
     /** A node whose intake groups have the default keys for its intake pool ({@link IntakeGroup#defaults}), as {@link #from} reads an env without them. */
@@ -596,6 +621,9 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     private static final Duration NODE_LEASE_DEFAULT = Duration.ofSeconds(30);
     private static final Duration NODE_LEASE_RENEW_DEFAULT = Duration.ofSeconds(5);
     private static final Duration NODE_LEASE_MAX = Duration.ofMinutes(10);
+    private static final int RETRIES_COUNT_MAX = 100;
+    private static final Duration RETRIES_INTERVAL_MIN = Duration.ofSeconds(1);
+    private static final Duration RETRIES_INTERVAL_MAX = Duration.ofHours(24);
     private static final Duration POOL_WAIT_MIN = Duration.ofMillis(1);
     private static final Duration POOL_WAIT_MAX = Duration.ofMinutes(1);
     private static final int POOL_QUEUE_MAX = 65536;
@@ -636,7 +664,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
                 archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
                 MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
-                duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT));
+                duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env));
+    }
+
+    /** The {@code FLOTTILA_RETRIES_*} keys (CORE-14a P1): each range-checked naming its key; no growth, the interval its own cap. */
+    private static RetryPolicy retries(Map<String, String> env) {
+        int count = (int) number(env, "FLOTTILA_RETRIES_COUNT", FlowBuilder.DEFAULT_RETRIES.attempts(), 0, RETRIES_COUNT_MAX);
+        Duration interval = span(env, "FLOTTILA_RETRIES_INTERVAL", FlowBuilder.DEFAULT_RETRIES.initial(), RETRIES_INTERVAL_MIN.toString(),
+                RETRIES_INTERVAL_MAX.toString());
+        return new RetryPolicy(count, interval, interval, 1.0);
     }
 
     /** {@code FLOTTILA_PG_DURABILITY} as written; unset, {@code ha} when {@code deployed}, else {@code local} (D-127 draft). */

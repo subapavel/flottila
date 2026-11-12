@@ -142,6 +142,7 @@ class PgIntakeHandoffIT {
             return inner.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return inner.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return inner.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return inner.release(seq); }
@@ -214,7 +215,7 @@ class PgIntakeHandoffIT {
         hold = new Hold();
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), a.blobs, rt.hasher(), Map.of());
         worker = new FlowBuilder(runtime, List.of(hold), List.of(), Map.of()).recording(a.messages, Meter.system()).queue(claims)
-                .dlq(new InMemoryDlq()).workers(workers).worker(flow(), Path.of(""), NODE, new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10)));
+                .dlq(new InMemoryDlq()).workers(workers).worker(flow(), Path.of(""), NODE, new WorkerPolicy(LEASE, Duration.ofMinutes(10)));
         worker.start();
         until(() -> claims.calls.get() == 1 && claims.answered.get() == 1, () -> "the worker's one start claim answered (A6)");
     }

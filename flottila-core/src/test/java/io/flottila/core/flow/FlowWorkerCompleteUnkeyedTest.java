@@ -104,6 +104,7 @@ class FlowWorkerCompleteUnkeyedTest {
             return rows.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return rows.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return rows.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return rows.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return rows.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return rows.release(seq); }
@@ -131,7 +132,7 @@ class FlowWorkerCompleteUnkeyedTest {
         gate.open();
         worker = new FlowBuilder(rt.runtime(), List.of(gate), List.of(BuiltInStepsTest.HEADERS), Map.of()).recording(store, Meter.system())
                 .queue(queue).dlq(new InMemoryDlq()).worker(FlowWorkerEventsTest.def("orders", 2), Path.of(""), "n-a",
-                        new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10), maxChain));
+                        new WorkerPolicy(LEASE, Duration.ofMinutes(10), maxChain));
         return worker;
     }
 

@@ -171,6 +171,7 @@ class PgWorkSignalsIT {
             return inner.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return inner.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return inner.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return inner.release(seq); }
@@ -213,7 +214,7 @@ class PgWorkSignalsIT {
             for (String f : List.of(ORDERS, INVOICES)) {
                 Counting q = new Counting(new InMemoryWorkQueue(rt.clock()));
                 FlowWorker w = new FlowBuilder(runtime, List.of(PASS), List.of(), Map.of()).recording(new InMemoryMessageStore(), Meter.system())
-                        .queue(q).dlq(new InMemoryDlq()).workers(workers).worker(flow(f), Path.of(""), id, new WorkerPolicy(LEASE, 5, QUIET));
+                        .queue(q).dlq(new InMemoryDlq()).workers(workers).worker(flow(f), Path.of(""), id, new WorkerPolicy(LEASE, QUIET));
                 queues.put(f, q);
                 w.start();
                 started.add(w);

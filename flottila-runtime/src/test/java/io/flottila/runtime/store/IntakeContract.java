@@ -269,6 +269,7 @@ public abstract class IntakeContract {
             return inner.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return inner.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return inner.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return inner.release(seq); }
@@ -328,7 +329,7 @@ public abstract class IntakeContract {
         FlowDefinition def = FlowDefinition.from(doc);
         FlowWorker worker = new FlowBuilder(runtime, List.of(hold), List.of(), Map.of())
                 .recording(world.messages(), io.flottila.core.record.Meter.system()).queue(queue).dlq(new InMemoryDlq()).workers(world.workers())
-                .worker(def, java.nio.file.Path.of(""), world.node(), new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofMinutes(10)));
+                .worker(def, java.nio.file.Path.of(""), world.node(), new WorkerPolicy(Duration.ofSeconds(30), Duration.ofMinutes(10)));
         try {
             worker.start();
             until(() -> queue.claims.get() == 1 && queue.answered.get() == 1, () -> "the worker's start claim answered: " + queue.claims + " claims");

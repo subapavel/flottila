@@ -189,8 +189,8 @@ public interface WorkQueue {
     }
 
     /**
-     * Leases up to {@code max} rows to {@code workerId}: a row is claimable when it is not held, its lease is
-     * free, it is the oldest row of its key (held rows included) and that key holds no live lease (or it has no key).
+     * Leases up to {@code max} rows to {@code workerId}: a row is claimable when it is not held, it is due (not {@linkplain #defer deferred}
+     * past now), its lease is free, it is the oldest row of its key (held rows included) and that key holds no live lease (or it has no key).
      * Each row handed out counts one more attempt; the rows come in seq order. A worker id is its node's id (D-101): another
      * node's row is claimable only once that holder has no live membership row (released, or none at all), and a restarted
      * node's own rows only after its previous incarnation's lease end. A row handed out while an earlier holder left it unsettled
@@ -245,6 +245,18 @@ public interface WorkQueue {
      * extended; {@code false} when the caller no longer holds the row (claimed again, held, completed or unknown).
      */
     Future<Boolean> renew(long seq, int attempts, Duration lease);
+
+    /**
+     * Hands {@code seq} back to the claim not before {@code delay} from now (CORE-14a P3, D-135 draft: a scheduled retry), under the
+     * same condition as {@link #renew}: its holder and its lease are cleared — the row is no one's, so its next hand-out counts one
+     * more attempt and no doubt — and it is claimable only once {@code delay} passed on the queue's clock (Postgres: the database's
+     * {@code now()}). Its seq, message id, attempts, doubts and body ref are kept, so it still heads its key and blocks the rows
+     * behind it while it waits. {@code true} when deferred by this call; {@code false} when the caller no longer holds the row
+     * (claimed again, held, completed or unknown): nothing changed.
+     *
+     * @since 0.1
+     */
+    Future<Boolean> defer(long seq, int attempts, Duration delay);
 
     /**
      * Marks {@code seq} held, under the same condition as {@link #renew}: it is never claimed again and blocks its key

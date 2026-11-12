@@ -22,4 +22,9 @@ class InMemoryWorkQueueContractTest extends WorkQueueContract {
     protected void expireLeases() {
         clock.advance(LEASE.plus(Duration.ofSeconds(1)));
     }
+
+    @Override
+    protected void passTime(Duration d) {
+        clock.advance(d);
+    }
 }

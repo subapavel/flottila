@@ -348,6 +348,7 @@ class AdminServerWorkTest {
             return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return delegate.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return delegate.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
         @Override public Future<Boolean> hasItems(String flow) { return delegate.hasItems(flow); }
     }

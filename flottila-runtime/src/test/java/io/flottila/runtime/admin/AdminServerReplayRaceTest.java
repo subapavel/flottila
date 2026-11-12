@@ -116,6 +116,7 @@ class AdminServerReplayRaceTest {
         env.put("FLOTTILA_ENV", "dev");
         env.put("FLOTTILA_NODE_ID", "node-1");
         env.put("FLOTTILA_DATA_DIR", tmp.resolve("data").toString());
+        env.put("FLOTTILA_RETRIES_COUNT", "0");   // CORE-14a (P6): a worker run's failure parks its ingress at once
         MessageStore messages = new MessageStore() {
             @Override public Future<Void> record(Snapshot s) { return inner.record(s); }
             @Override public Future<List<Snapshot>> timeline(String messageId) { return timelines.read(messageId, inner.timeline(messageId)); }

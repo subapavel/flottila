@@ -33,7 +33,8 @@ import java.util.function.Function;
 /**
  * The Postgres {@link WorkQueue} (ported from proto-m1): {@code SELECT … FOR UPDATE SKIP LOCKED}
  * on the {@code work} table. A row is claimable when it is not held, its lease is free, it is the
- * oldest row of its partition key (held rows included) and that key holds no live lease; the next
+ * oldest row of its partition key (held rows included), due ({@code available_at}: a {@linkplain #defer deferred} row waits for it on
+ * the database clock) and that key holds no live lease; the next
  * row of a key becomes eligible only after the previous one is completed (deleted) or its lease
  * expired — never while it is held. Leases are measured by the database clock. Every hand-out
  * increments the row's {@code attempts}, the holder's fencing token for {@link #renew}, {@link #hold},
@@ -229,6 +230,13 @@ public final class PgWorkQueue implements WorkQueue {
     private static final String RENEW = "update work set locked_until = now() + make_interval(secs => $3)" + CURRENT;
 
     private static final String HOLD = "update work set held_at = now()" + CURRENT;
+
+    /**
+     * A scheduled retry (CORE-14a P3, D-135 draft): due {@code $3} seconds after the database's {@code now()}, the holder and its
+     * lease cleared — the next hand-out counts no doubt — for the current holder only; seq, id, attempts, doubts and the body ref
+     * ({@code body_*}, which pins its journal segment) kept.
+     */
+    private static final String DEFER = "update work set available_at = now() + make_interval(secs => $3), locked_by = null, locked_until = null" + CURRENT;
 
     /**
      * The rows of {@code w}'s key in its flow behind it (D-126, the barrier made visible), on the index {@code work_flow_key_seq}
@@ -551,6 +559,11 @@ public final class PgWorkQueue implements WorkQueue {
 
     @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
         return pool.preparedQuery(RENEW).execute(Tuple.of(seq, attempts, seconds(lease))).map(rows -> rows.rowCount() == 1);
+    }
+
+    /** {@link #DEFER}: the delay on the database clock, to the microsecond (never the node's clock). */
+    @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
+        return pool.preparedQuery(DEFER).execute(Tuple.of(seq, attempts, delay.toNanos() / 1e9)).map(rows -> rows.rowCount() == 1);
     }
 
     @Override public Future<Boolean> hold(long seq, int attempts) {

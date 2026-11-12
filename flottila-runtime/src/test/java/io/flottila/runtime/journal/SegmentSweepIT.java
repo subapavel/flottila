@@ -664,6 +664,31 @@ class SegmentSweepIT {
         gone(a, done.segment(), "no row");
     }
 
+    /**
+     * CORE-14a P7 (D-135 draft, regression): a row deferred through the queue itself — {@code PgWorkQueue.defer}, not a hand-written
+     * update — keeps its body ref, so the pins (PgSegmentRows.PINNED) keep its segment alone while it waits for its retry.
+     */
+    @Test
+    void aDeferredItemAlonePinsItsSegment() throws Exception {
+        Sealed deferred = saved(a, "m-deferred", false);
+        Sealed done = saved(a, "m-done", false);
+        assertNull(bodyRef(db.pool(), deferred.key()), "fixture: level none: no kept ref, the work row alone");
+        sql("delete from work where id = $1", done.id());
+        sql("update work set locked_by = null, locked_until = null where id = $1", deferred.id());   // whatever the save leased, claimable now
+        String flow = db.pool().preparedQuery("select flow from work where id = $1").execute(Tuple.of(deferred.id())).await().iterator().next().getString(0);
+        io.flottila.runtime.queue.PgWorkQueue queue = new io.flottila.runtime.queue.PgWorkQueue(db.pool());
+        io.flottila.core.queue.WorkQueue.Item item = queue.claim("node-a", flow, 10, Duration.ofSeconds(30)).await().stream()
+                .filter(i -> i.messageId().equals(deferred.id())).findFirst().orElseThrow(() -> new AssertionError("fixture: the row claimed"));
+        JournalWorld.Ref before = workRef(db.pool(), deferred.id());
+        assertTrue(queue.defer(item.seq(), item.attempts(), Duration.ofDays(1)).await(), "deferred a day by the queue");
+        assertEquals(before, workRef(db.pool(), deferred.id()), "the deferred row keeps its body ref");
+        a.opened.clock().advance(GRACE);
+
+        assertEquals(Set.of(done.segment()), sweep(sweeper(a)), "a deferred row pins; a completed one does not");
+        kept(a, deferred.segment(), "a deferred work row's ref");
+        gone(a, done.segment(), "no row");
+    }
+
     @Test
     void aLargeStepBodyPersistedPastTheGraceKeepsItsSegment() throws Exception {
         Sealed free = saved(a, "m-free", false);

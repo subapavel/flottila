@@ -86,9 +86,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * FIX-107 (GATE run 1, check 7): an at-least-once flow on the Postgres work queue whose {@code to} step sends through the real
  * {@link HttpComponent} producer. A partner that refuses the connection (a loopback port bound, then closed: nothing listens)
- * is the partner's failure like a 503 is: the step is retried by the flow's policy, then the message is parked at that step —
- * one DLQ row, stage = the step's name, step = its index, body = the step's input — and its work item is completed by the
- * claim that ran it, with no WARNING "left to its lease". The 503 partner is the control: it behaves so today.
+ * is the partner's failure like a 503 is: the step is retried by the flow's policy, then (CORE-14a, P6: the worker has no
+ * per-step park; the node's retries at count 0) the message is parked by its ingress at step 1 with prop {@code attempt} 1 —
+ * one DLQ row — and its work item is completed by the claim that ran it, with no WARNING "left to its lease". The 503
+ * partner is the control.
  *
  * <p>Flow {@code orders}: {@code stamp} (hands on a new body written into the runtime's store, so the {@code to} step's input
  * is not the ingress), then {@code to partner}, retryable, retry 3 × from 100 ms. The fake clock and timer drive the retry
@@ -101,7 +102,6 @@ class PartnerFailureParkIT {
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
     static final long MIB = 1L << 20;
     static final Duration LEASE = Duration.ofSeconds(30);
-    static final int MAX_ATTEMPTS = 5;
     static final int RETRIES = 3;
     static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
@@ -292,7 +292,8 @@ class PartnerFailureParkIT {
             Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", partnerUri, Map.of("maxBodyBytes", 65_536L)));
             builder = new FlowBuilder(runtime, List.of(stamp()), List.of(), endpoints)
                     .recording(messages, Meter.system()).queue(new PgWorkQueue(pool, "node-a")).dlq(new PgDlq(pool));
-            worker = builder.worker(def, NO_FILES, "w-1", new WorkerPolicy(LEASE, MAX_ATTEMPTS, Duration.ofSeconds(1)));
+            worker = builder.retries(new io.flottila.core.flow.RetryPolicy(0, Duration.ofHours(1), Duration.ofHours(1), 1.0))   // CORE-14a (P6): count 0, the run's failure parks at once
+                    .worker(def, NO_FILES, "w-1", new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
             workers.add(worker);
         }
 
@@ -394,21 +395,22 @@ class PartnerFailureParkIT {
     }
 
     /**
-     * What both partners' failures end in: after the retries, one DLQ row at {@code partner} (step 2) by the step's input — the
-     * body {@code stamp} wrote, durable in Postgres —, the item completed by the one claim that ran it, no WARNING logged.
+     * What both partners' failures end in: after the step's retries, one DLQ row by the ingress at step 1 ({@code stamp}) with
+     * prop {@code attempt} 1 (CORE-14a, P6), the item completed by the one claim that ran it, no WARNING logged.
      */
-    void assertParkedAtThePartnerStep(Node node, String id, int polled) {
+    void assertParkedByTheIngress(Node node, String id, int polled) {
         String seen = node.http.describe() + "; scheduled " + scheduled + "; warnings " + describeWarnings();
         List<Parked> rows = dlqRows();
         assertEquals(1, rows.size(), "one DLQ row after the retries: " + rows + "; " + seen);
         Parked parked = rows.get(0);
         assertEquals(id, parked.messageId(), seen);
-        assertEquals("partner", parked.stepName(), "parked at the to step, by its name: " + parked + "; " + seen);
-        assertEquals(2, parked.step(), "parked at the to step, by its index: " + parked + "; " + seen);
+        assertEquals("stamp", parked.stepName(), "parked at the first step, by its name: " + parked + "; " + seen);
+        assertEquals(1, parked.step(), "parked at the first step, by its index: " + parked + "; " + seen);
+        assertEquals(Optional.of(1), parked.props().get(Envelope.ATTEMPT), "with the attempt it failed at: " + parked);
         assertFalse(parked.error().contains("AttemptsExhaustedException"), "the partner's failure, not the attempts bound: " + parked.error());
-        assertEquals(BlobKey.body(id, 1), parked.bodyKey(), "by the to step's input, the body stamp handed on: " + parked);
+        assertEquals(BlobKey.body(id, 0), parked.bodyKey(), "by the ingress: " + parked);
         assertEquals(List.of(stamped.get(0)), stamped, "stamp ran once: the retries re-ran only the to step");
-        assertEquals(Optional.of(stamped.get(0)), kept(node, BlobKey.body(id, 1)), "the parked input is durable, byte-equal to what stamp handed on");
+        assertEquals(Optional.of(ORDER), kept(node, BlobKey.body(id, 0)), "the parked ingress is durable, byte-equal to what was delivered");
         assertEquals(0, count("bodies"), "a kept ref, no bodies row (CORE-4c2)");
         assertEquals(1, polled, "one claim ran it");
         assertEquals(1 + RETRIES, node.http.sends.get(), "the partner was tried once and retried " + RETRIES + " times: " + seen);
@@ -423,19 +425,19 @@ class PartnerFailureParkIT {
     // --- cases
 
     @Test
-    void aRefusedPartnerParksAtItsStepAfterTheRetries() throws IOException {
+    void aRefusedPartnerParksTheIngressAfterTheRetries() throws IOException {
         Node node = new Node(URI.create("http://127.0.0.1:" + refusingPort() + "/partner"));
         String id = node.deliver("refused-1");
 
         int polled = node.pollDrivingRetries();
 
-        assertParkedAtThePartnerStep(node, id, polled);
+        assertParkedByTheIngress(node, id, polled);
         assertTrue(node.http.failures.stream().allMatch(f -> String.valueOf(f.getMessage()).contains("Connection refused")),
                 "fixture: every send was refused at the connection: " + node.http.describe());
     }
 
     @Test
-    void a503PartnerStillParksAtItsStep() {
+    void a503PartnerStillParksTheIngress() {
         List<String> saw = new CopyOnWriteArrayList<>();
         HttpServer partner = unavailablePartner(saw);
         Node node = new Node(URI.create("http://127.0.0.1:" + partner.actualPort() + "/partner"));
@@ -443,7 +445,7 @@ class PartnerFailureParkIT {
 
         int polled = node.pollDrivingRetries();
 
-        assertParkedAtThePartnerStep(node, id, polled);
+        assertParkedByTheIngress(node, id, polled);
         assertEquals(1 + RETRIES, saw.size(), "the partner saw each try: " + saw);
         assertTrue(saw.stream().allMatch(b -> b.equals(stamped.get(0).toString(StandardCharsets.UTF_8))), "each try sent the step's input: " + saw);
         assertTrue(dlqRows().get(0).error().contains("503"), "the row names the partner's answer: " + dlqRows().get(0).error());

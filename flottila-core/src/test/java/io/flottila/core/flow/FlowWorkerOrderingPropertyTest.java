@@ -130,8 +130,8 @@ class FlowWorkerOrderingPropertyTest {
             List<String> ids = new ArrayList<>();
             for (Msg m : messages) ids.add(line.accept(delivery, m.key(), m.outcome()).id());
             List<FlowWorker> workers = List.of(
-                    line.worker(b, def, "w1", FlowWorkerFastPathTest.policy(1_000, chain1)),
-                    line.worker(b, def, "w2", FlowWorkerFastPathTest.policy(1_000, chain2)));
+                    line.worker(b, def, "w1", FlowWorkerFastPathTest.policy(101, chain1)),
+                    line.worker(b, def, "w2", FlowWorkerFastPathTest.policy(101, chain2)));
 
             for (Move m : moves) {
                 switch (m) {

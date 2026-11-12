@@ -61,7 +61,7 @@ class FlowWorkerFencedParkTest {
             assertEquals(new Ack.Accepted(in.id()), b.delivery(def, NO_FILES).apply(in).await(5, SECONDS));
             assertEquals(1, rows.claim("crashed", "orders", 1, LEASE).await().size(), "fixture: a first hand-out to a node that is gone");
             rt.clock().advance(LEASE.plusSeconds(1));
-            worker = b.worker(def, NO_FILES, "n1", FlowWorkerTest.policy(LEASE, 1));
+            worker = FlowWorkerTest.policy(LEASE, 1).worker(b, def, "n1");
         }
 
         List<String> dlq() {

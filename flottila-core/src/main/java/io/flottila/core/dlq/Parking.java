@@ -12,7 +12,6 @@ import java.time.Clock;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.BooleanSupplier;
 
 /**
  * The at-least-once failure path (ARCHITECTURE §4 lifecycle table, §6): a step's failure parks the step's input in the
@@ -24,9 +23,8 @@ import java.util.function.BooleanSupplier;
  * (the persist or the row) surfaces the original failure with the {@link InterruptedException} suppressed and the interrupt
  * flag restored (D-098): the cancelling caller still sees its interrupt, and the park may still land. A {@link FencedException}
  * is not parked either (D-101 (2)): the node's fence closed, the message's item is left to whoever runs it next, and the failure
- * passes through as is. A step's failure met while the {@code fence} given is closed is not parked (D-101 (2), D-112): another node
- * may take the item over and park it too, so no DLQ row is written and a {@link FencedException} surfaces with the step's
- * failure as its cause, the item left unsettled. An {@link Error} is never caught.
+ * passes through as is. An {@link Error} is never caught. (CORE-14a, D-135: the worker's pipeline has no Parking — it parks the
+ * ingress itself, only while the node's fence is open — so a Parking is never fenced.)
  * A failure further down the pipeline passes through untouched: the step it happened at parked it. {@link #park} parks a
  * message outside any step's run — the worker's attempts bound (D-055) — and leaves its failure to the caller.
  *
@@ -37,19 +35,12 @@ public final class Parking {
     private final Dlq dlq;
     private final Clock clock;
     private final Map<String, String> versions;
-    private final BooleanSupplier fence;
 
-    /** Unfenced: every step's failure is parked. */
+    /** Every step's failure is parked. */
     public Parking(Dlq dlq, Clock clock, Map<String, String> versions) {
-        this(dlq, clock, versions, () -> true);
-    }
-
-    /** Parks a step's failure only while {@code fence} is open, the node's fence of a worker's pipeline (D-101 (2)). */
-    public Parking(Dlq dlq, Clock clock, Map<String, String> versions, BooleanSupplier fence) {
         this.dlq = Objects.requireNonNull(dlq, "dlq");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.versions = Map.copyOf(versions);
-        this.fence = Objects.requireNonNull(fence, "fence");
     }
 
     public Stage wrap(Stage stage, StepConfig step) {
@@ -65,10 +56,6 @@ public final class Parking {
                     throw failure;
                 }
                 if (handedOn[0] || failure instanceof FencedException) throw failure;   // a later step's failure: parked there (or deliberately not); a fenced send: never parked
-                if (!fence.getAsBoolean()) {   // another node may take the item over and park it too: no row from a closed fence
-                    throw new FencedException("message " + e.id() + " not parked at step " + step.index() + " (" + step.name()
-                            + "): the node's fence is closed (D-101 (2)); left unsettled for whoever runs it next", failure);
-                }
                 Future<Parked> durable = park(e, step, failure);
                 Parked parked;
                 try {

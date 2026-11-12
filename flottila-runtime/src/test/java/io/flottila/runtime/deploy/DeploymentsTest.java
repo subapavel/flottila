@@ -3,6 +3,7 @@ package io.flottila.runtime.deploy;
 import io.flottila.api.Ack;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
+import io.flottila.api.NackException;
 import io.flottila.api.Runtime;
 import io.flottila.api.StepFactory;
 import io.flottila.core.dlq.InMemoryDlq;
@@ -826,7 +827,7 @@ class DeploymentsTest {
             assertEquals(Map.of("flow", "shop/orders@2.1.0", "package", "shop@1.0.0", "revision", "9df3f78"), s.versions(), "snapshot " + s.stepName());
         }
 
-        doors.partner().failNext(1, () -> new IllegalStateException("partner down"));
+        doors.partner().failNext(1, () -> new NackException("partner refused", false));   // CORE-14a: a final failure parks at once
         Sent parked = send("shop/audit");
         assertEquals(new Ack.Accepted(parked.id()), within(parked.answer(), "the at-least-once answer"));
         until(() -> dlq.size() == 1, "the worker parks the message the partner refused");

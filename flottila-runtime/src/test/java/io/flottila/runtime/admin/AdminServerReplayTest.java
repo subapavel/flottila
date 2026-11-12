@@ -126,6 +126,7 @@ class AdminServerReplayTest {
         env.put("FLOTTILA_NODE_ID", "node-1");
         env.put("FLOTTILA_DATA_DIR", tmp.resolve("data").toString());
         env.put("FLOTTILA_STOP_DEADLINE", "PT37S");
+        env.put("FLOTTILA_RETRIES_COUNT", "0");   // CORE-14a (P6): a worker run's failure parks its ingress at once
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), blobs, rt.hasher(), Map.of(Doors.SCHEME, doors));
         deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), probe.factories(), List.of(),
                 messages, dlq, queue, () -> 0L);
@@ -193,7 +194,7 @@ class AdminServerReplayTest {
                         if (e.get(Envelope.REPLAY_OF).isPresent()) {
                             Thread t = Thread.currentThread();
                             replayThreads.add("virtual=" + t.isVirtual() + " eventLoop=" + Context.isOnEventLoopThread() + " " + t);
-                            Hold h = armed.poll();   // a retry runs only c: its hold is taken here, before c fails
+                            Hold h = armed.poll();   // a run from step 4 runs only c: its hold is taken here, before c fails
                             if (h != null) h.hold(e.id());
                         }
                         if (down.get()) throw new IllegalStateException(s.name() + " down");
@@ -356,13 +357,13 @@ class AdminServerReplayTest {
         return e;
     }
 
-    /** An at-least-once {@code audit} message whose worker run failed at c (step 4) and parked it. */
+    /** An at-least-once {@code audit} message whose worker run failed at c and parked its ingress at step 1 (CORE-14a, P6). */
     Envelope parked(String flow) throws Exception {
         probe.down.set(true);
         Envelope e = envelope(flow);
         assertInstanceOf(Ack.Accepted.class, deliver(e), "fixture: accepted");
         until(() -> dlq.get(e.id()).await().isPresent(), "fixture: " + e.id() + " parked by its worker");
-        assertEquals(4, dlq.get(e.id()).await().orElseThrow().step(), "fixture: parked at c, step 4");
+        assertEquals(1, dlq.get(e.id()).await().orElseThrow().step(), "fixture: parked by its ingress, step 1");
         until(() -> queue.snapshot().isEmpty(), "fixture: its work item completed");
         probe.down.set(false);
         return e;
@@ -505,8 +506,8 @@ class AdminServerReplayTest {
     }
 
     /**
-     * An at-least-once message parked at c (step 4); its retry while c still fails parks again: 502 {@code {id, replayOf, from:4,
-     * outcome:"PARKED", error}} — the new id has its own DLQ row, the original's stays. A replay of it from step 2 that fails parks
+     * An at-least-once message parked by its ingress (step 1, CORE-14a P6); its retry while c still fails parks again, at c:
+     * 502 {@code {id, replayOf, from:1, outcome:"PARKED", error}} — the new id has its own DLQ row, the original's stays. A replay of it from step 2 that fails parks
      * too: 502 PARKED.
      */
     @Test
@@ -515,7 +516,7 @@ class AdminServerReplayTest {
         Envelope original = parked("audit");
         probe.down.set(true);
 
-        String retried = assertFailed(retry(original.id()), original.id(), 4, "PARKED", "c down", "a retry that parked again");
+        String retried = assertFailed(retry(original.id()), original.id(), 1, "PARKED", "c down", "a retry that parked again");
 
         assertTrue(dlq.get(retried).await().isPresent(), "the retry parked under its own id");
         assertEquals(original.id(), dlq.get(retried).await().orElseThrow().props().asMap().get("replayOf"), "marked replayOf the original");
@@ -618,24 +619,31 @@ class AdminServerReplayTest {
     }
 
     /**
-     * The other 422s: the parked step beyond the redeployed flow (audit parked at step 4, v2 runs three steps) and an input body
+     * The other 422s: the parked step beyond the redeployed flow (a retry of a parked audit message that parked again at c, step 4
+     * — CORE-14a P6: the worker parks the ingress, a retry's run parks at its step —, v2 runs three steps) and an input body
      * above the flow's byte budget ({@code big}: 16 bytes; step 1 wrote 32). Nothing runs; the row stays; from step 1 (8 bytes)
      * {@code big} replays.
      */
     @Test
     void aStepBeyondTheRedeployedFlowOrABodyAboveTheBudgetIs422() throws Exception {
         deploy(shop());
-        Envelope audit = parked("audit");
+        Envelope first = parked("audit");
+        probe.down.set(true);
+        String audit = assertFailed(retry(first.id()), first.id(), 1, "PARKED", "c down", "fixture: its retry parked again");
+        probe.down.set(false);
+        assertEquals(4, dlq.get(audit).await().orElseThrow().step(), "fixture: the retry parked at c, step 4");
         Envelope big = recorded("big");
         PackageDraft v2 = shop();
         v2.flowDoc("audit").put("steps", new JsonArray().add(STEPS.getJsonObject(0).copy()).add(STEPS.getJsonObject(1).copy()).add(STEPS.getJsonObject(2).copy()));
         deploy(v2);
         int ran = probe.total();
+        List<String> mintedBefore = List.copyOf(minted);   // the fixture's retry minted one, with its rows and its DLQ row
 
-        assertError(422, retry(audit.id()), "parked at step 4 of a flow that now has 3");
+        assertError(422, retry(audit), "parked at step 4 of a flow that now has 3");
         assertError(422, replay(big.id(), "2"), "step 1's 32-byte body is above big's 16-byte budget");
-        assertNothingRan(ran, "beyond or too large");
-        assertTrue(dlq.get(audit.id()).await().isPresent(), "the refused retry keeps its row");
+        assertEquals(ran, probe.total(), "beyond or too large: no step ran: " + probe.runs);
+        assertNoRowsSince(mintedBefore, "beyond or too large");
+        assertTrue(dlq.get(audit).await().isPresent(), "the refused retry keeps its row");
         assertComplete(replay(big.id(), "1"), big.id(), 1, "witness: big's 8-byte ingress fits");
     }
 
@@ -673,7 +681,7 @@ class AdminServerReplayTest {
         Envelope parked = parked("audit");
 
         assertComplete(replay(original.id(), "4"), original.id(), 4, "the replay");
-        assertComplete(retry(parked.id()), parked.id(), 4, "the retry");
+        assertComplete(retry(parked.id()), parked.id(), 1, "the retry");
 
         assertEquals(2, probe.replayThreads.size(), "step c ran once per replayed run: " + probe.replayThreads);
         for (String t : probe.replayThreads) assertTrue(t.startsWith("virtual=true eventLoop=false"), "a replayed run's thread: " + t);
@@ -682,8 +690,8 @@ class AdminServerReplayTest {
     // --- retry
 
     /**
-     * A parked message retried once its step works again: 200 {@code {id, replayOf, from:4, outcome:"COMPLETE"}}; its DLQ row is
-     * gone (also from {@code GET /admin/dlq}); the new message ran only the parked step, on the parked input.
+     * A parked message retried once its step works again: 200 {@code {id, replayOf, from:1, outcome:"COMPLETE"}}; its DLQ row is
+     * gone (also from {@code GET /admin/dlq}); the new message ran from the parked step, step 1 (CORE-14a P6), on the parked input.
      */
     @Test
     void retryIs200AndTheRowIsGone() throws Exception {
@@ -691,14 +699,14 @@ class AdminServerReplayTest {
         Envelope original = parked("audit");
         int a = probe.runs("a"), c = probe.runs("c");
 
-        String id = assertComplete(retry(original.id()), original.id(), 4, "the retry");
+        String id = assertComplete(retry(original.id()), original.id(), 1, "the retry");
 
         assertEquals(Optional.empty(), dlq.get(original.id()).await(), "the row is gone");
         Answer listed = send(HttpMethod.GET, "/admin/dlq", AUTH);
         assertEquals(200, listed.status(), listed.body().toString());
         assertEquals(new JsonArray(), listed.json().getJsonArray("items"), "GET /admin/dlq lists no row: " + listed.body());
-        assertEquals(List.of("replay", "c"), stepNames(id), "the parked step ran on the parked input");
-        assertEquals(List.of(a, c + 1), List.of(probe.runs("a"), probe.runs("c")));
+        assertEquals(List.of("replay", "a", "b", "h", "c"), stepNames(id), "the run from the parked step ran on the parked input");
+        assertEquals(List.of(a + 1, c + 1), List.of(probe.runs("a"), probe.runs("c")));
     }
 
     /**
@@ -731,7 +739,7 @@ class AdminServerReplayTest {
         assertTrue(dlq.get(x.id()).await().isPresent(), "X's row stays");
 
         probe.down.set(false);
-        assertComplete(retry(x.id()), x.id(), 4, "the guard is free once the first retry answered");
+        assertComplete(retry(x.id()), x.id(), 1, "the guard is free once the first retry answered");
         assertEquals(Optional.empty(), dlq.get(x.id()).await());
     }
 
@@ -752,11 +760,11 @@ class AdminServerReplayTest {
         String id = minted.getLast();
         assertTrue(answer.json().getString("error").contains(id), "the error names the new id " + id + ": " + answer.body());
         assertEquals(c + 1, probe.runs("c"), "the retry delivered");
-        assertEquals(List.of("replay", "c"), stepNames(id), "its rows are written");
+        assertEquals(List.of("replay", "a", "b", "h", "c"), stepNames(id), "its rows are written");
         assertTrue(dlq.get(original.id()).await().isPresent(), "the row stays");
 
         dlq.failRemoves = false;
-        assertComplete(retry(original.id()), original.id(), 4, "the next retry");
+        assertComplete(retry(original.id()), original.id(), 1, "the next retry");
         assertEquals(Optional.empty(), dlq.get(original.id()).await());
     }
 
@@ -848,7 +856,7 @@ class AdminServerReplayTest {
         blobs.forget(input);
         int ran = probe.total();
         List<String> mintedBefore = List.copyOf(minted);
-        String says = "the body of step 3 of message " + gone.id() + " (" + input + ") was removed by retention";
+        String says = "the body of step 0 of message " + gone.id() + " (" + input + ") was removed by retention";
 
         Answer refused = retry(gone.id());
 
@@ -860,7 +868,7 @@ class AdminServerReplayTest {
         assertEquals(says, again.json().getString("error"), "the guard was freed by the refusal: the same refusal, not 'runs already'");
         assertEquals(ran, probe.total(), "no step ran");
         assertNoRowsSince(mintedBefore, "removed by retention");
-        assertComplete(retry(kept.id()), kept.id(), 4, "witness: a stored parked input retries");
+        assertComplete(retry(kept.id()), kept.id(), 1, "witness: a stored parked input retries");
         assertEquals(Optional.of(row), dlq.get(gone.id()).await(), "the removed one's row still stays");
     }
 
@@ -874,7 +882,7 @@ class AdminServerReplayTest {
         blobs.failExists(new IllegalStateException("postgres down"));
 
         String id = assertFailed(replay(original.id(), "2"), original.id(), 2, "FAILED", "postgres down", "a replay whose check failed");
-        String retryId = assertFailed(retry(parked.id()), parked.id(), 4, "FAILED", "postgres down", "a retry whose check failed");
+        String retryId = assertFailed(retry(parked.id()), parked.id(), 1, "FAILED", "postgres down", "a retry whose check failed");
 
         assertEquals(ran, probe.total(), "no step ran");
         for (String run : List.of(id, retryId)) assertEquals(List.of(), messages.timeline(run).await(), "no row under " + run);
@@ -930,7 +938,7 @@ class AdminServerReplayTest {
             blobs.failExists(f.getValue());
             String message = f.getValue().getMessage();
             assertFailed(replay(original.id(), "2"), original.id(), 2, "FAILED", message, "a replay whose check failed with " + f.getKey());
-            assertFailed(retry(parked.id()), parked.id(), 4, "FAILED", message, "a retry whose check failed with " + f.getKey());
+            assertFailed(retry(parked.id()), parked.id(), 1, "FAILED", message, "a retry whose check failed with " + f.getKey());
         }
     }
 }

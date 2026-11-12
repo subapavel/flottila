@@ -1611,11 +1611,12 @@ class NodeIT {
 
     /**
      * GATE check 7, DLQ: the demo switched to at-least-once, its partner down (503). The worker tries the partner step once and
-     * retries it per the flow's policy ({@value #DEMO_RETRIES} retries), then parks the message: {@code GET /admin/dlq} lists its
-     * row at step 5 (partner) naming the 503. The partner comes back; {@code POST /admin/dlq/{id}/retry} answers 200 with exactly
-     * {@code {id, replayOf, from, outcome}} — a new id, the parked one, 5, COMPLETE — the partner gets the mapped invoice once
-     * more and answers it, the row is gone from {@code GET /admin/dlq}, and the new message's rows are the parked input at step 4
-     * and the partner step, marked {@code replayOf}.
+     * retries it per the flow's policy ({@value #DEMO_RETRIES} retries), then parks the message — CORE-14a (P6): the node's
+     * retries at count 0, the worker parks its ingress at once —: {@code GET /admin/dlq} lists its row at step 1 (validate) naming
+     * the 503. The partner comes back; {@code POST /admin/dlq/{id}/retry} answers 200 with exactly {@code {id, replayOf, from,
+     * outcome}} — a new id, the parked one, 1, COMPLETE — the partner gets the mapped invoice once more and answers it, the row is
+     * gone from {@code GET /admin/dlq}, and the new message's rows are the parked input at step 0 and the five steps, marked
+     * {@code replayOf}.
      */
     @Test
     void partnerDownParksAndRetryDeliversOncePartnerIsBack() throws Exception {
@@ -1634,7 +1635,9 @@ class NodeIT {
             files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
             assertTrue(new String(files.get("flows/invoice-sync.yaml"), StandardCharsets.UTF_8).contains("attempts: " + DEMO_RETRIES),
                     "fixture: the demo flow retries its partner step " + DEMO_RETRIES + " times");
-            startDemoNode(env("ci"));
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_RETRIES_COUNT", "0");   // CORE-14a (P6): the worker run's failure parks its ingress at once
+            startDemoNode(env);
             int admin = node.adminPort();
             assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
             HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
@@ -1647,8 +1650,8 @@ class NodeIT {
             JsonObject row = rows.getJsonObject(0);
             assertEquals(parked, row.getString("id"), row.encode());
             assertEquals("demo/invoice-sync", row.getString("flow"), row.encode());
-            assertEquals(5, row.getInteger("step"), "parked at the partner step: " + row.encode());
-            assertEquals("partner", row.getString("name"), row.encode());
+            assertEquals(1, row.getInteger("step"), "parked by its ingress, at step 1: " + row.encode());
+            assertEquals("validate", row.getString("name"), row.encode());
             assertTrue(row.getString("error").contains("503"), "the row names the partner's 503: " + row.encode());
             assertEquals(1 + DEMO_RETRIES, partnerSaw.size(), "the first try and " + DEMO_RETRIES + " retries, no more: " + partnerSaw);
             assertTrue(partnerSaw.stream().allMatch(s -> s.startsWith("503 /echo ")), "each answered 503: " + partnerSaw);
@@ -1660,14 +1663,15 @@ class NodeIT {
             JsonObject answer = new JsonObject(retried.body());
             String id = answer.getString("id");
             assertTrue(id != null && !id.equals(parked), "the retry is a new message: " + answer);
-            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 5).put("outcome", "COMPLETE"), answer, "the retry's answer");
+            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 1).put("outcome", "COMPLETE"), answer, "the retry's answer");
             assertEquals(2 + DEMO_RETRIES, partnerSaw.size(), "delivered once the partner is back, once: " + partnerSaw);
             String delivered = partnerSaw.getLast();
             assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
             assertEquals(new JsonArray(), dlqItems(admin), "the row is gone");
-            until(() -> stepsOf(admin, id).size() == 2, "the retry's rows are recorded: its input and the partner step");
+            until(() -> stepsOf(admin, id).size() == 6, "the retry's rows are recorded: its input and the five steps");
             JsonArray steps = stepsOf(admin, id);
-            assertEquals(List.of("4 replay", "5 partner"), stepNames(steps), "only the parked step ran, on the parked input: " + steps.encode());
+            assertEquals(List.of("0 replay", "1 validate", "2 extractKey", "3 route", "4 toPartner", "5 partner"), stepNames(steps),
+                    "the run from the parked step ran on the parked input: " + steps.encode());
             for (Object each : steps) {
                 JsonObject step = (JsonObject) each;
                 assertEquals("OK", step.getString("outcome"), step.encode());

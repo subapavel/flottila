@@ -149,7 +149,7 @@ class LostWorkAdminIT {
         });
         worker = new FlowBuilder(rt.runtime(), List.of(PgWorkSignalsIT.PASS), List.of(), Map.of()).recording(store, Meter.system())
                 .queue(counted).dlq(new InMemoryDlq()).workers(workers).worker(PgWorkSignalsIT.flow("orders"), Path.of(""), "node-a",
-                        new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10)));
+                        new WorkerPolicy(LEASE, Duration.ofMinutes(10)));
         worker.start();
         until(() -> claimsDone.get() == 1, "the worker's start claim answered");
     }

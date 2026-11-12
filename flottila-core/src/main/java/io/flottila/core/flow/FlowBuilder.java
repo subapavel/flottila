@@ -95,10 +95,9 @@ import java.util.function.UnaryOperator;
  * retries and no {@link Parking} parks (D-101 (2)). A {@link Fence} also bounds the worker's sends: the deadline is the earlier
  * of the message's and the fence's, a timer at the fence's end re-reads it and fails the run's wait with a
  * {@link FencedException} once it is closed (the item left unsettled; the abandoned send keeps its permit until its own future
- * settles), and a producer failure landing while it is closed is a {@link FencedException} carrying it; a step's failure in a
- * worker's pipeline is parked only while the same fence
- * is open — closed, a {@link FencedException} with that failure as its cause and no DLQ row; a sync, at-most-once or replayed
- * run is never fenced (no other node takes it over).
+ * settles), and a producer failure landing while it is closed is a {@link FencedException} carrying it; a worker's failed run
+ * is deferred or parked only while the same fence is open — closed, its item is left unsettled, no defer and no DLQ row
+ * ({@link FlowWorker}); a sync, at-most-once or replayed run is never fenced (no other node takes it over).
  *
  * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s, a {@link #replay}'s
  * {@code from} and {@code retry} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
@@ -124,6 +123,9 @@ public final class FlowBuilder {
     /** The fence of an unfenced run: always open. */
     private static final BooleanSupplier OPEN = () -> true;
 
+    /** The node's default schedule of retries when none is given (O1, D-135 draft): 3 retries 5 minutes apart, no growth. */
+    public static final RetryPolicy DEFAULT_RETRIES = new RetryPolicy(3, Duration.ofMinutes(5), Duration.ofMinutes(5), 1.0);
+
     private final Runtime runtime;
     private final Map<String, StepFactory> factories = new LinkedHashMap<>();
     private final Map<String, Expressions> languages = new LinkedHashMap<>();
@@ -141,6 +143,7 @@ public final class FlowBuilder {
     private BooleanSupplier fence = OPEN;
     private Workers workers = new Workers();
     private WorkSignals signals = WorkSignals.NONE;
+    private RetryPolicy retries = DEFAULT_RETRIES;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -238,8 +241,8 @@ public final class FlowBuilder {
 
     /**
      * Fences the workers built from now on by {@code fence}, the node's ({@link io.flottila.core.node.NodeLease}, D-101 (2)):
-     * they claim, their {@code to} steps send, their steps' failures are parked, and they complete, take the next item of a key,
-     * hold and park an item past its attempts, only while it answers true. A {@link Fence} also bounds their sends by time
+     * they claim, their {@code to} steps send, and they defer a failed run, park a message, complete, take the next item of a key
+     * and hold, only while it answers true. A {@link Fence} also bounds their sends by time
      * (D-113 draft): the producer's deadline is the earlier of the message's and the fence's, and a run stops waiting for a send
      * still open when the fence closes. It replaces the fence of an earlier call. Without a call the fence is always open.
      */
@@ -267,9 +270,20 @@ public final class FlowBuilder {
         return this;
     }
 
+    /**
+     * The node's default schedule of retries (CORE-14a P1, D-135 draft: {@code FLOTTILA_RETRIES_COUNT} and
+     * {@code FLOTTILA_RETRIES_INTERVAL}) for the workers built from now on of the flows that name no {@code delivery.retries}; it
+     * replaces the default of an earlier call. Without a call it is {@link #DEFAULT_RETRIES}. One outside the D-135 bounds
+     * ({@link FlowDefinition#MAX_RETRIES} retries, an interval of 1s..24h, a cap of at most 24h) is refused.
+     */
+    public FlowBuilder retries(RetryPolicy nodeDefault) {
+        this.retries = FlowDefinition.withinRetryBounds(Objects.requireNonNull(nodeDefault, "nodeDefault"), "the node's retries");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory, D-078). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
-        return built(flow, baseDir, OPEN).pipeline(true);
+        return built(flow, baseDir, OPEN, true).pipeline(true);
     }
 
     /**
@@ -302,11 +316,11 @@ public final class FlowBuilder {
         Admission admission = admission(flow);
         return switch (flow.deliveryMode()) {
             case "sync" -> {
-                Built built = built(flow, baseDir, OPEN);
+                Built built = built(flow, baseDir, OPEN, true);
                 yield Delivery.sync(admission, built.pipeline(true), built.producers(), runtime.timer());
             }
             case "at-most-once" -> {
-                Built built = built(flow, baseDir, OPEN);
+                Built built = built(flow, baseDir, OPEN, true);
                 yield Delivery.atMostOnce(admission, built.pipeline(true), built.producers(), runtime.timer());
             }
             case "at-least-once" -> {
@@ -356,9 +370,11 @@ public final class FlowBuilder {
 
     /**
      * The worker {@code workerId} of an at-least-once flow (see {@link FlowWorker}) under {@code policy}: runs at most the flow's
-     * in-flight request limit of items at once and the pipeline without stage 0, leases and polls on the runtime's clock and timer,
-     * parks an item past {@link WorkerPolicy#maxAttempts()} at the flow's first step and, while started, is registered in the
-     * {@link #workers} registry. Needs the store, the {@link #queue} and the {@link #dlq}.
+     * in-flight request limit of items at once and the pipeline without stage 0 — its steps not wrapped by {@link Parking}: a failed
+     * run is the worker's to retry or park (CORE-14a P6) —, leases, polls and schedules its retries on the runtime's clock and timer
+     * under the flow's {@code delivery.retries}, else the node's default ({@link #retries}), parks a message at the flow's first step
+     * once its retries are spent or its failure is final and, while started, is registered in the {@link #workers} registry. Needs the
+     * store, the {@link #queue} and the {@link #dlq}.
      */
     public FlowWorker worker(FlowDefinition flow, Path baseDir, String workerId, WorkerPolicy policy) {
         Objects.requireNonNull(flow, "flow");
@@ -367,8 +383,8 @@ public final class FlowBuilder {
         requireDlq(flow);
         int max = (int) Math.min(inFlightRequests(flow), Integer.MAX_VALUE);
         Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
-        Built built = built(flow, baseDir, fence);
-        return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), built.pipeline(false),
+        Built built = built(flow, baseDir, fence, false);
+        return new FlowWorker(flow.id(), workerId, max, policy, flow.retries().orElse(retries), queue, store, runtime.blobs(), built.pipeline(false),
                 parking, flow.steps().get(0), runtime.clock(), runtime.timer(), built.producers(), fence, workers, signals);
     }
 
@@ -443,7 +459,7 @@ public final class FlowBuilder {
 
     private Replay replay(FlowDefinition flow, Path baseDir, Admission admission) {
         if (store == null) throw new IllegalStateException("replay needs the recorded snapshots: call recording(store, meter) first");
-        Built built = built(flow, baseDir, OPEN);
+        Built built = built(flow, baseDir, OPEN, true);
         List<Stage> steps = built.steps();
         Recorder recorder = built.recorder();
         RecordingPolicy policy = flow.recording();
@@ -474,15 +490,16 @@ public final class FlowBuilder {
     }
 
     /**
-     * The flow built, its {@code to} steps sending and its steps' failures parked under {@code fence}; a build that throws closes every producer it created
-     * before the failure leaves (FIX-30), unchecked ones included.
+     * The flow built, its {@code to} steps sending under {@code fence}; an at-least-once flow's steps wrapped by {@link Parking} when
+     * {@code parking} (a {@link #build} and a replay; a worker's are not, CORE-14a P6). A build that throws closes every producer it
+     * created before the failure leaves (FIX-30), unchecked ones included.
      */
-    private Built built(FlowDefinition flow, Path baseDir, BooleanSupplier fence) {
+    private Built built(FlowDefinition flow, Path baseDir, BooleanSupplier fence, boolean parking) {
         Objects.requireNonNull(flow, "flow");
         Map<String, String> versions = versionsOf(flow);
-        boolean parks = "at-least-once".equals(flow.deliveryMode());
+        boolean parks = parking && "at-least-once".equals(flow.deliveryMode());
         if (parks) requireDlq(flow);
-        Parking parking = parks ? new Parking(dlq, runtime.clock(), versions, fence) : null;
+        Parking parker = parks ? new Parking(dlq, runtime.clock(), versions) : null;
         StepResources resources = resources(flow, baseDir);
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
         UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
@@ -517,7 +534,7 @@ public final class FlowBuilder {
                 if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
                 stage = numbered(stage, step);
                 if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
-                if (parking != null) stage = parking.wrap(stage, step);
+                if (parker != null) stage = parker.wrap(stage, step);
                 stages.add(stepEvents ? StepEvent.marked(stage, flow.id(), step) : stage);   // outermost: a step's CPU includes its wrappers (D-094)
             }
             done = true;

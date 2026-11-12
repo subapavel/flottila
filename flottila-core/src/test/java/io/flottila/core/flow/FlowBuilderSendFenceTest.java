@@ -101,7 +101,7 @@ class FlowBuilderSendFenceTest {
         FlowDefinition def = FlowBuilderSendDeadlineTest.flow("at-least-once", timeout, steps);
         Envelope in = rt.ingress("orders", Headers.empty(), Buffer.buffer("<order/>"));
         assertEquals(new Ack.Accepted(in.id()), b.delivery(def, NO_FILES).apply(in).await(5, SECONDS));
-        FlowWorker w = b.worker(def, NO_FILES, "n1", FlowWorkerTest.policy(Duration.ofMinutes(5), 5));
+        FlowWorker w = FlowWorkerTest.policy(Duration.ofMinutes(5), 1).worker(b, def, "n1");   // CORE-14a: count 0, a failed send parks at once
         workers.add(w);
         return w;
     }

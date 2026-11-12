@@ -76,7 +76,7 @@ class AdminReleaseWakesTest {
             PgWorkSignalsIT.Counting q = new PgWorkSignalsIT.Counting(new InMemoryWorkQueue(rt.clock()));
             FlowWorker w = new FlowBuilder(runtime, List.of(PgWorkSignalsIT.PASS), List.of(), Map.of()).recording(new InMemoryMessageStore(), Meter.system())
                     .queue(q).dlq(new InMemoryDlq()).workers(workers).worker(PgWorkSignalsIT.flow(f), Path.of(""), "n-a",
-                            new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofMinutes(10)));
+                            new WorkerPolicy(Duration.ofSeconds(30), Duration.ofMinutes(10)));
             claims.put(f, q);
             w.start();
             started.add(w);
@@ -120,6 +120,7 @@ class AdminReleaseWakesTest {
             return rows.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public io.vertx.core.Future<Boolean> renew(long seq, int attempts, Duration lease) { return rows.renew(seq, attempts, lease); }
+        @Override public io.vertx.core.Future<Boolean> defer(long seq, int attempts, Duration delay) { return rows.defer(seq, attempts, delay); }
         @Override public io.vertx.core.Future<Boolean> hold(long seq, int attempts) { return rows.hold(seq, attempts); }
         @Override public io.vertx.core.Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return rows.held(after, limit); }
         @Override public io.vertx.core.Future<Boolean> release(long seq) { return rows.release(seq); }

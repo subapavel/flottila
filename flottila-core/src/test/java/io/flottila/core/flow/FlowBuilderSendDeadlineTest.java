@@ -139,7 +139,7 @@ class FlowBuilderSendDeadlineTest {
         }
 
         FlowWorker worker(FlowBuilder b, FlowDefinition def) {
-            FlowWorker w = b.worker(def, NO_FILES, "n1", FlowWorkerTest.policy(LEASE, 5));
+            FlowWorker w = FlowWorkerTest.policy(LEASE, 5).worker(b, def, "n1");
             workers.add(w);
             return w;
         }

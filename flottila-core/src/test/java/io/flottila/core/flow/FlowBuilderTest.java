@@ -231,7 +231,8 @@ class FlowBuilderTest {
         partnerDown.set(false);
         Envelope runs = rt.ingress("f", Headers.empty(), Buffer.buffer("<x/>"));
         assertEquals(new Ack.Accepted(runs.id()), delivery.apply(runs).await());
-        FlowWorker worker = b.worker(atLeastOnce, NO_FILES, "w1", new WorkerPolicy(LEASE, 1, Duration.ofSeconds(1)));
+        FlowWorker worker = b.retries(new RetryPolicy(0, Duration.ofMinutes(1), Duration.ofMinutes(1), 1.0))   // CORE-14a: maxAttempts 1 is count 0
+                .worker(atLeastOnce, NO_FILES, "w1", new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
         try {
             assertEquals(2, worker.poll().await(5, TimeUnit.SECONDS), "fixture: both items claimed in one round");
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);

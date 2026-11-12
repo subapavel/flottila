@@ -33,9 +33,16 @@ public final class CountingQueue implements WorkQueue {
     private volatile Throwable hasItemsFailure;
     private final java.util.Map<String, Throwable> hasItemsFailures = new java.util.concurrent.ConcurrentHashMap<>();
 
+    private final Clock clock;
+    private final List<java.time.Instant> deferredAt = new CopyOnWriteArrayList<>();
+
     public CountingQueue(Clock clock) {
         this.inner = new InMemoryWorkQueue(clock);
+        this.clock = clock;
     }
+
+    /** The clock at every defer the queue answered true (CORE-14a), in order. */
+    public List<java.time.Instant> deferredAt() { return List.copyOf(deferredAt); }
 
     /** Every claim so far, as {@code "<workerId> <flow>"}. */
     public List<String> claims() { return List.copyOf(claims); }
@@ -111,6 +118,14 @@ public final class CountingQueue implements WorkQueue {
     @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
         renews.incrementAndGet();
         return inner.renew(seq, attempts, lease);
+    }
+
+    /** The in-memory queue's defer (CORE-14a P3); one it answered true recorded with the clock at the call. */
+    @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
+        java.time.Instant at = clock.instant();
+        return inner.defer(seq, attempts, delay).onSuccess(deferred -> {
+            if (deferred) deferredAt.add(at);
+        });
     }
 
     @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }

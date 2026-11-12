@@ -121,7 +121,7 @@ class HandoffKeyOrderPropertiesTest {
         doc.put("onFailure", "park");
         FlowDefinition def = FlowDefinition.from(doc);
         Delivery delivery = b.delivery(def, NO_FILES);
-        FlowWorker worker = b.worker(def, NO_FILES, "w1", new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofMinutes(10)));
+        FlowWorker worker = b.worker(def, NO_FILES, "w1", new WorkerPolicy(Duration.ofSeconds(30), Duration.ofMinutes(10)));
         Map<String, List<String>> committed = new LinkedHashMap<>();   // key → ids in save order
         List<String> saved = new ArrayList<>();
         List<RunGate.Run> finished = new ArrayList<>();

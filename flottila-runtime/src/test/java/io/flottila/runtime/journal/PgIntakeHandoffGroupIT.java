@@ -130,7 +130,7 @@ class PgIntakeHandoffGroupIT {
         claims = new PgIntakeHandoffIT.Claims(a.queue);
         Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), a.blobs, rt.hasher(), Map.of());
         worker = new FlowBuilder(runtime, List.of(hold), List.of(), Map.of()).recording(a.messages, Meter.system()).queue(claims)
-                .dlq(new InMemoryDlq()).workers(workers).worker(PgIntakeHandoffIT.flow(), Path.of(""), NODE, new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10)));
+                .dlq(new InMemoryDlq()).workers(workers).worker(PgIntakeHandoffIT.flow(), Path.of(""), NODE, new WorkerPolicy(LEASE, Duration.ofMinutes(10)));
         worker.start();
         PgIntakeHandoffIT.until(() -> claims.calls.get() == 1 && claims.answered.get() == 1, () -> "the worker's one start claim answered (A6)");
     }

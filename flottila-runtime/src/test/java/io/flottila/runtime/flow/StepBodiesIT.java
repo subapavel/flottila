@@ -261,7 +261,8 @@ class StepBodiesIT {
         }
 
         FlowWorker worker(FlowDefinition def, int maxAttempts) {
-            FlowWorker w = builder.worker(def, NO_FILES, "w-" + System.identityHashCode(this), new WorkerPolicy(LEASE, maxAttempts, Duration.ofSeconds(1)));
+            FlowWorker w = builder.retries(new io.flottila.core.flow.RetryPolicy(maxAttempts - 1, Duration.ofHours(1), Duration.ofHours(1), 1.0))   // CORE-14a: the bound is count + 1
+                    .worker(def, NO_FILES, "w-" + System.identityHashCode(this), new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
             workers.add(w);
             return w;
         }

@@ -135,7 +135,7 @@ class FlowWorkerEventsTest {
 
         /** Both flows, a quiet interval, room 2 each. */
         Node withBothFlows() {
-            return with(ORDERS, 2, new WorkerPolicy(LEASE, 5, QUIET)).with(INVOICES, 2, new WorkerPolicy(LEASE, 5, QUIET));
+            return with(ORDERS, 2, new WorkerPolicy(LEASE, QUIET)).with(INVOICES, 2, new WorkerPolicy(LEASE, QUIET));
         }
 
         int claims(String flow) { return queues.get(flow).claims().size(); }
@@ -265,8 +265,8 @@ class FlowWorkerEventsTest {
      */
     @Test
     void aSignalReachingAFullWorkerIsClaimedAtItsChainEnd() {
-        Node b = new Node("n-b").with(ORDERS, 1, new WorkerPolicy(LEASE, 5, QUIET));
-        new Node("n-a").with(ORDERS, 1, new WorkerPolicy(LEASE, 5, QUIET));
+        Node b = new Node("n-b").with(ORDERS, 1, new WorkerPolicy(LEASE, QUIET));
+        new Node("n-a").with(ORDERS, 1, new WorkerPolicy(LEASE, QUIET));
         RecordingWorkQueue q = b.queues.get(ORDERS);
 
         Envelope m1 = recorded();

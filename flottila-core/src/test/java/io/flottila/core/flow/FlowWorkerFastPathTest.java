@@ -4,6 +4,7 @@ import io.flottila.api.Ack;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
+import io.flottila.api.NackException;
 import io.flottila.api.Stage;
 import io.flottila.api.StepFactory;
 import io.flottila.core.dlq.InMemoryDlq;
@@ -57,7 +58,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  * thread, chain + 1 — without a claim; {@code done(empty)} ends the chain; {@code STALE} is one WARNING, counted in
  * {@code staleSettles}, nothing taken; a failed answer fails the round. Otherwise (no key, an item left to its lease or held,
  * stopped, the chain at its bound) it settles as before with a plain {@code complete}. A next item past
- * {@link WorkerPolicy#maxAttempts()} is parked, not run, by the usual path. The one poll after an item is done moves to the end
+ * bound (CORE-14a: its retries' count + 1) is parked, not run, by the usual path. The one poll after an item is done moves to the end
  * of its chain; {@code poll()}'s future and {@code close()} wait for the chains they started.
  *
  * <p>Chain counting (the reading of D-075 these cases pin): the claimed item is chain 0; the fast path is taken while chain &lt;
@@ -79,8 +80,9 @@ class FlowWorkerFastPathTest {
     /** What the cases here run: the gate, the outcome the message's header asks for, the partner. */
     static final List<Map<String, Object>> STEPS = List.of(RunGate.STEP, OUTCOME, TO_PARTNER);
 
-    static WorkerPolicy policy(int maxAttempts, int maxChain) {
-        return new WorkerPolicy(LEASE, maxAttempts, TICK, maxChain);
+    /** The policy with {@code maxChain}, bounded to {@code maxAttempts} hand-outs: count maxAttempts − 1 (CORE-14a, {@link FlowWorkerTest.Policy}). */
+    static FlowWorkerTest.Policy policy(int maxAttempts, int maxChain) {
+        return new FlowWorkerTest.Policy(new WorkerPolicy(LEASE, TICK, maxChain), maxAttempts);
     }
 
     /** Waits (spinning, never sleeping) until {@code condition} holds; fails after a 5 s bound naming what it waited for. */
@@ -203,6 +205,8 @@ class FlowWorkerFastPathTest {
                     + (r.succeeded() ? r.result() : "failed")));
         }
 
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return inner.defer(seq, real(seq, attempts), delay); }
+
         @Override public Future<Boolean> hold(long seq, int attempts) {
             return inner.hold(seq, real(seq, attempts)).andThen(r -> events.add("hold " + seq + "@" + attempts + " -> "
                     + (r.succeeded() ? r.result() : "failed")));
@@ -222,7 +226,7 @@ class FlowWorkerFastPathTest {
 
     /**
      * Everything one case (or one try of a property) runs on. Flow {@code orders}; the {@code outcome} step does what the
-     * message's {@code outcome} header says: {@code park} (a step failure: parked, the item completed), {@code crash} (an Error:
+     * message's {@code outcome} header says: {@code park} (a final step failure, a non-retryable Nack: parked at once, the item completed), {@code crash} (an Error:
      * the item left to its lease), {@code crash-once} (an Error on the first run only), else nothing.
      */
     static final class Line {
@@ -236,7 +240,7 @@ class FlowWorkerFastPathTest {
         final RunGate gate = new RunGate();
         final StepFactory outcome = ParkingTest.factory("outcome", s -> Stage.of(e -> {
             String o = e.header("outcome").orElse("pass");
-            if (o.equals("park")) throw new IllegalStateException("refused at " + s.name());
+            if (o.equals("park")) throw new NackException("refused at " + s.name(), false);   // CORE-14a: a final failure parks at once
             if (o.equals("crash")) throw new Crash("crashed at " + s.name());
             if (o.equals("crash-once") && e.get(Envelope.ATTEMPT).isEmpty()) throw new Crash("crashed at " + s.name() + " on the first run");
             return e;
@@ -261,8 +265,8 @@ class FlowWorkerFastPathTest {
             return FlowDefinition.from(FlowWorkerTest.flow(maxInFlight, steps));
         }
 
-        FlowWorker worker(FlowBuilder b, FlowDefinition def, String id, WorkerPolicy policy) {
-            FlowWorker worker = b.worker(def, NO_FILES, id, policy);
+        FlowWorker worker(FlowBuilder b, FlowDefinition def, String id, FlowWorkerTest.Policy policy) {
+            FlowWorker worker = policy.worker(b, def, id);
             workers.add(worker);
             return worker;
         }

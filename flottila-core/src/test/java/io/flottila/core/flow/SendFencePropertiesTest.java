@@ -94,7 +94,7 @@ class SendFencePropertiesTest {
                 List.of(Map.of("type", "probe", "name", "probe"), FlowBuilderSendDeadlineTest.TO));
         Envelope in = rt.ingress("orders", Headers.empty(), Buffer.buffer("<order/>"));
         assertEquals(new Ack.Accepted(in.id()), b.delivery(def, FlowWorkerTest.NO_FILES).apply(in).await(5, SECONDS));
-        FlowWorker worker = b.worker(def, FlowWorkerTest.NO_FILES, "n1", FlowWorkerTest.policy(Duration.ofMinutes(5), 5));
+        FlowWorker worker = FlowWorkerTest.policy(Duration.ofMinutes(5), 5).worker(b, def, "n1");
         try {
             Future<Integer> round = worker.poll();
             spin(() -> partner.calls.size() == 1, () -> "the send started with the fence open: " + partner.calls + ", ended " + ended);

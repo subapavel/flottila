@@ -67,6 +67,7 @@ class FlowWorkerNextNodeTest {
             return rows.completeRow(seq, attempts).map(c -> nextNode != null && c.completed() ? Completion.elsewhere(nextNode) : c);
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return rows.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return rows.defer(seq, attempts, delay); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return rows.hold(seq, attempts); }
         @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return rows.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return rows.release(seq); }
@@ -86,7 +87,7 @@ class FlowWorkerNextNodeTest {
         gate.open();
         worker = new FlowBuilder(rt.runtime(), List.of(gate), List.of(BuiltInStepsTest.HEADERS), Map.of()).recording(store, Meter.system())
                 .queue(queue).dlq(new InMemoryDlq()).signals(signals).worker(FlowWorkerEventsTest.def("orders", 2), Path.of(""), "n-a",
-                        new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10)));
+                        new WorkerPolicy(LEASE, Duration.ofMinutes(10)));
         return worker;
     }
 
@@ -106,7 +107,7 @@ class FlowWorkerNextNodeTest {
         gate.open();
         worker = new FlowBuilder(rt.runtime(), List.of(gate), List.of(BuiltInStepsTest.HEADERS), Map.of()).recording(store, Meter.system())
                 .queue(new NodeBound(rows, "n-b")).dlq(new InMemoryDlq()).signals(signals).worker(FlowWorkerEventsTest.def("orders", 2), Path.of(""),
-                        "n-a", new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10), 0));
+                        "n-a", new WorkerPolicy(LEASE, Duration.ofMinutes(10), 0));
         assertEquals(1, worker.poll().await(5, TimeUnit.SECONDS), "claimed and run");
         assertEquals(0, rows.size(), "completed plainly");
         assertEquals(List.of("n-b orders"), announced, "the complete named n-b: announced there");
@@ -119,7 +120,7 @@ class FlowWorkerNextNodeTest {
         gate.open();
         worker = new FlowBuilder(rt.runtime(), List.of(gate), List.of(BuiltInStepsTest.HEADERS), Map.of()).recording(store, Meter.system())
                 .queue(new NodeBound(rows, "n-b")).dlq(new InMemoryDlq()).worker(FlowWorkerEventsTest.def("orders", 2), Path.of(""), "n-a",
-                        new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10)));
+                        new WorkerPolicy(LEASE, Duration.ofMinutes(10)));
         assertEquals(1, worker.poll().await(5, TimeUnit.SECONDS), "claimed and run");
         assertEquals(0, rows.size(), "completed, the next node told to no signals at all");
         assertEquals(List.of(), announced, "the recording signals were not this worker's");
@@ -156,7 +157,7 @@ class FlowWorkerNextNodeTest {
         workerLog.addHandler(warned);
         worker = new FlowBuilder(rt.runtime(), List.of(gate), List.of(BuiltInStepsTest.HEADERS), Map.of()).recording(store, Meter.system())
                 .queue(queue).dlq(new InMemoryDlq()).signals(throwing).worker(FlowWorkerEventsTest.def("orders", 2), Path.of(""), "n-a",
-                        new WorkerPolicy(LEASE, 5, Duration.ofMinutes(10), maxChain));
+                        new WorkerPolicy(LEASE, Duration.ofMinutes(10), maxChain));
         return worker;
     }
 

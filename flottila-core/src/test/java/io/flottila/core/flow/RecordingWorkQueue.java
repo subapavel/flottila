@@ -68,6 +68,9 @@ final class RecordingWorkQueue implements WorkQueue {
     /** One complete or fast path: the attempts it was fenced by, and whether it removed the row ({@code null}: it failed). */
     record CompleteCall(long seq, int attempts, Boolean answer) {}
 
+    /** One defer (CORE-14a P3): the token it was fenced by, the delay asked, the clock at the call and its answer ({@code null}: it failed). */
+    record DeferCall(long seq, int attempts, Duration delay, Instant at, Boolean answer) {}
+
     /** One leased enqueue (P2-16a, D-121 A2): what it asked for and what it answered ({@code null}: it failed). */
     record EnqueueLeasedCall(String messageId, String partitionKey, String workerId, Duration lease, Optional<Item> answer) {}
 
@@ -80,6 +83,8 @@ final class RecordingWorkQueue implements WorkQueue {
     private final List<HoldCall> holds = new CopyOnWriteArrayList<>();
     private final List<Long> completes = new CopyOnWriteArrayList<>();
     private final List<CompleteCall> completeCalls = new CopyOnWriteArrayList<>();
+    private final List<DeferCall> deferCalls = new CopyOnWriteArrayList<>();
+    private final AtomicReference<Throwable> nextDeferFailure = new AtomicReference<>();
     private final List<EnqueueLeasedCall> enqueueLeasedCalls = new CopyOnWriteArrayList<>();
     private final AtomicReference<Throwable> nextEnqueueFailure = new AtomicReference<>();
     private final Map<String, Integer> handedOut = new ConcurrentHashMap<>();
@@ -160,6 +165,9 @@ final class RecordingWorkQueue implements WorkQueue {
     /** The next enqueue — plain or leased — fails with {@code cause} without reaching the delegate (nothing queued); later ones answer as before. */
     void failNextEnqueue(Throwable cause) { nextEnqueueFailure.set(Objects.requireNonNull(cause, "cause")); }
 
+    /** The next defer fails with {@code cause} without reaching the delegate (the row stays as it was); later ones answer as before. */
+    void failNextDefer(Throwable cause) { nextDeferFailure.set(Objects.requireNonNull(cause, "cause")); }
+
     /** Sampled at every claim call into {@link ClaimCall#runningAtCall}. */
     void probeRunning(IntSupplier probe) { runningProbe = Objects.requireNonNull(probe, "probe"); }
 
@@ -180,6 +188,9 @@ final class RecordingWorkQueue implements WorkQueue {
 
     /** Every complete and fast path so far with its attempts and answer, in call order (Q-1). */
     List<CompleteCall> completeCalls() { return List.copyOf(completeCalls); }
+
+    /** Every defer so far with its token, delay, the clock at the call and its answer, in call order (CORE-14a). */
+    List<DeferCall> deferCalls() { return List.copyOf(deferCalls); }
 
     /** Runs at every {@code complete} / {@code completeAndTakeNext} call, before it reaches the delegate: what held at the call (P1-09k2). */
     private volatile java.util.function.LongConsumer onComplete = seq -> { };
@@ -287,6 +298,16 @@ final class RecordingWorkQueue implements WorkQueue {
         completeCalls.add(new CompleteCall(seq, attempts, done.succeeded() ? done.result().completed() : null));
         if (done.succeeded() && done.result().next().isPresent()) handedOut.merge(workerId, 1, Integer::sum);
         return done;
+    }
+
+    /** The delegate's defer (CORE-14a P3), recorded with the clock at the call and its answer; a staged failure reaches no delegate. */
+    @Override
+    public Future<Boolean> defer(long seq, int attempts, Duration delay) {
+        Instant at = clock.instant();
+        Throwable failure = nextDeferFailure.getAndSet(null);
+        Future<Boolean> answer = failure != null ? Future.failedFuture(failure) : delegate.defer(seq, attempts, delay);
+        deferCalls.add(new DeferCall(seq, attempts, delay, at, answer.succeeded() ? answer.result() : null));
+        return answer;
     }
 
     @Override
