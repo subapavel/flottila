@@ -86,6 +86,11 @@ is the owner's and goes into this section with its date.
 4. **No loss.** The kill -9 ledger (2 000 messages, concurrency 8, node 1 killed mid-run and
    restarted, journal copies 1 on each node — node 1's items wait for its restart): sent =
    final-step rows, DLQ 0, work 0, in 3 of 3 runs, with the body journal as the only body store.
+   **4b. No loss with copies (owner 2026-11-12, D-138).** The same ledger with two nodes in two
+   processes and journal copies 2: once node 1 and once node 2 is killed with `kill -9` mid-run and
+   not restarted until the run's end. The survivor takes over the dead node's items from its copies,
+   and sent = final-step rows, DLQ 0, work 0, in 3 of 3 runs for each node. A two-node copies-2 run
+   of conditions 1–2 is measured and recorded beside them; it reports, it does not gate.
 5. **No body in Postgres.** A schema test: no `bytea` or large-object column outside a named
    allow-list; and a `pg_dump` taken after a condition-4 run contains no body marker of that run.
 6. **No Kafka in the core.** With the compose `kafka` profile off: sync, async, replay and DLQ retry
@@ -93,4 +98,4 @@ is the owner's and goes into this section with its date.
    depends on Kafka; no core module has a Kafka client on its
    classpath (ArchUnit or dependency test).
 7. **Floors and rows.** Coverage and PIT floors of CLAUDE.md on the gate commit; CORE-0..CORE-15,
-   P2-15 and P2-16 `done` with `review: PASS`.
+   P2-15 and P2-16 `done` with `review: PASS`; for 4b, CORE-5a..5e `done` with `review: PASS`.
