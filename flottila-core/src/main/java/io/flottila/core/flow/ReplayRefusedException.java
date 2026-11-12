@@ -15,7 +15,7 @@ public final class ReplayRefusedException extends IllegalArgumentException {
     public enum Reason {
         /** No snapshot is recorded for the message. */
         UNKNOWN_MESSAGE,
-        /** No DLQ row for the message to retry. */
+        /** No DLQ row for the message to replay from its parked step. */
         NO_DLQ_ROW,
         /** The step to replay from is outside {@code 1..steps} of the flow. */
         STEP_OUT_OF_RANGE,

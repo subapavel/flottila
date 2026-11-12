@@ -100,9 +100,9 @@ import java.util.function.UnaryOperator;
  * ({@link FlowWorker}); a sync, at-most-once or replayed run is never fenced (no other node takes it over).
  *
  * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s, a {@link #replay}'s
- * {@code from} and {@code retry} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
+ * {@code from} and {@code replayParked} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
  * (D-100): its deadline is the run's start on the Runtime's clock, taken when the stage runs, plus the flow's
- * {@code delivery.timeout} — fresh per run: each sync call, each at-least-once claim, each replay or retry.
+ * {@code delivery.timeout} — fresh per run: each sync call, each at-least-once claim, each message replay or DLQ replay.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -449,7 +449,7 @@ public final class FlowBuilder {
     /**
      * The flow's replay, its runs admitted by {@code delivery}'s {@link Admission}: a replay in flight holds one of the permits
      * the consumer's deliveries take, and the other way round (D-067). Needs the recorded snapshots ({@link #recording}) and, for
-     * DLQ retries, the {@link #dlq}. Built once, here: a replay slices the stages built now and holds nothing of this builder or
+     * DLQ replays, the {@link #dlq}. Built once, here: a replay slices the stages built now and holds nothing of this builder or
      * the {@link Runtime}; the producers its steps send through are its own, closed by {@link Replay#close()}.
      */
     public Replay replay(FlowDefinition flow, Path baseDir, Delivery delivery) {

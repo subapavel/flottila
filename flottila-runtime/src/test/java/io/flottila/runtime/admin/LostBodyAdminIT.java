@@ -228,7 +228,7 @@ class LostBodyAdminIT {
         int mintedBefore = minted.size();
 
         saysLost(send(HttpMethod.POST, "/admin/messages/" + x.id() + "/replay?from=1"), 409, x.id(), "a replay of a lost body");
-        saysLost(send(HttpMethod.POST, "/admin/dlq/" + x.id() + "/replay"), 409, x.id(), "a DLQ retry of a lost body");
+        saysLost(send(HttpMethod.POST, "/admin/dlq/" + x.id() + "/replay"), 409, x.id(), "a DLQ replay of a lost body");
         assertEquals(ran, probe.total(), "no step ran");
         List<String> mintedNow = List.copyOf(minted);   // a snapshot: the id generator appends from other threads
         for (String id : mintedNow.subList(mintedBefore, mintedNow.size())) assertEquals(List.of(), messages.timeline(id).await(), "no row under " + id);

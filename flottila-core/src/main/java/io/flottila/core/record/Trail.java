@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * A persist that fails or throws (above the store's durable bound, or any other cause) leaves
  * its rows metadata-only — counted by {@link #metadataOnly()} and logged at WARNING with the message id. Keys that are
  * durable already are not persisted again: the run's seed (what it started from: the ingress, D-058; a replay's input; a
- * retry's parked body, D-062) and those a park made durable during the run ({@link #durable}).
+ * DLQ replay's parked body, D-062) and those a park made durable during the run ({@link #durable}).
  *
  * @since 0.1
  */

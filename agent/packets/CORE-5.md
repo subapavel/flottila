@@ -125,3 +125,45 @@ Red approved r2 (architect): PeerProtocolTest :360 (R1 ×4 red), :398 (R1 red), 
 PeerReadHeapTest :78 (green; kills hold-never-pauses), :150 (green; kills drop PeerLink:132), socketMax fixture fix (readAllLines);
 NodePeerReadIT:123 (green; kills port-from-config). API: PeerConfig.HANDSHAKES_MAX public static final int 64. Logs CORE-5a-r2-red-*.log.
 R6 (test-author finding): PeerReads.Read.read(b, off, 0) returns 0 at once (InputStream contract); implementer adds its unit case.
+
+## Advisor on D-139 (owner asked, 2026-11-12) — SOUND WITH CHANGES; awaiting the owner
+A1 /ready: the copy state is its own health check, not journal DEGRADED (Node:332, AdminServer:251 would drop a survivor) — 5b red test.
+A2 FLOTTILA_PEER_READS range 1..64 (each read buffers up to PAUSE_AT 4 MiB outside the flow's byte semaphore); D-139: peer port reachable by nodes only.
+A3 version rule now: accept HELLO version >= 1, speak the lower, tolerate trailing HELLO bytes (PeerHandshake:97/:101).
+A4 D-139/F-35 list the full clear metadata: part name, tenant key id, plain size (RecordFormat:12-13).
+A5 FIX-178: "also accepted keys"; JournalKeys tries every held key, wraps under current; restart in each phase; due before the first deployed copies-2 release; until then rotation = full stop.
+A6 per-source handshake cap (e.g. 8) beside the 64.
+A7 FIX-177 shape: windowed READs (no new frame); early close stops the window (permit held to the last byte today).
+A8 replication on its own socket (S1); no credit frame. TLS later. 0.0.0.0 kept. FIX-181 due before 5c. 5b holder checks the peer's epoch.
+Risks: derived peer subkey instead of the master key for three uses (cheap only now); HMAC on the event loop → two-node run records ACK p99 + loop delay;
+listener without deadline/keepalive on an established link; TIMEOUT's third meaning in 5b.
+
+## CORE-5b designer draft (2026-11-12) — awaiting the advisor; depends on the owner's answer on the D-139 advice
+P1 frames 3–8 (OPEN, DATA, SEAL, RECEIPT cumulative, HAVE, REFUSE FULL|FAILED|MISMATCH) with A = (owner, journal UUID, n); footer as DATA after SEAL.
+P2 per-link order (DATA pos = holder end; RECEIPT never decreases); link role from its first frame (READ → read link, OPEN/HAVE → repl link).
+P3 replication on its own link (one consumer, real backpressure; PENDING_BYTES bounds it). P4 beside the force (Journal.write:828): promise on
+forcedEnd ≥ end ∧ every holder received ≥ end; receipt = holder pwrite returned; holder forces off the ACK path.
+P5 lost holder (close, REFUSE, oldest unreceipted frame > PEER_TIMEOUT): seal early, one `array_remove(copies)` update, then one-copy completion,
+oneCopyBytes, DEGRADED, one ERROR; update failure → retryable 503. P6 rendezvous placement, sticky; pre-open OPEN + RECEIPT(header); re-pair
+before a segment's first record. P7 holder disk replicas/<owner>/<journal>/<n>.seg byte-identical, counted in MAX_BYTES, REFUSE FULL/FAILED (W5).
+P8 spill copy at persist time. P9 reconcile by HAVE + crc32c (W1). P10 Postgres: journal_segments.copies only (no migration); per message nothing.
+P11 sweep: replica follows its row. P12 bounds: PENDING_BYTES 16 MiB, STREAM_WINDOW 8 MiB, holder pause 8/4 MiB, receipt wait PEER_TIMEOUT.
+P13 `interface Replication` (NONE, PeerReplicas); Journal.received/lost; SegmentRows insert/release/segments/replicasGone; MIN_COPIES reserved at 1.
+Tests T1–T8 (JournalReplicationTest, jqwik JournalAckOrderProperties, ReplicaIdentityIT, ReplicaReconcileIT, HolderTest, PeerReplProtocolTest,
+PlacementTest, ReplicaSweepIT, NodeReplicationIT). Conflicts with the packet: S4 (503) vs P5; S2/S5 footer in SEAL; S5 streaming spills.
+Open Q1 one-copy completion [P5]; Q2 reuse PEER_TIMEOUT [reuse]; Q3 DEGRADED while any own segment under-replicated [yes]; Q4 spill copy before
+the 202 [yes]; Q5 FIX-181 before 5c [yes]. Expensive to reverse: frame types/layouts, replicas layout, copies[0]=owner invariant, receipt = pwrite.
+
+## CORE-5b advisor (Fable) — SOUND WITH CHANGES; architect's disposition (all accepted; wire items wait for the owner's D-139 answer)
+B1 insert always [O]; add a holder by CAS `update … where copies=$expected` (one row) after OPEN's RECEIPT.
+B2 loss update over every segment H may hold (unreceived tail, receipted OPEN, spills), row count must match; complete only after it commits; unknown → 503.
+B3 copies updates conditional on the owner's live `nodes` row + epoch; zero rows → journal fail-stop.
+B4 spill/reconcile on a bulk link; age verdict for active-segment frames only, progress rule for bulk.
+B5 channel in HELLO (read | repl | bulk), defined in v1 before the A3 tolerance; one repl link per owner, higher epoch supersedes.
+B6 OPEN carries the length, reserved on the holder, else REFUSE FULL; a cap on concurrent spill copies; a holder force-lag figure.
+B7 start refuses unless the copy verdict bound < FLOTTILA_JOURNAL_APPEND_WAIT, naming both keys.
+B8 RECEIPT after pwrite (test with a blocked holder write); replica `<n>.part` until forced sealed + dir force, then renamed; start scans `.part`.
+Q1 one-copy completion with B1–B3 (503 for failed/unknown update). Q2 own key FLOTTILA_JOURNAL_COPY_TIMEOUT PT2S (PT0.5S..PT10S).
+Q3 no journal DEGRADED: a separate `journal.copies` health check, never a /ready input (A1). Q4 spill copy before the 202 on the bulk link. Q5 FIX-181 + FIX-177 before 5c.
+Also: §4 + V12 comment "copies fixed when written" changes; bench --scenario ack at copies 1 before/after (no bench until the test machine: record when it comes);
+4b harness waits for copies UP and records oneCopyBytes at the kill. 5c needs: holder-side READ server, local read of an unsealed replica (FIX-181).

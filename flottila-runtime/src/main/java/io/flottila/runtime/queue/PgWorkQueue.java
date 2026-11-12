@@ -50,7 +50,7 @@ import java.util.function.Function;
  * by the fast path — only the items whose body lies in that node's journal, or pre-V12 ones (until CORE-5 a body is read on
  * its own node); a queue without a node claims any. A queue given the node's store tells it the ref of every item it claims
  * (its location index, the hot path's reads) and that a completed item's body is read no more. An enqueue that adds no record
- * (a replay's or a DLQ retry's) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
+ * (a message replay's or a DLQ replay's) copies its source's ref — the key's {@code body_refs} row, held with its segment row for key
  * share — in one statement: no source is a {@link BlobNotFoundException}. A {@linkplain #restart restart} (CORE-14b P8) deletes the
  * message's DLQ row and inserts its row from the ingress body's kept ref in one statement; its row carries its own bound
  * ({@code max_attempts}, V17). An item whose body an accepted
@@ -417,7 +417,7 @@ public final class PgWorkQueue implements WorkQueue {
     }
 
     /**
-     * The item on {@code client} taking the ref of {@code body}'s kept row (a replay's input, a DLQ retry's parked body): one
+     * The item on {@code client} taking the ref of {@code body}'s kept row (a message replay's input, a DLQ replay's parked body): one
      * statement holding that row and its segment row for key share; without them it fails {@link BlobNotFoundException} naming
      * {@code body} and inserts nothing — {@link BodyLostException} when an accepted loss gave that row up ({@code lost_at}).
      */

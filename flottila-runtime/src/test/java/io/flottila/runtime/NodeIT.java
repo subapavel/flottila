@@ -1504,7 +1504,7 @@ class NodeIT {
         }
     }
 
-    // --- P1-09c2 (D-067, GATE check 7): replay and DLQ retry over the admin API
+    // --- P1-09c2 (D-067, GATE check 7): message replay, same-id DLQ retry and DLQ replay over the admin API
 
     /** The demo flow's {@code retry.attempts}: retries after the first try (RetryPolicy). */
     static final int DEMO_RETRIES = 3;

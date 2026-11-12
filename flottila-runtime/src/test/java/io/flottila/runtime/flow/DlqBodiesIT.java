@@ -360,7 +360,7 @@ class DlqBodiesIT {
             assertEquals(Optional.empty(), restarted.blobs.location(BlobKey.body(k.messageId(), 0)), "the fresh store holds nothing locally: " + k);
             int runs = inputs.size();
             int before = partner.sentTo("partner").size();
-            Envelope out = assertDoesNotThrow(() -> replay.retry(k.messageId()), "retried on the fresh store: " + k);
+            Envelope out = assertDoesNotThrow(() -> replay.replayParked(k.messageId()), "retried on the fresh store: " + k);
             assertEquals(Optional.of(k.messageId()), out.get(Envelope.REPLAY_OF), "a retry of the parked message");
             assertEquals(runs + 1, inputs.size(), "step 1 ran once more: " + k);
             assertEquals(ORDER, inputs.get(runs).bytes(), "its input is the ingress, byte-equal, read by the restarted store through its ref: " + k);
@@ -445,7 +445,7 @@ class DlqBodiesIT {
 
         NodeStores restarted = new NodeStores();
         int runs = inputs.size();
-        Envelope out = assertDoesNotThrow(() -> restarted.builder.replay(def, NO_FILES).retry(id), "retried on a fresh store from step 1");
+        Envelope out = assertDoesNotThrow(() -> restarted.builder.replay(def, NO_FILES).replayParked(id), "retried on a fresh store from step 1");
         assertEquals(Optional.of(id), out.get(Envelope.REPLAY_OF));
         assertEquals(runs + 1, inputs.size(), "step 1 ran once more");
         Input retried = inputs.get(runs);

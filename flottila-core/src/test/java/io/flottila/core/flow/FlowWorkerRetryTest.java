@@ -656,7 +656,7 @@ class FlowWorkerRetryTest {
     // --- CORE-14b P8: the same-id manual restart
 
     /**
-     * The in-memory half of {@code POST /admin/dlq/{id}/restart}: {@code in}'s DLQ row (attempt {@code k}) out, its work row in —
+     * The in-memory half of {@code POST /admin/dlq/{id}/retry}: {@code in}'s DLQ row (attempt {@code k}) out, its work row in —
      * {@code WorkQueue.restart(id, flow, key, k)}: step 1, as handed out k times, its bound k + 1 (Postgres does both in one
      * transaction: DlqRestartIT).
      */

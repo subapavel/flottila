@@ -371,7 +371,7 @@ public final class Deployments {
      * One flow as the deploy built it: {@code archive} names the directory it was built from ({@code packages/<name>/<archive>}) and
      * {@code recipe} what its build took, so a failed redeploy can build it again (D-063); {@code from} is its in endpoint as its
      * consumer gets it; {@code worker} is null unless the flow is at-least-once, and {@code consumer} is null until one is built for
-     * it ({@link #with}); {@code replay} runs its replays and DLQ retries under its delivery's admission (D-067). A
+     * it ({@link #with}); {@code replay} runs its message and DLQ replays under its delivery's admission (D-067). A
      * {@link DeployedFlow.State#FAILED} flow ({@link #failed}) has no delivery, worker, replay or consumer.
      */
     private record Flow(DeployedFlow flow, String archive, Recipe recipe, Delivery delivery, FlowWorker worker, Replay replay, EndpointConfig from,

@@ -1,4 +1,13 @@
 
+## 2026-11-12 — FIX-176 rename leftovers after FIX-138a — done, review PASS (r3)
+- core `Replay.retry` → `replayParked`; javadocs and messages that called the new copy a "DLQ retry" now say "DLQ replay" (RowNotRemovedException
+  500 body, ReplayRefusedException, FlowBuilder, Deployments, Dlq, Parked, Trail, BodyLostException, flow.schema.json `delivery.timeout`).
+- 176 remaining `retr(y|ies)` hits in src/main sorted by sense, all kept (agent/work/FIX-176-retry-grep.txt). ARCHITECTURE :288/:335/:341 reworded.
+- r1 FAIL (four javadocs missed by the singular grep), r2 FAIL (ARCHITECTURE :288 still "replay or retry" for the 409 text), r3 PASS.
+- Filed: FIX-182 (test texts by the test-author; an IT for the /retry pool 503). Doclint errors at WorkQueue:106/127/128 are older (not run by the build).
+- Evidence: whole reactor verify -Pit 16/16, 4295 tests 0/0/0 (agent/work/FIX-176-verify.log; run 1 hit flake FIX-168, 5/5 alone); schemas 304/0
+  after r2; compile + javadoc (doclint none) green; coverage no decrease. Also in this commit: CORE-5 packet notes (advisor on D-139, 5b draft + advisor).
+
 ## 2026-11-12 — CORE-5a peer link + node-to-node body read (D-139, draft) — done, review PASS (r3)
 - Context compacted once (re-read HANDOFF, git status, git log -3). Deviation: F-35 (an internal node-to-node link beside the Component SPI).
 - `journal.peer`: framing v1 + HMAC under the env master key (W7 proof, fingerprint choice of current/previous), READ → BYTES/MISS by

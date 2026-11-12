@@ -27,6 +27,6 @@ public interface Dlq {
 
     Future<Optional<Parked>> get(String messageId);
 
-    /** Takes the row out (after a successful retry); unknown ids are a no-op. */
+    /** Takes the row out (after a successful DLQ replay); unknown ids are a no-op. */
     Future<Void> remove(String messageId);
 }

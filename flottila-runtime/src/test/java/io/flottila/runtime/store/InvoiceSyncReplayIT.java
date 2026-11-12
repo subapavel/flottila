@@ -185,7 +185,7 @@ class InvoiceSyncReplayIT {
         List<Snapshot> original = store.timeline(in.id()).await();
         assertEquals(Snapshot.Outcome.FAILED, original.get(5).outcome());
         Replay replay = builder().replay(def, DEMO);
-        Object delivered = run(() -> replay.retry(in.id()));
+        Object delivered = run(() -> replay.replayParked(in.id()));
         assertTrue(delivered instanceof Envelope, String.valueOf(delivered));
         Envelope out = (Envelope) delivered;
         assertNotEquals(in.id(), out.id());

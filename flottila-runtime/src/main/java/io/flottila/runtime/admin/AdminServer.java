@@ -88,9 +88,9 @@ import java.util.function.Supplier;
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
  * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
  * pool closed by a stopping node; D-132, D-133: retryable), whether a statement on the pool was refused or a transaction's
- * acquire ({@link io.flottila.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, a message replay's and a
- * DLQ replay's run with a fixed text as {@code error}, a deploy's work-queue question or record write and an undeploy's work-queue
- * question or record delete with the refusal's own line (below), except a DLQ replay that ran and whose row the pool refused to
+ * acquire ({@link io.flottila.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, the same-id DLQ
+ * {@code /retry}'s read and restart, a message replay's and a DLQ replay's run with a fixed text as {@code error}, a deploy's
+ * work-queue question or record write and an undeploy's work-queue question or record delete with the refusal's own line (below), except a DLQ replay that ran and whose row the pool refused to
  * remove (500 naming the new message, below); 500 for anything else: a store that failed, a recorded header no response may
  * carry, a stored body whose stream fails before the head is out (after it, the response is reset).
  *
@@ -333,7 +333,7 @@ public final class AdminServer {
     }
 
     /**
-     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, DLQ retry and replay routes
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, same-id DLQ retry and replay routes
      * and the flows' CPU, sampled when {@code sampling} is there (D-094).
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
@@ -745,7 +745,7 @@ public final class AdminServer {
         if (!replaying.add(id)) return Json.of(409, error("a DLQ replay of message " + id + " runs on this node already"));
         try {
             String replayId = ids.next();
-            return ran(replayId, id, row.get().step(), () -> replay.get().retry(id, replayId));
+            return ran(replayId, id, row.get().step(), () -> replay.get().replayParked(id, replayId));
         } finally {
             replaying.remove(id);
         }

@@ -511,7 +511,7 @@ class NodePoolWaitIT {
 
             PgConnection locker = lock("dlq");
             holdTheWorkPool(client, inPort);
-            assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/replay"), "a DLQ retry the pool refused");
+            assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/replay"), "a DLQ replay the pool refused");
             assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
 
             locker.query("rollback").execute().await();

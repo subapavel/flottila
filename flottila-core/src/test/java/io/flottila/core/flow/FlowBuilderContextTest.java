@@ -215,7 +215,7 @@ class FlowBuilderContextTest {
     }
 
     /**
-     * A replay ({@code from}) and a DLQ retry each bind the context of the new message they run: its new id as id and trace id,
+     * A replay ({@code from}) and a DLQ replay each bind the context of the new message they run: its new id as id and trace id,
      * and a deadline from the replay's start + 7 s — not the original's. The original run (a built pipeline) bound its own.
      */
     @Test
@@ -241,7 +241,7 @@ class FlowBuilderContextTest {
 
         rt.clock().advance(Duration.ofMinutes(1));
         Instant retried = rt.clock().instant();
-        Ran retry = onVirtualThread(() -> replay.retry(in.id(), "r-2"));
+        Ran retry = onVirtualThread(() -> replay.replayParked(in.id(), "r-2"));
         assertInstanceOf(Envelope.class, retry.outcome(), "fixture: the retry went through");
 
         MessageContext originalContext = context(in.id(), "ctx-replay", original.plus(Duration.ofSeconds(7)));

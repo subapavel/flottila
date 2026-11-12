@@ -15,7 +15,7 @@ import java.util.Optional;
 
 /**
  * A message parked in the dead letter queue (ARCHITECTURE §6: "final failure → DLQ row (by reference to the body)"):
- * the failed step's input envelope by reference — enough to retry that step without any snapshot — with the step,
+ * the failed step's input envelope by reference — enough to replay that step without any snapshot — with the step,
  * the error and the versions the message ran with. Never the bytes.
  *
  * @param messageId the message; one row per message

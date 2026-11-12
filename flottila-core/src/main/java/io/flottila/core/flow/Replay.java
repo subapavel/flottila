@@ -30,10 +30,10 @@ import java.util.function.IntFunction;
 /**
  * Replay from any recorded step (ARCHITECTURE §6 recording, GATE check 7): steps {@code n..end} of the flow run as a
  * <em>new</em> message marked {@link Envelope#REPLAY_OF} on the envelope step {@code n−1} handed on — taken from its
- * snapshot ({@link #from}), or from the DLQ row of the failed step ({@link #retry}), which carries that envelope by
- * reference so a retry needs no snapshot. The new message is a first run: the {@link Envelope#ATTEMPT} of the run that left
+ * snapshot ({@link #from}), or from the DLQ row of the failed step ({@link #replayParked}), which carries that envelope by
+ * reference so replaying it needs no snapshot. The new message is a first run: the {@link Envelope#ATTEMPT} of the run that left
  * that envelope is dropped (D-066). It leaves its own snapshots, the first one its input ({@value #REPLAY_INPUT}), through a
- * {@link Trail} of its own: {@link #from} and {@link #retry} return once its step bodies are durable and its rows written.
+ * {@link Trail} of its own: {@link #from} and {@link #replayParked} return once its step bodies are durable and its rows written.
  * Built by {@link FlowBuilder#replay}.
  *
  * <p>A run is first checked — the step, the message's snapshot or DLQ row, that its input body is still stored, that body
@@ -114,9 +114,9 @@ public final class Replay {
         }
     }
 
-    /** {@link #retry(String, String)} as a new message whose id the runtime's generator mints. */
-    public Envelope retry(String messageId) {
-        return retry(messageId, ids::next);
+    /** {@link #replayParked(String, String)} as a new message whose id the runtime's generator mints. */
+    public Envelope replayParked(String messageId) {
+        return replayParked(messageId, ids::next);
     }
 
     /**
@@ -126,14 +126,14 @@ public final class Replay {
      * @throws ReplayRefusedException before anything ran (see the class comment for the order)
      * @throws IllegalStateException  for a replay built without a DLQ
      */
-    public Envelope retry(String messageId, String replayId) {
+    public Envelope replayParked(String messageId, String replayId) {
         Objects.requireNonNull(replayId, "replayId");
-        return retry(messageId, () -> replayId);
+        return replayParked(messageId, () -> replayId);
     }
 
-    private Envelope retry(String messageId, IdGenerator replayId) {
+    private Envelope replayParked(String messageId, IdGenerator replayId) {
         Objects.requireNonNull(messageId, "messageId");
-        if (dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' has no DLQ to retry from");
+        if (dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' has no DLQ to replay from");
         Optional<Parked> row = dlq.get(messageId).await();
         if (row.isEmpty()) throw refused(Reason.NO_DLQ_ROW, "no DLQ row for message '" + messageId + "'");
         Parked parked = row.get();
