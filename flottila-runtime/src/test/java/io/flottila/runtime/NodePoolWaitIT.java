@@ -2,6 +2,7 @@ package io.flottila.runtime;
 
 import io.flottila.components.http.HttpComponent;
 import io.flottila.core.flow.FlowWorker;
+import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
@@ -384,6 +385,253 @@ class NodePoolWaitIT {
             locker.query("rollback").execute().await();
             HttpResponse<String> waited = other.get(30, TimeUnit.SECONDS);
             assertEquals(200, waited.statusCode(), "the waiting read gets the connection the parks give back: " + waited.body());
+        }
+    }
+
+    // ---- FIX-172b: the transaction path's refusal (PgTx, PoolRefusedException) and the routes past a query -------------------
+
+    static final String BUSY = "the database pool is busy; retry";   // AdminServer's fixed refusal text (FIX-172)
+
+    /** WARNING records of {@link AdminServer}'s logger from now on: what a route that answered 500 failed with. */
+    List<LogRecord> adminWarnings() {
+        Logger log = Logger.getLogger(AdminServer.class.getName());
+        adminLog.add(log);   // a strong reference: JUL holds loggers weakly
+        List<LogRecord> seen = new CopyOnWriteArrayList<>();
+        Handler h = new Handler() {
+            @Override public void publish(LogRecord r) { if (r.getLevel().intValue() >= Level.WARNING.intValue()) seen.add(r); }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        h.setLevel(Level.ALL);
+        log.addHandler(h);
+        adminHandlers.add(h);
+        return seen;
+    }
+
+    final List<Logger> adminLog = new CopyOnWriteArrayList<>();
+    final List<Handler> adminHandlers = new CopyOnWriteArrayList<>();
+
+    @AfterEach
+    void removeTheAdminHandlers() {
+        for (Logger l : adminLog) for (Handler h : adminHandlers) l.removeHandler(h);
+    }
+
+    static String thrown(List<LogRecord> warnings) {
+        return warnings.stream().map(r -> r.getMessage() + " <- " + (r.getThrown() == null ? "no throwable"
+                : r.getThrown().getClass().getName() + ": " + r.getThrown().getMessage())).toList().toString();
+    }
+
+    /** A work row of an undeployed flow, keyless, marked lost (what an accepted loss writes, D-126): one a discard deletes. */
+    long lostRow(String id) {
+        return observer.preparedQuery("insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length, lost_at)"
+                + " values ($1, 'demo/gone', 1, null, $2, 1, 0, 10, now()) returning seq").execute(Tuple.of(id, NODE)).await().iterator().next().getLong(0);
+    }
+
+    HttpResponse<String> post(HttpClient client, int port, String path) throws Exception {
+        return NodeIT.send(client, "POST", port, path, new byte[0], "application/json");
+    }
+
+    static void assertBusy(HttpResponse<String> answer, String what) {
+        assertEquals(503, answer.statusCode(), what + ": a request the pool refused is retryable, 503: " + answer.body());
+        assertEquals(new JsonObject().put("error", BUSY), new JsonObject(answer.body()), what + ": the fixed refusal body");
+    }
+
+    /**
+     * FIX-172b A1 (P1, P2): {@code POST /admin/work/{seq}/discard} takes its connection for a transaction (PgWorkQueue's discard):
+     * under the work pool held by two parks and {@code FLOTTILA_PG_POOL_WAIT} PT0.2S its acquire is refused — 503 with the fixed
+     * text, never 500 — while the parks still hold the pool, and the lost row is still there, unaudited. After the release the same
+     * discard answers 200 {seq, auditId} and the row is gone. A 500 today names in its message what the route's log saw.
+     */
+    @Test
+    void aDiscardRefusedByTheWorkPoolAtItsTransactionAnswers503AndKeepsTheRow() throws Exception {
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = NodeIT.freePort();
+            Node node = startDeployed(client, inPort, env("FLOTTILA_PG_POOL_WAIT", "PT0.2S"));
+            long seq = lostRow("lost-1");
+            List<LogRecord> warnings = adminWarnings();
+
+            PgConnection locker = lock("dlq");
+            holdTheWorkPool(client, inPort);
+            HttpResponse<String> refused = post(client, node.adminPort(), "/admin/work/" + seq + "/discard");
+            assertEquals(503, refused.statusCode(), "a discard whose transaction the pool refused is retryable, 503, never 500: " + refused.body()
+                    + "; the admin log saw " + thrown(warnings));
+            assertBusy(refused, "the refused discard");
+            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
+            assertEquals(1, count("select count(*) from work where seq = $1 and lost_at is not null", seq), "the refused discard deleted nothing");
+            assertEquals(0, count("select count(*) from audit where action = 'work.discard'"), "and audited nothing");
+
+            locker.query("rollback").execute().await();
+            NodeIT.until(() -> count("select count(*) from dlq") == 2, "the parks go through once the lock is gone");
+            HttpResponse<String> discarded = post(client, node.adminPort(), "/admin/work/" + seq + "/discard");
+            assertEquals(200, discarded.statusCode(), "the same discard once the pool is free: " + discarded.body());
+            JsonObject body = new JsonObject(discarded.body());
+            assertEquals(seq, body.getLong("seq"), "it names the row: " + body);
+            assertEquals(0, count("select count(*) from work where seq = $1", seq), "the row is gone");
+            assertEquals(1, count("select count(*) from audit where action = 'work.discard' and subject = $1", "work/" + seq), "and audited once");
+        }
+    }
+
+    /**
+     * FIX-172b A2 (end to end): a replay under the work pool held by two parks, PT0.2S, answers 503 with the fixed text (the
+     * refusal of its message's reads), never a 502 FAILED; once the pool is free the same replay runs (an {@code outcome}).
+     * The refusal inside the run (P2 {@code ran()}) is pinned by {@code AdminServerReplayTest} (no staging of a refusal between
+     * the route's read and the run's own reads exists end to end).
+     */
+    @Test
+    void aReplayRefusedByTheWorkPoolAnswers503NotA502() throws Exception {
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = NodeIT.freePort();
+            Node node = startDeployed(client, inPort, env("FLOTTILA_PG_POOL_WAIT", "PT0.2S"));
+            String id = parkedWhileFree(client, inPort);
+            String path = "/admin/messages/" + id + "/replay?from=1";
+
+            PgConnection locker = lock("dlq");
+            holdTheWorkPool(client, inPort);
+            assertBusy(post(client, node.adminPort(), path), "a replay the pool refused");
+            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
+
+            locker.query("rollback").execute().await();
+            NodeIT.until(() -> count("select count(*) from dlq") == 3, "the parks go through once the lock is gone");
+            HttpResponse<String> ran = post(client, node.adminPort(), path);
+            assertTrue(ran.statusCode() != 503 && new JsonObject(ran.body()).containsKey("outcome"), "witness: the replay runs once the pool is free: "
+                    + ran.statusCode() + " " + ran.body());
+        }
+    }
+
+    /**
+     * FIX-172b A3 (pins FIX-172 for it): {@code POST /admin/dlq/{id}/retry} under the work pool held by two parks, PT0.2S, answers
+     * 503 with the fixed text while the parks hold the pool, its row kept; after the release the retry runs (an {@code outcome}).
+     */
+    @Test
+    void aDlqRetryRefusedByTheWorkPoolAnswers503() throws Exception {
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = NodeIT.freePort();
+            Node node = startDeployed(client, inPort, env("FLOTTILA_PG_POOL_WAIT", "PT0.2S"));
+            String id = parkedWhileFree(client, inPort);
+
+            PgConnection locker = lock("dlq");
+            holdTheWorkPool(client, inPort);
+            assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/retry"), "a DLQ retry the pool refused");
+            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
+
+            locker.query("rollback").execute().await();
+            NodeIT.until(() -> count("select count(*) from dlq") == 3, "the parks go through once the lock is gone");
+            assertEquals(1, count("select count(*) from dlq where id = $1", id), "the refused retry kept its row");
+            HttpResponse<String> retried = post(client, node.adminPort(), "/admin/dlq/" + id + "/retry");
+            assertTrue(retried.statusCode() != 503 && new JsonObject(retried.body()).containsKey("outcome"), "witness: the retry runs once the pool is free: "
+                    + retried.statusCode() + " " + retried.body());
+        }
+    }
+
+    /**
+     * FIX-172b A3: {@code PUT /admin/packages/demo} (the deployed package again) under the work pool held by two parks, PT0.2S,
+     * answers 503 with an {@code error} while the parks hold the pool — retryable, never 500; after the release the same deploy
+     * answers 200.
+     */
+    @Test
+    void aDeployRefusedByTheWorkPoolAnswers503() throws Exception {
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = NodeIT.freePort();
+            Node node = startDeployed(client, inPort, env("FLOTTILA_PG_POOL_WAIT", "PT0.2S"));
+            byte[] zip = NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + servers.getFirst().actualPort()));
+
+            PgConnection locker = lock("dlq");
+            holdTheWorkPool(client, inPort);
+            HttpResponse<String> refused = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            assertEquals(503, refused.statusCode(), "a deploy the pool refused is retryable, 503, never 500: " + refused.body());
+            String error = new JsonObject(refused.body()).getString("error");
+            assertTrue(error != null && !error.isBlank(), "an error body {error, ..}: " + refused.body());
+            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
+
+            locker.query("rollback").execute().await();
+            NodeIT.until(() -> count("select count(*) from dlq") == 2, "the parks go through once the lock is gone");
+            HttpResponse<String> deployed = NodeIT.send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip, "application/zip");
+            assertEquals(200, deployed.statusCode(), "witness: the same deploy once the pool is free: " + deployed.body());
+        }
+    }
+
+    /**
+     * FIX-172b F1 (D-133): {@code DELETE /admin/packages/demo} under the work pool held by two parks, PT0.2S, answers 503 with an
+     * {@code error} while the parks hold the pool — retryable, never 500 — and the package is still deployed: its record row stays
+     * and the listing names it. After the release the same undeploy answers 200 naming the package, and the row is gone.
+     */
+    @Test
+    void anUndeployRefusedByTheWorkPoolAnswers503AndKeepsThePackage() throws Exception {
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = NodeIT.freePort();
+            Node node = startDeployed(client, inPort, env("FLOTTILA_PG_POOL_WAIT", "PT0.2S"));
+            assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "fixture: demo is recorded");
+            List<LogRecord> warnings = adminWarnings();
+
+            PgConnection locker = lock("dlq");
+            holdTheWorkPool(client, inPort);
+            HttpResponse<String> refused = NodeIT.send(client, "DELETE", node.adminPort(), "/admin/packages/demo", new byte[0], "application/json");
+            assertEquals(503, refused.statusCode(), "an undeploy the pool refused is retryable, 503, never 500: " + refused.body()
+                    + "; the admin log saw " + thrown(warnings));
+            String error = new JsonObject(refused.body()).getString("error");
+            assertTrue(error != null && !error.isBlank(), "an error body {error, ..}: " + refused.body());
+            assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
+            assertEquals(1, count("select count(*) from deployments where package = 'demo'"), "the refused undeploy deleted no record");
+
+            locker.query("rollback").execute().await();
+            NodeIT.until(() -> count("select count(*) from dlq") == 2 && count("select count(*) from work") == 0,
+                    "the parks go through once the lock is gone, and the queue holds no item of the flow");
+            HttpResponse<String> listed = NodeIT.send(client, "GET", node.adminPort(), "/admin/packages", new byte[0], "application/json");
+            assertTrue(listed.statusCode() == 200 && new JsonObject(listed.body()).getJsonArray("items").stream()
+                    .anyMatch(p -> "demo".equals(((JsonObject) p).getString("name"))), "demo is still deployed after the refusal: " + listed.body());
+            HttpResponse<String> undeployed = NodeIT.send(client, "DELETE", node.adminPort(), "/admin/packages/demo", new byte[0], "application/json");
+            assertEquals(200, undeployed.statusCode(), "witness: the same undeploy once the pool is free: " + undeployed.body());
+            assertEquals("demo", new JsonObject(undeployed.body()).getString("name"), "it names the package: " + undeployed.body());
+            assertEquals(0, count("select count(*) from deployments where package = 'demo'"), "the record is deleted");
+        }
+    }
+
+    /**
+     * FIX-172b A5 (the intake pool's queue bound): {@code FLOTTILA_PG_POOL_QUEUE} 1, a wait of PT1M — a refusal can only be the
+     * queue's — and the intake pool's one connection held by a spill's segment row waiting on the locked
+     * {@code journal_segments}. Two more spills sent together each need a segment row of their own on the intake pool: one waits
+     * in the queue's one place, the other is refused at once, 503, well before the 5 s save timeout, while the first still waits.
+     * After the release the waiting one is saved (202) and nothing of the refused one is.
+     */
+    @Test
+    void aFullIntakeWaitQueueRefusesTheNextWaitingSaveAtOnce() throws Exception {
+        try (HttpClient client = NodeIT.http()) {
+            int inPort = NodeIT.freePort();
+            startDeployed(client, inPort, env("FLOTTILA_PG_POOL_SIZE", "2", "FLOTTILA_PG_POOL_WAIT", "PT1M", "FLOTTILA_PG_POOL_QUEUE", "1",
+                    "FLOTTILA_BLOB_MEMORY_TIER", "4096"));
+            HttpResponse<String> warm = client.send(post(inPort, NO_XML, "warm"), HttpResponse.BodyHandlers.ofString());
+            assertEquals(202, warm.statusCode(), "fixture: a save while the intake pool is free: " + warm.body());
+
+            PgConnection locker = lock("journal_segments");
+            byte[] spill = new byte[8192];
+            Arrays.fill(spill, (byte) 'x');
+            CompletableFuture<HttpResponse<String>> holder = client.sendAsync(post(inPort, spill, "holder"), HttpResponse.BodyHandlers.ofString());
+            NodeIT.until(() -> waitingOnALock(INTAKE) == 1, "fixture: the spill's segment row holds the intake pool's one connection, waiting on the lock");
+
+            long sent = System.nanoTime();
+            CompletableFuture<HttpResponse<String>> a = client.sendAsync(post(inPort, spill, "queued-a"), HttpResponse.BodyHandlers.ofString());
+            CompletableFuture<HttpResponse<String>> b = client.sendAsync(post(inPort, spill, "queued-b"), HttpResponse.BodyHandlers.ofString());
+            try {
+                CompletableFuture.anyOf(a, b).get(10, TimeUnit.SECONDS);
+            } catch (TimeoutException none) {
+                fail("with FLOTTILA_PG_POOL_QUEUE 1 the second of two saves waiting on the held intake pool is refused at once; neither answered within 10 s");
+            }
+            long millis = (System.nanoTime() - sent) / 1_000_000;
+            CompletableFuture<HttpResponse<String>> first = a.isDone() ? a : b;
+            CompletableFuture<HttpResponse<String>> other = first == a ? b : a;
+            HttpResponse<String> refused = first.get();
+            assertEquals(503, refused.statusCode(), "the save past the intake queue's one place is refused, retryable: " + refused.body());
+            assertTrue(millis < 2_500, "answered after " + millis + " ms: refused at once by the full queue, well before the 5 s save timeout");
+            assertFalse(other.isDone(), "the other save still waits in the queue's one place: " + (other.isDone() ? other.get().statusCode() + " " + other.get().body() : ""));
+            assertEquals(1, waitingOnALock(INTAKE), "the refusal came while the intake connection was still held");
+            String refusedId = refused.request().headers().firstValue("x-request-id").orElseThrow();
+
+            locker.query("rollback").execute().await();
+            holder.get(30, TimeUnit.SECONDS);
+            HttpResponse<String> waited = other.get(30, TimeUnit.SECONDS);
+            assertEquals(202, waited.statusCode(), "the waiting save gets the connection the holder gives back: " + waited.body());
+            assertEquals(1, count("select count(*) from messages where id = $1 and step = 0", id(waited)), "its ingress row is committed at the 202");
+            assertEquals(0, count("select count(*) from messages where headers->>'x-request-id' = $1", refusedId), "nothing of the refused save");
         }
     }
 }

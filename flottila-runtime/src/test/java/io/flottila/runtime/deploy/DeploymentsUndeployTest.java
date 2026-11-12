@@ -12,10 +12,13 @@ import io.flottila.runtime.deploy.DeployRefusedException.Kind;
 import io.flottila.runtime.deploy.DeploymentsDependenciesTest.Zipped;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.pg.PoolRefusedException;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.flottila.testkit.FakeRuntime;
+import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,6 +30,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,6 +55,7 @@ import static io.flottila.runtime.deploy.DeploymentsTest.within;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -849,6 +854,52 @@ class DeploymentsUndeployTest {
 
         node.queue.failHasItems(null);
         until(() -> node.queue.size() == 0, "audit's message finishes: " + node.queue.rows());
+        assertEquals(new UndeployResult("shop", "1.0.0", SHOP_FLOWS), node.undeploy("shop"), "witness: the queue answering, shop undeploys");
+    }
+
+    /**
+     * FIX-172b O3: the work queue's question refused by the node's Postgres pool — its wait elapsed (exactly VertxException), its
+     * queue full, a transaction's acquire refused — is {@link Kind#BUSY}, retryable, naming the flow and the cause, and changes
+     * nothing: no delete, the record, the listing and the flows as they were. A VertxException subclass is no pool refusal: the
+     * node's IOException, as before. The queue answering again, shop undeploys.
+     */
+    @Test
+    void aQueueQuestionThePoolRefusedIsBusyAndChangesNothing() throws Exception {
+        Node node = new Node("node-1");
+        node.deploy(queued());
+        List<String> dirs = children(node.packageDir("shop"));
+        List<DeploymentRecord> rows = records.rows();
+        List<DeployedPackage> listed = node.deployments.packages();
+        List<DeployedFlow> flows = node.deployments.flows();
+        Map<String, Throwable> refusals = new LinkedHashMap<>();
+        refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
+        refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
+        int mark = log.size();
+        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
+            int asked = node.queue.hasItemsCalls().size();
+            node.queue.failHasItems(r.getValue());
+            DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> node.undeploy("shop"), r.getKey() + ": the undeploy is refused");
+            assertEquals(Kind.BUSY, refused.kind(), r.getKey() + ": " + refused.getMessage());
+            assertTrue(node.queue.hasItemsCalls().size() > asked, r.getKey() + ": witness, the queue was asked: " + node.queue.hasItemsCalls());
+            assertTrue(refused.error().contains(r.getValue().getMessage()) && refused.error().contains("shop/"),
+                    r.getKey() + ": the refusal names the flow and the cause: " + refused.error());
+            assertEquals(List.of(), refused.problems(), r.getKey() + ": no problem lines");
+        }
+        VertxException closed = new VertxException("connection closed by the server") { };
+        node.queue.failHasItems(closed);
+        IOException failed = assertThrows(IOException.class, () -> node.undeploy("shop"), "a VertxException subclass is no pool refusal: the node's failure, as before");
+        assertSame(closed, failed.getCause(), "the IOException carries the queue's failure: " + failed);
+
+        List<String> sinceMark = List.copyOf(log);
+        assertEquals(List.of(), sinceMark.subList(mark, sinceMark.size()).stream().filter(e -> e.startsWith("delete ")).toList(), "no delete was called: " + log);
+        assertEquals(rows, records.rows(), "shop's record stays");
+        assertEquals(listed, node.deployments.packages(), "shop is listed as before");
+        assertEquals(flows, node.deployments.flows(), "its flows too");
+        for (String f : SHOP_FLOWS) assertFalse(node.doors.door(f).stopped(), f + "'s consumer is not stopped: " + node.doors.door(f).history());
+        assertEquals(dirs, children(node.packageDir("shop")), "its directory stays");
+
+        node.queue.failHasItems(null);
         assertEquals(new UndeployResult("shop", "1.0.0", SHOP_FLOWS), node.undeploy("shop"), "witness: the queue answering, shop undeploys");
     }
 

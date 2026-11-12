@@ -28,6 +28,9 @@ import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxException;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
+import io.flottila.runtime.pg.PoolRefusedException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
 import io.vertx.core.http.HttpClientResponse;
@@ -45,6 +48,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -875,5 +879,58 @@ class AdminServerReplayTest {
         assertEquals(ran, probe.total(), "no step ran");
         for (String run : List.of(id, retryId)) assertEquals(List.of(), messages.timeline(run).await(), "no row under " + run);
         assertTrue(dlq.get(parked.id()).await().isPresent(), "the retry keeps its row");
+    }
+
+    /**
+     * FIX-172b A2 (P2): a pool refusal inside the run — the run's own check of its input body refused a connection by the node's
+     * pool: its wait elapsed (exactly a {@link VertxException}), its queue was full ({@link ConnectionPoolTooBusyException}), or a
+     * transaction's acquire was refused ({@link PoolRefusedException}) — is retryable: 503 with the fixed refusal text, never
+     * 502 FAILED; nothing ran, no row under the run's id, and the retry keeps its DLQ row.
+     */
+    @Test
+    void aPoolRefusalInsideTheRunIs503AndNothingRan() throws Exception {
+        deploy(shop());
+        Envelope original = recorded("orders");
+        Envelope parked = parked("audit");
+        int ran = probe.total();
+        Map<String, Throwable> refusals = new LinkedHashMap<>();
+        refusals.put("the wait elapsed", new VertxException("Timeout", true));
+        refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        refusals.put("a transaction's acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
+        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
+            List<String> mintedBefore = List.copyOf(minted);
+            blobs.failExists(r.getValue());
+            Answer replayed = replay(original.id(), "2");
+            assertError(503, replayed, "a replay whose run was refused by the pool (" + r.getKey() + ")");
+            assertEquals("the database pool is busy; retry", replayed.json().getString("error"), r.getKey() + ": the fixed text, not the client's message");
+            Answer retried = retry(parked.id());
+            assertError(503, retried, "a retry whose run was refused by the pool (" + r.getKey() + ")");
+            assertEquals("the database pool is busy; retry", retried.json().getString("error"), r.getKey() + ": the fixed text, not the client's message");
+            assertEquals(ran, probe.total(), r.getKey() + ": no step ran");
+            assertNoRowsSince(mintedBefore, r.getKey());
+            assertTrue(dlq.get(parked.id()).await().isPresent(), r.getKey() + ": the retry keeps its row");
+        }
+        blobs.failExists(null);
+        assertComplete(replay(original.id(), "2"), original.id(), 2, "witness: the same replay once the store answers");
+    }
+
+    /**
+     * FIX-172b A2 (P2, structural): a failure that is no pool refusal stays the run's 502 FAILED — a subclass of
+     * {@link VertxException} (a closed connection, a server's error) and a refusal carried only as a cause are no refusal.
+     */
+    @Test
+    void aFailureInsideTheRunThatIsNoPoolRefusalStays502Failed() throws Exception {
+        deploy(shop());
+        Envelope original = recorded("orders");
+        Envelope parked = parked("audit");
+        Map<String, Throwable> failures = new LinkedHashMap<>();
+        failures.put("a VertxException subclass", new VertxException("connection closed by the server") { });
+        failures.put("a refusal as a cause", new IllegalStateException("store wrapper", new VertxException("Timeout", true)));
+        for (Map.Entry<String, Throwable> f : failures.entrySet()) {
+            blobs.failExists(f.getValue());
+            String message = f.getValue().getMessage();
+            assertFailed(replay(original.id(), "2"), original.id(), 2, "FAILED", message, "a replay whose check failed with " + f.getKey());
+            assertFailed(retry(parked.id()), parked.id(), 4, "FAILED", message, "a retry whose check failed with " + f.getKey());
+        }
     }
 }

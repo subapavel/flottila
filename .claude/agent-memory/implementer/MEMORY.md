@@ -6,7 +6,7 @@
 - `verify -Pit` needs Docker + native Postgres (die between calls: start detached, NOTES "Build and VM"; ~31 "find a Docker" errors = dockerd down).
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
 - `-q` prints no "Tests run:" lines: count `**/target/{surefire,failsafe}-reports/TEST-*.xml` RECURSIVELY (components/steps are
-  nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start.
+  nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start. `find .` also hits `agent/work/FIX-169-bench18-reports` (60 archived bench XMLs): exclude `./agent`.
 - A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
   `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:76, PgDeploymentStoreIT:100, BenchMainIT:36 (schema count); a new /admin JSON field → AdminServerWorkTest field-set pins; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
@@ -34,7 +34,7 @@
   Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.
 - Vert.x 5.1.10 pool acquire (javap, CORE-6b): idle conn on the CALLER's loop, else NEW below max, else any idle; vthread = fresh context. Refusals
   (FIX-172): queue full `ConnectionPoolTooBusyException`; wait elapsed on pool.query = plain `VertxException("Timeout waiting for connection")` (same class as
-  "Pool closed"), on getConnection `NoStackTraceThrowable("Timeout")`: only the message tells. The wait covers the connect: a cold JVM's first node start takes 140-380 ms.
+  "Pool closed"), on getConnection `NoStackTraceThrowable("Timeout")` (a VertxException subclass); since FIX-172b every store tx goes through `pg.PgTx` (PoolRefusedException).
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
 - vertx-sql-client 5.1.10 (javap -c Pool): `Pool`, `SqlConnection` extend `SqlClient`; `withTransaction(fn)` = getConnection → begin →

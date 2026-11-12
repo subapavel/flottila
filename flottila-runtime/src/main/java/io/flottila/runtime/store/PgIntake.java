@@ -14,6 +14,7 @@ import io.flottila.core.record.Snapshot;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.journal.JournalRef;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.runtime.pg.PgTx;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -374,7 +375,7 @@ public final class PgIntake implements Intake {
     private Future<Void> group(List<Member> taken) {
         List<Member> undropped = undropped(taken);
         if (undropped.isEmpty()) return Future.succeededFuture();
-        return pool.getConnection().transform(got -> {
+        return PgTx.acquire(pool).transform(got -> {   // a refused acquire: a PoolRefusedException, a retryable Nack as any failed save
             if (got.failed()) return failed(undropped, got.cause());
             SqlConnection conn = got.result();
             Group g = new Group(undropped(undropped));

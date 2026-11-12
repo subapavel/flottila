@@ -1,4 +1,15 @@
 
+## 2026-11-12 — FIX-172b a typed pool refusal on the transaction path (D-133, amends D-132) — done, review PASS (r3)
+Test first: PgTxTest (9), NodePoolWaitIT discard/replay/retry/deploy/intake-queue/undeploy, AdminServerReplayTest :891/:922,
+NodeConfigPoolWaitTest :188, DeploymentsRecordTest delete-refused (red FIX-172b-red-*.log, -r2-red-*.log; NoStackTraceThrowable observed)
+Change: io.flottila.runtime.pg.PgTx.inTransaction / acquire: a failed acquire is PoolRefusedException (by where it failed); every store
+transaction and the intake's acquire go through it; PgTx.refusedByThePool (exact types) in run(), ran() (replay/retry run 503), deploy
+record write, undeploy queue question and record delete (Kind BUSY → 503, the refusal's own line); queue env refusal names 1..65536
+Checks: verify -Pit 3756/0/0/0 fresh XML, NodePoolWaitIT 10/0, bench 255/0, coverage no decrease VERIFIED_PASS; M1–M18b killed, M11 equivalent
+Found: no DLQ discard route exists, DLQ/deploy reads were already 503 — FIX-172's route list was wrong, docs now enumerate routes
+Residual → FIX-172c: a deploy's own work-queue question still 500. Not done: the replay 503 body keeps no replay id
+Review: r1 FAIL (undeploy 500, DLQ-retry row-removal exception, PgTx begin/rollback cases, D-132 marker), r2 FAIL (javadoc), r3 PASS
+
 ## 2026-11-11 — FIX-172 finite wait and queue for a pooled Postgres connection (CORE-17 O2, D-132) — done, review PASS (r2)
 Test first: NodeConfigPoolWaitTest (17), NodePoolWaitIT A2 intake 503 within the wait, A3 admin read 503, A4 claim survives, A5 queue
 (red FIX-172-red-config.log, -red-it.log, -r2-red.log); AdminServerTest:1013 by the implementer, approved (only kill of exact-class)

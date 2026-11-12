@@ -6,7 +6,7 @@ import java.util.Objects;
 /**
  * Why {@link Deployments#deploy} refused a package (D-059), or {@link Deployments#undeploy} an undeploy (D-095): its {@link Kind} — the admin API answers each with its own status —
  * the error line, and for {@link Kind#INVALID} every problem found, one line each, none with an absolute path; for a redeploy that
- * did not start and rolled back ({@link Kind#FAILED}, D-063) every flow that did not start, build or start again.
+ * did not start and rolled back ({@link Kind#FAILED}, D-063; {@link Kind#BUSY}, D-133) every flow that did not start, build or start again.
  *
  * @since 0.1
  */
@@ -25,6 +25,12 @@ public final class DeployRefusedException extends Exception {
         CONFLICT,
         /** The node is closing (503). */
         STOPPING,
+        /**
+         * The node's Postgres pool refused a connection (503, D-133), retryable: to the deploy record's write — otherwise as
+         * {@link #FAILED} for a record not written, a first deploy's flows stopped, a redeploy rolled back — or to an undeploy's
+         * work-queue question or record delete, which then changed nothing.
+         */
+        BUSY,
         /**
          * A flow did not start (500): every flow the deploy built was stopped again; on a redeploy the flows it replaced or removed
          * run again from the directories they ran from, or are listed FAILED (D-063).
@@ -53,6 +59,6 @@ public final class DeployRefusedException extends Exception {
     /** The error line. */
     public String error() { return error; }
 
-    /** Every problem of an {@link Kind#INVALID} package, or of a {@link Kind#FAILED} redeploy, one line each; otherwise empty. */
+    /** Every problem of an {@link Kind#INVALID} package, or of a {@link Kind#FAILED} or {@link Kind#BUSY} redeploy, one line each; otherwise empty. */
     public List<String> problems() { return problems; }
 }

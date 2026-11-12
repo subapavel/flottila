@@ -1,6 +1,7 @@
 package io.flottila.runtime.batch;
 
 import io.flottila.core.batch.BatchSink;
+import io.flottila.runtime.pg.PgTx;
 import io.vertx.core.Future;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.SqlClient;
@@ -47,7 +48,7 @@ public final class PgBatchSink<T> implements BatchSink<T> {
 
     @Override public Future<Void> write(List<T> batch) {
         if (batch.isEmpty()) return Future.succeededFuture();
-        return pool.withTransaction(conn -> run(conn, batch, 0));
+        return PgTx.inTransaction(pool, conn -> run(conn, batch, 0));
     }
 
     /**

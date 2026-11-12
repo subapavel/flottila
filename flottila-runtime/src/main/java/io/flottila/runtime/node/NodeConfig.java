@@ -622,7 +622,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
                 env.getOrDefault("FLOTTILA_PG_DATABASE", "flottila"), env.getOrDefault("FLOTTILA_PG_USER", "flottila"),
                 env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), poolSize, sslMode(env, pgHost), sslRootCert(env),
                 durability(env, deployed(name)), intakePoolSize, duration(env, "FLOTTILA_PG_POOL_WAIT", Pg.POOL_WAIT_DEFAULT),
-                (int) number(env, "FLOTTILA_PG_POOL_QUEUE", Pg.POOL_QUEUE_DEFAULT, Integer.MIN_VALUE, Integer.MAX_VALUE));   // ranges: the constructor
+                (int) number(env, "FLOTTILA_PG_POOL_QUEUE", Pg.POOL_QUEUE_DEFAULT, 1, POOL_QUEUE_MAX));   // the constructor checks the range too (an in-process Pg)
         long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, MEMORY_TIER_MIN, Integer.MAX_VALUE);
         long memoryBudget = number(env, "FLOTTILA_BLOB_MEMORY_BUDGET", 256 * MIB, 1, Long.MAX_VALUE);
         if (memoryTier > memoryBudget) {

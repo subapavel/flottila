@@ -10,6 +10,7 @@ import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.Page;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.journal.JournalRef;
+import io.flottila.runtime.pg.PgTx;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.sqlclient.Pool;
@@ -339,7 +340,7 @@ public final class PgWorkQueue implements WorkQueue {
     /** {@code workerId} null: a plain row. A keyed row is written in a transaction of its own under its key's lock ({@link #lockKeys}). */
     @Override public Future<Optional<Item>> enqueueLeased(String messageId, String flow, int step, String partitionKey, String workerId, Duration lease) {
         if (partitionKey == null) return enqueue(pool, messageId, flow, step, null, workerId, lease);
-        return pool.withTransaction(tx -> {
+        return PgTx.inTransaction(pool, tx -> {
             Future<Void> locked = lockKeys(tx, List.of(Map.entry(flow, partitionKey)));   // sent before the insert: one round trip
             Future<Optional<Item>> inserted = enqueue(tx, messageId, flow, step, partitionKey, workerId, lease);
             return locked.compose(held -> inserted);
@@ -538,7 +539,7 @@ public final class PgWorkQueue implements WorkQueue {
     /** One transaction: the guarded delete, then — only when it removed the row and the row had a key — the next-of-key claim. */
     @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
         if (lease.isNegative()) return Future.failedFuture(new IllegalArgumentException("negative lease: " + lease));
-        return pool.withTransaction(conn -> conn.preparedQuery(COMPLETE).execute(Tuple.of(seq, attempts)).compose(deleted -> {
+        return PgTx.inTransaction(pool, conn -> conn.preparedQuery(COMPLETE).execute(Tuple.of(seq, attempts)).compose(deleted -> {
             if (deleted.rowCount() == 0) return Future.succeededFuture(Completion.STALE);   // not the holder's: nothing taken either
             Row done = deleted.iterator().next();
             completed(done);
@@ -588,7 +589,7 @@ public final class PgWorkQueue implements WorkQueue {
      * statement, so nothing is deleted. Nothing lost under {@code seq}: the transaction commits empty and nothing is audited.
      */
     @Override public Future<Optional<Discarded>> discard(long seq, String actor, String remote) {
-        return pool.withTransaction(tx -> Future.succeededFuture().compose(start -> tx.preparedQuery(DISCARD).execute(Tuple.of(seq, actor, remote))).compose(rows -> {
+        return PgTx.inTransaction(pool, tx -> Future.succeededFuture().compose(start -> tx.preparedQuery(DISCARD).execute(Tuple.of(seq, actor, remote))).compose(rows -> {
             if (rows.rowCount() == 0) return Future.succeededFuture(Optional.<Discarded>empty());
             Row audited = rows.iterator().next();
             long auditId = audited.getLong("id");

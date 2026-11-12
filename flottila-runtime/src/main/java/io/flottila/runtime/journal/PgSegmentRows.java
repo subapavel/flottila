@@ -1,5 +1,6 @@
 package io.flottila.runtime.journal;
 
+import io.flottila.runtime.pg.PgTx;
 import io.vertx.core.Future;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.Row;
@@ -154,7 +155,7 @@ public final class PgSegmentRows implements SegmentRows {
         for (Pin p : pins) since.put(p.segment(), ends.getOrDefault(p.segment(), 0L));
         Tuple extents = Tuple.tuple().addString(node).addArrayOfLong(since.keySet().toArray(Long[]::new))
                 .addArrayOfLong(since.values().toArray(Long[]::new));
-        return pool.withTransaction(tx -> Future.succeededFuture()   // a chain from a completed future: a throw in it rolls back
+        return PgTx.inTransaction(pool, tx -> Future.succeededFuture()   // a chain from a completed future: a throw in it rolls back
                 .compose(v -> tx.preparedQuery(LOCK_REFS).execute(extents))
                 .compose(v -> tx.preparedQuery(LOCK_WORK).execute(extents))
                 .compose(v -> tx.preparedQuery(LOSE_WORK).execute(extents))
@@ -180,7 +181,7 @@ public final class PgSegmentRows implements SegmentRows {
     @Override
     public Future<Set<Long>> sweep(String node, Set<Long> candidates, Instant keptSince) {
         Object kept = keptSince.atOffset(ZoneOffset.UTC);
-        return pool.withTransaction(tx -> Future.succeededFuture()   // a chain from a completed future: a throw in it rolls back
+        return PgTx.inTransaction(pool, tx -> Future.succeededFuture()   // a chain from a completed future: a throw in it rolls back
                 .compose(v -> tx.preparedQuery(LOCK_UNPINNED).execute(Tuple.tuple().addString(node).addArrayOfLong(candidates.toArray(Long[]::new)).addValue(kept)))
                 .compose(locked -> {
                     List<Long> held = new ArrayList<>();

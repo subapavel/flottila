@@ -23,10 +23,10 @@ final class Ledger implements DeploymentStore {
     private final List<DeploymentRecord> saves = new CopyOnWriteArrayList<>();
     private final List<Hold> holds = new CopyOnWriteArrayList<>();
     private final Consumer<String> trace;
-    private volatile String failNext;
+    private volatile Throwable failNext;
     private volatile Hold holdNext;
     private final List<String> deletes = new CopyOnWriteArrayList<>();
-    private volatile String failNextDelete;
+    private volatile Throwable failNextDelete;
     private volatile Hold holdNextDelete;
 
     Ledger(Consumer<String> trace) {
@@ -47,7 +47,12 @@ final class Ledger implements DeploymentStore {
 
     /** The next save fails with an {@link IllegalStateException} carrying {@code message}, and writes nothing. */
     void failNextSave(String message) {
-        failNext = Objects.requireNonNull(message, "message");
+        failNextSave(new IllegalStateException(Objects.requireNonNull(message, "message")));
+    }
+
+    /** The next save fails with {@code failure} itself (FIX-172b: a pool's refusal), and writes nothing. */
+    void failNextSave(Throwable failure) {
+        failNext = Objects.requireNonNull(failure, "failure");
     }
 
     /** The next save waits for the hold; released, it writes and succeeds. */
@@ -60,7 +65,12 @@ final class Ledger implements DeploymentStore {
 
     /** The next delete fails with an {@link IllegalStateException} carrying {@code message}, and deletes nothing. */
     void failNextDelete(String message) {
-        failNextDelete = Objects.requireNonNull(message, "message");
+        failNextDelete(new IllegalStateException(Objects.requireNonNull(message, "message")));
+    }
+
+    /** The next delete fails with {@code failure} itself (FIX-172b F1: a pool's refusal), and deletes nothing. */
+    void failNextDelete(Throwable failure) {
+        failNextDelete = Objects.requireNonNull(failure, "failure");
     }
 
     /** The next delete waits for the hold; released, it deletes and succeeds. */
@@ -95,9 +105,9 @@ final class Ledger implements DeploymentStore {
     public Future<Void> save(DeploymentRecord record) {
         saves.add(record);
         trace.accept("save " + record.name() + " " + record.version());
-        String failure = failNext;
+        Throwable failure = failNext;
         failNext = null;
-        if (failure != null) return Future.failedFuture(new IllegalStateException(failure));
+        if (failure != null) return Future.failedFuture(failure);
         Hold held = holdNext;
         holdNext = null;
         if (held == null) return rows.save(record);
@@ -109,9 +119,9 @@ final class Ledger implements DeploymentStore {
     public Future<Void> delete(String name) {
         deletes.add(name);
         trace.accept("delete " + name);
-        String failure = failNextDelete;
+        Throwable failure = failNextDelete;
         failNextDelete = null;
-        if (failure != null) return Future.failedFuture(new IllegalStateException(failure));
+        if (failure != null) return Future.failedFuture(failure);
         Hold held = holdNextDelete;
         holdNextDelete = null;
         if (held == null) return rows.delete(name);

@@ -178,4 +178,21 @@ class NodeConfigPoolWaitTest {
                     c.getKey() + ": carried as given");
         }));
     }
+
+    /**
+     * FIX-172b A6 (P5): a {@code FLOTTILA_PG_POOL_QUEUE} outside 1..65536 read from the environment is refused with a message
+     * naming the key, the value given and the range 1..65536 — above the int range (2147483648, -2147483649) as well as within
+     * it (65537, 0, -1) — never the int range it was parsed in.
+     */
+    @Test
+    void anEnvQueueOutsideItsRangeIsRefusedNamingTheRange1To65536() {
+        java.util.regex.Pattern range = java.util.regex.Pattern.compile("(?<![\\d-])1\\D{1,12}65536(?!\\d)");
+        assertAll(List.of("2147483648", "-2147483649", "65537", "0", "-1").stream().map(raw -> () -> {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> read(QUEUE, raw), QUEUE + "=" + raw + " is refused");
+            String m = e.getMessage();
+            assertTrue(m.contains(QUEUE) && m.contains(raw), QUEUE + "=" + raw + ": the refusal names the key and the value: " + m);
+            assertTrue(range.matcher(m).find(), QUEUE + "=" + raw + ": the refusal names the range 1..65536: " + m);
+            assertTrue(!m.contains("2147483647"), QUEUE + "=" + raw + ": not the int range it was parsed in: " + m);
+        }));
+    }
 }

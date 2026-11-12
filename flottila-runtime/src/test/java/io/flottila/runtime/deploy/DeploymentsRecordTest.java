@@ -8,8 +8,11 @@ import io.flottila.core.record.InMemoryMessageStore;
 import io.flottila.runtime.deploy.DeployRefusedException.Kind;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.pg.PoolRefusedException;
 import io.flottila.testkit.FakeRuntime;
+import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +25,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,6 +46,8 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -363,6 +369,97 @@ class DeploymentsRecordTest {
         assertEquals(rowsBefore, records.rows(), "the row is v1's");
         assertEquals(List.of(sha1), children(shopDir()), "v2's directory is deleted, v1's stays");
         assertArrayEquals(zip2, shelf.bytes(sha2), "v2's object stays (orphans are kept)");
+    }
+
+    /**
+     * FIX-172b O1 (D-133): a record write the node's Postgres pool refused — its wait elapsed (exactly a {@link VertxException}),
+     * its queue full ({@link ConnectionPoolTooBusyException}), a transaction's acquire refused ({@link PoolRefusedException}) — is
+     * {@link Kind#BUSY}, retryable, on a first deploy (nothing listed, no row) and on a redeploy (rolled back: the problem line
+     * names the cause, v1 listed and recorded as before). A {@link VertxException} subclass is no pool refusal: {@link Kind#FAILED}.
+     */
+    @Test
+    void aRecordWriteThePoolRefusedIsBusyOnAFirstDeployAndARedeploy() throws Exception {
+        Map<String, Throwable> refusals = new LinkedHashMap<>();
+        refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
+        refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
+        byte[] zip1 = shop("1.0.0", "v1").zip();
+        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
+            records.failNextSave(r.getValue());
+            DeployRefusedException first = refused(zip1, "r1");
+            assertEquals(Kind.BUSY, first.kind(), r.getKey() + ", a first deploy: " + first.getMessage());
+            assertTrue(first.error().contains(r.getValue().getMessage()), r.getKey() + ": the refusal names the cause: " + first.error());
+            assertEquals(List.of(), deployments.packages(), r.getKey() + ": nothing is listed");
+            assertEquals(List.of(), records.rows(), r.getKey() + ": no row");
+        }
+        records.failNextSave(new VertxException("connection closed by the server") { });
+        assertEquals(Kind.FAILED, refused(zip1, "r1").kind(), "a VertxException subclass is no pool refusal, a first deploy");
+
+        deploy(zip1, "r1");
+        List<DeploymentRecord> rowsBefore = records.rows();
+        List<DeployedPackage> packagesBefore = deployments.packages();
+        byte[] zip2 = shop("2.0.0", "v2").zip();
+        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
+            records.failNextSave(r.getValue());
+            DeployRefusedException second = refused(zip2, "r2");
+            assertEquals(Kind.BUSY, second.kind(), r.getKey() + ", a redeploy: " + second.getMessage());
+            assertTrue(second.error().contains("was not recorded"), r.getKey() + ": the rollback's error line: " + second.error());
+            assertProblem(second, "the deploy record was not written: ", r.getValue().getMessage());
+            assertEquals(packagesBefore, deployments.packages(), r.getKey() + ": the package listed is v1's");
+            assertEquals(rowsBefore, records.rows(), r.getKey() + ": the row is v1's");
+        }
+        records.failNextSave(new VertxException("connection closed by the server") { });
+        assertEquals(Kind.FAILED, refused(zip2, "r2").kind(), "a VertxException subclass is no pool refusal, a redeploy");
+        assertEquals(packagesBefore, deployments.packages(), "the package listed is still v1's");
+    }
+
+    /**
+     * FIX-172b F1 (D-133): an undeploy whose record delete the node's Postgres pool refused — its wait elapsed (exactly a
+     * {@link VertxException}), its queue full ({@link ConnectionPoolTooBusyException}), a transaction's acquire refused
+     * ({@link PoolRefusedException}) — is {@link Kind#BUSY}, retryable, and changes nothing: the row stays, the package and its
+     * flows stay listed, no flow is stopped. A {@link VertxException} subclass is no pool refusal: it stays the node's
+     * {@link IOException} (500) carrying the delete's failure, as before FIX-172b. Then an undeploy whose delete works undeploys.
+     */
+    @Test
+    void aRecordDeleteThePoolRefusedIsBusyAndChangesNothing() throws Exception {
+        Map<String, Throwable> refusals = new LinkedHashMap<>();
+        refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
+        refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
+        deploy(shop("1.0.0", "v1").zip(), "r1");
+        List<DeploymentRecord> rowsBefore = records.rows();
+        assertEquals(List.of("shop"), rowsBefore.stream().map(DeploymentRecord::name).toList(), "fixture: shop is recorded");
+        List<DeployedPackage> packagesBefore = deployments.packages();
+        List<DeployedFlow> flowsBefore = deployments.flows();
+        Doors.Door a = doors.door("shop/a");
+        Doors.Door b = doors.door("shop/b");
+        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
+            int deletesBefore = records.deletes().size();
+            records.failNextDelete(r.getValue());
+            DeployRefusedException refused = assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.undeploy("shop")),
+                    r.getKey() + ": the undeploy is refused");
+            assertEquals(Kind.BUSY, refused.kind(), r.getKey() + ": " + refused.getMessage());
+            assertEquals(deletesBefore + 1, records.deletes().size(), r.getKey() + ": witness, the refusal came from the delete: " + records.deletes());
+            assertTrue(refused.error().contains(r.getValue().getMessage()), r.getKey() + ": the refusal names the cause: " + refused.error());
+            assertEquals(rowsBefore, records.rows(), r.getKey() + ": the row stays");
+            assertEquals(packagesBefore, deployments.packages(), r.getKey() + ": shop is listed as before");
+            assertEquals(flowsBefore, deployments.flows(), r.getKey() + ": its flows too");
+            assertFalse(a.stopped() || b.stopped(), r.getKey() + ": no flow was stopped: " + a.history() + " / " + b.history());
+        }
+        VertxException closed = new VertxException("connection closed by the server") { };
+        records.failNextDelete(closed);
+        IOException failed = assertThrows(IOException.class, () -> OnVirtualThread.call(() -> deployments.undeploy("shop")),
+                "a VertxException subclass is no pool refusal: the node's failure, as before");
+        assertSame(closed, failed.getCause(), "the IOException carries the delete's failure: " + failed);
+        assertEquals(rowsBefore, records.rows(), "the row stays after the subclass's failure");
+        assertEquals(packagesBefore, deployments.packages(), "shop is still listed");
+
+        UndeployResult undeployed = OnVirtualThread.call(() -> deployments.undeploy("shop"));
+        assertEquals("shop", undeployed.name(), "witness: the next undeploy, whose delete works, undeploys");
+        assertEquals("1.0.0", undeployed.version());
+        assertEquals(Set.of("shop/a", "shop/b"), Set.copyOf(undeployed.flowsRemoved()));
+        assertEquals(List.of(), records.rows(), "its row is deleted");
+        assertEquals(List.of(), deployments.packages(), "nothing is listed");
     }
 
     @Test

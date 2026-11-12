@@ -1,6 +1,7 @@
 package io.flottila.runtime.store;
 
 import io.flottila.api.Timer;
+import io.flottila.runtime.pg.PgTx;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -390,7 +391,7 @@ public final class Retention {
         Outcome outcome;
         try {
             outcome = phases(cutoff, tally);
-        } catch (Exception failed) {   // a failed batch: withTransaction rolled it back, unless its commit is what failed
+        } catch (Exception failed) {   // a failed batch: the transaction rolled it back, unless its commit is what failed
             LOG.log(System.Logger.Level.WARNING, "a retention batch failed; the run ends FAILED, the next comes on schedule (cutoff "
                     + cutoff + ")", failed);
             outcome = Outcome.FAILED;
@@ -431,7 +432,7 @@ public final class Retention {
     private Batch batch(Phase phase, OffsetDateTime cutoff, List<Object> cursor) {
         Tuple params = Tuple.tuple().addValue(cutoff).addValue((long) config.batch());
         cursor.forEach(params::addValue);
-        return pool.withTransaction((SqlConnection tx) -> tx.preparedQuery(LOCK).execute(Tuple.of(LOCK_KEY))
+        return PgTx.inTransaction(pool, (SqlConnection tx) -> tx.preparedQuery(LOCK).execute(Tuple.of(LOCK_KEY))
                 .compose(lock -> lock.iterator().next().getBoolean(0)
                         ? phase.run(tx, params, cursor.size())
                         : Future.failedFuture(new Taken())))

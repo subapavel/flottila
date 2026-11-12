@@ -30,6 +30,7 @@ import io.flottila.runtime.deploy.DeployRefusedException.Kind;
 import io.flottila.runtime.lease.InMemoryPollerLeases;
 import io.flottila.runtime.lease.PollerLeases;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.runtime.pg.PgTx;
 import io.flottila.schemas.Package;
 import io.flottila.schemas.Schemas;
 import io.vertx.core.Future;
@@ -119,7 +120,8 @@ import java.util.stream.Stream;
  * left are a WARNING naming it, never a delay of the answer. Then the deploy saves its {@link DeploymentRecord} (name, version,
  * revision, archive SHA-256, the package's {@code deployedAt} and the pins of its dependencies, D-087) and waits for it: the commit point (D-070). A save that fails
  * refuses a first deploy ({@link Kind#FAILED} "the deploy record was not written: &lt;cause&gt;", the cleanup below) and rolls a
- * redeploy back as a failed start does (below), with that line as its first problem. Only once the record is written is the
+ * redeploy back as a failed start does (below), with that line as its first problem; when the node's Postgres pool refused the
+ * save a connection ({@link PgTx#refusedByThePool}) the refusal is {@link Kind#BUSY} instead, retryable (D-133). Only once the record is written is the
  * listing replaced, and {@code packages/<name>/} is pruned to the current directory, the previous one (the last other archive the package ran: a deploy of the running archive
  * keeps it), every one a running flow was built from — the directories this node keeps — and every one a record pins (D-087: a
  * package's record, FAILED ones included, or during a restore any row read); one that cannot be deleted is a WARNING.
@@ -136,7 +138,7 @@ import java.util.stream.Stream;
  * that start completes, maybe after the old flow started again: FIX-43); then every changed and removed flow is built again from
  * the directory it was built from, with its stamps, and started through the same phase B; one that does not build or start again is
  * {@link DeployedFlow.State#FAILED}: listed, with nothing of it running. The refusal (500) is "version X did not start; Y runs
- * again" ("was not recorded" for a failed save; "; flows [..] FAILED" when the package lists FAILED flows) with a problem line
+ * again" ("was not recorded" for a failed save, 503 when the pool refused it; "; flows [..] FAILED" when the package lists FAILED flows) with a problem line
  * per flow that did not start, build or start again; the package's listing and record are unchanged. An Error a component or a step factory throws in the rollback breaks it off:
  * what it built is stopped as below, every flow phase A stopped is listed FAILED, and the Error is a problem line and is added to
  * the refusal as suppressed.
@@ -162,7 +164,9 @@ import java.util.stream.Stream;
  * not list ({@link Kind#NOT_FOUND}); a package another listed package's record pins, a FAILED one included
  * ({@link Kind#CONFLICT} "&lt;name&gt;@&lt;version&gt; is in use by &lt;a&gt;, &lt;b&gt;", the dependents sorted); a running
  * at-least-once flow of it whose items the work queue holds ({@link Kind#CONFLICT}, a line per such flow: they would never run;
- * a queue that cannot answer is the node's {@link IOException}). Then, under the lock, its record is deleted: the commit point. A delete that fails is the node's {@link IOException} and changes nothing else.
+ * a queue that cannot answer is the node's {@link IOException}, a question the node's Postgres pool refused a connection
+ * ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable, D-133). Then, under the lock, its record is deleted: the commit point. A delete
+ * that fails is the node's {@link IOException}, one the pool refused {@link Kind#BUSY}; either changes nothing else.
  * Then every flow of it that runs stops and closes as phase A stops a flow (a stop that fails is a WARNING and counts as settled;
  * an at-least-once one is asked for queue items again once its worker drained, items that arrived meanwhile a WARNING),
  * the listing drops it, and {@code packages/<name>/} is pruned of every directory no remaining record pins and no remaining flow
@@ -518,7 +522,8 @@ public final class Deployments {
      *
      * @return the package undeployed, the version it was listed with and its flows, by qualified id
      * @throws DeployRefusedException what the admin API answers with its own status
-     * @throws IOException the package's record could not be deleted: the node's failure, and nothing else changed
+     * @throws IOException the package's record could not be deleted, or the work queue could not answer: the node's failure, and
+     *         nothing else changed
      */
     public UndeployResult undeploy(String name) throws DeployRefusedException, IOException {
         if (!NAME.matcher(name).matches()) throw badName(name);
@@ -537,7 +542,9 @@ public final class Deployments {
             Future<Void> deleted = Future.future(done -> records.delete(name).onComplete(done));
             deleted.otherwiseEmpty().await();
             if (deleted.failed()) {
-                throw new IOException("the deploy record of package '" + name + "' was not deleted: " + reason(deleted.cause()), deleted.cause());
+                String undeleted = "the deploy record of package '" + name + "' was not deleted: " + reason(deleted.cause());
+                if (PgTx.refusedByThePool(deleted.cause())) throw refused(Kind.BUSY, undeleted);   // retryable, nothing changed (D-133)
+                throw new IOException(undeleted, deleted.cause());
             }
             try {
                 retire(running, leaving, "its package was undeployed; the undeploy goes on");
@@ -860,7 +867,7 @@ public final class Deployments {
             List<Start> failed = started.stream().filter(s -> s.failure() != null).toList();
             if (!failed.isEmpty()) {
                 if (restoring == null && running == null) throw refused(Kind.FAILED, problem(failed.getFirst(), "did not start"));   // a first deploy: the cleanup stops them all
-                if (restoring == null) throw rollBack(version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
+                if (restoring == null) throw rollBack(Kind.FAILED, version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
                 unstarted(name, failed, now);   // a restore: those are listed FAILED, the others run
             }
             if (restoring == null) {   // a restore writes no record: it installs the one it read
@@ -869,8 +876,9 @@ public final class Deployments {
                 saved.otherwiseEmpty().await();
                 if (saved.failed()) {
                     String unrecorded = "the deploy record was not written: " + reason(saved.cause());
-                    if (running == null) throw refused(Kind.FAILED, unrecorded);   // a first deploy: the cleanup stops the flows that started
-                    throw rollBack(version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
+                    Kind unwritten = PgTx.refusedByThePool(saved.cause()) ? Kind.BUSY : Kind.FAILED;   // a pool refusal is retryable (D-133)
+                    if (running == null) throw refused(unwritten, unrecorded);   // a first deploy: the cleanup stops the flows that started
+                    throw rollBack(unwritten, version, "was not recorded", List.of(unrecorded), running, retiring, started, packageDir, built, again);
                 }
             }
             String previous = null;   // the directory of the last other archive the package ran: none on a first deploy
@@ -927,7 +935,7 @@ public final class Deployments {
      * {@code again} — the one object of each, so a later stop stops each consumer once — and {@link #afterFailure} lists every
      * other retired flow {@link DeployedFlow.State#FAILED}. An unchecked failure that breaks the rollback off (an Error a component
      * or a step factory throws) leaves {@code again} empty — every retired flow FAILED — and what {@code built} holds to the
-     * cleanup of {@link #install}, which stops it; it is a problem line and added as suppressed. The refusal is {@link Kind#FAILED}:
+     * cleanup of {@link #install}, which stops it; it is a problem line and added as suppressed. The refusal is of {@code kind}:
      * "version {@code version} &lt;why&gt;; &lt;running version&gt; runs again", with "; flows [..] FAILED" naming every flow
      * the package lists FAILED after it (a retired one {@link #afterFailure} lists FAILED, or one FAILED before the deploy), the
      * {@code causes} first among its problems, then a problem line per flow that did not start, build or start again, and each
@@ -935,7 +943,7 @@ public final class Deployments {
      * holds what a throw would leave to stop wherever one can happen: discard never throws, so a list it stopped is cleared before
      * anything that may throw runs.
      */
-    private DeployRefusedException rollBack(String version, String why, List<String> causes, Deployed running, List<Flow> retired, List<Start> phaseB,
+    private DeployRefusedException rollBack(Kind kind, String version, String why, List<String> causes, Deployed running, List<Flow> retired, List<Start> phaseB,
                                             Path packageDir, List<Flow> built, List<Flow> again) {
         List<String> problems = new ArrayList<>(causes);
         List<Flow> started = new ArrayList<>();
@@ -985,7 +993,7 @@ public final class Deployments {
             unstopped.add(broke);
         }
         List<String> failed = afterFailure(running, retired, again).flows().stream().filter(f -> !f.runs()).map(Flow::id).sorted().toList();
-        DeployRefusedException refusal = new DeployRefusedException(Kind.FAILED, "version " + version + " " + why + "; " + running.pkg().version() + " runs again"
+        DeployRefusedException refusal = new DeployRefusedException(kind, "version " + version + " " + why + "; " + running.pkg().version() + " runs again"
                 + (failed.isEmpty() ? "" : "; flows " + failed + " FAILED"), problems);
         unstopped.stream().filter(Objects::nonNull).forEach(refusal::addSuppressed);
         return refusal;
@@ -1782,7 +1790,8 @@ public final class Deployments {
     /**
      * The qualified ids of the at-least-once flows of {@code running}, once the work queue said it holds no item of any (D-095):
      * items of one refuse the undeploy ({@link Kind#CONFLICT}, a line per such flow by its local id, sorted as the flows are), since they would
-     * never run; a question the queue fails is the node's {@link IOException}, naming the flow and the cause.
+     * never run; a question the queue fails is the node's {@link IOException}, naming the flow and the cause — one the node's
+     * Postgres pool refused a connection ({@link PgTx#refusedByThePool}) is {@link Kind#BUSY} with that line instead (D-133).
      */
     private Set<String> queued(List<Flow> running) throws DeployRefusedException, IOException {
         Set<String> queued = new HashSet<>();
@@ -1795,7 +1804,9 @@ public final class Deployments {
                 held.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased or held): undeploy it once "
                         + "they are done");
             } else if (items.failed()) {
-                throw new IOException("the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause()), items.cause());
+                String unanswered = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());
+                if (PgTx.refusedByThePool(items.cause())) throw refused(Kind.BUSY, unanswered);   // retryable, nothing changed (D-133)
+                throw new IOException(unanswered, items.cause());
             }
         }
         if (!held.isEmpty()) throw refused(Kind.CONFLICT, String.join("\n", held));

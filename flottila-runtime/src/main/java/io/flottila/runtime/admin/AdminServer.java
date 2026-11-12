@@ -28,17 +28,16 @@ import io.flottila.runtime.deploy.DeployedFlow;
 import io.flottila.runtime.deploy.DeployedPackage;
 import io.flottila.runtime.deploy.Deployments;
 import io.flottila.runtime.deploy.UndeployResult;
+import io.flottila.runtime.pg.PgTx;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Promise;
 import io.vertx.core.VerticleBase;
 import io.vertx.core.Vertx;
-import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.file.AsyncFile;
 import io.vertx.core.file.OpenOptions;
-import io.vertx.core.http.ConnectionPoolTooBusyException;
 import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
@@ -87,11 +86,13 @@ import java.util.function.Supplier;
  * parameter that does not parse or a limit or cursor a page store refuses, 401 without the token, 404 for what is not
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
  * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
- * pool closed by a stopping node; D-132: retryable; its {@code error} a fixed text), 500 for anything else — a store that failed,
- * a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the response is
- * reset). An admin read answers 503 when the node's Postgres pool refuses it; a route whose store takes a pooled connection for a
- * transaction (DLQ retry and discard, deploy) still answers 500 on a wait timeout, and a replay reports it as its run's 502 FAILED
- * (FIX-172b).
+ * pool closed by a stopping node; D-132, D-133: retryable), whether a statement on the pool was refused or a transaction's
+ * acquire ({@link io.flottila.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, a replay's and a DLQ
+ * retry's run with a fixed text as {@code error}, a deploy's record write and an undeploy's work-queue question or record
+ * delete with the refusal's own line (below); a deploy's own work-queue question is still 500 (FIX-172c), as is a DLQ retry
+ * that ran and whose row the pool refused to remove (500 naming the new message, below) — 500 for anything else — a store that
+ * failed, a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the
+ * response is reset).
  *
  * <p>With a {@link Deployments} (D-059, D-060 b) it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
  * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
@@ -100,7 +101,9 @@ import java.util.function.Supplier;
  * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows, added,
  * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed, D-063), or a refusal
  * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500 ({@code {error}}; a redeploy
- * whose start failed and rolled back: {@code {error, problems}}, D-063), 503. An answer given before
+ * whose start failed and rolled back: {@code {error, problems}}, D-063), 503 (the node stops; or the node's Postgres pool refused
+ * the deploy record's write, D-133: the same body as the 500 of a record not written)
+ * (a work-queue question the pool refused is still 500, FIX-172c). An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
  * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
@@ -109,8 +112,9 @@ import java.util.function.Supplier;
  * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087).
  * {@code DELETE /admin/packages/{name}} undeploys (D-095) on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
  * (its flows' qualified ids, sorted), or a refusal by the deploy's status map — 400, 403, 409 (another deploy or undeploy runs on
- * the node, or another package's record pins it), 503 — and 404 for a package the node does not list; a record delete that fails
- * is 500. {@code GET /admin/targets} lists the node's limits per target system (D-099), sorted by target: 200
+ * the node, or another package's record pins it), 503 (the node stops; or the node's Postgres pool refused the work queue's
+ * question or the record delete, D-133: nothing changed, retryable) — and 404 for a package the node does not list; a record
+ * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system (D-099), sorted by target: 200
  * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
  * component that names no target is not listed. Without one these routes do not exist (404).
  *
@@ -143,8 +147,10 @@ import java.util.function.Supplier;
  * an int, outside 1..steps) → 404 (no timeline, no DLQ row) → 409 (the flow does not run here; a retry of the id already runs on
  * this node) → 422 (step n−1 unrecorded or metadata-only, the parked step beyond the flow) → 409 (the input body removed by
  * retention, D-096) → 422 (a body above the flow's byte budget) → 429 with {@code retry-after: 1} (no permit of the flow's
- * admission now). A store that cannot say whether the input body exists is no refusal: 502 FAILED. A retry that went through but whose row could not be
- * removed is 500 naming the new message.
+ * admission now). A store that cannot say whether the input body exists is no refusal: 502 FAILED — but a run the node's Postgres pool
+ * refused a connection (D-133) is 503 with the fixed text, retryable. A retry that went through but whose row could not be
+ * removed is 500 naming the new message, the pool's refusal of that removal included (the run went through: retrying would run
+ * it again, D-133).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
@@ -480,20 +486,10 @@ public final class AdminServer {
         } catch (Refused refused) {   // a bad limit, cursor, key or step number: only what the routes map to Refused
             return Json.of(400, error("bad request: " + refused.getMessage()));
         } catch (Throwable failed) {   // a store that failed, a header no response may carry, a checked one thrown sneakily by an await: a 500, never a hang
-            if (refusedByThePool(failed)) return Json.of(503, error("the database pool is busy; retry"));   // fixed: the client's message is not shown
+            if (PgTx.refusedByThePool(failed)) return busy();
             LOG.log(System.Logger.Level.WARNING, "admin request " + ctx.request().path() + " failed", failed);
             return Json.of(500, error("internal error"));
         }
-    }
-
-    /**
-     * The node's Postgres pool refused the caller a connection (D-132), retryable: its wait queue was full
-     * ({@link ConnectionPoolTooBusyException}), or it failed with exactly a {@link VertxException} — the pool's wait for a
-     * connection elapsed, or the pool is closed because the node stops (both by the client's type, never by its message). A
-     * subclass of it (a closed connection, a server's error) is no refusal.
-     */
-    private static boolean refusedByThePool(Throwable failed) {
-        return failed instanceof ConnectionPoolTooBusyException || failed.getClass() == VertxException.class;
     }
 
     /**
@@ -755,7 +751,8 @@ public final class AdminServer {
 
     /**
      * The run {@code replayId} of {@code replayOf} from step {@code from}, on this virtual thread: 200 COMPLETE; a refusal by its
-     * reason; a retry that went through but whose row stays, 500 naming {@code replayId}; else 502 PARKED (the run parked again)
+     * reason; a retry that went through but whose row stays, 500 naming {@code replayId}; a failure the node's Postgres pool refused
+     * a connection with ({@link PgTx#refusedByThePool}, D-133), 503 with the fixed text; else 502 PARKED (the run parked again)
      * or FAILED with the run's error — a checked one thrown sneakily by a step's await included. An Error is the caller's (500).
      */
     private static Reply ran(String replayId, String replayOf, int from, Supplier<Envelope> run) {
@@ -768,6 +765,7 @@ public final class AdminServer {
         } catch (RowNotRemovedException kept) {
             return Json.of(500, error(kept.getMessage()));
         } catch (Exception failed) {
+            if (PgTx.refusedByThePool(failed)) return busy();   // the run could not take a connection: retryable, never its 502 FAILED
             String outcome = failed instanceof ParkedException ? "PARKED" : "FAILED";
             return Json.of(502, answer.put("outcome", outcome).put("error", Objects.toString(failed.getMessage(), failed.toString())));
         }
@@ -866,7 +864,10 @@ public final class AdminServer {
         return Json.of(200, new JsonObject().put("items", items));
     }
 
-    /** {@code DELETE /admin/packages/{name}}: the undeploy's result, or its refusal; a record delete that fails throws, a 500. */
+    /**
+     * {@code DELETE /admin/packages/{name}}: the undeploy's result, or its refusal (the pool's refusal of its queue question or its
+     * record delete included: 503); a record delete or a queue question that fails otherwise throws, a 500.
+     */
     private static Reply undeployed(RoutingContext ctx, Deployments deployments) throws IOException {
         try {
             UndeployResult r = deployments.undeploy(ctx.pathParam("name"));
@@ -876,7 +877,11 @@ public final class AdminServer {
         }
     }
 
-    /** A refusal by its kind: 400, 403, 404, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503. */
+    /**
+     * A refusal by its kind: 400, 403, 404, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503
+     * (the node stops; the pool refused the record's write, with every problem of a redeploy rolled back, or an undeploy's queue
+     * question or record delete).
+     */
     private static Reply refusal(DeployRefusedException refused) {
         int status = switch (refused.kind()) {
             case BAD_REQUEST -> 400;
@@ -884,12 +889,17 @@ public final class AdminServer {
             case CONFLICT -> 409;
             case INVALID -> 422;
             case FAILED -> 500;
-            case STOPPING -> 503;
+            case STOPPING, BUSY -> 503;
             case NOT_FOUND -> 404;
         };
         JsonObject body = error(refused.error());
         if (!refused.problems().isEmpty()) body.put("problems", new JsonArray(refused.problems()));
         return Json.of(status, body);
+    }
+
+    /** 503 for a request the node's Postgres pool refused a connection (D-132, D-133): a fixed text, the client's message not shown. */
+    private static Reply busy() {
+        return Json.of(503, error("the database pool is busy; retry"));
     }
 
     private static Reply tooLarge(long max) {
