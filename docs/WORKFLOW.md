@@ -14,7 +14,8 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
    depends-on column is `done`. Phase gates are rows too; nothing in the next phase becomes
    `ready` until the gate row is `done`.
 3. Read the row's class (A/B/C/G, `AGENTS.md`); it sets the model and effort of every call below.
-   For a class-C row the designer drafts the design first. Write the acceptance spec
+   For a class-C row the designer drafts the design first and the architecture advisor opposes the
+   draft (D-137); decide with both. Write the acceptance spec
    (`AGENTS.md`); the test-author writes the red tests; approve them by reading the test files.
    Red first: the failing test exists, observed red, before the code. Then the task packet.
 4. Implement through the implementer (model and effort by the row's class). The coordinator never

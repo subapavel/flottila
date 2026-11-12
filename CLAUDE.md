@@ -74,7 +74,7 @@ build; this file holds the rules that keep the code and the way of working align
   never runs Maven — the test-author, implementer, verifier and reviewer do. The architect runs on
   Opus 5.5 at medium; class-C design goes to the designer (Opus 5.5, xhigh). Every BACKLOG row has
   a class (A/B/C/G) that sets the model and effort of each call (`AGENTS.md`, D-054). Fable 5.2 is
-  the gate reviewer, nothing else.
+  the gate reviewer and the architecture advisor, the opponent of every class-C draft (D-137).
 - Library APIs: Context7 (`.mcp.json`) first — Vert.x 5.1, Saxon, Kafka clients, Testcontainers.
   If unreachable or ambiguous, `javap -cp <jar>` on the resolved jar in `~/.m2` decides. Never
   guess an API from memory.

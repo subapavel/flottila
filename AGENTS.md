@@ -16,6 +16,7 @@ same role.
 | verifier (`.claude/agents/verifier.md`) | claude-sonnet-5-5 | low | bash, read, search | running the checks, reporting observed results |
 | scout (`.claude/agents/scout.md`) | claude-haiku-5-5 | medium | read, search | locating code, requirements, fixtures, prior results; factual context only |
 | reviewer (`.claude/agents/reviewer.md`) | claude-opus-5-5 | high (per call by the task class, below) | read, search | independent review of every completed task |
+| architecture-advisor (`.claude/agents/architecture-advisor.md`) | claude-fable-5-2 | high | read, search | the opponent of every designer draft and every expensive-to-reverse decision or finding, before the architect decides (D-137) |
 | gate-reviewer (`.claude/agents/gate-reviewer.md`) | claude-fable-5-2 | high | read, search | the phase-gate rows only |
 
 The architect delegates everything that produces or runs code. It never edits `src/`, never
@@ -41,7 +42,7 @@ calls the designer. Never lower a class mid-task to save tokens.
 
 The architect runs at medium and does not think a design through in its own context: it sends
 class-C design work to the designer, a fresh read-only agent with a small context, and approves
-what comes back. Fable 5.2 runs only as the gate-reviewer. `CLAUDE_CODE_EFFORT_LEVEL` must not be
+what comes back. Fable 5.2 runs as the gate-reviewer and as the architecture advisor (D-137). `CLAUDE_CODE_EFFORT_LEVEL` must not be
 set in the environment: it overrides every per-call effort.
 
 Concurrency: at most two subagents at once beside the architect, and exactly one writer — while
@@ -62,7 +63,11 @@ Memory: implementer, test-author, reviewer and designer keep
 The architect names the row, the question, the ARCHITECTURE sections and the files to read. The
 designer hands back in at most 40 lines: the proposed shape (types, schema, decision or the
 rewritten behaviours), the alternatives it rejected with one line each, what is expensive to
-reverse, and the proposed test names. The architect decides; the designer never writes a file.
+reverse, and the proposed test names. The architecture advisor (Fable 5.2) then reads the draft
+as its opponent and hands back, in at most 40 lines, a verdict, the weak points with failure
+scenarios, missed alternatives, risks and a recommended answer to each open question. The
+architect decides with both in hand and records the advisor's points and their disposition in the
+task packet; neither agent writes a file.
 
 ## Acceptance spec (architect → test-author)
 
