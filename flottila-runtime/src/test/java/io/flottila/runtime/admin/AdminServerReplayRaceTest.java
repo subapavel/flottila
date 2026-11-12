@@ -49,12 +49,16 @@ import java.util.function.Function;
 import static io.flottila.runtime.admin.AdminServerReplayTest.BOUND;
 import static io.flottila.runtime.admin.AdminServerReplayTest.until;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * P1-09c2 (D-067): what changes between the admin's own lookup and the replay's run is answered by the replay's refusal — a
+ * FIX-138a: the DLQ cases below run on {@code POST /admin/dlq/{id}/replay}, today's {@code /retry} new copy unchanged ("a retry"
+ * below is that copy).
+ *
+ * <p>P1-09c2 (D-067): what changes between the admin's own lookup and the replay's run is answered by the replay's refusal — a
  * message whose rows are gone by then is 404, a DLQ row removed by then (another node's retry) is 404, and a flow replaced by a
  * redeploy by then (its replay closed) is 409 — and nothing runs. A second retry of an id whose first retry runs on this node is 409
  * and runs nothing; once the first answered, the id can be retried again. Each window is opened at the store boundary: the store
@@ -199,7 +203,9 @@ class AdminServerReplayRaceTest {
         int ran = probe.total();
         rows.after(parked.id(), stored -> Future.succeededFuture(Optional.empty()));
 
-        assertError(404, post("/admin/dlq/" + parked.id() + "/retry").await(BOUND.toMillis(), TimeUnit.MILLISECONDS), "row gone by the run");
+        Answer gone = post("/admin/dlq/" + parked.id() + "/replay").await(BOUND.toMillis(), TimeUnit.MILLISECONDS);
+        assertError(404, gone, "row gone by the run");
+        assertNotEquals("no such route", gone.json().getString("error"), "FIX-138a: the route's own 404, not the router's: " + gone.body());
         assertEquals(ran, probe.total(), "nothing ran");
     }
 
@@ -221,18 +227,18 @@ class AdminServerReplayRaceTest {
      * the first, its step still down, answers 502 PARKED and frees the id: the next retry of X runs (200) and removes the row.
      */
     @Test
-    void aSecondRetryOfAnIdWhileItsFirstRunsIs409UntilTheFirstAnswered() throws Exception {
+    void aSecondDlqReplayOfAnIdWhileItsFirstRunsIs409UntilTheFirstAnswered() throws Exception {
         probe.down.set(true);
         Envelope x = delivered("audit");
         until(() -> innerDlq.get(x.id()).await().isPresent() && queue.snapshot().isEmpty(), "fixture: parked");
         CountDownLatch reached = new CountDownLatch(1);
         CountDownLatch go = new CountDownLatch(1);
         rows.after(x.id(), holding(reached, go));
-        Future<Answer> first = post("/admin/dlq/" + x.id() + "/retry");
+        Future<Answer> first = post("/admin/dlq/" + x.id() + "/replay");
         if (!reached.await(BOUND.toSeconds(), TimeUnit.SECONDS)) fail("the first retry's own read was not reached");
         int ran = probe.total();
 
-        assertError(409, post("/admin/dlq/" + x.id() + "/retry").await(BOUND.toMillis(), TimeUnit.MILLISECONDS), "a retry of X runs already");
+        assertError(409, post("/admin/dlq/" + x.id() + "/replay").await(BOUND.toMillis(), TimeUnit.MILLISECONDS), "a retry of X runs already");
         assertEquals(ran, probe.total(), "nothing ran for it");
         go.countDown();
         Answer parkedAgain = first.await(BOUND.toMillis(), TimeUnit.MILLISECONDS);
@@ -241,7 +247,7 @@ class AdminServerReplayRaceTest {
         assertTrue(innerDlq.get(x.id()).await().isPresent(), "X's row stays");
 
         probe.down.set(false);
-        Answer again = post("/admin/dlq/" + x.id() + "/retry").await(BOUND.toMillis(), TimeUnit.MILLISECONDS);
+        Answer again = post("/admin/dlq/" + x.id() + "/replay").await(BOUND.toMillis(), TimeUnit.MILLISECONDS);
         assertEquals(200, again.status(), "the first retry answered: X can be retried again: " + again.body());
         assertEquals(Optional.empty(), innerDlq.get(x.id()).await(), "and its row is gone");
     }

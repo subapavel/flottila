@@ -1,4 +1,14 @@
 
+## 2026-11-12 — FIX-138a retry keeps the id, replay mints one (D-136, draft) — done, review PASS (r2)
+- `POST /admin/dlq/{id}/retry` is now the same-id restart (CORE-14b handler; 422 texts name `/replay`); `/restart` removed (404);
+  `POST /admin/dlq/{id}/replay` is the former new-copy retry, `?from=` → 400. F-29 F4.1: the documented route no longer escapes dedupe.
+- Red: AdminDlqRestartIT :369 (/restart 404), :412 (failed restart tx twice, then the same id once at a deduping partner);
+  AdminServerReplayTest :725; NodeIT :1682, :1716; `namesReplay` (A5). Moved tests renamed per route (commit body).
+- r1 FAIL: docs still used the old route sense (changelog 3.11 half-renamed, D-057(c)/D-133/D-135 brackets, :210); fixed by the architect.
+- Filed: FIX-138b (durable copy claim), FIX-175 (a same-id rerun's snapshots dropped: `on conflict do nothing`), FIX-176 (javadoc leftovers),
+  CONSIDER-14 (no same-id path for replay or step-n rows).
+- Evidence: whole reactor verify -Pit 16/16, 4171 tests 0/0/0 (agent/work/FIX-138a-*); 11 hand mutants killed; demo 6/6; coverage no decrease.
+
 ## 2026-11-12 — CORE-14b same-id DLQ restart (D-135 [CORE-14b]) — done, review PASS (r3)
 - context compacted (one line, CLAUDE.md); re-verified with git status / git log -3.
 - `POST /admin/dlq/{id}/restart` → 202 {id, attempt}: one transaction deletes the DLQ row (re-checked: step 1, attempt k, no replayOf) and inserts a

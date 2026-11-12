@@ -280,7 +280,7 @@ public final class PgWorkQueue implements WorkQueue {
     /**
      * The restart (CORE-14b P8, D-135): {@code d} locks the DLQ row of message {@code $1} of flow {@code $2} the worker parked at step 1
      * after attempt {@code $4} (prop {@code attempt}), not a replay's (no prop {@code replayOf}) — a concurrent remove of it
-     * (a {@code /retry}, another restart) commits first and leaves none, or waits for this statement —, {@code src} holds its ingress
+     * (a {@code /replay}, another restart) commits first and leaves none, or waits for this statement —, {@code src} holds its ingress
      * body's kept ref ({@code <id>/0/body}) and that ref's segment row for key share, as {@code ENQUEUE_FROM} does; {@code gone}
      * deletes the locked row, and {@code ins} inserts the work row only from what {@code gone} deleted and that ref: step 1 under key
      * {@code $3}, attempts {@code $4} (k), {@code max_attempts} k + 1, due at once, unleased. One statement: a failure of either half

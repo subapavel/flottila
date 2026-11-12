@@ -1,6 +1,8 @@
 package io.flottila.runtime.admin;
 
+import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
+import io.flottila.api.NackException;
 import io.flottila.api.Expressions;
 import io.flottila.core.dlq.InMemoryDlq;
 import io.flottila.core.queue.InMemoryWorkQueue;
@@ -36,6 +38,7 @@ import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.PostgresImage;
+import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
@@ -56,6 +59,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
@@ -70,7 +74,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * CORE-14b P8 (D-135) over the admin API and a real Postgres: {@code POST /admin/dlq/{id}/restart} of a row the worker parked
+ * FIX-138a (P1, decision-driven move of CORE-14b's cases): the same-id restart is {@code POST /admin/dlq/{id}/retry}; the
+ * {@code /restart} route is gone (404, the router's "no such route", nothing changed); every 422 names {@code /replay}, the
+ * new-copy route. A3 (F-29 F4.1): a {@code /retry} whose restart transaction fails (a trigger refusing the DLQ delete, then one
+ * refusing the work insert) is 500 and leaves the DLQ row and no work row; the next {@code /retry} is 202 under the same id, and a
+ * partner that applied the first send (its answer lost) and deduplicates by message id records one effect.
+ *
+ * <p>CORE-14b P8 (D-135) over the admin API and a real Postgres: {@code POST /admin/dlq/{id}/retry} of a row the worker parked
  * (step 1, prop {@code attempt} k, no {@code replayOf}) answers 202 {@code {id, attempt: k + 1}}, its DLQ row gone and one work row
  * of the same id at step 1 with {@code max_attempts} k + 1; a second restart is 404. No DLQ row: 404. A row the worker did not park —
  * at a step other than 1 (a pre-D-135 park or a sync flow's), or a replay's ({@code replayOf}) — is 422, its DLQ row kept, nothing
@@ -80,7 +90,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>O7 (the DLQ row keeps the partition key, V17 {@code dlq.partition_key}): a restart enqueues under the kept key; a row of a keyed
  * flow ({@code partitionBy} set, as deployed here) whose key is empty — parked before V17 — is 422 "parked before its key was kept;
- * use /retry", its DLQ row kept, nothing written; an unkeyed flow's empty key restarts (the first case).
+ * use /replay", its DLQ row kept, nothing written; an unkeyed flow's empty key restarts (the first case).
  *
  * <p>Seams: the {@link AdminServer} over the {@link PgDlq}, node-b's {@link PgWorkQueue} and a real {@code Deployments} of package
  * {@code shop} ({@code shop/orders} unkeyed, {@code shop/keyed} by {@code customer}; its own workers run over an in-memory queue of
@@ -164,6 +174,8 @@ class AdminDlqRestartIT {
 
     @AfterEach
     void stop() throws Exception {
+        pool.query("drop trigger if exists refuse_delete on dlq").execute().await();
+        pool.query("drop trigger if exists refuse_insert on work").execute().await();
         workers.forEach(FlowWorker::stop);
         server.stop().await(10, TimeUnit.SECONDS);
         doors.releaseAll();
@@ -231,8 +243,14 @@ class AdminDlqRestartIT {
         JsonObject json() { return new JsonObject(body); }
     }
 
-    Answer restart(String id) {
-        return client.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/admin/dlq/" + id + "/restart"))
+    /** {@code POST /admin/dlq/{id}/retry}: the same-id restart (FIX-138a). */
+    Answer retry(String id) {
+        return post(id, "retry");
+    }
+
+    /** {@code POST /admin/dlq/{id}/<route>}. */
+    Answer post(String id, String route) {
+        return client.request(new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI("http://127.0.0.1:" + port + "/admin/dlq/" + id + "/" + route))
                 .compose(req -> {
                     req.putHeader("Authorization", AUTH);
                     req.response().onSuccess(HttpClientResponse::pause);
@@ -254,6 +272,13 @@ class AdminDlqRestartIT {
         return new PgDlq(pool).get(id).await();
     }
 
+    /** A5: a 422 of {@code /retry} names the new-copy route {@code /replay} as what to use instead, never {@code /retry} itself. */
+    static void namesReplay(Answer a, String what) {
+        String error = a.json().getString("error");
+        assertTrue(error != null && error.contains("/replay"), what + ": the error names /replay as what to use instead: " + a.body());
+        assertTrue(!error.contains("/retry"), what + ": never the route it was refused on: " + error);
+    }
+
     void refusedNaming(Answer a, int status, String id, String what) {
         assertEquals(status, a.status(), what + ": " + a.body());
         String error = a.json().getString("error");
@@ -261,13 +286,13 @@ class AdminDlqRestartIT {
     }
 
     @Test
-    void restartAnswers202AndRunsTheItemOnceOnTheNodeHoldingItsBody() throws Exception {
+    void retryAnswers202AndRunsTheItemOnceUnderItsIdOnTheNodeHoldingItsBody() throws Exception {
         Envelope in = recorded();
         ParkedRows.park(pool, ParkedRows.byTheWorker(in.id(), "shop/orders", 5), "node-a");
         FlowWorker a = worker("node-a");
         FlowWorker b = worker("node-b");
 
-        Answer answer = restart(in.id());
+        Answer answer = retry(in.id());
         assertEquals(202, answer.status(), "restarted: " + answer.body());
         assertEquals(new JsonObject().put("id", in.id()).put("attempt", 6), answer.json(), "the same id, its next attempt k + 1");
         assertEquals(Optional.empty(), dlqRow(in.id()), "its DLQ row is gone");
@@ -275,8 +300,8 @@ class AdminDlqRestartIT {
         assertEquals(Arrays.asList(in.id(), 1, 6), Arrays.asList(row.getString(0), row.getInteger(1), row.getInteger(2)),
                 "one work row: same id, step 1, max_attempts k + 1");
         assertEquals(1, count("select count(*) from work"));
-        refusedNaming(restart(in.id()), 404, in.id(), "a second restart: no DLQ row any more");
-        assertEquals(1, count("select count(*) from work"), "the second restart wrote nothing");
+        refusedNaming(retry(in.id()), 404, in.id(), "a second retry: no DLQ row any more");
+        assertEquals(1, count("select count(*) from work"), "the second retry wrote nothing");
 
         assertEquals(0, b.poll().await(20, TimeUnit.SECONDS), "node-b, where the call landed, does not hold its body: it claims nothing");
         assertEquals(List.of(), runs);
@@ -288,7 +313,7 @@ class AdminDlqRestartIT {
 
     @Test
     void noDlqRowIs404() {
-        refusedNaming(restart("m-404"), 404, "m-404", "no DLQ row");
+        refusedNaming(retry("m-404"), 404, "m-404", "no DLQ row");
         assertEquals(0, count("select count(*) from work"), "nothing written");
     }
 
@@ -301,15 +326,19 @@ class AdminDlqRestartIT {
         Parked replay = ParkedRows.row(replayed.id(), "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1).with(Envelope.REPLAY_OF, "m-original"));
         ParkedRows.park(pool, replay, "node-a");
 
-        refusedNaming(restart(atStep2.id()), 422, atStep2.id(), "parked at step 2, not by the worker");
-        refusedNaming(restart(replayed.id()), 422, replayed.id(), "a replay's row (replayOf)");
+        Answer atStep2Refused = retry(atStep2.id());
+        refusedNaming(atStep2Refused, 422, atStep2.id(), "parked at step 2, not by the worker");
+        namesReplay(atStep2Refused, "parked at step 2");
+        Answer replayRefused = retry(replayed.id());
+        refusedNaming(replayRefused, 422, replayed.id(), "a replay's row (replayOf)");
+        namesReplay(replayRefused, "a replay's row");
         assertEquals(Optional.of(step2), dlqRow(atStep2.id()), "its DLQ row kept");
         assertEquals(Optional.of(replay), dlqRow(replayed.id()), "its DLQ row kept");
         assertEquals(0, count("select count(*) from work"), "nothing written");
 
         Envelope witness = recorded();
         ParkedRows.park(pool, ParkedRows.byTheWorker(witness.id(), "shop/orders", 1), "node-a");
-        assertEquals(202, restart(witness.id()).status(), "witness: a row the worker parked, on the same wiring, restarts");
+        assertEquals(202, retry(witness.id()).status(), "witness: a row the worker parked, on the same wiring, restarts");
     }
 
     @Test
@@ -317,17 +346,112 @@ class AdminDlqRestartIT {
         Envelope old = recorded("shop/keyed");
         Parked before = ParkedRows.byTheWorker(old.id(), "shop/keyed", 1);   // no key: a row of a keyed flow parked before V17
         ParkedRows.park(pool, before, "node-a");
-        Answer refused = restart(old.id());
+        Answer refused = retry(old.id());
         refusedNaming(refused, 422, old.id(), "a keyed flow's row without its key");
         String error = refused.json().getString("error");
-        assertTrue(error.contains("parked before its key was kept") && error.contains("/retry"), "the error says why and what to use instead: " + error);
+        assertTrue(error.contains("parked before its key was kept"), "the error says why: " + error);
+        namesReplay(refused, "a keyed flow's row without its key");
         assertEquals(Optional.of(before), dlqRow(old.id()), "its DLQ row kept");
         assertEquals(0, count("select count(*) from work"), "nothing written");
 
         Envelope kept = recorded("shop/keyed");
         ParkedRows.park(pool, ParkedRows.byTheWorker(kept.id(), "shop/keyed", 1, Optional.of("c1")), "node-a");
-        Answer restarted = restart(kept.id());
+        Answer restarted = retry(kept.id());
         assertEquals(202, restarted.status(), "witness: the same flow's row with its key kept restarts: " + restarted.body());
         assertEquals(1, count("select count(*) from work where id = $1 and partition_key = 'c1'", kept.id()), "enqueued under the kept key c1");
+    }
+
+    /**
+     * A1: {@code POST /admin/dlq/{id}/restart} is gone: the router's 404 "no such route" (not the handler's "no DLQ row"), the row
+     * the worker parked kept and nothing queued; the same row restarts through {@code /retry} (the witness: the row was restartable).
+     */
+    @Test
+    void theRestartRouteIsGone404AndChangesNothing() {
+        Envelope in = recorded();
+        Parked row = ParkedRows.byTheWorker(in.id(), "shop/orders", 1);
+        ParkedRows.park(pool, row, "node-a");
+
+        Answer gone = post(in.id(), "restart");
+        assertEquals(404, gone.status(), "the route is gone: " + gone.body());
+        assertEquals(new JsonObject().put("error", "no such route"), gone.json(), "the router's 404, not a handler's");
+        assertEquals(Optional.of(row), dlqRow(in.id()), "its DLQ row kept");
+        assertEquals(0, count("select count(*) from work"), "nothing written");
+
+        Answer witness = retry(in.id());
+        assertEquals(new JsonObject().put("id", in.id()).put("attempt", 2), witness.json(), "witness: the same row restarts through /retry: " + witness.body());
+    }
+
+    /** The trigger function refusing whatever it is put on (create or replace: the container is shared by the class). */
+    static void refuseFunction() {
+        pool.query("create or replace function refuse_test() returns trigger language plpgsql as $$ begin raise exception 'injected failure (test)'; end $$")
+                .execute().await();
+    }
+
+    /** At-least-once {@code shop/orders} as node-a's worker runs it here: one {@code to partner}; {@code delivery.retries} count 0. */
+    static FlowDefinition partnerFlow() {
+        Map<String, Object> doc = new HashMap<>();
+        doc.put("schemaVersion", 1);
+        doc.put("kind", "flow");
+        doc.put("id", "shop/orders");
+        doc.put("version", "1.0.0");
+        doc.put("from", Map.of("endpoint", "in"));
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "1h", "retries", Map.of("count", 0, "interval", "1m")));
+        doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", 2));
+        doc.put("steps", List.of(Map.of("type", "to", "name", "partner", "endpoint", "partner")));
+        return FlowDefinition.from(doc);
+    }
+
+    /**
+     * A3 (BACKLOG FIX-138, F-29 F4.1): the partner applies the first send but its answer is lost, so the worker parks the message
+     * (attempt 1). A {@code /retry} whose restart transaction fails — the DLQ delete refused, then the work insert refused — is 500
+     * each time and leaves the DLQ row as it was and no work row. The next {@code /retry} is 202 {@code {id, attempt: 2}} under the
+     * parked id; node-a's worker sends it once more under that id, as attempt 2, and a partner deduplicating by message id records
+     * one effect (today's new copy would be a second id, a second effect).
+     */
+    @Test
+    void aRetryWhoseRestartTransactionFailsKeepsTheRowAndTheNextRetrySendsTheSameIdOnce() throws Exception {
+        RecordingComponent partner = new RecordingComponent("mock");
+        rt.withComponent(partner);
+        Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", URI.create("mock://partner"), Map.of()));
+        FlowWorker a = new FlowBuilder(rt.runtime(), List.of(), List.of(), endpoints).recording(store, Meter.system())
+                .queue(new PgWorkQueue(pool, "node-a")).dlq(new PgDlq(pool)).worker(partnerFlow(), Path.of(""), "node-a", new WorkerPolicy(LEASE, Duration.ofDays(7)));
+        workers.add(a);
+        partner.failNext(1, () -> new NackException("applied, its answer lost (test)", true));
+        Envelope in = recorded();
+        ParkedRows.keepRef(pool, in.id(), "node-a");
+        new PgWorkQueue(pool, "node-a").enqueue(in.id(), "shop/orders", 1, null).await();
+        assertEquals(1, a.poll().await(20, TimeUnit.SECONDS), "fixture: the first run");
+        assertEquals(List.of(in.id()), partner.sent().stream().map(Envelope::id).toList(), "fixture: the partner got (and applied) the first send");
+        Parked before = dlqRow(in.id()).orElseThrow(() -> new AssertionError("fixture: count 0, the failure parks at once"));
+        assertEquals(Optional.of(1), before.props().get(Envelope.ATTEMPT), "fixture: parked after attempt 1");
+        assertEquals(0, count("select count(*) from work"), "fixture: its work row completed by the park");
+
+        refuseFunction();
+        pool.query("create trigger refuse_delete before delete on dlq for each row execute function refuse_test()").execute().await();
+        Answer refusedDelete = retry(in.id());
+        assertEquals(500, refusedDelete.status(), "the restart's DLQ delete failed: " + refusedDelete.body());
+        assertEquals(Optional.of(before), dlqRow(in.id()), "the DLQ row stays as it was");
+        assertEquals(0, count("select count(*) from work"), "no work row");
+        pool.query("drop trigger refuse_delete on dlq").execute().await();
+        pool.query("create trigger refuse_insert before insert on work for each row execute function refuse_test()").execute().await();
+        Answer refusedInsert = retry(in.id());
+        assertEquals(500, refusedInsert.status(), "the restart's work insert failed: " + refusedInsert.body());
+        assertEquals(Optional.of(before), dlqRow(in.id()), "the DLQ row stays as it was");
+        assertEquals(0, count("select count(*) from work"), "no work row");
+        pool.query("drop trigger refuse_insert on work").execute().await();
+        assertEquals(1, partner.sent().size(), "neither failed retry sent anything");
+
+        Answer again = retry(in.id());
+        assertEquals(202, again.status(), "the next retry goes through: " + again.body());
+        assertEquals(new JsonObject().put("id", in.id()).put("attempt", 2), again.json(), "under the parked id, as attempt 2");
+        assertEquals(Optional.empty(), dlqRow(in.id()), "its DLQ row is gone");
+        assertEquals(1, count("select count(*) from work where id = $1", in.id()), "one work row under the same id");
+
+        assertEquals(1, a.poll().await(20, TimeUnit.SECONDS), "node-a claims the restarted row");
+        assertEquals(List.of(in.id(), in.id()), partner.sent().stream().map(Envelope::id).toList(), "sent once more, under the same message id");
+        assertEquals(Optional.of(2), partner.sent().get(1).get(Envelope.ATTEMPT), "as attempt 2");
+        assertEquals(1, partner.sent().stream().map(Envelope::id).distinct().count(), "a partner deduplicating by message id: one effect");
+        assertEquals(0, count("select count(*) from work"), "completed");
+        assertEquals(Optional.empty(), dlqRow(in.id()), "not parked again");
     }
 }

@@ -66,7 +66,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * CORE-4c3 packet item 4 end to end (CORE-3 "Review r2 additions", D-105's exception to D-062): a message whose body an accepted
  * {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} gave up — its {@code body_refs} row marked {@code lost_at}, as the start marks it — is
- * refused for a replay and for a DLQ retry with 409 {@code {error}} saying "body lost by ACCEPT_LOSS" (D-096's 409 for a body
+ * refused for a replay and for a DLQ replay ({@code /admin/dlq/{id}/replay}, FIX-138a: the old {@code /retry} copy) with 409 {@code {error}} saying "body lost by ACCEPT_LOSS" (D-096's 409 for a body
  * that is not there; never "removed by retention", nothing runs, the DLQ row stays), and the admin GET of that body answers
  * <b>410 Gone</b> with that reason: unlike a body retention removed (404, D-057) the message's rows say a body was stored, and
  * unlike a 409 no state of the server can be changed to make it readable again — it is gone for good. Through the real
@@ -211,7 +211,7 @@ class LostBodyAdminIT {
     }
 
     @Test
-    void aLostBodyIsRefused409ForReplayAndRetryAndItsGetIs410() throws Exception {
+    void aLostBodyIsRefused409ForReplayAndDlqReplayAndItsGetIs410() throws Exception {
         OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), AdminServerReplayTest.shop().zipTo(tmp.resolve("archives"))));
         Envelope x = recorded();
         Envelope k = recorded();
@@ -228,7 +228,7 @@ class LostBodyAdminIT {
         int mintedBefore = minted.size();
 
         saysLost(send(HttpMethod.POST, "/admin/messages/" + x.id() + "/replay?from=1"), 409, x.id(), "a replay of a lost body");
-        saysLost(send(HttpMethod.POST, "/admin/dlq/" + x.id() + "/retry"), 409, x.id(), "a DLQ retry of a lost body");
+        saysLost(send(HttpMethod.POST, "/admin/dlq/" + x.id() + "/replay"), 409, x.id(), "a DLQ retry of a lost body");
         assertEquals(ran, probe.total(), "no step ran");
         List<String> mintedNow = List.copyOf(minted);   // a snapshot: the id generator appends from other threads
         for (String id : mintedNow.subList(mintedBefore, mintedNow.size())) assertEquals(List.of(), messages.timeline(id).await(), "no row under " + id);
@@ -238,6 +238,6 @@ class LostBodyAdminIT {
 
         assertEquals(200, send(HttpMethod.GET, "/admin/messages/" + k.id() + "/steps/0/body").status(), "witness: K, not given up, reads");
         assertEquals(200, send(HttpMethod.POST, "/admin/messages/" + k.id() + "/replay?from=1").status(), "witness: and replays");
-        assertEquals(200, send(HttpMethod.POST, "/admin/dlq/" + k.id() + "/retry").status(), "witness: and its DLQ row retries");
+        assertEquals(200, send(HttpMethod.POST, "/admin/dlq/" + k.id() + "/replay").status(), "witness: and its DLQ row retries");
     }
 }

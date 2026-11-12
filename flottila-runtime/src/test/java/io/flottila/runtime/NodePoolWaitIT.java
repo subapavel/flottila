@@ -499,11 +499,11 @@ class NodePoolWaitIT {
     }
 
     /**
-     * FIX-172b A3 (pins FIX-172 for it): {@code POST /admin/dlq/{id}/retry} under the work pool held by two parks, PT0.2S, answers
+     * FIX-172b A3 (pins FIX-172 for it; FIX-138a moved it to the new-copy route): {@code POST /admin/dlq/{id}/replay} under the work pool held by two parks, PT0.2S, answers
      * 503 with the fixed text while the parks hold the pool, its row kept; after the release the retry runs (an {@code outcome}).
      */
     @Test
-    void aDlqRetryRefusedByTheWorkPoolAnswers503() throws Exception {
+    void aDlqReplayRefusedByTheWorkPoolAnswers503() throws Exception {
         try (HttpClient client = NodeIT.http()) {
             int inPort = NodeIT.freePort();
             Node node = startDeployed(client, inPort, env("FLOTTILA_PG_POOL_WAIT", "PT0.2S"));
@@ -511,13 +511,13 @@ class NodePoolWaitIT {
 
             PgConnection locker = lock("dlq");
             holdTheWorkPool(client, inPort);
-            assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/retry"), "a DLQ retry the pool refused");
+            assertBusy(post(client, node.adminPort(), "/admin/dlq/" + id + "/replay"), "a DLQ retry the pool refused");
             assertEquals(2, waitingOnALock(WORK), "the refusal came while the parks still held the work pool");
 
             locker.query("rollback").execute().await();
             NodeIT.until(() -> count("select count(*) from dlq") == 3, "the parks go through once the lock is gone");
             assertEquals(1, count("select count(*) from dlq where id = $1", id), "the refused retry kept its row");
-            HttpResponse<String> retried = post(client, node.adminPort(), "/admin/dlq/" + id + "/retry");
+            HttpResponse<String> retried = post(client, node.adminPort(), "/admin/dlq/" + id + "/replay");
             assertTrue(retried.statusCode() != 503 && new JsonObject(retried.body()).containsKey("outcome"), "witness: the retry runs once the pool is free: "
                     + retried.statusCode() + " " + retried.body());
         }

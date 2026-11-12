@@ -71,7 +71,7 @@
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
 - vertx-pg-client 5.1.10 jsonb (javap + IT, P2-02b): a JsonArray Tuple param goes through ParamExtractor.prepareJson (Json.encode);
   textDecodeJSONB answers a JsonArray, `Row.getJsonArray(String)` exists. `dirUri.relativize(u).equals(u)` = "u not below dir", no scheme branch.
-- `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a). `install -DskipTests -pl !flottila-bench` fails at archtest (no artifact, after all bench needs): exclude `!flottila-archtest`, `cmp` target vs ~/.m2 jars.
+- `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a); whole `clean verify -Pit` incl. bench ~24 min (FIX-138a: runtime 15, bench 7). `install -DskipTests -pl !flottila-bench` fails at archtest (no artifact, after all bench needs): exclude `!flottila-archtest`, `cmp` target vs ~/.m2 jars.
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).

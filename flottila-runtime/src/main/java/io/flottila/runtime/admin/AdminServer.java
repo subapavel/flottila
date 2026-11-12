@@ -88,9 +88,9 @@ import java.util.function.Supplier;
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
  * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
  * pool closed by a stopping node; D-132, D-133: retryable), whether a statement on the pool was refused or a transaction's
- * acquire ({@link io.flottila.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, a replay's and a DLQ
- * retry's run with a fixed text as {@code error}, a deploy's work-queue question or record write and an undeploy's work-queue
- * question or record delete with the refusal's own line (below), except a DLQ retry that ran and whose row the pool refused to
+ * acquire ({@link io.flottila.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, a message replay's and a
+ * DLQ replay's run with a fixed text as {@code error}, a deploy's work-queue question or record write and an undeploy's work-queue
+ * question or record delete with the refusal's own line (below), except a DLQ replay that ran and whose row the pool refused to
  * remove (500 naming the new message, below); 500 for anything else: a store that failed, a recorded header no response may
  * carry, a stored body whose stream fails before the head is out (after it, the response is reset).
  *
@@ -141,24 +141,24 @@ import java.util.function.Supplier;
  * shared token. A discard wakes the row's flow and announces it to the node of its key's next row, as a release does. Without a
  * queue these routes do not exist (404).
  *
- * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays and retries:
+ * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays:
  * {@code POST /admin/messages/{id}/replay?from=n} runs steps {@code n..end} of the message's flow as deployed now, and
- * {@code POST /admin/dlq/{id}/retry} the parked step, each as a new message whose id the generator mints, through the flow's
- * {@link Replay} on the route's virtual thread. 200 {@code {id, replayOf, from, outcome:"COMPLETE"}}; a run that failed is 502
- * with the same fields, {@code outcome} PARKED or FAILED, and {@code error}. Refusals, nothing run: 400 ({@code from} missing, not
- * an int, outside 1..steps) → 404 (no timeline, no DLQ row) → 409 (the flow does not run here; a retry of the id already runs on
- * this node) → 422 (step n−1 unrecorded or metadata-only, the parked step beyond the flow) → 409 (the input body removed by
- * retention, D-096) → 422 (a body above the flow's byte budget) → 429 with {@code retry-after: 1} (no permit of the flow's
- * admission now). A store that cannot say whether the input body exists is no refusal: 502 FAILED — but a run the node's Postgres pool
- * refused a connection (D-133) is 503 with the fixed text, retryable. A retry that went through but whose row could not be
- * removed is 500 naming the new message, the pool's refusal of that removal included (the run went through: retrying would run
- * it again, D-133).
+ * {@code POST /admin/dlq/{id}/replay} (FIX-138a) the parked step, each as a new message whose id the generator mints, through the
+ * flow's {@link Replay} on the route's virtual thread. 200 {@code {id, replayOf, from, outcome:"COMPLETE"}}; a run that failed is
+ * 502 with the same fields, {@code outcome} PARKED or FAILED, and {@code error}. Refusals, nothing run: 400 ({@code from} missing,
+ * not an int, outside 1..steps; on the DLQ replay a {@code from} at all, any value) → 404 (no timeline, no DLQ row) → 409 (the flow
+ * does not run here; a DLQ replay of the id already runs on this node) → 422 (step n−1 unrecorded or metadata-only, the parked
+ * step beyond the flow) → 409 (the input body removed by retention, D-096) → 422 (a body above the flow's byte budget) → 429 with
+ * {@code retry-after: 1} (no permit of the flow's admission now). A store that cannot say whether the input body exists is no
+ * refusal: 502 FAILED — but a run the node's Postgres pool refused a connection (D-133) is 503 with the fixed text, retryable. A
+ * DLQ replay that went through but whose row could not be removed is 500 naming the new message, the pool's refusal of that
+ * removal included (the run went through: retrying would run it again, D-133).
  *
- * <p>With a {@link Deployments} and a queue (CORE-14b P8, D-135 draft), {@code POST /admin/dlq/{id}/restart} runs a message its
- * flow's worker parked once more under its own id — where {@code /retry} runs a new copy: the DLQ row out and the work row in, in
- * one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow not deployed
- * here, its ingress body no longer kept), 422 (a flow that is not at-least-once, a row its worker did not park, or a keyed flow's row
- * parked before its key was kept).
+ * <p>With a {@link Deployments} and a queue (CORE-14b P8, D-135 draft; FIX-138a), {@code POST /admin/dlq/{id}/retry} runs a
+ * message its flow's worker parked once more under its own id — where {@code /replay} runs a new copy: the DLQ row out and the work
+ * row in, in one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow
+ * not deployed here, its ingress body no longer kept), 422 naming {@code /replay} (a flow that is not at-least-once, a row its
+ * worker did not park, or a keyed flow's row parked before its key was kept). There is no {@code /restart} route (404).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
@@ -291,8 +291,8 @@ public final class AdminServer {
     private final Optional<Sampling> sampling;
     private final Workers workers;
     private final WorkSignals signals;
-    /** The ids whose DLQ retry runs on this node now: a second retry of one is 409 (node-local, D-067). */
-    private final Set<String> retrying = ConcurrentHashMap.newKeySet();
+    /** The ids whose DLQ replay runs on this node now: a second replay of one is 409 (node-local, D-067). */
+    private final Set<String> replaying = ConcurrentHashMap.newKeySet();
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
 
     /** The read API only: no deploy routes. */
@@ -305,15 +305,18 @@ public final class AdminServer {
         this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
     }
 
-    /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}; no replay routes. */
+    /**
+     * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over
+     * {@code work}; no replay routes.
+     */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work) {
         this(config, messages, dlq, blobs, health, deployments, work, new Workers(), WorkSignals.NONE);
     }
 
     /**
-     * The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}, a release waking its flow
-     * in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)); no replay routes.
+     * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over {@code work},
+     * a release waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)); no replay routes.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, Workers workers, WorkSignals signals) {
@@ -321,8 +324,8 @@ public final class AdminServer {
     }
 
     /**
-     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes and the replay and
-     * retry routes, whose new messages take their ids from {@code ids}.
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes, the same-id DLQ retry
+     * and the message and DLQ replay routes, whose new messages take their ids from {@code ids}.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, IdGenerator ids) {
@@ -330,8 +333,8 @@ public final class AdminServer {
     }
 
     /**
-     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, replay and retry routes and
-     * the flows' CPU, sampled when {@code sampling} is there (D-094).
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, DLQ retry and replay routes
+     * and the flows' CPU, sampled when {@code sampling} is there (D-094).
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, IdGenerator ids, Optional<Sampling> sampling) {
@@ -404,11 +407,11 @@ public final class AdminServer {
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
                 ids.ifPresent(minted -> {
                     router.post("/admin/messages/:id/replay").handler(offload(c -> replay(c, d, minted)));
-                    router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, minted)));
+                    router.post("/admin/dlq/:id/replay").handler(offload(c -> dlqReplay(c, d, minted)));
                 });
             });
             work.ifPresent(q -> {
-                deployments.ifPresent(d -> router.post("/admin/dlq/:id/restart").handler(offload(c -> restart(c, d, q))));
+                deployments.ifPresent(d -> router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, q))));
                 router.get("/admin/work/held").handler(offload(c -> held(c, q)));
                 router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q, workers, signals)));
                 router.get("/admin/work/lost").handler(offload(c -> lost(c, q)));
@@ -727,34 +730,38 @@ public final class AdminServer {
     }
 
     /**
-     * {@code POST /admin/dlq/{id}/retry}: 404 without a DLQ row, 409 when its flow does not run here or a retry of the id runs on
-     * this node already; then the run of the parked step ({@link #ran}). A retry that went through but whose row stays is 500.
+     * {@code POST /admin/dlq/{id}/replay} (FIX-138a): a {@code from} parameter, any value, is 400 first — the run starts at the
+     * parked step; then 404 without a DLQ row, 409 when its flow does not run here or a replay of the id runs on this node already;
+     * then the run of the parked step as a new message ({@link #ran}). A replay that went through but whose row stays is 500.
      */
-    private Reply retry(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
+    private Reply dlqReplay(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
         String id = ctx.pathParam("id");
+        String from = ctx.request().getParam("from");
+        if (from != null) throw new Refused("a DLQ replay runs from the parked step and takes no from, was '" + from + "'");
         Optional<Parked> row = dlq.get(id).await();
         if (row.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
         Optional<Replay> replay = deployments.replay(row.get().flow());
         if (replay.isEmpty()) return notRunning(row.get().flow());
-        if (!retrying.add(id)) return Json.of(409, error("a retry of message " + id + " runs on this node already"));
+        if (!replaying.add(id)) return Json.of(409, error("a DLQ replay of message " + id + " runs on this node already"));
         try {
             String replayId = ids.next();
             return ran(replayId, id, row.get().step(), () -> replay.get().retry(id, replayId));
         } finally {
-            retrying.remove(id);
+            replaying.remove(id);
         }
     }
 
     /**
-     * {@code POST /admin/dlq/{id}/restart} (CORE-14b P8, D-135 draft): the parked message runs once more under its own id, from step 1,
-     * as attempt k + 1 of its own bound. 404 without a DLQ row; 409 when its flow is not deployed here; 422 when its flow is not
-     * at-least-once, when its worker did not park it — a row at a step other than 1, a replay's ({@code replayOf}), one without an
-     * {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked before V17,
-     * O7); nothing written for any of them. Then {@link WorkQueue#restart}: the DLQ row out and the work row in, under the kept key, in
-     * one transaction — false (the row went meanwhile) is 404, an ingress body no longer kept 409, nothing changed. 202
-     * {@code {id, attempt: k + 1}} once it committed: the flow woken here and announced to every node (the row's body node claims it).
+     * {@code POST /admin/dlq/{id}/retry} (CORE-14b P8, D-135 draft; FIX-138a): the parked message runs once more under its own id,
+     * from step 1, as attempt k + 1 of its own bound. 404 without a DLQ row; 409 when its flow is not deployed here; 422 when its
+     * flow is not at-least-once, when its worker did not park it — a row at a step other than 1, a replay's ({@code replayOf}), one
+     * without an {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked
+     * before V17, O7); nothing written for any of them; each 422 names {@code /replay}. Then {@link WorkQueue#restart}: the DLQ row
+     * out and the work row in, under the kept key, in one transaction — false (the row went meanwhile) is 404, an ingress body no
+     * longer kept 409, nothing changed. 202 {@code {id, attempt: k + 1}} once it committed: the flow woken here and announced to
+     * every node (the row's body node claims it).
      */
-    private Reply restart(RoutingContext ctx, Deployments deployments, WorkQueue work) {
+    private Reply retry(RoutingContext ctx, Deployments deployments, WorkQueue work) {
         String id = ctx.pathParam("id");
         Optional<Parked> found = dlq.get(id).await();
         if (found.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
@@ -764,15 +771,15 @@ public final class AdminServer {
         if (def.isEmpty()) return Json.of(409, error("flow " + flow + " is not deployed on this node; message " + id + " is not restarted"));
         if (!"at-least-once".equals(def.get().deliveryMode())) {
             return Json.of(422, error("message " + id + " of flow " + flow + " is not restarted: the flow is " + def.get().deliveryMode()
-                    + ", only an at-least-once flow's worker runs a restart; use /retry"));
+                    + ", only an at-least-once flow's worker runs a restart; use /replay"));
         }
         Object attempt = row.props().asMap().get(Envelope.ATTEMPT.name());
         if (row.step() != 1 || row.props().get(Envelope.REPLAY_OF).isPresent() || !(attempt instanceof Integer k) || k < 1) {
             return Json.of(422, error("message " + id + " was not parked by its flow's worker (step " + row.step() + ", attempt " + attempt
-                    + (row.props().get(Envelope.REPLAY_OF).isPresent() ? ", a replay" : "") + "): it cannot be restarted; use /retry"));
+                    + (row.props().get(Envelope.REPLAY_OF).isPresent() ? ", a replay" : "") + "): it cannot be restarted; use /replay"));
         }
         if (def.get().partitionBy().isPresent() && row.partitionKey().isEmpty()) {
-            return Json.of(422, error("message " + id + " of the keyed flow " + flow + " was parked before its key was kept; use /retry"));
+            return Json.of(422, error("message " + id + " of the keyed flow " + flow + " was parked before its key was kept; use /replay"));
         }
         boolean restarted;
         try {
@@ -801,7 +808,7 @@ public final class AdminServer {
 
     /**
      * The run {@code replayId} of {@code replayOf} from step {@code from}, on this virtual thread: 200 COMPLETE; a refusal by its
-     * reason; a retry that went through but whose row stays, 500 naming {@code replayId}; a failure the node's Postgres pool refused
+     * reason; a DLQ replay that went through but whose row stays, 500 naming {@code replayId}; a failure the node's Postgres pool refused
      * a connection with ({@link PgTx#refusedByThePool}, D-133), 503 with the fixed text; else 502 PARKED (the run parked again)
      * or FAILED with the run's error — a checked one thrown sneakily by a step's await included. An Error is the caller's (500).
      */

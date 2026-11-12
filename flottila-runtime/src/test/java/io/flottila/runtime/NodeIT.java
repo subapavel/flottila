@@ -1609,66 +1609,131 @@ class NodeIT {
         }
     }
 
-    /**
-     * GATE check 7, DLQ: the demo switched to at-least-once, its partner down (503). The worker tries the partner step once and
-     * retries it per the flow's policy ({@value #DEMO_RETRIES} retries), then parks the message — CORE-14a (P6): the node's
-     * retries at count 0, the worker parks its ingress at once —: {@code GET /admin/dlq} lists its row at step 1 (validate) naming
-     * the 503. The partner comes back; {@code POST /admin/dlq/{id}/retry} answers 200 with exactly {@code {id, replayOf, from,
-     * outcome}} — a new id, the parked one, 1, COMPLETE — the partner gets the mapped invoice once more and answers it, the row is
-     * gone from {@code GET /admin/dlq}, and the new message's rows are the parked input at step 0 and the five steps, marked
-     * {@code replayOf}.
-     */
-    @Test
-    void partnerDownParksAndRetryDeliversOncePartnerIsBack() throws Exception {
-        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
-        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+    /** The demo's partner, down (503) until {@code down} is cleared: every request as {@code "<status> <path> <body>"}, its {@code x-message-id}. */
+    record DownPartner(io.vertx.core.http.HttpServer server, List<String> saw, List<String> ids, AtomicBoolean down) {}
+
+    DownPartner downPartner(Buffer ack) {
+        List<String> saw = new CopyOnWriteArrayList<>();
+        List<String> ids = new CopyOnWriteArrayList<>();
         AtomicBoolean down = new AtomicBoolean(true);
-        io.vertx.core.http.HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
+        io.vertx.core.http.HttpServer server = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
             boolean isDown = down.get();
-            partnerSaw.add((isDown ? "503 " : "200 ") + req.path() + " " + b);
+            ids.add(String.valueOf(req.getHeader(HttpComponent.H_MESSAGE_ID)));
+            saw.add((isDown ? "503 " : "200 ") + req.path() + " " + b);
             if (isDown) req.response().setStatusCode(503).end("partner down");
             else req.response().putHeader("content-type", "application/xml").end(ack);
         })).listen(0, "127.0.0.1").await();
+        return new DownPartner(server, saw, ids, down);
+    }
+
+    /**
+     * The demo switched to at-least-once on a node whose retries are at count 0, {@code partner} down: one invoice accepted, then
+     * parked by the worker — {@code GET /admin/dlq} lists its one row at step 1 (validate) naming the 503, after the first try and
+     * {@value #DEMO_RETRIES} step retries. Returns the parked id.
+     */
+    String parkedWhilePartnerDown(HttpClient client, DownPartner partner) throws Exception {
+        int inPort = freePort();
+        Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.server().actualPort());
+        files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+        assertTrue(new String(files.get("flows/invoice-sync.yaml"), StandardCharsets.UTF_8).contains("attempts: " + DEMO_RETRIES),
+                "fixture: the demo flow retries its partner step " + DEMO_RETRIES + " times");
+        Map<String, String> env = env("ci");
+        env.put("FLOTTILA_RETRIES_COUNT", "0");   // CORE-14a (P6): the worker run's failure parks its ingress at once
+        startDemoNode(env);
+        int admin = node.adminPort();
+        assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
+        HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+        assertEquals(202, accepted.statusCode(), accepted.body());
+        String parked = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
+
+        until(() -> !dlqItems(admin).isEmpty(), "the message is parked once the partner step's retries are spent");
+        JsonArray rows = dlqItems(admin);
+        assertEquals(1, rows.size(), "one DLQ row: " + rows.encode());
+        JsonObject row = rows.getJsonObject(0);
+        assertEquals(parked, row.getString("id"), row.encode());
+        assertEquals("demo/invoice-sync", row.getString("flow"), row.encode());
+        assertEquals(1, row.getInteger("step"), "parked by its ingress, at step 1: " + row.encode());
+        assertEquals("validate", row.getString("name"), row.encode());
+        assertTrue(row.getString("error").contains("503"), "the row names the partner's 503: " + row.encode());
+        assertEquals(1 + DEMO_RETRIES, partner.saw().size(), "the first try and " + DEMO_RETRIES + " retries, no more: " + partner.saw());
+        assertTrue(partner.saw().stream().allMatch(s -> s.startsWith("503 /echo ")), "each answered 503: " + partner.saw());
+        assertEquals(List.of(parked), partner.ids().stream().distinct().toList(), "fixture: every try under the parked id: " + partner.ids());
+        return parked;
+    }
+
+    /** The {@code work} rows, as a session of its own sees them. */
+    long workRows() {
+        PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+        try {
+            return reader.query("select count(*) from work").execute().await().iterator().next().getLong(0);
+        } finally {
+            reader.close().await();
+        }
+    }
+
+    /**
+     * GATE check 7, DLQ retry (FIX-138a, D-045: a retry keeps the message's identity): the demo switched to at-least-once, its
+     * partner down (503), the message parked by its worker ({@link #parkedWhilePartnerDown}). The partner comes back;
+     * {@code POST /admin/dlq/{id}/retry} answers 202 with exactly {@code {id, attempt}} — the parked id, attempt 2 — the row is gone
+     * from {@code GET /admin/dlq}, and the worker delivers the mapped invoice once more, once, under the same {@code x-message-id}:
+     * a partner deduplicating by message id sees one message.
+     */
+    @Test
+    void partnerDownParksAndRetryDeliversTheSameIdOncePartnerIsBack() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = downPartner(ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
-            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
-            assertTrue(new String(files.get("flows/invoice-sync.yaml"), StandardCharsets.UTF_8).contains("attempts: " + DEMO_RETRIES),
-                    "fixture: the demo flow retries its partner step " + DEMO_RETRIES + " times");
-            Map<String, String> env = env("ci");
-            env.put("FLOTTILA_RETRIES_COUNT", "0");   // CORE-14a (P6): the worker run's failure parks its ingress at once
-            startDemoNode(env);
+            String parked = parkedWhilePartnerDown(client, partner);
             int admin = node.adminPort();
-            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
-            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
-            assertEquals(202, accepted.statusCode(), accepted.body());
-            String parked = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
 
-            until(() -> !dlqItems(admin).isEmpty(), "the message is parked once the partner step's retries are spent");
-            JsonArray rows = dlqItems(admin);
-            assertEquals(1, rows.size(), "one DLQ row: " + rows.encode());
-            JsonObject row = rows.getJsonObject(0);
-            assertEquals(parked, row.getString("id"), row.encode());
-            assertEquals("demo/invoice-sync", row.getString("flow"), row.encode());
-            assertEquals(1, row.getInteger("step"), "parked by its ingress, at step 1: " + row.encode());
-            assertEquals("validate", row.getString("name"), row.encode());
-            assertTrue(row.getString("error").contains("503"), "the row names the partner's 503: " + row.encode());
-            assertEquals(1 + DEMO_RETRIES, partnerSaw.size(), "the first try and " + DEMO_RETRIES + " retries, no more: " + partnerSaw);
-            assertTrue(partnerSaw.stream().allMatch(s -> s.startsWith("503 /echo ")), "each answered 503: " + partnerSaw);
-
-            down.set(false);
+            partner.down().set(false);
             HttpResponse<String> retried = post(client, admin, "/admin/dlq/" + parked + "/retry");
 
-            assertEquals(200, retried.statusCode(), retried.body());
-            JsonObject answer = new JsonObject(retried.body());
-            String id = answer.getString("id");
-            assertTrue(id != null && !id.equals(parked), "the retry is a new message: " + answer);
-            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 1).put("outcome", "COMPLETE"), answer, "the retry's answer");
-            assertEquals(2 + DEMO_RETRIES, partnerSaw.size(), "delivered once the partner is back, once: " + partnerSaw);
-            String delivered = partnerSaw.getLast();
-            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
+            assertEquals(202, retried.statusCode(), retried.body());
+            assertEquals(new JsonObject().put("id", parked).put("attempt", 2), new JsonObject(retried.body()), "the retry keeps the parked id: its attempt 2");
             assertEquals(new JsonArray(), dlqItems(admin), "the row is gone");
-            until(() -> stepsOf(admin, id).size() == 6, "the retry's rows are recorded: its input and the five steps");
+            until(() -> partner.saw().size() == 2 + DEMO_RETRIES, "the worker delivers it once the partner is back");
+            until(() -> workRows() == 0, "the restarted run completed");
+            assertEquals(2 + DEMO_RETRIES, partner.saw().size(), "delivered once more, once: " + partner.saw());
+            String delivered = partner.saw().getLast();
+            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
+            assertEquals(parked, partner.ids().getLast(), "delivered under the parked message id");
+            assertEquals(List.of(parked), partner.ids().stream().distinct().toList(), "a partner deduplicating by message id sees one message: " + partner.ids());
+            assertEquals(new JsonArray(), dlqItems(admin), "not parked again");
+        } finally {
+            partner.server().close().await();
+        }
+    }
+
+    /**
+     * GATE check 7, DLQ replay (FIX-138a: today's {@code /retry} copy, moved): the message parked as above
+     * ({@link #parkedWhilePartnerDown}). The partner comes back; {@code POST /admin/dlq/{id}/replay} answers 200 with exactly
+     * {@code {id, replayOf, from, outcome}} — a new id, the parked one, 1, COMPLETE — the partner gets the mapped invoice once more,
+     * under the new id, and answers it, the row is gone from {@code GET /admin/dlq}, and the new message's rows are the parked input
+     * at step 0 and the five steps, marked {@code replayOf}.
+     */
+    @Test
+    void partnerDownParksAndReplayDeliversANewCopyOncePartnerIsBack() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = downPartner(ack);
+        try (HttpClient client = http()) {
+            String parked = parkedWhilePartnerDown(client, partner);
+            int admin = node.adminPort();
+
+            partner.down().set(false);
+            HttpResponse<String> replayed = post(client, admin, "/admin/dlq/" + parked + "/replay");
+
+            assertEquals(200, replayed.statusCode(), replayed.body());
+            JsonObject answer = new JsonObject(replayed.body());
+            String id = answer.getString("id");
+            assertTrue(id != null && !id.equals(parked), "the replay is a new message: " + answer);
+            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 1).put("outcome", "COMPLETE"), answer, "the replay's answer");
+            assertEquals(2 + DEMO_RETRIES, partner.saw().size(), "delivered once the partner is back, once: " + partner.saw());
+            String delivered = partner.saw().getLast();
+            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
+            assertEquals(id, partner.ids().getLast(), "under the new id");
+            assertEquals(new JsonArray(), dlqItems(admin), "the row is gone");
+            until(() -> stepsOf(admin, id).size() == 6, "the replay's rows are recorded: its input and the five steps");
             JsonArray steps = stepsOf(admin, id);
             assertEquals(List.of("0 replay", "1 validate", "2 extractKey", "3 route", "4 toPartner", "5 partner"), stepNames(steps),
                     "the run from the parked step ran on the parked input: " + steps.encode());
@@ -1678,7 +1743,7 @@ class NodeIT {
                 assertEquals(parked, step.getJsonObject("props").getString("replayOf"), "marked replayOf the parked message: " + step.encode());
             }
         } finally {
-            partner.close().await();
+            partner.server().close().await();
         }
     }
 

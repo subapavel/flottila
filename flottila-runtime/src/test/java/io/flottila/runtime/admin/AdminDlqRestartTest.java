@@ -64,7 +64,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * CORE-14b P8 / O8 (implementer's cases) of {@code POST /admin/dlq/{id}/restart} beyond {@code AdminDlqRestartIT}, over in-memory
+ * FIX-138a moved these to {@code POST /admin/dlq/{id}/retry} (the same-id restart); A5: each 422 names {@code /replay}.
+ *
+ * <p>CORE-14b P8 / O8 (implementer's cases) of {@code POST /admin/dlq/{id}/retry} beyond {@code AdminDlqRestartIT}, over in-memory
  * stores: a row whose flow is not deployed here is 409 "flow f is not deployed"; a row of a sync flow, and a row at step 1 without an
  * {@code attempt} of at least 1, are 422 — none of them changes anything; a restart the queue answers false (the row went meanwhile)
  * is 404, one it fails because the ingress body is no longer kept is 409, both with nothing woken or announced. A restart that went
@@ -179,9 +181,9 @@ class AdminDlqRestartTest {
 
     record Answer(int status, JsonObject json) {}
 
-    Answer restart(String id) throws Exception {
+    Answer retry(String id) throws Exception {
         HttpResponse<String> res = HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY).build().send(
-                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/admin/dlq/" + id + "/restart")).POST(HttpRequest.BodyPublishers.noBody()).build(),
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/admin/dlq/" + id + "/retry")).POST(HttpRequest.BodyPublishers.noBody()).build(),
                 HttpResponse.BodyHandlers.ofString());
         return new Answer(res.statusCode(), new JsonObject(res.body()));
     }
@@ -193,8 +195,8 @@ class AdminDlqRestartTest {
         return p;
     }
 
-    void refused(String id, Parked kept, int status, String says) throws Exception {
-        Answer a = restart(id);
+    Answer refused(String id, Parked kept, int status, String says) throws Exception {
+        Answer a = retry(id);
         assertEquals(status, a.status(), says + ": " + a.json());
         String error = a.json().getString("error");
         assertTrue(error.contains(id) && error.contains(says), "the error names the message and says " + says + ": " + error);
@@ -202,6 +204,14 @@ class AdminDlqRestartTest {
         assertEquals(0, rows.size(), "nothing queued");
         assertEquals(List.of(), announced, "nothing announced");
         assertEquals(List.of(), runs, "nothing run");
+        return a;
+    }
+
+    /** A5: a 422 of {@code /retry} names the new-copy route {@code /replay} as what to use instead, never {@code /retry} itself. */
+    static void namesReplay(Answer a) {
+        String error = a.json().getString("error");
+        assertTrue(error.contains("/replay"), "the error names /replay as what to use instead: " + error);
+        assertTrue(!error.contains("/retry"), "never the route it was refused on: " + error);
     }
 
     @Test
@@ -213,26 +223,26 @@ class AdminDlqRestartTest {
     @Test
     void aSyncFlowsRowIs422() throws Exception {
         Parked p = parked("m-1", "shop/pay", 1, Props.empty().with(Envelope.ATTEMPT, 1));
-        refused("m-1", p, 422, "the flow is sync");
+        namesReplay(refused("m-1", p, 422, "the flow is sync"));
     }
 
     @Test
     void aRowWithoutAnAttemptOfAtLeastOneIs422() throws Exception {
         Parked none = parked("m-1", "shop/orders", 1, Props.empty());
-        refused("m-1", none, 422, "was not parked by its flow's worker");
+        namesReplay(refused("m-1", none, 422, "was not parked by its flow's worker"));
         Parked zero = parked("m-2", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 0));
-        refused("m-2", zero, 422, "was not parked by its flow's worker");
+        namesReplay(refused("m-2", zero, 422, "was not parked by its flow's worker"));
     }
 
     @Test
-    void aRestartTheQueueAnswersFalseIs404() throws Exception {
+    void aRetryTheQueueAnswersFalseIs404() throws Exception {
         Parked p = parked("m-1", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
         restartAnswer = () -> Future.succeededFuture(false);
         refused("m-1", p, 404, "any more");
     }
 
     @Test
-    void aRestartWhoseIngressBodyIsNoLongerKeptIs409() throws Exception {
+    void aRetryWhoseIngressBodyIsNoLongerKeptIs409() throws Exception {
         Parked removed = parked("m-1", "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 1));
         restartAnswer = () -> Future.failedFuture(new BlobNotFoundException(BlobKey.body("m-1", 0)));
         refused("m-1", removed, 409, "its ingress body is no longer kept");
@@ -242,12 +252,12 @@ class AdminDlqRestartTest {
     }
 
     @Test
-    void aRestartWakesItsFlowHereAndAnnouncesItToEveryNode() throws Exception {
+    void aRetryWakesItsFlowHereAndAnnouncesItToEveryNode() throws Exception {
         Envelope in = rt.ingress("shop/orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml"), Buffer.buffer("<order id=\"1\"/>"));
         store.record(new Recorder(store, rt.clock(), Meter.system(), Map.of()).startSnapshot(in, Recorder.INGRESS, RecordingPolicy.DEFAULT)).await();
         parked(in.id(), "shop/orders", 1, Props.empty().with(Envelope.ATTEMPT, 2));
 
-        Answer a = restart(in.id());
+        Answer a = retry(in.id());
         assertEquals(202, a.status(), "restarted: " + a.json());
         assertEquals(new JsonObject().put("id", in.id()).put("attempt", 3), a.json());
         assertEquals(List.of("null shop/orders"), announced, "its flow announced to every node: the queue tells no body node");

@@ -59,7 +59,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * of either half (a trigger refusing the work insert; one refusing the DLQ delete: whichever order the two run in, one of them
  * fails after the other ran) leaves the DLQ row and no work row; a restart of a message without a DLQ row (a second restart)
  * writes nothing. Then the worker runs the restarted row once, as attempt 2, under the same id: a partner that applied the first
- * send — its answer lost — and deduplicates by message id sees one effect, where {@code /retry}'s new copy would be a second.
+ * send — its answer lost — and deduplicates by message id sees one effect, where {@code /admin/dlq/{id}/replay}'s new copy would be a second (FIX-138a).
  *
  * <p>Seams: {@link PgWorkQueue} and {@link PgDlq} over one pool; the worker (flow {@code orders}, {@code delivery.retries} count 0:
  * the first failure parks at once, attempt 1, so k + 1 = 2 lies past the flow's bound of 1) with core's in-memory message store
