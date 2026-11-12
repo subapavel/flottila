@@ -1,4 +1,14 @@
 
+## 2026-11-12 — CORE-12 ARCHITECTURE rewritten to the core-rework brief (F-34) — done, review PASS (r2) · Deviation: F-34
+
+- Docs task: the red was the scout's contradiction list (agent/packets/CORE-12.md); residue grep agent/work/CORE-12-residue.txt.
+- Built mechanisms in present tense (journal body store, no Kafka on core paths, refs in Postgres); pending ones as
+  "(CORE-n, pending)": mover into ClickHouse (Q-3, CORE-10), retries on a schedule (Q-7, CORE-14), levels (Q-9, CORE-13),
+  sync recording off the hot path (Q-6, CORE-8), copies (O-7, CORE-5), S3 cold tier (CORE-13), bodies drop (CORE-11).
+- New §4 "Body journal" paragraph incl. the interim FLOTTILA_JOURNAL_KEEP_MAX_AGE pin (D-105); changelog 3.14; F-34.
+- Review r1 FAIL (interim pin stated as end state; S3 tier on two rows) → fixed. runtime pom description updated (validate exit 0).
+- For the owner (F-34): deploy refusal above FLOTTILA_BLOB_DURABLE_MAX vs D-110; S3 narrowed to CH cold tier + archives.
+
 ## 2026-11-12 — CORE-9 Kafka out of the core (D-134, draft; CORE-REWORK O-1) — done, review PASS (r3)
 
 - Context compacted before this task; re-verified with git status / git log -3.

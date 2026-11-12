@@ -13,7 +13,7 @@
   <artifactId>flottila-runtime</artifactId>
   <packaging>jar</packaging>
   <name>Flottila :: runtime</name>
-  <description>Vert.x bootstrap, endpoint verticles, Postgres/Kafka/Valkey/S3/ClickHouse implementations, admin API.</description>
+  <description>Vert.x bootstrap, endpoint verticles, Postgres stores, the body journal, Valkey poller leases, the S3 deployment archive store, admin API.</description>
 
   <build>
     <resources>

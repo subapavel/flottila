@@ -1,11 +1,11 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 6a, 6b, 7, 9, 15, 17, P2-15a..c, P2-16a/b, FIX-136..137, 139..146, 156, 169, 172, 172b, 172c, 173 done
-last commit: `Task: CORE-9` (this commit); 8d40424 `Task: FIX-173`; fac86cf `Task: FIX-172c`
+state: RUNNING core rework; CORE-0..4, 6a, 6b, 7, 9, 12, 15, 17, P2-15a..c, P2-16a/b, FIX-136..137, 139..146, 156, 169, 172, 172b, 172c, 173 done
+last commit: `Task: CORE-12` (this commit); ee1066b `Task: CORE-9`; 8d40424 `Task: FIX-173`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: CORE-12 [B] ARCHITECTURE to CORE-REWORK (Kafka text §2/§3/§7/§8 left by CORE-9); FIX-138 blocked on CORE-14; owner: F-33, D-134
+next exact action: pick the next ready core row (CORE-8 [C] needs CORE-10 sync half; check deps); FIX-138 blocked on CORE-14; owner: F-33, D-134, F-34
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
