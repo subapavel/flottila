@@ -1,4 +1,11 @@
 
+## 2026-11-12 — FIX-172c a deploy's own work-queue question refused by the pool is BUSY 503 (D-133 [FIX-172c]) — done, review PASS (r2)
+Test first: DeploymentsRedeployTest:994 aQueueQuestionThePoolRefusedIsBusyAndChangesNothing (red FIX-172c-red.log)
+Change: Deployments:1170 a pool refusal of the queue question → Kind BUSY after the problems check (422 first); :622 validate rethrows
+a BUSY as the node's IOException (an empty problem list would read as valid); javadocs and §4 / 3.11 / D-133 no longer name a 500
+Checks: verify -Pit 3759/0/0/0 fresh XML, coverage no decrease VERIFIED_PASS; M1–M5 killed (FIX-172c-mutants.log)
+Review: r1 FAIL (two Kind.BUSY source lists in javadoc), r2 PASS. Filed FIX-173 (queue answers depend on flow order)
+
 ## 2026-11-12 — FIX-172b a typed pool refusal on the transaction path (D-133, amends D-132) — done, review PASS (r3)
 Test first: PgTxTest (9), NodePoolWaitIT discard/replay/retry/deploy/intake-queue/undeploy, AdminServerReplayTest :891/:922,
 NodeConfigPoolWaitTest :188, DeploymentsRecordTest delete-refused (red FIX-172b-red-*.log, -r2-red-*.log; NoStackTraceThrowable observed)

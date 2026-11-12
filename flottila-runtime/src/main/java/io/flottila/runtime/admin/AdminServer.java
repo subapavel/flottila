@@ -88,11 +88,10 @@ import java.util.function.Supplier;
  * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
  * pool closed by a stopping node; D-132, D-133: retryable), whether a statement on the pool was refused or a transaction's
  * acquire ({@link io.flottila.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, a replay's and a DLQ
- * retry's run with a fixed text as {@code error}, a deploy's record write and an undeploy's work-queue question or record
- * delete with the refusal's own line (below); a deploy's own work-queue question is still 500 (FIX-172c), as is a DLQ retry
- * that ran and whose row the pool refused to remove (500 naming the new message, below) — 500 for anything else — a store that
- * failed, a recorded header no response may carry, a stored body whose stream fails before the head is out (after it, the
- * response is reset).
+ * retry's run with a fixed text as {@code error}, a deploy's work-queue question or record write and an undeploy's work-queue
+ * question or record delete with the refusal's own line (below), except a DLQ retry that ran and whose row the pool refused to
+ * remove (500 naming the new message, below); 500 for anything else: a store that failed, a recorded header no response may
+ * carry, a stored body whose stream fails before the head is out (after it, the response is reset).
  *
  * <p>With a {@link Deployments} (D-059, D-060 b) it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
  * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
@@ -102,8 +101,8 @@ import java.util.function.Supplier;
  * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed, D-063), or a refusal
  * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500 ({@code {error}}; a redeploy
  * whose start failed and rolled back: {@code {error, problems}}, D-063), 503 (the node stops; or the node's Postgres pool refused
- * the deploy record's write, D-133: the same body as the 500 of a record not written)
- * (a work-queue question the pool refused is still 500, FIX-172c). An answer given before
+ * the deploy record's write, D-133: the same body as the 500 of a record not written, or its work-queue question: {@code {error}}
+ * naming the flow and the pool's refusal, FIX-172c). An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
  * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
@@ -879,8 +878,8 @@ public final class AdminServer {
 
     /**
      * A refusal by its kind: 400, 403, 404, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503
-     * (the node stops; the pool refused the record's write, with every problem of a redeploy rolled back, or an undeploy's queue
-     * question or record delete).
+     * (the node stops; the pool refused the record's write, with every problem of a redeploy rolled back, a deploy's or an
+     * undeploy's queue question, or an undeploy's record delete).
      */
     private static Reply refusal(DeployRefusedException refused) {
         int status = switch (refused.kind()) {

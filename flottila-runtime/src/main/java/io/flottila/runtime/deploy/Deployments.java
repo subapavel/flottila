@@ -97,7 +97,8 @@ import java.util.stream.Stream;
  * another package listens (D-072: one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), and
  * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
  * items of it (queued, leased or held: they would never run; a flow whose new yaml does not read is not asked, its own problems
- * are listed; a queue that cannot answer is the node's failure, unless the package has problems: then it is their 422) — and
+ * are listed; a queue that cannot answer is the node's failure, one the node's Postgres pool refused a connection
+ * ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable, D-133 — unless the package has problems: then it is their 422) — and
  * every flow built: its delivery, its worker (at-least-once), its replay ({@link #replay(String)}, D-067)
  * and its effective hash ({@link DeployedFlow#hash()}). Each flow is then added (an id the package does not run, or one it lists
  * {@link DeployedFlow.State#FAILED}: nothing of that one runs), unchanged (the hash of the flow running: that flow runs on
@@ -576,7 +577,8 @@ public final class Deployments {
      * of each flow and the write of its record. An empty list is no promise that a deploy succeeds.
      *
      * @return the problems the load, the check and the build find, each path in it from the package root; empty when they find none
-     * @throws IOException a file the build read cannot be hashed, or the work queue could not answer: the node's failure
+     * @throws IOException a file the build read cannot be hashed, or the work queue could not answer (the node's Postgres pool
+     *                     refused the question included): the node's failure
      */
     public List<String> validate(String name, Path dir) throws IOException {
         return validate(name, dir, Map.of());
@@ -594,7 +596,7 @@ public final class Deployments {
      * @param held the closure's package folders, each a package that loads with a name and a version
      * @return the problems, as {@link #validate(String, Path)} returns them
      * @throws IOException a held folder or a file of it cannot be read, a file the build read cannot be hashed, or the work queue
-     *                     could not answer: the node's failure
+     *                     could not answer (the node's Postgres pool refused the question included): the node's failure
      * @throws IllegalArgumentException a file of a held folder does not parse ({@code Package.load})
      */
     public List<String> validate(String name, Path dir, List<Path> held) throws IOException {
@@ -617,6 +619,7 @@ public final class Deployments {
             Checked checked = check(name, pkg, dir, before, null, held);
             return build(name, Optional.empty(), pkg.manifest().getString("version"), "validate", pkg, dir, checked, built);
         } catch (DeployRefusedException refused) {
+            if (refused.kind() == Kind.BUSY) throw new IOException(refused.error(), refused);   // a pool refusal lists no problem: the node's failure (D-133)
             return refused.problems();
         } finally {
             Future.join(built.stream().map(Deployments::dropBuilt).toList()).await();   // each never fails
@@ -1067,7 +1070,8 @@ public final class Deployments {
      * (the package's, empty on a first deploy), every at-least-once one the new version does not run at-least-once — removed, or
      * another delivery mode — is asked whether the work queue holds items of it (blocking): if so, those items would never run.
      * One the new version names with a yaml that does not read is not asked: its problems are listed already. A question the queue
-     * fails is the node's {@link IOException} (its cause the queue's failure) once every one was asked — unless there are
+     * fails is the node's {@link IOException} (its cause the queue's failure) once every one was asked — one the node's Postgres pool
+     * refused a connection ({@link PgTx#refusedByThePool}) {@link Kind#BUSY} with that line instead (D-133) — unless there are
      * problems: then they are the answer. {@code restoring} is the record a restore installs, null for a deploy or a validate;
      * {@code held} the versions an off-node validate holds (D-089), each pin to its folder, empty otherwise.
      */
@@ -1163,6 +1167,7 @@ public final class Deployments {
             }
         }
         if (!problems.isEmpty()) throw invalid(name, problems);
+        if (unanswered != null && PgTx.refusedByThePool(unanswered.getCause())) throw refused(Kind.BUSY, unanswered.getMessage());   // retryable, nothing changed (D-133)
         if (unanswered != null) throw unanswered;
         return new Checked(schemes, configs, resolved, flows, Set.copyOf(leaving), Map.copyOf(listening), dependencies);
     }

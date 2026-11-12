@@ -15,9 +15,12 @@ import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.runtime.pg.PoolRefusedException;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
+import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
@@ -64,6 +67,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -977,6 +981,77 @@ class DeploymentsRedeployTest {
         assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
         assertFalse(audit.stopped());
         assertEquals(flowsBefore, deployments.flows());
+    }
+
+    /**
+     * FIX-172c: v2 removes the at-least-once {@code audit}, and the work queue's question about it is refused by the node's Postgres
+     * pool — its wait elapsed (exactly VertxException), its queue full, a transaction's acquire refused: the deploy is
+     * {@link Kind#BUSY} (503), retryable, its error naming the flow and the cause, no problem lines, and nothing changes: nothing
+     * stops or starts, the flows, the package record and shop's directory as they were. A VertxException subclass is no pool
+     * refusal: the node's IOException, as before. Witness: the queue answering, the same archive deploys and removes audit.
+     */
+    @Test
+    void aQueueQuestionThePoolRefusedIsBusyAndChangesNothing() throws Exception {
+        deploy(shop());
+        Doors.Door audit = doors.door("shop/audit");
+        List<DeployedFlow> flowsBefore = deployments.flows();
+        List<DeployedPackage> packagesBefore = deployments.packages();
+        Path shopDir = data.resolve("packages").resolve("shop");
+        List<String> dirsBefore = children(shopDir);
+        Path archive = removed(shop(), "audit").without("endpoints/archive.yaml").zipTo(archives);
+        Map<String, Throwable> refusals = new LinkedHashMap<>();
+        refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
+        refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
+        int mark = mark();
+        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
+            int asked = hasItemsCalls("shop/audit").size();
+            queue.failHasItems(r.getValue());
+            DeployRefusedException refused = refused("shop", archive);
+            assertEquals(Kind.BUSY, refused.kind(), r.getKey() + ": " + refused.error() + " " + refused.problems());
+            assertTrue(hasItemsCalls("shop/audit").size() > asked, r.getKey() + ": witness, the queue was asked about audit: " + queue.hasItemsCalls());
+            assertTrue(refused.error().contains(r.getValue().getMessage()) && refused.error().contains("shop/audit"),
+                    r.getKey() + ": the refusal names the flow and the cause: " + refused.error());
+            assertEquals(List.of(), refused.problems(), r.getKey() + ": no problem lines");
+        }
+        VertxException closed = new VertxException("connection closed by the server") { };
+        queue.failHasItems(closed);
+        IOException failed = assertThrows(IOException.class, () -> deploy("shop", Optional.empty(), archive),
+                "a VertxException subclass is no pool refusal: the node's failure, as before");
+        assertSame(closed, failed.getCause(), "the IOException carries the queue's failure: " + failed);
+
+        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
+        assertFalse(audit.stopped(), "audit's consumer is not stopped: " + audit.history());
+        assertEquals(flowsBefore, deployments.flows(), "the flows are v1's");
+        assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
+        assertEquals(dirsBefore, children(shopDir), "shop's directory holds v1's only");
+        assertEquals(List.of(), children(deployments.incomingDir()), "no unpack is left behind");
+
+        queue.failHasItems(null);
+        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", Optional.empty(), archive));
+    }
+
+    /**
+     * FIX-172c: v2 removes the at-least-once {@code audit} and is invalid besides (an endpoint its schema refuses), and the pool
+     * refuses the queue's question about audit: the package's problems come first, its 422, not the BUSY of the question (503).
+     * Witness: the queue was asked.
+     */
+    @Test
+    void aQueueQuestionThePoolRefusedOnAnInvalidPackageIs422() throws Exception {
+        deploy(shop());
+        PackageDraft v2 = removed(shop(), "audit").without("endpoints/archive.yaml");
+        v2.endpoint("spare", "sideways", new JsonObject());
+        Path archive = v2.zipTo(archives);
+        DeployRefusedException answering = refused("shop", archive);
+        assertEquals(Kind.INVALID, answering.kind(), "fixture: " + answering.error() + " " + answering.problems());
+        int asked = hasItemsCalls("shop/audit").size();
+        queue.failHasItems(new PoolRefusedException(new VertxException("Timeout", true)));
+
+        DeployRefusedException refused = refused("shop", archive);
+
+        assertEquals(Kind.INVALID, refused.kind(), "the package's problems before the pool's refusal: " + refused.error() + " " + refused.problems());
+        assertEquals(answering.problems(), refused.problems(), "the 422 lists the package's problems");
+        assertTrue(hasItemsCalls("shop/audit").size() > asked, "witness, the queue was asked about audit: " + queue.hasItemsCalls());
     }
 
     /**

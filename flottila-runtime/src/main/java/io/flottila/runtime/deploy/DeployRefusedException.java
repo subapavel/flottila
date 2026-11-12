@@ -28,7 +28,8 @@ public final class DeployRefusedException extends Exception {
         /**
          * The node's Postgres pool refused a connection (503, D-133), retryable: to the deploy record's write — otherwise as
          * {@link #FAILED} for a record not written, a first deploy's flows stopped, a redeploy rolled back — or to an undeploy's
-         * work-queue question or record delete, which then changed nothing.
+         * work-queue question or record delete, or to a deploy's work-queue question about a flow the new version no longer runs
+         * at-least-once (after the package's problems: those are its 422), which then changed nothing (FIX-172c).
          */
         BUSY,
         /**
