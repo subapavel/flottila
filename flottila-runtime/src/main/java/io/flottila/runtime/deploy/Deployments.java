@@ -97,8 +97,9 @@ import java.util.stream.Stream;
  * another package listens (D-072: one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), and
  * no at-least-once flow the package runs that the new version removes or makes non-at-least-once while the work queue holds
  * items of it (queued, leased or held: they would never run; a flow whose new yaml does not read is not asked, its own problems
- * are listed; a queue that cannot answer is the node's failure, one the node's Postgres pool refused a connection
- * ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable, D-133 — unless the package has problems: then it is their 422) — and
+ * are listed; a queue that cannot answer is the node's failure, and only when every question that failed was one the node's Postgres
+ * pool refused a connection ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable, D-133, FIX-173 — unless the package has
+ * problems: then it is their 422) — and
  * every flow built: its delivery, its worker (at-least-once), its replay ({@link #replay(String)}, D-067)
  * and its effective hash ({@link DeployedFlow#hash()}). Each flow is then added (an id the package does not run, or one it lists
  * {@link DeployedFlow.State#FAILED}: nothing of that one runs), unchanged (the hash of the flow running: that flow runs on
@@ -165,8 +166,8 @@ import java.util.stream.Stream;
  * not list ({@link Kind#NOT_FOUND}); a package another listed package's record pins, a FAILED one included
  * ({@link Kind#CONFLICT} "&lt;name&gt;@&lt;version&gt; is in use by &lt;a&gt;, &lt;b&gt;", the dependents sorted); a running
  * at-least-once flow of it whose items the work queue holds ({@link Kind#CONFLICT}, a line per such flow: they would never run;
- * a queue that cannot answer is the node's {@link IOException}, a question the node's Postgres pool refused a connection
- * ({@link PgTx#refusedByThePool}) {@link Kind#BUSY}, retryable, D-133). Then, under the lock, its record is deleted: the commit point. A delete
+ * a queue that cannot answer is the node's {@link IOException}, and only when every question that failed was one the node's Postgres
+ * pool refused a connection ({@link PgTx#refusedByThePool}) and no flow holds items {@link Kind#BUSY}, retryable, D-133, FIX-173). Then, under the lock, its record is deleted: the commit point. A delete
  * that fails is the node's {@link IOException}, one the pool refused {@link Kind#BUSY}; either changes nothing else.
  * Then every flow of it that runs stops and closes as phase A stops a flow (a stop that fails is a WARNING and counts as settled;
  * an at-least-once one is asked for queue items again once its worker drained, items that arrived meanwhile a WARNING),
@@ -1070,9 +1071,10 @@ public final class Deployments {
      * (the package's, empty on a first deploy), every at-least-once one the new version does not run at-least-once — removed, or
      * another delivery mode — is asked whether the work queue holds items of it (blocking): if so, those items would never run.
      * One the new version names with a yaml that does not read is not asked: its problems are listed already. A question the queue
-     * fails is the node's {@link IOException} (its cause the queue's failure) once every one was asked — one the node's Postgres pool
-     * refused a connection ({@link PgTx#refusedByThePool}) {@link Kind#BUSY} with that line instead (D-133) — unless there are
-     * problems: then they are the answer. {@code restoring} is the record a restore installs, null for a deploy or a validate;
+     * fails is the node's {@link IOException} (its cause the queue's failure, the last such flow's) once every one was asked; only
+     * when every question that failed was one the node's Postgres pool refused a connection ({@link PgTx#refusedByThePool}) is it
+     * {@link Kind#BUSY} with the last such line instead (D-133, FIX-173: a real failure outranks a refusal in any flow order) —
+     * unless there are problems: then they are the answer. {@code restoring} is the record a restore installs, null for a deploy or a validate;
      * {@code held} the versions an off-node validate holds (D-089), each pin to its folder, empty otherwise.
      */
     private Checked check(String name, Package pkg, Path dir, List<Flow> running, DeploymentRecord restoring, Map<DeploymentRecord.Pin, Path> held) throws DeployRefusedException, IOException {
@@ -1154,7 +1156,8 @@ public final class Deployments {
         Set<String> unread = new HashSet<>(pkg.flows().keySet());   // the flows the new version names whose yaml did not read: their problems say it all
         unread.removeAll(flows.keySet());
         Set<String> leaving = new HashSet<>();
-        IOException unanswered = null;   // a question the queue failed: the node's failure, unless the package is refused anyway
+        IOException unanswered = null;   // a question the queue failed for real: the node's failure, unless the package is refused anyway
+        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a real failure or a problem outranks it (FIX-173)
         for (Flow f : running) {
             if (!AT_LEAST_ONCE.equals(f.flow().delivery()) || stayQueued.contains(f.id()) || unread.contains(local(f.flow()))) continue;
             leaving.add(f.id());
@@ -1163,12 +1166,14 @@ public final class Deployments {
                 problems.add("flow '" + local(f.flow()) + "' runs at-least-once and the work queue holds items of it (queued, leased or held): this version "
                         + "does not run it at-least-once, so they would never run; deploy it once they are done");
             } else if (items.failed()) {
-                unanswered = new IOException("the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause()), items.cause());
+                String line = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());
+                if (PgTx.refusedByThePool(items.cause())) pooled = line;
+                else unanswered = new IOException(line, items.cause());
             }
         }
         if (!problems.isEmpty()) throw invalid(name, problems);
-        if (unanswered != null && PgTx.refusedByThePool(unanswered.getCause())) throw refused(Kind.BUSY, unanswered.getMessage());   // retryable, nothing changed (D-133)
         if (unanswered != null) throw unanswered;
+        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's: retryable, nothing changed (D-133)
         return new Checked(schemes, configs, resolved, flows, Set.copyOf(leaving), Map.copyOf(listening), dependencies);
     }
 
@@ -1795,12 +1800,16 @@ public final class Deployments {
     /**
      * The qualified ids of the at-least-once flows of {@code running}, once the work queue said it holds no item of any (D-095):
      * items of one refuse the undeploy ({@link Kind#CONFLICT}, a line per such flow by its local id, sorted as the flows are), since they would
-     * never run; a question the queue fails is the node's {@link IOException}, naming the flow and the cause — one the node's
-     * Postgres pool refused a connection ({@link PgTx#refusedByThePool}) is {@link Kind#BUSY} with that line instead (D-133).
+     * never run; a question the queue fails is the node's {@link IOException} at once, naming the flow and the cause, whether or not
+     * the pool refused an earlier one. A question the node's Postgres pool refused a connection ({@link PgTx#refusedByThePool}) does
+     * not stop the asking: once every flow was asked without a real failure, items of any flow are still the CONFLICT, and only when
+     * no flow holds items is it {@link Kind#BUSY} with the last such line (D-133, FIX-173: a real failure, then a flow known to hold
+     * items, outranks a refusal in any flow order).
      */
     private Set<String> queued(List<Flow> running) throws DeployRefusedException, IOException {
         Set<String> queued = new HashSet<>();
         List<String> held = new ArrayList<>();
+        String pooled = null;   // a question the node's Postgres pool refused: BUSY, unless a question fails for real or a flow holds items (FIX-173)
         for (Flow f : running) {
             if (!AT_LEAST_ONCE.equals(f.flow().delivery())) continue;
             queued.add(f.id());
@@ -1810,11 +1819,12 @@ public final class Deployments {
                         + "they are done");
             } else if (items.failed()) {
                 String unanswered = "the work queue could not say whether it holds items of flow '" + f.id() + "': " + reason(items.cause());
-                if (PgTx.refusedByThePool(items.cause())) throw refused(Kind.BUSY, unanswered);   // retryable, nothing changed (D-133)
-                throw new IOException(unanswered, items.cause());
+                if (!PgTx.refusedByThePool(items.cause())) throw new IOException(unanswered, items.cause());
+                pooled = unanswered;   // the later flows are still asked: a real failure of one outranks it (FIX-173)
             }
         }
-        if (!held.isEmpty()) throw refused(Kind.CONFLICT, String.join("\n", held));
+        if (!held.isEmpty()) throw refused(Kind.CONFLICT, String.join("\n", held));   // known items outrank a refusal (FIX-173)
+        if (pooled != null) throw refused(Kind.BUSY, pooled);   // every failed question was the pool's, no flow holds items: retryable (D-133)
         return queued;
     }
 

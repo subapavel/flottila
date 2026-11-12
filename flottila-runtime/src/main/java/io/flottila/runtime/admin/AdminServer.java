@@ -102,7 +102,8 @@ import java.util.function.Supplier;
  * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500 ({@code {error}}; a redeploy
  * whose start failed and rolled back: {@code {error, problems}}, D-063), 503 (the node stops; or the node's Postgres pool refused
  * the deploy record's write, D-133: the same body as the 500 of a record not written, or its work-queue question: {@code {error}}
- * naming the flow and the pool's refusal, FIX-172c). An answer given before
+ * naming the flow and the pool's refusal, FIX-172c; only when every failed question was the pool's — a real failure of another
+ * flow's question is 500, FIX-173). An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
  * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
@@ -111,8 +112,9 @@ import java.util.function.Supplier;
  * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087).
  * {@code DELETE /admin/packages/{name}} undeploys (D-095) on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
  * (its flows' qualified ids, sorted), or a refusal by the deploy's status map — 400, 403, 409 (another deploy or undeploy runs on
- * the node, or another package's record pins it), 503 (the node stops; or the node's Postgres pool refused the work queue's
- * question or the record delete, D-133: nothing changed, retryable) — and 404 for a package the node does not list; a record
+ * the node, or another package's record pins it, or the work queue holds items of a flow of it), 503 (the node stops; or the
+ * node's Postgres pool refused the work queue's question or the record delete, D-133: nothing changed, retryable; a refused
+ * question only when no other question failed otherwise and no flow holds items — those are 500 and 409, FIX-173) — and 404 for a package the node does not list; a record
  * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system (D-099), sorted by target: 200
  * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
  * component that names no target is not listed. Without one these routes do not exist (404).

@@ -1,4 +1,12 @@
 
+## 2026-11-12 — FIX-173 work-queue answers no longer depend on flow order on deploy and undeploy (D-133 [FIX-173]) — done, review PASS (r2)
+Test first: DeploymentsRedeployTest:1065, DeploymentsUndeployTest:914 aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder,
+DeploymentsUndeployTest itemsOfOneFlowOutrankAPoolRefusalOfAnotherInEitherFlowOrder (red FIX-173-red.log, -r2-red*.log); CountingQueue per-flow hook
+Change: Deployments check() keeps a real failure apart from a pool refusal: 422 problems, then the real IOException (500), then BUSY;
+queued() a real failure at once, then held items 409, then BUSY. §4 + changelog 3.12, D-133, AdminServer and DeployRefusedException javadocs
+Checks: verify -Pit 3762/0/0/0 fresh XML, coverage no decrease VERIFIED_PASS; M1–M9 killed (r1-M9 the gap the r2 test closed)
+Review: r1 FAIL (docs stated the FIX-172c precedence), r2 PASS
+
 ## 2026-11-12 — FIX-172c a deploy's own work-queue question refused by the pool is BUSY 503 (D-133 [FIX-172c]) — done, review PASS (r2)
 Test first: DeploymentsRedeployTest:994 aQueueQuestionThePoolRefusedIsBusyAndChangesNothing (red FIX-172c-red.log)
 Change: Deployments:1170 a pool refusal of the queue question → Kind BUSY after the problems check (422 first); :622 validate rethrows

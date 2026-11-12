@@ -31,6 +31,7 @@ public final class CountingQueue implements WorkQueue {
     private final java.util.Map<String, Runnable> afterFirstHasItems = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicInteger renews = new java.util.concurrent.atomic.AtomicInteger();
     private volatile Throwable hasItemsFailure;
+    private final java.util.Map<String, Throwable> hasItemsFailures = new java.util.concurrent.ConcurrentHashMap<>();
 
     public CountingQueue(Clock clock) {
         this.inner = new InMemoryWorkQueue(clock);
@@ -121,9 +122,18 @@ public final class CountingQueue implements WorkQueue {
     /** From now on every {@link #hasItems} call (still recorded) fails with {@code failure}; {@code null} answers again. */
     public void failHasItems(Throwable failure) { hasItemsFailure = failure; }
 
+    /**
+     * FIX-173: from now on every {@link #hasItems}({@code flow}) call (still recorded) fails with {@code failure}, whatever
+     * {@link #failHasItems(Throwable)} says; {@code null} drops this flow's failure (the queue-wide one applies again).
+     */
+    public void failHasItems(String flow, Throwable failure) {
+        if (failure == null) hasItemsFailures.remove(flow);
+        else hasItemsFailures.put(flow, failure);
+    }
+
     @Override public Future<Boolean> hasItems(String flow) {
         hasItemsCalls.add(flow + " rows=" + inner.snapshot().stream().filter(i -> i.flow().equals(flow)).count());
-        Throwable failure = hasItemsFailure;
+        Throwable failure = hasItemsFailures.getOrDefault(flow, hasItemsFailure);
         Future<Boolean> answer = failure == null ? inner.hasItems(flow) : Future.failedFuture(failure);
         Runnable hook = afterFirstHasItems.remove(flow);
         if (hook != null) hook.run();

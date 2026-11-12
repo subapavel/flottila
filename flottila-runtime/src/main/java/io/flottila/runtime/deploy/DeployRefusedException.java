@@ -20,7 +20,7 @@ public final class DeployRefusedException extends Exception {
         INVALID,
         /**
          * Another deploy or undeploy runs on this node: one at a time per node, whatever the package; or the package to undeploy is
-         * pinned by another package's record (409).
+         * pinned by another package's record, or the work queue holds items of an at-least-once flow of it (409).
          */
         CONFLICT,
         /** The node is closing (503). */
@@ -29,7 +29,9 @@ public final class DeployRefusedException extends Exception {
          * The node's Postgres pool refused a connection (503, D-133), retryable: to the deploy record's write — otherwise as
          * {@link #FAILED} for a record not written, a first deploy's flows stopped, a redeploy rolled back — or to an undeploy's
          * work-queue question or record delete, or to a deploy's work-queue question about a flow the new version no longer runs
-         * at-least-once (after the package's problems: those are its 422), which then changed nothing (FIX-172c).
+         * at-least-once (after the package's problems: those are its 422), and only when every failed question was the pool's: a
+         * real failure of another flow's question is the node's IOException and, on an undeploy, a flow holding items its CONFLICT
+         * (FIX-173); either refusal then changed nothing (FIX-172c).
          */
         BUSY,
         /**

@@ -904,6 +904,109 @@ class DeploymentsUndeployTest {
     }
 
     /**
+     * FIX-173: shop runs three at-least-once flows (audit, ledger, relay), so its undeploy asks the work queue about each. Audit's
+     * question fails for real and relay's is refused by the node's Postgres pool, then the other way round (ledger answers): in
+     * either assignment — so in either flow order — the undeploy is the node's IOException naming the flow whose question really
+     * failed and carrying its cause, never {@link Kind#BUSY}; only when every failed question is a pool refusal is it BUSY (503).
+     * Nothing changes: no delete, the record, the listing and the flows as they were. The queue answering again, shop undeploys.
+     */
+    @Test
+    void aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder() throws Exception {
+        Node node = new Node("node-1");
+        node.deploy(queued());
+        List<String> dirs = children(node.packageDir("shop"));
+        List<DeploymentRecord> rows = records.rows();
+        List<DeployedPackage> listed = node.deployments.packages();
+        List<DeployedFlow> flows = node.deployments.flows();
+        int mark = log.size();
+        for (List<String> order : List.of(List.of("shop/audit", "shop/relay"), List.of("shop/relay", "shop/audit"))) {
+            String really = order.get(0);
+            String pooled = order.get(1);
+            IllegalStateException down = new IllegalStateException("the queue's database is unreachable for " + really);
+            node.queue.failHasItems(really, down);
+            node.queue.failHasItems(pooled, new PoolRefusedException(new VertxException("Timeout", true)));
+
+            IOException failed = assertThrows(IOException.class, () -> node.undeploy("shop"),
+                    really + " fails, " + pooled + " is refused by the pool: the node's failure, whatever the flow order");
+
+            assertSame(down, failed.getCause(), "the IOException carries the real failure, not the pool's refusal: " + failed);
+            assertTrue(failed.getMessage().contains("'" + really + "'") && failed.getMessage().contains(down.getMessage()),
+                    "it names the flow whose question really failed and the cause: " + failed.getMessage());
+        }
+        node.queue.failHasItems("shop/audit", new PoolRefusedException(new VertxException("Timeout", true)));
+        node.queue.failHasItems("shop/relay", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        DeployRefusedException busy = assertThrows(DeployRefusedException.class, () -> node.undeploy("shop"), "every failed question refused by the pool");
+        assertEquals(Kind.BUSY, busy.kind(), "every failed question refused by the pool: retryable, " + busy.getMessage());
+        assertEquals(List.of(), busy.problems(), "no problem lines");
+
+        List<String> sinceMark = List.copyOf(log);
+        assertEquals(List.of(), sinceMark.subList(mark, sinceMark.size()).stream().filter(e -> e.startsWith("delete ")).toList(), "no delete was called: " + log);
+        assertEquals(rows, records.rows(), "shop's record stays");
+        assertEquals(listed, node.deployments.packages(), "shop is listed as before");
+        assertEquals(flows, node.deployments.flows(), "its flows too");
+        for (String f : SHOP_FLOWS) assertFalse(node.doors.door(f).stopped(), f + "'s consumer is not stopped: " + node.doors.door(f).history());
+        assertEquals(dirs, children(node.packageDir("shop")), "its directory stays");
+
+        node.queue.failHasItems("shop/audit", null);
+        node.queue.failHasItems("shop/relay", null);
+        assertEquals(new UndeployResult("shop", "1.0.0", SHOP_FLOWS), node.undeploy("shop"), "witness: the queue answering, shop undeploys");
+    }
+
+    /**
+     * FIX-173 r2: one at-least-once flow holds an item (its send held at the partner) and another's question is refused by the
+     * node's Postgres pool: the "holds items" answer is definitive, so the undeploy is the 409 ({@link Kind#CONFLICT}) naming the
+     * flow with items, never {@link Kind#BUSY}, in either flow order (audit holds and relay is refused, then the other way round).
+     * The refused flow was asked (witness). Nothing changes: no delete, the record, the listing, the flows, the directory and the
+     * item stay, no consumer stops. Released and answering again, shop undeploys.
+     */
+    @Test
+    void itemsOfOneFlowOutrankAPoolRefusalOfAnotherInEitherFlowOrder() throws Exception {
+        Node node = new Node("node-1");
+        node.deploy(queued());
+        List<String> dirs = children(node.packageDir("shop"));
+        List<DeploymentRecord> rows = records.rows();
+        List<DeployedPackage> listed = node.deployments.packages();
+        List<DeployedFlow> flows = node.deployments.flows();
+        int mark = log.size();
+        for (List<String> order : List.of(List.of("shop/audit", "shop/relay"), List.of("shop/relay", "shop/audit"))) {
+            String holding = order.get(0);
+            String pooled = order.get(1);
+            int sent = node.doors.partner().sent().size();
+            CountDownLatch release = node.doors.partner().holdNext(1);
+            try {
+                Envelope held = node.accept(holding);
+                node.doors.partner().awaitSent(sent + 1);
+                assertEquals(List.of(held.id()), node.queue.rows().stream().map(WorkQueue.Item::messageId).toList(),
+                        "fixture: one item of " + holding + ", leased while its send is held: " + node.queue.rows());
+                node.queue.failHasItems(pooled, new PoolRefusedException(new VertxException("Timeout", true)));
+                int asked = node.queue.hasItemsCalls().size();
+
+                DeployRefusedException refused = node.refused("shop", Kind.CONFLICT);
+
+                assertEquals(List.of(itemsLine(holding.substring("shop/".length()))), refused.error().lines().toList(),
+                        holding + " holds items, " + pooled + " is refused by the pool: the 409 names the flow with items: " + refused.error());
+                assertTrue(node.queue.hasItemsCalls().subList(asked, node.queue.hasItemsCalls().size()).stream().anyMatch(c -> c.startsWith(pooled + " ")),
+                        "witness: " + pooled + "'s question was asked and refused: " + node.queue.hasItemsCalls());
+                for (String f : SHOP_FLOWS) assertFalse(node.doors.door(f).stopped(), f + "'s consumer is not stopped: " + node.doors.door(f).history());
+                assertEquals(1, node.queue.size(), "the item stays: " + node.queue.rows());
+            } finally {
+                release.countDown();
+                node.queue.failHasItems(pooled, null);
+            }
+            until(() -> node.queue.size() == 0, "released, " + holding + "'s item finishes: " + node.queue.rows());
+        }
+
+        List<String> sinceMark = List.copyOf(log);
+        assertEquals(List.of(), sinceMark.subList(mark, sinceMark.size()).stream().filter(e -> e.startsWith("delete ")).toList(), "no delete was called: " + log);
+        assertEquals(rows, records.rows(), "shop's record stays");
+        assertEquals(listed, node.deployments.packages(), "shop is listed as before");
+        assertEquals(flows, node.deployments.flows(), "its flows too");
+        assertEquals(dirs, children(node.packageDir("shop")), "its directory stays");
+
+        assertEquals(new UndeployResult("shop", "1.0.0", SHOP_FLOWS), node.undeploy("shop"), "witness: its items done and the queue answering, shop undeploys");
+    }
+
+    /**
      * Right after each one's check found nothing, messages arrive: audit's A runs held at the partner with B queued behind it
      * (audit runs one at most), relay's C runs held. The undeploy answers without waiting for them. Once audit's worker drained
      * (A finished) audit is asked again: B is still there, and a WARNING names shop/audit; relay's second check finds nothing and

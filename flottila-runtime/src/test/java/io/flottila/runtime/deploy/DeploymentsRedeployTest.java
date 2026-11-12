@@ -1055,6 +1055,55 @@ class DeploymentsRedeployTest {
     }
 
     /**
+     * FIX-173: v1 runs two at-least-once flows, {@code audit} and {@code relay}; v2 removes both, so the work queue is asked about
+     * each. One question fails for real (the queue is down), the other is refused by the node's Postgres pool: in either assignment
+     * — so in either flow order — the deploy is the node's IOException naming the flow whose question really failed and carrying
+     * its cause, never {@link Kind#BUSY}; only when both are pool refusals is it BUSY (503). Nothing stops or starts. Witness: the
+     * queue answering, the same archive removes both.
+     */
+    @Test
+    void aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder() throws Exception {
+        PackageDraft v1 = shop().endpoint("relay-in", "in", new JsonObject().put("path", "/relay")).flow("relay", "1.0.0", "at-least-once", "relay-in", 1024, to("archive"));
+        deploy(v1);
+        Doors.Door audit = doors.door("shop/audit");
+        Doors.Door relay = doors.door("shop/relay");
+        List<DeployedFlow> flowsBefore = deployments.flows();
+        List<DeployedPackage> packagesBefore = deployments.packages();
+        PackageDraft v2 = removed(shop(), "audit"); // shop() never had relay: v2 drops it with its relay-in
+        Path archive = v2.without("endpoints/archive.yaml").zipTo(archives);
+        int mark = mark();
+        for (List<String> order : List.of(List.of("shop/audit", "shop/relay"), List.of("shop/relay", "shop/audit"))) {
+            String really = order.get(0);
+            String pooled = order.get(1);
+            IllegalStateException down = new IllegalStateException("the work queue is down for " + really);
+            queue.failHasItems(really, down);
+            queue.failHasItems(pooled, new PoolRefusedException(new VertxException("Timeout", true)));
+
+            IOException failed = assertThrows(IOException.class, () -> deploy("shop", Optional.empty(), archive),
+                    really + " fails, " + pooled + " is refused by the pool: the node's failure, whatever the flow order");
+
+            assertSame(down, failed.getCause(), "the IOException carries the real failure, not the pool's refusal: " + failed);
+            assertTrue(failed.getMessage().contains("'" + really + "'") && failed.getMessage().contains(down.getMessage()),
+                    "it names the flow whose question really failed and the cause: " + failed.getMessage());
+        }
+        queue.failHasItems("shop/audit", new PoolRefusedException(new VertxException("Timeout", true)));
+        queue.failHasItems("shop/relay", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        DeployRefusedException busy = refused("shop", archive);
+        assertEquals(Kind.BUSY, busy.kind(), "every question refused by the pool: retryable, " + busy.error() + " " + busy.problems());
+        assertEquals(List.of(), busy.problems(), "no problem lines");
+
+        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
+        assertFalse(audit.stopped(), "audit's consumer is not stopped: " + audit.history());
+        assertFalse(relay.stopped(), "relay's consumer is not stopped: " + relay.history());
+        assertEquals(flowsBefore, deployments.flows(), "the flows are v1's");
+        assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
+
+        queue.failHasItems("shop/audit", null);
+        queue.failHasItems("shop/relay", null);
+        assertResult(List.of(), List.of(), List.of("shop/audit", "shop/relay"), deploy("shop", Optional.empty(), archive));
+    }
+
+    /**
      * v1 runs two at-least-once flows, {@code audit} and {@code relay}, each running one item at most; v2 removes both. Right after
      * each one's check found nothing queued, messages arrive: audit's A runs held at the partner with B queued behind it, relay's
      * C runs held. The deploy answers without waiting for them. Once audit's worker drained (A finished) it is checked again: B is
