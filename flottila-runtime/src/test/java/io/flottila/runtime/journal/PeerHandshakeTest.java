@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The HELLO a handshake takes (CORE-5a S2, W7; implementer, beside {@link PeerLinkTest}'s proofs): only a v1 HELLO of the other
+ * The HELLO a handshake takes (CORE-5a S2, W7; implementer, beside {@link PeerLinkTest}'s proofs): only a HELLO of version 1 or above (CORE-5a2 P2) of the other
  * role, as frame sequence 0 with a zero tag, naming — for a dialer — the node it dialled; a proof only after this side's own,
  * and only a proof frame. Each refusal is a {@link PeerRefusedException}; the honest exchange of the same two sides is
  * accepted ({@link PeerLinkTest#anHonestExchangeIsAcceptedByBothSides}).
@@ -55,7 +55,8 @@ class PeerHandshakeTest {
     void aHelloThatIsNotAV1HelloIsRefused() {
         Buffer hello = listener().hello();
         int payload = 13;   // u32 len · u8 type · u64 seq
-        assertThrows(PeerRefusedException.class, () -> dialer().proof(changed(hello, payload, 0x02)), "version 3");
+        // CORE-5a2 P2 (test-author): a version >= 1 is taken (PeerHandshakeVersionTest), so the refused version here is 0, not 3
+        assertThrows(PeerRefusedException.class, () -> dialer().proof(changed(hello, payload, 0x01)), "version 0");
         assertThrows(PeerRefusedException.class, () -> dialer().proof(changed(hello, 12, 0x01)), "sequence 1");
         assertThrows(PeerRefusedException.class, () -> dialer().proof(changed(hello, hello.length() - 1, 0x01)), "a tag not zero");
         assertThrows(PeerRefusedException.class, () -> dialer().proof(changed(hello, payload + 3, 0x01)), "a node length past its end");

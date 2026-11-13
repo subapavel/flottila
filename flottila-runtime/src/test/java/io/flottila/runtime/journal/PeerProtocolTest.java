@@ -236,14 +236,14 @@ class PeerProtocolTest {
     }
 
     /**
-     * A dialer with more than 256 READs open breaks the protocol (FLOTTILA_PEER_READS is at most 256): node-a closes the link.
-     * The dialer never reads, so node-a's answers to the large record fill the socket and its READs stay open.
+     * A dialer with more than 64 READs open breaks the protocol (FLOTTILA_PEER_READS is at most 64, CORE-5a2 P3): node-a closes
+     * the link. The dialer never reads, so node-a's answers to the large record fill the socket and its READs stay open.
      */
     @Test
-    void aDialerWithMoreThan256ReadsOpenIsClosed() throws Exception {
+    void aDialerWithMoreThan64ReadsOpenIsClosed() throws Exception {
         try (RawPeer peer = RawPeer.dial(server.port(), b(), "node-a")) {
-            for (int id = 1; id <= 257; id++) peer.send(RawPeer.READ, RawPeer.read(id, "node-a", JOURNAL_A, large.segment(), large.position(), large.length()));
-            assertTrue(peer.closedByPeer(), "node-a closed the link of the 257th READ");
+            for (int id = 1; id <= 65; id++) peer.send(RawPeer.READ, RawPeer.read(id, "node-a", JOURNAL_A, large.segment(), large.position(), large.length()));
+            assertTrue(peer.closedByPeer(), "node-a closed the link of the 65th READ");
         }
     }
 
@@ -392,7 +392,10 @@ class PeerProtocolTest {
      * r2 R1: node-a holds at most 64 links in their handshake ({@code PeerConfig.HANDSHAKES_MAX}). 64 proven links are open
      * and served (proven ones do not count); then 64 connections that say nothing, each given node-a's HELLO (open on node-a, in
      * its handshake; the timers stand still, so none times out); a 65th is closed at once. The 64th silent one was held, not
-     * closed: its handshake then completes and it is served, and with it proven a new connection is served too.
+     * closed: its handshake then completes and it is served, and with it proven a new connection is served too. CORE-5a2 P4
+     * (test-author): at most 8 per source address, so the 64 silent ones come 8 each from 127.0.0.2 to 127.0.0.9, the 65th
+     * and 8 more from 127.0.0.10 — closed by the 64, none of them keeps a place of 127.0.0.10's eight: the new connection
+     * comes from there.
      */
     @Test
     void theListenerHoldsAtMost64LinksInTheirHandshakeAndClosesAFurtherOneAtOnce() throws Exception {
@@ -406,15 +409,18 @@ class PeerProtocolTest {
             }
             RawPeer last = null;
             for (int i = 0; i < 64; i++) {
-                last = RawPeer.connect(server.port());   // it waits for node-a's HELLO: node-a opened the link
+                last = RawPeer.connect(PeerHandshakeSourceBoundTest.loopback(2 + i / 8), server.port());   // it waits for node-a's HELLO: node-a opened the link
                 open.add(last);
             }
-            try (Socket further = new Socket(InetAddress.getLoopbackAddress(), server.port())) {
-                assertTrue(RawPeer.closedByPeer(further), "a 65th connection in its handshake is closed at once");
+            InetAddress tenth = PeerHandshakeSourceBoundTest.loopback(10);
+            for (int i = 0; i < 9; i++) {
+                try (Socket further = new Socket(InetAddress.getLoopbackAddress(), server.port(), tenth, 0)) {
+                    assertTrue(RawPeer.closedByPeer(further), "connection " + (65 + i) + " in its handshake is closed at once");
+                }
             }
             last.handshakeAsDialer(b(), "node-a");
             served(last, 1, "the 64th held connection was open: its handshake completes and it is served");
-            try (RawPeer next = RawPeer.dial(server.port(), b(), "node-a")) {
+            try (RawPeer next = RawPeer.dial(tenth, server.port(), b(), "node-a")) {
                 served(next, 1, "with the 64th proven, a new connection is held and served");
             }
         } finally {

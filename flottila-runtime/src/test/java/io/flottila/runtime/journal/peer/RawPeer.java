@@ -64,6 +64,25 @@ public final class RawPeer implements AutoCloseable {
         return p;
     }
 
+    /** {@link #dial(int, PeerIdentity, String)} from the local address {@code from} (a 127.0.0.x: one source address per x, CORE-5a2 P4). */
+    public static RawPeer dial(InetAddress from, int port, PeerIdentity self, String peer) throws IOException {
+        RawPeer p = new RawPeer(new Socket(InetAddress.getLoopbackAddress(), port, from, 0));
+        p.handshake(PeerHandshake.dialer(self, peer, nonces()));
+        return p;
+    }
+
+    /** {@link #connect(int)} from the local address {@code from} (a 127.0.0.x: one source address per x, CORE-5a2 P4). */
+    public static RawPeer connect(InetAddress from, int port) throws IOException {
+        RawPeer p = new RawPeer(new Socket(InetAddress.getLoopbackAddress(), port, from, 0));
+        try {
+            p.pending = p.frame();
+        } catch (IOException closed) {
+            p.close();
+            throw closed;
+        }
+        return p;
+    }
+
     /** Runs the dialer's side of the handshake on a {@link #connect}ed peer, as {@code self} dialling node {@code peer}. */
     public void handshakeAsDialer(PeerIdentity self, String peer) throws IOException {
         handshake(PeerHandshake.dialer(self, peer, nonces()));

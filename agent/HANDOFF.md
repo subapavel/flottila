@@ -1,11 +1,11 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 5a, 6a/b, 7, 9, 12, 14a/b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..137, 138a, 139..146, 156, 169, 172(b,c), 173, 175, 176
-last commit: `Task: FIX-175` 901155c; a14e508 handoff; 4f85a68 `Task: FIX-176`; a0a0409 `Task: CORE-5a`
+state: RUNNING core rework; CORE-0..4, 5a, 5a2, 6a/b, 7, 9, 12, 14a/b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..146 (not 138b), 156, 169, 172b/c, 173, 175, 176
+last commit: `Task: CORE-5a2` (this); 299fc5a D-141; 901155c `Task: FIX-175`; 4f85a68 `Task: FIX-176`; a0a0409 `Task: CORE-5a`
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: D-141 (owner: D-139 advice accepted) + row CORE-5a2 [B] (packet CORE-5 'Owner 2026-11-12'); then CORE-5b reds
+next exact action: CORE-5b red spec (packet CORE-5 '5b advisor' B1-B8, Q1-Q5 + D-141 A1, A8, epoch check); flakes FIX-183/184/185 known
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

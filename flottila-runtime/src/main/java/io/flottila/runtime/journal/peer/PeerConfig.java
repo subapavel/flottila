@@ -11,7 +11,7 @@ import java.util.Objects;
  * @param port    {@code FLOTTILA_PEER_PORT}: its port, 0 to 65535, 0 any free one (8083)
  * @param host    {@code FLOTTILA_PEER_HOST}: the host the other nodes dial, written with the port into the node's row (the node id)
  * @param timeout {@code FLOTTILA_PEER_TIMEOUT}: PT0.1S to PT30S, how long a link may go without the answer it waits for (PT2S)
- * @param reads   {@code FLOTTILA_PEER_READS}: 1 to 256, the reads in flight to one peer; a read above it waits (16)
+ * @param reads   {@code FLOTTILA_PEER_READS}: 1 to 64, the reads in flight to one peer; a read above it waits (16)
  * @since 0.1
  */
 public record PeerConfig(String bind, int port, String host, Duration timeout, int reads) {
@@ -27,9 +27,11 @@ public record PeerConfig(String bind, int port, String host, Duration timeout, i
     /** The longest {@code FLOTTILA_PEER_TIMEOUT}. */
     public static final Duration TIMEOUT_MAX = Duration.ofSeconds(30);
     /** The most {@code FLOTTILA_PEER_READS}. */
-    public static final int READS_MAX = 256;
+    public static final int READS_MAX = 64;
     /** The most connections a listener holds in their handshake (not yet proven); a further one is closed at once (r2 R1). */
     public static final int HANDSHAKES_MAX = 64;
+    /** The most of them from one source address (CORE-5a2 P4), beside {@link #HANDSHAKES_MAX}; a further one is closed at once. */
+    public static final int HANDSHAKES_PER_SOURCE = 8;
 
     public PeerConfig {
         if (Objects.requireNonNull(bind, "bind").isBlank()) throw new IllegalArgumentException("FLOTTILA_PEER_BIND must not be blank");

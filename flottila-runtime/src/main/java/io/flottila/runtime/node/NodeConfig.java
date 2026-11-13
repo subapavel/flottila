@@ -81,7 +81,7 @@ import java.util.regex.Pattern;
  *                (PT5M, ISO-8601, PT1S..PT24H) apart, without growth: multiplier 1, the interval its own cap
  * @param peer the peer link's keys (CORE-5a S11, draft): {@code FLOTTILA_PEER_BIND} (0.0.0.0), {@code FLOTTILA_PEER_PORT} (8083,
  *             0..65535, 0 any free port; 8082 is the compose async door), {@code FLOTTILA_PEER_HOST} (the node id),
- *             {@code FLOTTILA_PEER_TIMEOUT} (PT2S, PT0.1S..PT30S), {@code FLOTTILA_PEER_READS} (16, 1..256 per peer)
+ *             {@code FLOTTILA_PEER_TIMEOUT} (PT2S, PT0.1S..PT30S), {@code FLOTTILA_PEER_READS} (16, 1..64 per peer)
  * @param journalCopies {@code FLOTTILA_JOURNAL_COPIES} (CORE-5 S10, S11, draft): 1 or 2; unset 1 in dev and ci, 2 in every
  *                      deployed environment. A generated master key ({@code FLOTTILA_JOURNAL_KEY_GENERATE=true}) is one node's
  *                      alone, which no peer could read with (D-106): with more than one copy it is refused

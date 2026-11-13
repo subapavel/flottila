@@ -30,8 +30,9 @@ import java.util.function.Supplier;
  * protocol error: the link stays up. Each READ is served on a virtual thread of its own, at most {@code FLOTTILA_PEER_READS}
  * at a time per link and at most two frames of one READ written ahead of the socket (the reader's flow control holds the
  * rest back); a dialer with more than {@value PeerConfig#READS_MAX} READs open breaks the protocol and its link closes. At most
- * {@value PeerConfig#HANDSHAKES_MAX} connections are held in their handshake (not yet proven) at a time: a further one is closed
- * at once (r2 R1), and so is one a link cannot open on (r2 R2).
+ * {@value PeerConfig#HANDSHAKES_MAX} connections are held in their handshake (not yet proven) at a time, at most
+ * {@value PeerConfig#HANDSHAKES_PER_SOURCE} of them from one source address (CORE-5a2 P4): a further one is closed at once
+ * (r2 R1), and so is one a link cannot open on (r2 R2); a link gives its places back once established, refused or closed.
  *
  * @since 0.1
  */
@@ -47,6 +48,7 @@ public final class PeerServer {
     private final SecureRandom random = new SecureRandom();
     private final Set<PeerLink> links = ConcurrentHashMap.newKeySet();
     private final AtomicInteger handshakes = new AtomicInteger();   // the links not yet established, not yet closed
+    private final ConcurrentHashMap<String, Integer> sources = new ConcurrentHashMap<>();   // the same per source address; no entry: 0
 
     private PeerServer(NetServer server, PeerConfig config, Supplier<PeerIdentity> self, Journal journal, Timer timer) {
         this.server = server;
@@ -86,8 +88,16 @@ public final class PeerServer {
     }
 
     private void connected(NetSocket socket) {
+        String source = socket.remoteAddress().hostAddress();
+        if (!take(source)) {
+            LOG.log(System.Logger.Level.WARNING, "a peer connection from {0} is closed: {1} from its address are in their handshake already",
+                    socket.remoteAddress(), PeerConfig.HANDSHAKES_PER_SOURCE);
+            socket.close();
+            return;
+        }
         if (handshakes.incrementAndGet() > PeerConfig.HANDSHAKES_MAX) {
             handshakes.decrementAndGet();
+            giveBack(source);
             LOG.log(System.Logger.Level.WARNING, "a peer connection from {0} is closed: {1} are in their handshake already",
                     socket.remoteAddress(), PeerConfig.HANDSHAKES_MAX);
             socket.close();
@@ -99,12 +109,38 @@ public final class PeerServer {
             link = PeerLink.open(socket, PeerHandshake.listener(now, this::nonce), timer, config.timeout(), new Serving(now));
         } catch (RuntimeException | Error e) {
             handshakes.decrementAndGet();
+            giveBack(source);
             LOG.log(System.Logger.Level.WARNING, "a peer connection from " + socket.remoteAddress() + " is closed: its link could not open", e);
             socket.close();
             return;
         }
         links.add(link);
-        link.established().onComplete(proven -> handshakes.decrementAndGet());   // proven, or closed first: once either way
+        link.established().onComplete(proven -> {   // proven, or refused or closed first: once either way
+            handshakes.decrementAndGet();
+            giveBack(source);
+        });
+    }
+
+    /** Takes a place of {@code source}'s {@value PeerConfig#HANDSHAKES_PER_SOURCE}: false when they are all taken. */
+    private boolean take(String source) {
+        boolean[] taken = {false};
+        sources.compute(source, (s, n) -> {
+            int held = n == null ? 0 : n;
+            if (held >= PeerConfig.HANDSHAKES_PER_SOURCE) return n;
+            taken[0] = true;
+            return held + 1;
+        });
+        return taken[0];
+    }
+
+    /** Gives a place of {@code source}'s back; its entry goes with its last. */
+    private void giveBack(String source) {
+        sources.computeIfPresent(source, (s, n) -> n == 1 ? null : n - 1);
+    }
+
+    /** The number of source addresses with a place taken (for the tests); safe from any thread, as {@code sources} is. */
+    int sourcesHeld() {
+        return sources.size();
     }
 
     private byte[] nonce() {

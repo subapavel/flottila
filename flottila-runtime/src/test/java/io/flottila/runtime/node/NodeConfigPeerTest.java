@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * CORE-5a acceptance A4 (packet S10, S11): the peer link's keys and the journal's copies, read by NodeConfig only —
  * {@code FLOTTILA_PEER_BIND} (0.0.0.0), {@code FLOTTILA_PEER_PORT} (8083; 0 = any free port; 0..65535; 8082 is the compose
  * async door), {@code FLOTTILA_PEER_HOST} (the node id), {@code FLOTTILA_PEER_TIMEOUT} (PT2S; PT0.1S..PT30S),
- * {@code FLOTTILA_PEER_READS} (16; 1..256 per peer), {@code FLOTTILA_JOURNAL_COPIES} (1..2; unset 1 in dev and ci, 2 in every
+ * {@code FLOTTILA_PEER_READS} (16; 1..64 per peer, CORE-5a2 P3), {@code FLOTTILA_JOURNAL_COPIES} (1..2; unset 1 in dev and ci, 2 in every
  * deployed environment). A value out of its range or unparseable is an {@link IllegalArgumentException} naming the key;
  * {@code FLOTTILA_JOURNAL_KEY_GENERATE=true} with more than one copy is refused naming both keys (a generated key is one dev
  * node's; a peer could not read it, D-106) — with one copy it is not.
@@ -64,7 +64,7 @@ class NodeConfigPeerTest {
             "FLOTTILA_PEER_TIMEOUT, PT0.1S",
             "FLOTTILA_PEER_TIMEOUT, PT30S",
             "FLOTTILA_PEER_READS, 1",
-            "FLOTTILA_PEER_READS, 256",
+            "FLOTTILA_PEER_READS, 64",
     })
     void bothBoundsOfEachPeerRangeAreAccepted(String key, String value) {
         PeerConfig p = NodeConfig.from(with(env(), key, value)).peer();
@@ -87,6 +87,7 @@ class NodeConfigPeerTest {
             "FLOTTILA_PEER_TIMEOUT, -PT2S",
             "FLOTTILA_PEER_TIMEOUT, 2s",
             "FLOTTILA_PEER_READS, 0",
+            "FLOTTILA_PEER_READS, 65",
             "FLOTTILA_PEER_READS, 257",
             "FLOTTILA_PEER_READS, many",
             "FLOTTILA_JOURNAL_COPIES, 0",
@@ -96,6 +97,15 @@ class NodeConfigPeerTest {
     void aPeerKeyOutOfItsRangeOrUnparseableIsRefusedNamingIt(String key, String value) {
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(env(), key, value)));
         assertTrue(String.valueOf(e.getMessage()).contains(key), "names " + key + ": " + e.getMessage());
+    }
+
+    /** CORE-5a2 A3 (test-author): 65 reads are refused naming the key and its range 1..64 (as "between 1 and 64" or "1..64"). */
+    @Test
+    void peerReadsAbove64AreRefusedNamingTheKeyAndItsRange() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(env(), "FLOTTILA_PEER_READS", "65")));
+        String m = String.valueOf(e.getMessage());
+        assertTrue(m.contains("FLOTTILA_PEER_READS") && (m.contains("between 1 and 64") || m.contains("1..64")), "names the key and 1..64: " + m);
+        assertEquals(64, NodeConfig.from(with(env(), "FLOTTILA_PEER_READS", "64")).peer().reads(), "witness: 64 is read as given");
     }
 
     @Test

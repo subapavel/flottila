@@ -1,4 +1,17 @@
 
+## 2026-11-13 — CORE-5a2 peer link changes before replication (D-141) — done, review PASS (r2)
+- Context compacted earlier in the session. Deviation: F-35 (peer link; D-139 amended by D-141, ARCHITECTURE §4, changelog 3.20).
+- HELLO: version >= 1, the link speaks the lower, bytes after the v1 fields tolerated up to the cap; channel byte (1 read; 2 repl, 3 bulk
+  refused until CORE-5b, an unknown one named); peer subkey K_peer = HKDF(empty salt, master, "flottila-peer-v1 subkey") keys the fingerprint
+  and the session keys; FLOTTILA_PEER_READS 1..64; 8 handshakes per source address, the entry removed at zero (sourcesHeld probe).
+- Red: PeerHandshakeVersionTest, PeerHelloLinkTest, PeerConfigTest, NodeConfigPeerTest, PeerProtocolTest:243, PeerHandshakeSourceBoundTest,
+  PeerKnownAnswerTest (KAT recomputed in python, 12/12, agent/work/CORE-5a2-kat-compare.txt); r1 red PeerServerProbe (compile).
+- r1 FAIL (M14 survived; KAT provenance; F-35, D-139 brackets, clear list, master-key sentence), r2 PASS.
+- Evidence: runtime verify -Pit 1468 + 706 tests 0/0/0 (CORE-5a2-r1-verify2.log); clean whole reactor 15/16, 4362 tests, 2 failures, both
+  in bench and both pre-existing: LedgerIT:132 fails on HEAD as well (A/B 1 of 3 vs 2 of 3, FIX-184), NodeBenchMainWarmupIT:112 float
+  rounding (FIX-185, 6 of 6 pass in A/B); 20 hand mutants killed; demo 6/6; coverage no decrease.
+- Filed FIX-183 (READ permit order race, PeerLink.send off the event loop), FIX-184, FIX-185.
+
 ## 2026-11-13 — FIX-175 each attempt keeps its own snapshots (D-140) — done, review PASS (r4)
 - Context compacted earlier in the session; worker restarted once (Docker and Postgres restarted per NOTES "Build and VM").
 - V19 (stop-all): `messages.attempt` (props' integer attempt copied, else 1; check >= 1), PK (id, step, attempt); Snapshot 17-arg ctor with

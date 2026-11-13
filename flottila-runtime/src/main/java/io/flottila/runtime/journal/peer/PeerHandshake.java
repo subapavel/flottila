@@ -13,13 +13,20 @@ import java.util.function.Supplier;
 
 /**
  * The HELLO exchange of a peer link (CORE-5 S2, W7), without a socket. Both sides send their HELLO at once on connect — version,
- * role, node, epoch, journal id, a 32-byte nonce and the fingerprint of the master key it proves under (the dialer's current
- * one) — then each its proof. The listener proves under the key the dialer's fingerprint names, if it holds it as its current
- * or its previous key, and refuses the HELLO at once otherwise (O6: a listener accepts a key it knows). The session keys come
- * from HKDF-SHA256 over that master key, salted with both nonces (dialer's first), info {@value #INFO}: one proof key and one
- * frame key per direction. A proof is HMAC-SHA256 under its sender's direction key over both HELLOs — both nonces, both node
- * ids, both epochs and journal ids — so a reflected proof, one for the other direction or one of another exchange is refused.
- * HELLO is frame sequence 0 (tag zero), the proof sequence 1 under the session, the frames after it from 2.
+ * role, channel (CORE-5a2 P1: 1 read, 2 repl, 3 bulk), node, epoch, journal id, a 32-byte nonce and the fingerprint of the
+ * master key it proves under (the dialer's current one) — then each its proof. A HELLO of version 1 or above is taken, and so
+ * are bytes after its v1 fields up to the HELLO cap (P2): the link speaks the lower version of the two, today 1; version 0 or
+ * a HELLO shorter than its v1 fields is refused. Both sides name channel read: a listener refuses a dialer on another channel
+ * (repl and bulk come with CORE-5b), a dialer a listener answering on a channel other than the one it dialled. The listener
+ * proves under the key the dialer's fingerprint names, if it holds it as its current or its previous key, and refuses the
+ * HELLO at once otherwise (O6: a listener accepts a key it knows). A master key keys no HMAC on the link (P5): its
+ * only use there is as the input of the one HKDF that makes its peer subkey, HKDF-SHA256 with an empty salt, info
+ * {@value #SUBKEY}; a fingerprint is HMAC
+ * under the subkey, and the session keys come from HKDF-SHA256 over the subkey, salted with both nonces (dialer's first),
+ * info {@value #INFO}: one proof key and one frame key per direction. A proof is HMAC-SHA256 under its sender's direction key
+ * over both whole HELLOs — both nonces, both node ids, both epochs and journal ids, the bytes after the v1 fields — so a
+ * reflected proof, one for the other direction or one of another exchange is refused. HELLO is frame sequence 0 (tag zero),
+ * the proof sequence 1 under the session, the frames after it from 2.
  *
  * @since 0.1
  */
@@ -28,11 +35,19 @@ public final class PeerHandshake {
     static final byte VERSION = 1;
     static final int NONCE = 32;
     static final int FINGERPRINT = 8;
-    /** The longest HELLO frame's {@code len}: one naming a node id of 65 535 bytes; until a link is proven a longer one is refused (r2 R1). */
-    static final long HELLO_LEN_MAX = Frames.MIN_LEN + 1 + 1 + 2 + 0xFFFF + 8 + 16 + NONCE + FINGERPRINT;
+    /** The channel of the reads (P1), the only one before CORE-5b. */
+    static final byte READ = 1;
+    /** A v1 HELLO's fields without its node id: version, role, channel, node length, epoch, journal id, nonce, fingerprint. */
+    private static final int FIXED = 1 + 1 + 1 + 2 + 8 + 16 + NONCE + FINGERPRINT;
+    /**
+     * The longest HELLO frame's {@code len}: a v1 HELLO naming a node id of 65 535 bytes; until a link is proven a longer one is
+     * refused (r2 R1). The bytes a later version adds after the v1 fields count against it (O1).
+     */
+    static final long HELLO_LEN_MAX = Frames.MIN_LEN + FIXED + 0xFFFF;
     /** A proof frame's {@code len}: an HMAC-SHA256; after the peer's HELLO a longer frame is refused (r2 R1). */
     static final long PROOF_LEN = Frames.MIN_LEN + 32;
     private static final String INFO = "flottila-peer-v1";
+    private static final String SUBKEY = INFO + " subkey";
     private static final byte DIALER = 1;
     private static final byte LISTENER = 2;
     private static final byte[] PROOF_LABEL = (INFO + " proof").getBytes(StandardCharsets.US_ASCII);
@@ -54,8 +69,8 @@ public final class PeerHandshake {
         this.nonce = Objects.requireNonNull(nonces, "nonces").get().clone();
         if (nonce.length != NONCE) throw new IllegalArgumentException("a nonce is " + NONCE + " bytes, was " + nonce.length);
         byte[] node = self.node().getBytes(StandardCharsets.UTF_8);
-        ByteBuffer h = ByteBuffer.allocate(1 + 1 + 2 + node.length + 8 + 16 + NONCE + FINGERPRINT);
-        h.put(VERSION).put(role).putShort((short) node.length).put(node).putLong(self.epoch())
+        ByteBuffer h = ByteBuffer.allocate(FIXED + node.length);
+        h.put(VERSION).put(role).put(READ).putShort((short) node.length).put(node).putLong(self.epoch())
                 .putLong(self.journal().getMostSignificantBits()).putLong(self.journal().getLeastSignificantBits()).put(nonce)
                 .put(fingerprint(self.masters().getFirst()));
         this.hello = h.array();
@@ -81,8 +96,9 @@ public final class PeerHandshake {
     /**
      * This side's proof frame, for the peer's HELLO frame {@code peerHello}.
      *
-     * @throws PeerRefusedException the HELLO is not a v1 HELLO of the other role (a dialer's: of the node it dials), or — a
-     *                              listener's — it names a master key this side holds neither as current nor as previous
+     * @throws PeerRefusedException the HELLO is not one of version 1 or above, of the other role, on channel read with its v1
+     *                              fields whole (a dialer's: of the node it dials), or — a listener's — it names a master key this
+     *                              side holds neither as current nor as previous
      */
     public Buffer proof(Buffer peerHello) throws PeerRefusedException {
         byte[] f = peerHello.getBytes();
@@ -93,15 +109,19 @@ public final class PeerHandshake {
         byte[] theirs = Arrays.copyOfRange(f, Frames.HEAD, f.length - Frames.TAG);
         ByteBuffer in = ByteBuffer.wrap(theirs);
         byte other = role == DIALER ? LISTENER : DIALER;
-        int fixed = 1 + 1 + 2 + 8 + 16 + NONCE + FINGERPRINT;
-        if (theirs.length < fixed || in.get(0) != VERSION || in.get(1) != other) {
-            throw new PeerRefusedException("not a v" + VERSION + " HELLO of a " + (other == DIALER ? "dialer" : "listener"));
+        if (theirs.length < FIXED || Byte.toUnsignedInt(in.get(0)) < VERSION || in.get(1) != other) {   // P2: the link speaks v1, the lower
+            throw new PeerRefusedException("not a HELLO of version " + VERSION + " or above of a " + (other == DIALER ? "dialer" : "listener"));
         }
-        int nodeLength = Short.toUnsignedInt(in.getShort(2));
-        if (theirs.length != fixed + nodeLength) throw new PeerRefusedException("a HELLO of " + theirs.length + " bytes naming a node of " + nodeLength);
-        String node = new String(theirs, 4, nodeLength, StandardCharsets.UTF_8);
+        int channel = Byte.toUnsignedInt(in.get(2));
+        if (channel != READ) {   // O2: a listener serves channel read only (until CORE-5b); a dialer dialled channel read
+            throw new PeerRefusedException(role == DIALER ? "dialled channel read, answered on channel " + channel(channel)
+                    : "a dialer's HELLO on channel " + channel(channel) + ": this node serves channel read only");
+        }
+        int nodeLength = Short.toUnsignedInt(in.getShort(3));
+        if (theirs.length < FIXED + nodeLength) throw new PeerRefusedException("a HELLO of " + theirs.length + " bytes naming a node of " + nodeLength);
+        String node = new String(theirs, 5, nodeLength, StandardCharsets.UTF_8);
         if (peer != null && !peer.equals(node)) throw new PeerRefusedException("dialled node " + peer + ", answered by " + node);
-        int at = 4 + nodeLength + 8 + 16;
+        int at = 5 + nodeLength + 8 + 16;
         byte[] theirNonce = Arrays.copyOfRange(theirs, at, at + NONCE);
         byte[] theirFingerprint = Arrays.copyOfRange(theirs, at + NONCE, at + NONCE + FINGERPRINT);
         SecretKey master = role == DIALER ? self.masters().getFirst() : known(theirFingerprint);
@@ -111,7 +131,7 @@ public final class PeerHandshake {
         byte[] dialerHello = role == DIALER ? hello : theirs;
         byte[] listenerHello = role == DIALER ? theirs : hello;
         byte[] salt = concat(role == DIALER ? nonce : theirNonce, role == DIALER ? theirNonce : nonce);
-        byte[] keys = hkdf(salt, master.getEncoded(), INFO.getBytes(StandardCharsets.US_ASCII), 4 * 32);
+        byte[] keys = hkdf(salt, subkey(master), INFO.getBytes(StandardCharsets.US_ASCII), 4 * 32);
         byte[] dialerProof = Arrays.copyOfRange(keys, 0, 32);
         byte[] listenerProof = Arrays.copyOfRange(keys, 32, 64);
         byte[] dialerFrames = Arrays.copyOfRange(keys, 64, 96);
@@ -156,9 +176,26 @@ public final class PeerHandshake {
         return null;
     }
 
-    /** A master key's fingerprint: HMAC-SHA256 under it of a fixed label, its first {@value #FINGERPRINT} bytes (never the key's hash). */
+    /**
+     * A master key's fingerprint: HMAC-SHA256 under its peer subkey of a fixed label, its first {@value #FINGERPRINT} bytes (never
+     * the key's hash, never keyed by the master key itself).
+     */
     static byte[] fingerprint(SecretKey master) {
-        return Arrays.copyOf(PeerSession.mac(master.getEncoded()).doFinal(FINGERPRINT_LABEL), FINGERPRINT);
+        return Arrays.copyOf(PeerSession.mac(subkey(master)).doFinal(FINGERPRINT_LABEL), FINGERPRINT);
+    }
+
+    /** A master key's peer subkey (P5): HKDF-SHA256 of it with an empty salt, info {@value #SUBKEY}, 32 bytes. */
+    private static byte[] subkey(SecretKey master) {
+        return hkdf(new byte[0], master.getEncoded(), SUBKEY.getBytes(StandardCharsets.US_ASCII), 32);
+    }
+
+    /** A refused channel byte's name: repl, bulk (CORE-5b's), else its number. */
+    private static String channel(int channel) {
+        return switch (channel) {
+            case 2 -> "repl";
+            case 3 -> "bulk";
+            default -> channel + " (unknown)";
+        };
     }
 
     private static byte[] prove(byte[] key, byte[] dialerHello, byte[] listenerHello) {
@@ -169,9 +206,12 @@ public final class PeerHandshake {
         return m.doFinal();
     }
 
-    /** HKDF-SHA256 (RFC 5869): extract with {@code salt}, expand to {@code length} bytes under {@code info}. */
+    /**
+     * HKDF-SHA256 (RFC 5869): extract with {@code salt}, expand to {@code length} bytes under {@code info}. An empty salt is the
+     * 32 zero bytes RFC 5869 §2.2 names (the same HMAC key: HMAC pads a key with zeros; a JCE key may not be empty).
+     */
     static byte[] hkdf(byte[] salt, byte[] ikm, byte[] info, int length) {
-        byte[] prk = PeerSession.mac(salt).doFinal(ikm);
+        byte[] prk = PeerSession.mac(salt.length == 0 ? new byte[32] : salt).doFinal(ikm);
         Mac expand = PeerSession.mac(prk);
         byte[] out = new byte[length];
         byte[] t = new byte[0];
