@@ -37,7 +37,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * The MessageStore over Postgres (ARCHITECTURE §7, §8). Every snapshot given to {@link #record} goes through the P0-06
- * {@link BatchingWriter} into one transaction per batch: {@code messages} (one row per message and step, the first wins; the
+ * {@link BatchingWriter} into one transaction per batch: {@code messages} (one row per message, step and attempt, the first wins,
+ * V19 / FIX-175 — the timeline lists them by attempt, then step; the
  * body by reference: hash, hash algorithm, size, BlobStore key, D-097) and {@code message_keys} (one row per (name, value,
  * message), numbered by V5's {@code seq} in the order the message first carried the key — what {@link #findByKey} pages through
  * its {@code (name, value, seq)} index; the cursor is the page's last {@code seq}). Reads are plain queries. A failed commit fails
@@ -49,14 +50,14 @@ import java.util.concurrent.atomic.AtomicLong;
 public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     private static final String INSERT_MESSAGES = """
-            insert into messages(id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions)
+            insert into messages(id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions, attempt)
             select * from unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::text[], $6::text[], $7::timestamptz[], $8::bigint[], $9::bigint[],
-                                 $10::jsonb[], $11::jsonb[], $12::jsonb[], $13::bytea[], $14::text[], $15::text[], $16::bigint[], $17::jsonb[])
-            on conflict (id, step) do nothing""";
+                                 $10::jsonb[], $11::jsonb[], $12::jsonb[], $13::bytea[], $14::text[], $15::text[], $16::bigint[], $17::jsonb[], $18::int[])
+            on conflict (id, step, attempt) do nothing""";
     private static final String INSERT_KEYS = "insert into message_keys(name, value, message_id, step) select * from unnest($1::text[], $2::text[], $3::text[], $4::int[]) "
             + "on conflict (name, value, message_id) do nothing";
-    private static final String TIMELINE = "select id, step, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions "
-            + "from messages where id = $1 order by step";
+    private static final String TIMELINE = "select id, step, attempt, flow, step_name, outcome, error, started_at, wall_ns, cpu_ns, headers, props, keys, body_hash, hash_algorithm, body_key, body_size, versions "
+            + "from messages where id = $1 order by attempt, step";
     private static final String FIND_BY_KEY = "select message_id, seq from message_keys where name = $1 and value = $2 order by seq limit $3";
     private static final String FIND_BY_KEY_AFTER = "select message_id, seq from message_keys where name = $1 and value = $2 and seq > $3 order by seq limit $4";
     private static final Comparator<KeyRow> KEY_ORDER = Comparator.comparing(KeyRow::name).thenComparing(KeyRow::value).thenComparing(KeyRow::messageId);
@@ -157,13 +158,13 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     // --- rows → arrays (one transaction per batch, PgBatchSink)
 
-    /** Rows go in one order in every transaction (messages by id and step, D-044): concurrent batches never deadlock on a messages row. */
+    /** Rows go in one order in every transaction (messages by id, step and attempt, D-044): concurrent batches never deadlock on a messages row. */
     private static Tuple messages(List<Snapshot> unordered) {
         List<Snapshot> batch = new ArrayList<>(unordered);
-        batch.sort(Comparator.comparing(Snapshot::messageId).thenComparingInt(Snapshot::step));
+        batch.sort(Comparator.comparing(Snapshot::messageId).thenComparingInt(Snapshot::step).thenComparingInt(Snapshot::attempt));
         int n = batch.size();
         String[] ids = new String[n], flows = new String[n], names = new String[n], outcomes = new String[n], errors = new String[n], bodyKeys = new String[n];
-        Integer[] steps = new Integer[n];
+        Integer[] steps = new Integer[n], attempts = new Integer[n];
         OffsetDateTime[] started = new OffsetDateTime[n];
         Long[] walls = new Long[n], cpus = new Long[n], sizes = new Long[n];
         JsonObject[] headers = new JsonObject[n], props = new JsonObject[n], keys = new JsonObject[n], versions = new JsonObject[n];
@@ -188,8 +189,9 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
             bodyKeys[i] = s.bodyKey().map(PgMessageStore::text).orElse(null);
             sizes[i] = s.bodySize();
             versions[i] = new JsonObject(new HashMap<>(s.versions()));
+            attempts[i] = s.attempt();
         }
-        return Tuple.wrap(new Object[] {ids, steps, flows, names, outcomes, errors, started, walls, cpus, headers, props, keys, hashes, algorithms, bodyKeys, sizes, versions});
+        return Tuple.wrap(new Object[] {ids, steps, flows, names, outcomes, errors, started, walls, cpus, headers, props, keys, hashes, algorithms, bodyKeys, sizes, versions, attempts});
     }
 
     /**
@@ -229,7 +231,8 @@ public final class PgMessageStore implements MessageStore, AutoCloseable {
 
     private static Snapshot snapshot(Row r) {
         Long cpu = r.getLong("cpu_ns");
-        return new Snapshot(r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("step_name"),
+        // the attempt is the row's column, never its props' (a stored props attempt need not be an int, FIX-175 R3)
+        return new Snapshot(r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getInteger("attempt"), r.getString("step_name"),
                 Snapshot.Outcome.valueOf(r.getString("outcome").toUpperCase(Locale.ROOT)), Optional.ofNullable(r.getString("error")),
                 r.getOffsetDateTime("started_at").toInstant(), r.getLong("wall_ns"), cpu == null ? Snapshot.CPU_UNKNOWN : cpu,
                 new Headers(strings(r.getJsonObject("headers"))), new Props(r.getJsonObject("props").getMap()), new Keys(strings(r.getJsonObject("keys"))),

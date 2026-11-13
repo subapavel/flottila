@@ -246,11 +246,13 @@ class AdminServerTest {
         assertEquals("invoice-sync", t.getString("flow"));
         JsonArray steps = t.getJsonArray("steps");
         assertEquals(4, steps.size(), "one entry per step, in step order");
-        Set<String> fields = Set.of("step", "name", "outcome", "error", "startedAt", "wallNanos", "cpuNanos", "headers", "props", "keys", "body", "versions");
+        // FIX-175 (P3) changed this expectation: each step object gains its attempt (additive), 1 for a first run's rows
+        Set<String> fields = Set.of("step", "attempt", "name", "outcome", "error", "startedAt", "wallNanos", "cpuNanos", "headers", "props", "keys", "body", "versions");
         for (int i = 0; i < 4; i++) {
             JsonObject s = steps.getJsonObject(i);
-            assertEquals(fields, s.fieldNames(), "step " + i + ": the D-057 fields, cpuNanos and error present even when null");
+            assertEquals(fields, s.fieldNames(), "step " + i + ": the D-057 fields and the attempt, cpuNanos and error present even when null");
             assertEquals(i, s.getInteger("step"));
+            assertEquals(1, s.getValue("attempt"), "step " + i + ": a first run's props carry no attempt: attempt 1");
             assertEquals(T0.plusSeconds(i), Instant.parse(s.getString("startedAt")), "startedAt as ISO-8601, microseconds kept");
             assertEquals(Set.of("hash", "size", "kept"), s.getJsonObject("body").fieldNames());
             assertEquals(new JsonObject().put("flow", "invoice-sync@0.1.0"), s.getJsonObject("versions"));
@@ -313,6 +315,110 @@ class AdminServerTest {
         assertTrue(ingress.containsKey("cpuNanos"), "present: " + ingress);
         assertNull(ingress.getValue("cpuNanos"), "step 0 measured nothing: null, never 0 (F-21): " + ingress);
         assertEquals(0L, ingress.getLong("wallNanos"), "its wall time stays 0");
+    }
+
+    // --- FIX-175 (P3, P4): each attempt of a same-id rerun keeps its own rows
+
+    /** A row of {@code id} at {@code step} of {@code attempt} (its props carry {@link Envelope#ATTEMPT} from 2 on, as a rerun's do), over {@code body}. */
+    static Snapshot rerunRow(String id, int step, String name, int attempt, Snapshot.Outcome outcome, Body body, String contentType) {
+        Props props = Props.empty().with(new Key<String>("PARTNER"), "domestic");
+        if (attempt >= 2) props = props.with(Envelope.ATTEMPT, attempt);
+        return new Snapshot(id, "invoice-sync", step, name, outcome, outcome == Snapshot.Outcome.FAILED ? Optional.of("503 from partner (attempt " + attempt + ")") : Optional.empty(),
+                T0.plusSeconds(10L * attempt + step), 1_000L, 10L, Headers.empty().with("content-type", contentType), props, Keys.empty(), body.hash(), body.size(),
+                Optional.of(body.key()), Map.of("flow", "invoice-sync@0.1.0"));
+    }
+
+    /** Step 1's body of each attempt of m-r, by attempt. */
+    final Map<Integer, Body> runs = new java.util.HashMap<>();
+
+    /** The bytes attempt {@code k} of m-r handed on at step 1. */
+    static Buffer runBody(int k) {
+        return Buffer.buffer("<run attempt=\"" + k + "\"/>");
+    }
+
+    /**
+     * m-r, run three times under its id: its ingress (step 0, attempt 1 only, the xml), then step 1 {@code partner} of attempts 1, 3
+     * and 2, recorded in that order — attempts 1 and 2 FAILED, 3 OK — each over bytes of its own ({@link #runBody}) under its
+     * attempt's key, with a content-type of its own.
+     */
+    void recordRerun() {
+        runs.clear();
+        Body arrived = blobs.write(BlobKey.body("m-r", 0), xml, MAX).await();
+        messages.record(rerunRow("m-r", 0, "ingress", 1, Snapshot.Outcome.OK, arrived, "application/xml")).await();
+        for (int k : new int[] {1, 3, 2}) {
+            Body out = blobs.write(new BlobKey("m-r", 1, k >= 2 ? "body~" + k : "body"), runBody(k), MAX).await();
+            runs.put(k, out);
+            messages.record(rerunRow("m-r", 1, "partner", k, k == 3 ? Snapshot.Outcome.OK : Snapshot.Outcome.FAILED, out, k == 1 ? "application/xml" : "text/plain; run=" + k)).await();
+        }
+    }
+
+    /** P3: the timeline stays one flat {@code steps} list, ordered by attempt then step, each step object naming its attempt and its own outcome. */
+    @Test
+    void aRerunsTimelineListsEveryAttemptsRowsByAttemptThenStep() throws Exception {
+        start();
+        recordRerun();
+        Answer a = admin("/admin/messages/m-r");
+        assertEquals(200, a.status(), a.body().toString());
+        JsonObject t = a.json();
+        assertEquals(Set.of("id", "flow", "steps"), t.fieldNames(), "the shape stays a flat steps list: " + t.encode());
+        List<String> rows = t.getJsonArray("steps").stream().map(JsonObject.class::cast)
+                .map(s -> s.getValue("attempt") + " " + s.getInteger("step") + " " + s.getString("name") + " " + s.getString("outcome")).toList();
+        assertEquals(List.of("1 0 ingress OK", "1 1 partner FAILED", "2 1 partner FAILED", "3 1 partner OK"), rows, t.encode());
+        JsonObject second = t.getJsonArray("steps").getJsonObject(2);
+        assertEquals("503 from partner (attempt 2)", second.getString("error"), "attempt 2's own failure");
+        Hash h = runs.get(2).hash();
+        assertEquals(h.algorithm() + ":" + h.hex(), second.getJsonObject("body").getString("hash"), "attempt 2's own body");
+        assertNotEquals(runs.get(3).hash(), h, "fixture: each attempt's bytes are its own");
+    }
+
+    /**
+     * P4: {@code /steps/{n}/body} is the latest attempt's row of step n by default — of step n, not of the message: step 0 has
+     * attempt 1 only — and {@code ?attempt=k} selects attempt k's row: its bytes, its content-type and length.
+     */
+    @Test
+    void aStepsBodyIsTheLatestAttemptsByDefaultAndAttemptKSelectsAttemptK() throws Exception {
+        start();
+        recordRerun();
+        Answer latest = admin("/admin/messages/m-r/steps/1/body");
+        assertEquals(200, latest.status(), latest.body().toString());
+        assertEquals(runBody(3), latest.body(), "the latest attempt's (3) body, though attempt 2's row was recorded last");
+        assertEquals("text/plain; run=3", latest.contentType());
+        assertEquals(String.valueOf(runBody(3).length()), latest.contentLength());
+        for (int k = 1; k <= 3; k++) {
+            Answer at = admin("/admin/messages/m-r/steps/1/body?attempt=" + k);
+            assertEquals(200, at.status(), "attempt " + k + ": " + at.body());
+            assertEquals(runBody(k), at.body(), "attempt " + k + "'s own body");
+            assertEquals(k == 1 ? "application/xml" : "text/plain; run=" + k, at.contentType(), "attempt " + k + "'s own content-type");
+        }
+        Answer ingress = admin("/admin/messages/m-r/steps/0/body");
+        assertEquals(200, ingress.status(), "step 0's latest attempt is its only one, 1: " + ingress.body());
+        assertEquals(xml, ingress.body());
+        assertEquals(xml, admin("/admin/messages/m-r/steps/0/body?attempt=1").body());
+    }
+
+    /** P4: an attempt with no row of step n is 404 with the usual {error} body — not the router's — while a recorded one streams. */
+    @Test
+    void anAttemptWithNoRowOfTheStepIs404() throws Exception {
+        start();
+        recordRerun();
+        Answer nine = admin("/admin/messages/m-r/steps/1/body?attempt=9");
+        assertJsonError(404, nine, "attempt 9 of step 1 was never recorded");
+        assertNotEquals("no such route", nine.error(), "the route's own 404, not the router's");
+        Answer stepZero = admin("/admin/messages/m-r/steps/0/body?attempt=2");
+        assertJsonError(404, stepZero, "the message has an attempt 2, step 0 has none");
+        assertNotEquals("no such route", stepZero.error());
+        assertEquals(200, admin("/admin/messages/m-r/steps/1/body?attempt=2").status(), "witness: attempt 2 of step 1 is recorded");
+    }
+
+    /** P4: an attempt that is not a positive int is 400 {error}; witness: attempt 1 streams. */
+    @Test
+    void anAttemptThatIsNotAPositiveIntIs400() throws Exception {
+        start();
+        recordRerun();
+        for (String bad : List.of("0", "-1", "x", "1.5", "99999999999")) {
+            assertJsonError(400, admin("/admin/messages/m-r/steps/1/body?attempt=" + bad), "attempt " + bad);
+        }
+        assertEquals(runBody(1), admin("/admin/messages/m-r/steps/1/body?attempt=1").body(), "witness: a positive int selects");
     }
 
     @Test

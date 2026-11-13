@@ -214,6 +214,78 @@ class ReplayTest {
         assertEquals(BlobKey.body(again.id(), 2), again.body().key(), "the replay's step b writes under the plain key");
     }
 
+    /**
+     * FIX-175 A6 (P5): after a message ran twice under its id — attempt 1, then attempt 2 as the worker reruns it — each attempt keeps
+     * its own rows, and a replay from step n starts from the latest attempt's step n − 1 row: here step 1 ({@code stamp}) wrote
+     * bytes and a header naming its attempt, so the replay from step 2 runs {@code b} on attempt 2's step-1 body, and the replay from
+     * step 3 takes attempt 2's step-2 row (its body under attempt 2's key).
+     */
+    @Test
+    void aReplayFromStepNAfterATwoAttemptRunStartsFromTheLatestAttemptsStepNMinusOneRow() {
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("stamp", s -> Stage.of(e -> {
+            String k = String.valueOf(e.get(Envelope.ATTEMPT).orElse(1));
+            Envelope stamped = e.withHeader("run", k);
+            return stamped.next(rt.store(stamped, Buffer.buffer("<run attempt=\"" + k + "\"/>")));
+        })));
+        Map<String, Object> doc = new java.util.HashMap<>(flow("at-least-once", null));
+        doc.put("steps", List.of(Map.of("type", "stamp", "name", "stamp"), Map.of("type", "b", "name", "b"), Map.of("type", "c", "name", "c")));
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowBuilder b = new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+        Pipeline p = b.build(def, Path.of(""));
+        Envelope in = in();
+        p.apply(in);
+        Envelope second = p.apply(in.with(Envelope.ATTEMPT, 2));   // the run of a second attempt, as the worker starts it
+        assertEquals(new BlobKey(in.id(), 2, "body~2"), second.body().key(), "fixture: attempt 2's step b wrote under its attempt");
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of(1, 2), t.stream().filter(s -> s.step() == 1).map(Snapshot::attempt).toList(), "fixture: step 1 has a row of each attempt (P2): " + t);
+
+        Replay replay = b.replay(def, Path.of(""));
+        Envelope fromTwo = replay.from(in.id(), 2);
+        assertEquals("<b><run attempt=\"2\"/></b>", fromTwo.body().whole().toString(), "step b ran on attempt 2's step-1 body");
+        assertEquals(Optional.of("2"), fromTwo.header("run"), "with attempt 2's step-1 headers");
+        assertEquals(Optional.empty(), fromTwo.get(Envelope.ATTEMPT), "still a new message's first run (D-066)");
+        Envelope fromThree = replay.from(in.id(), 3);
+        Snapshot input = store.timeline(fromThree.id()).await().getFirst();
+        assertEquals(Replay.REPLAY_INPUT, input.stepName());
+        assertEquals(Optional.of(new BlobKey(in.id(), 2, "body~2")), input.bodyKey(), "the replay from step 3 took attempt 2's step-2 body");
+        assertEquals(Optional.of("2"), fromThree.header("run"));
+    }
+
+    /**
+     * FIX-175 O1: a replay from step n takes the latest attempt whose step n − 1 row is OK, not merely the latest attempt's row: here
+     * attempt 2's step 2 failed (its FAILED row is the latest of step 2), so the replay from step 3 starts from attempt 1's OK step-2
+     * row — its body, its headers — and runs to the end.
+     */
+    @Test
+    void aReplayFromStepNSkipsALaterAttemptsFailedStepNMinusOneRowForAnEarlierAttemptsOkOne() {
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("stamp", s -> Stage.of(e -> e.withHeader("run", String.valueOf(e.get(Envelope.ATTEMPT).orElse(1))))));
+        all.add(factory("flaky", s -> Stage.of(e -> {
+            int k = e.get(Envelope.ATTEMPT).orElse(1);
+            if (k >= 2) throw new IllegalStateException("step 2 down in attempt " + k);
+            return e.next(rt.store(e, Buffer.buffer("<flaky attempt=\"" + k + "\"/>")));
+        })));
+        Map<String, Object> doc = new java.util.HashMap<>(flow("sync", null));
+        doc.put("steps", List.of(Map.of("type", "stamp", "name", "stamp"), Map.of("type", "flaky", "name", "flaky"), Map.of("type", "c", "name", "c")));
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowBuilder b = new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+        Pipeline p = b.build(def, Path.of(""));
+        Envelope in = in();
+        p.apply(in);
+        assertThrows(RuntimeException.class, () -> p.apply(in.with(Envelope.ATTEMPT, 2)), "fixture: attempt 2 fails at step 2");
+        List<String> stepTwo = store.timeline(in.id()).await().stream().filter(s -> s.step() == 2).map(s -> s.attempt() + " " + s.outcome()).toList();
+        assertEquals(List.of("1 OK", "2 FAILED"), stepTwo, "fixture: step 2's latest row is attempt 2's FAILED one");
+
+        Envelope fromThree = b.replay(def, Path.of("")).from(in.id(), 3);
+        Snapshot input = store.timeline(fromThree.id()).await().getFirst();
+        assertEquals(Replay.REPLAY_INPUT, input.stepName());
+        assertEquals(Optional.of(BlobKey.body(in.id(), 2)), input.bodyKey(), "attempt 1's OK step-2 body, not attempt 2's failed input");
+        assertEquals("<flaky attempt=\"1\"/>", fromThree.body().whole().toString());
+        assertEquals(Optional.of("1"), fromThree.header("run"), "with attempt 1's step-2 headers");
+        assertEquals("yes", fromThree.header("sent").orElseThrow(), "step 3 ran");
+    }
+
     /** D-066: a DLQ replay is a new message's first run too: the attempt the parked run carried is dropped. */
     @Test
     void aDlqRetryDropsTheAttempt() {

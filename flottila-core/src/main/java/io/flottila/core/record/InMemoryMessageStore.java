@@ -15,7 +15,8 @@ import java.util.Set;
 
 /**
  * The MessageStore in memory: tests, the bench, a dry run. Loss loses monitoring, never a message, so memory is allowed
- * (CLAUDE.md state rule); the durable save is the consumer's. Like the Postgres store, every recorded snapshot's keys
+ * (CLAUDE.md state rule); the durable save is the consumer's. Like the Postgres store, a row is keyed by (message, step, attempt),
+ * the first wins, and the timeline lists a message's rows by attempt, then step (FIX-175); every recorded snapshot's keys
  * count, one row per (name, value, message) in the order the message first carried the key; the key search's cursor is
  * the insertion index of the page's last id in that order.
  *
@@ -23,7 +24,7 @@ import java.util.Set;
  */
 public final class InMemoryMessageStore implements MessageStore {
 
-    private record Row(String messageId, int step) {}
+    private record Row(String messageId, int step, int attempt) {}
 
     private record KeyRow(String name, String value, String messageId) {}
 
@@ -36,7 +37,7 @@ public final class InMemoryMessageStore implements MessageStore {
     @Override
     public synchronized Future<Void> record(Snapshot snapshot) {
         Objects.requireNonNull(snapshot, "snapshot");
-        rows.putIfAbsent(new Row(snapshot.messageId(), snapshot.step()), snapshot);
+        rows.putIfAbsent(new Row(snapshot.messageId(), snapshot.step(), snapshot.attempt()), snapshot);
         for (Map.Entry<String, String> k : snapshot.keys().asMap().entrySet()) {
             if (keyRows.add(new KeyRow(k.getKey(), k.getValue(), snapshot.messageId()))) {
                 carriers.computeIfAbsent(new Carried(k.getKey(), k.getValue()), c -> new ArrayList<>()).add(snapshot.messageId());
@@ -49,7 +50,7 @@ public final class InMemoryMessageStore implements MessageStore {
     public synchronized Future<List<Snapshot>> timeline(String messageId) {
         List<Snapshot> out = new ArrayList<>();
         for (Snapshot s : rows.values()) if (s.messageId().equals(messageId)) out.add(s);
-        out.sort(Comparator.comparingInt(Snapshot::step));
+        out.sort(Comparator.comparingInt(Snapshot::attempt).thenComparingInt(Snapshot::step));
         return Future.succeededFuture(List.copyOf(out));
     }
 

@@ -416,12 +416,13 @@ class StepBodiesIT {
     /**
      * D-066 with the trail: the first run of a message whose {@code stamp} step is not deterministic crashes after its stamp,
      * so its item is claimed again. The first run's trail made its stamp body durable, under the plain key; the rerun stamps
-     * other bytes under a key of its own ({@code body~2}). The stamp row is the first run's (the first row wins), and after a
-     * restart a replay from step 2 reads the first run's bytes — the bytes that row describes. (CORE-4c2: was "on a fresh
-     * node", the first run's bytes in its {@code bodies} row; now its kept ref, read back from the journal.)
+     * other bytes under a key of its own ({@code body~2}). Each attempt keeps its own stamp row (FIX-175: was "the first row
+     * wins"), each durable with its run's bytes, and after a restart a replay from step 2 reads attempt 2's bytes — the latest
+     * attempt's row, the bytes that row describes (FIX-175 P5: was the first run's). (CORE-4c2: was "on a fresh node", the
+     * first run's bytes in its {@code bodies} row; now its kept ref, read back from the journal.)
      */
     @Test
-    void aRerunOfAStampingStepKeepsTheFirstRowsBytesReplayableAfterARestart() {
+    void aRerunOfAStampingStepKeepsEachAttemptsRowAndAReplayAfterARestartReadsAttemptTwosBytes() {
         FlowDefinition def = flow("at-least-once", List.of(STAMP, CRASH_FIRST, THREE));
         NodeStores a = new NodeStores();
         String id = "sb-rerun";
@@ -437,15 +438,25 @@ class StepBodiesIT {
         assertEquals(2, stamped.size(), "fixture: stamp ran twice");
         assertNotEquals(stamped.get(0), stamped.get(1), "fixture: the rerun stamped other bytes");
         BlobKey first = BlobKey.body(id, 1);
-        rowsOf(id, 4);   // ingress, stamp (attempt 1's), crash-first and three (attempt 2's)
-        assertEquals(stamped.get(1), written.get(new BlobKey(id, 1, "body~2")), "fixture: the rerun wrote under its attempt's key");
-        assertEquals(Optional.of(id + "/1/body"), rowBodyKey(id, 1), "the stamp row is the first run's, under the plain key");
+        // FIX-175 (P2, P5) changed this expectation: each attempt keeps its own stamp row, and a replay takes the latest attempt's
+        rowsOf(id, 5);   // ingress, stamp of attempts 1 and 2, crash-first and three (attempt 2's)
+        BlobKey second = new BlobKey(id, 1, "body~2");
+        assertEquals(stamped.get(1), written.get(second), "fixture: the rerun wrote under its attempt's key");
+        assertEquals(List.of(id + "/1/body", id + "/1/body~2"), stampRowKeys(id), "attempt 1's stamp row under the plain key, attempt 2's under its own");
         assertEquals(Optional.of(stamped.get(0)), a.kept(first), "the first run's stamp body is durable with the first run's bytes");
+        assertEquals(Optional.of(stamped.get(1)), a.kept(second), "the rerun's stamp body is durable with the rerun's bytes");
         a.close();
 
         NodeStores b = new NodeStores();
         Envelope replayed = assertDoesNotThrow(() -> b.builder.replay(def, NO_FILES).from(id, 2), "a replay from step 2 after the restart");
-        assertEquals(List.of(stamped.get(0)), inputsOf("three", replayed.id()), "step 3 of the replay read the bytes the stamp row describes");
+        assertEquals(List.of(stamped.get(1)), inputsOf("three", replayed.id()), "step 3 of the replay read the bytes the latest attempt's stamp row describes");
+    }
+
+    /** The {@code body_key} of each stamp (step 1) row of {@code id}, by attempt. */
+    static List<String> stampRowKeys(String id) {
+        List<String> keys = new java.util.ArrayList<>();
+        for (Row r : admin.preparedQuery("select body_key from messages where id = $1 and step = 1 order by attempt").execute(Tuple.of(id)).await()) keys.add(r.getString(0));
+        return keys;
     }
 
     /**

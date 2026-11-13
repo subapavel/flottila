@@ -637,6 +637,7 @@ public final class FlowWorker {
         boolean exhausted = item.attempts() > bound(item);
         Envelope ingress;
         try {
+            // the timeline is in attempt order: the first ingress row is attempt 1's, what arrived — never a later attempt's (FIX-175 P5)
             Optional<Snapshot> in = store.timeline(id).await().stream().filter(s -> Recorder.INGRESS.equals(s.stepName())).findFirst();
             if (in.isEmpty()) {
                 LOG.log(System.Logger.Level.WARNING, "message " + id + " of flow " + flow + " has no ingress snapshot to resume from; its item is completed");

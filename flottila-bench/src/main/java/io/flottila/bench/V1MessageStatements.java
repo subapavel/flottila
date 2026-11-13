@@ -7,8 +7,8 @@ import io.vertx.sqlclient.Tuple;
 import java.util.List;
 
 /**
- * The prototype's fixed-shape unnest insert into {@code messages} by (id, step), each row carrying its body hash and the hash's
- * algorithm ({@code payloads} is gone since V11, D-097); one batch = one statement in one transaction through
+ * The prototype's fixed-shape unnest insert into {@code messages} by (id, step, attempt), the attempt V19's default 1 (FIX-175),
+ * each row carrying its body hash and the hash's algorithm ({@code payloads} is gone since V11, D-097); one batch = one statement in one transaction through
  * {@link PgBatchSink}.
  *
  * @since 0.1
@@ -19,7 +19,7 @@ public final class V1MessageStatements {
 
     static final String MESSAGES = "insert into messages(id, step, flow, headers, props, keys, attachments, body_hash, hash_algorithm)"
             + " select * from unnest($1::text[], $2::int[], $3::text[], $4::jsonb[], $5::jsonb[], $6::jsonb[], $7::jsonb[], $8::bytea[], $9::text[])"
-            + " on conflict (id, step) do nothing";
+            + " on conflict (id, step, attempt) do nothing";
 
     public static List<PgBatchSink.Statement<BenchMessage>> all() {
         return List.of(new PgBatchSink.Statement<>(MESSAGES, V1MessageStatements::messages));

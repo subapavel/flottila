@@ -1,4 +1,16 @@
 
+## 2026-11-13 — FIX-175 each attempt keeps its own snapshots (D-140) — done, review PASS (r4)
+- Context compacted earlier in the session; worker restarted once (Docker and Postgres restarted per NOTES "Build and VM").
+- V19 (stop-all): `messages.attempt` (props' integer attempt copied, else 1; check >= 1), PK (id, step, attempt); Snapshot 17-arg ctor with
+  `attempt`; timeline lists every attempt in (attempt, step) order with `attempt`; step body = latest attempt, `?attempt=k` (404 / 400);
+  a replay from n takes the latest attempt whose step n−1 row is OK; the worker's rerun reads attempt 1's ingress. Bench statement follows.
+- Red: InMemoryMessageStoreTest :68 :83 :87 :97, PgMessageStoreIT :125 :165 :211, MigrationsIT :615 :646 (+ pins 18 → 19), AdminServerTest
+  :238 :357 :379 :401 :415, ReplayTest:224, FlowWorkerRetryTest :820 :845, NodeIT :1801 :1846.
+- r1 FAIL (V19 not stop-all, pre-V19 rerun rows got attempt 1, §7 + D-rows stale), r2/r3 FAIL (D-row brackets D-044/045/047/057/096), r4 PASS.
+- Evidence: whole reactor verify -Pit 16/16, 4316 tests 0/0/0 (agent/work/FIX-175-verify6.log; verify3–5 blocked by disk space and a stopped
+  Docker, not evidence); 20+ hand mutants killed (M13 lock order unobservable, accepted); demo 6/6; coverage no decrease.
+- Filed into FIX-174 (CLI steps count sees every attempt) and FIX-47 (a non-int `attempt` prop is refused when its snapshot is built).
+
 ## 2026-11-12 — FIX-176 rename leftovers after FIX-138a — done, review PASS (r3)
 - core `Replay.retry` → `replayParked`; javadocs and messages that called the new copy a "DLQ retry" now say "DLQ replay" (RowNotRemovedException
   500 body, ReplayRefusedException, FlowBuilder, Deployments, Dlq, Parked, Trail, BodyLostException, flow.schema.json `delivery.timeout`).

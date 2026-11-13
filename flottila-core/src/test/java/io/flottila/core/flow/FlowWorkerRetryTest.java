@@ -803,4 +803,66 @@ class FlowWorkerRetryTest {
         assertEquals(0, w.rows.size(), "the restarted run succeeded: completed");
         assertEquals(List.of(), w.dlq(), "not parked again");
     }
+
+    // --- FIX-175 (P2, P5): each attempt of a same-id rerun keeps its own rows
+
+    /** Each row of {@code id}'s timeline as {@code "<attempt> <step> <name> <outcome>"}. */
+    List<String> rowsOf(String id) {
+        return w.store.timeline(id).await().stream().map(s -> s.attempt() + " " + s.step() + " " + s.stepName() + " " + s.outcome()).toList();
+    }
+
+    /**
+     * A1 (core, the fake clock): the partner fails twice, then takes the message (count 2, 1m apart). The timeline holds the rows of
+     * attempts 1, 2 and 3 — the ingress once, at attempt 1 (the intake records it, a rerun does not) — each with its attempt and its
+     * own outcome, attempt 3's last step OK; each attempt's {@code rewrite} row references the body that attempt wrote (D-066).
+     */
+    @Test
+    void aMessageRetriedTwiceKeepsTheRowsOfEachAttemptWithItsOwnOutcome() throws Exception {
+        w.partner.failNext(2, FlowWorkerRetryTest::downstream);
+        FlowBuilder b = w.builder();
+        FlowDefinition def = FlowDefinition.from(flow(retries(2, "1m"), List.of(REWRITE, TO_PARTNER)));
+        FlowWorker worker = w.started(b, def, "n1");
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+
+        w.sent(worker, 1);
+        w.retryAt(worker, "n1", w.t0.plus(Duration.ofMinutes(1)), 2);
+        w.retryAt(worker, "n1", w.t0.plus(Duration.ofMinutes(2)), 3);
+        assertEquals(List.of(), w.dlq(), "fixture: the third attempt went through");
+        assertEquals(0, w.rows.size(), "fixture: completed");
+
+        assertEquals(List.of("1 0 ingress OK", "1 1 rewrite OK", "1 2 partner FAILED", "2 1 rewrite OK", "2 2 partner FAILED", "3 1 rewrite OK", "3 2 partner OK"),
+                rowsOf(in.id()), "attempts 1, 2 and 3, by attempt then step, each with its own outcome");
+        List<Optional<io.flottila.api.BlobKey>> rewritten = w.store.timeline(in.id()).await().stream().filter(s -> s.step() == 1).map(io.flottila.core.record.Snapshot::bodyKey).toList();
+        assertEquals(List.of(Optional.of(io.flottila.api.BlobKey.body(in.id(), 1)), Optional.of(new io.flottila.api.BlobKey(in.id(), 1, "body~2")),
+                Optional.of(new io.flottila.api.BlobKey(in.id(), 1, "body~3"))), rewritten, "each attempt's row references its own step body");
+    }
+
+    /**
+     * A6 (P5): the worker's rerun starts from attempt 1's ingress row — what arrived — even when a later attempt left a step-0 row
+     * of its own (another body, another content-type) beside it. Witness that the later row is there: the timeline holds both.
+     */
+    @Test
+    void aRerunStartsFromTheFirstAttemptsIngressEvenBesideALaterAttemptsStepZeroRow() throws Exception {
+        w.partner.failNext(1, FlowWorkerRetryTest::downstream);
+        FlowBuilder b = w.builder();
+        FlowDefinition def = FlowDefinition.from(flow(retries(1, "1m"), List.of(TO_PARTNER)));
+        FlowWorker worker = w.started(b, def, "n1");
+        Envelope in = w.accept(b.delivery(def, NO_FILES));
+        w.sent(worker, 1);
+
+        io.flottila.api.Body other = w.rt.blobs().write(new io.flottila.api.BlobKey(in.id(), 0, "body~2"), Buffer.buffer("<not-what-arrived/>"), 65_536).await();
+        w.store.record(new io.flottila.core.record.Snapshot(in.id(), "orders", 0, io.flottila.core.record.Recorder.INGRESS, io.flottila.core.record.Snapshot.Outcome.OK,
+                Optional.empty(), w.t0, 0L, io.flottila.core.record.Snapshot.CPU_UNKNOWN, Headers.empty().with(Envelope.H_CONTENT_TYPE, "text/plain"),
+                io.flottila.api.Props.empty().with(Envelope.ATTEMPT, 2), io.flottila.api.Keys.empty(), other.hash(), other.size(), Optional.of(other.key()), Map.of())).await();
+        assertEquals(List.of(1, 2), w.store.timeline(in.id()).await().stream().filter(s -> s.step() == 0).map(io.flottila.core.record.Snapshot::attempt).toList(),
+                "fixture: a step-0 row of attempt 2 beside attempt 1's (P2)");
+
+        w.retryAt(worker, "n1", w.t0.plus(Duration.ofMinutes(1)), 2);
+        Envelope rerun = w.partner.sent().get(1);
+        assertEquals(in.id(), rerun.id());
+        assertEquals(Optional.of(2), rerun.get(Envelope.ATTEMPT), "the rerun runs as attempt 2");
+        assertEquals("<order id=\"1\"/>", rerun.body().whole().toString(), "on what arrived: attempt 1's ingress body");
+        assertEquals(Optional.of("application/xml"), rerun.header(Envelope.H_CONTENT_TYPE), "with attempt 1's ingress headers");
+        assertEquals(in.body().key(), rerun.body().key());
+    }
 }

@@ -42,7 +42,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * from 14 to 15 for the same reason, the table set unchanged. FIX-141 (D-126): V16 adds {@code audit}; the counts moved from 15 to
  * 16 for the same reason, and the fresh table set gained {@code audit}. CORE-14b (D-135): V17 adds {@code work.max_attempts} and {@code dlq.partition_key}; the counts
  * moved from 16 to 17 for the same reason, the table set unchanged. CORE-5a: V18 adds {@code nodes.peer_address}; the counts moved
- * from 17 to 18 for the same reason, the table set unchanged.
+ * from 17 to 18 for the same reason, the table set unchanged. FIX-175 (P1): V19 adds {@code messages.attempt} and keys the table by
+ * (id, step, attempt); the counts moved from 18 to 19 for the same reason, the table set unchanged.
  */
 // the order that failed in P1-04 (FIX-5): the fresh case leaves V3 applied, the empty location then sees it as current and throws nothing
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -101,8 +102,8 @@ class MigrationsIT {
                 "journal_nodes", "journal_segments", "journal_losses", "nodes", "audit");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(18, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b), V10 (retention indexes, P2-07), V11 (payloads dropped, P2-07c), V12 (body journal, CORE-4c1), V13 (journal losses, CORE-4c3), V14 (node lease, P2-15a), V15 (work key index, P2-16a), V16 (audit, FIX-141), V17 (work.max_attempts, dlq.partition_key, CORE-14b), V18 (nodes.peer_address, CORE-5a)");
-        assertEquals("18", first.schemaVersion());
+        assertEquals(19, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b), V10 (retention indexes, P2-07), V11 (payloads dropped, P2-07c), V12 (body journal, CORE-4c1), V13 (journal losses, CORE-4c3), V14 (node lease, P2-15a), V15 (work key index, P2-16a), V16 (audit, FIX-141), V17 (work.max_attempts, dlq.partition_key, CORE-14b), V18 (nodes.peer_address, CORE-5a), V19 (messages.attempt, FIX-175)");
+        assertEquals("19", first.schemaVersion());
         assertEquals(Set.of("audit", "body_refs", "bodies", "deployments", "dlq", "flyway_schema_history", "journal_keys", "journal_losses", "journal_nodes", "journal_segments",
                 "message_keys", "messages", "nodes", "processed_ids", "work"), tables(), "V11 dropped payloads (D-097); V12 added the journal's four tables (CORE-3 item 5); V13 journal_losses (CORE-4c3); V14 nodes (P2-15a); V16 audit (FIX-141)");
         Set<String> indexes = new TreeSet<>();
@@ -119,10 +120,10 @@ class MigrationsIT {
                 "V15 (P2-16a): the keyed rows of a flow by key and seq, partial: " + defs.get("work_flow_key_seq"));
         assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V18");
-        assertEquals("18", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V19");
+        assertEquals("19", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(18, applied);
+        assertEquals(19, applied);
     }
 
     /**
@@ -184,8 +185,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(14, r.migrationsExecuted(), "V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, V17 and V18 on top of V4");
-        assertEquals("18", r.schemaVersion());
+        assertEquals(15, r.migrationsExecuted(), "V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, V17, V18 and V19 on top of V4");
+        assertEquals("19", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));
@@ -212,7 +213,7 @@ class MigrationsIT {
     @Order(5)
     void v7DeploymentsHoldsTheRecordAndNoBytes() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("18", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'deployments' order by ordinal_position").execute().await()) {
@@ -248,7 +249,7 @@ class MigrationsIT {
     @Order(6)
     void v8ProcessedIdsHoldsOneRowPerScopeAndKeyHash() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("18", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'processed_ids' order by ordinal_position").execute().await()) {
@@ -293,8 +294,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(10, r.migrationsExecuted(), "V9, V10, V11, V12, V13, V14, V15, V16, V17 and V18 on top of V8");
-        assertEquals("18", r.schemaVersion());
+        assertEquals(11, r.migrationsExecuted(), "V9, V10, V11, V12, V13, V14, V15, V16, V17, V18 and V19 on top of V8");
+        assertEquals("19", r.schemaVersion());
         Row column = pool.query("select column_default, is_nullable, data_type from information_schema.columns where table_schema = 'public' "
                 + "and table_name = 'deployments' and column_name = 'dependencies'").execute().await().iterator().next();
         assertEquals("'[]'::jsonb", column.getString(0), "V9: the default");
@@ -318,7 +319,7 @@ class MigrationsIT {
     @Order(8)
     void v10IndexesTheRetentionScansByAge() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("18", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
         java.util.Map<String, String> expected = java.util.Map.of(
                 "messages", " USING btree (created_at, id, step)",
                 "bodies", " USING btree (created_at, message_id, step, part)",
@@ -356,8 +357,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(8, r.migrationsExecuted(), "V11, V12, V13, V14, V15, V16, V17 and V18 on top of V10");
-        assertEquals("18", r.schemaVersion());
+        assertEquals(9, r.migrationsExecuted(), "V11, V12, V13, V14, V15, V16, V17, V18 and V19 on top of V10");
+        assertEquals("19", r.schemaVersion());
         List<String> rows = new java.util.ArrayList<>();
         for (Row row : pool.query("select id, step, hash_algorithm, encode(body_hash, 'hex'), body_size from messages order by id, step").execute().await()) {
             rows.add(row.getString(0) + "@" + row.getInteger(1) + " " + row.getString(2) + ":" + row.getString(3) + " " + row.getLong(4));
@@ -395,7 +396,7 @@ class MigrationsIT {
     @Order(10)
     void v12AddsTheJournalTablesAndTheWorkRowsBodyRefWithoutBodyBytes() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("18", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
 
         assertEquals(java.util.Map.of("node", "text not null", "journal_id", "uuid not null"), columnsOf("journal_nodes"),
                 "V12: journal_nodes, one journal id per node");
@@ -459,8 +460,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(7, r.migrationsExecuted(), "V12, V13, V14, V15, V16, V17 and V18 on top of V11");
-        assertEquals("18", r.schemaVersion());
+        assertEquals(8, r.migrationsExecuted(), "V12, V13, V14, V15, V16, V17, V18 and V19 on top of V11");
+        assertEquals("19", r.schemaVersion());
         Row row = pool.preparedQuery("select id, flow, step, partition_key, attempts, body_node, body_segment, body_position, body_length from work where seq = $1")
                 .execute(io.vertx.sqlclient.Tuple.of(seq)).await().iterator().next();
         assertEquals(List.of("m-1", "shop/orders", "0", "K", "2"), List.of(row.getString(0), row.getString(1), String.valueOf(row.getInteger(2)),
@@ -486,8 +487,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(6, r.migrationsExecuted(), "V13, V14, V15, V16, V17 and V18 on top of V12");
-        assertEquals("18", r.schemaVersion());
+        assertEquals(7, r.migrationsExecuted(), "V13, V14, V15, V16, V17, V18 and V19 on top of V12");
+        assertEquals("19", r.schemaVersion());
         assertEquals("timestamp with time zone", columnsOf("work").get("lost_at"), "V13: work.lost_at, nullable: " + columnsOf("work"));
         Row row = pool.preparedQuery("select id, body_node, body_segment, body_position, body_length, lost_at from work where seq = $1")
                 .execute(io.vertx.sqlclient.Tuple.of(seq)).await().iterator().next();
@@ -518,8 +519,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(3, r.migrationsExecuted(), "V16, V17 and V18 on top of V15");
-        assertEquals("18", r.schemaVersion());
+        assertEquals(4, r.migrationsExecuted(), "V16, V17, V18 and V19 on top of V15");
+        assertEquals("19", r.schemaVersion());
         java.util.Map<String, String> columns = columnsOf("audit");
         assertEquals(List.of("id", "at", "actor", "action", "subject", "detail"), List.copyOf(columns.keySet()), "V16: the audit columns in order: " + columns);
         java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
@@ -561,13 +562,13 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(2, r.migrationsExecuted(), "V17 and V18 on top of V16");
+        assertEquals(3, r.migrationsExecuted(), "V17, V18 and V19 on top of V16");
         assertEquals("text", columnsOf("dlq").get("partition_key"), "O7: dlq.partition_key text, nullable: " + columnsOf("dlq"));
         Row parked = pool.query("select id, step, error, partition_key from dlq").execute().await().iterator().next();
         assertEquals(java.util.Arrays.asList("m-0", 1, "partner down", null),
                 java.util.Arrays.asList(parked.getString(0), parked.getInteger(1), parked.getString(2), parked.getValue(3)),
                 "a DLQ row of V16 keeps what it had; its key is null (parked before its key was kept)");
-        assertEquals("18", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
         assertEquals("integer", columnsOf("work").get("max_attempts"), "V17: work.max_attempts int, nullable: " + columnsOf("work"));
         Row row = pool.preparedQuery("select id, attempts, max_attempts from work where seq = $1").execute(io.vertx.sqlclient.Tuple.of(seq)).await().iterator().next();
         assertEquals(java.util.Arrays.asList("m-1", 2, null), java.util.Arrays.asList(row.getString(0), row.getInteger(1), row.getValue(2)),
@@ -590,8 +591,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(1, r.migrationsExecuted(), "V18 on top of V17");
-        assertEquals("18", r.schemaVersion());
+        assertEquals(2, r.migrationsExecuted(), "V18 and V19 on top of V17");
+        assertEquals("19", r.schemaVersion());
         assertEquals("text", columnsOf("nodes").get("peer_address"), "V18: nodes.peer_address text, nullable: " + columnsOf("nodes"));
         assertEquals(List.of("node", "epoch", "lease_until", "peer_address"), List.copyOf(columnsOf("nodes").keySet()), "added last, nothing else");
         Row old = pool.query("select node, epoch, lease_until is not null, peer_address from nodes").execute().await().iterator().next();
@@ -601,6 +602,90 @@ class MigrationsIT {
         pool.query("insert into nodes(node, epoch) values ('n-new', 1)").execute().await();
         assertEquals(null, pool.query("select peer_address from nodes where node = 'n-new'").execute().await().iterator().next().getValue(0),
                 "no default: a row inserted without one has none");
+    }
+
+    /**
+     * FIX-175 A5 (P1): V19 adds {@code messages.attempt int not null default 1} and keys {@code messages} by (id, step, attempt). On
+     * a database at V18 holding a {@code messages} row the row reads as attempt 1; the same (id, step) of attempt 2 is then a row of
+     * its own, and a second row of the same (id, step, attempt) — a row inserted without an attempt is attempt 1 — is a unique
+     * violation (23505).
+     */
+    @Test
+    @Order(16)
+    void v19KeysMessagesByIdStepAndAttemptAndAnEarlierRowIsAttemptOne() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("18").load().migrate();
+        pool.query("insert into messages(id, step, flow, step_name, body_hash) values ('m-old', 1, 'shop/orders', 'partner', '\\x01')").execute().await();
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(1, r.migrationsExecuted(), "V19 on top of V18");
+        assertEquals("19", r.schemaVersion());
+        assertEquals("integer not null", columnsOf("messages").get("attempt"), "V19: messages.attempt int not null: " + columnsOf("messages"));
+        assertEquals("PRIMARY KEY (id, step, attempt)", primaryKey("messages"));
+        Row old = pool.query("select id, step, step_name, attempt from messages").execute().await().iterator().next();
+        assertEquals(java.util.Arrays.asList("m-old", 1, "partner", 1), java.util.Arrays.asList(old.getString(0), old.getInteger(1), old.getString(2), old.getInteger(3)),
+                "a row of V18 keeps what it had and is attempt 1");
+        pool.query("insert into messages(id, step, flow, step_name, body_hash, attempt) values ('m-old', 1, 'shop/orders', 'partner', '\\x02', 2)").execute().await();
+        assertEquals(2L, pool.query("select count(*) from messages where id = 'm-old' and step = 1").execute().await().iterator().next().getLong(0),
+                "the same (id, step) of attempt 2 is a row of its own");
+        assertEquals("23505", sqlState(() -> pool.query("insert into messages(id, step, flow, body_hash) values ('m-old', 1, 'shop/orders', '\\x03')").execute().await()),
+                "a row inserted without an attempt is attempt 1: the same (id, step, attempt) as the V18 row");
+        assertEquals("23505", sqlState(() -> pool.query("insert into messages(id, step, flow, body_hash, attempt) values ('m-old', 1, 'shop/orders', '\\x04', 2)").execute().await()),
+                "a second row of attempt 2");
+        assertEquals(Set.of("audit", "body_refs", "bodies", "deployments", "dlq", "flyway_schema_history", "journal_keys", "journal_losses", "journal_nodes", "journal_segments",
+                "message_keys", "messages", "nodes", "processed_ids", "work"), tables(), "the table set unchanged");
+    }
+
+    /**
+     * FIX-175 r2 (R2): V19 copies a pre-V19 row's attempt from its props before the key swap — only a JSON number that is an int of at
+     * least 1; a string (FIX-47's collision, even "2"), a 0 or no attempt stays 1 — and the migration does not fail on any of them.
+     * Through the store each row reads with that attempt (R3: the column, not the props), its props as they were.
+     */
+    @Test
+    @Order(17)
+    void v19CopiesANumericPropsAttemptIntoTheColumnAndLeavesAnyOtherValueAtOne() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("18").load().migrate();
+        String insert = "insert into messages(id, step, flow, step_name, outcome, props, body_hash, body_size) values ($1, 1, 'shop/orders', 'partner', 'ok', $2::jsonb, "
+                + "'\\x0000000000000001'::bytea, 1)";
+        java.util.Map<String, io.vertx.core.json.JsonObject> props = java.util.Map.of("m-num", new io.vertx.core.json.JsonObject().put("attempt", 2),
+                "m-str", new io.vertx.core.json.JsonObject().put("attempt", "x"), "m-two", new io.vertx.core.json.JsonObject().put("attempt", "2"),
+                "m-zero", new io.vertx.core.json.JsonObject().put("attempt", 0), "m-none", new io.vertx.core.json.JsonObject());
+        for (var row : props.entrySet()) pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of(row.getKey(), row.getValue())).await();
+        assertEquals(java.util.List.of("object"), pool.query("select distinct jsonb_typeof(props) from messages").execute().await().stream().map(x -> x.getString(0)).toList(),
+                "fixture: every row's props is a JSON object");
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(1, r.migrationsExecuted(), "V19 on top of V18, whatever the props held");
+        java.util.Map<String, Integer> column = new java.util.TreeMap<>();
+        for (Row row : pool.query("select id, attempt from messages").execute().await()) column.put(row.getString(0), row.getInteger(1));
+        assertEquals(java.util.Map.of("m-num", 2, "m-str", 1, "m-two", 1, "m-zero", 1, "m-none", 1), column,
+                "a numeric props attempt of at least 1 is copied; a string, a 0 or none stays 1");
+        io.flottila.runtime.store.PgMessageStore store = new io.flottila.runtime.store.PgMessageStore(pool, new io.flottila.runtime.time.VertxTimer(vertx),
+                new io.flottila.core.batch.BatchingWriter.Options(100, java.time.Duration.ofMillis(10), 2, 1000));
+        try {
+            io.flottila.core.record.Snapshot num = store.timeline("m-num").await().getFirst();
+            assertEquals(2, num.attempt(), "m-num's timeline shows attempt 2");
+            io.flottila.core.record.Snapshot str = store.timeline("m-str").await().getFirst();
+            assertEquals(1, str.attempt(), "m-str's timeline reads, attempt 1");
+            assertEquals("x", str.props().asMap().get("attempt"), "its props as they were");
+            assertEquals(1, store.timeline("m-two").await().getFirst().attempt());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** FIX-175 r2 (R2, implementer's case): V19's {@code check (attempt >= 1)} refuses an attempt below 1 (23514); witness: 1 and 2 are taken. */
+    @Test
+    @Order(18)
+    void v19RefusesAMessagesRowWhoseAttemptIsBelowOne() {
+        Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        String insert = "insert into messages(id, step, flow, body_hash, attempt) values ('m-a', 1, 'shop/orders', '\\x01', $1)";
+        for (int below : new int[] {0, -1}) {
+            assertEquals("23514", sqlState(() -> pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of(below)).await()), "attempt " + below + " is a check violation");
+        }
+        for (int ok : new int[] {1, 2}) pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of(ok)).await();
+        assertEquals(2L, pool.query("select count(*) from messages where id = 'm-a'").execute().await().iterator().next().getLong(0), "witness: attempts 1 and 2 are rows");
     }
 
     /** {@code table}'s columns in order: name → {@code format_type} and {@code not null} when the column is. */

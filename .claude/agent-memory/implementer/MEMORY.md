@@ -10,7 +10,7 @@
 - A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both. `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
 - Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:76, PgDeploymentStoreIT:100, BenchMainIT:36 (schema count); a new /admin JSON field → AdminServerWorkTest field-set pins; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
   a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
-  A changed NodeConfig default (CORE-17 r3): NodeConfigTest.defaults:66 and bench LedgerMainPartsTest:65 pin `Pg(..)` defaults too.
+  A changed NodeConfig default (CORE-17 r3): NodeConfigTest.defaults:66 and bench LedgerMainPartsTest:65 pin `Pg(..)` defaults too. Messages key change (FIX-175): bench V1MessageStatements' own `on conflict (id, step)` (42P10 → BenchMainIT) + V1MessageStatementsTest:38, FlowWorkerTest:1483 and StepBodiesIT:440 pin one row per step.
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
 - Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins; killers = the `-q` log's `[ERROR]   ` lines): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`. Pass `-Dsurefire.timeout` on hand runs too (CORE-4c1 r1: a hung @AfterEach close blocked a run 15 min).
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
@@ -83,8 +83,7 @@
   Testcontainers PostgreSQLContainer's default command is `fsync=off`; `PgConnectOptions.addProperty("statement_timeout",..)` is a startup GUC (IT-proven).
 - PG 17 (FIX-130, EXPLAIN on 50 k rows): `update .. where seq in (<sub> limit n for update skip locked)` = generic-plan Seq Scan of the target; CORE-7: `delete .. using unnest($1::bigint[],$2::int[])` = work_pkey probe per member (generic too); `Tuple.addArrayOfLong` = addValue(Long[]); BatchingWriter `flush()` is a join (fails if one did).
   `seq = any(array(<sub>))` = InitPlan + pkey Index Cond in both plans; a one-key table hid the keyed form's scan (use ~100 keys).
-- FIX-136: `Set.of(..).contains(null)` throws NPE (jqwik found it); `jsonb_agg(..)` of pg_stat_replication in one select avoids a left join's phantom null row
-  (`Row.getJsonArray(int)`, elements iterate as JsonArray). Startup params `synchronous_commit`/`statement_timeout` beat ALTER DATABASE/ROLE (IT).
+- FIX-136: `Set.of(..).contains(null)` throws NPE (jqwik found it); `jsonb_agg(..)` of pg_stat_replication in one select avoids a left join's phantom null row (`Row.getJsonArray(int)`, elements iterate as JsonArray). Startup params `synchronous_commit`/`statement_timeout` beat ALTER DATABASE/ROLE (IT).
 - PG 17 (FIX-127): a correlated `exists` (under `or`) is an AlternativeSubPlan; the planner kept the per-row Seq Scan (early exit) x 200 candidates; a materialized CTE + `not exists` = one scan, Hash Right Anti Join. Commit between two withTransaction statements: java.lang.reflect.Proxy on Pool (`invokeDefault` for defaults, wrap getConnection).
 - vertx-pg-client 5.1.10 (javap, P2-16b): `PgConnection.notificationHandler(Handler<PgNotification>)` (`getPayload()`, `getChannel()`),
   `closeHandler`/`exceptionHandler`; a node's own NOTIFY reaches its own LISTEN. PgWire records the client's Terminate as `Sent('X', null, conn)`:

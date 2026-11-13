@@ -30,7 +30,7 @@ import java.util.function.IntFunction;
 /**
  * Replay from any recorded step (ARCHITECTURE §6 recording, GATE check 7): steps {@code n..end} of the flow run as a
  * <em>new</em> message marked {@link Envelope#REPLAY_OF} on the envelope step {@code n−1} handed on — taken from its
- * snapshot ({@link #from}), or from the DLQ row of the failed step ({@link #replayParked}), which carries that envelope by
+ * snapshot ({@link #from}: of the latest attempt whose step {@code n−1} row is OK, FIX-175 O1), or from the DLQ row of the failed step ({@link #replayParked}), which carries that envelope by
  * reference so replaying it needs no snapshot. The new message is a first run: the {@link Envelope#ATTEMPT} of the run that left
  * that envelope is dropped (D-066). It leaves its own snapshots, the first one its input ({@value #REPLAY_INPUT}), through a
  * {@link Trail} of its own: {@link #from} and {@link #replayParked} return once its step bodies are durable and its rows written.
@@ -99,7 +99,8 @@ public final class Replay {
         if (step < 1 || step > n) throw refused(Reason.STEP_OUT_OF_RANGE, "replay step must be 1.." + n + " for flow '" + flow.id() + "', was " + step);
         List<Snapshot> timeline = store.timeline(messageId).await();
         if (timeline.isEmpty()) throw refused(Reason.UNKNOWN_MESSAGE, "no snapshots for message '" + messageId + "'");
-        Optional<Snapshot> recorded = timeline.stream().filter(s -> s.step() == step - 1 && s.outcome() == Snapshot.Outcome.OK).findFirst();
+        // the timeline is in attempt order: the last OK row of step n − 1 is the latest attempt's that handed on (FIX-175 O1)
+        Optional<Snapshot> recorded = timeline.stream().filter(s -> s.step() == step - 1 && s.outcome() == Snapshot.Outcome.OK).reduce((earlier, later) -> later);
         if (recorded.isEmpty()) {
             throw refused(Reason.NOT_RECORDED, "step " + (step - 1) + " of message " + messageId + " was not recorded (recording level); replay from step " + step + " needs it");
         }

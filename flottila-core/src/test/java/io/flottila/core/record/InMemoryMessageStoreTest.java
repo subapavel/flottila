@@ -1,6 +1,7 @@
 package io.flottila.core.record;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
 import io.flottila.api.Headers;
 import io.flottila.api.Keys;
@@ -44,6 +45,91 @@ class InMemoryMessageStoreTest {
         assertEquals("validate", timeline.get(1).stepName(), "a second snapshot for the same (id, step) is ignored, like ON CONFLICT DO NOTHING");
         assertEquals(List.of(), store.timeline("nobody").await());
         assertEquals(4, store.size());
+    }
+
+    /** {@code id}'s row at {@code step} of {@code attempt}: the props carry {@link Envelope#ATTEMPT} from 2 on, as a rerun's envelope does (FlowWorker). */
+    static Snapshot attempt(String id, int step, String name, int attempt) {
+        Snapshot s = snap(id, step, name, Keys.empty());
+        Props props = attempt >= 2 ? s.props().with(Envelope.ATTEMPT, attempt) : s.props();
+        return new Snapshot(s.messageId(), s.flow(), s.step(), s.stepName(), s.outcome(), s.error(), s.startedAt(), s.wallNanos(), s.cpuNanos(), s.headers(),
+                props, s.keys(), s.bodyHash(), s.bodySize(), attempt >= 2 ? Optional.of(new BlobKey(id, step, "body~" + attempt)) : s.bodyKey(), s.versions());
+    }
+
+    /** Each row as {@code "<attempt> <step> <name>"}. */
+    static List<String> rows(List<Snapshot> timeline) {
+        return timeline.stream().map(s -> s.attempt() + " " + s.step() + " " + s.stepName()).toList();
+    }
+
+    /**
+     * FIX-175 A7 (P2): a snapshot's attempt is its props' {@link Envelope#ATTEMPT}, 1 when absent (a first run carries none);
+     * an attempt below 1 is no attempt.
+     */
+    @Test
+    void aSnapshotsAttemptIsItsPropsAttemptAndOneWithout() {
+        assertEquals(1, snap("m-1", 0, "ingress", Keys.empty()).attempt(), "a first run's props carry no attempt: attempt 1");
+        assertEquals(3, attempt("m-1", 1, "validate", 3).attempt());
+        Snapshot ok = snap("m-1", 1, "validate", Keys.empty());
+        assertEquals(1, new Snapshot(ok.messageId(), ok.flow(), ok.step(), ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(), ok.wallNanos(), ok.cpuNanos(),
+                ok.headers(), ok.props().with(Envelope.ATTEMPT, 1), ok.keys(), ok.bodyHash(), ok.bodySize(), ok.bodyKey(), ok.versions()).attempt(), "an explicit 1 is 1");
+        for (int below : new int[] {0, -1}) {
+            assertThrows(IllegalArgumentException.class, () -> new Snapshot(ok.messageId(), ok.flow(), ok.step(), ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(),
+                    ok.wallNanos(), ok.cpuNanos(), ok.headers(), ok.props().with(Envelope.ATTEMPT, below), ok.keys(), ok.bodyHash(), ok.bodySize(), ok.bodyKey(), ok.versions()),
+                    "attempt " + below + " is below 1");
+        }
+    }
+
+    /**
+     * FIX-175 r2 (R3): the 17-arg canonical constructor {@code (messageId, flow, step, attempt, stepName, …)} takes the attempt as a
+     * component: below 1 is an IllegalArgumentException; the component wins over the props' {@link Envelope#ATTEMPT} — even one that is
+     * not an int (a stored row's, read by the store with its column) — and the 16-arg constructor is the 17-arg one with the props'.
+     */
+    @Test
+    void theCanonicalConstructorsAttemptIsAtLeastOneAndWinsOverTheProps() {
+        Snapshot ok = snap("m-1", 1, "validate", Keys.empty());
+        for (int below : new int[] {0, -1}) {
+            assertThrows(IllegalArgumentException.class, () -> new Snapshot(ok.messageId(), ok.flow(), ok.step(), below, ok.stepName(), ok.outcome(), ok.error(),
+                    ok.startedAt(), ok.wallNanos(), ok.cpuNanos(), ok.headers(), ok.props(), ok.keys(), ok.bodyHash(), ok.bodySize(), ok.bodyKey(), ok.versions()),
+                    "attempt " + below + " is below 1");
+        }
+        Snapshot three = new Snapshot(ok.messageId(), ok.flow(), ok.step(), 3, ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(), ok.wallNanos(), ok.cpuNanos(),
+                ok.headers(), ok.props().with(Envelope.ATTEMPT, 2), ok.keys(), ok.bodyHash(), ok.bodySize(), ok.bodyKey(), ok.versions());
+        assertEquals(3, three.attempt(), "the component, not the props' 2");
+        Props notAnInt = new Props(Map.of(Envelope.ATTEMPT.name(), "x"));
+        Snapshot stored = new Snapshot(ok.messageId(), ok.flow(), ok.step(), 2, ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(), ok.wallNanos(), ok.cpuNanos(),
+                ok.headers(), notAnInt, ok.keys(), ok.bodyHash(), ok.bodySize(), ok.bodyKey(), ok.versions());
+        assertEquals(2, stored.attempt(), "props whose attempt is not an int do not refuse a given attempt");
+        assertEquals(new Snapshot(ok.messageId(), ok.flow(), ok.step(), 1, ok.stepName(), ok.outcome(), ok.error(), ok.startedAt(), ok.wallNanos(), ok.cpuNanos(),
+                ok.headers(), ok.props(), ok.keys(), ok.bodyHash(), ok.bodySize(), ok.bodyKey(), ok.versions()), ok, "no props attempt: the 16-arg row is attempt 1");
+    }
+
+    /** FIX-175 A7 (P2, as A4 for Postgres): a second row of the same (id, step, attempt) is ignored, for a first run and a rerun alike. */
+    @Test
+    void aDuplicateOfTheSameIdStepAndAttemptIsIgnored() {
+        store.record(attempt("m-1", 1, "validate", 1)).await();
+        store.record(attempt("m-1", 1, "validate-again", 1)).await();
+        store.record(attempt("m-1", 1, "validate-2", 2)).await();
+        store.record(attempt("m-1", 1, "validate-2-again", 2)).await();
+        assertEquals(List.of("1 1 validate", "2 1 validate-2"), rows(store.timeline("m-1").await()), "the first row per (id, step, attempt) wins");
+        assertEquals(2, store.size());
+    }
+
+    /**
+     * FIX-175 A7 (P2, P3): the same step of another attempt is a row of its own, and the timeline lists the rows by attempt, then
+     * step — whatever order they were recorded in.
+     */
+    @Test
+    void theSameStepOfAnotherAttemptIsKeptAndTheTimelineIsInAttemptThenStepOrder() {
+        store.record(attempt("m-1", 1, "validate", 2)).await();
+        store.record(attempt("m-1", 2, "to", 1)).await();
+        store.record(attempt("m-1", 0, "ingress", 1)).await();
+        store.record(attempt("m-1", 2, "to", 2)).await();
+        store.record(attempt("m-1", 1, "validate", 1)).await();
+        store.record(attempt("m-2", 1, "validate", 2)).await();
+        List<Snapshot> timeline = store.timeline("m-1").await();
+        assertEquals(List.of("1 0 ingress", "1 1 validate", "1 2 to", "2 1 validate", "2 2 to"), rows(timeline));
+        assertEquals(new BlobKey("m-1", 2, "body~2"), timeline.get(4).bodyKey().orElseThrow(), "each attempt's row keeps its own body reference");
+        assertEquals(BlobKey.body("m-1", 2), timeline.get(2).bodyKey().orElseThrow());
+        assertEquals(6, store.size());
     }
 
     @Test

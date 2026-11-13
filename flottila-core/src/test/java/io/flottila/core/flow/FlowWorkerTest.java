@@ -1480,7 +1480,8 @@ class FlowWorkerTest {
         assertEquals(List.of(Optional.empty(), Optional.of(2), Optional.of(3)), w.seenAttempts,
                 "the first claim runs as no attempt in particular, every later one carries the claim's attempt");
         List<Snapshot> rows = w.store.timeline(in.id()).await().stream().filter(s -> "store".equals(s.stepName())).toList();
-        assertEquals(1, rows.size(), "fixture: one row per step and message, the first run's: " + rows);
+        // FIX-175 (P2) changed this expectation: each attempt keeps its own row of the step (one row per (id, step, attempt))
+        assertEquals(List.of(1, 2, 3), rows.stream().map(Snapshot::attempt).toList(), "fixture: one row per step and attempt: " + rows);
         BlobKey rowKey = rows.get(0).bodyKey().orElseThrow();
         assertEquals(BlobKey.body(in.id(), 1), rowKey, "the first attempt's row refers to the step's plain key, as before D-066");
 
@@ -1488,8 +1489,10 @@ class FlowWorkerTest {
                 "attempts 2 and 3 write the step's body under keys of their own");
         for (int run = 1; run <= maxAttempts; run++) {
             assertEquals("<store n='" + run + "'/>", w.rt.blobs().read(w.storedKeys.get(run - 1)).await().toString(), "run " + run + "'s bytes stay under its key");
+            Snapshot row = rows.get(run - 1);
+            assertEquals(Optional.of(w.storedKeys.get(run - 1)), row.bodyKey(), "attempt " + run + "'s row refers to its own key");
+            assertEquals(row.bodyHash(), w.rt.hasher().hashOf(w.rt.blobs().read(row.bodyKey().orElseThrow()).await()), "attempt " + run + "'s row reads the bytes it describes");
         }
-        assertEquals(rows.get(0).bodyHash(), w.rt.hasher().hashOf(w.rt.blobs().read(rowKey).await()), "the row still reads the bytes it describes");
     }
 
     // --- P1-09k2 (D-064, D-066, F-10): the run trail

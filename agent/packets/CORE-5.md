@@ -167,3 +167,11 @@ Q1 one-copy completion with B1–B3 (503 for failed/unknown update). Q2 own key 
 Q3 no journal DEGRADED: a separate `journal.copies` health check, never a /ready input (A1). Q4 spill copy before the 202 on the bulk link. Q5 FIX-181 + FIX-177 before 5c.
 Also: §4 + V12 comment "copies fixed when written" changes; bench --scenario ack at copies 1 before/after (no bench until the test machine: record when it comes);
 4b harness waits for copies UP and records oneCopyBytes at the kill. 5c needs: holder-side READ server, local read of an unsealed replica (FIX-181).
+
+## Owner 2026-11-12 on the D-139 advice
+"d139 souhlas s Fable": A1–A8 accepted, with the derived peer subkey (the advisor's risk note; the architect's recommendation).
+To file after the FIX-175 commit: D-141 (amends D-139) and a row CORE-5a2 [B] before CORE-5b: version rule (A3) with the HELLO channel
+field (5b B5) defined in v1 first; READS 1..64 (A2); per-source handshake cap 8 (A6); a peer subkey derived from the master key (HKDF,
+own label) for fingerprint and session keys; docs: full clear-metadata list (A4), peer port reachable by nodes only (A2).
+A1, A8 → CORE-5b packet; A5 → FIX-178 acceptance (restart in each phase; due before the first deployed copies-2 release);
+A7 → FIX-177 (windowed READs, early close); FIX-181 due before 5c.

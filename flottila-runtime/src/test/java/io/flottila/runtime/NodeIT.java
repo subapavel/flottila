@@ -1747,6 +1747,132 @@ class NodeIT {
         }
     }
 
+    // --- FIX-175 (P1–P3): each attempt of a same-id rerun keeps its own rows, over the admin API and a real Postgres
+
+    /** The demo's partner answering 503 to its first {@code failures} requests and the ack after: as {@link #downPartner}, its {@code down} unused. */
+    DownPartner failingFirst(Buffer ack, int failures) {
+        List<String> saw = new CopyOnWriteArrayList<>();
+        List<String> ids = new CopyOnWriteArrayList<>();
+        AtomicInteger requests = new AtomicInteger();
+        io.vertx.core.http.HttpServer server = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
+            boolean isDown = requests.incrementAndGet() <= failures;
+            ids.add(String.valueOf(req.getHeader(HttpComponent.H_MESSAGE_ID)));
+            saw.add((isDown ? "503 " : "200 ") + req.path() + " " + b);
+            if (isDown) req.response().setStatusCode(503).end("partner down");
+            else req.response().putHeader("content-type", "application/xml").end(ack);
+        })).listen(0, "127.0.0.1").await();
+        return new DownPartner(server, saw, ids, new AtomicBoolean(false));
+    }
+
+    /**
+     * The {@code steps} of {@code id} once at least {@code n} rows are there, or as they are after 20 s (the writer commits
+     * asynchronously): a timeline that never grows is compared, not timed out.
+     */
+    static JsonArray stepsOnceThere(int admin, String id, int n) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        JsonArray steps = stepsOf(admin, id);
+        while (steps.size() < n && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+            Thread.yield();
+            steps = stepsOf(admin, id);
+        }
+        return steps;
+    }
+
+    /** Each row as {@code "<attempt> <step> <name> <outcome>"}. */
+    static List<String> attemptRows(JsonArray steps) {
+        return steps.stream().map(JsonObject.class::cast)
+                .map(s -> s.getValue("attempt") + " " + s.getInteger("step") + " " + s.getString("name") + " " + s.getString("outcome")).toList();
+    }
+
+    /** The demo's five steps of one worker run as {@link #attemptRows} names them: the partner step's outcome last. */
+    static List<String> run(int attempt, String partnerOutcome) {
+        return List.of(attempt + " 1 validate OK", attempt + " 2 extractKey OK", attempt + " 3 route OK", attempt + " 4 toPartner OK", attempt + " 5 partner " + partnerOutcome);
+    }
+
+    /**
+     * FIX-175 A1: the demo switched to at-least-once on a node retrying twice a second apart ({@code FLOTTILA_RETRIES_COUNT} 2,
+     * {@code FLOTTILA_RETRIES_INTERVAL} PT1S); the partner answers 503 to the first two attempts (each the first try and
+     * {@value #DEMO_RETRIES} step retries), then takes the invoice. {@code GET /admin/messages/{id}} lists the ingress (attempt 1)
+     * and the five steps of each of attempts 1, 2 and 3, by attempt then step, each with its {@code attempt} and its own outcome —
+     * the partner step FAILED in attempts 1 and 2, OK in attempt 3.
+     */
+    @Test
+    void aMessageWhosePartnerFailsTwiceThenSucceedsShowsTheRowsOfEachAttempt() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = failingFirst(ack, 2 * (1 + DEMO_RETRIES));
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.server().actualPort());
+            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_RETRIES_COUNT", "2");
+            env.put("FLOTTILA_RETRIES_INTERVAL", "PT1S");
+            startDemoNode(env);
+            int admin = node.adminPort();
+            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
+            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            assertEquals(202, accepted.statusCode(), accepted.body());
+            String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
+
+            until(() -> partner.saw().size() == 2 * (1 + DEMO_RETRIES) + 1, "the third attempt reaches the partner");
+            until(() -> workRows() == 0, "the third attempt completed");
+            assertTrue(partner.saw().getLast().startsWith("200 "), "fixture: the third attempt was taken: " + partner.saw());
+            assertEquals(List.of(id), partner.ids().stream().distinct().toList(), "fixture: every attempt under the message's id: " + partner.ids());
+            assertEquals(new JsonArray(), dlqItems(admin), "fixture: not parked");
+
+            List<String> expected = new java.util.ArrayList<>(List.of("1 0 ingress OK"));
+            expected.addAll(run(1, "FAILED"));
+            expected.addAll(run(2, "FAILED"));
+            expected.addAll(run(3, "OK"));
+            JsonArray steps = stepsOnceThere(admin, id, expected.size());
+            assertEquals(expected, attemptRows(steps), "the rows of attempts 1, 2 and 3, each with its attempt and outcome: " + steps.encode());
+            for (Object each : steps) {
+                JsonObject row = (JsonObject) each;
+                int attempt = row.getInteger("attempt");
+                assertEquals(attempt == 1 ? null : attempt, row.getJsonObject("props").getValue("attempt"), "the row's attempt is its run's: " + row.encode());
+            }
+        } finally {
+            partner.server().close().await();
+        }
+    }
+
+    /**
+     * FIX-175 A2: the message parked as in {@link #parkedWhilePartnerDown} (attempt 1, count 0), the partner back, then
+     * {@code POST /admin/dlq/{id}/retry} (attempt 2): once the worker delivered it, {@code GET /admin/messages/{id}} lists attempt
+     * 2's five rows — the partner step OK — beside attempt 1's ingress and five rows, the partner step FAILED, unchanged.
+     */
+    @Test
+    void aRetriedMessagesTimelineShowsTheRetriedAttemptsRowsBesideTheParkedOnes() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = downPartner(ack);
+        try (HttpClient client = http()) {
+            String parked = parkedWhilePartnerDown(client, partner);
+            int admin = node.adminPort();
+            List<String> first = new java.util.ArrayList<>(List.of("1 0 ingress OK"));
+            first.addAll(run(1, "FAILED"));
+            JsonArray before = stepsOnceThere(admin, parked, first.size());
+            assertEquals(first, attemptRows(before), "fixture: attempt 1's rows: " + before.encode());
+
+            partner.down().set(false);
+            HttpResponse<String> retried = post(client, admin, "/admin/dlq/" + parked + "/retry");
+            assertEquals(202, retried.statusCode(), retried.body());
+            assertEquals(new JsonObject().put("id", parked).put("attempt", 2), new JsonObject(retried.body()), "fixture: the retry is attempt 2");
+            until(() -> partner.saw().size() == 2 + DEMO_RETRIES, "the worker delivers it once the partner is back");
+            until(() -> workRows() == 0, "the restarted run completed");
+
+            List<String> expected = new java.util.ArrayList<>(first);
+            expected.addAll(run(2, "OK"));
+            JsonArray steps = stepsOnceThere(admin, parked, expected.size());
+            assertEquals(expected, attemptRows(steps), "attempt 2's rows beside attempt 1's: " + steps.encode());
+            JsonArray head = new JsonArray();
+            for (int i = 0; i < first.size(); i++) head.add(steps.getJsonObject(i));
+            assertEquals(before, head, "attempt 1's rows as they were");
+        } finally {
+            partner.server().close().await();
+        }
+    }
+
     // --- P1-09h (D-058, D-061): durable at-least-once bodies; a node commits synchronously or does not start
 
     /**

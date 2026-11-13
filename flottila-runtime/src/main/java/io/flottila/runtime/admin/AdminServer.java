@@ -63,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -72,8 +73,9 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * The admin read API (D-057 a, GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step, the
- * payload after step n, key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
+ * The admin read API (D-057 a, GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step (the rows of
+ * every attempt by attempt, then step, each naming its {@code attempt}, FIX-175), the payload after step n (the latest attempt's,
+ * or {@code ?attempt=k}'s), key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
  * {@code /live} and {@code /ready} (D-123).
  *
  * <p>A verticle owns the socket and routes on its event loop; every route body runs on a fresh virtual thread — it awaits
@@ -617,8 +619,14 @@ public final class AdminServer {
     private Reply body(RoutingContext ctx) {
         String id = ctx.pathParam("id");
         int n = refusable(() -> Integer.parseInt(ctx.pathParam("n")));
-        Snapshot at = messages.timeline(id).await().stream().filter(s -> s.step() == n).findFirst().orElse(null);
-        if (at == null) return Json.of(404, error("no step " + n + " recorded for message " + id));
+        OptionalInt attempt = attempt(ctx);
+        // the timeline is in attempt order: the last row of step n is its latest attempt's (FIX-175 P4)
+        Snapshot at = messages.timeline(id).await().stream().filter(s -> s.step() == n && (attempt.isEmpty() || s.attempt() == attempt.getAsInt()))
+                .reduce((earlier, later) -> later).orElse(null);
+        if (at == null) {
+            return Json.of(404, error(attempt.isEmpty() ? "no step " + n + " recorded for message " + id
+                    : "no step " + n + " of attempt " + attempt.getAsInt() + " recorded for message " + id));
+        }
         if (at.bodyKey().isEmpty()) return Json.of(404, error("step " + n + " of message " + id + " was recorded as metadata only: hash and size, no bytes"));
         // the head first: a recorded content-type no response may carry is refused here (IllegalArgumentException, a 500), before any stream is opened
         MultiMap head = HttpHeaders.headers().set("content-type", at.headers().getOrDefault("content-type", OCTETS)).set("content-length", Long.toString(at.bodySize()));
@@ -791,6 +799,20 @@ public final class AdminServer {
         workers.wake(flow);
         announce(signals, null, flow, "restarted message " + id);
         return Json.of(202, new JsonObject().put("id", id).put("attempt", k + 1));
+    }
+
+    /** The {@code attempt} parameter: empty when missing, else an int of at least 1, else (not an int, below 1) a 400. */
+    private static OptionalInt attempt(RoutingContext ctx) {
+        String raw = ctx.request().getParam("attempt");
+        if (raw == null) return OptionalInt.empty();
+        int attempt;
+        try {
+            attempt = Integer.parseInt(raw);
+        } catch (NumberFormatException notAnInt) {
+            attempt = 0;
+        }
+        if (attempt < 1) throw new Refused("attempt must be an attempt number of at least 1, was '" + raw + "'");
+        return OptionalInt.of(attempt);
     }
 
     /** The {@code from} parameter: an int of at least 1, else (missing, not an int) a 400. */
@@ -972,6 +994,7 @@ public final class AdminServer {
     private static JsonObject step(Snapshot s) {
         return new JsonObject()
                 .put("step", s.step())
+                .put("attempt", s.attempt())
                 .put("name", s.stepName())
                 .put("outcome", s.outcome().name())
                 .put("error", s.error().orElse(null))

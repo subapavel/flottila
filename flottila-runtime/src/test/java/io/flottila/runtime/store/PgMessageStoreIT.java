@@ -1,6 +1,7 @@
 package io.flottila.runtime.store;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
 import io.flottila.api.Headers;
 import io.flottila.api.Key;
@@ -57,7 +58,8 @@ import static org.junit.jupiter.api.Assertions.fail;
  * The Postgres MessageStore (ARCHITECTURE §5, §7, §8): snapshots through the P0-06 batcher into `messages` and
  * `message_keys` (V1 + V2; V11 dropped `payloads`, the hash algorithm is a messages column, D-097), the timeline back by message
  * id, messages by business key — every field round-trips. A "plug" is an uncommitted messages row another session holds with
- * a snapshot's (id, step): the snapshot's batch waits on it in ON CONFLICT (id, step) until that session rolls back.
+ * a snapshot's (id, step) of attempt 1 (V19's default): the snapshot's batch waits on it in ON CONFLICT (id, step, attempt) until that
+ * session rolls back. FIX-175: a row is keyed by (id, step, attempt) — each attempt of a same-id rerun keeps its own rows.
  */
 class PgMessageStoreIT {
 
@@ -74,7 +76,7 @@ class PgMessageStoreIT {
                 .setDatabase(pg.getDatabaseName()).setUser(pg.getUsername()).setPassword(pg.getPassword()).setCachePreparedStatements(true);
         pool = PgBuilder.pool().connectingTo(connect).with(new PoolOptions().setMaxSize(8)).using(vertx).build();
         Migrations.Result r = Migrations.migrate(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
-        assertEquals("18", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087), V10 the retention indexes (P2-07, D-088), V11 payloads dropped (P2-07c, D-097), V12 the body journal (CORE-4c1, D-105), V13 the journal losses (CORE-4c3), V14 the node lease (P2-15a), V15 the work key index (P2-16a), V16 the audit table (FIX-141), V17 work.max_attempts (CORE-14b), V18 nodes.peer_address (CORE-5a)");
+        assertEquals("19", r.schemaVersion(), "V2 adds the snapshot columns, V3 the DLQ columns, V4 the work attempts, V5 the key sequence (P1-09a), V6 bodies (P1-09h), V7 deployments (P1-09c3, D-070), V8 processed_ids (P2-02D, D-084), V9 deployment dependencies (P2-02b, D-087), V10 the retention indexes (P2-07, D-088), V11 payloads dropped (P2-07c, D-097), V12 the body journal (CORE-4c1, D-105), V13 the journal losses (CORE-4c3), V14 the node lease (P2-15a), V15 the work key index (P2-16a), V16 the audit table (FIX-141), V17 work.max_attempts (CORE-14b), V18 nodes.peer_address (CORE-5a), V19 messages.attempt (FIX-175)");
     }
 
     @AfterAll
@@ -128,14 +130,95 @@ class PgMessageStoreIT {
         }
         store.flush().await();   // batches commit concurrently (D-044): only a committed row is deterministically "first"
         saves.add(store.record(snap("m-7", 1, "to-again", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty())));
+        // FIX-175 (P2) changed this expectation: the row is keyed by (id, step, attempt), so a duplicate is one of the same attempt
+        // (still ignored) while the same (id, step) of another attempt — a rerun's — is a row of its own (first-wins per (id, step) before)
+        saves.add(store.record(withAttempt(snap("m-7", 1, "to-2", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty()), 2)));
         store.flush().await();
         assertTrue(saves.stream().allMatch(io.vertx.core.Future::succeeded));
-        assertEquals("to", store.timeline("m-7").await().get(1).stepName(), "a duplicate (id, step) after the committed row is ignored: ON CONFLICT DO NOTHING");
+        assertEquals(List.of("1 0 ingress", "1 1 to", "2 1 to-2"), rows(store.timeline("m-7").await()),
+                "a duplicate (id, step, attempt) after the committed row is ignored (ON CONFLICT DO NOTHING); attempt 2's step 1 is kept");
         assertEquals(50, store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items().size());
         assertEquals(List.of("m-9"), store.findByKey("orderNo", "o-9", Optional.empty(), Page.MAX_LIMIT).await().items());
         long rows = pool.query("select count(*) from messages").execute().await().iterator().next().getLong(0);
-        assertEquals(100, rows);
+        assertEquals(101, rows, "100 first-attempt rows and m-7's attempt-2 row");
         assertEquals(0, store.failed(), "no commit failed");
+    }
+
+    /** {@code s} as a rerun's row: its props carry {@link Envelope#ATTEMPT} {@code attempt} and its body key the attempt's suffix (Envelope#nextKey). */
+    static Snapshot withAttempt(Snapshot s, int attempt) {
+        return new Snapshot(s.messageId(), s.flow(), s.step(), s.stepName(), s.outcome(), s.error(), s.startedAt(), s.wallNanos(), s.cpuNanos(), s.headers(),
+                s.props().with(Envelope.ATTEMPT, attempt), s.keys(), s.bodyHash(), s.bodySize(),
+                s.bodyKey().map(k -> new BlobKey(k.messageId(), k.step(), k.part() + "~" + attempt)), s.versions());
+    }
+
+    /** Each row as {@code "<attempt> <step> <name>"}. */
+    static List<String> rows(List<Snapshot> timeline) {
+        return timeline.stream().map(s -> s.attempt() + " " + s.step() + " " + s.stepName()).toList();
+    }
+
+    /**
+     * FIX-175 A4 (P2, P3): the same (id, step) of another attempt is a row of its own, every field and its attempt round-trip, and the
+     * timeline lists the rows by attempt, then step, whatever order they were recorded in. A row of an attempt recorded twice keeps
+     * its first (ON CONFLICT (id, step, attempt) DO NOTHING) — for a rerun's attempt as for the first.
+     */
+    @Test
+    void theSameStepOfAnotherAttemptIsKeptAndADuplicateOfTheSameAttemptIsIgnored() {
+        Keys keys = Keys.empty().with("invoiceId", "4711");
+        Snapshot ingress = snap("m-1", 0, "ingress", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.of(BlobKey.body("m-1", 0)));
+        Snapshot failed1 = snap("m-1", 1, "partner", Snapshot.Outcome.FAILED, Optional.of("503 from partner"), keys, Optional.of(BlobKey.body("m-1", 0)));
+        Snapshot failed2 = withAttempt(snap("m-1", 1, "partner", Snapshot.Outcome.FAILED, Optional.of("503 again"), keys, Optional.of(BlobKey.body("m-1", 1))), 2);
+        Snapshot ok3 = withAttempt(snap("m-1", 1, "partner", Snapshot.Outcome.OK, Optional.empty(), keys, Optional.of(BlobKey.body("m-1", 1))), 3);
+        store.record(ok3).await();
+        store.record(failed2).await();
+        store.record(ingress).await();
+        store.record(failed1).await();
+        store.flush().await();
+        store.record(withAttempt(snap("m-1", 1, "partner-again", Snapshot.Outcome.OK, Optional.empty(), keys, Optional.empty()), 2)).await();
+        store.record(snap("m-1", 1, "partner-again", Snapshot.Outcome.OK, Optional.empty(), keys, Optional.empty())).await();
+        store.flush().await();
+
+        List<Snapshot> t = store.timeline("m-1").await();
+        assertEquals(List.of("1 0 ingress", "1 1 partner", "2 1 partner", "3 1 partner"), rows(t), "by attempt, then step; the duplicates of attempts 1 and 2 ignored");
+        assertEquals(List.of(ingress, failed1, failed2, ok3), t, "every field round-trips, each attempt's own outcome, error and body key");
+        assertEquals(List.of(1, 1, 2, 3), t.stream().map(Snapshot::attempt).toList());
+        assertEquals(List.of("m-1"), store.findByKey("invoiceId", "4711", Optional.empty(), Page.MAX_LIMIT).await().items(), "still found once by its key");
+        assertEquals(4L, count("messages"));
+        assertEquals(0, store.failed(), "no commit failed: a rerun's row is no conflict");
+    }
+
+    /**
+     * FIX-175 (P3, implementer's case): the timeline is by attempt first — attempt 1's later steps come before attempt 2's earlier
+     * ones — whatever order the rows were recorded in; a step order would list "2 1" before "1 2".
+     */
+    @Test
+    void theTimelineListsAnEarlierAttemptsLaterStepsBeforeALaterAttemptsEarlierStep() {
+        store.record(withAttempt(snap("m-1", 1, "validate", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.of(BlobKey.body("m-1", 1))), 2)).await();
+        store.record(snap("m-1", 2, "partner", Snapshot.Outcome.FAILED, Optional.of("503"), Keys.empty(), Optional.empty())).await();
+        store.record(withAttempt(snap("m-1", 2, "partner", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.empty()), 2)).await();
+        store.record(snap("m-1", 1, "validate", Snapshot.Outcome.OK, Optional.empty(), Keys.empty(), Optional.of(BlobKey.body("m-1", 1)))).await();
+        store.flush().await();
+        assertEquals(List.of("1 1 validate", "1 2 partner", "2 1 validate", "2 2 partner"), rows(store.timeline("m-1").await()));
+        assertEquals(List.of(Snapshot.Outcome.FAILED, Snapshot.Outcome.OK), store.timeline("m-1").await().stream().filter(s -> s.step() == 2).map(Snapshot::outcome).toList(),
+                "each attempt's own outcome");
+    }
+
+    /**
+     * FIX-175 r2 (R3): a stored row reads with its column's attempt, never its props': a row whose props {@code attempt} is not an int
+     * ("x", written before FIX-47's write-side refusal) still reads — its props as stored — and a row whose props say 5 while the
+     * column says 1 reads as attempt 1. The timeline orders them by the column.
+     */
+    @Test
+    void aStoredRowReadsWithItsColumnsAttemptWhateverItsPropsSay() {
+        String insert = "insert into messages(id, step, flow, step_name, outcome, props, body_hash, body_size, attempt) values ('m-x', $1, 'invoice-sync', $2, 'ok', $3::jsonb, "
+                + "'\\x0000000000000001'::bytea, 1, $4)";
+        pool.preparedQuery(insert).execute(Tuple.of(1, "props-x", new io.vertx.core.json.JsonObject().put("attempt", "x"), 2)).await();
+        pool.preparedQuery(insert).execute(Tuple.of(2, "props-5", new io.vertx.core.json.JsonObject().put("attempt", 5), 1)).await();
+
+        List<Snapshot> t = store.timeline("m-x").await();
+
+        assertEquals(List.of("1 2 props-5", "2 1 props-x"), rows(t), "each row's attempt is its column's; ordered by it");
+        assertEquals("x", t.get(1).props().asMap().get("attempt"), "the props as stored");
+        assertEquals(5, t.get(0).props().asMap().get("attempt"));
     }
 
     @Test

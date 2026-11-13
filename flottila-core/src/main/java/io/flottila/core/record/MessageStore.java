@@ -7,8 +7,9 @@ import java.util.Optional;
 
 /**
  * Where snapshots go and come back from (ARCHITECTURE §8: a snapshot after every stage, searchable by business key).
- * Two implementations from day one: {@link InMemoryMessageStore} and the Postgres one in the runtime. A second
- * snapshot for the same (message, step) is ignored — the first row wins, as {@code ON CONFLICT DO NOTHING} does.
+ * Two implementations from day one: {@link InMemoryMessageStore} and the Postgres one in the runtime. A row is keyed by
+ * (message, step, {@link Snapshot#attempt() attempt}): each attempt of a same-id rerun keeps its own rows, and a second snapshot
+ * for the same (message, step, attempt) is ignored — the first row wins, as {@code ON CONFLICT DO NOTHING} does (FIX-175).
  *
  * @since 0.1
  */
@@ -26,7 +27,7 @@ public interface MessageStore {
         return record(snapshot);
     }
 
-    /** The message's snapshots in step order; empty for an unknown message. */
+    /** The message's snapshots by attempt, then step (attempt 1's rows first); empty for an unknown message. */
     Future<List<Snapshot>> timeline(String messageId);
 
     /**
