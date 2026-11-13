@@ -2,7 +2,7 @@
 
 state: STOPPED by the owner 2026-11-03 ("zapiš stav a konec"); P2-10a done (dc6a683); P2-10b WIP (in-progress, not committed code)
 last commit: `Task: P2-10b` WIP state (this commit); dc6a683 `Task: P2-10a`; 1b32585 `Task: FIX-115`; b046743 `Task: GATE` (GATE_MET)
-branch: claude/dazzling-gauss-9x7tiw, pushed to main as well
+branch: claude/dazzling-gauss-9x7tiw, on main too; name Rail8 chosen (D-102): assets docs/brand on claude/confident-sagan-d0qkr7, rename not started
 next exact action: CONSIDER-11 [C] first (owner 2026-11-10, top: flow error handling, designer); then P2-10b (apply agent/patches/P2-10b-wip.patch)
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse `payload: metadata-only` for at-least-once at load time; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
