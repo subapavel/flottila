@@ -10,7 +10,7 @@ packet refers to them. Everything in the repo is in English.
 
 Open-source enterprise integration platform where **monitoring is the product**: every message,
 every step and every payload is captured, searchable and replayable. Java 25, Vert.x 5.1,
-PostgreSQL, Apache Kafka, ClickHouse, Valkey, S3. Apache 2.0. `docs/ARCHITECTURE.md` says what to
+PostgreSQL, ClickHouse, Valkey, S3 (Kafka only as an add-on component, D-134). Apache 2.0. `docs/ARCHITECTURE.md` says what to
 build; this file holds the rules that keep the code and the way of working aligned with it.
 
 ## Design rules (non-negotiable)
@@ -40,7 +40,7 @@ build; this file holds the rules that keep the code and the way of working align
 - Bytes exist in the system once; everything else is a reference. Never a synchronous delete on
   the hot path.
 - Dependency direction, enforced by ArchUnit: `api` ← `core` ← `runtime`. Components and steps
-  depend on `api` only. Only `runtime` touches Postgres, Kafka, S3, Valkey or ClickHouse clients.
+  depend on `api` only. Only `runtime` touches Postgres, S3, Valkey or ClickHouse clients; no core module has a Kafka client (D-134).
   `api` and `core` use the JDK plus Vert.x `Future`, `Buffer`, `ReadStream`/`WriteStream` and
   nothing else from Vert.x. Changing an ArchUnit rule is an architecture change: finding first.
 - An interface exists where a second implementation exists on day 1 (every store, every component
@@ -75,7 +75,7 @@ build; this file holds the rules that keep the code and the way of working align
   Opus 5.5 at medium; class-C design goes to the designer (Opus 5.5, xhigh). Every BACKLOG row has
   a class (A/B/C/G) that sets the model and effort of each call (`AGENTS.md`, D-054). Fable 5.2 is
   the gate reviewer and the architecture advisor, the opponent of every class-C draft (D-137).
-- Library APIs: Context7 (`.mcp.json`) first — Vert.x 5.1, Saxon, Kafka clients, Testcontainers.
+- Library APIs: Context7 (`.mcp.json`) first — Vert.x 5.1, Saxon, Testcontainers.
   If unreachable or ambiguous, `javap -cp <jar>` on the resolved jar in `~/.m2` decides. Never
   guess an API from memory.
 - One task = one commit, Conventional Commits, direct to `main`, green before push. Format and

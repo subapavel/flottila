@@ -1,4 +1,4 @@
-# ISSUE-5 — OPEN — managed cloud Postgres and the `ha` durability profile (FIX-136, D-114, D-115)
+# ISSUE-5 — ANSWERED — managed cloud Postgres and the `ha` durability profile (FIX-136, D-114, D-115)
 Task: FIX-136
 Date: 2026-11-11
 
@@ -17,3 +17,6 @@ D-114/D-115 are owner decisions (RPO and the supported Postgres manager); this i
 ## What was tried
 FIX-136 implements option 1's behaviour (strict `ha`, explicit `local`) and names managed PG in the docs; nothing that
 option 2 would need is closed off.
+
+## Owner's answer (2026-11-13, D-142)
+Option 2: a third value `managed`, operator-attested and stated at start and in health, decided with D-115 after CORE-GATE (FIX-191).
