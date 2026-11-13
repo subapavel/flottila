@@ -113,10 +113,13 @@ class PeerHandshakeVersionTest {
         assertNotNull(PeerHandshake.dialer(B, "node-a", nonces(2)).proof(listenerHello().frame()), "witness: the listener's HELLO as written");
     }
 
-    /** A2: a dialer's HELLO on channel repl (2) or bulk (3) is refused by the 5a2 listener, the refusal naming that channel. */
+    /**
+     * A2: a dialer's HELLO on channel bulk (3) is refused by the listener, the refusal naming that channel. CORE-5b1 C1: the
+     * listener takes channel repl (2) now (PeerReplHandshakeTest), so repl left this case.
+     */
     @ParameterizedTest(name = "channel {0}: {1}")
-    @CsvSource({"2, repl, bulk", "3, bulk, repl"})
-    void aListenerRefusesADialerOnTheReplOrBulkChannelNamingIt(int channel, String name, String other) {
+    @CsvSource({"3, bulk, repl"})
+    void aListenerRefusesADialerOnTheBulkChannelNamingIt(int channel, String name, String other) {
         PeerRefusedException e = assertThrows(PeerRefusedException.class,
                 () -> PeerHandshake.listener(A, nonces(1)).proof(dialerHello().channel(channel).frame()), "channel " + name);
         assertTrue(String.valueOf(e.getMessage()).contains(name), "names the channel " + name + ": " + e.getMessage());

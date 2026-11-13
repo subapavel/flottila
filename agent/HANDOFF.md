@@ -1,12 +1,12 @@
 # Handoff
 
 owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
-state: RUNNING core rework; CORE-0..4, 5a, 5a2, 6a/b, 7, 9, 12, 14a/b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..146 (not 138b), 156, 169, 172b/c, 173, 175, 176
-last commit: `Task: CORE-5a2` (this); 299fc5a D-141; 901155c `Task: FIX-175`; 4f85a68 `Task: FIX-176`; a0a0409 `Task: CORE-5a`
+state: RUNNING core rework; CORE-0..4, 5a, 5a2, 5b1, 6a/b, 7, 9, 12, 14a/b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..146 (not 138b), 156, 169, 172b/c, 173, 175/6
+last commit: `Task: CORE-5b1` (this); 13df5b3 5b packet; a6fd891 D-142; 44a46f9 `Task: CORE-5a2`
 owner 2026-11-13 (D-142): all advisor recommendations accepted (agent/review/owner-items-2026-11-13.md) → FIX-186..191
 owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
 branch: claude/brave-hopper-5vwaju (owner brainstorm commits), not yet on main
-next exact action: CORE-5b1 reds (packet CORE-5b 'Acceptance 5b1', advisor C1–C10 accepted); CORE-5b split 5b1/5b2a/5b2b/5b3; flakes FIX-183/184/185
+next exact action: CORE-5b2a design detail + reds (packet CORE-5b split; javap NetSocket.writeQueueFull/drainHandler first); flakes FIX-183/184/185
 P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
 CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
 baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)

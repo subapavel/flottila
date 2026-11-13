@@ -268,10 +268,13 @@ public final class Node implements AutoCloseable {
             // the peer link (CORE-5a): listening before the join, which writes where (its actual port); its HELLO names the joined epoch
             List<SecretKey> masters = List.of(master);
             java.util.concurrent.atomic.AtomicLong epoch = new java.util.concurrent.atomic.AtomicLong();   // the join's, once it answered
-            peerServer = PeerServer.listen(vertx, config.peer(), () -> new PeerIdentity(config.nodeId(), epoch.get(), opened.id(), masters), opened, timer)
-                    .await();
+            // a repl link's epoch is bounded by the renew's epochs once the membership exists; before, no owner has a bound
+            var epochs = new java.util.concurrent.atomic.AtomicReference<java.util.function.ToLongFunction<String>>(owner -> 0);
+            peerServer = PeerServer.listen(vertx, config.peer(), () -> new PeerIdentity(config.nodeId(), epoch.get(), opened.id(), masters), opened, timer,
+                    owner -> epochs.get().applyAsLong(owner)).await();
             // the node lease (D-101): after the journal's LOCK (one process per journal joins), before any flow is built (each is fenced)
             membership = PgMembership.connecting(vertx, connectOptions(pg, "membership", config.nodeId()), config.peer().address(peerServer.port()));   // its own connection, never a pool's
+            epochs.set(membership::epochOf);
             lease = new NodeLease(config.nodeId(), membership, config.nodeLease(), config.nodeLeaseRenew(), System::nanoTime, timer, Node::halt);
             lease.start().await();
             epoch.set(membership.epoch());

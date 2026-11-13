@@ -15,7 +15,14 @@ final class Frames {
 
     static final int HELLO = 1;
     static final int PROOF = 2;
-    // 3..9: OPEN, DATA, SEAL, RECEIPT, HAVE, REFUSE (CORE-5b)
+    /** The repl channel's (CORE-5b1, {@link ReplFrames}): owner to holder OPEN, DATA, SEAL; holder to owner RECEIPT, REFUSE. */
+    static final int OPEN = 3;
+    static final int DATA = 4;
+    static final int SEAL = 5;
+    static final int RECEIPT = 6;
+    // 7 HAVE (CORE-5b3)
+    static final int REFUSE = 8;
+    // 9 reserved
     static final int READ = 10;
     static final int BYTES = 11;
     static final int MISS = 12;

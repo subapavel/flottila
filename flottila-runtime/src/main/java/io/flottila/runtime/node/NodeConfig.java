@@ -7,6 +7,7 @@ import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
 import io.flottila.runtime.journal.JournalConfig;
 import io.flottila.runtime.journal.MasterKeySource;
+import io.flottila.runtime.journal.Replicas;
 import io.flottila.runtime.journal.SweepConfig;
 import io.flottila.runtime.journal.peer.PeerConfig;
 import io.flottila.runtime.store.Retention;
@@ -625,7 +626,6 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** FLOTTILA_JOURNAL_RECORD_MAX by default, or the memory tier when that is smaller. */
     private static final long RECORD_MAX_DEFAULT = 256 * 1024;
     private static final long GIB = 1024 * MIB;
-    private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
     private static final Set<String> HTTP = Set.of("http", "https");
     private static final Set<String> REDIS = Set.of("redis", "rediss");
     /** The {@code FLOTTILA_PG_HOST} values that default to {@code FLOTTILA_PG_SSL_MODE=disable} (D-124): written as-is, never resolved. */
@@ -669,7 +669,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         String name = env.get("FLOTTILA_ENV");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("FLOTTILA_ENV must name the environment (dev, ci, test, prod, ...)");
         String nodeId = env.getOrDefault("FLOTTILA_NODE_ID", env.get("HOSTNAME"));
-        if (nodeId == null || !NODE_ID.matcher(nodeId).matches()) {
+        if (nodeId == null || !Replicas.NODE_ID.matcher(nodeId).matches()) {
             throw new IllegalArgumentException("FLOTTILA_NODE_ID (else $HOSTNAME) must be a DNS label of at most 63 lower-case letters, digits and inner dashes, was "
                     + (nodeId == null ? "absent" : "'" + nodeId + "'"));
         }

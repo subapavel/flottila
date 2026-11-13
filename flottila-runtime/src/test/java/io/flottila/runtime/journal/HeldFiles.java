@@ -79,6 +79,7 @@ final class HeldFiles implements JournalFiles {
         private final CountDownLatch reached = new CountDownLatch(1);
         private final CountDownLatch go = new CountDownLatch(1);
         private volatile IOException failure;
+        private volatile int tearAt = -1;
         private volatile Op op;
 
         Hold(String what, Predicate<Op> matches) { this.what = what; this.matches = matches; }
@@ -86,6 +87,18 @@ final class HeldFiles implements JournalFiles {
         void release() { go.countDown(); }
 
         void fail(IOException e) { failure = e; go.countDown(); }
+
+        /**
+         * CORE-5b1 r1: the held call, a write, writes the first {@code k} bytes of what it was given (at its position, its
+         * buffers advanced by them), then throws {@code e}: a torn write, the file holding {@code k} bytes more. Armed before
+         * the call arrives, it tears at once. Only a write tears (a force or truncate given it throws {@code e}, unchanged).
+         */
+        void tear(int k, IOException e) {
+            if (k < 0) throw new IllegalArgumentException("fixture: a tear of " + k + " bytes");
+            tearAt = k;
+            failure = e;
+            go.countDown();
+        }
 
         boolean isReached() { return reached.getCount() == 0; }
 
@@ -118,7 +131,7 @@ final class HeldFiles implements JournalFiles {
                 throw x;
             }
             IOException f = failure;
-            if (f != null) throw f;
+            if (f != null && tearAt < 0) throw f;
         }
 
         @Override public String toString() { return what; }
@@ -137,6 +150,11 @@ final class HeldFiles implements JournalFiles {
     private final AtomicInteger readChannelsOpen = new AtomicInteger();
     private final AtomicInteger readChannelsPeak = new AtomicInteger();
     private final Set<Path> failNextRead = ConcurrentHashMap.newKeySet();
+    // CORE-5b1 (a replica's failed close): files whose next channel close fails, after the real channel closed
+    private final Set<Path> failNextClose = ConcurrentHashMap.newKeySet();
+    private final Map<Path, AtomicLong> failedCloses = new ConcurrentHashMap<>();
+    // CORE-5b1 r1 (a load case): once false, calls are neither recorded nor copied, holds armed still match
+    private volatile boolean recording = true;
 
     @Override public FileChannel open(Path file, Set<? extends OpenOption> options) throws IOException {
         Path at = file.toAbsolutePath().normalize();
@@ -166,10 +184,25 @@ final class HeldFiles implements JournalFiles {
     /** The next read call on any channel of {@code file} throws an {@link IOException} instead of reading (CORE-4c3). */
     void failNextReadOn(Path file) { failNextRead.add(file.toAbsolutePath().normalize()); }
 
+    /**
+     * The next close of any channel of {@code file} throws an {@link IOException} once the real channel closed (CORE-5b1): the
+     * file is closed as ever, its closer is told it failed. One-shot.
+     */
+    void failNextCloseOn(Path file) { failNextClose.add(file.toAbsolutePath().normalize()); }
+
+    /** The closes of {@code file}'s channels that threw so far (CORE-5b1, armed by {@link #failNextCloseOn}). */
+    long failedClosesOf(Path file) { return count(failedCloses, file); }
+
     private static long count(Map<Path, AtomicLong> m, Path file) {
         AtomicLong n = m.get(file.toAbsolutePath().normalize());
         return n == null ? 0 : n.get();
     }
+
+    /**
+     * From now on no call is recorded in {@link #ops()} (CORE-5b1 r1: a case of 10^5 writes, whose copy-on-write list would
+     * grow quadratically); a hold armed still matches, the bytes of a write copied only while one is armed.
+     */
+    void recordNothing() { recording = false; }
 
     /** Holds the first write (any file) whose bytes carry every marker. */
     Hold holdWrite(String... markers) {
@@ -339,8 +372,13 @@ final class HeldFiles implements JournalFiles {
 
     private Op enter(Kind kind, Path file, byte[] data) {
         Op op = new Op(kind, file, Thread.currentThread(), data, sequence.incrementAndGet());
-        ops.add(op);
+        if (recording) ops.add(op);
         return op;
+    }
+
+    /** Whether a write's bytes must be copied: recorded, or a hold armed may match them. */
+    private synchronized boolean copying() {
+        return recording || !armed.isEmpty();
     }
 
     private void leave(Op op, boolean ok) {
@@ -348,9 +386,10 @@ final class HeldFiles implements JournalFiles {
         op.returned = sequence.incrementAndGet();
     }
 
-    private void maybeHold(Op op) throws IOException {
+    private Hold maybeHold(Op op) throws IOException {
         Hold h = consume(op);
         if (h != null) h.stop(op);
+        return h;
     }
 
     static byte[] bytes(String marker) { return marker.getBytes(StandardCharsets.UTF_8); }
@@ -388,11 +427,22 @@ final class HeldFiles implements JournalFiles {
 
         private interface Call<T> { T run() throws IOException; }
 
+        /** A torn write: writes the first {@code k} bytes of the call's buffers as the call would, advancing them. */
+        private interface Torn { void write(int k) throws IOException; }
+
         private <T> T recorded(Kind kind, byte[] data, Call<T> call) throws IOException {
+            return recorded(kind, data, call, null);
+        }
+
+        private <T> T recorded(Kind kind, byte[] data, Call<T> call, Torn torn) throws IOException {
             Op op = enter(kind, file, data);
             boolean ok = false;
             try {
-                maybeHold(op);
+                Hold h = maybeHold(op);
+                if (h != null && h.tearAt >= 0) {
+                    if (torn != null) torn.write(h.tearAt);
+                    throw h.failure;
+                }
                 T result = call.run();
                 ok = true;
                 return result;
@@ -401,16 +451,42 @@ final class HeldFiles implements JournalFiles {
             }
         }
 
+        private byte[] copied(ByteBuffer[] srcs, int offset, int length) {
+            return copying() ? remaining(srcs, offset, length) : null;
+        }
+
+        /** The first {@code k} bytes (at most what is there) of {@code src}, written through {@code to}; {@code src} advanced. */
+        private void tornOf(ByteBuffer src, int k, Call<Integer> to, ByteBuffer[] part) throws IOException {
+            ByteBuffer p = src.duplicate();
+            p.limit(p.position() + Math.min(k, p.remaining()));
+            part[0] = p;
+            while (p.hasRemaining()) to.run();
+            src.position(p.position());
+        }
+
         @Override public int write(ByteBuffer src) throws IOException {
-            return recorded(Kind.WRITE, remaining(new ByteBuffer[] {src}, 0, 1), () -> inner.write(src));
+            ByteBuffer[] part = new ByteBuffer[1];
+            return recorded(Kind.WRITE, copied(new ByteBuffer[] {src}, 0, 1), () -> inner.write(src),
+                    k -> tornOf(src, k, () -> inner.write(part[0]), part));
         }
 
         @Override public long write(ByteBuffer[] srcs, int offset, int length) throws IOException {
-            return recorded(Kind.WRITE, remaining(srcs, offset, length), () -> inner.write(srcs, offset, length));
+            return recorded(Kind.WRITE, copied(srcs, offset, length), () -> inner.write(srcs, offset, length), k -> {
+                int left = k;
+                for (int i = offset; i < offset + length && left > 0; i++) {
+                    ByteBuffer[] part = new ByteBuffer[1];
+                    int n = Math.min(left, srcs[i].remaining());
+                    tornOf(srcs[i], n, () -> inner.write(part[0]), part);
+                    left -= n;
+                }
+            });
         }
 
         @Override public int write(ByteBuffer src, long position) throws IOException {
-            return recorded(Kind.WRITE, remaining(new ByteBuffer[] {src}, 0, 1), () -> inner.write(src, position));
+            ByteBuffer[] part = new ByteBuffer[1];
+            long start = src.position();
+            return recorded(Kind.WRITE, copied(new ByteBuffer[] {src}, 0, 1), () -> inner.write(src, position),
+                    k -> tornOf(src, k, () -> inner.write(part[0], position + part[0].position() - start), part));
         }
 
         @Override public void force(boolean metaData) throws IOException {
@@ -477,6 +553,10 @@ final class HeldFiles implements JournalFiles {
                 readChannelsOpen.decrementAndGet();
             }
             inner.close();
+            if (failNextClose.remove(file)) {
+                failedCloses.computeIfAbsent(file, f -> new AtomicLong()).incrementAndGet();
+                throw new IOException("the close of " + file + " failed (test)");
+            }
         }
     }
 }

@@ -55,16 +55,18 @@ public final class PgMembership implements Membership {
 
     /**
      * Renews and reports in one statement: the SELECT reads the rows as they were before the UPDATE, so the renewing row is counted
-     * by {@code me}; the live others' peer addresses come as two arrays in the same order (node, address), the address-less left out.
+     * by {@code me}; the live others' peer addresses and epochs come as three arrays in the same order (node, address, epoch), the
+     * address-less left out (CORE-5b1 Q1: the epochs bound a holder's repl links).
      */
     private static final String RENEW = """
             with me as (update nodes set lease_until = now() + make_interval(secs => $3)
                          where node = $1 and epoch = $2 and lease_until is not null returning node),
-            peers as (select node, peer_address from nodes where node <> $1 and lease_until >= now() and peer_address is not null)
+            peers as (select node, peer_address, epoch from nodes where node <> $1 and lease_until >= now() and peer_address is not null)
             select (select count(*) from me) = 1,
                    ((select count(*) from me) + (select count(*) from nodes where node <> $1 and lease_until >= now()))::int,
                    array(select node from nodes where node <> $1 and lease_until < now() order by node),
-                   array(select node from peers order by node), array(select peer_address from peers order by node)""";
+                   array(select node from peers order by node), array(select peer_address from peers order by node),
+                   array(select epoch from peers order by node)""";
 
     private static final String RELEASE = "update nodes set lease_until = null where node = any($1) and lease_until < now() returning node";
 
@@ -75,6 +77,7 @@ public final class PgMembership implements Membership {
     private Future<SqlConnection> connection;                   // guarded by this: null until the next call connects
     private boolean closed;                                     // guarded by this
     private volatile Map<String, String> peers = Map.of();      // the last renew's answer
+    private volatile Map<String, Long> epochs = Map.of();       // the same renew's: the live peers' epochs
     private volatile long epoch;                                // the last join's answer
 
     /** A membership on {@code connection}, dedicated to it; closing it is the caller's. Its joins write no peer address. */
@@ -124,8 +127,14 @@ public final class PgMembership implements Membership {
             Row r = rows.iterator().next();
             String[] nodes = r.getArrayOfStrings(3);
             String[] addresses = r.getArrayOfStrings(4);
+            Long[] incarnations = r.getArrayOfLongs(5);
             Map<String, String> peers = new HashMap<>();
-            for (int i = 0; i < nodes.length; i++) peers.put(nodes[i], addresses[i]);
+            Map<String, Long> epochs = new HashMap<>();
+            for (int i = 0; i < nodes.length; i++) {
+                peers.put(nodes[i], addresses[i]);
+                epochs.put(nodes[i], incarnations[i]);
+            }
+            this.epochs = epochs;
             Renewal renewal = new Renewal(r.getBoolean(0), r.getInteger(1), List.of(r.getArrayOfStrings(2)), peers);
             this.peers = renewal.peers();
             return renewal;
@@ -143,6 +152,14 @@ public final class PgMembership implements Membership {
      */
     public Optional<String> peerAddress(String node) {
         return Optional.ofNullable(peers.get(node));
+    }
+
+    /**
+     * {@code node}'s epoch as the last answered renew found it — a lower bound of its incarnation (a later join raises it) — or 0
+     * when it did not answer one: this node, one whose lease ran out, was released or has no address, and before the first renew.
+     */
+    public long epochOf(String node) {
+        return epochs.getOrDefault(node, 0L);
     }
 
     @Override public Future<List<String>> release(List<String> peers) {

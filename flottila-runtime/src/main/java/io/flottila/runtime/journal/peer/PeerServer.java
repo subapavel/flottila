@@ -3,6 +3,7 @@ package io.flottila.runtime.journal.peer;
 import io.flottila.api.Timer;
 import io.flottila.runtime.journal.Journal;
 import io.flottila.runtime.journal.JournalRef;
+import io.flottila.runtime.journal.Replicas;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.net.NetServer;
@@ -14,6 +15,10 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -21,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import java.util.function.ToLongFunction;
 
 /**
  * A node's peer link listener (CORE-5 S1, S2; 5a: the read side). Each connection is a {@link PeerLink} whose HELLO must prove
@@ -33,6 +39,13 @@ import java.util.function.Supplier;
  * {@value PeerConfig#HANDSHAKES_MAX} connections are held in their handshake (not yet proven) at a time, at most
  * {@value PeerConfig#HANDSHAKES_PER_SOURCE} of them from one source address (CORE-5a2 P4): a further one is closed at once
  * (r2 R1), and so is one a link cannot open on (r2 R2); a link gives its places back once established, refused or closed.
+ *
+ * <p>The link's channel is the dialer's (CORE-5b1 C1): read links are served as above; a repl link is an owner's, whose
+ * segments it holds ({@link Holder}, into {@link Journal#replicas()}). A repl link is closed after its proof when its HELLO's node
+ * is not a DNS label (C8) or its epoch is below the owner's bound — the highest epoch accepted from that owner and
+ * {@code epochOf(owner)} (the renew's, a lower bound: below 1 none), checked again at every OPEN (C6); else it supersedes the
+ * owner's repl link — whose holder is stopped and whose socket is reset, its unsent bytes dropped, so an owner that reads none
+ * of them cannot hold it (r1) — and takes its first frame once that one's writer stopped (A8).
  *
  * @since 0.1
  */
@@ -49,13 +62,19 @@ public final class PeerServer {
     private final Set<PeerLink> links = ConcurrentHashMap.newKeySet();
     private final AtomicInteger handshakes = new AtomicInteger();   // the links not yet established, not yet closed
     private final ConcurrentHashMap<String, Integer> sources = new ConcurrentHashMap<>();   // the same per source address; no entry: 0
+    private final ToLongFunction<String> epochOf;
+    private final Object holding = new Object();
+    private final Map<String, Holder> holders = new HashMap<>();   // guarded by holding: each owner's latest repl link
+    private final Map<String, Long> accepted = new HashMap<>();    // guarded by holding: the highest epoch accepted of each owner
+    private final Set<Holder> running = ConcurrentHashMap.newKeySet();   // the holders not stopped yet
 
-    private PeerServer(NetServer server, PeerConfig config, Supplier<PeerIdentity> self, Journal journal, Timer timer) {
+    private PeerServer(NetServer server, PeerConfig config, Supplier<PeerIdentity> self, Journal journal, Timer timer, ToLongFunction<String> epochOf) {
         this.server = server;
         this.config = config;
         this.self = self;
         this.journal = journal;
         this.timer = timer;
+        this.epochOf = epochOf;
     }
 
     /** Listens on {@code config}'s bind address and port (0: any free one) for the links of the other nodes to {@code self}. */
@@ -69,9 +88,18 @@ public final class PeerServer {
      * node listens before its join, whose epoch its HELLO names from then on (a link opened before the join names the one before).
      */
     public static Future<PeerServer> listen(Vertx vertx, PeerConfig config, Supplier<PeerIdentity> self, Journal journal, Timer timer) {
+        return listen(vertx, config, self, journal, timer, owner -> 0);
+    }
+
+    /**
+     * {@link #listen(Vertx, PeerConfig, Supplier, Journal, Timer)} with the epochs the membership's renew found for the other
+     * nodes ({@code epochOf}, below 1: none known): a repl link of an epoch below its owner's is closed.
+     */
+    public static Future<PeerServer> listen(Vertx vertx, PeerConfig config, Supplier<PeerIdentity> self, Journal journal, Timer timer,
+                                            ToLongFunction<String> epochOf) {
         PeerServer s = new PeerServer(vertx.createNetServer(new NetServerOptions().setHost(config.bind()).setPort(config.port()).setTcpNoDelay(true)),
                 Objects.requireNonNull(config, "config"), Objects.requireNonNull(self, "self"), Objects.requireNonNull(journal, "journal"),
-                Objects.requireNonNull(timer, "timer"));
+                Objects.requireNonNull(timer, "timer"), Objects.requireNonNull(epochOf, "epochOf"));
         s.server.connectHandler(s::connected);
         return s.server.listen().map(s);
     }
@@ -81,10 +109,18 @@ public final class PeerServer {
         return server.actualPort();
     }
 
-    /** Stops listening and closes every link; a READ being served ends with its link. */
+    /**
+     * Stops listening and closes every link; a READ being served ends with its link. Completes once every holder stopped, its
+     * replicas detached (a write or force in progress returns first).
+     */
     public Future<Void> close() {
         for (PeerLink l : links) l.close(new IOException("the peer link's server closes"));
-        return server.close();
+        List<Future<Void>> stopping = new ArrayList<>();
+        for (Holder h : running) {
+            h.stop();
+            stopping.add(h.stopped());
+        }
+        return server.close().compose(v -> Future.join(stopping).mapEmpty());
     }
 
     private void connected(NetSocket socket) {
@@ -106,7 +142,7 @@ public final class PeerServer {
         PeerLink link;
         try {
             PeerIdentity now = self.get();
-            link = PeerLink.open(socket, PeerHandshake.listener(now, this::nonce), timer, config.timeout(), new Serving(now));
+            link = PeerLink.open(socket, PeerHandshake.listener(now, this::nonce), timer, config.timeout(), new Listening(now));
         } catch (RuntimeException | Error e) {
             handshakes.decrementAndGet();
             giveBack(source);
@@ -149,6 +185,76 @@ public final class PeerServer {
         return n;
     }
 
+    /** A link's receiver: its READs or its replicas, by the channel the dialer named. */
+    private final class Listening implements PeerLink.Receiver {
+        private final PeerIdentity self;
+        private volatile PeerLink.Receiver on;   // once established
+
+        Listening(PeerIdentity self) {
+            this.self = self;
+        }
+
+        @Override public void established(PeerLink link) throws PeerRefusedException {
+            on = link.channel() == PeerHandshake.REPL ? hold(link) : new Serving(self);
+        }
+
+        @Override public void received(PeerLink link, int type, byte[] frame) throws PeerRefusedException {
+            on.received(link, type, frame);
+        }
+
+        @Override public void closed(PeerLink link, IOException why) {
+            links.remove(link);
+            PeerLink.Receiver r = on;
+            if (r != null) r.closed(link, why);
+        }
+
+        @Override public boolean waiting() {
+            return on.waiting();   // asked of an established link only
+        }
+    }
+
+    /** A repl link's holder, once its owner and epoch hold (see the class comment); it supersedes the owner's earlier one. */
+    private Holder hold(PeerLink link) throws PeerRefusedException {
+        String owner = link.peerNode();
+        if (!Replicas.NODE_ID.matcher(owner).matches()) {   // C8: an owner is one directory under replicas/
+            throw new PeerRefusedException("a repl link of node '" + owner + "': a node id is a DNS label of at most 63 lower-case letters, digits and inner dashes");
+        }
+        long epoch = link.peerEpoch();
+        synchronized (holding) {
+            long least = bound(owner);
+            if (epoch < least) {
+                throw new PeerRefusedException("a repl link of node " + owner + "'s epoch " + epoch + ": this holder knows epoch " + least + " of it");
+            }
+            accepted.merge(owner, epoch, Math::max);
+            Holder old = holders.get(owner);
+            Holder h = new Holder(link, journal.replicas(), this::bound, old == null ? Future.succeededFuture() : old.stopped());
+            holders.put(owner, h);
+            running.add(h);
+            h.stopped().onComplete(v -> stopped(owner, h));
+            if (old != null) {   // ended for certain (r1): marked closing, its writer stopped, then its socket reset — in this order,
+                // so the writer sends nothing more and its close once stopped queues no graceful close, whichever loop runs the reset
+                old.link().abandon(new IOException("superseded by a repl link of node " + owner + "'s epoch " + epoch));
+                old.stop();
+                old.link().reset();
+            }
+            return h;
+        }
+    }
+
+    /** The least epoch a repl link of {@code owner} may have now: the highest accepted, or the renew's when higher. */
+    private long bound(String owner) {
+        synchronized (holding) {
+            return Math.max(accepted.getOrDefault(owner, 0L), epochOf.applyAsLong(owner));
+        }
+    }
+
+    private void stopped(String owner, Holder h) {
+        running.remove(h);
+        synchronized (holding) {
+            holders.remove(owner, h);
+        }
+    }
+
     /** One link's READs. */
     private final class Serving implements PeerLink.Receiver {
         private final PeerIdentity self;
@@ -184,7 +290,7 @@ public final class PeerServer {
         }
 
         @Override public void closed(PeerLink link, IOException why) {
-            links.remove(link);
+            // its READs end with the link: each fails its next write
         }
 
         @Override public boolean waiting() {

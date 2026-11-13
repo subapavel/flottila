@@ -1,4 +1,18 @@
 
+## 2026-11-13 — CORE-5b1 holder side of journal replication — done, review PASS (r5)
+- Context compacted earlier in the session (worker restarted once; Docker and Postgres restarted per NOTES). Deviation: F-35 (changelog 3.21).
+- Repl channel (the dialer's HELLO byte, handshake bytes and order unchanged, C1); frames OPEN 3, DATA 4, SEAL 5 (end, crc32c), RECEIPT 6
+  (OPENED/WRITTEN/SEALED), REFUSE 8 (FULL/FAILED/MISMATCH); replicas `replicas/<owner>/<journal>/<n>.part` → `.seg` after force, rename, dir
+  force; WRITTEN after pwrite with the force on its own thread; replicas refused past half the intake edge; a failed replica keeps its file;
+  epoch bound at proof and every OPEN; supersede = abandon → stop → reset (PeerLink.reset via NetSocketInternal, D-139 bracket); start scan.
+- Red: ReplFramesTest (python golden bytes), PeerReplHandshakeTest, PeerReplEpochTest, ReplicaHolderTest, ReplicaBackpressureTest,
+  ReplicaIdentityIT, ReplicaStartTest, PgMembershipEpochsIT; fix rounds added NodeReplEpochIT, ReplicaSupersedeTest and the r1 reds.
+- r1 FAIL (u64 overflow, count to file size, unbounded receipts, epoch max, docs), r2 FAIL (bound, fail-fast, reset in docs, internal API
+  D-row), r3 FAIL (no lower bound), r4 FAIL (floor overlap), r5 PASS.
+- Evidence: whole reactor 16/16, 4463 tests 0/0/0 (CORE-5b1-reactor4.log; reactor3 failed only FIX-168); later test-only edits run per class;
+  48 hand mutants (M25 equivalent, M46 near-equivalent, known weak pin); demo 6/6; coverage no decrease.
+- Filed FIX-192; FIX-183 gains the FrameRelay race; FIX-180 gains netty/internal confinement; CORE-5c gains close-by-owner.
+
 ## 2026-11-13 — CORE-5a2 peer link changes before replication (D-141) — done, review PASS (r2)
 - Context compacted earlier in the session. Deviation: F-35 (peer link; D-139 amended by D-141, ARCHITECTURE §4, changelog 3.20).
 - HELLO: version >= 1, the link speaks the lower, bytes after the v1 fields tolerated up to the cap; channel byte (1 read; 2 repl, 3 bulk

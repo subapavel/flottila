@@ -199,6 +199,8 @@ public final class FrameRelay implements AutoCloseable {
         private boolean holding;           // guarded by this
         private int passBeforeHold = -1;   // guarded by this: frames still let through before the hold (-1: none armed)
         private boolean flipNext;          // guarded by this
+        private int rewriteAt = -1;        // guarded by this: the byte of the next frame set to rewriteTo (-1: none armed)
+        private byte rewriteTo;            // guarded by this
         private volatile boolean writing;
         private volatile Supplier<String> refuse;
         private volatile String refusedWhy;
@@ -269,6 +271,15 @@ public final class FrameRelay implements AutoCloseable {
         /** The next frame's last byte (the last byte of its tag) has bit 0 flipped. */
         public synchronized void flipLastBitOfNext() { flipNext = true; }
 
+        /**
+         * The next frame's byte at offset {@code at} (from the frame's first length byte) is set to {@code value} (CORE-5b1: a
+         * HELLO's channel byte rewritten on its way, at {@code 4 + 1 + 8 + 2}).
+         */
+        public synchronized void setByteOfNext(int at, byte value) {
+            rewriteAt = at;
+            rewriteTo = value;
+        }
+
         /** Writes {@code raw} to the receiver of the latest connection now, between two frames. */
         public void inject(byte[] raw) throws IOException, InterruptedException {
             if (outputs.isEmpty()) throw new AssertionError(name + ": no connection to inject into");
@@ -303,6 +314,10 @@ public final class FrameRelay implements AutoCloseable {
                 if (flipNext) {
                     flipNext = false;
                     frame[frame.length - 1] ^= 1;
+                }
+                if (rewriteAt >= 0) {
+                    frame[rewriteAt] = rewriteTo;
+                    rewriteAt = -1;
                 }
                 if (passBeforeHold == 0) {
                     holding = true;

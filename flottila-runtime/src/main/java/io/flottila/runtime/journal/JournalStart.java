@@ -59,11 +59,12 @@ final class JournalStart {
     }
 
     /**
-     * Refuses a file system that cannot hold the journal up to its bound: its usable space and the bytes of the segment files
-     * {@code numbers} together below {@code FLOTTILA_JOURNAL_MAX_BYTES} (no ENOSPC fail-stop crash loop).
+     * Refuses a file system that cannot hold the journal up to its bound: its usable space, the bytes of the segment files
+     * {@code numbers} and the {@code replicas} bytes (the replica files found, CORE-5b1) together below
+     * {@code FLOTTILA_JOURNAL_MAX_BYTES} (no ENOSPC fail-stop crash loop).
      */
-    void requireRoom(Path segments, List<Long> numbers) throws IOException {
-        long held = 0;
+    void requireRoom(Path segments, List<Long> numbers, long replicas) throws IOException {
+        long held = replicas;
         for (long n : numbers) held += Files.size(segments.resolve(n + ".seg"));
         long usable = files.fileStore(dir).getUsableSpace();
         long room = Math.max(usable + held, usable);   // a usable space near Long.MAX_VALUE (unknown) does not overflow

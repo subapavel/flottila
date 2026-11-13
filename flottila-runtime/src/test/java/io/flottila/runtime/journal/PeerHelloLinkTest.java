@@ -150,10 +150,13 @@ class PeerHelloLinkTest {
         assertEquals(List.of(ScriptedPeer.HELLO), ScriptedPeer.refusedAfter(server.port(), hello), "node-a closed after its HELLO: " + what);
     }
 
-    /** A2: node-a refuses a dialer on channel repl or bulk: it closes the link after its own HELLO, no proof sent. */
+    /**
+     * A2: node-a refuses a dialer on channel bulk: it closes the link after its own HELLO, no proof sent. CORE-5b1 C1: a repl
+     * dialer is served now (PeerReplHandshakeTest), so repl left this case.
+     */
     @ParameterizedTest(name = "channel {0}")
-    @ValueSource(ints = {ScriptedPeer.CHANNEL_REPL, ScriptedPeer.CHANNEL_BULK})
-    void aDialerOnTheReplOrBulkChannelIsRefusedByTheListener(int channel) throws Exception {
+    @ValueSource(ints = {ScriptedPeer.CHANNEL_BULK})
+    void aDialerOnTheBulkChannelIsRefusedByTheListener(int channel) throws Exception {
         Hello hello = Hello.dialer(PeerProtocolTest.b(), PeerHandshakeVersionTest.nonce(2)).channel(channel);
         assertEquals(List.of(ScriptedPeer.HELLO), ScriptedPeer.refusedAfter(server.port(), hello), "node-a closed after its HELLO: channel " + channel);
     }

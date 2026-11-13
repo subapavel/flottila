@@ -147,6 +147,11 @@ final class Recovery {
         return Journal.Extent.sealed(t.indexPosition(), null);
     }
 
+    /** The end of the whole records of segment {@code n} from its header on (a replica's {@code .part}, CORE-5b1): where a cut goes. */
+    static long wholeRecords(FileChannel ch, long n, int headerLength, long size) throws IOException {
+        return scan(ch, n, headerLength, size).end();
+    }
+
     /**
      * Whole records from the header on, up to the first that runs past the file, fails its CRC32C or is not a v1 record.
      * The CRC32C covers what a record's {@code length} field says: a body record whole, a large record's header.

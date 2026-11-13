@@ -141,6 +141,12 @@
       <groupId>io.vertx</groupId>
       <artifactId>vertx-redis-client</artifactId>
     </dependency>
+    <!-- journal.peer.PeerLink resets a superseded repl link's socket on its channel (CORE-5b1, FIX-180); version from the
+         netty-bom vertx-stack-depchain imports (4.2.19.Final), Apache-2.0 (netty-transport-4.2.19.Final.pom) -->
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-junit5</artifactId>

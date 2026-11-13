@@ -47,6 +47,41 @@ public final class RawPeer implements AutoCloseable {
         return p;
     }
 
+    /**
+     * A dialer on {@code channel} (CORE-5b1 C1: the dialer's HELLO byte 2, 1 read, 2 repl, 3 bulk) to the listener on
+     * 127.0.0.1:{@code port}, node {@code peer}, its handshake done.
+     */
+    public static RawPeer dial(int port, PeerIdentity self, String peer, byte channel) throws IOException {
+        RawPeer p = new RawPeer(new Socket(InetAddress.getLoopbackAddress(), port));
+        try {
+            p.handshake(PeerHandshake.dialer(self, peer, nonces(), channel));
+        } catch (IOException refused) {
+            p.close();
+            throw refused;
+        }
+        return p;
+    }
+
+    /**
+     * {@link #dial(int, PeerIdentity, String, byte)} from a socket whose receive buffer is set to {@code receiveBuffer} bytes
+     * before it connects (CORE-5b1 r1: an owner that never reads, its kernel receive queue bounded, not autotuned to megabytes),
+     * TCP_NODELAY on: its small frames go out at once, never held by Nagle for an ACK a closed receive window delays.
+     */
+    public static RawPeer dial(int port, PeerIdentity self, String peer, byte channel, int receiveBuffer) throws IOException {
+        Socket s = new Socket();
+        s.setReceiveBufferSize(receiveBuffer);
+        s.setTcpNoDelay(true);
+        s.connect(new java.net.InetSocketAddress(InetAddress.getLoopbackAddress(), port), BOUND_SECONDS * 1000);
+        RawPeer p = new RawPeer(s);
+        try {
+            p.handshake(PeerHandshake.dialer(self, peer, nonces(), channel));
+        } catch (IOException refused) {
+            p.close();
+            throw refused;
+        }
+        return p;
+    }
+
     /** A listener on the next connection {@code server} accepts, its handshake done. */
     public static RawPeer accept(ServerSocket server, PeerIdentity self) throws IOException {
         RawPeer p = new RawPeer(server.accept());
@@ -86,6 +121,11 @@ public final class RawPeer implements AutoCloseable {
     /** Runs the dialer's side of the handshake on a {@link #connect}ed peer, as {@code self} dialling node {@code peer}. */
     public void handshakeAsDialer(PeerIdentity self, String peer) throws IOException {
         handshake(PeerHandshake.dialer(self, peer, nonces()));
+    }
+
+    /** {@link #handshakeAsDialer(PeerIdentity, String)} on {@code channel} (CORE-5b1). */
+    public void handshakeAsDialer(PeerIdentity self, String peer, byte channel) throws IOException {
+        handshake(PeerHandshake.dialer(self, peer, nonces(), channel));
     }
 
     private static Supplier<byte[]> nonces() {
@@ -164,6 +204,22 @@ public final class RawPeer implements AutoCloseable {
      */
     public boolean closedByPeer() throws IOException {
         return closedByPeer(socket);
+    }
+
+    /**
+     * Every frame the other side sends until it closes the connection, each checked by the session, in order (CORE-5b1: the
+     * close is the barrier — whatever it sent before its close is in the list). An AssertionError when it does not close
+     * within the bound: a link left open is never taken for a close.
+     */
+    public java.util.List<byte[]> framesUntilClosed() throws IOException {
+        java.util.List<byte[]> frames = new java.util.ArrayList<>();
+        try {
+            while (true) frames.add(next());
+        } catch (EOFException | java.net.SocketException closed) {
+            return frames;
+        } catch (SocketTimeoutException open) {
+            throw new AssertionError("fixture: the other side did not close the link within " + BOUND_SECONDS + " s after " + frames.size() + " frames");
+        }
     }
 
     /** {@link #closedByPeer()} of a plain socket. */

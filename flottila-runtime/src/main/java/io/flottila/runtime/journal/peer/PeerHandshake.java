@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -16,8 +17,10 @@ import java.util.function.Supplier;
  * role, channel (CORE-5a2 P1: 1 read, 2 repl, 3 bulk), node, epoch, journal id, a 32-byte nonce and the fingerprint of the
  * master key it proves under (the dialer's current one) — then each its proof. A HELLO of version 1 or above is taken, and so
  * are bytes after its v1 fields up to the HELLO cap (P2): the link speaks the lower version of the two, today 1; version 0 or
- * a HELLO shorter than its v1 fields is refused. Both sides name channel read: a listener refuses a dialer on another channel
- * (repl and bulk come with CORE-5b), a dialer a listener answering on a channel other than the one it dialled. The listener
+ * a HELLO shorter than its v1 fields is refused. The link's channel is the dialer's (CORE-5b1 C1): its HELLO names the one it
+ * dials, read or repl; the listener's HELLO names read on every link, its bytes the same whatever the dialer dials. A listener
+ * refuses a dialer on another channel (bulk comes with CORE-5b3), a dialer a listener whose HELLO names a channel other than
+ * read. Both proofs cover both whole HELLOs, so a channel byte rewritten on the way never gets a link established. The listener
  * proves under the key the dialer's fingerprint names, if it holds it as its current or its previous key, and refuses the
  * HELLO at once otherwise (O6: a listener accepts a key it knows). A master key keys no HMAC on the link (P5): its
  * only use there is as the input of the one HKDF that makes its peer subkey, HKDF-SHA256 with an empty salt, info
@@ -35,8 +38,10 @@ public final class PeerHandshake {
     static final byte VERSION = 1;
     static final int NONCE = 32;
     static final int FINGERPRINT = 8;
-    /** The channel of the reads (P1), the only one before CORE-5b. */
+    /** The channel of the reads (P1): what a listener's HELLO names on every link. */
     static final byte READ = 1;
+    /** The channel of the replication (CORE-5b1): an owner dialling its holder. */
+    static final byte REPL = 2;
     /** A v1 HELLO's fields without its node id: version, role, channel, node length, epoch, journal id, nonce, fingerprint. */
     private static final int FIXED = 1 + 1 + 1 + 2 + 8 + 16 + NONCE + FINGERPRINT;
     /**
@@ -58,32 +63,44 @@ public final class PeerHandshake {
     private final String peer;   // the dialer's: the node it dials; null for a listener
     private final byte[] nonce;
     private final byte[] hello;  // this side's HELLO payload
+    private byte channel;          // the link's: a dialer's own, a listener's once proof() read the dialer's
     private PeerSession session;   // once proof() ran
     private byte[] expected;       // the peer's proof, once proof() ran
     private String peerNode;
+    private long peerEpoch;
+    private UUID peerJournal;
 
-    private PeerHandshake(PeerIdentity self, byte role, String peer, Supplier<byte[]> nonces) {
+    private PeerHandshake(PeerIdentity self, byte role, String peer, Supplier<byte[]> nonces, byte channel) {
         this.self = Objects.requireNonNull(self, "self");
         this.role = role;
         this.peer = peer;
         this.nonce = Objects.requireNonNull(nonces, "nonces").get().clone();
         if (nonce.length != NONCE) throw new IllegalArgumentException("a nonce is " + NONCE + " bytes, was " + nonce.length);
+        this.channel = channel;
         byte[] node = self.node().getBytes(StandardCharsets.UTF_8);
         ByteBuffer h = ByteBuffer.allocate(FIXED + node.length);
-        h.put(VERSION).put(role).put(READ).putShort((short) node.length).put(node).putLong(self.epoch())
+        h.put(VERSION).put(role).put(channel).putShort((short) node.length).put(node).putLong(self.epoch())
                 .putLong(self.journal().getMostSignificantBits()).putLong(self.journal().getLeastSignificantBits()).put(nonce)
                 .put(fingerprint(self.masters().getFirst()));
         this.hello = h.array();
     }
 
-    /** The dialing side of a link to {@code peer} (its node id): its HELLO's node must be that one. */
+    /** The dialing side of a read link to {@code peer} (its node id): its HELLO's node must be that one. */
     public static PeerHandshake dialer(PeerIdentity self, String peer, Supplier<byte[]> nonces) {
-        return new PeerHandshake(self, DIALER, Objects.requireNonNull(peer, "peer"), nonces);
+        return dialer(self, peer, nonces, READ);
     }
 
-    /** The listening side of a link. */
+    /**
+     * The dialing side of a link to {@code peer} on {@code channel} (its HELLO's byte 2: 1 read, 2 repl, 3 bulk): the HELLO of
+     * the listener must name {@code peer} and channel read.
+     */
+    public static PeerHandshake dialer(PeerIdentity self, String peer, Supplier<byte[]> nonces, byte channel) {
+        return new PeerHandshake(self, DIALER, Objects.requireNonNull(peer, "peer"), nonces, channel);
+    }
+
+    /** The listening side of a link: its HELLO names channel read; the link's channel is the one the dialer's HELLO names. */
     public static PeerHandshake listener(PeerIdentity self, Supplier<byte[]> nonces) {
-        return new PeerHandshake(self, LISTENER, null, nonces);
+        return new PeerHandshake(self, LISTENER, null, nonces, READ);
     }
 
     /** This side's HELLO frame: the same bytes on every call. */
@@ -96,9 +113,9 @@ public final class PeerHandshake {
     /**
      * This side's proof frame, for the peer's HELLO frame {@code peerHello}.
      *
-     * @throws PeerRefusedException the HELLO is not one of version 1 or above, of the other role, on channel read with its v1
-     *                              fields whole (a dialer's: of the node it dials), or — a listener's — it names a master key this
-     *                              side holds neither as current nor as previous
+     * @throws PeerRefusedException the HELLO is not one of version 1 or above, of the other role, with its v1 fields whole, on
+     *                              channel read (a listener's) or read or repl (a dialer's), a dialer's of the node it dials, or
+     *                              — a listener's — it names a master key this side holds neither as current nor as previous
      */
     public Buffer proof(Buffer peerHello) throws PeerRefusedException {
         byte[] f = peerHello.getBytes();
@@ -112,15 +129,18 @@ public final class PeerHandshake {
         if (theirs.length < FIXED || Byte.toUnsignedInt(in.get(0)) < VERSION || in.get(1) != other) {   // P2: the link speaks v1, the lower
             throw new PeerRefusedException("not a HELLO of version " + VERSION + " or above of a " + (other == DIALER ? "dialer" : "listener"));
         }
-        int channel = Byte.toUnsignedInt(in.get(2));
-        if (channel != READ) {   // O2: a listener serves channel read only (until CORE-5b); a dialer dialled channel read
-            throw new PeerRefusedException(role == DIALER ? "dialled channel read, answered on channel " + channel(channel)
-                    : "a dialer's HELLO on channel " + channel(channel) + ": this node serves channel read only");
+        int named = Byte.toUnsignedInt(in.get(2));
+        if (role == DIALER ? named != READ : named != READ && named != REPL) {   // C1: a listener names read; it serves read and repl
+            throw new PeerRefusedException(role == DIALER ? "dialled channel " + channel(channel) + ", answered on channel " + channel(named)
+                    + " (a listener's HELLO names channel read)" : "a dialer's HELLO on channel " + channel(named) + ": a listener takes channels 1 and 2 only");
         }
         int nodeLength = Short.toUnsignedInt(in.getShort(3));
         if (theirs.length < FIXED + nodeLength) throw new PeerRefusedException("a HELLO of " + theirs.length + " bytes naming a node of " + nodeLength);
         String node = new String(theirs, 5, nodeLength, StandardCharsets.UTF_8);
         if (peer != null && !peer.equals(node)) throw new PeerRefusedException("dialled node " + peer + ", answered by " + node);
+        ByteBuffer ids = ByteBuffer.wrap(theirs, 5 + nodeLength, 8 + 16);
+        long epoch = ids.getLong();
+        UUID journal = new UUID(ids.getLong(), ids.getLong());
         int at = 5 + nodeLength + 8 + 16;
         byte[] theirNonce = Arrays.copyOfRange(theirs, at, at + NONCE);
         byte[] theirFingerprint = Arrays.copyOfRange(theirs, at + NONCE, at + NONCE + FINGERPRINT);
@@ -140,6 +160,9 @@ public final class PeerHandshake {
         expected = prove(role == DIALER ? listenerProof : dialerProof, dialerHello, listenerHello);
         session = role == DIALER ? new PeerSession(dialerFrames, listenerFrames, 1) : new PeerSession(listenerFrames, dialerFrames, 1);
         peerNode = node;
+        peerEpoch = epoch;
+        peerJournal = journal;
+        if (role == LISTENER) channel = (byte) named;
         byte[] p = Frames.frame(Frames.PROOF, mine.length);
         System.arraycopy(mine, 0, p, Frames.HEAD, mine.length);
         return Buffer.buffer(session.seal(p));
@@ -169,6 +192,26 @@ public final class PeerHandshake {
         return session;
     }
 
+    /** The link's channel (1 read, 2 repl): a dialer's own; a listener's the dialer's HELLO named, once {@link #proof} took it. */
+    int channel() {
+        return channel;
+    }
+
+    /** The node the peer's HELLO named, once {@link #proof} took it. */
+    String peerNode() {
+        return peerNode;
+    }
+
+    /** The epoch the peer's HELLO named, once {@link #proof} took it. */
+    long peerEpoch() {
+        return peerEpoch;
+    }
+
+    /** The journal id the peer's HELLO named, once {@link #proof} took it. */
+    UUID peerJournal() {
+        return peerJournal;
+    }
+
     private SecretKey known(byte[] fingerprint) {
         for (SecretKey k : self.masters()) {
             if (MessageDigest.isEqual(fingerprint(k), fingerprint)) return k;
@@ -189,9 +232,10 @@ public final class PeerHandshake {
         return hkdf(new byte[0], master.getEncoded(), SUBKEY.getBytes(StandardCharsets.US_ASCII), 32);
     }
 
-    /** A refused channel byte's name: repl, bulk (CORE-5b's), else its number. */
+    /** A channel byte's name: read, repl, bulk, else its number. */
     private static String channel(int channel) {
         return switch (channel) {
+            case 1 -> "read";
             case 2 -> "repl";
             case 3 -> "bulk";
             default -> channel + " (unknown)";

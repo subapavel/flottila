@@ -119,3 +119,34 @@ T13 ReplicaStartTest: Journal.open counts `.part`/`.seg` in bytes() and in the s
    cut to its last whole record, stays `.part`; a header-only bad `.part` unlinked + WARNING; a longer bad-header `.part` kept + ERROR, not
    served; a `.part` with a valid trailer renamed `.seg`.
 T14 MembershipIT: the renew answers live peers' epochs in its one statement; epochOf of an unknown owner gives no bound.
+
+## Red approved 5b1 (architect, 2026-11-13)
+Tests: peer/ReplWire (fixture), ReplFramesTest, PeerReplHandshakeTest; journal/ReplicaWorld (fixture), PeerReplEpochTest, ReplicaHolderTest,
+ReplicaBackpressureTest, ReplicaIdentityIT, ReplicaStartTest; node/PgMembershipEpochsIT. Golden bytes agent/work/CORE-5b1-frames.{py,log}.
+Red: compile (agent/work/CORE-5b1-red.log); against scratch shims T1/T2 20 of 45 fail at assertions, T3–T13 44 of 44.
+Edited by the test-author (C1): PeerHandshakeVersionTest and PeerHelloLinkTest refusal cases narrowed to bulk.
+Choices approved: ReplFrames package-private in peer, records with encode()/decode(ByteBuffer) throws PeerRefusedException; Replicas.unforced()
+total over replicas; OPENED end = header length; OPEN's reservation in bytes() after OPENED, FULL is strictly above half or edge; re-OPEN of
+a `.part` with records → MISMATCH (until 5b3); "never served" = OPEN throws ReplicaMismatch; PgMembership.epochOf(String), < 1 = no bound;
+DATA before OPENED closes on arrival; type 9 closes. Known weak pins: rename held only between the two forces; T3 order after a fairness
+barrier (a late wrong implementation could pass); T11 measured from outside with a 13 MiB bound.
+
+## 5b1 review r1 FAIL → fix round (architect)
+R1 Journal:699 overflow on a wire u64 length → subtract form; case: OPEN 2 with length Long.MAX_VALUE - 10 after OPEN 1 → REFUSE FULL, bytes() unchanged.
+R2 Replica:107 / Replicas:100 true to the file's size (channel.size()), not `end`; cases: HeldFiles "write k bytes then throw" (DATA and the header).
+R3 Holder:463 RECEIPT/REFUSE fire-and-forget → the writer awaits the previous drain's last send before its next take(); case: an owner that
+   sends but never reads leaves the holder's outbound bounded (the socket paused).
+R4 C6 close-by-owner deferred to CORE-5c (row updated).
+R5 case: accept epoch 2, accept 3, dial 2 → closed (Math::max pin). R6 a failed create's bytes() asserted (counted at its size).
+R7/R8 docs (architect). Also taken: `queued` counts frame length, not payload (case: 8 MiB of 1-byte DATA pauses the socket within the
+   bound); Replicas.open throws IAE for an owner that is not a DNS label (one shared pattern with NodeConfig); PeerProtocolTest:767
+   (aLinkPausedByAnAbandonedConsumerIsClosedAfterATimeoutAndItsReadsFail, "expected DIALER but was LISTENER", agent/work/CORE-5b1-reactor.log)
+   failed in the whole reactor — find whether 5b1 changed who closes first; fix the cause, not the test. Deferred to 5b3: index-CRC check
+   before a start rename of a `.part` with a valid trailer.
+
+## 5b1 review r2 FAIL → fix round (architect)
+S1 ReplicaBackpressureTest:139/:158 bound widened to HOLD_AT + 4 MiB of frames (M31 still dies; 20/20 with the KiB logged). S2 :91-93/:183-185
+fail fast with the sender's cause. S3/S4 docs (architect): §4 and D-139 state the reset and name NetSocketInternal (javap evidence
+agent/work/CORE-5b1-r2-javap.log: no per-socket reset; setSoLinger only server/client-wide); FIX-180 confines netty/internal to journal.peer;
+netty-transport declared in flottila-runtime/pom.xml. S5 ReplicaSupersedeTest 10/10 on the final tree. Also: abort split into mark → old.stop()
+→ reset, so the order holds across event loops. Known weak pins: M42 (no old.stop()) and M46 (stop before abort) are timing-dependent.

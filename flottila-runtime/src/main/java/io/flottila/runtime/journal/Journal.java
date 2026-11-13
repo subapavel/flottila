@@ -269,6 +269,7 @@ public final class Journal implements AutoCloseable {
     private final Map<Long, Extent> extents = new ConcurrentHashMap<>();
     private final Map<Long, Long> unlinking = new ConcurrentHashMap<>();   // swept segments whose file is not unlinked yet: their bytes
     private final ReadChannels channels;
+    private final Replicas replicas;
     /** The most journal bytes each {@link Bound} may reach, by ordinal: max − max/16, max. */
     private final long[] limits;
     /** 80 % of max, rounded up: the WARNING's mark. */
@@ -292,7 +293,8 @@ public final class Journal implements AutoCloseable {
     private Throwable outage;  // the last failure of the pre-open row insert being retried (DEGRADED), else null
     private Timer.Cancellable retry;               // the pending retry of that insert (a fired one cancels to false)
     private CompletableFuture<Opened> retrying;   // the pre-open it completes
-    private long bytes;        // the journal's bytes: segment and spill files, reservations (CORE-3 item 11)
+    private long bytes;        // the journal's bytes: segment, spill and replica files, reservations (CORE-3 item 11)
+    private long replicaBytes; // the replicas' part of them: their files and reservations (CORE-5b1)
     private boolean warned;    // the bytes crossed 80 % and did not fall below since
     private final boolean[] refusing = new boolean[Bound.values().length];   // by ordinal: refusals began, not fallen below 80 % since
     private long dirForces;    // forces of segments/ begun by this journal: the last one's generation
@@ -306,7 +308,8 @@ public final class Journal implements AutoCloseable {
     private final List<SegmentFile> held = new ArrayList<>();
 
     private Journal(JournalConfig config, Clock clock, Timer timer, IntFunction<SecretKey> keys, JournalFiles files, SegmentRows rows,
-                    SegmentFormat format, Path dir, FileChannel lockChannel, Map<Long, Extent> recovered, SegmentFile first, long heldBytes) {
+                    SegmentFormat format, Path dir, FileChannel lockChannel, Map<Long, Extent> recovered, SegmentFile first, long heldBytes,
+                    long replicaBytes) {
         this.config = config;
         this.clock = clock;
         this.timer = timer;
@@ -319,6 +322,8 @@ public final class Journal implements AutoCloseable {
         this.longestRecord = RecordFormat.MAX_HEADER + config.recordMax() + (long) RecordFormat.chunks(config.recordMax()) * ChunkedAead.TAG_BYTES;
         this.lockChannel = lockChannel;
         this.channels = new ReadChannels(files, config.readChannels());
+        this.replicas = new Replicas(this, files, dir.resolve("replicas"));
+        this.replicaBytes = replicaBytes;
         long max = config.maxBytes();
         this.limits = new long[] {max - max / 16, max};
         this.warnAt = max - max / 5;
@@ -382,7 +387,8 @@ public final class Journal implements AutoCloseable {
             Path segments = dir.resolve("segments");
             List<Long> numbers = Files.isDirectory(segments) ? Recovery.numbers(segments) : List.of();
             JournalStart start = new JournalStart(config, files, rows);
-            start.requireRoom(segments, numbers);
+            Path replicaFiles = dir.resolve("replicas");
+            start.requireRoom(segments, numbers, Replicas.found(replicaFiles));
             Set<Long> registered = rows.segments(node).await();   // null: no rows are kept
             JournalStart.Identity identity = start.identity(numbers, registered != null, journalIds);
             SegmentFormat format = new SegmentFormat(identity.id(), node);
@@ -398,8 +404,10 @@ public final class Journal implements AutoCloseable {
             Map<Long, Extent> recovered = Recovery.apply(plan, files, clock);
             if (registered != null) dropUnfiled(rows, node, identity.replaced() ? Set.of() : registered, recovered.keySet());
             for (Map.Entry<Long, Extent> e : recovered.entrySet()) e.getValue().bytes = Files.size(segments.resolve(e.getKey() + ".seg"));
+            long replicaBytes = Replicas.recover(files, replicaFiles);
             SegmentFile first = create(highest + 1, node, rows, files, segments, format, clock);
-            return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered, first, sizes(segments));
+            return new Journal(config, clock, timer, keys, files, rows, format, dir, lockChannel.handOn(), recovered, first,
+                    sizes(segments) + replicaBytes, replicaBytes);
         }
     }
 
@@ -678,6 +686,42 @@ public final class Journal implements AutoCloseable {
         } finally {
             lock.unlock();
         }
+    }
+
+    /**
+     * Reserves {@code length} bytes for a replica's OPEN (CORE-5b1 C4), or refuses them when the replicas' bytes and they would
+     * pass half the intake edge (max − max/16), or the journal's bytes and they the edge: the holder's own intake keeps the rest.
+     */
+    void reserveReplica(long length) {
+        lock.lock();
+        try {
+            long edge = limits[Bound.INTAKE.ordinal()];
+            if (length > edge / 2 - replicaBytes || length > edge - bytes) {   // subtracted: OPEN's length is a wire u64 (r1 R1)
+                throw new JournalFullException("journal " + config.dir() + " has no room for a replica of " + length + " bytes: replicas hold "
+                        + replicaBytes + " of their half " + edge / 2 + " of the intake edge " + edge + ", the journal " + bytes);
+            }
+            replicaBytes += length;
+            grow(length);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** A replica's bytes changed by {@code delta}, unchecked: written past its reservation, or trued to its file's size. */
+    void replicaCounted(long delta) {
+        lock.lock();
+        try {
+            replicaBytes += delta;
+            if (delta > 0) grow(delta);
+            else shrunk(-delta);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** The other nodes' segments this node holds (CORE-5b1): their files count in {@link #bytes()}. */
+    public Replicas replicas() {
+        return replicas;
     }
 
     /** The refusal of {@code length} bytes of {@code bound}; an ERROR when the refusals of that bound start. Under the lock. */

@@ -1,10 +1,13 @@
 package io.flottila.runtime.journal.peer;
 
 import io.flottila.api.Timer;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOption;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.internal.net.NetSocketInternal;
 import io.vertx.core.net.NetSocket;
 
 import java.io.IOException;
@@ -26,8 +29,14 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 final class PeerLink {
 
-    /** What a link's frames are for: the reads of a dialer, the serving of a listener. */
+    /** What a link's frames are for: the reads of a dialer, the serving or the holding of a listener. */
     interface Receiver {
+        /**
+         * The peer's proof held, on the link's event loop, before {@link #established()} completes and before any later frame;
+         * a throw closes the link (CORE-5b1: a repl link's owner and epoch are checked here).
+         */
+        default void established(PeerLink link) throws PeerRefusedException { }
+
         /** A checked frame of {@code type}, on the link's event loop; a throw closes the link. */
         void received(PeerLink link, int type, byte[] frame) throws PeerRefusedException;
 
@@ -96,17 +105,47 @@ final class PeerLink {
         }
     }
 
-    /** Closes the link for {@code why} (the first reason wins); its receiver hears of it once the socket closed. */
+    /**
+     * Closes the link for {@code why} (the first reason wins): what it sent goes out first, then the socket closes (a peer
+     * that reads none of it keeps it open); its receiver hears of it once the socket closed.
+     */
     void close(IOException why) {
+        if (ending(why)) socket.close();
+    }
+
+    /**
+     * Marks the link closing for {@code why} (the first reason wins) without touching its socket: a send fails from now on and
+     * a later {@link #close} queues nothing; {@link #reset} then ends the socket (CORE-5b1 r1: a superseded repl link).
+     */
+    void abandon(IOException why) {
+        ending(why);
+    }
+
+    /**
+     * Resets the link's socket (SO_LINGER 0) on its own event loop, a closing one too, what it had not sent yet dropped, so a
+     * peer that reads none of it cannot keep it open; its receiver hears of it as of any close. A link still open is not
+     * marked closing by it: {@link #abandon} first.
+     */
+    void reset() {
+        ChannelHandlerContext ctx = ((NetSocketInternal) socket).channelHandlerContext();
+        context.runOnContext(v -> {
+            if (!ctx.channel().isOpen()) return;   // closed already (its peer closed it, or a close went through): no option on it
+            ctx.channel().config().setOption(ChannelOption.SO_LINGER, 0);
+            ctx.close();   // from Vert.x's own handler on: past its close, which waits for the flush
+        });
+    }
+
+    /** Marks the link closing for {@code why}: true for the first reason, its watchdog cancelled and its establishment failed. */
+    private boolean ending(IOException why) {
         Timer.Cancellable w;
         synchronized (this) {
-            if (closing != null) return;
+            if (closing != null) return false;
             closing = why;
             w = watchdog;
         }
         w.cancel();   // armed when the link opened: never null
         established.tryFail(why);
-        socket.close();
+        return true;
     }
 
     /** Whether the link closed or is closing. */
@@ -144,6 +183,26 @@ final class PeerLink {
         });
     }
 
+    /** The link's channel (1 read, 2 repl): the one the dialer's HELLO named; a listener's once the peer's HELLO came. */
+    int channel() {
+        return handshake.channel();
+    }
+
+    /** The node the peer's HELLO named (once it came). */
+    String peerNode() {
+        return handshake.peerNode();
+    }
+
+    /** The epoch the peer's HELLO named (once it came). */
+    long peerEpoch() {
+        return handshake.peerEpoch();
+    }
+
+    /** The journal id the peer's HELLO named (once it came). */
+    java.util.UUID peerJournal() {
+        return handshake.peerJournal();
+    }
+
     /** The peer's address, for a log line. */
     String remote() {
         return String.valueOf(socket.remoteAddress());
@@ -163,6 +222,7 @@ final class PeerLink {
                     handshake.accept(Buffer.buffer(f));
                     proven = true;
                     decoder.longest(Frames.MAX_LEN);
+                    receiver.established(this);
                     established.tryComplete(this);
                 } else {
                     session.open(f);
