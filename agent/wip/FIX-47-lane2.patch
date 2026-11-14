@@ -1,0 +1,571 @@
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 9738a73..dadad46 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -88,6 +88,7 @@
+ | 2026-11-12 | 3.19 | §6 Recording, §7 Persistence tables, §8 Write path: a same-id rerun's attempts keep their own snapshot rows, `messages` keyed (id, step, attempt) (V19); timeline `attempt` field, `?attempt=k` on the step body route, replay from the latest OK attempt (FIX-175, D-140) | — |
+ | 2026-11-13 | 3.20 | §4 Body journal: the peer link's version rule and channel in HELLO, a peer subkey for the link's keys, `FLOTTILA_PEER_READS` 1..64, 8 handshakes per source address (CORE-5a2, D-141) | F-35 |
+ | 2026-11-13 | 3.21 | §4 Body journal: the holder side of replication — the repl channel, frames OPEN/DATA/SEAL/RECEIPT/REFUSE, replicas as `replicas/<owner>/<journal>/<n>.part` renamed `.seg` when sealed, receipt after pwrite, replicas at most half the intake edge, the owner's epoch bound (CORE-5b1, D-139, D-142) | F-35 |
++| 2026-11-14 | 3.22 | §6 props: the platform prop names (`attempt`, `replayOf`, `splitParentId`, `splitIndex`, `splitTotal`) are reserved; a package whose flow names one in a `route` `prop` or a `to` `byProp` is refused at deploy and by `flottila validate`/`test` (D-140, FIX-47) | — |
+ 
+ ## Amendments (Part A, 2026-10-17)
+ 
+@@ -242,6 +243,8 @@ record Envelope(String id, String flow, int step,
+ | `keys` | what operators search by (invoiceId, orderNo, meteringPoint); filled by `extractKey`, declared per flow | own table `message_keys(name, value, message_id, step)` / CH columns with skip index | yes | never |
+ | `attachments` | multipart parts (mail, SOAP/MTOM, AS2/AS4) | reference only; content kept per retention policy | no | yes, as parts |
+ 
++The props the runtime itself writes (`attempt`, `replayOf`, `splitParentId`, `splitIndex`, `splitTotal`; exact, case-sensitive names) are reserved: a flow that names one in a `route` `prop` or a `to` `byProp` is refused at deploy with 422 naming the prop, the flow and the step, and by `flottila validate` and `flottila test` with the same message (D-140, FIX-47).
++
+ Not carried over from Camel: `getIn()/getOut()`, `ExchangePattern` as a property (request/reply is a consumer trait), exception as a property (failure is a stream signal and a DLQ row). Keys are separate from props because "invoice 4711 — where is it" must answer in under 1 s over a year of data, and that needs an index on `(name, value)`, not a GIN index over a general-purpose bag.
+ 
+ **Body**: one final class, no visible variants.
+diff --git a/docs/DECISIONS.md b/docs/DECISIONS.md
+index 3b54de0..e1b58e1 100644
+--- a/docs/DECISIONS.md
++++ b/docs/DECISIONS.md
+@@ -145,6 +145,6 @@ ARCHITECTURE.md changelog instead.
+ | D-137 | 2026-11-12 | Owner's decision: Fable 5.2 is also the architecture advisor (`.claude/agents/architecture-advisor.md`, read-only, effort high), the opponent of every designer draft and every expensive-to-reverse decision or finding; it hands back a verdict, weak points with failure scenarios, missed alternatives, risks and a recommended answer to each open question; the architect decides and records each point's disposition in the task packet (amends D-054 and D-131: Fable no longer runs only as the gate-reviewer). | A second, stronger read before a design binds later work; the decision stays with the architect and the owner. |
+ | D-138 | 2026-11-12 | Owner's answers to CORE-5's open questions, as the architecture advisor recommended (agent/packets/CORE-5.md, advisor section): O1 the peer link is authenticated by an HMAC under the environment master key (D-106), the proof binding both nonces, both node ids, the epoch and the direction, current and previous key accepted; record metadata travels in clear, bodies as AEAD ciphertext; TLS may wrap it later without a frame change. O2 `FLOTTILA_JOURNAL_COPIES` 1..2 (1 dev/ci, 2 deployed); no third copy, no quorum ACK. O3 a lost peer degrades to one copy (health DEGRADED, the one-copy bytes counted, the notice says those items wait for this node), never refuses intake. O4 a node back with an empty disk rejoins with `FLOTTILA_JOURNAL_REJOIN=<old journal id>` (CORE-5e): pins with a live copy are fetched back, only pins without one need ACCEPT_LOSS. O5 CORE-GATE conditions 1–3 stay at copies 1; a new functional condition 4b (two processes, copies 2, kill -9 of either node, no loss) gates; a two-node copies-2 run of conditions 1–2 is recorded, not gating. | HA without new credentials (the environment key is already shared by every node); refusing on a lost peer would make one kill stop intake; an empty disk is most often a wrong mount, not loss; the performance targets were set for one node and one copy, HA is proven functionally. |
+ | D-139 | 2026-11-12 | [handshake and framing final, replication frames draft until CORE-5b's review, D-142] [repl frames (CORE-5b1, agent/packets/CORE-5b.md): OPEN 3, DATA 4, SEAL 5 (end, crc32c), RECEIPT 6 (OPENED, WRITTEN, SEALED), REFUSE 8 (FULL, FAILED, MISMATCH); the link's channel is the dialer's HELLO byte; wire constants the owner obeys: no DATA(n) before RECEIPT OPENED(n), at most 4 unsealed segments per link (OPEN_MAX), DATA at most 4 MiB; final at CORE-5b3's review] [supersede (CORE-5b1 review): the old link is reset, not closed gracefully — unsent RECEIPT/REFUSE dropped, untaken DATA never written; PeerServer.hold marks the old link closing (PeerLink.abandon), stops its holder, then resets it (PeerLink.reset, through `io.vertx.core.internal.net.NetSocketInternal`'s channel context with SO_LINGER 0, vertx-core 5.1.10), because Vert.x 5.1's public NetSocket has no per-socket reset and `setSoLinger` on Net{Server,Client}Options would reset every close and drop the refusal frames of read links (agent/work/CORE-5b1-r2-javap.log); the internal API is confined to journal.peer (FIX-180)] [amended by D-141: version rule, channel, READS 1..64, per-source handshake cap, peer subkey, full clear-metadata list] The journal's peer link (CORE-5a, F-35, D-138 O1), draft — review at hand-over (a new channel and wire format between nodes). Internal package `io.flottila.runtime.journal.peer`, Vert.x NetServer/NetClient, listening before the node joins. Keys: `FLOTTILA_PEER_BIND` (0.0.0.0), `FLOTTILA_PEER_PORT` (8083, 0..65535, 0 any free port), `FLOTTILA_PEER_HOST` (the address peers dial; the node id), `FLOTTILA_PEER_TIMEOUT` (PT2S, PT0.1S..PT30S: the handshake and a silent link), `FLOTTILA_PEER_READS` (16, 1..256 [1..64, D-141] reads in flight per peer); `FLOTTILA_JOURNAL_COPIES` 1..2 (unset 1 in dev/ci, 2 deployed), a generated journal key refused with more than one copy. Wire: framing v1 (length, type, sequence, payload, 16-byte HMAC tag; payload at most 4 MiB + 1 KiB); HELLO carries node id, epoch, journal id, nonce and the key fingerprint [and, first, its version, role and channel, D-141]; the PROOF binds both HELLOs (both nonces, both node ids, the epoch) and the direction; session keys by HKDF from the master key [from the peer subkey, itself HKDF of the master key, D-141]; an unknown fingerprint, a bad proof, tag or sequence, or an oversize frame closes the link with a refusal. READ (request id, owner, journal id, segment, position, length) → BYTES chunks of at most 1 MiB or MISS; a READ naming another owner or journal id, or a record the journal cannot hold, is a MISS and the link stays up; each READ is served on its own virtual thread, at most `FLOTTILA_PEER_READS` per link. **Key rotation, the link's side (O6):** a node proves under its current key and accepts the current and the previous key by fingerprint, so every node must hold the new key as its previous-or-current entry before any node makes it current; a master-key change also rewraps `journal_keys` (D-106: a node whose key cannot unwrap them refuses start). Today only the current key is configured; the previous-key config key and the whole rotation procedure are FIX-178. `FLOTTILA_JOURNAL_RECORD_MAX` must be equal on every node until a remote record's kind comes from its header (FIX-181). Until the link is proven, a frame longer than a HELLO or PROOF is refused and at most a fixed number of links may be in their handshake at once. Clear on the link (D-141): the frame header; the HELLO fields; the request id of every READ, BYTES and MISS; the READ fields (owner node id, journal id, segment, position, length); the record header (crc32c, length, version, kind, tenant key id, plain size, message id, step, part name, salt); [on a repl link also the segment header, the footer index and the repl frames' addresses, ends and states, CORE-5b1] the body only as the journal's AEAD ciphertext. The peer port is to be reachable by the environment's nodes only (a network policy or firewall), never published. | The copies of D-138 need a node-to-node channel that no store may carry (F-35); the environment key is already shared by every node, so authentication adds no credential; TLS can wrap the same frames later. |
+-| D-140 | 2026-11-12 | [accepted by the owner, FIX-47 before hand-over, D-142] Each attempt keeps its snapshots (FIX-175; amends D-044, D-045, D-047, D-057 (timeline fields and the body route), D-096). V19, a stop-all upgrade (an old node's `on conflict (id, step)` fails once the key changes), adds `messages.attempt` (not null, at least 1; an earlier row takes its props' integer `attempt`, else 1) and keys the table (id, step, attempt); a snapshot's attempt is its envelope's `attempt` prop, 1 when absent; a resent row of the same attempt is still ignored. `GET /admin/messages/{id}` lists every attempt's steps in (attempt, step) order, each with `attempt`; `…/steps/{n}/body` answers the latest attempt's body, `?attempt=k` attempt k (no row → 404, not a positive int → 400). A message replay from step n takes the latest attempt whose step n−1 row is OK; the worker's rerun reads attempt 1's ingress; a DLQ replay starts from its parked body ref. Search by key and retention key on the message id and are unchanged. | A D-135 rerun or a same-id `/retry` showed no timeline of its own attempt (first-wins on (id, step)); monitoring is the product. The added field and the optional parameter keep existing clients working. |
++| D-140 | 2026-11-12 | [accepted by the owner, FIX-47 before hand-over, D-142; platform prop names reserved at deploy (FIX-47)] Each attempt keeps its snapshots (FIX-175; amends D-044, D-045, D-047, D-057 (timeline fields and the body route), D-096). V19, a stop-all upgrade (an old node's `on conflict (id, step)` fails once the key changes), adds `messages.attempt` (not null, at least 1; an earlier row takes its props' integer `attempt`, else 1) and keys the table (id, step, attempt); a snapshot's attempt is its envelope's `attempt` prop, 1 when absent; a resent row of the same attempt is still ignored. `GET /admin/messages/{id}` lists every attempt's steps in (attempt, step) order, each with `attempt`; `…/steps/{n}/body` answers the latest attempt's body, `?attempt=k` attempt k (no row → 404, not a positive int → 400). A message replay from step n takes the latest attempt whose step n−1 row is OK; the worker's rerun reads attempt 1's ingress; a DLQ replay starts from its parked body ref. Search by key and retention key on the message id and are unchanged. | A D-135 rerun or a same-id `/retry` showed no timeline of its own attempt (first-wins on (id, step)); monitoring is the product. The added field and the optional parameter keep existing clients working. |
+ | D-141 | 2026-11-13 | Owner's decision (2026-11-12, "d139 souhlas s Fable"): the architecture advisor's changes to D-139 are accepted (agent/packets/CORE-5.md, "Advisor on D-139" A1–A8), with a peer subkey derived from the master key (amends D-139, draft). Before CORE-5b (row CORE-5a2): a HELLO version rule (accept version >= 1, speak the lower of the two, tolerate trailing HELLO bytes) with the link's channel (read, repl, bulk) defined in v1 first; `FLOTTILA_PEER_READS` 1..64; at most 8 handshakes per source address beside the 64; the fingerprint and session keys from a peer subkey (HKDF of the master key under its own label), not the master key itself; D-139 lists the full clear metadata (message id, step, part name, tenant key id, plain size) and says the peer port is to be reachable by nodes only. In CORE-5b: the copy state is its own health check, never a `/ready` input (A1); replication on its own link, no credit frame (A8); the holder checks the peer's epoch. FIX-178: "also accepted keys", JournalKeys tries every held key and wraps under the current one, a restart in each phase starts; due before the first deployed copies-2 release, until then a master-key change is a full stop (A5). FIX-177: windowed READs and an early close that stops the window (A7). FIX-181 due before CORE-5c. TLS later; the 0.0.0.0 bind stays. | The wire and key layout are cheap to change only before replication ships on them; a lost peer must not take the survivor out of service (D-138 O3). |
+ | D-142 | 2026-11-13 | Owner's decision (2026-11-13, "Tak dle Fable a jeho doporučení"): every recommendation of the architecture advisor on the open items is accepted (agent/review/owner-items-2026-11-13.md). D-134 accepted (CLAUDE.md no longer names Kafka among the stack or the runtime's clients). D-135 accepted with CONSIDER-13 (resume from the failed step, after CORE-GATE and before the first production release; until then a deploy notice for an at-least-once flow with more than one `to` step and retries > 0, FIX-188), FIX-174 before hand-over, and the unbounded segment pin of a deferred row documented and alerted (FIX-187). D-136 accepted. D-139 as amended by D-141: final for the handshake and framing; the replication frames stay draft until CORE-5b's review; HMAC cost on the event loop measured in the two-node run and an established link's keepalive and deadline (FIX-186). D-140 accepted; FIX-47 (reserve `attempt` and the other platform prop names at load) before hand-over; CORE-10's ClickHouse key carries `attempt`. F-33 accepted (23 per node) with the sizing rule nodes × (`FLOTTILA_PG_POOL_SIZE` + 2) + reserve ≤ `max_connections` in the docs and a re-measure at CORE-GATE (FIX-189). F-34: point 1 a named interim exception to D-110 (FIX-190), point 2 on condition that CORE-10/CORE-13 document ClickHouse backup and restore, point 3 accepted. CONSIDER-14 deferred until FIX-138b. ISSUE-5: option 2, a third `FLOTTILA_PG_DURABILITY` value `managed` (operator-attested, stated at start and in health), with D-115, after CORE-GATE (FIX-191). | The owner asked for the advisor's recommendation on each open item and accepted all of them. |
+diff --git a/flottila-cli/src/test/java/io/flottila/cli/ReservedPropCommandTest.java b/flottila-cli/src/test/java/io/flottila/cli/ReservedPropCommandTest.java
+new file mode 100644
+index 0000000..d24ab2d
+--- /dev/null
++++ b/flottila-cli/src/test/java/io/flottila/cli/ReservedPropCommandTest.java
+@@ -0,0 +1,86 @@
++package io.flottila.cli;
++
++import io.flottila.cli.CliRuns.Ran;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.Timeout;
++import org.junit.jupiter.api.io.TempDir;
++
++import java.io.IOException;
++import java.nio.file.Path;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++
++import static io.flottila.cli.CliRuns.DEMO;
++import static io.flottila.cli.CliRuns.run;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-47 (D-140), A3: {@code flottila validate} and {@code flottila test} refuse a flow that names a reserved prop (the names the
++ * platform writes on an envelope: {@code attempt}, {@code replayOf}, {@code splitParentId}, {@code splitIndex},
++ * {@code splitTotal}) with the deploy's own problem lines — the CLI runs the node's dry build ({@code Deployments.validate}), so it
++ * prints what a deploy answers with 422. The package: the demo with {@code invoice-sync}'s route ({@code prop:}) and to
++ * ({@code byProp:}) moved from {@code PARTNER} to the reserved {@code attempt}, the two steps renamed {@code pickPartner} and
++ * {@code sendOn} so each line's step name cannot be matched by anything else on it. Before FIX-47 validate passed it and every
++ * case of the flow failed at run time (a String under the Integer {@code attempt}).
++ */
++class ReservedPropCommandTest {
++
++    @TempDir Path tmp;
++
++    /** The demo at {@code tmp/<dir>}, invoice-sync's route and to on {@code prop}, the route step {@code pickPartner}, the to step {@code sendOn}. */
++    Path demoRoutingOn(String prop, String dir) throws IOException {
++        Path copy = CliRuns.copy(DEMO, tmp.resolve(dir));
++        Map<String, String> rewrites = new LinkedHashMap<>();
++        rewrites.put("    name: route\n", "    name: pickPartner\n");
++        rewrites.put("    prop: PARTNER\n", "    prop: " + prop + "\n");
++        rewrites.put("    name: partner\n", "    name: sendOn\n");
++        rewrites.put("    byProp: PARTNER\n", "    byProp: " + prop + "\n");
++        CliRuns.rewrite(copy.resolve("flows/invoice-sync.yaml"), rewrites);
++        return copy;
++    }
++
++    /** The two problem lines of a route and a to on {@code attempt}: each names invoice-sync, its step and {@code 'attempt'}. */
++    static void twoLinesNamingAttempt(Ran ran) {
++        List<String> problems = ran.problems();
++        assertEquals(2, problems.size(), "one line per step naming the reserved prop: " + ran);
++        assertTrue(problems.stream().anyMatch(l -> l.contains("flow 'invoice-sync'") && l.contains("'pickPartner'") && l.contains("'attempt'")),
++                "a line names invoice-sync, the route step pickPartner and attempt: " + ran);
++        assertTrue(problems.stream().anyMatch(l -> l.contains("flow 'invoice-sync'") && l.contains("'sendOn'") && l.contains("'attempt'")),
++                "a line names invoice-sync, the to step sendOn and attempt: " + ran);
++    }
++
++    /** {@code validate}: the tree, then one problem line per step naming {@code attempt}, exit 1. */
++    @Test
++    void validateRefusesARouteAndAToOnAttemptNamingThePropTheFlowAndEachStep() throws IOException {
++        Ran ran = run("validate", demoRoutingOn("attempt", "reserved").toString());
++
++        assertEquals(1, ran.exit(), ran.toString());
++        twoLinesNamingAttempt(ran);
++    }
++
++    /** {@code test} refuses the same package before any case runs, with exactly the lines validate prints, exit 1. */
++    @Test
++    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
++    void testRefusesTheSamePackageWithValidatesLinesAndRunsNoCase() throws IOException {
++        Path dir = demoRoutingOn("attempt", "reserved");
++        Ran validated = run("validate", dir.toString());
++
++        Ran tested = run("test", dir.toString());
++
++        assertEquals(1, tested.exit(), tested.toString());
++        twoLinesNamingAttempt(tested);
++        assertEquals(validated.problems(), tested.problems(), "the same check, the same lines: validate " + validated + "\ntest " + tested);
++        assertTrue(tested.outLines().stream().noneMatch(TestCommandTest::caseLine), "no case ran: " + tested);
++    }
++
++    /** A4: {@code attempts} only looks like the reserved {@code attempt}: the same rewrite with it validates, exit 0, no problem line. */
++    @Test
++    void validateAcceptsAPropThatOnlyLooksReserved() throws IOException {
++        Ran ran = run("validate", demoRoutingOn("attempts", "lookalike").toString());
++
++        assertEquals(0, ran.exit(), ran.toString());
++        assertEquals(List.of(), ran.problems(), ran.toString());
++    }
++}
+diff --git a/flottila-core/src/main/java/io/flottila/core/flow/FlowBuilder.java b/flottila-core/src/main/java/io/flottila/core/flow/FlowBuilder.java
+index fba7f91..267716d 100644
+--- a/flottila-core/src/main/java/io/flottila/core/flow/FlowBuilder.java
++++ b/flottila-core/src/main/java/io/flottila/core/flow/FlowBuilder.java
+@@ -126,6 +126,17 @@ public final class FlowBuilder {
+     /** The node's default schedule of retries when none is given (O1, D-135 draft): 3 retries 5 minutes apart, no growth. */
+     public static final RetryPolicy DEFAULT_RETRIES = new RetryPolicy(3, Duration.ofMinutes(5), Duration.ofMinutes(5), 1.0);
+ 
++    /**
++     * The prop names the platform itself writes on an envelope (FIX-47, D-140), exact and case-sensitive: {@link Envelope#ATTEMPT}
++     * (a rerun), {@link Envelope#REPLAY_OF} (a replay) and a split child's {@link Split#PARENT_ID}, {@link Split#SPLIT_INDEX} and
++     * {@link Split#SPLIT_TOTAL}. A flow's step names none of them under its key of {@link #PROP_KEYS}: the deploy refuses it.
++     */
++    public static final Set<String> RESERVED_PROPS = Set.of(Envelope.ATTEMPT.name(), Envelope.REPLAY_OF.name(),
++            Split.PARENT_ID.name(), Split.SPLIT_INDEX.name(), Split.SPLIT_TOTAL.name());
++
++    /** The built-in steps that name a prop, each to its key that names it: {@code route} writes {@code prop}, {@code to} reads {@code byProp}. */
++    public static final Map<String, String> PROP_KEYS = Map.of("route", "prop", "to", "byProp");
++
+     private final Runtime runtime;
+     private final Map<String, StepFactory> factories = new LinkedHashMap<>();
+     private final Map<String, Expressions> languages = new LinkedHashMap<>();
+diff --git a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java
+index c680b70..94d6f47 100644
+--- a/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java
++++ b/flottila-runtime/src/main/java/io/flottila/runtime/deploy/Deployments.java
+@@ -91,7 +91,8 @@ import java.util.stream.Stream;
+  * next. A refused archive is {@link Kind#BAD_REQUEST}. Then the package is checked whole — {@code Package.problems()}, the
+  * manifest's name, its dependencies ({@link #dependencies}, D-087), a component for every scheme, every endpoint's config (its environment's keys laid over it) against
+  * its component's {@code configSchema()}, no in endpoint setting {@code flow} or {@code maxBodyBytes}, one flow per in endpoint,
+- * no flow from an out endpoint, every flow definition, no {@code delivery.queue} on a flow that is not at-least-once and none of
++ * no flow from an out endpoint, every flow definition, no built-in step naming a prop the platform writes ({@link FlowBuilder#RESERVED_PROPS}, FIX-47),
++ * no {@code delivery.queue} on a flow that is not at-least-once and none of
+  * {@code kafka}, the optional add-on not in this build (O-1, D-075), no at-least-once flow above {@code FLOTTILA_BLOB_DURABLE_MAX} (D-058), no
+  * in endpoint feeding a flow whose consumer would listen where another of the package, the node's admin API or a running flow of
+  * another package listens (D-072: one listener per host:port on a node, {@code Component.listensOn}, {@link #listeners}), and
+@@ -1137,6 +1138,7 @@ public final class Deployments {
+             }
+             flows.put(id, def);
+             problems.addAll(optionProblems(id, flow.getJsonArray("steps"), def.steps()));
++            problems.addAll(reservedPropProblems(id, def.steps()));
+             feeds.computeIfAbsent(def.fromEndpoint(), endpoint -> new ArrayList<>()).add(id);
+             if (outs.contains(def.fromEndpoint())) {
+                 problems.add("flow '" + id + "' consumes from endpoint '" + def.fromEndpoint() + "', whose direction is out: a flow's from is an in endpoint");
+@@ -1408,6 +1410,24 @@ public final class Deployments {
+         return problems;
+     }
+ 
++    /**
++     * A line per built-in step that names a prop the platform writes ({@link FlowBuilder#RESERVED_PROPS}, an exact name) under
++     * its key of {@link FlowBuilder#PROP_KEYS} — a {@code route}'s {@code prop}, a {@code to}'s {@code byProp} (FIX-47, D-140):
++     * {@code flow '<flow>' step <n> '<name>' (type '<type>') at '<key>': '<prop>' is a prop the platform writes on an envelope; ...}.
++     * A {@code to} with an {@code endpoint} names no prop.
++     */
++    private static List<String> reservedPropProblems(String flowId, List<StepConfig> defs) {
++        List<String> problems = new ArrayList<>();
++        for (StepConfig step : defs) {
++            String key = FlowBuilder.PROP_KEYS.get(step.type());
++            if (key == null) continue;
++            step.string(key).filter(FlowBuilder.RESERVED_PROPS::contains).ifPresent(prop -> problems.add("flow '" + flowId + "' step " + step.index() + " '"
++                    + step.name() + "' (type '" + step.type() + "') at '" + key + "': '" + prop + "' is a prop the platform writes on an envelope; a flow "
++                    + "routes on a prop of its own"));
++        }
++        return problems;
++    }
++
+     /** The endpoint's {@code config} with {@code environments.<env>.config} laid over it: a key the environment names is replaced whole, never merged. */
+     private JsonObject overlaid(JsonObject endpoint) {
+         JsonObject cfg = endpoint.getJsonObject("config");
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsReservedPropRestoreTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsReservedPropRestoreTest.java
+new file mode 100644
+index 0000000..09b6c33
+--- /dev/null
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsReservedPropRestoreTest.java
+@@ -0,0 +1,123 @@
++package io.flottila.runtime.deploy;
++
++import io.flottila.api.Ack;
++import io.flottila.api.Envelope;
++import io.flottila.api.Headers;
++import io.flottila.api.Runtime;
++import io.flottila.core.dlq.InMemoryDlq;
++import io.flottila.core.record.InMemoryMessageStore;
++import io.flottila.runtime.Main;
++import io.flottila.runtime.node.NodeConfig;
++import io.flottila.runtime.node.OnVirtualThread;
++import io.flottila.testkit.FakeRuntime;
++import io.vertx.core.buffer.Buffer;
++import io.vertx.core.json.JsonArray;
++import io.vertx.core.json.JsonObject;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++
++import java.nio.file.Path;
++import java.time.Instant;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++
++import static io.flottila.runtime.deploy.DeploymentsTest.within;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-47 (D-140), restore: a record of the pool whose package names a reserved prop — deployed before FIX-47 refused it — is
++ * refused by the restore's check like any package with problems: listed FAILED with the deploy's own line naming the prop, the
++ * flow and the step, nothing of it started; the node starts all the same (the restore returns) and the clean package beside it
++ * runs. Wired as {@link DeploymentsRestoreTest} (a {@link Ledger} of rows, a {@link Shelf} of archives), with the shipped
++ * expression languages so the route compiles and only its prop can refuse it.
++ */
++class DeploymentsReservedPropRestoreTest {
++
++    static final Instant NOW = Instant.parse("2026-11-14T09:30:00Z");
++
++    @TempDir Path tmp;
++
++    final FakeRuntime rt = FakeRuntime.create().withClockAt(NOW);
++    final Doors doors = new Doors();
++    Ledger records;
++    Shelf shelf;
++    Deployments deployments;
++
++    @BeforeEach
++    void wire() {
++        records = new Ledger(t -> { });
++        shelf = new Shelf(tmp.resolve("bucket"), tmp.resolve("shelf-reads"), t -> { });
++        Map<String, String> env = new HashMap<>();
++        env.put("FLOTTILA_ENV", "dev");
++        env.put("FLOTTILA_NODE_ID", "node-2");
++        env.put("FLOTTILA_DATA_DIR", tmp.resolve("data").toString());
++        env.put("FLOTTILA_STOP_DEADLINE", DeploymentsTest.STOP_DEADLINE.toString());
++        env.put("FLOTTILA_BLOB_DURABLE_MAX", Long.toString(DeploymentsTest.DURABLE_MAX));
++        env.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(DeploymentsTest.MAX_PACKAGE));
++        TracingTimer timer = new TracingTimer(rt.timer());
++        Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
++        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, DeploymentsTest.STEPS,
++                Main.shipped().languages(), new InMemoryMessageStore(), new InMemoryDlq(), new CountingQueue(rt.clock()), () -> 0L, records, shelf);
++    }
++
++    @AfterEach
++    void release() throws Exception {
++        doors.releaseAll();
++        records.releaseAll();
++        OnVirtualThread.call(() -> {
++            deployments.close();
++            return null;
++        });
++    }
++
++    /** A row and an object of the pool for {@code p}, as a node that deployed it leaves them. */
++    void recorded(PackageDraft p) throws Exception {
++        byte[] zip = p.zip();
++        String sha256 = PackageDraft.sha256(zip);
++        Path file = PackageDraft.write(tmp.resolve("uploads"), zip);
++        OnVirtualThread.call(() -> {
++            shelf.put(sha256, file);
++            return null;
++        });
++        records.save(new DeploymentRecord(p.manifest().getString("name"), "1.0.0", Optional.empty(), sha256, NOW, List.of())).await();
++    }
++
++    DeployedPackage pkg(String name) {
++        return deployments.packages().stream().filter(p -> p.name().equals(name)).findFirst().orElseThrow();
++    }
++
++    /**
++     * {@code shop}'s flow {@code audit} routes on {@code attempt} (step {@code decide}); {@code store}'s flow {@code c} names no
++     * reserved prop. The restore returns; shop is FAILED, one of its problems the line naming {@code attempt}, {@code audit} and
++     * {@code decide}, none of its doors made; store runs and accepts.
++     */
++    @Test
++    void aRecordedPackageNamingAReservedPropIsListedFailedAndTheNodeStarts() throws Exception {
++        recorded(DeploymentsReservedPropTest.shop(Map.of("audit",
++                new JsonArray().add(DeploymentsReservedPropTest.route("attempt")).add(DeploymentsReservedPropTest.toByProp("lane")))));
++        PackageDraft store = PackageDraft.of("store", "1.0.0").endpoint("partner", "out", new JsonObject().put("url", "rec://partner"))
++                .endpoint("c-in", "in", new JsonObject().put("path", "/c")).flow("c", "1.0.0", "sync", "c-in", 1024, PackageDraft.toPartner());
++        recorded(store);
++
++        OnVirtualThread.call(() -> {
++            deployments.restore();
++            return null;
++        });
++
++        DeployedPackage shop = pkg("shop");
++        assertEquals(DeployedPackage.State.FAILED, shop.state(), "shop is refused whole: " + shop);
++        assertEquals(List.of(), shop.flows(), "a FAILED package lists no flows: " + shop);
++        assertTrue(shop.problems().stream().anyMatch(l -> l.contains("flow 'audit'") && l.contains("'decide'") && l.contains("'attempt'")),
++                "a problem line names audit, decide and attempt: " + shop.problems());
++        assertTrue(doors.doors().stream().noneMatch(d -> d.flow().startsWith("shop/")), "no door of shop: " + doors.events());
++        assertEquals(DeployedPackage.State.RUNNING, pkg("store").state(), "store runs: " + pkg("store"));
++        Envelope e = rt.ingress("store/c", Headers.empty(), Buffer.buffer("<order/>"));
++        Ack answer = within(doors.door("store/c").deliver(e), "c's answer");
++        assertTrue(answer instanceof Ack.Reply, "c serves: " + answer);
++    }
++}
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsReservedPropTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsReservedPropTest.java
+new file mode 100644
+index 0000000..a18bf0c
+--- /dev/null
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/deploy/DeploymentsReservedPropTest.java
+@@ -0,0 +1,242 @@
++package io.flottila.runtime.deploy;
++
++import io.flottila.api.Ack;
++import io.flottila.api.Envelope;
++import io.flottila.api.Headers;
++import io.flottila.api.Runtime;
++import io.flottila.core.dlq.InMemoryDlq;
++import io.flottila.core.record.InMemoryMessageStore;
++import io.flottila.runtime.Main;
++import io.flottila.runtime.deploy.DeployRefusedException.Kind;
++import io.flottila.runtime.node.NodeConfig;
++import io.flottila.runtime.node.OnVirtualThread;
++import io.flottila.testkit.FakeRuntime;
++import io.vertx.core.buffer.Buffer;
++import io.vertx.core.json.JsonArray;
++import io.vertx.core.json.JsonObject;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.ValueSource;
++
++import java.nio.file.Path;
++import java.time.Duration;
++import java.util.HashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++
++import static io.flottila.runtime.deploy.DeploymentsTest.within;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * FIX-47 (D-140): the prop names the platform itself writes on an envelope are reserved, and a flow that names one where a step
++ * reads or writes a prop is refused where the deploy validates every flow — 422 ({@link Kind#INVALID}), one problem line per such
++ * step naming the prop, the flow and the step, nothing deployed. The reserved set is exact, as the runtime writes it:
++ * {@code attempt} (the worker's rerun, D-066), {@code replayOf} (a replay), {@code splitParentId}, {@code splitIndex} and
++ * {@code splitTotal} (a split's children). The steps of the flow schema that take a prop name are {@code route} ({@code prop:},
++ * written) and {@code to} ({@code byProp:}, read). A name that merely starts like a reserved one ({@code attempts},
++ * {@code splitter}, {@code split}) is the flow's own and deploys: the set is names, not prefixes. Before FIX-47 a
++ * {@code route} with {@code prop: attempt} deployed and every message failed at {@code Envelope.nextKey} (a String read as the
++ * Integer attempt); refused at deploy, no consumer exists for such a message to reach.
++ *
++ * <p>Wired as {@link DeploymentsQueueTest} — the {@link Doors} component, the in-memory store and DLQ, a {@link CountingQueue},
++ * the fake clock driving every timer — with the shipped expression languages ({@link Main#shipped()}: xpath), so a route's
++ * {@code when} compiles and only the prop name can refuse it.
++ */
++class DeploymentsReservedPropTest {
++
++    @TempDir Path tmp;
++    Path archives;
++
++    final FakeRuntime rt = FakeRuntime.create();
++    final Doors doors = new Doors();
++    final InMemoryMessageStore messages = new InMemoryMessageStore();
++    final InMemoryDlq dlq = new InMemoryDlq();
++    TracingTimer timer;
++    CountingQueue queue;
++    Deployments deployments;
++
++    @BeforeEach
++    void wire() {
++        archives = tmp.resolve("archives");
++        timer = new TracingTimer(rt.timer());
++        queue = new CountingQueue(rt.clock());
++        Map<String, String> env = new HashMap<>();
++        env.put("FLOTTILA_ENV", "dev");
++        env.put("FLOTTILA_NODE_ID", DeploymentsTest.NODE);
++        env.put("FLOTTILA_DATA_DIR", tmp.resolve("data").toString());
++        env.put("FLOTTILA_STOP_DEADLINE", DeploymentsTest.STOP_DEADLINE.toString());
++        env.put("FLOTTILA_BLOB_DURABLE_MAX", Long.toString(DeploymentsTest.DURABLE_MAX));
++        env.put("FLOTTILA_MAX_PACKAGE_BYTES", Long.toString(DeploymentsTest.MAX_PACKAGE));
++        Runtime runtime = new Runtime(rt.clock(), timer, rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
++        deployments = new Deployments(NodeConfig.from(env), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), timer, DeploymentsTest.STEPS,
++                Main.shipped().languages(), messages, dlq, queue, () -> 0L);
++    }
++
++    @AfterEach
++    void release() {
++        doors.releaseAll();
++    }
++
++    // --- fixtures
++
++    /** {@code route} step {@code decide}: writes {@code prop} — {@code a} when the xpath {@code true()} holds, else {@code b}. */
++    static JsonObject route(String prop) {
++        return new JsonObject().put("type", "route").put("name", "decide").put("prop", prop)
++                .put("routes", new JsonArray().add(new JsonObject().put("when", "true()").put("set", "a"))).put("otherwise", "b");
++    }
++
++    /** {@code to} step {@code send}: reads {@code byProp}, each of its values {@code a} and {@code b} to the out endpoint {@code partner}. */
++    static JsonObject toByProp(String byProp) {
++        return new JsonObject().put("type", "to").put("name", "send").put("byProp", byProp)
++                .put("endpoints", new JsonObject().put("a", "partner").put("b", "partner"));
++    }
++
++    /** {@code shop} 1.0.0: an out endpoint {@code partner}; each flow at-least-once from its own in endpoint, with these steps. */
++    static PackageDraft shop(Map<String, JsonArray> flows) {
++        PackageDraft p = PackageDraft.of("shop", "1.0.0").endpoint("partner", "out", new JsonObject().put("url", "rec://partner"));
++        flows.forEach((id, steps) -> p.endpoint(id + "-in", "in", new JsonObject().put("path", "/" + id)).flow(id, "1.0.0", "at-least-once", id + "-in", 1024, steps));
++        return p;
++    }
++
++    /** {@code audit} alone, its steps a route on {@code routed} then a {@code to} by {@code read}. */
++    static PackageDraft audit(String routed, String read) {
++        return shop(Map.of("audit", new JsonArray().add(route(routed)).add(toByProp(read))));
++    }
++
++    DeployRefusedException refused(PackageDraft p) {
++        return assertThrows(DeployRefusedException.class, () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), p.zipTo(archives))),
++                "the deploy is refused");
++    }
++
++    DeployedPackage deployed(PackageDraft p) throws Exception {
++        return OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), p.zipTo(archives))).pkg();
++    }
++
++    /** Nothing of the refused package exists: no producer built for {@code partner}, no consumer, nothing listed, no worker polls. */
++    void nothingDeployed() {
++        assertEquals(List.of(), doors.producerConfigs("partner"), "no flow was built: no producer of partner exists");
++        assertEquals(List.of(), doors.events().stream().filter(e -> e.startsWith("consumer ") || e.startsWith("start ")).toList(),
++                "no consumer made or started, so no message can arrive: " + doors.events());
++        assertEquals(List.of(), doors.doors(), "no door to deliver through");
++        assertEquals(List.of(), deployments.flows(), "nothing is listed");
++        rt.clock().advance(Duration.ofHours(1));
++        assertEquals(List.of(), queue.claims(), "no worker polls");
++    }
++
++    /** The one problem line, which names the flow, the step and the prop, each quoted. */
++    static void namesFlowStepAndProp(DeployRefusedException refused, String flow, String step, String prop) {
++        assertEquals(Kind.INVALID, refused.kind(), "422: " + refused.error() + " " + refused.problems());
++        assertEquals(1, refused.problems().size(), "one line, for the one step that names a reserved prop: " + refused.problems());
++        String line = refused.problems().getFirst();
++        assertTrue(line.contains("flow '" + flow + "'"), "the line names the flow: " + line);
++        assertTrue(line.contains("'" + step + "'"), "the line names the step: " + line);
++        assertTrue(line.contains("'" + prop + "'"), "the line names the prop: " + line);
++    }
++
++    // --- A2, A5: the row's case
++
++    /**
++     * The row's case: {@code route} with {@code prop: attempt}. Refused at deploy, 422, one line naming {@code attempt}, flow
++     * {@code audit} and step {@code decide}; no flow is built and no consumer made, so no message reaches {@code Envelope.nextKey}
++     * with a String under {@code attempt}.
++     */
++    @Test
++    void aRouteWritingAttemptIsRefused422NamingThePropTheFlowAndTheStep() {
++        DeployRefusedException refused = refused(shop(Map.of("audit", new JsonArray().add(route("attempt")).add(PackageDraft.toPartner().getJsonObject(0)))));
++
++        namesFlowStepAndProp(refused, "audit", "decide", "attempt");
++        nothingDeployed();
++    }
++
++    // --- A1, A2: every reserved name, in every step kind that takes a prop name
++
++    /** {@code route} with {@code prop:} naming each reserved prop, then a {@code to} by a prop of the flow's own: one line, naming the prop and {@code decide}. */
++    @ParameterizedTest(name = "route prop: {0}")
++    @ValueSource(strings = {"attempt", "replayOf", "splitParentId", "splitIndex", "splitTotal"})
++    void aRouteWritingAReservedPropIsRefused(String reserved) {
++        DeployRefusedException refused = refused(shop(Map.of("audit", new JsonArray().add(route(reserved)).add(PackageDraft.toPartner().getJsonObject(0)))));
++
++        namesFlowStepAndProp(refused, "audit", "decide", reserved);
++        nothingDeployed();
++    }
++
++    /**
++     * {@code to} with {@code byProp:} naming each reserved prop, after a route writing a prop of the flow's own: one line, naming the
++     * prop and {@code send} — reading a platform value for routing is refused too (the flow does not own its type).
++     */
++    @ParameterizedTest(name = "to byProp: {0}")
++    @ValueSource(strings = {"attempt", "replayOf", "splitParentId", "splitIndex", "splitTotal"})
++    void aToReadingAReservedPropIsRefused(String reserved) {
++        DeployRefusedException refused = refused(audit("lane", reserved));
++
++        namesFlowStepAndProp(refused, "audit", "send", reserved);
++        nothingDeployed();
++    }
++
++    /**
++     * Two flows each naming a reserved prop — {@code audit} routes on {@code replayOf}, {@code ledger} sends by {@code splitIndex} —
++     * and a clean {@code orders}: one line per step, each naming its own flow, step and prop; the clean flow is not deployed either.
++     */
++    @Test
++    void everyStepNamingAReservedPropIsALineAndTheCleanFlowBesideThemIsNotDeployed() {
++        Map<String, JsonArray> flows = new HashMap<>();
++        flows.put("audit", new JsonArray().add(route("replayOf")).add(PackageDraft.toPartner().getJsonObject(0)));
++        flows.put("ledger", new JsonArray().add(route("lane")).add(toByProp("splitIndex")));
++        flows.put("orders", new JsonArray().add(route("lane")).add(toByProp("lane")));
++        DeployRefusedException refused = refused(shop(flows));
++
++        assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
++        assertEquals(2, refused.problems().size(), "one line per step naming a reserved prop, none for orders: " + refused.problems());
++        assertTrue(refused.problems().stream().anyMatch(l -> l.contains("flow 'audit'") && l.contains("'decide'") && l.contains("'replayOf'")),
++                "a line names audit, decide and replayOf: " + refused.problems());
++        assertTrue(refused.problems().stream().anyMatch(l -> l.contains("flow 'ledger'") && l.contains("'send'") && l.contains("'splitIndex'")),
++                "a line names ledger, send and splitIndex: " + refused.problems());
++        assertTrue(refused.problems().stream().noneMatch(l -> l.contains("flow 'orders'")), "orders is clean: " + refused.problems());
++        nothingDeployed();
++    }
++
++    /**
++     * A redeploy whose new version routes on {@code splitTotal} is refused (422, the line naming it) before anything changes: the
++     * running 1.0.0 stays listed, its consumer is not stopped, and it still accepts.
++     */
++    @Test
++    void aRedeployNamingAReservedPropIsRefusedAndTheRunningVersionRunsOn() throws Exception {
++        deployed(audit("lane", "lane"));
++        PackageDraft next = shop(Map.of("audit", new JsonArray().add(route("splitTotal")).add(toByProp("lane"))));
++        next.manifest().put("version", "1.1.0");
++
++        DeployRefusedException refused = refused(next);
++
++        namesFlowStepAndProp(refused, "audit", "decide", "splitTotal");
++        assertEquals(List.of("shop/audit@1.0.0"), deployments.flows().stream().map(f -> f.id() + "@" + f.packageVersion()).toList(), "1.0.0 runs on");
++        assertEquals(List.of(), doors.events().stream().filter(e -> e.startsWith("stop ")).toList(), "nothing was stopped: " + doors.events());
++        Envelope e = rt.ingress("shop/audit", Headers.empty(), Buffer.buffer("<order/>"));
++        assertEquals(new Ack.Accepted(e.id()), within(doors.door("shop/audit").deliver(e), "audit's answer"), "the running version accepts");
++    }
++
++    // --- A4: a name that only looks like a reserved one is the flow's own
++
++    /**
++     * The set is exact names, not prefixes: a flow that routes on and sends by {@code attempts}, {@code replay}, {@code split},
++     * {@code splitter} or {@code splitIndexes} deploys, and accepts into the work queue. (Also the witness that this wiring
++     * deploys a route and a to-by-prop at all: the refusals above are the prop's.)
++     */
++    @ParameterizedTest(name = "route prop and to byProp: {0}")
++    @ValueSource(strings = {"attempts", "replay", "split", "splitter", "splitIndexes"})
++    void aPropThatOnlyLooksReservedDeploys(String own) throws Exception {
++        DeployedPackage p = deployed(audit(own, own));
++
++        assertEquals(List.of("shop/audit"), p.flows(), "audit deploys");
++        assertFalse(doors.producerConfigs("partner").isEmpty(), "its to was built: a producer of partner exists");
++        Envelope e = rt.ingress("shop/audit", Headers.empty(), Buffer.buffer("<order/>"));
++        assertEquals(new Ack.Accepted(e.id()), within(doors.door("shop/audit").deliver(e), "audit's answer"), "audit accepts");
++        assertEquals(List.of("shop/audit"), queue.enqueued(), "into the node's work queue");
++    }
++}

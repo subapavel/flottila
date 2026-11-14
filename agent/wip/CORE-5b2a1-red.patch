@@ -1,0 +1,1352 @@
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/journal/GatedFiles.java b/flottila-runtime/src/test/java/io/flottila/runtime/journal/GatedFiles.java
+new file mode 100644
+index 0000000..16df1a8
+--- /dev/null
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/journal/GatedFiles.java
+@@ -0,0 +1,131 @@
++package io.flottila.runtime.journal;
++
++import java.io.IOException;
++import java.io.InterruptedIOException;
++import java.nio.ByteBuffer;
++import java.nio.MappedByteBuffer;
++import java.nio.channels.FileChannel;
++import java.nio.channels.FileLock;
++import java.nio.channels.ReadableByteChannel;
++import java.nio.channels.WritableByteChannel;
++import java.nio.file.OpenOption;
++import java.nio.file.Path;
++import java.util.Map;
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.locks.Condition;
++import java.util.concurrent.locks.ReentrantLock;
++
++/**
++ * A {@link JournalFiles} double for the ACK-order property (CORE-5b2a1 T12): real channels, every force of a segment file
++ * ({@code *.seg}) held while the gate is shut and let through when it opens, and per file the bytes a returned force made
++ * durable (the file's size when the force began), recorded before the force returns to the journal. So "forced" is a step
++ * the property interleaves with the others, and a completion can be checked against what was durable when it ran.
++ */
++final class GatedFiles implements JournalFiles {
++
++    private final ReentrantLock lock = new ReentrantLock();
++    private final Condition opened = lock.newCondition();
++    private boolean shut;   // guarded by lock
++    private final Map<Path, Long> durable = new ConcurrentHashMap<>();
++
++    void shut() {
++        lock.lock();
++        try {
++            shut = true;
++        } finally {
++            lock.unlock();
++        }
++    }
++
++    void open() {
++        lock.lock();
++        try {
++            shut = false;
++            opened.signalAll();
++        } finally {
++            lock.unlock();
++        }
++    }
++
++    /** The bytes of {@code file} a returned force made durable (0: none). */
++    long durable(Path file) {
++        return durable.getOrDefault(file.toAbsolutePath().normalize(), 0L);
++    }
++
++    private void pass(Path file) throws IOException {
++        if (!file.getFileName().toString().endsWith(".seg")) return;
++        lock.lock();
++        try {
++            while (shut) opened.await();
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++            throw new InterruptedIOException("interrupted at the shut gate of " + file);
++        } finally {
++            lock.unlock();
++        }
++    }
++
++    @Override public FileChannel open(Path file, Set<? extends OpenOption> options) throws IOException {
++        Path at = file.toAbsolutePath().normalize();
++        return new Gated(at, FileChannel.open(file, options));
++    }
++
++    private final class Gated extends FileChannel {
++        private final Path file;
++        private final FileChannel inner;
++
++        Gated(Path file, FileChannel inner) { this.file = file; this.inner = inner; }
++
++        @Override public void force(boolean metaData) throws IOException {
++            pass(file);
++            long size = inner.size();
++            inner.force(metaData);
++            durable.merge(file, size, Math::max);
++        }
++
++        @Override public int read(ByteBuffer dst) throws IOException { return inner.read(dst); }
++
++        @Override public long read(ByteBuffer[] dsts, int offset, int length) throws IOException { return inner.read(dsts, offset, length); }
++
++        @Override public int write(ByteBuffer src) throws IOException { return inner.write(src); }
++
++        @Override public long write(ByteBuffer[] srcs, int offset, int length) throws IOException { return inner.write(srcs, offset, length); }
++
++        @Override public long position() throws IOException { return inner.position(); }
++
++        @Override public FileChannel position(long newPosition) throws IOException {
++            inner.position(newPosition);
++            return this;
++        }
++
++        @Override public long size() throws IOException { return inner.size(); }
++
++        @Override public FileChannel truncate(long size) throws IOException {
++            inner.truncate(size);
++            return this;
++        }
++
++        @Override public long transferTo(long position, long count, WritableByteChannel target) throws IOException {
++            return inner.transferTo(position, count, target);
++        }
++
++        @Override public long transferFrom(ReadableByteChannel src, long position, long count) throws IOException {
++            return inner.transferFrom(src, position, count);
++        }
++
++        @Override public int read(ByteBuffer dst, long position) throws IOException { return inner.read(dst, position); }
++
++        @Override public int write(ByteBuffer src, long position) throws IOException { return inner.write(src, position); }
++
++        @Override public MappedByteBuffer map(MapMode mode, long position, long size) throws IOException {
++            throw new IOException("mmap is not part of the journal design: " + file);
++        }
++
++        @Override public FileLock lock(long position, long size, boolean shared) throws IOException { return inner.lock(position, size, shared); }
++
++        @Override public FileLock tryLock(long position, long size, boolean shared) throws IOException { return inner.tryLock(position, size, shared); }
++
++        @Override protected void implCloseChannel() throws IOException { inner.close(); }
++    }
++}
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/journal/JournalAckOrderPropertiesTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/journal/JournalAckOrderPropertiesTest.java
+new file mode 100644
+index 0000000..ecadd94
+--- /dev/null
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/journal/JournalAckOrderPropertiesTest.java
+@@ -0,0 +1,291 @@
++package io.flottila.runtime.journal;
++
++import io.flottila.runtime.journal.JournalFixture.LoggedTimer;
++import io.flottila.runtime.journal.JournalFixture.Outcome;
++import io.flottila.runtime.journal.ScriptedReplication.Handed;
++import io.flottila.testkit.FakeClock;
++import io.flottila.testkit.FakeTimer;
++import io.vertx.core.AsyncResult;
++import io.vertx.core.Future;
++import net.jqwik.api.Arbitraries;
++import net.jqwik.api.Arbitrary;
++import net.jqwik.api.Combinators;
++import net.jqwik.api.ForAll;
++import net.jqwik.api.Property;
++import net.jqwik.api.Provide;
++import net.jqwik.api.Tuple;
++
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++import java.util.TreeSet;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.concurrent.atomic.AtomicInteger;
++import java.util.stream.Stream;
++
++import static io.flottila.runtime.journal.JournalFixture.KEY;
++import static io.flottila.runtime.journal.JournalFixture.START;
++import static io.flottila.runtime.journal.JournalFixture.keys;
++import static io.flottila.runtime.journal.JournalFixture.live;
++import static io.flottila.runtime.journal.JournalFixture.onVirtual;
++import static io.flottila.runtime.journal.JournalFixture.parked;
++import static io.flottila.runtime.journal.JournalFixture.record;
++import static io.flottila.runtime.journal.JournalFixture.settings;
++import static io.flottila.runtime.journal.JournalFixture.until;
++import static io.flottila.runtime.journal.ScriptedReplication.handOut;
++import static io.flottila.runtime.journal.ScriptedReplication.segmentFile;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * The ACK order of the two-copy journal (CORE-5b2a1 T12): any interleaving of appends, forces (a gate on every segment-file
++ * force, {@link GatedFiles}), {@code copied}, {@code single}, {@code failed} and {@code pair} completes the appends as a
++ * prefix in journal position order — a completion, success or failure, never runs while an earlier append is neither
++ * complete nor acknowledgeable — no append succeeds before it is forced and (its segment is single or its copy reaches its
++ * end), a failure carries the loss a {@code failed} named its segment with, and at quiescence every byte left
++ * {@code FLOTTILA_JOURNAL_PENDING_BYTES} (an append of exactly the bound is taken at once).
++ *
++ * <p>The checks run in each completion's listener against what the driver did, each flag set <em>before</em> its call: a
++ * listener that sees a condition unmet saw a completion that came before the call that could have allowed it. The driver is
++ * one thread, so the order of {@code pair} and of each segment's first reservation is known exactly.
++ *
++ * <p>jqwik runs no {@code @BeforeEach}/{@code @AfterEach} for a property: every try builds and removes its own state. The
++ * class is {@code JournalAckOrderPropertiesTest}, not the spec's {@code JournalAckOrderProperties}: Surefire's default
++ * includes would never run a class named {@code *Properties}.
++ */
++class JournalAckOrderPropertiesTest {
++
++    static final int RECORD_MAX = 8192;
++    /** PENDING_BYTES = RECORD_MAX: the quiescence probe of exactly this many encoded bytes is taken only when nothing is pending. */
++    static final int PENDING = 8192;
++    /** At most this many appends a try (each at most 64 + 3 + 300 bytes): 6606 bytes, under PENDING, so no append ever waits. */
++    static final int MAX_APPENDS = 18;
++    static final Duration APPEND_WAIT = Duration.ofSeconds(2);
++
++    sealed interface Step permits Append, Shut, Open, Copy, Single, Fail, Pair { }
++
++    record Append(int size) implements Step { }
++
++    /** Segment-file forces wait from now on. */
++    record Shut() implements Step { }
++
++    /** Segment-file forces go on. */
++    record Open() implements Step { }
++
++    /** {@code copied} of the {@code segment}-th segment holding records, up to the end of its {@code record}-th (one byte short). */
++    record Copy(int segment, int record, boolean shortOfIt) implements Step { }
++
++    record Single(int segment) implements Step { }
++
++    record Fail(int segment) implements Step { }
++
++    record Pair() implements Step { }
++
++    @Provide
++    Arbitrary<List<Step>> runs() {
++        Arbitrary<Step> append = Arbitraries.integers().between(0, 300).map(Append::new);
++        Arbitrary<Step> shut = Arbitraries.just(new Shut());
++        Arbitrary<Step> open = Arbitraries.just(new Open());
++        Arbitrary<Step> copy = Combinators.combine(Arbitraries.integers().between(0, 7), Arbitraries.integers().between(0, 7),
++                Arbitraries.of(false, false, false, true)).as(Copy::new);
++        Arbitrary<Step> single = Arbitraries.integers().between(0, 7).map(Single::new);
++        Arbitrary<Step> fail = Arbitraries.integers().between(0, 7).map(Fail::new);
++        Arbitrary<Step> pair = Arbitraries.just(new Pair());
++        return Arbitraries.frequencyOf(Tuple.of(6, append), Tuple.of(2, shut), Tuple.of(2, open), Tuple.of(4, copy),
++                Tuple.of(1, single), Tuple.of(1, fail), Tuple.of(3, pair)).list().ofMinSize(1).ofMaxSize(40);
++    }
++
++    @Property(tries = 100)
++    void completionsArePositionOrderedAndNeedForcedAndACopy(@ForAll("runs") List<Step> run) throws Exception {
++        Path dir = Files.createTempDirectory("journal-ack-order");
++        try {
++            new Run(dir).go(run);
++        } finally {
++            try (Stream<Path> walk = Files.walk(dir)) {
++                for (Path p : walk.sorted(Comparator.reverseOrder()).toList()) Files.delete(p);
++            }
++        }
++    }
++
++    /** One try: a journal, its gate, its scripted Replication, and what the driver did. */
++    private static final class Run {
++        private record Rec(int index, String id, JournalRef ref, Future<Void> forced) {
++            long n() { return ref.segment(); }
++
++            long end() { return ref.position() + ref.length(); }
++        }
++
++        private final Path dir;
++        private final FakeClock clock = FakeClock.at(START);
++        private final LoggedTimer timer = new LoggedTimer(new FakeTimer(clock));
++        private final GatedFiles files = new GatedFiles();
++        private final ScriptedReplication repl = new ScriptedReplication();
++        private Journal journal;
++        private Journal.Copies copies;
++
++        private final List<Rec> recs = new CopyOnWriteArrayList<>();
++        private final Set<Long> paired = ConcurrentHashMap.newKeySet();
++        private final Map<Long, Long> copiedTo = new ConcurrentHashMap<>();
++        private final Set<Long> singled = ConcurrentHashMap.newKeySet();
++        private final Map<Long, Set<Throwable>> lostWith = new ConcurrentHashMap<>();
++        private final List<String> violations = new CopyOnWriteArrayList<>();
++        private final AtomicInteger checked = new AtomicInteger();
++        private final List<String> done = new ArrayList<>();   // the steps applied, for the failure message
++
++        Run(Path dir) { this.dir = dir; }
++
++        void go(List<Step> run) throws Exception {
++            JournalConfig config = settings(dir).recordMax(RECORD_MAX).pendingBytes(PENDING).appendWait(APPEND_WAIT).segmentRecords(3)
++                    .segmentAge(Duration.ofHours(1)).config();
++            journal = Journal.open(config, clock, timer, keys(KEY), files);
++            try {
++                copies = journal.replicate(repl);
++                for (Step s : run) apply(s);
++                quiesce();
++                assertEquals(List.of(), violations, "steps " + done);
++                assertEquals(List.of(), repl.errors);
++                probe();
++            } finally {
++                files.open();
++                journal.close();
++            }
++        }
++
++        private List<Long> segments() {
++            Set<Long> s = new TreeSet<>();
++            for (Rec r : recs) s.add(r.n());
++            return new ArrayList<>(s);
++        }
++
++        private List<Rec> of(long n) {
++            return recs.stream().filter(r -> r.n() == n).toList();
++        }
++
++        private void apply(Step step) {
++            switch (step) {
++                case Append a -> {
++                    if (recs.size() >= MAX_APPENDS) return;
++                    String id = "r" + recs.size();
++                    Journal.Appended x = journal.append(record(id, a.size()), live());
++                    Rec r = new Rec(recs.size(), id, x.ref(), x.forced());
++                    recs.add(r);
++                    done.add("append " + id + " at " + x.ref());
++                    x.forced().onComplete(ar -> check(r, ar));
++                }
++                case Shut s -> {
++                    files.shut();
++                    done.add("shut");
++                }
++                case Open o -> {
++                    files.open();
++                    done.add("open");
++                }
++                case Copy c -> {
++                    List<Long> segs = segments();
++                    if (segs.isEmpty()) return;
++                    long n = segs.get(c.segment() % segs.size());
++                    List<Rec> of = of(n);
++                    long to = of.get(c.record() % of.size()).end() - (c.shortOfIt() ? 1 : 0);
++                    if (to <= copiedTo.getOrDefault(n, 0L)) return;
++                    copiedTo.put(n, to);
++                    done.add("copied(" + n + ", " + to + ")");
++                    copies.copied(n, to);
++                }
++                case Single g -> {
++                    List<Long> segs = segments();
++                    if (segs.isEmpty()) return;
++                    long n = segs.get(g.segment() % segs.size());
++                    singled.add(n);
++                    done.add("single(" + n + ")");
++                    copies.single(Set.of(n));
++                }
++                case Fail f -> {
++                    List<Long> segs = segments();
++                    if (segs.isEmpty()) return;
++                    long n = segs.get(f.segment() % segs.size());
++                    JournalPeerLostException e = new JournalPeerLostException("the peer copy of segment " + n + " is lost (property)");
++                    lostWith.computeIfAbsent(n, k -> ConcurrentHashMap.newKeySet()).add(e);
++                    done.add("failed(" + n + ")");
++                    copies.failed(Set.of(n), e);
++                }
++                case Pair p -> {
++                    List<Handed> handed = handOut(copies);
++                    for (Handed h : handed) {
++                        if (!of(h.n()).isEmpty()) violations.add("pair handed out segment " + h.n() + ", which holds a record");
++                        else paired.add(h.n());
++                    }
++                    done.add("pair → " + handed.stream().map(Handed::n).toList());
++                }
++            }
++        }
++
++        private boolean durable(Rec r) {
++            return files.durable(segmentFile(dir, r.n())) >= r.end();
++        }
++
++        private boolean acknowledgeable(Rec r) {
++            long n = r.n();
++            return !paired.contains(n) || singled.contains(n) || copiedTo.getOrDefault(n, 0L) >= r.end();
++        }
++
++        private void check(Rec r, AsyncResult<Void> ar) {
++            try {
++                if (ar.succeeded()) {
++                    if (!durable(r)) violations.add(r.id() + " " + r.ref() + " succeeded before it was forced");
++                    if (!acknowledgeable(r)) {
++                        violations.add(r.id() + " " + r.ref() + " succeeded while paired, not single and copied only to " + copiedTo.get(r.n()));
++                    }
++                } else if (!lostWith.getOrDefault(r.n(), Set.of()).contains(ar.cause())) {
++                    violations.add(r.id() + " " + r.ref() + " failed with " + ar.cause() + ", not a loss failed() named its segment with");
++                }
++                for (Rec q : recs) {
++                    if (q.index() >= r.index()) break;
++                    boolean eligible = lostWith.containsKey(q.n()) || (durable(q) && acknowledgeable(q));
++                    if (!q.forced().isComplete() && !eligible) {
++                        violations.add(r.id() + " completed while the earlier " + q.id() + " " + q.ref() + " was neither complete nor acknowledgeable");
++                    }
++                }
++            } finally {
++                checked.incrementAndGet();
++            }
++        }
++
++        /** Forces go on, every paired segment is copied to its last record's end: every append completes. */
++        private void quiesce() {
++            files.open();
++            for (long n : segments()) {
++                if (!paired.contains(n)) continue;
++                long to = of(n).getLast().end();
++                if (to > copiedTo.getOrDefault(n, 0L)) {
++                    copiedTo.put(n, to);
++                    done.add("copied(" + n + ", " + to + ") at quiescence");
++                    copies.copied(n, to);
++                }
++            }
++            for (Rec r : recs) until(r.forced()::isComplete, () -> r.id() + " " + r.ref() + " completes at quiescence; steps " + done);
++            until(() -> checked.get() == recs.size(), () -> "every listener ran");
++            for (Rec r : recs) {
++                if (!lostWith.containsKey(r.n())) {
++                    assertTrue(r.forced().succeeded(), r.id() + " of a segment no failed() named succeeds: " + r.forced().cause() + "; steps " + done);
++                }
++            }
++        }
++
++        /** Nothing is pending: an append of exactly PENDING encoded bytes (64 + "probe" 5 + 8123) is taken without a wait. */
++        private void probe() throws Exception {
++            int waits = timer.withDelay(APPEND_WAIT).size();
++            JournalRecord full = new JournalRecord("probe", 0, "in", KEY, new byte[PENDING - 64 - 5]);
++            Outcome<Journal.Appended> o = onVirtual(() -> journal.append(full, live()));
++            until(() -> o.done() || (parked(o.thread()) && timer.withDelay(APPEND_WAIT).size() > waits),
++                    () -> "the probe returns or waits for room; timer " + timer.log());
++            assertTrue(o.done(), "at quiescence bytes are still pending under FLOTTILA_JOURNAL_PENDING_BYTES: the probe waits; steps " + done);
++            assertEquals(PENDING, o.join().ref().length(), "the probe is exactly PENDING bytes");
++        }
++    }
++}
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/journal/JournalCopiesTest.java b/flottila-runtime/src/test/java/io/flottila/runtime/journal/JournalCopiesTest.java
+new file mode 100644
+index 0000000..07c52f2
+--- /dev/null
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/journal/JournalCopiesTest.java
+@@ -0,0 +1,709 @@
++package io.flottila.runtime.journal;
++
++import io.flottila.runtime.journal.HeldFiles.Hold;
++import io.flottila.runtime.journal.HeldFiles.Kind;
++import io.flottila.runtime.journal.HeldFiles.Op;
++import io.flottila.runtime.journal.JournalFixture.LogCapture;
++import io.flottila.runtime.journal.JournalFixture.LoggedTimer;
++import io.flottila.runtime.journal.JournalFixture.Outcome;
++import io.flottila.runtime.journal.JournalFixture.Settings;
++import io.flottila.runtime.journal.ScriptedReplication.Handed;
++import io.flottila.runtime.journal.ScriptedReplication.Sealed;
++import io.flottila.runtime.journal.ScriptedReplication.Wrote;
++import io.flottila.testkit.FakeClock;
++import io.flottila.testkit.FakeTimer;
++import org.junit.jupiter.api.AfterEach;
++import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.io.TempDir;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.CsvSource;
++import org.junit.jupiter.params.provider.EnumSource;
++
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.Comparator;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++import java.util.Set;
++import java.util.TreeSet;
++import java.util.concurrent.ConcurrentHashMap;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.concurrent.atomic.AtomicBoolean;
++import java.util.logging.Level;
++import java.util.logging.LogRecord;
++
++import static io.flottila.runtime.journal.JournalFixture.KEY;
++import static io.flottila.runtime.journal.JournalFixture.START;
++import static io.flottila.runtime.journal.JournalFixture.appendFailure;
++import static io.flottila.runtime.journal.JournalFixture.await;
++import static io.flottila.runtime.journal.JournalFixture.body;
++import static io.flottila.runtime.journal.JournalFixture.failureOf;
++import static io.flottila.runtime.journal.JournalFixture.keys;
++import static io.flottila.runtime.journal.JournalFixture.live;
++import static io.flottila.runtime.journal.JournalFixture.onVirtual;
++import static io.flottila.runtime.journal.JournalFixture.parked;
++import static io.flottila.runtime.journal.JournalFixture.record;
++import static io.flottila.runtime.journal.JournalFixture.settings;
++import static io.flottila.runtime.journal.JournalFixture.until;
++import static io.flottila.runtime.journal.JournalFixture.untilParked;
++import static io.flottila.runtime.journal.ScriptedReplication.fileBytes;
++import static io.flottila.runtime.journal.ScriptedReplication.handOut;
++import static io.flottila.runtime.journal.ScriptedReplication.numbers;
++import static io.flottila.runtime.journal.ScriptedReplication.segmentFile;
++import static org.junit.jupiter.api.Assertions.assertArrayEquals;
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertInstanceOf;
++import static org.junit.jupiter.api.Assertions.assertNotEquals;
++import static org.junit.jupiter.api.Assertions.assertNotNull;
++import static org.junit.jupiter.api.Assertions.assertSame;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * The journal side of the two-copy ACK (CORE-5b2a1, acceptance T1–T11): with a {@link Replication} set, a record of a paired
++ * segment completes only once it is forced and its peer copy reaches its end, in journal position order, its bytes leaving
++ * {@code FLOTTILA_JOURNAL_PENDING_BYTES} at that completion; a segment's mode is fixed at its first reservation; the hooks run
++ * beside the force and outside the journal's lock; {@link Journal.Copies} turns segments single, fails their waiting records,
++ * seals early and fences. The Replication is the scripted fake {@link ScriptedReplication}; every interleaving is staged by the
++ * {@link HeldFiles} seam, the fake clock and timer, never by a sleep.
++ *
++ * <p>A negative ("does not complete") is witnessed by an outcome that cannot be vacuous: the record is then failed by
++ * {@code failed}, {@code fenced} or a failed force and must end <em>failed</em>; had it been acknowledged early it would have
++ * left the journal's waiting records and end succeeded. "Its round is done" is witnessed by the writer taking the next round
++ * (a follower record's write entered).
++ */
++class JournalCopiesTest {
++
++    /** Segment 1 is a fresh journal's first segment, 2 the one pre-opened at its open (CORE-3 item 3). */
++    private static final long FIRST = 1;
++    private static final long PREOPENED = 2;
++    /** The segment header of node {@code node-1}: magic 4, version 1, journal id 16, node (u16 + 6), n 8, created 8, crc 4. */
++    private static final int HEADER = 49;
++    /** A record's bytes besides its message id and body (part "in", one chunk): fixed 46, part 2, tag 16. */
++    private static final int OVERHEAD = 64;
++    private static final Duration WAIT = Duration.ofSeconds(2);
++    /** The bound of a hook's reaction run elsewhere: below {@link JournalFixture#BOUND}, so a stuck hook is named first. */
++    private static final Duration INNER = Duration.ofSeconds(5);
++
++    @TempDir Path tmp;
++
++    private final FakeClock clock = FakeClock.at(START);
++    private final LoggedTimer timer = new LoggedTimer(new FakeTimer(clock));
++    private final List<HeldFiles> seams = new ArrayList<>();
++    private final List<Journal> journals = new ArrayList<>();
++
++    @AfterEach
++    void closeEverything() throws Exception {
++        seams.forEach(HeldFiles::releaseAll);
++        for (Journal j : journals) onVirtual(() -> {
++            j.close();
++            return null;
++        }).join();
++    }
++
++    /** A journal, its seam and, once {@link #replicated}, its scripted Replication and Copies. */
++    private record World(Journal journal, HeldFiles files, Path dir, ScriptedReplication repl, Journal.Copies copies) { }
++
++    private Settings quiet(String name) throws IOException {
++        Path dir = Files.createDirectories(tmp.resolve(name));
++        return settings(dir).segmentAge(Duration.ofHours(1)).appendWait(WAIT);
++    }
++
++    private World plain(Settings s) throws Exception {
++        HeldFiles files = new HeldFiles();
++        seams.add(files);
++        Journal j = Journal.open(s.config(), clock, timer, keys(KEY), files);
++        journals.add(j);
++        return new World(j, files, s.dir, null, null);
++    }
++
++    private World replicated(Settings s) throws Exception {
++        World w = plain(s);
++        ScriptedReplication repl = new ScriptedReplication(w.files::now);
++        Journal.Copies copies = w.journal.replicate(repl);
++        assertNotNull(copies, "replicate answers the journal's Copies");
++        return new World(w.journal, w.files, w.dir, repl, copies);
++    }
++
++    /** A record whose encoded length is exactly {@code encoded} (an ASCII id, part "in", one chunk). */
++    private static JournalRecord sized(String id, int encoded) {
++        return new JournalRecord(id, 0, "in", KEY, body(id, encoded - OVERHEAD - id.length()));
++    }
++
++    private static long end(Journal.Appended a) {
++        return a.ref().position() + a.ref().length();
++    }
++
++    /**
++     * Waits until {@code id}'s force returned and the writer took the round after it (a follower's write entered): the round
++     * that forced {@code id} is over, whatever it decided is decided. Returns the follower.
++     */
++    private static Journal.Appended afterTheRoundOf(World w, String id, String follower) {
++        until(() -> w.files.forcedPast(id), () -> id + " is forced: " + w.files.describe());
++        Journal.Appended f = w.journal.append(record(follower, 100), live());
++        until(() -> w.files.firstWrite(follower) != null, () -> "the writer takes the round after " + id + "'s: " + w.files.describe());
++        return f;
++    }
++
++    private static JournalPeerLostException lost(String what) {
++        return new JournalPeerLostException("the peer copy of " + what + " is lost (test)");
++    }
++
++    /** Waits until {@code o} returned or parks in an append wait armed on the fake timer after {@code waitsBefore}. */
++    private void untilTakenOrWaiting(Outcome<Journal.Appended> o, int waitsBefore, String what) {
++        until(() -> o.done() || (parked(o.thread()) && timer.withDelay(WAIT).size() > waitsBefore),
++                () -> what + " returns or waits for room on the fake timer; timer " + timer.log());
++    }
++
++    /** The journal's log lines at INFO or above that speak of single segments (the transition the spec names). */
++    private static List<LogRecord> singleLines(LogCapture log) {
++        return log.records().stream()
++                .filter(r -> r.getLevel().intValue() >= Level.INFO.intValue() && r.getMessage() != null
++                        && r.getMessage().toLowerCase(java.util.Locale.ROOT).contains("single"))
++                .toList();
++    }
++
++    // ------------------------------------------------------------------------------------------------ T1
++
++    enum Variant { WITHOUT_REPLICATE, WITH_NONE }
++
++    @ParameterizedTest
++    @EnumSource(Variant.class)
++    void noneIsToday(Variant variant) throws Exception {
++        World w = plain(quiet("none-" + variant).segmentRecords(2).recordMax(8192).pendingBytes(8192));
++        try (LogCapture log = new LogCapture()) {
++            Journal.Copies copies = variant == Variant.WITH_NONE ? w.journal.replicate(Replication.NONE) : null;
++            Hold force = w.files.holdForceAfter("nt-0");
++            Journal.Appended r0 = w.journal.append(sized("nt-0", 5000), live());
++            force.awaitReached();
++            untilParked(force.thread(), "the writer sits in nt-0's held force");
++            Map<String, Boolean> forcedAtCompletion = new ConcurrentHashMap<>();
++            r0.forced().onComplete(ar -> forcedAtCompletion.put("nt-0", w.files.forcedPast("nt-0")));
++            assertFalse(r0.forced().isComplete(), "nothing completes before its force");
++
++            force.release();
++            await(r0.forced());
++            until(() -> forcedAtCompletion.containsKey("nt-0"), () -> "the listener ran");
++            assertEquals(Map.of("nt-0", true), forcedAtCompletion, "the force alone completes a record, as today: no copy is asked for");
++
++            // its 5000 bytes left FLOTTILA_JOURNAL_PENDING_BYTES (8192) with that completion: another 5000 are taken at once
++            Outcome<Journal.Appended> next = onVirtual(() -> w.journal.append(sized("nt-1", 5000), live()));
++            Journal.Appended r1 = next.join();
++            await(r1.forced());
++            assertEquals(r0.ref().segment(), r1.ref().segment(), "segmentRecords 2: nt-1 is the segment's second record");
++            until(() -> indexed(w.journal, r0.ref().segment()), () -> "the segment rolled by count is sealed as today");
++
++            if (copies != null) {
++                assertEquals(0, copies.singleSegments(), "NONE is today: no segment counts as single");
++                assertEquals(0, copies.singleBytes(), "NONE is today: no byte counts as single");
++            }
++            assertEquals(List.of(), singleLines(log), "NONE logs no transition to single: " + log.lines());
++        }
++    }
++
++    private static boolean indexed(Journal j, long n) {
++        try {
++            return j.index(n).isPresent();
++        } catch (IOException e) {
++            throw new AssertionError("the index of segment " + n + " failed", e);
++        }
++    }
++
++    @Test
++    void replicateIsTakenOnce() throws Exception {
++        World w = replicated(quiet("once"));
++        assertThrows(IllegalStateException.class, () -> w.journal.replicate(new ScriptedReplication()), "a second replicate is refused");
++        assertThrows(IllegalStateException.class, () -> w.journal.replicate(Replication.NONE), "NONE too");
++        assertTrue(numbers(handOut(w.copies)).contains(FIRST), "the first Copies still pairs: the refused call changed nothing");
++    }
++
++    // ------------------------------------------------------------------------------------------------ T2
++
++    @Test
++    void ackNeedsBothCopiedAloneCompletesNothingBeforeTheForce() throws Exception {
++        World w = replicated(quiet("both-copied").recordMax(8192).pendingBytes(8192));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Hold force = w.files.holdForceAfter("bc-0");
++        Journal.Appended r0 = w.journal.append(sized("bc-0", 5000), live());
++        assertEquals(FIRST, r0.ref().segment());
++        force.awaitReached();
++        untilParked(force.thread(), "the writer sits in bc-0's held force");
++
++        w.copies.copied(FIRST, end(r0));
++        assertFalse(r0.forced().isComplete(), "the peer's copy alone completes nothing");
++        // and its bytes are still pending: another 5000 under 8192 wait for room
++        int waits = timer.withDelay(WAIT).size();
++        Outcome<Journal.Appended> next = onVirtual(() -> w.journal.append(sized("bc-1", 5000), live()));
++        untilTakenOrWaiting(next, waits, "bc-1");
++        assertFalse(next.done(), "bc-0's bytes are still pending after copied alone: bc-1 waits");
++
++        force.fail(new IOException("EIO (test): bc-0 is never forced"));
++        assertInstanceOf(JournalFailedException.class, failureOf(r0.forced()),
++                "never forced, bc-0 fails although its copy arrived: it was not acknowledged by the copy alone");
++        assertInstanceOf(JournalFailedException.class, next.failure(), "the waiting append fails with the journal");
++    }
++
++    @Test
++    void ackNeedsBothForcedAloneCompletesNothingWithoutTheCopy() throws Exception {
++        World w = replicated(quiet("both-forced"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(record("bf-0", 100), live());
++        assertEquals(FIRST, r0.ref().segment());
++        afterTheRoundOf(w, "bf-0", "bf-f");
++        assertFalse(r0.forced().isComplete(), "forced, bf-0 still waits for its copy");
++
++        JournalPeerLostException e = lost("segment 1");
++        w.copies.failed(Set.of(FIRST), e);
++        assertSame(e, failureOf(r0.forced()), "bf-0 was still waiting after its force: the force alone did not acknowledge it");
++    }
++
++    @Test
++    void ackNeedsBothCompletesOnceForcedAndCopiedToItsEnd() throws Exception {
++        World w = replicated(quiet("both"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(record("bb-0", 100), live());
++        Journal.Appended r1 = w.journal.append(record("bb-1", 100), live());
++        assertEquals(end(r0), r1.ref().position(), "bb-1 begins where bb-0 ends");
++        afterTheRoundOf(w, "bb-1", "bb-f");
++        Map<String, Boolean> forcedAtCompletion = new ConcurrentHashMap<>();
++        r0.forced().onComplete(ar -> forcedAtCompletion.put("bb-0", w.files.forcedPast("bb-0")));
++
++        w.copies.copied(FIRST, end(r0));
++        await(r0.forced());
++        until(() -> forcedAtCompletion.containsKey("bb-0"), () -> "the listener ran");
++        assertEquals(Map.of("bb-0", true), forcedAtCompletion);
++
++        JournalPeerLostException e = lost("segment 1");
++        w.copies.failed(Set.of(FIRST), e);
++        assertSame(e, failureOf(r1.forced()), "a copy up to bb-0's end (bb-1's position) does not reach bb-1's end: bb-1 still waited");
++    }
++
++    // ------------------------------------------------------------------------------------------------ T3
++
++    @Test
++    void positionOrderALaterCopiedSegmentWaitsForAnEarlierOne() throws Exception {
++        World w = replicated(quiet("order-wait").segmentRecords(1));
++        w.repl.pairUntil(w.copies, Set.of(FIRST, PREOPENED));
++        Journal.Appended r0 = w.journal.append(record("ow-0", 100), live());
++        Journal.Appended r1 = w.journal.append(record("ow-1", 100), live());
++        assertEquals(FIRST, r0.ref().segment());
++        assertEquals(PREOPENED, r1.ref().segment(), "segmentRecords 1: ow-1 opens the pre-opened segment");
++        afterTheRoundOf(w, "ow-1", "ow-f");
++
++        w.copies.copied(PREOPENED, end(r1));
++        assertFalse(r1.forced().isComplete(), "ow-1 is forced and copied but ow-0 before it is not acknowledged");
++
++        IllegalStateException fence = new IllegalStateException("fenced (test)");
++        w.copies.fenced(fence);
++        assertInstanceOf(JournalFailedException.class, failureOf(r0.forced()));
++        assertInstanceOf(JournalFailedException.class, failureOf(r1.forced()),
++                "ow-1 was still waiting for ow-0 when the journal failed: it was not acknowledged out of position order");
++    }
++
++    @Test
++    void positionOrderTheEarlierCopyReleasesTheLaterRecords() throws Exception {
++        World w = replicated(quiet("order-release").segmentRecords(1));
++        w.repl.pairUntil(w.copies, Set.of(FIRST, PREOPENED));
++        Journal.Appended r0 = w.journal.append(record("or-0", 100), live());
++        Journal.Appended r1 = w.journal.append(record("or-1", 100), live());
++        Journal.Appended r2 = afterTheRoundOf(w, "or-1", "or-2");   // segment 3: never paired, single
++        assertEquals(PREOPENED + 1, r2.ref().segment());
++
++        w.copies.copied(PREOPENED, end(r1));
++        w.copies.copied(FIRST, end(r0));
++        await(r0.forced());
++        await(r1.forced());
++        await(r2.forced());
++    }
++
++    // ------------------------------------------------------------------------------------------------ T4
++
++    @Test
++    void pendingUntilBothBytesLeaveTheBoundAtCompletionNotAtTheForce() throws Exception {
++        World w = replicated(quiet("pending").recordMax(8192).pendingBytes(8192));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(sized("pu-0", 5000), live());
++        Journal.Appended f = afterTheRoundOf(w, "pu-0", "pu-f");   // 5000 + 168 pending: under 8192
++        assertFalse(r0.forced().isComplete());
++
++        int waits = timer.withDelay(WAIT).size();
++        Outcome<Journal.Appended> next = onVirtual(() -> w.journal.append(sized("pu-1", 5000), live()));
++        untilTakenOrWaiting(next, waits, "pu-1");
++        assertFalse(next.done(), "pu-0 is forced but not acknowledged: its 5000 bytes still count, 5000 more wait under 8192");
++
++        w.copies.copied(FIRST, end(f));
++        await(r0.forced());
++        Journal.Appended taken = next.join();
++        assertEquals(end(f), taken.ref().position(), "taken right after the follower once pu-0 and it completed");
++        assertEquals(START, clock.instant(), "with no clock advance");
++        LoggedTimer.Scheduled its = timer.withDelay(WAIT).get(waits);
++        assertTrue(its.cancelled.get() && !its.fired.get(), "its wait is cancelled once room was found: " + timer.log());
++    }
++
++    // ------------------------------------------------------------------------------------------------ T5
++
++    @Test
++    void frozenAtFirstRecordPairHandsOutTheCurrentAndThePreopenedSegment() throws Exception {
++        World w = replicated(quiet("pair").segmentRecords(1));
++        List<Handed> handed = w.repl.pairUntil(w.copies, Set.of(FIRST, PREOPENED));
++        assertEquals(Set.of(FIRST, PREOPENED), numbers(handed), "the current segment at 0 records and the pre-opened one, nothing else");
++        for (Handed h : handed) {
++            assertEquals(HEADER, h.header().length, "segment " + h.n() + "'s header");
++            assertArrayEquals(fileBytes(w.dir, h.n(), 0, HEADER), h.header(), "segment " + h.n() + "'s header as its file holds it");
++            assertEquals(64L << 20, h.length(), "OPEN length: SEGMENT_BYTES 64 MiB is above header + longest record (393 325)");
++        }
++
++        Journal.Appended r0 = w.journal.append(record("pa-0", 100), live());
++        Journal.Appended r1 = w.journal.append(record("pa-1", 100), live());
++        assertEquals(FIRST, r0.ref().segment());
++        assertEquals(PREOPENED, r1.ref().segment());
++        afterTheRoundOf(w, "pa-1", "pa-f");
++        JournalPeerLostException e = lost("segments 1 and 2");
++        w.copies.failed(Set.of(FIRST, PREOPENED), e);
++        assertSame(e, failureOf(r0.forced()), "segment 1 was paired: pa-0 waited for its copy");
++        assertSame(e, failureOf(r1.forced()), "segment 2 was paired: pa-1 waited for its copy");
++    }
++
++    @Test
++    void frozenAtFirstRecordASegmentReservedBeforeAnyPairIsSingleForGood() throws Exception {
++        World w = replicated(quiet("frozen-single"));
++        Journal.Appended r0 = w.journal.append(record("fz-0", 100), live());
++        assertEquals(FIRST, r0.ref().segment());
++        await(r0.forced());   // single: its force alone completes it
++
++        assertFalse(numbers(handOut(w.copies)).contains(FIRST), "a segment holding a record is never handed out");
++        Journal.Appended r1 = w.journal.append(record("fz-1", 100), live());
++        assertEquals(FIRST, r1.ref().segment());
++        await(r1.forced());
++        assertFalse(numbers(handOut(w.copies)).contains(FIRST), "nor later: its mode was fixed at its first reservation");
++        assertEquals(1, w.copies.singleSegments());
++    }
++
++    @Test
++    void frozenAtFirstRecordAPairedSegmentIsNotHandedOutAgainOnceItHoldsARecord() throws Exception {
++        World w = replicated(quiet("frozen-paired"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(record("fp-0", 100), live());
++        assertEquals(FIRST, r0.ref().segment());
++        assertFalse(numbers(handOut(w.copies)).contains(FIRST), "segment 1 holds a record: pair hands it out no more");
++    }
++
++    /** OPEN length = max(SEGMENT_BYTES, header 49 + longest record): longest = 46 + 2 × 65 535 + RECORD_MAX + 16 per MiB chunk. */
++    @ParameterizedTest
++    @CsvSource({
++            "67108864, 262144, 67108864",   // 64 MiB above 49 + 131 116 + 262 144 + 16 = 393 325
++            "65536,    4096,   135277"      // 49 + 131 116 + 4096 + 16 = 135 277 above 64 KiB
++    })
++    void frozenAtFirstRecordPairingLengthIsTheSegmentSizeOrHeaderAndLongestRecord(long segmentBytes, long recordMax, long length) throws Exception {
++        World w = replicated(quiet("length-" + segmentBytes).segmentBytes(segmentBytes).recordMax(recordMax));
++        List<Handed> handed = w.repl.pairUntil(w.copies, Set.of(FIRST));
++        for (Handed h : handed) assertEquals(length, h.length(), "segment " + h.n());
++    }
++
++    // ------------------------------------------------------------------------------------------------ T6
++
++    @Test
++    void hookBesideTheForceWroteAndSealedCarryThePairedBytesBesideTheirForces() throws Exception {
++        World w = replicated(quiet("hooks").segmentRecords(2));
++        Journal.Appended s0 = w.journal.append(record("hs-0", 300), live());   // before any pair: segment 1 is single
++        Journal.Appended s1 = w.journal.append(record("hs-1", 400), live());
++        w.repl.pairUntil(w.copies, Set.of(PREOPENED));
++        Journal.Appended p0 = w.journal.append(record("hp-0", 500), live());
++        Journal.Appended p1 = w.journal.append(record("hp-1", 600), live());
++        assertEquals(FIRST, s1.ref().segment());
++        assertEquals(PREOPENED, p0.ref().segment());
++        assertEquals(PREOPENED, p1.ref().segment());
++        await(s0.forced());
++        await(s1.forced());
++        until(() -> !w.repl.sealedOf(PREOPENED).isEmpty(), () -> "segment 2, rolled by count, is sealed");
++        until(() -> w.repl.preopenedNumbers().contains(PREOPENED + 1), () -> "the pre-open of segment 3 is told: " + w.repl.preopened);
++        w.copies.copied(PREOPENED, end(p1));
++        await(p0.forced());
++        await(p1.forced());
++        assertEquals(List.of(), w.repl.errors);
++
++        Set<Long> wroteSegments = new TreeSet<>();
++        for (Wrote x : w.repl.wrote) wroteSegments.add(x.n());
++        assertEquals(Set.of(PREOPENED), wroteSegments, "wrote is called for the paired segment only, never for single segment 1");
++
++        Path seg2 = segmentFile(w.dir, PREOPENED);
++        List<Wrote> ofTwo = new ArrayList<>(w.repl.wroteOf(PREOPENED));
++        ofTwo.sort(Comparator.comparingLong(Wrote::pos));
++        long at = HEADER;
++        for (Wrote x : ofTwo) {
++            assertEquals(at, x.pos(), "the wrote calls tile segment 2 from its header on: " + ofTwo);
++            at = x.end();
++            assertArrayEquals(fileBytes(w.dir, PREOPENED, x.pos(), x.end()), x.bytes(), "wrote carries the bytes the file holds at " + x.pos());
++            Op write = w.files.ops().stream()
++                    .filter(op -> op.kind == Kind.WRITE && op.file.equals(seg2) && op.data != null && HeldFiles.indexOf(op.data, x.bytes(), 0) >= 0)
++                    .findFirst().orElseThrow(() -> new AssertionError("no write carried the bytes of " + x + ": " + w.files.describe()));
++            assertTrue(write.returnedOk() && write.returned <= x.stamp(), "wrote(" + x.pos() + ") came after its write returned: " + write);
++            Op force = w.files.ops().stream().filter(op -> op.kind == Kind.FORCE && op.file.equals(seg2) && op.entered > write.returned)
++                    .findFirst().orElseThrow(() -> new AssertionError("no force after " + write));
++            assertTrue(force.entered > x.stamp(), "wrote(" + x.pos() + ") came before the force of its round: " + force + ", hook at #" + x.stamp());
++        }
++        assertEquals(end(p1), at, "every record byte of segment 2 was handed to wrote, none twice");
++
++        List<Sealed> seals = w.repl.sealedOf(PREOPENED);
++        assertEquals(1, seals.size(), "sealed once: " + seals);
++        Sealed s = seals.getFirst();
++        assertEquals(end(p1), s.pos(), "the footer begins after the last record");
++        assertEquals(Files.size(seg2), s.end(), "the sealed end is the file's end");
++        assertArrayEquals(fileBytes(w.dir, PREOPENED, s.pos(), s.end()), s.footer(), "sealed carries the footer and trailer as written");
++        Op footer = w.files.ops().stream()
++                .filter(op -> op.kind == Kind.WRITE && op.file.equals(seg2) && op.entered > ofTwo.getLast().stamp())
++                .findFirst().orElseThrow(() -> new AssertionError("no footer write: " + w.files.describe()));
++        assertTrue(w.files.ops().stream().anyMatch(op -> op.kind == Kind.FORCE && op.file.equals(seg2) && op.entered > footer.returned
++                        && op.returnedOk() && op.returned <= s.stamp()),
++                "sealed came after the seal's force returned (hook at #" + s.stamp() + "): " + w.files.describe());
++
++        Path seg3 = segmentFile(w.dir, PREOPENED + 1);
++        ScriptedReplication.Preopened p3 = w.repl.preopened.stream().filter(p -> p.n() == PREOPENED + 1).findFirst().orElseThrow();
++        assertTrue(w.files.ops().stream().anyMatch(op -> op.kind == Kind.FORCE && op.file.equals(seg3) && op.returnedOk() && op.returned <= p3.stamp()),
++                "preopened(3) came after segment 3's header was forced: " + w.files.describe());
++    }
++
++    @Test
++    void hookBesideTheForceNoHookRunsUnderTheJournalLock() throws Exception {
++        World w = replicated(quiet("unlocked").segmentRecords(2));
++        ScriptedReplication repl = w.repl;
++        AtomicBoolean appendedOnce = new AtomicBoolean();
++        List<Journal.Appended> fromHook = new CopyOnWriteArrayList<>();
++        List<Handed> handedInHook = new CopyOnWriteArrayList<>();
++        repl.onWrote = x -> {
++            if (appendedOnce.compareAndSet(false, true)) {
++                repl.elsewhere("an append in wrote(" + x.n() + ")", INNER, () -> fromHook.add(w.journal.append(record("hk-a", 100), live())));
++            }
++            repl.elsewhere("copied(" + x.n() + ", " + x.end() + ") in wrote", INNER, () -> {
++                w.copies.copied(x.n(), x.end());
++                return null;
++            });
++        };
++        repl.onSealed = s -> repl.elsewhere("copied(" + s.n() + ", " + s.end() + ") in sealed", INNER, () -> {
++            w.copies.copied(s.n(), s.end());
++            return null;
++        });
++        repl.onPreopened = p -> repl.elsewhere("pair in preopened(" + p.n() + ")", INNER, () -> handedInHook.addAll(handOut(w.copies)));
++        repl.pairUntil(w.copies, Set.of(FIRST));
++
++        Journal.Appended r0 = w.journal.append(record("hk-0", 100), live());
++        until(() -> fromHook.size() == 1 || !repl.stuck.isEmpty(), () -> "the append made in wrote returned");
++        assertEquals(List.of(), repl.stuck, "a hook that appends or calls Copies from another thread is not stuck behind the journal's lock");
++        Journal.Appended a = fromHook.getFirst();
++        assertEquals(FIRST, a.ref().segment(), "the hook's append is segment 1's second record");
++        await(r0.forced());
++        await(a.forced());
++        until(() -> !repl.sealedOf(FIRST).isEmpty(), () -> "segment 1 is sealed");
++
++        Journal.Appended r1 = w.journal.append(record("hk-1", 100), live());   // segment 2: the writer moves on, 3 is pre-opened
++        assertEquals(PREOPENED, r1.ref().segment());
++        until(() -> numbers(handedInHook).contains(PREOPENED + 1) || !repl.stuck.isEmpty(),
++                () -> "pair, called in preopened(3), hands out segment 3: " + handedInHook + " / " + repl.preopened);
++        assertEquals(List.of(), repl.stuck, "no hook is stuck: " + repl.stuck);
++        assertEquals(List.of(), repl.errors);
++        assertTrue(repl.wroteOf(FIRST).size() >= 2, "wrote ran for hk-0 and hk-a: " + repl.wrote);
++    }
++
++    // ------------------------------------------------------------------------------------------------ T7
++
++    @Test
++    void singleCompletesTheForcedRecordsOfItsSegments() throws Exception {
++        World w = replicated(quiet("single"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(record("sg-0", 100), live());
++        Journal.Appended r1 = w.journal.append(record("sg-1", 200), live());
++        Journal.Appended f = afterTheRoundOf(w, "sg-1", "sg-f");
++        assertFalse(r0.forced().isComplete());
++        assertFalse(r1.forced().isComplete());
++        assertEquals(0, w.copies.singleSegments(), "a paired segment is not single");
++        assertEquals(0, w.copies.singleBytes());
++
++        w.copies.single(Set.of(FIRST));
++        await(r0.forced());
++        await(r1.forced());
++        await(f.forced());
++        assertEquals(1, w.copies.singleSegments(), "segment 1 turned single");
++        assertTrue(w.copies.singleBytes() >= r0.ref().length() + r1.ref().length(), "its records' bytes count as single: " + w.copies.singleBytes());
++    }
++
++    @Test
++    void singleSegmentsAreCountedAndTheirTransitionLoggedOnce() throws Exception {
++        World base = plain(quiet("single-count").segmentRecords(1));
++        try (LogCapture log = new LogCapture()) {
++            ScriptedReplication repl = new ScriptedReplication(base.files::now);
++            Journal.Copies copies = base.journal.replicate(repl);
++            assertEquals(0, copies.singleSegments(), "no segment is single before its first record");
++            Journal.Appended r0 = base.journal.append(record("sc-0", 100), live());   // never paired: single
++            Journal.Appended r1 = base.journal.append(record("sc-1", 200), live());   // the next segment, never paired either
++            assertNotEquals(r0.ref().segment(), r1.ref().segment());
++            await(r0.forced());
++            await(r1.forced());
++
++            assertEquals(2, copies.singleSegments(), "two frozen-single segments while a Replication is set");
++            assertTrue(copies.singleBytes() >= r0.ref().length() + r1.ref().length(), "their records' bytes count: " + copies.singleBytes());
++            assertEquals(1, singleLines(log).size(), "the transition to single is logged once, not per segment: " + log.lines());
++        }
++    }
++
++    // ------------------------------------------------------------------------------------------------ T8
++
++    @Test
++    void failedFailsTheWaitingRecordsOfItsSegmentsAndFreesTheirBytes() throws Exception {
++        World w = replicated(quiet("failed").segmentRecords(2).recordMax(8192).pendingBytes(8192));
++        w.repl.pairUntil(w.copies, Set.of(FIRST, PREOPENED));
++        Journal.Appended r0 = w.journal.append(sized("fl-0", 2000), live());
++        Journal.Appended r1 = w.journal.append(sized("fl-1", 2000), live());
++        Journal.Appended r2 = w.journal.append(sized("fl-2", 2000), live());
++        assertEquals(FIRST, r1.ref().segment());
++        assertEquals(PREOPENED, r2.ref().segment());
++        Journal.Appended f = afterTheRoundOf(w, "fl-2", "fl-f");   // segment 2's second record: 6168 bytes pending
++
++        int waits = timer.withDelay(WAIT).size();
++        Outcome<Journal.Appended> next = onVirtual(() -> w.journal.append(sized("fl-w", 4000), live()));
++        untilTakenOrWaiting(next, waits, "fl-w");
++        assertFalse(next.done(), "4000 more do not fit under 8192 beside 6168 pending");
++
++        Map<String, Thread> completedOn = new ConcurrentHashMap<>();
++        r0.forced().onComplete(ar -> completedOn.put("fl-0", Thread.currentThread()));
++        r1.forced().onComplete(ar -> completedOn.put("fl-1", Thread.currentThread()));
++        JournalPeerLostException e = lost("segment 1");
++        Thread caller = onVirtual(() -> {
++            w.copies.failed(Set.of(FIRST), e);
++            return Thread.currentThread();
++        }).join();
++        assertSame(e, failureOf(r0.forced()), "a waiting record of segment 1 fails with the loss, retryable");
++        assertSame(e, failureOf(r1.forced()));
++        until(() -> completedOn.size() == 2, () -> "both listeners ran");
++        for (Thread t : completedOn.values()) {
++            assertTrue(t.isVirtual() && t != caller, "a failure completes on a fresh virtual thread, not failed()'s caller: " + t);
++        }
++
++        Journal.Appended taken = next.join();   // the failed records' 4000 bytes left the bound
++        assertNotNull(taken.ref());
++        assertFalse(r2.forced().isComplete(), "segment 2 is not in the loss: fl-2 still waits for its own copy");
++        w.copies.copied(PREOPENED, end(f));
++        await(r2.forced());
++        await(f.forced());
++    }
++
++    // ------------------------------------------------------------------------------------------------ T9
++
++    @Test
++    void sealEarlySealsTheActiveSegmentAndTheNextAppendGoesToANewOne() throws Exception {
++        World w = replicated(quiet("seal-early"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(record("se-0", 100), live());
++        assertEquals(FIRST, r0.ref().segment());
++        assertEquals(Optional.empty(), w.journal.index(FIRST));
++
++        w.copies.sealEarly(FIRST);
++        Journal.Appended r1 = w.journal.append(record("se-1", 100), live());
++        assertTrue(r1.ref().segment() > FIRST, "the next append goes to a new segment: " + r1.ref());
++        until(() -> indexed(w.journal, FIRST), () -> "segment 1 is sealed");
++        List<JournalIndexEntry> entries = w.journal.index(FIRST).orElseThrow();
++        assertEquals(List.of(r0.ref()), entries.stream().map(JournalIndexEntry::ref).toList(), "segment 1 sealed with se-0 alone");
++    }
++
++    @Test
++    void sealEarlyOfASegmentWithoutRecordsDoesNothing() throws Exception {
++        World w = replicated(quiet("seal-early-empty"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        w.copies.sealEarly(FIRST);
++        Journal.Appended r0 = w.journal.append(record("sn-0", 100), live());
++        assertEquals(FIRST, r0.ref().segment(), "an empty segment never rolls: the next append still goes to segment 1");
++        until(() -> w.files.forcedPast("sn-0"), () -> "sn-0 is forced");
++        assertEquals(Optional.empty(), w.journal.index(FIRST), "segment 1 was not sealed");
++    }
++
++    // ------------------------------------------------------------------------------------------------ T10
++
++    @Test
++    void fencedFailsTheJournal() throws Exception {
++        World w = replicated(quiet("fenced"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(record("fn-0", 100), live());
++        afterTheRoundOf(w, "fn-0", "fn-f");
++        assertFalse(r0.forced().isComplete());
++
++        IllegalStateException fence = new IllegalStateException("fenced (test): the node's lease is gone");
++        w.copies.fenced(fence);
++        Throwable failed = failureOf(r0.forced());
++        assertInstanceOf(JournalFailedException.class, failed, "a record waiting for its copy fails with the journal");
++        assertSame(fence, failed.getCause(), "the journal failed because of the fence");
++        assertTrue(w.journal.isFailed());
++        assertInstanceOf(JournalFailedException.class, appendFailure(w.journal, record("fn-1", 100)), "a later append is refused");
++    }
++
++    // ------------------------------------------------------------------------------------------------ T11
++
++    @Test
++    void completionRunsOnAFreshVirtualThreadNotTheWriterNorASealer() throws Exception {
++        World w = replicated(quiet("threads-hooks").segmentRecords(1));
++        ScriptedReplication repl = w.repl;
++        // segment 1's copy arrives in wrote, on the writer, before its force; segment 2's in sealed, on its sealer, after it
++        repl.onWrote = x -> {
++            if (x.n() == FIRST) w.copies.copied(x.n(), x.end());
++        };
++        repl.onSealed = s -> {
++            if (s.n() == PREOPENED) w.copies.copied(s.n(), s.end());
++        };
++        repl.pairUntil(w.copies, Set.of(FIRST, PREOPENED));
++        Map<String, Thread> completedOn = new ConcurrentHashMap<>();
++        List<Journal.Appended> all = new ArrayList<>();
++        for (String id : List.of("tw-0", "tw-1", "tw-2")) {   // segments 1, 2 and 3 (never paired: single)
++            Journal.Appended a = w.journal.append(record(id, 100), live());
++            a.forced().onComplete(ar -> completedOn.put(id, Thread.currentThread()));
++            all.add(a);
++        }
++        for (Journal.Appended a : all) await(a.forced());
++        until(() -> completedOn.size() == 3, () -> "every listener ran");
++        assertEquals(List.of(), repl.errors);
++
++        Thread writer = w.files.firstWrite("tw-0").thread;
++        Set<Thread> hookCallers = ConcurrentHashMap.newKeySet();
++        hookCallers.add(writer);
++        for (Wrote x : repl.wrote) hookCallers.add(x.thread());
++        for (Sealed s : repl.sealed) hookCallers.add(s.thread());
++        for (ScriptedReplication.Preopened p : repl.preopened) hookCallers.add(p.thread());
++        assertFalse(repl.sealedOf(PREOPENED).isEmpty(), "segment 2's copy came from its sealer");
++        completedOn.forEach((id, t) -> {
++            assertTrue(t.isVirtual(), id + " completed on a virtual thread: " + t);
++            assertFalse(hookCallers.contains(t), id + " completed on " + t + ", a writer, sealer or hook caller thread: " + hookCallers);
++        });
++    }
++
++    @Test
++    void completionRunsOffTheThreadOfTheCopiesCall() throws Exception {
++        World w = replicated(quiet("threads-calls"));
++        w.repl.pairUntil(w.copies, Set.of(FIRST));
++        Journal.Appended r0 = w.journal.append(record("tc-0", 100), live());
++        Journal.Appended r1 = w.journal.append(record("tc-1", 100), live());
++        Journal.Appended f = afterTheRoundOf(w, "tc-1", "tc-f");
++        Map<String, Thread> completedOn = new ConcurrentHashMap<>();
++        r0.forced().onComplete(ar -> completedOn.put("tc-0", Thread.currentThread()));
++        r1.forced().onComplete(ar -> completedOn.put("tc-1", Thread.currentThread()));
++
++        Thread copier = onVirtual(() -> {
++            w.copies.copied(FIRST, end(r0));
++            return Thread.currentThread();
++        }).join();
++        await(r0.forced());
++        until(() -> w.files.forcedPast("tc-f"), () -> "tc-f is forced");
++        Thread singler = onVirtual(() -> {
++            w.copies.single(Set.of(FIRST));
++            return Thread.currentThread();
++        }).join();
++        await(r1.forced());
++        await(f.forced());
++        until(() -> completedOn.size() == 2, () -> "both listeners ran");
++        assertTrue(completedOn.get("tc-0").isVirtual() && completedOn.get("tc-0") != copier,
++                "tc-0 completed off copied()'s caller: " + completedOn.get("tc-0"));
++        assertTrue(completedOn.get("tc-1").isVirtual() && completedOn.get("tc-1") != singler,
++                "tc-1 completed off single()'s caller: " + completedOn.get("tc-1"));
++    }
++}
+diff --git a/flottila-runtime/src/test/java/io/flottila/runtime/journal/ScriptedReplication.java b/flottila-runtime/src/test/java/io/flottila/runtime/journal/ScriptedReplication.java
+new file mode 100644
+index 0000000..8f482de
+--- /dev/null
++++ b/flottila-runtime/src/test/java/io/flottila/runtime/journal/ScriptedReplication.java
+@@ -0,0 +1,197 @@
++package io.flottila.runtime.journal;
++
++import java.nio.ByteBuffer;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.time.Duration;
++import java.util.ArrayList;
++import java.util.Arrays;
++import java.util.List;
++import java.util.Set;
++import java.util.TreeSet;
++import java.util.concurrent.Callable;
++import java.util.concurrent.CompletableFuture;
++import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.concurrent.ExecutionException;
++import java.util.concurrent.TimeUnit;
++import java.util.concurrent.TimeoutException;
++import java.util.function.Consumer;
++import java.util.function.LongSupplier;
++
++/**
++ * The journal's port to its peer copy, scripted by a case (CORE-5b2a1, Q1: a hand-written fake at the journal's port, no
++ * mocking library). Every hook is recorded with the calling thread and a stamp taken on entry ({@link HeldFiles#now()} when
++ * the case gives one: every file op entered later has a larger sequence number), the bytes it was given copied at once
++ * (through duplicates: the journal's buffers are not moved). A case scripts a reaction per hook; a reaction that throws is
++ * recorded in {@link #errors} (asserted empty by the case), never thrown into the journal's thread.
++ */
++final class ScriptedReplication implements Replication {
++
++    /** The holder every case pairs with. */
++    static final String HOLDER = "node-2";
++
++    record Preopened(long n, Thread thread, long stamp) { }
++
++    record Wrote(long n, long pos, byte[] bytes, Thread thread, long stamp) {
++        long end() { return pos + bytes.length; }
++    }
++
++    record Sealed(long n, long pos, byte[] footer, long end, Thread thread, long stamp) { }
++
++    /** A segment {@link Journal.Copies#pair pair} handed out: its number, its header's bytes and the OPEN length. */
++    record Handed(long n, byte[] header, long length) { }
++
++    final List<Preopened> preopened = new CopyOnWriteArrayList<>();
++    final List<Wrote> wrote = new CopyOnWriteArrayList<>();
++    final List<Sealed> sealed = new CopyOnWriteArrayList<>();
++    /** Reactions run elsewhere that did not return within their bound, or failed: a hook ran under a lock they need. */
++    final List<String> stuck = new CopyOnWriteArrayList<>();
++    /** Reactions that threw on the hook's own thread. */
++    final List<Throwable> errors = new CopyOnWriteArrayList<>();
++
++    private final LongSupplier stamps;
++    volatile Consumer<Preopened> onPreopened = p -> { };
++    volatile Consumer<Wrote> onWrote = w -> { };
++    volatile Consumer<Sealed> onSealed = s -> { };
++
++    ScriptedReplication(LongSupplier stamps) { this.stamps = stamps; }
++
++    ScriptedReplication() { this(() -> 0L); }
++
++    @Override public void preopened(long n) {
++        Preopened p = new Preopened(n, Thread.currentThread(), stamps.getAsLong());
++        preopened.add(p);
++        react(() -> onPreopened.accept(p));
++    }
++
++    @Override public void wrote(long n, long pos, List<ByteBuffer> bytes) {
++        long stamp = stamps.getAsLong();
++        int length = 0;
++        List<byte[]> parts = new ArrayList<>(bytes.size());
++        for (ByteBuffer b : bytes) {
++            ByteBuffer d = b.duplicate();
++            byte[] part = new byte[d.remaining()];
++            d.get(part);
++            parts.add(part);
++            length += part.length;
++        }
++        byte[] all = new byte[length];
++        int at = 0;
++        for (byte[] part : parts) {
++            System.arraycopy(part, 0, all, at, part.length);
++            at += part.length;
++        }
++        Wrote w = new Wrote(n, pos, all, Thread.currentThread(), stamp);
++        wrote.add(w);
++        react(() -> onWrote.accept(w));
++    }
++
++    @Override public void sealed(long n, long pos, ByteBuffer footer, long end) {
++        long stamp = stamps.getAsLong();
++        ByteBuffer d = footer.duplicate();
++        byte[] f = new byte[d.remaining()];
++        d.get(f);
++        Sealed s = new Sealed(n, pos, f, end, Thread.currentThread(), stamp);
++        sealed.add(s);
++        react(() -> onSealed.accept(s));
++    }
++
++    private void react(Runnable reaction) {
++        try {
++            reaction.run();
++        } catch (RuntimeException | Error e) {
++            errors.add(e);
++        }
++    }
++
++    List<Wrote> wroteOf(long n) { return wrote.stream().filter(w -> w.n() == n).toList(); }
++
++    List<Sealed> sealedOf(long n) { return sealed.stream().filter(s -> s.n() == n).toList(); }
++
++    Set<Long> preopenedNumbers() {
++        Set<Long> s = new TreeSet<>();
++        for (Preopened p : preopened) s.add(p.n());
++        return s;
++    }
++
++    /**
++     * Runs {@code reaction} on a virtual thread of its own and waits for it at most {@code bound} (a failure detector, never a
++     * timing): one that does not return is recorded in {@link #stuck} and left behind, so a hook called under a lock the
++     * reaction takes fails the case instead of hanging it.
++     */
++    void elsewhere(String what, Duration bound, Callable<?> reaction) {
++        CompletableFuture<Object> done = new CompletableFuture<>();
++        Thread.ofVirtual().name("hook-reaction").start(() -> {
++            try {
++                done.complete(reaction.call());
++            } catch (Throwable t) {
++                done.completeExceptionally(t);
++            }
++        });
++        try {
++            done.get(bound.toMillis(), TimeUnit.MILLISECONDS);
++        } catch (TimeoutException e) {
++            stuck.add(what + " from another thread did not return within " + bound + ": the hook's caller holds a lock it takes");
++        } catch (ExecutionException e) {
++            stuck.add(what + " from another thread failed: " + e.getCause());
++            errors.add(e.getCause());
++        } catch (InterruptedException e) {
++            Thread.currentThread().interrupt();
++            stuck.add(what + " was interrupted");
++        }
++    }
++
++    /** One {@code pair} call: what it handed out, its header bytes copied. */
++    static List<Handed> handOut(Journal.Copies copies) {
++        List<Handed> out = new ArrayList<>();
++        for (var p : copies.pair(HOLDER)) {
++            ByteBuffer d = p.header().duplicate();
++            byte[] h = new byte[d.remaining()];
++            d.get(h);
++            out.add(new Handed(p.n(), h, p.length()));
++        }
++        return out;
++    }
++
++    /**
++     * Pairs until every segment of {@code want} was handed out, as the Replicator does: one {@code pair} at once and one more
++     * after each pre-open this fake is told of (a pre-open that ended before {@code replicate} is found by the first call).
++     * Bounded by {@link JournalFixture#BOUND}.
++     */
++    List<Handed> pairUntil(Journal.Copies copies, Set<Long> want) {
++        List<Handed> handed = new ArrayList<>();
++        int seen = preopened.size();
++        handed.addAll(handOut(copies));
++        long deadline = System.nanoTime() + JournalFixture.BOUND.toNanos();
++        while (!numbers(handed).containsAll(want)) {
++            if (System.nanoTime() - deadline > 0) {
++                throw new AssertionError("pair never handed out " + want + " within " + JournalFixture.BOUND + ": handed " + numbers(handed)
++                        + ", pre-opens reported " + preopenedNumbers());
++            }
++            int now = preopened.size();
++            if (now > seen) {
++                seen = now;
++                handed.addAll(handOut(copies));
++            }
++            Thread.onSpinWait();
++        }
++        return handed;
++    }
++
++    static Set<Long> numbers(List<Handed> handed) {
++        Set<Long> s = new TreeSet<>();
++        for (Handed h : handed) s.add(h.n());
++        return s;
++    }
++
++    /** The bytes {@code [from, to)} of segment {@code n}'s file under {@code dir}. */
++    static byte[] fileBytes(Path dir, long n, long from, long to) throws java.io.IOException {
++        byte[] all = Files.readAllBytes(segmentFile(dir, n));
++        if (to > all.length) throw new AssertionError("segment " + n + " holds " + all.length + " bytes, not " + to);
++        return Arrays.copyOfRange(all, (int) from, (int) to);
++    }
++
++    static Path segmentFile(Path dir, long n) {
++        return dir.resolve("segments").resolve(n + ".seg").toAbsolutePath().normalize();
++    }
++}
