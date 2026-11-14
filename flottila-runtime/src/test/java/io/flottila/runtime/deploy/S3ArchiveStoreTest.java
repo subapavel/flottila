@@ -17,7 +17,9 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P1-09c3a (D-070), beside the contract {@code S3ArchiveStoreIT} runs: a put of a file that is not there is the file system's
@@ -39,13 +41,27 @@ class S3ArchiveStoreTest {
         try (S3Client nowhere = S3Client.builder().region(Region.EU_CENTRAL_1).endpointOverride(URI.create("http://127.0.0.1:" + closedPort()))
                 .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIAEXAMPLE", "secret-example")))
                 .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build()) {
-            ArchiveStore store = new S3ArchiveStore(nowhere, "flottila-archives", "fleet");
+            ArchiveStore store = new S3ArchiveStore(nowhere, "flottila-archives", "fleet", 64L << 20);
             Path absent = tmp.resolve("absent.zip");
             NoSuchFileException missing = assertThrows(NoSuchFileException.class, () -> OnVirtualThread.call(() -> {
                 store.put("ab".repeat(32), absent);
                 return null;
             }));
             assertEquals(absent.toString(), missing.getFile(), "the file the put was given");
+        }
+    }
+
+    @Test
+    void aCapBelowOneIsRefusedAtConstructionAndOneIsAccepted() throws Exception {
+        try (S3Client nowhere = S3Client.builder().region(Region.EU_CENTRAL_1).endpointOverride(URI.create("http://127.0.0.1:" + closedPort()))
+                .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create("AKIAEXAMPLE", "secret-example")))
+                .forcePathStyle(true).httpClientBuilder(UrlConnectionHttpClient.builder()).build()) {
+            for (long bad : new long[] {0L, -1L}) {
+                IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                        () -> new S3ArchiveStore(nowhere, "flottila-archives", "fleet", bad), "cap " + bad);
+                assertTrue(String.valueOf(e.getMessage()).contains(String.valueOf(bad)), "the refusal names " + bad + ": " + e.getMessage());
+            }
+            assertNotNull(new S3ArchiveStore(nowhere, "flottila-archives", "fleet", 1L), "a cap of 1 is the smallest legal");
         }
     }
 }

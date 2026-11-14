@@ -238,7 +238,7 @@ public final class Deployments {
     public Deployments(NodeConfig config, Runtime runtime, Map<String, Component> components, Clock clock, Timer timer, List<StepFactory> steps,
                        List<Expressions> languages, MessageStore messages, Dlq dlq, WorkQueue queue, Meter meter) {
         this(config, runtime, components, clock, timer, steps, languages, messages, dlq, queue, meter, new InMemoryDeploymentStore(),
-                new DirArchiveStore(config.archives().dir()));
+                new DirArchiveStore(config.archives().dir(), config.maxPackageBytes()));
     }
 
     /**

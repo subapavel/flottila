@@ -100,7 +100,7 @@ class DeploymentsPollerLeaseTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
         CountingQueue queue = new CountingQueue(rt.clock());
         deployments = new Deployments(config, runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq, queue, () -> 0L,
-                new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir()), new SequentialIntake(messages, queue), leases);
+                new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir(), 64L << 20), new SequentialIntake(messages, queue), leases);
     }
 
     @AfterEach

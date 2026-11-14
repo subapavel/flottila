@@ -122,7 +122,7 @@ class DeploymentsTargetsTest {
     }
 
     Peer node(String id) {
-        return new Peer(id, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve(id + "-archives")));
+        return new Peer(id, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve(id + "-archives"), 64L << 20));
     }
 
     Envelope envelope(String flow) {

@@ -513,7 +513,7 @@ class DeploymentsSecretsTest {
     @Test
     void aRestoreWithoutTheVariableListsThePackageFailedNamingIt() throws Exception {
         InMemoryDeploymentStore records = new InMemoryDeploymentStore();
-        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"));
+        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"), 64L << 20);
         Node first = new Node("node-1", "dev", Map.of("FLOTTILA_SECRET_PARTNER_URL", "rec://first-value"), records, archives);
         first.deploy(one("restored", url("rec://inbound"), url("secret://partner-url")));
         for (Map<String, Object> options : first.produced("partner")) assertEquals("rec://first-value", options.get("url"));
@@ -547,7 +547,7 @@ class DeploymentsSecretsTest {
         String partnerValue = "rec://partner-V4LUE-7f3a";
         String inboundValue = "inbound-V4LUE-9c1d";
         InMemoryDeploymentStore records = new InMemoryDeploymentStore();
-        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"));
+        DirArchiveStore archives = new DirArchiveStore(tmp.resolve("pool-archives"), 64L << 20);
         Node n = new Node("node-1", "dev", Map.of("FLOTTILA_SECRET_PARTNER_URL", partnerValue, "FLOTTILA_SECRET_INBOUND", inboundValue),
                 records, archives);
 

@@ -78,7 +78,7 @@ class DeploymentsDedupeTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
         InMemoryMessageStore messages = new InMemoryMessageStore();
         deployments = new Deployments(config, runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, new InMemoryDlq(),
-                new CountingQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir()), intake,
+                new CountingQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir(), 64L << 20), intake,
                 new InMemoryPollerLeases(rt.clock()));
     }
 

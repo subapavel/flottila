@@ -182,12 +182,12 @@ public final class Node implements AutoCloseable {
             messages = new PgMessageStore(pool, timer, BatchingWriter.Options.defaults());
             PgDlq dlq = new PgDlq(pool);
             PgWorkQueue work = new PgWorkQueue(pool);
-            ArchiveStore archives = new DirArchiveStore(config.archives().dir());
+            ArchiveStore archives = new DirArchiveStore(config.archives().dir(), config.maxPackageBytes());
             if (config.s3().isPresent()) {
                 NodeConfig.S3 settings = config.s3().get();
                 S3Client s3 = s3Client(settings);
                 closeS3 = s3::close;
-                archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix());
+                archives = new S3ArchiveStore(s3, settings.bucket(), settings.prefix(), config.maxPackageBytes());
             }
             PollerLeases leases;
             if (config.leases().valkey().isPresent()) {

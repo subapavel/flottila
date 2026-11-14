@@ -108,7 +108,7 @@ class DeploymentsListenerTest {
 
     /** A node of its own records and archive directory, serving {@link #doors} ({@value Doors#SCHEME}) and {@link #gates} ({@value #GATE}). */
     Deployments node(Map<String, String> env) {
-        return node(env, new InMemoryDeploymentStore(), new DirArchiveStore(Path.of(env.get("FLOTTILA_DATA_DIR")).resolve("archives")), doors, gates);
+        return node(env, new InMemoryDeploymentStore(), new DirArchiveStore(Path.of(env.get("FLOTTILA_DATA_DIR")).resolve("archives"), 64L << 20), doors, gates);
     }
 
     /** {@code name} 1.0.0 with only its out endpoint {@code partner}. */
@@ -411,7 +411,7 @@ class DeploymentsListenerTest {
     @Test
     void aFailedFlowOrFailedPackageHoldsNoPort() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
+        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"), 64L << 20);
         Deployments first = node(env("node-a"), rows, bucket, new Doors());
         deploy(first, listening(listening(pkg("alpha"), "a1", port(8080)), "a2", port(8082)));
         String omega = deploy(first, listening(pkg("omega"), "w", port(8083))).pkg().archiveSha256();
@@ -435,7 +435,7 @@ class DeploymentsListenerTest {
     @Test
     void aRestoredPackageClashingWithOneRestoredBeforeIsFailed() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
+        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"), 64L << 20);
         deploy(node(env("node-a"), rows, bucket, new Doors()), listening(pkg("alpha"), "invoices", port(8080)));
         deploy(node(env("node-b"), rows, bucket, new Doors()), listening(pkg("beta"), "orders", on("0.0.0.0", 8080)));   // node b runs nothing else
         Doors third = new Doors();

@@ -54,7 +54,7 @@ class DeploymentsRestoreGuardTest {
         e.put("FLOTTILA_DATA_DIR", tmp.resolve(id).toString());
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         Deployments d = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
-                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, new DirArchiveStore(tmp.resolve("bucket")));
+                new InMemoryWorkQueue(rt.clock()), () -> 0L, rows, new DirArchiveStore(tmp.resolve("bucket"), 64L << 20));
         made.add(d);
         return d;
     }

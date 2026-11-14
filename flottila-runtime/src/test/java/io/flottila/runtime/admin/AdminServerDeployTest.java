@@ -744,7 +744,7 @@ class AdminServerDeployTest {
     void packagesListStateAndProblems() throws Exception {
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
         Path bucket = tmp.resolve("bucket");
-        DirArchiveStore archives = new DirArchiveStore(bucket);
+        DirArchiveStore archives = new DirArchiveStore(bucket, 64L << 20);
         Deployments first = deployments(tmp.resolve("node-1"), rows, archives);
         byte[] alpha = pkg("alpha", "2.0.0", Map.of("orders", "sync")).zip();
         byte[] zeta = pkg("zeta", "3.0.0", Map.of("beta", "sync")).zip();
@@ -952,7 +952,7 @@ class AdminServerDeployTest {
             @Override public Future<List<DeploymentRecord>> list() { return rows.list(); }
             @Override public Future<Void> delete(String name) { return Future.failedFuture(new IllegalStateException("connection reset by peer")); }
         };
-        Deployments failing = deployments(tmp.resolve("node-3"), failingDelete, new DirArchiveStore(tmp.resolve("bucket-3")));
+        Deployments failing = deployments(tmp.resolve("node-3"), failingDelete, new DirArchiveStore(tmp.resolve("bucket-3"), 64L << 20));
         OnVirtualThread.call(() -> failing.deploy("solo", Optional.empty(), PackageDraft.write(tmp.resolve("uploads"), pkg("solo", "1.0.0", Map.of("one", "sync")).zip())));
         int at = serve(Optional.of(failing));
 
@@ -1038,7 +1038,7 @@ class AdminServerDeployTest {
                 listed.getJsonArray("artifacts").stream().map(o -> item((JsonObject) o, artifactFields)).toList(), listed.encode());
 
         InMemoryDeploymentStore rows = new InMemoryDeploymentStore();
-        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"));
+        DirArchiveStore bucket = new DirArchiveStore(tmp.resolve("bucket"), 64L << 20);
         byte[] legacy = pkg("legacy", "1.0.0", Map.of("beta", "sync")).move("flows/beta.yaml", "urn-a/beta.yaml")
                 .file("urn-a/folder.yaml", FOLDER_ONLY + "namespace: urn:legacy\n")
                 .file("urn-a/beta.test.yaml", "schemaVersion: 1\nkind: test\nflow: beta\ncases: [ { name: c, send: in.xml, expect: { steps: 1 } } ]\n")

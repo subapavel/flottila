@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -13,6 +14,8 @@ import java.util.List;
 import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -40,6 +43,12 @@ public abstract class ArchiveStoreContract {
 
     /** The name the case's store gives the archive of {@code sha256}: its object key, or its file. */
     protected abstract String keyOf(String sha256);
+
+    /**
+     * The most bytes the case's store fetches (FIX-60): the maximum size {@link #emptyStore()} builds it with; above the largest
+     * archive the other cases put (300 007 bytes).
+     */
+    protected abstract long cap();
 
     @BeforeEach
     void openTheStore() throws Exception {
@@ -176,5 +185,56 @@ public abstract class ArchiveStoreContract {
         Files.writeString(out, "stale ".repeat(5_000));   // 30 000 bytes, longer than the archive: a write that does not truncate shows
         fetch(sha, out);
         assertArrayEquals(zip, Files.readAllBytes(out), "the target holds the archive and nothing of what it held before");
+    }
+
+    // --- FIX-60: a fetch is bounded
+
+    @Test
+    void anObjectExactlyAtTheCapIsFetchedByteForByte() throws Exception {
+        byte[] zip = bytes(9, Math.toIntExact(cap()));
+        String sha = sha256(zip);
+        put(sha, archive("at-cap.zip", zip));
+        Path out = target("at-cap-fetched.zip");
+        fetch(sha, out);
+        assertArrayEquals(zip, Files.readAllBytes(out), "an object of exactly " + cap() + " bytes is within the cap");
+    }
+
+    @Test
+    void anObjectOneByteOverTheCapIsRefusedAndLeavesNoTarget() throws Exception {
+        byte[] zip = bytes(10, Math.toIntExact(cap()) + 1);
+        String sha = sha256(zip);
+        put(sha, archive("over-cap.zip", zip));
+        Path out = target("over-cap-fetched.zip");
+        IOException refused = assertThrows(IOException.class, () -> fetch(sha, out), "one byte over the cap");
+        assertTrue(String.valueOf(refused.getMessage()).contains(String.valueOf(cap())),
+                "the refusal names the cap " + cap() + ": " + refused.getMessage());
+        assertFalse(Files.exists(out), "no partial file is left at the target");
+    }
+
+    @Test
+    void anObjectFourTimesTheCapIsRefusedAndLeavesNoTargetNorTemporaryFile() throws Exception {
+        byte[] zip = bytes(11, Math.toIntExact(cap() * 4));
+        String sha = sha256(zip);
+        put(sha, archive("far-over-cap.zip", zip));
+        Path out = target("far-over-cap-fetched.zip");
+        IOException refused = assertThrows(IOException.class, () -> fetch(sha, out), "four times the cap");
+        assertTrue(String.valueOf(refused.getMessage()).contains(String.valueOf(cap())),
+                "the refusal names the cap " + cap() + ": " + refused.getMessage());
+        assertFalse(Files.exists(out), "no partial file is left at the target");
+        try (var siblings = Files.list(out.getParent())) {
+            assertEquals(List.of(), siblings.map(p -> p.getFileName().toString()).toList(), "no temporary file is left beside the target either");
+        }
+    }
+
+    @Test
+    void aStoreStillFetchesAfterARefusedFetch() throws Exception {
+        byte[] big = bytes(12, Math.toIntExact(cap()) + 1);
+        put(sha256(big), archive("big.zip", big));
+        assertThrows(IOException.class, () -> fetch(sha256(big), target("big-fetched.zip")), "the oversize object");
+        byte[] small = bytes(13, 4_096);
+        put(sha256(small), archive("small.zip", small));
+        Path out = target("small-fetched.zip");
+        fetch(sha256(small), out);
+        assertArrayEquals(small, Files.readAllBytes(out), "a refusal does not poison the store: a small archive is fetched after it");
     }
 }

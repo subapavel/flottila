@@ -30,7 +30,7 @@ final class Shelf implements ArchiveStore {
 
     /** Objects under {@code dir}; {@link #bytes} fetches into {@code reads}. */
     Shelf(Path dir, Path reads, Consumer<String> trace) {
-        this.objects = new DirArchiveStore(dir);
+        this.objects = new DirArchiveStore(dir, 64L << 20);
         this.reads = Objects.requireNonNull(reads, "reads");
         this.trace = Objects.requireNonNull(trace, "trace");
     }

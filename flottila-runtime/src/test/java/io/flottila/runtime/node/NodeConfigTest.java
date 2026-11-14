@@ -278,6 +278,21 @@ class NodeConfigTest {
     }
 
     @Test
+    void anS3PrefixWithAnEmptyBlankOrSlashEndIsRefusedNamingKeyAndValue() {
+        for (String bad : List.of("", "   ", "/flottila", "flottila/", "/")) {
+            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(s3(), "FLOTTILA_S3_PREFIX", bad)),
+                    "refused: '" + bad + "'");
+            assertTrue(String.valueOf(e.getMessage()).contains("FLOTTILA_S3_PREFIX"), "the refusal of '" + bad + "' names the key: " + e.getMessage());
+            assertTrue(String.valueOf(e.getMessage()).contains("'" + bad + "'"), "the refusal shows the value '" + bad + "': " + e.getMessage());
+        }
+    }
+
+    @Test
+    void anS3PrefixWithAnInnerSlashIsAccepted() {
+        assertEquals("a/b", NodeConfig.from(with(s3(), "FLOTTILA_S3_PREFIX", "a/b")).s3().orElseThrow().prefix(), "only the ends are wrong");
+    }
+
+    @Test
     void anS3EndpointMustBeAnAbsoluteHttpUri() {
         for (String ok : List.of("http://127.0.0.1:4566", "https://s3.example.net")) {
             assertEquals(Optional.of(URI.create(ok)), NodeConfig.from(with(s3(), "FLOTTILA_S3_ENDPOINT", ok)).s3().orElseThrow().endpoint(), ok);

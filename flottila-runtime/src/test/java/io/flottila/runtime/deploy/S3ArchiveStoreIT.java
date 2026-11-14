@@ -71,7 +71,12 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
     @Override
     protected ArchiveStore emptyStore() {
         prefix = "it-" + System.nanoTime() + "/fleet";
-        return new S3ArchiveStore(s3, BUCKET, prefix);
+        return new S3ArchiveStore(s3, BUCKET, prefix, cap());
+    }
+
+    @Override
+    protected long cap() {
+        return 1L << 20;
     }
 
     @Override
@@ -118,7 +123,7 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
         Path upload = archive("shop.zip", zip);
         String key = "fleet/archives/" + sha + ".zip";
         try (S3Client down = client(URI.create("http://127.0.0.1:" + closedPort()))) {
-            ArchiveStore unreachable = new S3ArchiveStore(down, BUCKET, "fleet");
+            ArchiveStore unreachable = new S3ArchiveStore(down, BUCKET, "fleet", 64L << 20);
             IOException putFailed = assertThrows(IOException.class, () -> put(unreachable, sha, upload), "a put to an endpoint nothing listens on");
             assertNamedIOException(putFailed, BUCKET, key, "put");
             IOException fetchFailed = assertThrows(IOException.class, () -> fetch(unreachable, sha, target("down.zip")), "a fetch from it");
@@ -132,7 +137,7 @@ class S3ArchiveStoreIT extends ArchiveStoreContract {
         byte[] zip = bytes(13, 1_000);
         String sha = sha256(zip);
         String absent = "absent-" + System.nanoTime();
-        ArchiveStore nowhere = new S3ArchiveStore(s3, absent, "fleet");
+        ArchiveStore nowhere = new S3ArchiveStore(s3, absent, "fleet", 64L << 20);
         String key = "fleet/archives/" + sha + ".zip";
         IOException putFailed = assertThrows(IOException.class, () -> put(nowhere, sha, archive("shop.zip", zip)), "a put to a bucket that does not exist");
         assertNamedIOException(putFailed, absent, key, "put");

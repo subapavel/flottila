@@ -89,7 +89,7 @@ class DeploymentsListenerEdgeTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), byScheme);
         deployments = new Deployments(NodeConfig.from(env), runtime, byScheme, rt.clock(), rt.timer(), List.of(), List.of(), new InMemoryMessageStore(),
                 new InMemoryDlq(), new InMemoryWorkQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(),
-                new DirArchiveStore(tmp.resolve("node-1").resolve("archives")));
+                new DirArchiveStore(tmp.resolve("node-1").resolve("archives"), 64L << 20));
     }
 
     @AfterEach

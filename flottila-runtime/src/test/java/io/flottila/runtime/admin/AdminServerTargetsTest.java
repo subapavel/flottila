@@ -103,7 +103,7 @@ class AdminServerTargetsTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
         InMemoryWorkQueue queue = new InMemoryWorkQueue(rt.clock());
         deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(), messages, dlq,
-                queue, () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve("archives")), new SequentialIntake(messages, queue),
+                queue, () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve("archives"), 64L << 20), new SequentialIntake(messages, queue),
                 new InMemoryPollerLeases(rt.clock()), targets);
     }
 

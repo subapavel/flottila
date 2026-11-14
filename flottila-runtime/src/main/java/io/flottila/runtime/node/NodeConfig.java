@@ -488,7 +488,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException((accessKey.isPresent() ? "FLOTTILA_S3_SECRET_KEY" : "FLOTTILA_S3_ACCESS_KEY") + " is missing: the S3 keys "
                     + "are given both or neither (neither: the AWS SDK's default credentials chain)");
         }
-        return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("FLOTTILA_S3_PREFIX", "flottila"), accessKey, secretKey);
+        return new S3(bucket, region, endpoint, pathStyle, prefix(env.getOrDefault("FLOTTILA_S3_PREFIX", "flottila")), accessKey, secretKey);
+    }
+
+    /** {@code FLOTTILA_S3_PREFIX}: not blank, neither starting nor ending with a slash (inner slashes are fine). */
+    private static String prefix(String raw) {
+        if (raw.isBlank() || raw.startsWith("/") || raw.endsWith("/")) {
+            throw new IllegalArgumentException("FLOTTILA_S3_PREFIX must not be blank or start or end with a slash, such as flottila or a/b, was '" + raw + "'");
+        }
+        return raw;
     }
 
     /** {@code key}'s value, which must be there and not blank. */
