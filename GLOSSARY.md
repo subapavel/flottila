@@ -461,6 +461,11 @@ _Avoid_: tail emitter.
 To hand one result to the next stage. The answer says whether to keep going.
 _Avoid_: yield, return, push (as a noun for the call)
 
+**Short literal**:
+A literal number whose token is canonical, has no exponent and is at most 15 bytes (ADR-0012). Its
+double orders it as its decimal does, and reading it ticks nothing (#97).
+_Avoid_: small number
+
 **Sink**:
 What receives emitted results.
 
