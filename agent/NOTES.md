@@ -236,6 +236,25 @@ counter (`failed()`) until P1-09 shows it; `findByKey` order is `min(ctid)` (add
 sequence when paging comes); `InMemoryMessageStore` is unbounded (tests/bench/dry run only);
 consider `Meter` on `Runtime`.
 
+FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
+- `Recorder.wrap` catches `Exception` only (`Recorder.java:84`; the comment there explains the
+  checked case, D-056). A step that throws an `Error` therefore leaves NO row, not even `FAILED`.
+  That is FIX-133, not a feature. To get a `FAILED` row at step N in a test, throw a
+  `RuntimeException` AND make the park fail; with a working DLQ the message parks and the item
+  completes, so there is no second run to observe.
+- A run that dies on an `Error` still gets its completed steps recorded: the trail closes in a
+  `finally` (`FlowWorker.java` around `:344`).
+- A repeated `(id, step)` is dropped by BOTH stores — `on conflict (id, step) do nothing`
+  (`PgMessageStore.java:51-55`) and `rows.putIfAbsent(...)` (`InMemoryMessageStore.java:39`) — so a
+  redelivery's recording behaviour needs no container to reproduce. The Postgres half is pinned by
+  `PgMessageStoreIT:122-132` under the name `...DuplicatesAreIgnored`: a feature for an idempotent
+  batch replay, a defect for a second run of one message.
+- The `to` step's row holds the PARTNER'S REPLY envelope. It does not carry headers the run set, but
+  it does carry props. Marking runs with a header shows step 7 as `run=null`; use a prop.
+- Run 2 keeps the id: `FlowWorker.java:337` rebuilds ingress from the stored row via
+  `Replay.rebuild(..., id, ...)` and adds `Envelope.ATTEMPT` at `:338`. It runs without stage 0, so
+  it writes no second ingress row.
+
 ## Pipeline (P1-03, D-043)
 
 Step SPI in `flottila-api` (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`);

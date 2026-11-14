@@ -1309,3 +1309,19 @@ cmp Trail.java byte-identical to HEAD; `git status --porcelain` on the lane's Tr
 Discipline worth keeping: a failure count is not evidence of which assertion fired, and a green log from a no-op mutant is indistinguishable from
 a real green — the author discarded one such log itself and said so. Logs of superseded rounds stay on disk and must not be cited.
 D-054 data: class A (test-author x1 resumed twice, reviewer x3); review rounds 3. No Maven in the main tree.
+
+## 2026-11-14 — FIX-131 a redelivered message's timeline is stitched from two runs — done, review PASS r2
+Test-only in flottila-core, no production change. I withdrew the row's own `-Pit` premise: both stores drop a repeated (id, step) by construction
+(`on conflict (id, step) do nothing`; `rows.putIfAbsent`), so a container proves nothing a core test does not — and the Postgres half is already pinned by
+`PgMessageStoreIT:122-132` as `...DuplicatesAreIgnored`: a feature for an idempotent batch replay, a defect for a second run, part of why this survived.
+The harm is worse than the row said and is now measured. Case 1 (park refused): 0 ingress, 1-2 run 1, 3 FAILED run 1, 4-7 OK run 2 — a sequence no single
+run can produce. Case 2 is the shape a node crash makes and the dangerous one: run 1 dies on an `Error`, which `Recorder.wrap` does not catch, so step 3
+gets no row and the timeline comes back 0-7 all OK, indistinguishable from one clean run.
+Corrected my own claim that nothing marks the seam: `Envelope.ATTEMPT` is in the props of every row run 2 wrote and none of run 1's. A props entry is not a
+run boundary and it describes only the rows that survived, so it rescues nothing — but D-108's value already reaches the store; a column that means it does not.
+VERIFIED_PASS — 2/0, FlowWorkerTest 42/0, 46/0 total (FIX-131-test4.log). Hand mutant `putIfAbsent` -> `put`: both cases EXECUTED_FAIL at their final
+exact-list assertion (FIX-131-mutant.log), so they are green on the drop, not for some other reason. Store restored, `cmp` identical to HEAD in both trees,
+checked by me rather than taken from the author.
+The review round was spent on a trap worth keeping: case 2 pins FIX-133 too and its javadoc named only CONSIDER-12 as a reason to invert, so a FIX-133
+implementer would have met red tests it may not change. Spun off FIX-133 and FIX-132.
+D-054: class B in effect (test-author x1 resumed twice, scout x1, reviewer x2); review rounds 2. No Maven in the main tree.
