@@ -17,14 +17,18 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 /**
  * The Many args contract (ADR-0041 as amended by F-43, ADR-0044): the call site gives each loop a new args array, of
- * its arguments and then its loop slots, except a call with no argument and no loop slot, whose loops share one empty
- * array that has nothing to replace.
+ * its arguments and then its loop slots, and {@code first} may replace an element of it; a Const is never written. So
+ * what one loop's {@code first} writes into its array, over an argument or into a loop slot, never reaches the next
+ * loop, which starts from the argument's value and an empty loop slot.
  */
 class ManyArgsArrayTest {
   private static final Source AT = new Source(0, 1);
 
-  /** A Many of one result that notes the args array of each loop's first call in {@code seen}. */
-  private static Many noting(List<Object[]> seen, int loopSlots) {
+  /**
+   * A Many of one result whose {@code first} notes the element at {@code place} of its args array in {@code seen}, then
+   * replaces it.
+   */
+  private static Many replacing(List<Object> seen, int loopSlots, int place) {
     return new Many() {
       @Override
       public int loopSlots() {
@@ -33,7 +37,8 @@ class ManyArgsArrayTest {
 
       @Override
       public long first(RunState state, Object in, Object[] args) {
-        seen.add(args);
+        seen.add(args[place]);
+        args[place] = "replaced";
         return 0;
       }
 
@@ -55,7 +60,7 @@ class ManyArgsArrayTest {
     for (Object constant : constants) {
       args.add(new Const(AT, constant));
     }
-    return new Intrinsic(AT, new Operation("noting", many), args);
+    return new Intrinsic(AT, new Operation("replacing", many), args);
   }
 
   /** Two loops of {@code many}, two calls of it with Const arguments of {@code constants}, one after the other in a run. */
@@ -74,26 +79,17 @@ class ManyArgsArrayTest {
 
   @ParameterizedTest
   @EnumSource(CompileMode.class)
-  void loopsWithNoArgumentAndNoLoopSlotShareOneEmptyArray(CompileMode mode) {
-    List<Object[]> seen = new ArrayList<>();
-    twoLoops(noting(seen, 0), mode);
-    assertThat(seen).as("args arrays of the two loops").hasSize(2);
-    assertThat(seen.get(0)).as("args of the first loop").isEmpty();
-    assertThat(seen.get(1)).as("args of the second loop, the first loop's array").isSameAs(seen.get(0));
+  void aReplacedArgumentNeverReachesTheNextLoop(CompileMode mode) {
+    List<Object> seen = new ArrayList<>();
+    twoLoops(replacing(seen, 0, 0), mode, 7);
+    assertThat(seen).as("the argument each loop's first reads, after the first loop replaced its own").containsExactly(7, 7);
   }
 
   @ParameterizedTest
   @EnumSource(CompileMode.class)
-  void eachLoopWithAnArgumentOrALoopSlotGetsANewArray(CompileMode mode) {
-    // Witness: an argument, or a loop slot alone, gives each loop its own array.
-    List<Object[]> withArgument = new ArrayList<>();
-    twoLoops(noting(withArgument, 0), mode, 7);
-    assertThat(withArgument.get(0)).as("args of the first loop with one argument").containsExactly(7);
-    assertThat(withArgument.get(1)).as("args of the second loop with one argument").containsExactly(7).isNotSameAs(withArgument.get(0));
-
-    List<Object[]> withSlot = new ArrayList<>();
-    twoLoops(noting(withSlot, 1), mode);
-    assertThat(withSlot.get(0)).as("args of the first loop with one loop slot").hasSize(1);
-    assertThat(withSlot.get(1)).as("args of the second loop with one loop slot").hasSize(1).isNotSameAs(withSlot.get(0));
+  void aLoopSlotStartsEmptyInEachLoop(CompileMode mode) {
+    List<Object> seen = new ArrayList<>();
+    twoLoops(replacing(seen, 1, 1), mode, 7);
+    assertThat(seen).as("the loop slot after the argument each loop's first reads, after the first loop wrote its own").containsExactly(null, null);
   }
 }

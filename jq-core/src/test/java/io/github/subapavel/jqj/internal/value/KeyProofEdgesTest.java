@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 /**
  * The edges of ADR-0044's key proof that {@link KeyProofTest} leaves open: a key of exactly one KiB, eight colliding
  * keys, a probe budget spent to exactly zero, a budget that runs out at a free slot, keys that lie far into their
- * document, and the proof's hash itself. A tick charges a key's length, never where it lies, so a document behind
+ * document, and keys of one 31-polynomial or of polynomials that agree in the table's mask. A tick charges a key's length, never where it lies, so a document behind
  * 4 KiB of white space ticks as the same document without it. Keys and clusters are found as KeyProofTest finds them,
  * against the proof's own {@link KeyProof#hash} in a table of 64 slots.
  */
@@ -130,10 +130,13 @@ class KeyProofEdgesTest {
     ObjectView object = object(json(keys));
     assertThat(proofTicks(object)).as("ticks of a table proof that spends its budget to zero").isEqualTo(10);
     assertThat(KeyProof.walk(new RunState(), object, false).size()).as("distinct keys with one repeat").isEqualTo(9);
-    // The cluster's fourth key again: 4 compares, one past the budget, so the proof sorts and its compares tick.
+    // The cluster's fourth key C4 again: 4 compares, one past the budget, so the proof sorts [o, C1..C8, C4], each
+    // compare of two short keys 1. The merges: width 1, 5; width 2, [C1, o] with [C2, C3] 3 and [C4, C5] with
+    // [C6, C7] 2; width 4, 3 + 4 = 7; width 8, [C1..C7, o] with [C4, C8] 9: 26. The neighbours: 8 distinct keys
+    // after the first, one compare each, and C4 with its repeat, 9. With the 10 entry ticks, 45.
     List<String> past = new ArrayList<>(keys.subList(0, 9));
     past.add(cluster.get(3));
-    assertThat(proofTicks(object(json(past)))).as("ticks of a proof one probe past its budget").isGreaterThan(10);
+    assertThat(proofTicks(object(json(past)))).as("ticks of a proof one probe past its budget").isEqualTo(10 + 26 + 9);
   }
 
   @Test
@@ -195,12 +198,21 @@ class KeyProofEdgesTest {
   }
 
   @Test
-  void theHashIsTheThirtyOnePolynomialThenMurmurThreesFinaliser() {
-    // Expected values from an independent bash implementation of the 31-polynomial over signed bytes and fmix32.
-    byte[] text = "xkeyx".getBytes(US_ASCII);
-    assertThat(KeyProof.hash("a".getBytes(US_ASCII), 0, 1)).as("hash of a").isEqualTo(-533_258_471);
-    assertThat(KeyProof.hash(text, 1, 4)).as("hash of key within xkeyx").isEqualTo(1_773_979_932);
-    assertThat(KeyProof.hash(new byte[] {(byte) 0xC3, (byte) 0xA9}, 0, 2)).as("hash of the UTF-8 bytes of e acute").isEqualTo(-1_641_685_641);
-    assertThat(KeyProof.hash(new byte[0], 0, 0)).as("hash of the empty key").isZero();
+  void keysOfOneThirtyOnePolynomialReachTheSort() {
+    // The 16 Aa/BB keys share one 31-polynomial, so one hash: 136 probes past the budget of 64. In ascending order a
+    // merge compares each element of its left run once, 8 per pass of 4 passes, and the 15 neighbours once each: 16
+    // entry ticks, 32 and 15.
+    ObjectView object = object(json(blocks16().stream().sorted().toList()));
+    assertThat(proofTicks(object)).as("ticks of the sorted proof of 16 keys of one polynomial").isEqualTo(16 + 32 + 15);
+  }
+
+  @Test
+  void keysWhosePolynomialsDifferOnlyAboveTheSlotMaskStayInTheTable() {
+    // AA, CC, EE, ... __: each step adds 2 to both bytes, 31 * 2 + 2 = 64 to the polynomial, so the 16 keys agree in its
+    // 6 low bits, the table's mask. The finaliser spreads the high bits into the home slot, so the table proves them
+    // within its budget, one tick per key entry.
+    List<String> keys = new ArrayList<>();
+    for (int i = 0; i < 16; i++) keys.add(String.valueOf((char) ('A' + 2 * i)).repeat(2));
+    assertThat(proofTicks(object(json(keys)))).as("ticks of the table proof of 16 keys one polynomial mask apart").isEqualTo(16);
   }
 }
