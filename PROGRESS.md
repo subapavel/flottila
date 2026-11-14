@@ -1357,3 +1357,19 @@ one batch). That proof exposed dead generality: a `while` that runs once, a `.re
 unreachable case — FIX-137. Also spun off: FIX-135 (PIT counts a timeout as a kill), FIX-138 (a throwing cancel leaves a window live, which
 D-104 now accepts as losing batching not data), and FIX-127 extended with `cancelQuietly` logging under the writer lock.
 VERIFIED_PASS — verify -Pit exit 0, 16 modules, 11:53; coverage no decrease (core 99.6/99.5); PIT api 179/180, core 1019/1029, 99 % vs the 80 % floor; scoped 47/0. D-054: class B, rounds 5.
+
+## 2026-11-14 — FIX-132 the ledgers made well-formed, by cell shape not pipe count — done, review PASS r4
+Markdown only, no production code, no test, no build. Twelve escapes over seven rows (nine in `docs/DECISIONS.md`, three in
+`agent/BACKLOG.md`), one closing pipe restored on FIX-71, three rows rejoined. `git diff --word-diff`: no word of any decision or title
+changed. After: BACKLOG 260/260 rows and DECISIONS 113/113 split into exactly their header's cells, the 32 legacy `Reason`-less rows
+left by intent. The defect kept being in my own text, and the measurement I chose to prove myself right was the weaker of the two
+available. I checked PIPE COUNT. A row can have the right count and the wrong shape: FIX-54, FIX-56 and FIX-57 carry
+`reviewer <id> \|  evidence: ...` with no closing pipe, so a stray separator is paid for by the missing one — 7 pipes, 7 cells — and
+GitHub has been dropping their whole evidence cell. My check called them clean and I wrote "nothing is truncated any more" on the
+strength of it; the reviewer found all three and the claim was false when I made it. He also had the inventory right: the row was
+wrong about P1-GATE and P2-01 only, not "five of six". FIX-139 now checks cell shape, with a FIX-54-shaped row as a red case.
+Both rounds failed on my sentences, not on the change. Today the reviewers corrected my text repeatedly and found no defect in any
+agent's code; that asymmetry is the finding, not the pipes.
+VERIFIED_PASS — cell-shape audit of both files at HEAD e65f616: 11 rows deviated, and 10 of them LOSE TEXT on GitHub — BACKLOG 5
+(FIX-10 8 cells, FIX-15 7, FIX-54/56/57 7 each) and DECISIONS 5 (D-040 6, D-057 6, D-044/053/080 5 each). The 11th, FIX-71, was
+cosmetic: 6 cells and no closing pipe, which GFM renders correctly. After: 0 deviating. D-054: class A, rounds 4.
