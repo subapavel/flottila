@@ -29,6 +29,10 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
 - ADR-0014's fallback text changes: the seed fallback does not reach a module's own tests. From now
   on, slow test classes come out first, then `threads` 2.
 - Not decided under the delegation: `floors.tsv`, the 45-min target and the PIT scope.
+- Round 2, answered by the owner on 2026-11-14 (no review needed):
+  - Yes: oracle's PIT run mutates only the mutants each module's own run left alive, through a mutation
+    filter plugin (#192).
+  - Yes: `excludedClasses` for oracle's and jq-cli's own classes is not a PIT-scope change (#191).
 
 ## Spec 2b (#106; `docs/wayfinder/spec-2b-grilling.md`)
 
