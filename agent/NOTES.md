@@ -273,6 +273,15 @@ monitor, not a latch (`close()` → `shutdownNow()` interrupts a latch wait). Su
 wildcard `-Dtest='BlockedPlatformThreadDetector*'` selects the nested `BlockingTestCase` (built to
 fail, run only through EngineTestKit) — name the two classes.
 
+- `Deployments.kept` can hold a null value in principle (it is a `HashMap`, and `:822` puts `running.kept().get(previous)`
+  without checking), but the null never reaches `Map.copyOf` at `:824`, and the reason is inductive rather than local:
+  `Map.copyOf` itself rejects null values, so an install that stored one would already have thrown — therefore no stored
+  `kept` holds one, and `:822` reading a stored `kept` cannot produce one. The other legs: `kept` is never persisted
+  (no column in V7/V9, `PgDeploymentStore` SAVE writes six), a FAILED row gives `running == null` so the `Map.of()`
+  `Deployed` at `:651` never reaches `:822`, both candidates for `previous` at `:819` were put by the install that built
+  `running`, and `Deployed` is a private record with three construction sites. Row FIX-125 was closed as refuted on this
+  argument (2026-11-14); do not add a guard at `:822` for an unreachable state without reopening that row.
+
 ## Bench
 
 `bench/run.sh` (native Postgres: `sudo pg_ctlcluster 16 main start`; role flottila has CREATEDB;
@@ -282,6 +291,21 @@ runner has its own throughput-only baseline (FIX-4/D-039; dispatch ci.yml after 
 and read the job log via the MCP tool — the artifact's blob store is unreachable from the VM).
 
 ## Build and VM
+
+- Do NOT message a subagent while a long measurement of its own is running: the send moves its in-flight Bash call to the
+  background, the agent stops waiting for it and may abandon and restart the run. That cost the FIX-71 PIT run about an
+  hour on 2026-11-14 (`agent/work/FIX-71-pit-run1-interrupted.log`). Put everything the agent needs in its first prompt,
+  and if something was forgotten, do it yourself after the handback (copying a report out of `target/` needs no agent).
+- The scoped PIT command (`-pl flottila-api,flottila-core -am`) also measures `flottila-testkit`, because `-am` builds it
+  and PIT runs on what it builds. So a "scoped" run is api + testkit + core and takes about an hour, not minutes; the
+  reference run at a0b3f74 took 01:04 h. Budget for that before starting one, and never start one in a second lane.
+- `mvn clean` deletes `target/pit-reports/`, so a PIT report is gone the moment the next task builds. Copy the report
+  directory into `agent/work/pit-<commit>-<module>/` in the same command that runs PIT, or only the console log survives
+  and the console log does not list the survivors (FIX-122 lost its 200-survivor detail that way).
+- Never throw `OutOfMemoryError` from a test or a fixture in `flottila-core`: surefire aborts the whole fork and the run
+  reports nothing useful. Use `InternalError` where a test needs an `Error` that is not an exception (FIX-71 red round).
+- `flottila-core/.jqwik-database` is tracked and every jqwik run rewrites it. Restore it with
+  `git checkout -- flottila-core/.jqwik-database` before handing back, or it lands in an unrelated commit (row FIX-124).
 
 VM after a restart: `sudo pg_ctlcluster 16 main start`, `sudo dockerd &`. Reactor (Maven orders
 by dependencies): api → testkit → core → schemas → steps → runtime (test-depends on schemas,

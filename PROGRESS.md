@@ -1261,3 +1261,51 @@ is a legitimate seam (a failing *source* at an input boundary, asserting filesys
 recorded in the evidence vocabulary rather than dressed as a measurement.
 D-054 data: class A (test-author x3, implementer x2, verifier x3, reviewer x2); review rounds 2.
 Next: FIX-71 (a)+(c) with D-104 as its policy.
+
+## 2026-11-14 — FIX-62 unstarted clears what it discarded out of `built` — done, review PASS r1
+Lane 2 (worktree /home/user/flottila-lane2, own Maven repo), committed there as f318124, cherry-picked onto the branch when the main tree was free.
+Change: `unstarted` takes `built` and removes the stopped flows after `discard` (which cannot throw) and before `now.replaceAll`. One call site.
+No red, by design, and recorded as such: the double discard is unreachable — after `unstarted` nothing in that span can throw (records save skipped
+on restore, `previous` null because `restore()` refuses a non-empty `deployed`, the `computeIfAbsent` lambda never runs, the copies get non-null
+arguments). The reviewer re-walked the span independently and agreed. The fix lands on the javadoc at `Deployments.java:877`, which states the
+invariant outright, not on a measurement — the same call as FIX-60's `out.close()` path: the next change to the method need not redo the analysis.
+Checks: VERIFIED_PASS exit 0, `clean verify -Pit` in the worktree, 17 modules, ~2400 tests, 0F/0E/0S (agent/work/FIX-62-verify-2.log); coverage
+exit 0 "no decrease" (FIX-62-coverage.log); DeploymentsRestoreTest 13/0.
+NOT_RUN — the double discard. Deleting the fix leaves all 410 scoped tests green (FIX-62-green-mutant.log): a confirmed equivalent mutant; the
+ERROR pin does kill mutants on the log statement, so the pair is not decorative.
+Environment: an earlier run was ENVIRONMENT_BLOCKED, not failing — dockerd died at 05:31 (stale pid file) and Postgres was down, both restarted.
+Found and then refuted: the reviewer's `:824` NPE on a duplicated package row (opened as FIX-125) does not exist — `Map.copyOf` rejects null values
+itself, so no stored `kept` holds one, and a FAILED row never reaches `:822`. FIX-125 closed as refuted, argument in agent/NOTES.md.
+D-054 data: class A (test-author x1, implementer x1, verifier x2, reviewer x1); review rounds 1.
+
+## 2026-11-14 — FIX-123 the persist warning's sentence is pinned — done, review PASS r1
+Lane 3 (worktree /home/user/flottila-lane3, own Maven repo), test-only, four added assertions in the two persist cases of TrailTest.
+Why the row existed: FIX-54 pinned the `message <id>: ` prefix and FIX-121 fixed the filtering, but nobody asserted the sentence; the reviewer's
+hand mutant for FIX-121 reworded "could not be made durable" and all 13 cases stayed green. PIT could not have caught it — its default mutators do
+not touch string literals, so a hand mutant is the only instrument for this class of gap.
+Both halves are now load-bearing, each proved by its own mutant: the cause phrase mutated fails `TrailTest:390`/`:412` while the tail still reads
+correctly; the tail mutated fails `:391`/`:413` while the cause phrase still reads correctly. Neither assertion subsumes the other.
+VERIFIED_PASS — green 13/0 BUILD SUCCESS before (FIX-123-green.log) and after the restores (FIX-123-green3.log); `Tests run: 13, Failures: 2`
+under each of the two mutants (FIX-123-mutant.log, FIX-123-mutant-tail.log); `cmp` Trail.java byte-identical to HEAD after each restore.
+The reviewer checked independence from the failing assertion lines, not the failure counts — an `assertTrue` aborts its test, so `Failures: 2` on
+its own proves nothing. Worth keeping as a standard: a count is not evidence of which assertion fired.
+Ruling held: the cause text ("pg down") is not asserted — it is the fake store's words, not Trail's, and would break on an unrelated fixture change.
+Found, non-blocking: the two phrases have no documented source in Trail's javadoc -> FIX-129; `TrailTest:359-360` still filters by the bare id
+substring "m-f" over message + getThrown(), the FIX-54/FIX-121 trap, safe today only by accident of fixture naming -> FIX-130.
+D-054 data: class A (test-author x1 resumed once, reviewer x1); review rounds 1. Three agents touched it, no Maven in the main tree.
+
+## 2026-11-14 — FIX-130 the last bare-id log filter in TrailTest — done, review PASS r3
+Lane 3, test-only, commit 468022c on top of ffa0431 (FIX-123). Found by the reviewer of FIX-123, non-blocking there, a row of its own here.
+The filter selected WARNINGs by the bare substring "m-f" over message + getThrown() and asserted only non-emptiness. It now selects by Trail's
+logger name, maps getMessage() only, matches each of three failing bodies by its own BlobKey, asserts one WARNING per key, and adds a negative.
+Two FAILs, both mine to own. My packet's acceptance 1 was the wrong diagnosis: it said "do not filter over a string that includes getThrown()",
+but `Trail.java:177` interpolates the cause INTO the message, so narrowing the captured string separates nothing — BodyTooLargeException's text
+carries the key and the `large` iteration still matched through its cause. Corrected requirement: match the key in the text Trail itself wrote,
+ahead of the `(` that opens the cause. r2 also showed the mutant's kill came from the first body, so the iteration whose independence was in
+question was never reached; `assertAll` fixed that.
+VERIFIED_PASS — 13/0 before and after (FIX-130-green5.log, -green6.log); the key mutant (Trail.java:177 `p.key()` -> `p.key().messageId()`) fails
+all three iterations separately (-mutant-key2.log:1005-1007): steps 2 and 4 on the per-key count, step 3 on the prefix while its count passes.
+cmp Trail.java byte-identical to HEAD; `git status --porcelain` on the lane's Trail.java empty, checked by me, not reported.
+Discipline worth keeping: a failure count is not evidence of which assertion fired, and a green log from a no-op mutant is indistinguishable from
+a real green — the author discarded one such log itself and said so. Logs of superseded rounds stay on disk and must not be cited.
+D-054 data: class A (test-author x1 resumed twice, reviewer x3); review rounds 3. No Maven in the main tree.
