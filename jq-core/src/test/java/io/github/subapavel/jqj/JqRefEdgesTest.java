@@ -41,7 +41,23 @@ class JqRefEdgesTest {
             "read literals past a double",
             "[1e400, 2e400, 1.23456789E+400, 1.23456789E+401]",
             "[.[0] < .[1], .[0] == .[1], .[2] < .[3], .[2] == .[3]]",
-            "[true,false,true,false]"));
+            "[true,false,true,false]"),
+        // jq's equality depth limit counts each nested object, built or read: 6 000 built wrappers over 4 000 read
+        // levels compare, one wrapper more is too deep (jq-ref on the same input, printed by a bash generator).
+        Arguments.of("equality at the depth limit", twoNested(4000), wrapped(6000), "true"),
+        Arguments.of("equality past the depth limit", twoNested(4000), wrapped(6001), "\"Equality check too deep\""));
+  }
+
+  /** {@code [N,N]}, N being {@code levels} nested objects {@code {"a": ...}} around 0. */
+  private static String twoNested(int levels) {
+    String nested = "{\"a\":".repeat(levels) + "0" + "}".repeat(levels);
+    return "[" + nested + "," + nested + "]";
+  }
+
+  /** The equality of the input's two elements, each under {@code wrappers} built objects {@code {a: ...}}, its error caught. */
+  private static String wrapped(int wrappers) {
+    String side = "(reduce range(" + wrappers + ") as $_ (.[%d]; {a: .}))";
+    return "try (" + side.formatted(0) + " == " + side.formatted(1) + ") catch .";
   }
 
   @ParameterizedTest(name = "{0}")
