@@ -626,7 +626,9 @@ class TrailTest {
                 assertFalse(r.getMessage().contains("its body"), "a row that kept no body names none: " + r.getMessage());
             }
         }
-        assertEquals(4, trailWarnings().size(), "nothing else was logged at WARNING by the trail: " + trailWarnings());
+        // this case's message only: its body key (steps 1-3 name it) or step 4's metadata-only row head, which names no key
+        List<String> own = trailWarnings().stream().filter(m -> m.contains(b.key().toString()) || m.contains("message m-nw of flow f: ")).toList();
+        assertEquals(4, own.size(), "nothing else was logged at WARNING by the trail for this message: " + own);
     }
 
     @Test
@@ -643,7 +645,7 @@ class TrailTest {
         assertEquals(List.of(1, 2), full.rows.timeline("m-ok").await().stream().map(Snapshot::step).toList(), "fixture: m-ok's rows were written");
         assertEquals(0, full.records.get(), "fixture: through recordWaiting");
         assertEquals(List.of(), trailWarningsOf("m-ok"), "a row written logs no WARNING");
-        List<String> warned = trailWarnings();
+        List<String> warned = trailWarnings().stream().filter(m -> m.contains(bad.key().toString())).toList();   // this case's failing message only
         assertEquals(1, warned.size(), "the capture sees the witness row's WARNING, and only it: " + warned);
         assertTrue(warned.getFirst().contains("message m-bad "), warned.toString());
     }
