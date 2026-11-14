@@ -11,3 +11,7 @@ __pycache__/
 # agent work files (logs, diffs, scratch harnesses, review marker), FIX-111
 agent/work/*
 !agent/work/.gitkeep
+
+# jqwik failure database (local test cache)
+.jqwik-database
+**/.jqwik-database
