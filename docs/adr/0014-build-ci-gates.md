@@ -17,7 +17,7 @@ Status: accepted (2026-11-10, owner, issue #14 "How is the repo laid out and bui
   upstream modules but runs only `oracle`'s own tests (pitest-maven 1.30.2,
   `findOccupiedTestPackages`), so the unit tests of `query-core` and `jq-core` join through
   `additionalClasspathElements` and `targetTests`, or through test-jars; the skeleton ticket proves
-  which.
+  which. **F-84 (#190, #191, #192): the unit tests' join through `additionalClasspathElements` is gone; `ratchet.java` unions each module's own kills with the crossModule kills instead. oracle's run mutates only the mutants each module's own run left alive (every status outside ratchet.java's killed set), through the `pit-filter` module's `OWN_SURVIVORS` feature, and it does not mutate `oracle` or `jq-cli` classes (`excludedClasses`). Owner, 2026-11-14.**
   `ratchet.java` checks the floors on the aggregate. The floor numbers and the class-C list belong
   to "How do the oracles and the ratchet work?". PIT on JDK 25 with JUnit 6 and `crossModule` is
   NOT_RUN; the skeleton ticket runs it first.

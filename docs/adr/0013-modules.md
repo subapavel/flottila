@@ -1,10 +1,10 @@
 # Modules and their boundaries
 
-Status: accepted (2026-11-10, owner, issue #14 "How is the repo laid out and built?"); amended by ADR-0018 (issue #12) and ADR-0020 (issue #15); amended by ADR-0030 (run state, #59)
+Status: accepted (2026-11-10, owner, issue #14 "How is the repo laid out and built?"); amended by ADR-0018 (issue #12) and ADR-0020 (issue #15); amended by ADR-0030 (run state, #59); amended by F-84 (the build-tool module `pit-filter`, #192)
 
 The tree is flat: a root `pom.xml` (parent and aggregator, `0.1.0-SNAPSHOT`, not published) and the
 modules `query-core/`, `jq-core/`, `jq-cli/`, `oracle/` (tests only) and `bench/jmh/` (built only
-with `-Pbench`). Each artifactId is its directory name. The groupId and root package are
+with `-Pbench`). Since F-84 (#192) there is also `pit-filter/`, a build tool: a PIT mutation filter used only as a pitest-maven plugin dependency of `oracle`, never a dependency of another module and not published. Each artifactId is its directory name. The groupId and root package are
 `io.github.subapavel.jqj`. This ADR binds module names and exported packages; the types named in
 parentheses belong to ADR-0005, ADR-0008 and ADR-0009. Until the first publish a rename is one mechanical ticket; after it, a
 rename is a breaking release for the Rail8 (R8) adapter.
