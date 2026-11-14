@@ -1405,3 +1405,19 @@ Two more of my citations were wrong: `FlowWorkerTest:90` is a fixture javadoc, n
 `:85`. F-29's addendum now closes the half this fixes and says what it does not: still stitched, still first-writer-wins, CONSIDER-12's.
 VERIFIED_PASS as above. Raised from the review: FIX-140, and D-111 qualified — `record` runs before the rethrow and can throw, so
 "rethrown unchanged" holds only when recording succeeds. D-054: class B, rounds 1.
+
+## 2026-11-14 — FIX-139 a CI guard on ledger table shape — done, review PASS r2
+`ci/ledger_check.py` (95 lines) plus a 19-case suite, both wired into `ci.yml`. It checks CELL SHAPE and never counts
+pipes: FIX-54, FIX-56 and FIX-57 each had the header's pipe count and one cell too many, so the count I once offered as
+proof was blind to the rows GitHub was actually eating. The architect addendum made the red mean something — a stub that
+exits 0 for every input, so each case fails on its own assertion instead of one shared `ModuleNotFoundError`.
+Review r1 FAILed on a case that could not fail under ANY mutation: aligned separators over an all-good fixture returns 0
+either way, and the hazard it hid was worse — such a ledger would be checked not at all, silently. Plus two reviewer-named
+surviving mutants (trailing whitespace, a header missing its closing pipe) and a dead clause; all closed, all 7 then killed.
+One mutant result was a lie and the cause is now a rule in NOTES: two Python mutants of the SAME byte length written in
+the same second reuse the first one's `.pyc`, so the suite literally ran the other mutant's code. Caught only because the
+reported failing case belonged to the other mutant. Clear `__pycache__`, set `PYTHONDONTWRITEBYTECODE=1`.
+The guard earned itself inside the hour: writing FIX-143's row I put a raw pipe in `RuntimeException \| Error` and it
+reported `BACKLOG.md:228: expected 6 cells, found 7` against my own text. That is the FIX-132 defect, by me, caught.
+VERIFIED_PASS: 19/19 OK, guard exit 0 on the real ledgers; integrated reactor `clean verify -Pit` exit 0 BUILD SUCCESS
+12:00, 17 modules, every `Tests run:` at 0 failures, coverage "no decrease". D-054: class A, rounds 2.
