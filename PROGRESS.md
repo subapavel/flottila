@@ -1160,3 +1160,23 @@ Review: FAIL r1 (FlowDefinition:20 "never fails here" vs 0s, D-042 amendment pla
 Follow-ups: FIX-116..119 (FIX-117 RequestScope cancel; FIX-119 schema refuses 0s).
 D-054 data: class C (designer ×1, test-author ×2, implementer ×2, reviewer ×2); review rounds 2.
 Next: P2-10.
+
+## 2026-11-03 — P2-10a simulation harness (flottila-sim) — done, review PASS r2
+Test first: SimSeedTest, SimVerdictTest, SimReproducibilityTest, SimSchedulerTest, SimSelfTest, PinnedSeedsTest, SimReplayTest,
+ReorderingFastPathTest, SimHarnessTest; archtest sim rules (red: agent/work/P2-10a-red.log, -red-archtest-empty.log).
+Change: new module flottila-sim — seeded streams (explicit salts), one-runnable scheduler (START/POLL/RELEASE/WAKE/ADVANCE, no seam),
+oracle (PREDICTED, ADMISSION_BOUNDS, KEY_ORDER, ACKED_IS_FINAL, SNAPSHOT_PER_STEP, DRAINED, EMPTY), six broken worlds, pinned seeds,
+replay command. No src/main change in api, core, testkit, runtime. Split P2-10 into a–e (D-143); FIX-120 (testkit rule).
+Deviation: F-36 — a module §12 did not have; ARCHITECTURE §11, §12 + changelog.
+Checks: verify -Pit 2936/0, 293 XML, sim 61/0 (agent/work/P2-10a-r3-verify.log); coverage no decrease, sim 97.5/95.9; per-push sim
+12.15 s summed suite (bench/RESULTS.md §P2-10); mutants M1–M16 + M-REL, M-WAKE, M-Q, M-SHUF, M-TICK, M-CLOSE killed (r2/r3 cases).
+Review: FAIL r1 (SimHarnessTest unapproved; probe blind to resumed runs; untested FLOORS branch; D-143/§12/F-36 wording; no
+final-tree evidence), PASS r2.
+D-054 data: class C (designer ×1, test-author ×3, implementer ×3, reviewer ×2); review rounds 2.
+Next: P2-10b.
+
+## 2026-11-03 — P2-10b simulation slice 2 — WIP, stopped by the owner
+Spec agent/packets/P2-10b.md; red tests approved (82 cases, agent/work/P2-10b-red.log, -red-r2.log); implementation partial.
+Red tests + partial code saved as agent/patches/P2-10b-wip.patch (unverified, not in the tree, so main stays green).
+Open: LostReplayBody under V2 is seen only through RETRY_DLQ (implementer's last trace) — decide the exact set before landing.
+Next: apply the patch and resume P2-10b.

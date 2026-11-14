@@ -77,6 +77,12 @@ Next: P1-05
 
 - One task, one commit, direct to `main`. Never push red; a red `main` makes "fix main" the only
   ready task.
+- `main` is the only place a new session looks (owner, 2026-11-14, after 119 commits lived only on a
+  session branch). When the environment makes a session commit on its own branch, every push goes to
+  both: `git push -u origin <branch>` and `git push origin HEAD:main`. A push to `main` that is not
+  a fast-forward is never forced: fetch, merge `origin/main` into the branch, resolve (renumber
+  colliding D-, F-, FIX- and CONSIDER- ids on the side that came later), verify, push again. The
+  first action of every session is `git fetch origin main` and a check that `HEAD` contains it.
 - Conventional Commits: `feat(core): …`, `fix(runtime): …`, `test(api): …`, `chore(ci): …`,
   `bench: …`, `docs: …`, `refactor(…)`. Scope = module without the `flottila-` prefix.
 - Body: what and why, then the evidence line (the `Checks:` line of the PROGRESS entry).

@@ -35,6 +35,10 @@
     "branch": 99.5,
     "line": 99.0
   },
+  "flottila-sim": {
+    "branch": 95.9,
+    "line": 97.2
+  },
   "flottila-steps/validate": {
     "branch": 100.0,
     "line": 100.0
@@ -44,7 +48,7 @@
     "line": 100.0
   },
   "flottila-testkit": {
-    "branch": 95.3,
+    "branch": 96.6,
     "line": 98.1
   }
 }

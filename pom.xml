@@ -30,6 +30,7 @@
     <module>flottila-steps</module>
     <module>flottila-schemas</module>
     <module>flottila-cli</module>
+    <module>flottila-sim</module>
     <module>flottila-archtest</module>
     <module>flottila-bench</module>
   </modules>
@@ -123,6 +124,11 @@
       <dependency>
         <groupId>io.flottila</groupId>
         <artifactId>flottila-cli</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.flottila</groupId>
+        <artifactId>flottila-sim</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>

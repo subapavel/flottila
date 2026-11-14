@@ -1,4 +1,15 @@
 
+## 2026-11-14 — merge origin/main into the work branch, pushed to main (owner) — done
+- Owner: 119 commits lived only on claude/brave-hopper-5vwaju; new sessions start from main and saw none of it. Owner chose "merge and push to main".
+- main brought dc6a683 flottila-sim (P2-10a), the P2-10b WIP patch, CONSIDER-10/11 (owner 2026-11-10). Colliding ids renumbered on main's side:
+  D-101 → D-143, F-25 → F-36, FIX-120 → FIX-193, CONSIDER-11 (top priority, flow error handling) → CONSIDER-15, CONSIDER-10 → CONSIDER-16.
+- flottila-sim ported to the reworked core (implementer): ClaimCap/SimIntake/SimRun API moves, `maxAttempts=5` → `NO_RETRIES`; Oracle expects a
+  park at step 1 (D-135; main's expectation was written against the pre-D-135 worker), noted in D-143.
+- WORKFLOW §3: every push also goes to main; a session starts with `git fetch origin main` and checks HEAD contains it.
+- Checks: reactor clean verify -Pit 4530 tests, 1 failure = LedgerIT:132 (FIX-184, tree-dependent: passes 2/0 in a copy of the merged tree);
+  run 1 stopped on ReplicaStartTest:159 (new flake → FIX-194); sim 61/0 incl. pinned seeds and golden digest; archtest 48/0; coverage no
+  decrease (sim line 97.2 / branch 95.9); demo 6/6. No reviewer run (a merge, no BACKLOG row). Logs agent/work/MERGE-main-*.
+
 ## 2026-11-13 — CORE-5b1 holder side of journal replication — done, review PASS (r5)
 - Context compacted earlier in the session (worker restarted once; Docker and Postgres restarted per NOTES). Deviation: F-35 (changelog 3.21).
 - Repl channel (the dialer's HELLO byte, handshake bytes and order unchanged, C1); frames OPEN 3, DATA 4, SEAL 5 (end, crc32c), RECEIPT 6
