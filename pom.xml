@@ -23,6 +23,8 @@
     <module>query-core</module>
     <module>jq-core</module>
     <module>jq-cli</module>
+    <!-- Build tool: oracle's PIT run loads it as a plugin dependency (F-84). -->
+    <module>pit-filter</module>
     <module>oracle</module>
   </modules>
 
