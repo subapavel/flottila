@@ -387,6 +387,8 @@ class TrailTest {
         assertEquals(1, warned.size(), "a persist that fails logs exactly one WARNING: " + warned);
         assertTrue(warned.getFirst().startsWith("message m-w: "), "the WARNING opens with the message id prefix: " + warned);
         assertTrue(warned.getFirst().contains(down.key().toString()), "and the key: " + warned);
+        assertTrue(warned.getFirst().contains("could not be made durable"), "the WARNING says the body could not be made durable: " + warned);
+        assertTrue(warned.getFirst().contains("its rows are recorded metadata-only"), "and tells the operator the rows are metadata-only: " + warned);
     }
 
     @Test
@@ -407,6 +409,8 @@ class TrailTest {
         List<String> warned = all.stream().filter(m -> m.contains(down.key().toString())).toList();   // this case's failing message only
         assertEquals(1, warned.size(), "the capture sees the failed persist's WARNING, and only it: " + warned);
         assertTrue(warned.getFirst().startsWith("message m-down: "), warned.toString());
+        assertTrue(warned.getFirst().contains("could not be made durable"), "the witness WARNING says the body could not be made durable: " + warned);
+        assertTrue(warned.getFirst().contains("its rows are recorded metadata-only"), "and that its rows are metadata-only: " + warned);
     }
 
     @Test
