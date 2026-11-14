@@ -36,7 +36,6 @@ import io.github.subapavel.jqj.value.JqValue;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -50,18 +49,15 @@ import java.util.List;
  * that sorted order, one level deeper. There is no identity check. The walk keeps its open containers on a stack of its
  * own, never in Java frames. It charges one tick per member pair it compares, one per key it collects from each
  * object, and one per started KiB of the shorter of two strings it compares, a key pair included, and the number
- * compare's own; the member walks charge theirs, a view's key proof included (ADR-0044); the sort of a key list
- * charges nothing, and nothing is charged to
- * bytes built (ADR-0037, design approval O1).
+ * compare's own; the member walks charge theirs, a view's key proof included (ADR-0044); each key list is sorted by
+ * jqj's merge sort ({@link MergeSort}), each compare charging max(1, started KiB of the shorter key), as {@code keys}
+ * does (F-53); nothing is charged to bytes built, the sorted key lists included (ADR-0037, design approval O1).
  */
 public final class Order {
   /** jq's {@code MAX_CMP_DEPTH}. */
   static final int MAX_DEPTH = 10_000;
 
   private static final String TOO_DEEP = "Comparison too deep";
-
-  /** jq's {@code string_cmp}, uncharged: the sort of a key list. Two keys of one object's walk are never equal. */
-  private static final Comparator<Key> BY_BYTES = (p, q) -> bytes(p.utf8(), q.utf8());
 
   private Order() {}
 
@@ -93,9 +89,9 @@ public final class Order {
           case JqArray p -> open = new Elements((Members) p, (Members) y, depth + 1, open);
           case JqObject p -> {
             Members pm = KeyProof.members(state, p);
-            List<Key> left = keys(state, pm);
+            Key[] left = keys(state, pm);
             Members ym = KeyProof.members(state, (JqObject) y);
-            List<Key> right = keys(state, ym);
+            Key[] right = keys(state, ym);
             r = keyLists(state, left, right, depth + 1);
             if (r == 0) {
               open = new Values(pm, left, ym, right, depth + 1, open);
@@ -158,13 +154,19 @@ public final class Order {
 
   /** Two strings by {@link #bytes}: one tick per started KiB of the shorter, whose every byte may be compared. */
   private static int strings(RunState state, MemorySegment a, MemorySegment b) {
-    state.tick((int) ((Math.min(a.byteSize(), b.byteSize()) + 1023) >>> 10));
+    state.tick(shorterKiB(a, b));
     return bytes(a, b);
+  }
+
+  /** The started KiB of the shorter of {@code a} and {@code b}, 0 when it is empty. */
+  private static int shorterKiB(MemorySegment a, MemorySegment b) {
+    return (int) ((Math.min(a.byteSize(), b.byteSize()) + 1023) >>> 10);
   }
 
   /**
    * jq's {@code string_cmp}: the first byte that differs, unsigned, within the shorter length, then the lengths. It
-   * charges nothing; {@code keys} charges its own sort (Keys).
+   * charges nothing; {@code keys} (Keys) and the sort of an object's key list in {@link #compare} charge each compare
+   * they make with it (F-53).
    */
   public static int bytes(MemorySegment a, MemorySegment b) {
     long n = Math.min(a.byteSize(), b.byteSize());
@@ -179,18 +181,25 @@ public final class Order {
   private record Key(MemorySegment utf8, int cursor) {}
 
   /**
-   * jq's {@code jv_keys}: the keys of {@code object}, one tick per key collected, sorted by {@link #BY_BYTES} at no
-   * charge. The list is scratch, never charged to bytes built.
+   * jq's {@code jv_keys}: the keys of {@code object}, one tick per key collected, sorted by jqj's merge sort ({@link
+   * MergeSort#sort}) by {@link #bytes}, as {@code keys} sorts them: one tick per compare, max(1, started KiB of the
+   * shorter key) (F-53). Two keys of one object's walk are never equal, so the order is that of any sort. The keys are
+   * scratch, never charged to bytes built.
    */
-  private static List<Key> keys(RunState state, Members object) {
+  private static Key[] keys(RunState state, Members object) {
     Keyed keyed = (Keyed) object;
     List<Key> keys = new ArrayList<>();
     for (int c = object.first(); c != -1; c = object.next(state, c)) {
       state.tick();
       keys.add(new Key(keyed.key(c).utf8(), c));
     }
-    keys.sort(BY_BYTES);
-    return keys;
+    return MergeSort.sort(
+        keys.toArray(Key[]::new),
+        keys.size(),
+        (p, q) -> {
+          state.tick(Math.max(1, shorterKiB(p.utf8(), q.utf8())));
+          return bytes(p.utf8(), q.utf8());
+        });
   }
 
   /**
@@ -198,21 +207,21 @@ public final class Order {
    * by key, each pair of strings at {@code depth + 1}, then the lengths. A key pair is a string pair, not a member
    * pair: it charges its KiB only.
    */
-  private static int keyLists(RunState state, List<Key> left, List<Key> right, int depth) {
+  private static int keyLists(RunState state, Key[] left, Key[] right, int depth) {
     if (depth > MAX_DEPTH) {
       throw tooDeep();
     }
-    int n = Math.min(left.size(), right.size());
+    int n = Math.min(left.length, right.length);
     if (n > 0 && depth + 1 > MAX_DEPTH) {
       throw tooDeep();
     }
     for (int i = 0; i < n; i++) {
-      int r = strings(state, left.get(i).utf8(), right.get(i).utf8());
+      int r = strings(state, left[i].utf8(), right[i].utf8());
       if (r != 0) {
         return r;
       }
     }
-    return Integer.compare(left.size(), right.size());
+    return Integer.compare(left.length, right.length);
   }
 
   /** One open pair of containers: the pairs of members it gives, one at a time, each at {@link #depth}. */
@@ -274,12 +283,12 @@ public final class Order {
   /** Two objects of one key list: their values in the sorted key order, each key's at its own cursor in each walk. */
   private static final class Values extends Walk {
     private final Members a;
-    private final List<Key> left;
+    private final Key[] left;
     private final Members b;
-    private final List<Key> right;
+    private final Key[] right;
     private int i;
 
-    Values(Members a, List<Key> left, Members b, List<Key> right, int depth, Walk outer) {
+    Values(Members a, Key[] left, Members b, Key[] right, int depth, Walk outer) {
       super(depth, outer);
       this.a = a;
       this.left = left;
@@ -289,11 +298,11 @@ public final class Order {
 
     @Override
     boolean next(RunState state) {
-      if (i == left.size()) {
+      if (i == left.length) {
         return false;
       }
-      x = a.member(state, left.get(i).cursor());
-      y = b.member(state, right.get(i).cursor());
+      x = a.member(state, left[i].cursor());
+      y = b.member(state, right[i].cursor());
       i++;
       return true;
     }

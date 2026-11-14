@@ -1,6 +1,7 @@
 package io.github.subapavel.jqj.internal.op;
 
 import io.github.subapavel.jqj.internal.value.BuiltArray;
+import io.github.subapavel.jqj.internal.value.MergeSort;
 import io.github.subapavel.jqj.query.run.Charges;
 import io.github.subapavel.jqj.query.run.RunState;
 import java.util.Arrays;
@@ -79,9 +80,9 @@ final class Built {
       values[length++] = value;
     }
 
-    /** The elements so far, sorted by {@code order} with jqj's merge sort, {@link Sort#mergeSort} (F-48). */
+    /** The elements so far, sorted by {@code order} with jqj's merge sort, {@link MergeSort#sort} (F-48). */
     void sort(Comparator<Object> order) {
-      values = Sort.mergeSort(values, length, order);
+      values = MergeSort.sort(values, length, order);
     }
 
     /** The array of the elements so far; nothing is added after. */
