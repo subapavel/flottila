@@ -39,7 +39,8 @@ import org.junit.jupiter.params.provider.EnumSource;
  * format whose values are plain objects (founding §14), as in AltBindTest: {@code head} takes a list's first element and
  * raises on anything else, as the language's {@code .[0]} raises on a number.
  *
- * <p>Each expected value is jq-ref 1.8.2's output for the filter named beside it (#193, 2026-11-14).
+ * <p>Each expected value is the reference binary's output, version 1.8.2 (docs/agents/environment.md), for the
+ * filter named beside it (#193, 2026-11-14).
  */
 class FalsePassesOnTest {
   private static final Source AT = new Source(0, 1);
@@ -136,7 +137,7 @@ class FalsePassesOnTest {
   @ParameterizedTest
   @EnumSource(CompileMode.class)
   void theLastAlternativeRunsOnceAndItsErrorPropagatesAfterItsResults(CompileMode mode) {
-    // jq-ref: [1] as [$a] ?// $a | ($a, error("x")) gives 1, [1], then the error "x" (rc 5): the first alternative's
+    // The reference: [1] as [$a] ?// $a | ($a, error("x")) gives 1, [1], then the error "x" (rc 5): the first alternative's
     // error starts the second, and the second's error ends the run with its results given once.
     Object x = new Object();
     List<Object> in = List.of(x);
@@ -164,7 +165,7 @@ class FalsePassesOnTest {
   @ParameterizedTest
   @EnumSource(CompileMode.class)
   void aBreakInTheLastAlternativeEndsTheValueToo(CompileMode mode) {
-    // jq-ref: [label $f | (1,2) as [$a] ?// $a | ($a, break $f)] gives [1]: the value's second result never runs.
+    // The reference: [label $f | (1,2) as [$a] ?// $a | ($a, break $f)] gives [1]: the value's second result never runs.
     Object p = new Object();
     Object q = new Object();
     Node root = new Label(AT, LABEL, asListOrValue(comma(c(p), c(q)), comma(var(GROUP), new Break(AT, LABEL))));
@@ -194,7 +195,7 @@ class FalsePassesOnTest {
   @ParameterizedTest
   @EnumSource(CompileMode.class)
   void aBreakAfterACollectEndsWhatProducedIt(CompileMode mode) {
-    // jq-ref: [label $f | ([1], [2]) | (., break $f)] gives [[1]]: the second array is never built.
+    // The reference: [label $f | ([1], [2]) | (., break $f)] gives [[1]]: the second array is never built.
     Node root = new Label(AT, LABEL, new Pipe(AT, comma(array(c(1)), array(c(2))), comma(new Identity(AT), new Break(AT, LABEL))));
     assertThat(results(root, mode)).as("results of label | ([1], [2]) | (., break)").containsExactly(List.of(1));
 
@@ -216,7 +217,7 @@ class FalsePassesOnTest {
   @ParameterizedTest
   @EnumSource(CompileMode.class)
   void aBreakInAReduceUpdateEndsTheLabelsBody(CompileMode mode) {
-    // jq-ref: [label $f | reduce (1,2) as $x (0; break $f), 5] gives []: the comma after the reduce never runs.
+    // The reference: [label $f | reduce (1,2) as $x (0; break $f), 5] gives []: the comma after the reduce never runs.
     Node reduce = new Reduce(AT, c(0), STATE, new Bind(AT, comma(c(1), c(2)), X, new Advance(AT, STATE, new Break(AT, LABEL))));
     Node root = new Label(AT, LABEL, comma(reduce, c(5)));
     assertThat(results(root, mode)).as("results of label | reduce (1,2) as $x (0; break), 5").isEmpty();
