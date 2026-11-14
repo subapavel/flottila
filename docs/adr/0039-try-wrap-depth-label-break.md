@@ -1,6 +1,6 @@
 # Try marks downstream errors by a wrap depth; Label and Break are slot tokens
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #68; designer draft); amends ADR-0005 (Try, Label and Break fields), ADR-0008 (catch set, run state), ADR-0037 (Alt and Collect after a break) and ADR-0038 (AltBind rethrow); the internal Detach versus the public `detach()` corrected at the spec 2a review (#100); amended by F-85 (#194: a false a node's own Holder gave ends at that node)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #68; designer draft); amends ADR-0005 (Try, Label and Break fields), ADR-0008 (catch set, run state), ADR-0037 (Alt and Collect after a break) and ADR-0038 (AltBind rethrow); the internal Detach versus the public `detach()` corrected at the spec 2a review (#100); amended by F-85 (#194: a false a node's own Holder gave ends at that node); a Break may name a label token parameter of a lifted function (ADR-0045, #107)
 
 jq 1.8.2 implements `try` as `TRY_BEGIN`, body, `TRY_END`. An error that leaves the body's output (a downstream error) is wrapped on its way back, and `TRY_BEGIN` unwraps and re-raises a wrapped error instead of running the handler. jq 1.8.2 has neither FORK_OPT nor gen_try_handler. The jq facts here were read from jq-1.8.2 source; #68's red records them on jq-ref, and jq-ref wins.
 

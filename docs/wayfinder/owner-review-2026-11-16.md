@@ -43,6 +43,12 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
 - The pending jump carries closure arguments (ADR-0047).
 - `stackBytes` 0 is a public setting: everything runs on the trampoline (ADR-0046).
 
+- Run (2026-11-14), proposed by the grilling-adviser for the owner under the delegation of
+  2026-11-14:
+  - F-87: a termination on the command line prints `jq: error: <message>` and ends 5, ticket #197.
+  - ADR-0045 (#107): a label that a lifted function captures is passed as its token, not as a Break
+    closure. This is ADR-0005's "captured like a variable".
+
 ## Spec 3 (3a #152, 3b #164; `docs/wayfinder/spec-3-grilling.md`)
 
 - ADR-0010's Bind rule ("bound values run in value mode") gives way to `Tracking` (F-59, ADR-0048).
