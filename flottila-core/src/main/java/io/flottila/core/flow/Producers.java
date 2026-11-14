@@ -11,10 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The producers {@link FlowBuilder} created for one built flow (FIX-30): a {@link Delivery}'s or a {@link FlowWorker}'s, closed
- * together, once. A producer whose close fails — its future, or a RuntimeException from {@code close()} itself — is logged at WARNING
- * and stops no other; the close completes, never fails, once every producer's close has settled. An {@link Error} thrown by a
- * producer's {@code close()} is not caught: it propagates to the caller, the producers after it are not closed and the close
- * never completes.
+ * together, once. A producer whose close fails — its future, or anything {@code close()} itself throws, an {@link Error} and a
+ * sneaky checked exception included (FIX-141, F-30) — is logged at WARNING and stops no other; the close completes, never fails,
+ * once every producer's close has settled.
  */
 final class Producers {
 
@@ -46,7 +45,7 @@ final class Producers {
             Future<Void> closing;
             try {
                 closing = p.close();
-            } catch (RuntimeException thrown) {   // a producer that throws instead of failing its future: the same failed close
+            } catch (Throwable thrown) {   // a producer that throws instead of failing its future, an Error or a sneaky checked exception too (FIX-141, F-30): the same failed close; a narrower catch abandons the loop and strands every later producer, pinned by ProducersCloseTest.theLoopFinishesTheThirdProducerIsAskedWhenTheMiddleOnesCloseThrows
                 closing = Future.failedFuture(thrown);
             }
             settled.add(closing.recover(failure -> {

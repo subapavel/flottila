@@ -1484,3 +1484,19 @@ plainly that the measurement proved it wrong.
 Review r1 FAILed on three things, all MY text: an assertion that was UNREACHABLE (no clock advance, and `FakeTimer` fires
 only on `advance`), now documenting rather than acceptance; an untested narrowing; and comments giving a false reason,
 which took my "one frame deeper" premise with it — F-30 corrected a 3rd and 4th time. VERIFIED_PASS: 99/0/0/0 filtered, core 535/0/0/0. D-054: class B, r2.
+
+## 2026-11-14 — FIX-141 one producer that will not close no longer strands the others — done, review PASS
+`Producers`' close loop caught `RuntimeException` around `p.close()`, so an `Error` from one producer abandoned the LOOP:
+every producer after it was never asked to close and never joined `settled`. Widened to `Throwable`, which hands the
+synchronous throw to the `recover` that already defines the right shutdown behaviour — log at WARNING and carry on.
+The reviewer found the defect worse than my packet stated, in two ways: the `Error` escaped after `asked` was set and
+before `closed` completed, so a SECOND `close()` hung for good; and at `FlowBuilder:464` (`closeAll` in a `finally`, return
+discarded) it REPLACED the build's own exception — FIX-140's shape a third time. It also grepped for a fatal-Error policy
+(`UncaughtExceptionHandler`, `VirtualMachineError`, `halt`) and found none on this path, so nothing relied on the escape.
+Beyond the packet, the implementer rewrote the class javadoc, which had documented the defect as if intended. I checked the
+provenance before accepting it: no `Producers` in DECISIONS.md, no close semantics in ARCHITECTURE.md, so that sentence
+described the code rather than recording an intent. Had a decision backed it, this task needed a finding first.
+The hand-off diff was made with `git diff` and SILENTLY OMITTED the new test class; applying it blindly would have landed
+the fix with NO test, green because nothing tested it. Caught by `git status --porcelain` in the lane (NOTES, lanes).
+All 5 mutants killed. VERIFIED_PASS integrated on 0adcbed: 19/19, core 555/0/0/0, and the four classes the last four tasks
+touched run together 124/0/0/0. Residual split out as FIX-145 (the interrupt flag). D-054: class A, r1.

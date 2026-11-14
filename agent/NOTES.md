@@ -489,3 +489,23 @@ tree with the m1 module is dc85964.
   merely whether the case fails. And read a verifier's quoted failure message rather than its narration:
   this one reported the failure as being on the `assertFalse` while the message it pasted (`names the
   cause: ... expected: <true> but was: <false>`, an `assertTrue` shape) showed otherwise.
+- **A loop inside a test hides every element after the first failure.** FIX-142's first red run reported
+  4 failures in 19 tests; split into one method per throwable kind it reported 6 in 21. An
+  `assertEquals` inside a `for` over kinds throws on the first kind and the rest never run, so the suite
+  under-reports and a mutant can look killed by a case that never executed. Use `@ParameterizedTest` with
+  one row per kind, or separate methods — never a loop over cases inside one test. The test-author found
+  this itself, by noticing the count did not match the number of kinds, which is the same arithmetic
+  check that caught the stale `.pyc` on FIX-139.
+- **A lane hand-off diff made with `git diff` SILENTLY OMITS new files.** FIX-141's diff held only
+  `Producers.java`; its whole new test class was untracked, so applying that diff to the main tree would
+  have landed the fix with NO test — green because nothing tested it. Caught by running
+  `git status --porcelain` in the lane before applying, not by reading the diff, which looked complete.
+  **Every lane diff is to be made with `git add -A && git diff --cached > <file>.diff`**, and before
+  applying one, check the lane's `git status --porcelain` for `??` entries. The same hazard applies to
+  any new fixture or test file, and FIX-142's lane had one queued behind it.
+- **`diff` of backup vs mutated beats `grep -n` of the mutated line.** FIX-141's verifier substituted
+  `diff <file>.orig <file>`, logged before each run, for the required `grep -n` quote-back, and said so
+  rather than claiming it had followed the rule. The substitute is STRONGER: `grep` shows a line that
+  matches a pattern, while `diff` shows the change actually present and proves the file differs from the
+  backup in exactly that way — and the same `diff` being empty after restore is the `cmp` check. Make
+  `diff` the required form; keep `cmp` after restore.
