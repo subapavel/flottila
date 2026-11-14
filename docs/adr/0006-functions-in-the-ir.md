@@ -1,19 +1,24 @@
 # Functions in the IR: lifted, called by name, specialised away
 
-Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0009 (issue #7); amended by F-31 (the natives sentence covers jq-defined builtins only); amended for spec 2a by ADR-0040 (F-41: inlined by the resolver, #70); `to_entries` a replacing native by ADR-0044 (#85)
+Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0009 (issue #7); amended by F-31 (the natives sentence covers jq-defined builtins only); amended for spec 2a by ADR-0040 (F-41: inlined by the resolver, #70); `to_entries` a replacing native by ADR-0044 (#85); amended for spec 2b by ADR-0045 (lifting, passes, the specialisation cap), F-54 (over-cap PLAIN calls), F-56 (the tail condition's left context) and F-57 (no fold pass)
 
-Every jq `def` is lifted into the program's function list. Captured variables and enclosing
+A recursive group, and a function that a call reaches over the inline cap or past the IR depth
+bound, is lifted into the program's function list; every other call is inlined by the Resolver
+(ADR-0040, ADR-0045, F-54). Captured variables and enclosing
 closure parameters become trailing parameters. A jq closure is a node of the caller's scope, run
 with the callee's input wherever the callee calls it. Passing a parameter straight on never wraps
 it again. A recursive definition is a function in a call-graph strongly connected component, its
 recursive group.
 
-- **Passes**: resolve → inline and specialise → fold → freeze → analyses.
+- **Passes**: resolve + inline → verify → specialise (skipped under CONSERVATIVE, ADR-0018) →
+  verify/freeze → analyses (ADR-0045); there is no fold pass (F-57).
 - **Inlining**: every call to a non-recursive function becomes the function's body, with closures
-  substituted hygienically.
+  substituted hygienically, except over the inline cap or past the IR depth bound, where it is a
+  PLAIN `Call` to the function lowered once with real closures (F-54).
 - **Specialisation**: a closure parameter that every call in its recursive group passes on
   unchanged gets one copy of the group per distinct outside argument (equal arguments share a
-  copy), under a node cap set in the spec. Real closures remain only where a recursive call changes
+  copy), under its own node cap, `SPECIALISE_CAP`, each (group, argument tuple) whole or not at all
+  (ADR-0045). Real closures remain only where a recursive call changes
   the closure, or above the cap. This is what turns `recurse(f)`, `while`, `until` and `walk` into
   loops. Spike A's call-per-result shape, specialised, completes 10⁶ levels under tail jumps where
   the unspecialised one overflows, and it runs at about the tail-call shape's speed. Under the
@@ -25,7 +30,8 @@ recursive group.
   - the callee is in the caller's recursive group;
   - the call is in tail position (right of `Pipe`, `Comma` or `Alt`, a branch of `If`, the body of
     `Bind`; never inside `Try`, `Label`, `Reduce`, `Foreach`, `Collect`, `PathOf` or `Update`);
-  - every left context on the way yields at most one result;
+  - every left context on the way has cardinality at most one, which promises that nothing runs
+    after its result (F-56);
   - no closure argument captures a slot of the current activation.
 
   Tail calls become jumps, and recursive calls count toward the hybrid's K (amended Spike A).

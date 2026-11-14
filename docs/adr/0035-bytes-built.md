@@ -1,6 +1,6 @@
 # Bytes built: charged by the builder, before allocation, in RunState
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #64; designer draft); amends ADR-0030 (bytes built join RunState) and ADR-0017 (how the fixed charges are measured, F-39)
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #64; designer draft); amends ADR-0030 (bytes built join RunState) and ADR-0017 (how the fixed charges are measured, F-39); the delete list's charge by spec 3 grilling round 1 (question 10)
 
 #64 is the first ticket that builds arrays, objects and strings during a run, so it is the first user of ADR-0017's bytes-built budget. ADR-0030 deferred the counter to that user. This ADR fixes where the charge happens and how its fixed costs are set.
 
@@ -37,3 +37,10 @@ Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #64; desig
   - "Builds no value larger than 4 KiB" means no fold result; literals written in the filter text are not folds.
   - Each AST node is folded at most once per compile: folding is bottom-up and its result is kept. A literal a fold builds is charged like any other built value, so no fold work goes uncharged (#65, fourth standards review).
 - Considered: a counting pre-pass (twice the work); upper-bound charges (they depend on the operands); folding any size, as jq does (an unbounded allocation at compile time).
+
+## Amendment (spec 3 grilling round 1, question 10)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+A path entering a delete list charges `CONTAINER` plus `ELEMENT` per component, which is what jq's
+array of paths holds.

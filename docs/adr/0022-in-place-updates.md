@@ -1,6 +1,6 @@
 # In-place updates: a sole-use licence and a per-activation owner
 
-Status: accepted (2026-11-11, owner, issue #8 "When may a value be updated in place?"); amends ADR-0003 (owner on built strings), ADR-0005 and ADR-0009 (`keepsArgs`, in-place operations), ADR-0007 (last read, key steps of WALK), ADR-0010 (WALK writes in place), ADR-0018 and ADR-0020 (conservative compile, copy-only switch) and ADR-0019 (the analyses-gain diagnostic); records F-16; supersedes founding §6.3's clear-on-escape (F-16)
+Status: accepted (2026-11-11, owner, issue #8 "When may a value be updated in place?"); amends ADR-0003 (owner on built strings), ADR-0005 and ADR-0009 (`keepsArgs`, in-place operations), ADR-0007 (last read, key steps of WALK), ADR-0010 (WALK writes in place), ADR-0018 and ADR-0020 (conservative compile, copy-only switch) and ADR-0019 (the analyses-gain diagnostic); records F-16; supersedes founding §6.3's clear-on-escape (F-16); amended by spec 3 grilling round 1 (question 6: the own owner and the never-change tests in 3a); "Detach and budgets" amended by F-80 (spec 5 round 2, grilling-adviser for the owner under the delegation of 2026-11-14: a state hold's detach and main-document views); "Borrows" and "WALK key steps" amended by spec 5b's ticket approval (grilling-adviser for the owner under the delegation of 2026-11-14)
 
 Facts marked "jq-ref" were observed on 1.8.2 by the adviser or the architect (issue #8 round 1).
 Timings are single runs, not `bench/jq-ref.sh` measurements.
@@ -73,7 +73,11 @@ Computed after inlining and specialisation, so the inlined prelude `add`, `join`
 
   Anything else on the chain is an escape, including a Call or ParamCall input.
 - **Borrows:** every other read of the chain or a part of it reaches only If conditions with at most
-  one result and operations that are `pure` with `keepsArgs` false.
+  one result and operations that are `pure` with `keepsArgs` false. An operation whose `reads`
+  fact is set, with `keepsArgs` false, takes nothing from its `.` (only `input` sets `reads`, F-79;
+  `onlyInputReads` pins it), so the chain arriving as its `.` is no read of the chain. This is the
+  rule behind "`input` is no escape" above; a second operation that sets `reads` needs its own
+  ruling.
 - **Variables:** a variable bound to the chain or a part of it allows no licensed site in its Bind
   body, except the whole-chain move. Without this rule,
   `reduce (1,2) as $x ({a:[]}; .a as $y | .a += [$x] | .n = ($y|length))` would give `"n":2`;
@@ -108,11 +112,12 @@ The left operand is the state, or an owned level of it.
   its own right side does not copy that level again.
 - **WALK key steps** (amends ADR-0007): a dynamic step (ADR-0005) whose key has at most one result
   and does not read `.` (constants and variables, as `.[$row|f|tostring]` in `INDEX`) is a WALK
-  step. jq-ref builds `INDEX` over 4×10⁵ keys in 0.86 s. At run time a string key is a field, a
-  number an index and an object a slice (jq-ref: `[1,2,3] | {"start":0,"end":2} as $k | .[$k] |=
-  [.]` → `[[1,2],3]`); any other key raises jq's error. A level reached through a slice key is
-  rebuilt by copy, never written in place. On jq-ref the key is evaluated once per path,
-  interleaved with the right side.
+  step. A key that may read input is none: its Update is TRACKED and has no licence, as
+  `.[input] |= f` (ADR-0007, "Amendment (spec 5 round 2)"). jq-ref builds `INDEX` over 4×10⁵ keys
+  in 0.86 s. At run time a string key is a field, a number an index and an object a slice
+  (jq-ref: `[1,2,3] | {"start":0,"end":2} as $k | .[$k] |= [.]` → `[[1,2],3]`); any other key
+  raises jq's error. A level reached through a slice key is rebuilt by copy, never written in
+  place. On jq-ref the key is evaluated once per path, interleaved with the right side.
 - **Strings:** a built string carries an owner (amends ADR-0003). An append writes after the
   string's last byte when the owner matches and capacity remains, then returns a new string header
   over the same bytes. The old header loses the right to grow, so every string stays immutable and
@@ -130,8 +135,9 @@ never reachable. Sinks receive only values that left the chain, and so carry a r
 
 ## Detach and budgets
 
-- In a state hold that spans a later read, an in-place write detaches only the inserted value; the
-  state's view flag stays clear, so the hold's `detach()` is O(1) and keeps the owner (ADR-0007).
+- In a state hold that spans a later read, an in-place write detaches the inserted value's
+  input-document views, and the state hold does not detach again a state the site wrote. The
+  state's view flag stays clear only when the inserted value holds no main-document view.
 - Growth charges the capacity it adds as bytes built (at most twice the final size), and ticks per
   element. A copy charges its slots.
 - G4 `reduce .[] as $x ([]; . + [$x])` becomes linear (gate check 4). G5 `.items[].price |= . *
@@ -231,3 +237,14 @@ never reachable. Sinks receive only values that left the chain, and so carry a r
 - **Licensing TRACKED:** its path generator reads the value being written.
 - **Rewriting `reduce . + [$x]` into a builder:** covers G4 only.
 - **An identity map of owned values:** a lookup per write.
+
+## Amendment (spec 3 grilling round 1, question 6)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+- The Update's own owner is a 3a ticket of its own, right after TRACKED Update. It brings `Owner`,
+  copy-only, `copyOnlyAgrees`, `keptResultsNeverChange` and `sharedInputsNeverChange`, because the
+  own rebuild (K2 only) is the first in-place write. Red: bytes built stay linear on `[range(1e5)] |
+  .[] |= .+1`.
+- 3b keeps `ownership-v1`, the licence (`licenceFacts`), in-place with G4
+  (`inPlaceKeepsBytesBuiltLinear`), and nested reduce.

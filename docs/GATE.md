@@ -18,21 +18,24 @@ nightly PIT dispatched on the gate commit (`nightly.yml` has a manual trigger).
    groups, and generated) stdout, stderr and the exit code equal the reference jq binary's, byte for
    byte, syntax-error text excepted (ADR-0020); every case id is in
    `ratchet/oracle/differential.txt`.
-   - **Generated cases:** at least 1000 cases in `differential.txt`, counted after ADR-0020's
-     drops, each for `values-v1`, `core-v1` and `ownership-v1`, and 200 for each builtin family
-     (`builtins-<family>-v1`: collections, strings, regex, dates, math, formats). The host-facing
-     builtins (`debug`, `stderr`, `env`, `halt`, `halt_error`, `input_filename`,
-     `input_line_number`, `get_search_list`, `now`) belong to no family and arrive in specs 5 and 7
-     with hand-written cases. A minimum may be raised freely and
-     lowered only by a finding. A seed that hits a listed deviation stays as a deviation case
-     (ADR-0023).
+   - **Generated cases:** at least 1000 cases in `differential.txt`, counted after ADR-0020's drops,
+     each for `values-v1`, `core-v1` and `ownership-v1`, and 200 for each builtin family
+     (`builtins-<family>-v1`: collections, strings, regex, dates, math, formats), and 200 for each
+     of `malformed-v1`'s six forms (F-78). The host-facing
+     builtins still unbuilt (`input`, `inputs`, `env`, `halt`, `halt_error/0,1`, `input_filename`,
+     `input_line_number`, `get_search_list`, `get_prog_origin`, `get_jq_origin`, `modulemeta`,
+     `now`) belong to no family and arrive in specs 5 and 7 with hand-written cases; `debug/0,1` and
+     `stderr` came in spec 3 and are covered from spec 4's gate (ADR-0023). A minimum may be raised
+     freely and lowered only by a finding. A seed that hits a listed deviation stays as a deviation
+     case (ADR-0023).
    - **Builtin coverage:** each of jq 1.8.2's 226 public builtins is named, by name and arity, in
      the filter of at least one passing jq-test or differential case (`scripts/builtin-coverage.sh`,
      reporting from spec 4; its list of uncovered builtins is empty at the gate).
    - **Deviations:** every `DEVIATIONS.md` row names a passing differential case or `test:` method
      that checks both columns.
-   - **Compile modes:** the optimised, the conservative and the copy-only run agree on the
-     compile-mode cases (`ratchet/oracle/compile.txt`, one line per mode; ADR-0018, ADR-0022).
+   - **Compile modes:** the optimised, the conservative, the copy-only and the trampoline run agree
+     on the compile-mode cases (`ratchet/oracle/compile.txt`, one line per mode; ADR-0018, ADR-0022,
+     F-58).
      `ratchet/oracle/backend.txt` stays empty, reserved for milestone 2.
    - **Ownership:** `keptResultsNeverChange`, `sharedInputsNeverChange`, `keepsArgsIsSound` and
      `licenceFacts` pass (ADR-0022).
@@ -113,10 +116,11 @@ is reported to the owner at that spec's end.
 | # | Spec | Scope | Proves |
 | --- | --- | --- | --- |
 | 1 | Walking skeleton | The tooling tickets first, blocking every class-C ticket except the API slice, which only the build ticket blocks; spec 1's last ticket measures every ticket-gate step alone and three at a time, and PIT per passing seed (F-19). The tooling: modules with `module-info`, the oracle module and runners, `scripts/ratchet.java` and the gate scripts, the record script, JaCoCo, PIT in a nightly workflow, `quality/floors.tsv`, the word check, the bench module and `bench/jq-ref.sh`, CI (the owner then makes its three jobs required, ADR-0014); copies of jq's tests and JSONTestSuite with `NOTICE`. Then the thinnest path through every layer: `.` and `.a` over one JSON document — value model, tape, reader, lexer, parser, IR, the interpreter, writer, a minimal API and the command line — with the first jq-test, differential and JSON cases in the ratchet and G1, G6 and G7 in `bench.tsv`. | 8; first slices of 1, 2, 3, 5, 6 |
-| 2 | Core language | Paths, pipes, comma, literals, construction, operators, computed numbers and their printing, comparisons and sort order, variables and destructuring, `if`, `try`, alternative, `reduce`, `foreach`, `label`, definitions and closures, the prelude loader and the natives its cases need, the ADR-0007 analyses its constructs need with the compile-mode oracle (path shapes arrive in spec 3, holds and root use in spec 5, touched fields stay out), specialisation and tail calls, recursion with the trampoline and U calibration, the mechanics of all five budgets. G2 and G4 at 10⁴ enter `bench.tsv`; G4 is expected over 1.0× until in-place updates land. May split into 2a and 2b. | 1, 2, 4; first slice of 5 |
-| 3 | Paths and updates | Path mode (ADR-0010), `path()`, `paths`, the `getpath` family, `del`, the assignment operators, the natives the in-place red needs; then in-place updates (ADR-0022, class C, with copy-only and the ownership tests) and, after it, nested-reduce inheritance. G4 at 10⁵ and 10⁶ and G5 enter `bench.tsv`. | 1, 2, 4 |
-| 4 | Builtins | The remaining builtins by family (collections, strings, regex with joni and its limits, dates, math, formats `@…`), each with its oracle cases and generator; builtin coverage. G3 enters `bench.tsv`. | 1, 2, 4 |
-| 5 | JSON in full | ADR-0015 complete: input modes, the stream across files, `input` and `inputs`, lenient tokens, limits, the `jv_parse.c` replay, `--seq`, every output option; the `shtest` groups translated and recorded (those needing spec 7's flags pass there); host streaming (ADR-0007, ADR-0016). | 1, 2, 3, 4, 7 |
+| 2 | Core language | Paths, pipes, comma, literals, construction, operators, computed numbers and their printing, comparisons and sort order, variables and destructuring, `if`, `try`, alternative, `reduce`, `foreach`, `label`, definitions and closures, the prelude loader and the natives its cases need, the ADR-0007 analyses its constructs need with the compile-mode oracle (path shapes arrive in spec 3, holds and root use in spec 5b, touched fields stay out), specialisation and tail calls, recursion with the trampoline and U calibration, the mechanics of all five budgets. G2 and G4 at 10⁴ enter `bench.tsv`, and G3 with `sort` and its kin in 2a (F-33); G4 is expected over 1.0× until in-place updates land. May split into 2a and 2b. | 1, 2, 4; first slice of 5 |
+| 3 | Paths and updates | Path mode (ADR-0010), `path()`, `paths`, the `getpath` family, `del`, the assignment operators, the natives the in-place red needs; `debug` and `stderr`; the Update's own owner with copy-only and the never-change tests; G5 enters `bench.tsv` (3a). Then in-place updates (ADR-0022, class C, with the licence and `ownership-v1`) and, after it, nested-reduce inheritance; G4 at 10⁵ and 10⁶ enters `bench.tsv` (3b). | 1, 2, 4 |
+| 4 | Builtins | The remaining builtins by family (collections, strings, regex with joni and its limits, dates, math, formats `@…`), each with its oracle cases and generator; builtin coverage. Its diagnostic scenarios are recorded with no factor (ADR-0019). | 1, 2, 4 |
+| 5a | JSON in full | ADR-0015 complete: input modes, the stream across files, `input` and `inputs` (every `input` document detached at its read), lenient tokens, limits, the `jv_parse.c` translation `JvParser` (the replay and `--stream`), `--seq`, every output option, the `malformed-v1` generator; the `shtest` groups translated and recorded (those needing spec 7's flags pass there). | 1, 2, 3, 4 |
+| 5b | Holds, root use, host streaming | The hold analysis in the optimised compile (ADR-0007, F-77); root use and `needsWholeDocument`; host `stream` with its fallback (ADR-0016, ADR-0054). | 2, 7 |
 | 6 | Speed | Every cell measured beside same-session jq; checks 4 and 5 in full; the per-cell tolerance; the step default and refuel interval (ADR-0017 amendment); the whole-container copy; the fast paths a missed cell calls for; the diagnostic records. | 4, 5 |
 | 7 | Embedding and command line | ADR-0016's surface closed and ADR-0017's host SPI, sandbox, `import`/`include`/`modulemeta`, cancellation; the remaining flags and exit codes. Its last ticket writes `HANDOVER.md`. | 1, 2, 6, 7, 9 |
 

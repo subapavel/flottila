@@ -5,7 +5,8 @@ Input for `/to-spec`. Under the owner's delegation of 2026-11-14 (until Monday 2
 designer (round 1). jq behaviour: jq-ref 1.8.2 probes, observed by the architect and the adviser.
 
 To show the owner on Monday (adviser's list): GATE check 2's mode list (M3), the dropped IR fold
-(Q10, reversing 2a round 1's "folding" in 2b), and the embedded recursion-depth default (open below).
+(Q10, reversing 2a round 1's "folding" in 2b), the embedded recursion-depth default (open below), the
+pending jump carrying closures (records round, 3) and a public `stackBytes` 0 (records round, 4).
 
 ## Round 1 (grilling-adviser for the owner, 2026-11-14)
 
@@ -33,7 +34,7 @@ To show the owner on Monday (adviser's list): GATE check 2's mode list (M3), the
    `def l: first(.[]?|l)//7; l` → `7`; `walk(.)|length` → `1`. The spine-only option would end these
    near 200 levels, against ADR-0011's "depth bounded by memory".
 5. **Tail calls in the push interpreter: a pending-jump field** in the run state (fn, input, value
-   arguments); a tail-position op returns at once and the function's entry loop re-enters. Bound by
+   arguments, closure arguments: records round, 3); a tail-position op returns at once and the function's entry loop re-enters. Bound by
    M1.
 6. **U per filter.** Release constants: bytes per unit `b` and a guard reserve, taken at the worst of
    `-Xint` (the deterministic cold column), C1-only and warm, in fresh agent-free JVMs, on 512 KiB,
@@ -116,6 +117,28 @@ until spec 3; 2b lifts only their recursion Stub. Deep cases use user recursion 
   subsume".
 - Finding: no IR fold (question 10); amends ADR-0006's pass order.
 - Finding: the `trampoline` oracle mode (M3); amends ADR-0020 and GATE check 2.
+
+### Records round (grilling-adviser for the owner, 2026-11-14)
+
+Points the designer raised while drafting ADR-0045 to 0047 and F-54 to F-58, ruled by the adviser:
+
+1. The 512th nested expansion is a PLAIN `Call` too, like the inline cap and `MAX_IR_DEPTH`;
+   nesting and depth restart at 0 in a worklist function. jq-ref: `def f1: .+1; def f2: f1; …;
+   f600` on null → `1`; `def g1(f): f; def gi(f): g(i-1)(f|.+1); …; 0|g600(.)` → `599`.
+2. A call counts nothing only when no node is left at run time (inlined, or a `ParamCall`
+   specialisation replaced); every surviving `Call` counts while live.
+3. The pending jump carries closures: (fn, input, value arguments, closure arguments); ADR-0006's
+   condition 4 stays. Corrects Q5. jq-ref, both past 4 194 304:
+   `def r(f): if .>=5000000 then f else (.+1)|r(.+1) end; 0|r(0)` → `5000001`;
+   `def r(f;g): if .>=5000000 then [f,g] else (.+1)|r(g;f) end; 0|r(1;2)` → `[1,2]`.
+4. `stackBytes` 0 is a public `Limits` value: main and every body run on the driver.
+5. `b` and the reserve are maxima over the calibrated cells; a re-run adds cells, so `U_f` only
+   falls.
+6. DEVIATIONS "IR depth": the 30 001-level row leaves in the over-cap ticket's merge on
+   VERIFIED_PASS (jq-ref: 20 022 bytes, 10 001 `[`, `<skipped: too deep>`, 10 001 `]`, LF).
+7. Terms: "activation" qualified (call, owning, label); "frame" is a call activation's slot cells,
+   the JVM's is "Java frame" (GLOSSARY).
+8. ADR-0030 and ADR-0034 status lines name ADR-0045 to 0047.
 
 ### Open
 

@@ -1,6 +1,6 @@
 # Run state: an evaluation's budgets in query-core, owned by the Workspace
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #59; designer draft);
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #59; designer draft);; stack units and call activations by ADR-0046, the pending jump by ADR-0047 (spec 2b)
 amends ADR-0008 (`ws` in the protocol is the run state; a termination carries its budget),
 ADR-0009 (every call form takes the run state first), ADR-0013 (`…query.run` holds it) and
 ADR-0015 (when the reader's ticks reset); amended by ADR-0035 (bytes built, #64) and ADR-0044

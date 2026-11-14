@@ -1,6 +1,6 @@
 # The prelude is jq's builtin.jq, parsed once per JVM and looked up after the native table
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #71; designer draft); amends ADR-0040 (Binder order) and ADR-0031 (Source of inlined prelude nodes); amended by ADR-0044 (`to_entries` native, #85)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #71; designer draft); amends ADR-0040 (Binder order) and ADR-0031 (Source of inlined prelude nodes); amended by ADR-0044 (`to_entries` native, #85); `_modify/2` and `_assign/2` are replacing natives by ADR-0048 (spec 3)
 
 jq 1.8.2's `builtins_bind` binds builtin.jq's definitions, then the bytecoded builtins, then the C functions (`function_list`), and binds each unbound reference to the last binder first. No (name, arity) in builtin.jq is also a C or bytecoded builtin, so looking up natives before the prelude gives jq's result. The only exceptions are F-31's replacing natives (`flatten/0`, `flatten/1`, `inputs/0`), where jqj's native wins by design. Looking natives up first also lets a native-only filter compile without touching the prelude.
 
@@ -35,3 +35,13 @@ jq 1.8.2's `builtins_bind` binds builtin.jq's definitions, then the bytecoded bu
 - **Binding all definitions once per JVM**: a second Binder path, and dead definitions get checked.
 - **A serialised AST at build time**: build work before any measurement asks for it.
 - **"not defined" for an unbuilt native**: jq compiles those filters.
+
+## Amendment (ADR-0048, spec 3)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+`_modify/2` and `_assign/2` are replacing natives like F-31's, lowering to Update (MODIFY, ASSIGN).
+`|=`, `op=`, `//=` and `=` resolve through these names, so a user definition wins (P1): `def
+_modify(p;u): 42; {} | .a += 1`, `.a //= 1` and `.a |= 1` each give `42`, and `def _assign(p;u): 42;
+{} | .a = 1` gives `42` (architect's probes, 2026-11-14). A call by name lowers the same way: `{} |
+_modify(.a;1), _assign(.b;2)` → `{"a":1}`, `{"b":2}`.

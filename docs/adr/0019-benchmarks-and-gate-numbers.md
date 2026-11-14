@@ -1,6 +1,6 @@
 # Benchmarks: gate scenarios against same-session jq-ref, and the numbers of gate checks 4 and 5
 
-Status: accepted (2026-11-11, owner, issue #12 "Interpreter or bytecode first, and what speed must milestone 1 show?"); fixes GATE checks 4 and 5; the bench module runs from spec 1 (ADR-0013, ADR-0014); amended by ADR-0022 (issue #8: the analyses-gain diagnostic times G4 at 10⁴ only); amended by ADR-0023 (issue #17: when each scenario enters the ratchet, G4 at 10⁴ in spec 2 and larger sizes with in-place updates; 1 KB cases); amended by ADR-0024 (scenario ids)
+Status: accepted (2026-11-11, owner, issue #12 "Interpreter or bytecode first, and what speed must milestone 1 show?"); fixes GATE checks 4 and 5; the bench module runs from spec 1 (ADR-0013, ADR-0014); amended by ADR-0022 (issue #8: the analyses-gain diagnostic times G4 at 10⁴ only); amended by ADR-0023 (issue #17: when each scenario enters the ratchet, G4 at 10⁴ in spec 2 and larger sizes with in-place updates; 1 KB cases); amended by ADR-0024 (scenario ids); amended by spec 4 grilling round 1 (M5: spec 4's diagnostic scenarios); amended by spec 5 round 1 (the reader's rows first, the 10 % bar, `inputs | .a`)
 
 The reference numbers below were observed by the adviser on `claude-cloud-4vcpu` with jq 1.8.2
 (issue #12 round 1). The logs and the D-list are on issue #12 and in `bench/RESULTS.md` "Reference
@@ -49,7 +49,7 @@ times and limits (issue #12)".
   (`bench.<name>.1k`), so jqj is timed on the same work jq does; a scenario with no 1 KB cell (G3,
   G4, G6) gets its case on a 1 KB input of the same generator (ADR-0023).
 - G1, G6 and G7 enter `bench.tsv` in spec 1, G2 and G4 at 10⁴ in spec 2, G4 at 10⁵ and 10⁶ and G5
-  with spec 3's in-place ticket, G3 in spec 4 (ADR-0023). Before spec 6 the bench ratchet records
+  with spec 3's in-place ticket, G3 in spec 2a (F-33). Before spec 6 the bench ratchet records
   and fails nothing: a line with an empty `tolerance%` is overwritten by `regen --all` in either
   direction and skipped by `check`.
 
@@ -125,3 +125,20 @@ The three numbers were confirmed by the owner after the ADR review (2026-11-11, 
 - **Ratcheting the factor:** the reference's own noise exceeds any useful tolerance.
 - **Absolute millisecond targets; hyperfine; jaq, gojq or jackson-jq in the gate (founding §12:
   orientation only); JMH's default 5 forks × 10 s.**
+
+## Amendment (spec 4 grilling round 1, M5)
+
+No gate cell calls a spec-4 builtin. Spec 4's diagnostics ticket records the following on 100 KB
+inputs, with no factor, beside same-session jq-ref ("Timing the reference"): `test` per element
+with the pattern cache on and off (ADR-0053), `gsub`, `ascii_downcase`, `@csv`, `tojson|fromjson`
+and `strftime`. Its rows in `bench/RESULTS.md` name spec 6's candidates for a native (ADR-0006: on
+a measured win only).
+
+## Amendment (spec 5 round 1)
+
+- 5a's reader-diagnostics ticket measures the reader's diagnostic rows first, on the reader as it
+  is before spec 5. A ticket that changes the fast loop measures against those rows in one
+  session, as #85 did. It does not merge over the owner's ~10 % line (ADR-0002).
+- Added row: `inputs | .a` over 10 000 documents of 1 KB, measured in 5a (detach at read) and again
+  in 5b (the hold analysis). It is the "detach of inputs" row above.
+- No host-streaming cell joins the gate scenarios.

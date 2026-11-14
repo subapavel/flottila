@@ -1,6 +1,6 @@
 # Oracles and ratchet: copied jq tests, recorded jq-ref expectations, required cases, per-merge pass lists
 
-Status: accepted (2026-11-11, owner, issue #15 "How do the oracles and the ratchet work?"); replaces `docs/WORKFLOW.md` §6's ratchet and floor text together with ADR-0014; amends ADR-0013 (the CLI entry), ADR-0014 (ticket gate and CI), ADR-0016 (compile error text) and ADR-0017 (CLI environment, locale); supersedes founding §1's "not goals: identical error message wording" (F-15); finding F-14; amended by ADR-0022 (issue #8: no in-place licence in the conservative compile, copy-only switch); amended by ADR-0023 (issue #17: deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); amended by F-19 (who measures the fallback targets); amended by ADR-0024 (the Stub verdict); amended by ADR-0025 (`values-v1`: forms, seeds, generated files, drops); amended by F-27 (PIT and the compile-mode oracle leave the ticket gate); amended by F-28 (the spec-gate PIT target); amended by F-29 (the compile-mode oracle after every merge); amended by #60 (compile-mode oracle: switch by reflection, compile report, after-merge script); amended by ADR-0033 (`core-v1`: forms, break placement, freeze numbers); amended by F-46 (#89: the ticket gate runs the compile-mode oracle); amended by F-84 (two jq-core test classes leave PIT's test set)
+Status: accepted (2026-11-11, owner, issue #15 "How do the oracles and the ratchet work?"); replaces `docs/WORKFLOW.md` §6's ratchet and floor text together with ADR-0014; amends ADR-0013 (the CLI entry), ADR-0014 (ticket gate and CI), ADR-0016 (compile error text) and ADR-0017 (CLI environment, locale); supersedes founding §1's "not goals: identical error message wording" (F-15); finding F-14; amended by ADR-0022 (issue #8: no in-place licence in the conservative compile, copy-only switch); amended by ADR-0023 (issue #17: deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); amended by F-19 (who measures the fallback targets); amended by ADR-0024 (the Stub verdict); amended by ADR-0025 (`values-v1`: forms, seeds, generated files, drops); amended by F-27 (PIT and the compile-mode oracle leave the ticket gate); amended by F-28 (the spec-gate PIT target); amended by F-29 (the compile-mode oracle after every merge); amended by #60 (compile-mode oracle: switch by reflection, compile report, after-merge script); amended by ADR-0033 (`core-v1`: forms, break placement, freeze numbers); amended by F-46 (#89: the ticket gate runs the compile-mode oracle); amended by F-84 (two jq-core test classes leave PIT's test set); amended by F-58 (the `trampoline` mode, spec 2b); amended by spec 4 grilling round 1 (question 7: the builtin generators); amended by spec 5 round 1 (`malformed-v1`); amended by spec 3 grilling round 1 (question 9: `paths-v1`); amended by spec 7 round 1 (`Invocation.origin`; F-82: the `<case>` token, the jqtest host's loader; grilling-adviser for the owner under the delegation of 2026-11-14)
 
 Facts marked "jq-ref" were observed on 1.8.2 by the adviser (issue #15 round 1). Every runner lives in
 `oracle` on the class path, in `…jqj.oracle.{jqtest,diff,compile,backend,json,gen,record}`.
@@ -122,7 +122,9 @@ errors`); such text is jqj's own. The jqtest runner reads the last block from a 
   compares output and error. Cases that end in a termination under either compile are left out (a
   tail-recursive case can finish optimised and hit the recursion budget conservative). A third run
   under the copy-only switch (ADR-0022) checks in-place updates the same way; cases that end in a
-  termination under copy-only are left out. The oracle runs in the ticket
+  termination under copy-only are left out. A `trampoline` run, the conservative compile with
+  `stackBytes` 0 so that main and every body run on the driver, checks the heap forms the same way;
+  cases that end in a termination under it are left out (F-58). The oracle runs in the ticket
   gate unless spec 1's last ticket (F-19), or any later spec gate (ADR-0023), measures the oracle above
   ADR-0014's 60 s target, in which case
   it moves to the spec gate. **#40 measured step 1 above 60 s (F-27): the compile-mode oracle,
@@ -162,7 +164,8 @@ errors`); such text is jqj's own. The jqtest runner reads the last block from a 
   | --- | --- |
   | `oracle/jqtest.txt` | `id`, `backend` |
   | `oracle/differential.txt` | `id`, `def`, `backend` |
-  | `oracle/compile.txt` | `id`, `def`, `mode` (`conservative`, `copy-only`; ADR-0023) |
+  | `oracle/compile.txt` | `id`, `def`, `mode` (`conservative`, `copy-only`, ADR-0023; `trampoline`,
+  F-58) |
   | `oracle/backend.txt` | `id`, `def` |
   | `oracle/json.txt` | `id`, `label`, `def` |
   | `coverage.tsv`, `mutation.tsv` | as `ratchet/README.md` |
@@ -267,3 +270,67 @@ Accepted 2026-11-12, architect under `/run-spec` #56, on the designer's draft fo
   - A public builder method, against ADR-0018.
   - A new verdict kind: `left out:` already keeps such a case out of the pass list.
   - A Survey that fails on disagreement, against the glossary.
+
+## Amendment (spec 4 grilling round 1, question 7)
+
+- Each `builtins-<family>-v1` calls its family's spec-4 builtins and the family's earlier ones, and
+  none of spec 3's path builtins.
+- Every builtin is also called on the other kinds under `try … catch .`, so error text is compared.
+- `builtins-dates-v1` runs under `TZ=UTC` and draws only recorded conversions (ADR-0052). It calls
+  no zone reader: not `localtime`, not `strflocaltime`, and no `%s` in a format. The host-zone
+  ticket's recorded cases, under `TZ=UTC`, Asia/Tokyo and America/New_York, are their check.
+- `builtins-regex-v1` draws only constructs that ADR-0053's matrix shows identical.
+- `builtins-math-v1` prints an exact builtin's result raw. A computed one's, when normal, prints as
+  `[logb, (significand * 4294967296 | rint)]`, made of exact functions only (ADR-0051). It never
+  calls the 12 of the last math ticket. A computed result that is not normal prints as
+  `[class, copysign(1; .)]` for zero, subnormal and infinite, and as `"nan"` for NaN, so its sign
+  is checked too.
+- Each generator ticket records enough seeds to keep 200 after drops.
+
+## Amendment (spec 5 round 1)
+
+- **`malformed-v1`** is a frozen generator of malformed input.
+  - It is recorded whole before the replay ticket, and frozen on a dry run whose bounds are
+    written beforehand (as #58).
+  - Its forms cover GATE check 3's routes and modes: `-c .`, `try input catch .`, `-s`, `--seq`,
+    `--stream` and `fromjson`.
+  - It puts NUL only inside strings, because a NUL outside a string is a deviation shape
+    (ADR-0023).
+- JSONTestSuite's `test_transform` files are not added.
+
+## Amendment (spec 3 grilling round 1, question 9)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+- `paths-v1` covers path expressions and updates on small inputs, with the own-owner hazards:
+  repeated paths, an ancestor and its descendant in both orders, overlapping slices, right sides
+  that return their input or a part of it, and fractional indexes (P5). It avoids the DEVIATIONS
+  shapes by construction.
+- It is recorded before 3a's TRACKED Update ticket and frozen on a jq-ref dry run, with bounds
+  written in the ticket beforehand, as `core-v1` was (#58, ADR-0033). Its seed minimum is GATE check
+  2's 1000 after drops.
+- `copyOnlyAgrees` and `stackZeroAgrees` run over it.
+
+## Amendment (spec 7 round 1, Invocation)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, question 4; F-81). `origin` is the jq origin that
+`get_jq_origin` returns and `$ORIGIN/` stands for (ADR-0017).
+
+`record Invocation(List<String> args, Map<String,String> env, Path cwd, InputStream in,
+OutputStream out, OutputStream err, String origin)`; the six-argument constructor stays with
+origin `"."`. `origin` is jq's `dirname(argv[0])`: the launcher passes `$(dirname "$0")`
+unchanged.
+
+## Amendment (spec 7 round 1; F-82)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, open point "absolute path in stderr"). `CaseDirectory`
+uses `createTempDirectory`, so the case directory's path changes per run.
+
+The recorder and the comparison replace every occurrence of the case directory's real path in
+stdout and stderr with `<case>`, on jq-ref's output when recording and verifying and on jqj's when
+comparing. The jqtest host's loader is jq-cli's `FileModuleLoader` with lib dir `tests/modules`.
+A case's `file` name may hold `/`: its directories are made, and an absolute name or a `..`
+component is rejected. In a deviation case's `jqj-stdout` and `jqj-stderr`, `<version>` stands for
+the jqj build's version.

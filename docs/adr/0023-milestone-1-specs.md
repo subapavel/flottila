@@ -1,6 +1,6 @@
 # Milestone 1: the final gate and the specs in build order
 
-Status: accepted (2026-11-11, owner, issue #17 "Final gate and the milestone's specs"); makes `docs/GATE.md` final; amends ADR-0014 (when the fallbacks fire), ADR-0019 (when G4 enters the ratchet, the 1 KB differential cases) and ADR-0020 (deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); records F-17 and F-18; amends `docs/WORKFLOW.md` §2 (Phase 0 ends with the first spec ready for `/grill-with-docs`); amended by F-19 (spec 1 grilling: the API slice and the last ticket's measurements); amended by F-27 (both fallbacks fired at spec 1); amended by F-33 (G3 in spec 2a)
+Status: accepted (2026-11-11, owner, issue #17 "Final gate and the milestone's specs"); makes `docs/GATE.md` final; amends ADR-0014 (when the fallbacks fire), ADR-0019 (when G4 enters the ratchet, the 1 KB differential cases) and ADR-0020 (deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); records F-17 and F-18; amends `docs/WORKFLOW.md` §2 (Phase 0 ends with the first spec ready for `/grill-with-docs`); amended by F-19 (spec 1 grilling: the API slice and the last ticket's measurements); amended by F-27 (both fallbacks fired at spec 1); amended by F-33 (G3 in spec 2a); amended by spec 4 grilling round 1 (one spec, builtin coverage at spec 4's gate, GATE's check 2 host-facing list and spec rows 2 and 4); amended by spec 5 round 1 (the 5a/5b split, F-76's census rows, `$__prog_args`, ADR-0054's hand-out); amended by spec 3 grilling rounds 1–2 (3a and 3b, G5 in 3a, spec 4 beside 3b) and F-61 (`debug` and `stderr` in 3a); amended by F-78 (`malformed-v1`'s minimum, spec 5a tickets); amended by spec 5 round 2 (5b has 4 tickets); amended by spec 7 round 1 (one spec of 15 tickets and #100, beside spec 6; grilling-adviser for the owner under the delegation of 2026-11-14)
 
 Facts marked "jq-ref" were observed on 1.8.2 by the adviser (issue #17 round 1 and the ADR
 review). Each rule says whether it is the owner's answer or the architect's choice.
@@ -55,7 +55,9 @@ splitting in two at its own grilling without reopening `docs/GATE.md`, are the o
   ADR-0020's open point.
 - **Generator minimums** (check 2, owner): 1000 cases in `differential.txt`, counted after
   ADR-0020's drops, each for `values-v1`, `core-v1` and `ownership-v1`; 200 for each of the six
-  builtin families. The host-facing builtins arrive in specs 5 and 7 with hand-written cases. Raised freely; lowered only by a finding. The tooling tickets measure the
+  builtin families. The host-facing builtins arrive in specs 5 and 7 with hand-written cases, except
+  `debug` and `stderr`, which arrive in spec 3a (F-61). Raised freely; lowered only by a finding.
+  The tooling tickets measure the
   recording and verify cost per 1000 seeds; spec 1's last ticket measures PIT per 1000 passing seeds,
   or on the seeds that pass if fewer (F-19).
 - **Benchmarks before spec 6** (owner) fail nothing. Every spec gate records each existing cell's
@@ -86,7 +88,8 @@ splitting in two at its own grilling without reopening `docs/GATE.md`, are the o
 
 - **ADR-0019** (architect): G1, G6 and G7 enter `bench.tsv` in spec 1; G2 and G4 at 10⁴ in spec 2
   (G4 is expected over 1.0× there: jq-ref takes 5.7 ms, and without in-place updates jqj copies);
-  G4 at 10⁵ and 10⁶ and G5 with spec 3's in-place ticket, since before that G4 would make about
+  G4 at 10⁵ and 10⁶ with spec 3b's in-place ticket and G5 with 3a's FIXED/WALK ticket (spec 3
+  grilling), since before that G4 would make about
   5×10⁹ slot copies at 10⁵ and end with BYTES_BUILT (ADR-0022); G3 in spec 4. A scenario with no
   1 KB cell (G3, G4, G6) gets its `bench.<name>.1k` case on a 1 KB input of the same generator. A
   `bench.tsv` line with an empty `tolerance%` is overwritten by `regen --all` in either direction
@@ -138,3 +141,87 @@ splitting in two at its own grilling without reopening `docs/GATE.md`, are the o
 ## Amendment (F-33, spec 2)
 
 G3 enters `bench.tsv` in spec 2a, with `sort` and its kin, not in spec 4.
+
+## Amendment (spec 4 grilling round 1, questions 1 and 6, M8)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+- **Spec 4 is one spec.** Its families need nothing from each other, so a split protects no order
+  (unlike 3a and 3b) and adds a spec gate, a review and a PR. Its 15 tickets are the size of 2b and
+  3. It needs spec 3a (Facts, `+=`, `debug`), not 3b.
+- **Builtin coverage is a hard rule at spec 4's gate.** The coverage tool's uncovered list must lie
+  within the 13 host-facing signatures still unbuilt: `input`, `inputs`, `env`, `halt`,
+  `halt_error/0,1`, `input_filename`, `input_line_number`, `get_search_list`, `get_prog_origin`,
+  `get_jq_origin`, `modulemeta`, `now`. `debug/0,1` and `stderr`, built in spec 3a, must be covered.
+- **What counts**: a builtin is covered when jqj's Resolver resolves a reference written in a
+  passing case's own filter text to it at that arity. A shadowing definition, a call from inside the
+  prelude, `..` and `@csv` (for `format/1`) do not count. The 226 names are jq-ref's stored
+  `builtins` output (P7b: `226`). The tool's first run corrects the draft's per-family lists.
+- **`docs/GATE.md`**:
+  - Check 2's host-facing list becomes the 13 above, with `debug` and `stderr` covered from spec 4.
+    This is the owner's text change.
+  - The spec table's rows 2 and 4 take F-33's wording: G3 enters `bench.tsv` in spec 2a.
+- The hand-over's `toarray` is dropped: jq 1.8.2 has none (P7: "toarray/0 is not defined").
+
+## Amendment (spec 5 round 1)
+
+- **Spec 5 splits**: 5a "JSON in full" (15 tickets) and 5b "holds, root use, host streaming" (3
+  tickets, all class C). 5b waits for its own round 2, which fixes the hold sites over 2b's frames
+  and closures and the root-use test. That round comes after spec 3's round 2 and 2b's analysis
+  tickets.
+- **The element hand-out** is ADR-0054's: one reused element tape.
+- **Census** (F-76): jq.test 2315, 2319, 2324, 2498 and 2563 are spec 5's.
+- `$__prog_args` is not in jq 1.8.2 ("$__prog_args is not defined", rc 3), so it leaves spec 7's
+  list. A missing input file is spec 5a's (ADR-0017's rc 2).
+
+## Amendment (spec 3 grilling, rounds 1–2)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+- **Split (option B)**: 3a has 11 tickets: Facts with `keepsArgsIsSound`; getpath, setpath and
+  delpaths with the depth limit; `debug` and `stderr` (class B); `paths-v1` (class B); PathOf with
+  the kinds without a loop or pattern, and P6; loop sources, item paths, Tracking and AltBind; path
+  mode through calls with `paths`, `..` and the U re-run; TRACKED Update; the own owner; the
+  path-shape analysis; FIXED/WALK with G5. 3b has 4: `ownership-v1` (class B), the licence, in-place
+  with G4, nested reduce. That is 12 class C and 3 class B.
+- **G5** enters at 3a's FIXED/WALK ticket, because it needs no licence (ADR-0022). G4 at 10⁵ and 10⁶
+  stays in 3b. GATE row 3 follows.
+- **`debug` and `stderr`** come in 3a (F-61).
+- **Spec 4 may start once 3a is on main, beside 3b** (owner on Monday). It gets its own integration
+  branch, shares AGENTS.md's three-writer cap, and edits no Operation, licence or Owner code. 3b
+  lands first, and spec 4 merges main before its diagnostics ticket and gate (`sub` needs 3b's
+  append). This reads spec 4's "It needs spec 3a, not 3b" above as "to start".
+
+## Amendment (spec 5a tickets; F-78)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+- **Generator minimums** (check 2) gain `malformed-v1`: at least 200 cases per form in
+  `differential.txt`, counted after ADR-0020's drops, as for each builtin family. Its six forms
+  are ADR-0020's (`-c .`, `try input catch .`, `-s`, `--seq`, `--stream`, `fromjson`).
+- `docs/GATE.md` check 2 names it. Changing a GATE check is the owner's to confirm (2026-11-16).
+- **A missing input file** (spec 5a, above) ends the run with rc 2, which replaces a parse error's
+  5 and `-e`'s code; with the missing file first the main loop stops after one value (ADR-0015).
+
+## Amendment (spec 5 round 2)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+- **Spec 5b has 4 tickets, all class C**; this replaces "3 tickets" in the spec 5 round 1 amendment.
+  The hold ticket splits into facts and run, as S3a.10/S3a.11 and S3b.2/S3b.3 do:
+  may-read and hold facts shown through `explain()`; holds at run in the optimised compile; root
+  use and `needsWholeDocument`; host `stream()` with its fallback, DEVIATIONS' `test:` rows and
+  `streamAllocationFlat` (`docs/wayfinder/spec-5-grilling.md`, "Round 2").
+- 5b depends on 3b only through the holds-at-run ticket, which S3b.3 blocks.
+
+## Amendment (spec 7 round 1)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, questions 1 and 12).
+
+Spec 7 is one spec: 15 tickets and #100. It may start once 5b is on main, beside spec 6, on its
+own integration branch under the three-writer cap. It merges main after spec 6 lands, before its
+check-7 ticket closes and before HANDOVER.
+
+Cost: spec 7's builds pause during spec 6's JMH sessions, and a spec 6 fast path in the Resolver
+can conflict with the resolution ticket.

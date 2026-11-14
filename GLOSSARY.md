@@ -27,6 +27,14 @@ _Avoid_: standard library, builtin.jq (except when naming jq's file)
 A builtin implemented in Java and called from the IR as an intrinsic.
 _Avoid_: C builtin, primitive
 
+**Host-facing builtin**: A builtin that reads the host or the run instead of its input alone (the
+run's inputs, the environment, the clock, the module loader, the debug sink) or that ends the run:
+`input`, `inputs`, `env`, `halt`, `halt_error`, `input_filename`, `input_line_number`,
+`get_search_list`, `get_prog_origin`, `get_jq_origin`, `modulemeta`, `now`, `debug`, `stderr`. It is
+in no builtin family and gets hand-written cases (GATE check 2, ADR-0023). The zone readers
+(`localtime`, `strflocaltime`, and `strptime` and `strftime` for `%s`) read the host zone but are in
+the dates family. _Avoid_: system builtin, I/O builtin
+
 **Reference jq**:
 The pinned release of the original jq whose binary decides what a filter does.
 _Avoid_: real jq, upstream jq, jq-ref (that is the binary's path)
@@ -85,7 +93,9 @@ The main filter, a live definition's body, or a closure argument of a jq-defined
 _Avoid_: scope (that is lexical).
 
 **Inline cap**:
-How many nodes one compile may lower from definition bodies and closures; past it, the filter is a Stub in spec 2a (ADR-0040).
+How many nodes one compile may lower from definition bodies and closures; past it, past the IR depth
+bound or at the 512th nested expansion, a call is a PLAIN call to a function lowered once (ADR-0040,
+F-54).
 
 **Value parameter**:
 A `$name` parameter: it wraps the body in `name as $name | …` and binds per result, and `name` stays a filter parameter (ADR-0040).
@@ -152,7 +162,9 @@ A key equal, by its decoded bytes, to an earlier key of the same object; jq keep
 _Avoid_: duplicate key (in new text).
 
 **Fold**:
-Computing an operator on constant operands while parsing, as jq's `constant_fold` does; one that raises folds to no constant, and its error comes at run time (ADR-0034, #65).
+Computing an operator on constant operands while parsing, as jq's `constant_fold` does; one that
+raises folds to no constant, and its error comes at run time (ADR-0034, #65). There is no IR fold
+(F-57).
 _Avoid_: constant propagation.
 
 **Object merge**:
@@ -215,6 +227,11 @@ close.
 **Slurped document**:
 The one document `-s` makes over the whole input stream, with a synthetic root array.
 
+**Element document**:
+The document one streamed element is read into, on the Workspace's reused element tape, with its
+root at index 0; it goes stale when `rest` returns for that element (ADR-0054).
+_Avoid_: chunk, item
+
 **Literal number**:
 A number read from a document, written in a filter or made by `tonumber`. It keeps its exact
 decimal value until arithmetic touches it, and prints in its canonical form.
@@ -252,11 +269,15 @@ A built object whose keys are made at run time, so it keeps its own key list ins
 _Avoid_: dictionary, map object, hash object
 
 **Ownership marker**:
-The `owner` field of a built array, object or string: the running activation (a `reduce` or
+The `owner` field of a built array, object or string: the owning activation (a `reduce` or
 `foreach` run, or an update) that made the value. A write in place needs it to match and the site
 to hold the in-place licence (a string append and an update's own rebuild need the match only;
 ADR-0022).
 _Avoid_: reference count, transient, lock
+
+**Own owner**:
+The `Owner` an update allocates at its first copy for its own rebuild. It needs no licence, the
+conservative compile keeps it, and it is dropped when the update ends (ADR-0022).
 
 **In-place licence**:
 The analysis fact that a site's target is the only use of an owning activation's state, so it may
@@ -291,12 +312,20 @@ _Avoid_: AST (that is the parser's output), bytecode (that is jq's own or the JV
 
 **Operation**:
 What an intrinsic IR node calls: a navigation step or a native builtin of one format, described by
-the facts the analyses need (how many results, how it extends a path, what it keeps).
+the facts the analyses need: its call form says how many results, and its `Facts` its path rule,
+whether it is pure, whether it reads the input stream (`reads`; only `input`), and whether it keeps
+an argument (ADR-0048, F-79).
 _Avoid_: primitive, opcode
 
 **Navigation step**:
 An operation that goes from a value to a part of it (field, index, slice, iterate). Only steps
 extend a path.
+
+**Path rule**:
+What an operation does to the path in path mode, a field of its `Facts`: NONE (untracked), SAME
+(passes it on), KEY, INDEX, ALL, SLICE, DYNAMIC (by the key's kind) or KEY_LIST (`getpath`)
+(ADR-0048).
+_Avoid_: step kind.
 
 **Closure**:
 A filter argument of a jq function, run in the caller's scope each time the callee calls it.
@@ -316,15 +345,16 @@ progress to its left; it runs as a jump.
 **Binds**:
 One IR node for a run of binds: `Binds(source, values, slots, body)`, n ≥ 2, means
 `Bind(v1, s1, … Bind(vn, sn, body))`, the first outermost. Slot k is in scope in the later values
-and in the body. It ticks and charges nothing of its own (ADR-0043).
+and in the body. Each value has its own Tracking (ADR-0048). It ticks and charges nothing of its own
+(ADR-0043).
 _Avoid_: n-ary Bind
 
 **Tail emitter**:
 A node that, by its kind alone, gives one result at most and never breaks out: Identity, Const,
 Var, an Intrinsic of a one-result call form, or a Pipe, If, Bind or Binds made of tail emitters. A
 Binds takes a tail value's result, and an If a tail condition's, before the rest runs, so the stack
-does not grow with them. It is a local fast path of the push form, not ADR-0008's value form
-(ADR-0043).
+does not grow with them. It is a local fast path of the push form and the floor beneath ADR-0008's
+value form in both compile modes (ADR-0043, ADR-0047).
 _Avoid_: tail call (a call that runs as a jump), value form
 
 **Last read**:
@@ -337,8 +367,10 @@ path.
 
 **Hold**:
 A place that keeps a value while later steps run (a variable, an accumulator, an array being
-built, an error payload). A view of an input document is detached when it enters a hold that spans
-a later read.
+built, an error payload). It is every place a value stays live across a node that may read input,
+that node's own `.` included, so a pipe's right side holds its input (F-77). A view of an input
+document is detached when it enters a hold that spans a later read. A generator resumed after its
+consumer read holds its `.`, and a Path holds its keys.
 _Avoid_: pin, retain
 
 **Holder**:
@@ -347,8 +379,14 @@ run's false means a result came and its true means none (ADR-0043, F-85). It is 
 result is taken as soon as the run returns.
 _Avoid_: buffer, box
 
+**May read input**:
+The fact that a node may run an operation whose `reads` fact is set, itself, through a call or
+through a closure passed to it; a `ParamCall` may read only when a call site passes a reading
+closure for its parameter. An emit to a consumer that may read counts as a read (ADR-0007).
+
 **Root use**:
-Whether a filter reads its input not at all, as the elements of one array one at a time, or whole.
+Whether a filter may read its input as the elements of one array, one at a time (ELEMENTS), or
+needs it whole (WHOLE, the safe value); ADR-0054's syntactic test.
 
 **Analysis**:
 A pass over the IR that proves a property a backend can use: cardinality, path shape, root use,
@@ -356,7 +394,8 @@ touched fields.
 
 **Cardinality**:
 How many results an IR node can produce for one input: none, exactly one, at most one, or many. An
-error or a break is not a result.
+error or a break is not a result. One and at most one also promise that nothing runs after the
+result (F-56).
 
 **Backend**:
 What turns IR into something that runs. There are two.
@@ -373,7 +412,50 @@ _Avoid_: compiler (the whole pipeline is the compiler), JIT (that is HotSpot's)
 The immutable, thread-safe result of compiling a filter, whichever backend made it.
 _Avoid_: program, plan
 
+**Specialisation cap**:
+How many nodes specialisation may copy in one compile, `SPECIALISE_CAP`; a group and its argument
+tuple are copied whole or not at all (ADR-0045).
+_Avoid_: inline cap.
+
 ## Running
+
+**Activation**:
+One run of a construct that holds state for that run. Name the sense where two meet: a **call
+activation** is one live `Call` or real-closure `ParamCall`, which the recursion-depth budget counts
+and a tail jump replaces (ADR-0046); an **owning activation** is a `reduce`, `foreach` or update run
+(ADR-0022); a **label activation** is ADR-0008's.
+_Avoid_: invocation, call instance, "level" for the budget's count, bare "activation" where two
+senses meet.
+
+**Frame**:
+The slot cells one call activation owns while it runs: bind slots, value and closure parameters,
+label tokens and hidden slots: an owner, item paths, walk state and a suspended call's input path
+(ADR-0045, ADR-0010). The JVM's is always a **Java frame**.
+_Avoid_: stack frame, activation record, environment, locals, heap frame, slot array.
+
+**Heap form**:
+The resumable state of one node kind on the trampoline, so that any body can run there (ADR-0046).
+_Avoid_: continuation, heap frame.
+
+**Unit limit**:
+The stack units one filter may use in one run, `U_f`: the declared stack bytes less the guard
+reserve, in units, less the filter's call-free depth (ADR-0046). At or below zero, main and every
+body run on the trampoline.
+_Avoid_: K.
+
+**Call-free depth**:
+The deepest nesting, in stack units, that a filter's main or any body reaches without a call,
+`D_f`; it is stored with the compiled filter, per backend (ADR-0046).
+
+**Pending jump**:
+What a tail call leaves in the run state (callee, input, the input's path in a path variant, value
+arguments and closure arguments)
+for its function's entry loop to take and re-enter with (ADR-0047).
+
+**Value form**:
+Running a node as `eval`, which returns its one result or none; only the optimised compile uses it,
+where cardinality is at most one and the node may not break out (ADR-0047).
+_Avoid_: tail emitter.
 
 **Emit**:
 To hand one result to the next stage. The answer says whether to keep going.
@@ -388,6 +470,32 @@ untracked, as `path()`, `paths` and updates need.
 
 **Untracked**:
 A path-mode result with no path. Used as a path, it raises "Invalid path expression".
+
+**Path variant**:
+The second instance of a node, which runs it in path mode. Only the nodes a TRACKED `PathOf` or
+`Update` can reach have one, `Call` and `ParamCall` included, and it runs in the push form only
+(ADR-0010).
+_Avoid_: path twin, path-mode node.
+
+**Tracking**:
+The mark on a `Bind`, each value of a `Binds` and an `AltBind`'s value that tells a path variant how
+to run the bound value: VALUE in value mode, PATH in path mode with its paths dropped, ITEM as PATH
+with the path kept as an item path (ADR-0048).
+_Avoid_: pattern mark, path flag.
+
+**Item path**:
+The path of a `foreach … as $name` item, kept in a hidden frame slot so that the item's `Var`
+passes it on in path mode, as `limit`, `skip` and `nth` need (ADR-0010, ADR-0048).
+
+**Walk state**:
+What a FIXED or WALK update keeps while it rebuilds: one cursor per `.[]` level it has entered,
+none for a chain without `.[]`, in the Update's hidden frame slots, set at its entry and cleared at
+its end (F-62).
+_Avoid_: path stack.
+
+**Delete list**:
+The paths of a MODIFY update whose right side gave no result; one `delpaths` removes them after the
+last path (ADR-0010).
 
 **Stop**:
 An emit answered with false: the producer emits nothing more and returns.
@@ -421,15 +529,16 @@ budget, reads the clock against the deadline, checks the thread interrupt and gr
 ticks.
 
 **Stack units**:
-The Java stack a call is charged for. A call over the limit runs on the trampoline.
+The Java stack a call is charged for. A call at the filter's unit limit for the run goes to the
+trampoline (ADR-0046).
 
 **Trampoline**:
 The interpreter's resumable loop that runs recursion beyond the stack-unit limit on the heap. It
 returns each result to the call that started it.
 
 **Workspace**:
-The reusable scratch memory of one evaluation (tape array, output buffer, path stack), passed in
-by the caller and never shared between two running evaluations.
+The reusable scratch memory of one evaluation (tape array, output buffer, regex pattern
+cache), passed in by the caller and never shared between two running evaluations.
 _Avoid_: context (that word is taken by jq's `.`), thread-local, arena (that is the JDK's)
 
 **Budget**:
@@ -440,7 +549,8 @@ _Avoid_: quota, timeout (one budget among several)
 
 **Host streaming**:
 Running a filter of the form `<path>[] | rest` element by element, without holding the whole
-document, when `rest` never looks back at it.
+document, when `rest` never looks back at it. Each element is an element document; a target that is
+no array, or a missing path, is read whole (ADR-0054).
 _Avoid_: automatic streaming (the host switches it on, F-4); `--stream` (that is jq's event mode,
 a different thing)
 
@@ -482,6 +592,20 @@ The program embedding the engine. It supplies the clock, the time zone, the envi
 module loader for `import` and the debug sink; extra inputs come per run.
 _Avoid_: runtime, container, platform
 
+**jq module**:
+A text of directives and definitions that `import` or `include` names, or a JSON text bound by
+`import … as $name` (a data module). The host's module loader finds and names it (ADR-0017, F-81).
+_Avoid_: library; bare "module" where a Maven or JPMS module could be meant.
+
+**Home module**:
+What a loader's `home()` gives; on the command line `~/.jq` when it is a file, else
+`~/jq/main.jq`.
+_Avoid_: rc file.
+
+**Program origin**, **jq origin**:
+The directory a main filter's relative `search` joins, and the directory `$ORIGIN/` stands for;
+null in the sandbox.
+
 **Executable**:
 What a backend makes of one filter's IR, and what a compiled filter runs: in milestone 1, the
 interpreter tree.
@@ -490,7 +614,9 @@ _Avoid_: program, plan
 **Read block**:
 One read of jq's input loop: the bytes through the next LF, or 4091 bytes plus the rest of a
 UTF-8 character cut there (F-25). `(at <file>:N)` counts the read blocks that end in LF, up to the
-block that holds the completing byte.
+block that holds the completing byte. jqj does not read by blocks: it computes their ends only
+where jq shows them (`(at <file>:N)`, `input_line_number`, `-R`, the drop after a caught `input`
+error), and `-R` decodes each block on its own (F-75).
 _Avoid_: chunk, line
 
 **Completing byte**:
@@ -513,7 +639,8 @@ The `$name` values and `$ARGS` a host gives one run.
 _Avoid_: args, params
 
 **Extra inputs**:
-The documents a run's `input` and `inputs` read, given in its run options.
+The documents a run's `input` and `inputs` read, given in its run options as a `JsonInputs`; the
+command line's main loop reads the same `JsonInputs` through `Workspace.read(JsonInputs)` (F-71).
 
 **Sandbox defaults**:
 What a filter may not do when embedded unless the host allows it: read the environment, name a
@@ -531,12 +658,13 @@ Input bytes that jq's grammar rejects at some byte.
 _Avoid_: invalid document
 
 **Error replay**:
-Re-reading a malformed document with the translated jq parser to produce jq's message, line and
-column.
+Re-reading a malformed document with the translated jq parser (`JvParser`'s replay mode) to
+produce jq's message, line and column. It starts at the first byte after the last emitted value,
+in a fresh parser state with jq's line, column, BOM and seq state.
 
 **Lenient token**:
 A number token jq accepts that is not strict JSON: `+1`, `.5`, `1.`, `007`, NaN and Infinity
-spellings.
+spellings. Checked at read and decoded at access; never CANONICAL or FITS_LONG.
 
 **Whole-container copy**:
 Writing an untouched container by copying its input bytes once one walk has proved it safe.
@@ -559,9 +687,15 @@ constructs its filter reaches in the reference jq. Each spec gate requires the c
 gives it.
 _Avoid_: case budget, target count
 
+**Case directory**:
+The fresh directory a differential case runs in, holding its files. Its real path is written
+`<case>` in recordings and comparisons (F-82).
+_Avoid_: temp dir
+
 **Disagreement**:
-A compile-mode case whose optimised and conservative runs both end without a termination but
-differ in exit code, stdout or stderr. It stops the next merge (F-29, ADR-0020 amendment for #60).
+A compile-mode case two of whose runs (optimised, conservative, `trampoline`) both end without a
+termination but differ in exit code, stdout or stderr. It stops the next merge (F-29, ADR-0020
+amendment for #60; the `trampoline` run, F-58).
 _Avoid_: mismatch
 
 **Differential oracle**:
@@ -573,15 +707,16 @@ Running a case in both backends and requiring identical output. It starts with t
 backend (ADR-0018).
 
 **Compile-mode oracle**:
-Running a case under the optimised and the conservative compile of one backend and requiring the
-same output and error.
+Running a case under the optimised and the conservative compile of one backend, and the
+`trampoline` run (the conservative compile with `stackBytes` 0, F-58), and requiring the same
+output and error.
 
 **Optimised compile**:
 Compiling with the facts the analyses prove; the default compile.
 
 **Conservative compile**:
 Compiling with every analysis fact at its safe value: cardinality many, every path TRACKED, a
-detach at every hold, no specialisation, no in-place licence.
+detach of every `input` document at its read (F-77), no specialisation, no in-place licence.
 
 **Recording**:
 The reference jq's exit code, stdout and stderr for one case, committed beside it and written only by the
@@ -590,6 +725,11 @@ _Avoid_: snapshot, golden file
 
 **Required case**:
 A case the JUnit run asserts: it is in the ratchet, or the ticket names it at its gate.
+
+**Guard**:
+A required case or test that passes before its ticket and is kept so that the ticket cannot break
+it; it is not the ticket's red. Not a WALK's guard (ADR-0007).
+_Avoid_: regression test (alone)
 
 **Survey**:
 The run of every case that is not required; it writes the oracle report and fails only on a crash.

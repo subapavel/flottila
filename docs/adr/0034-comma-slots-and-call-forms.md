@@ -1,6 +1,6 @@
 # Comma, slots and atomic arguments in the IR; call forms as a sealed CallForm
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85)
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85); a frame per call activation by ADR-0045 (spec 2b); spec 4's tick table (spec 4 grilling round 1, question 12 and M1); `delpaths` ticks by spec 3 grilling round 1 (question 10)
 
 #63 is the first ticket to lower constructs that #62's parser builds: comma, indexing, slicing and iteration. They need a sequencing node, a way to hold a computed key while its target runs, and the call forms ADR-0009 names. This ADR fixes those IR and protocol shapes; later tickets extend them with their first user.
 
@@ -53,3 +53,33 @@ Each rate is pinned by two adjacent counts (`ArithmeticStepsTest`, red at 65b717
 ## Amendment (ADR-0044, ticket #85)
 
 - **`Many.loopSlots()`** (default 0, Iterate 1): the slots after a Many's arguments that `first` sets for the later calls of its loop; `IntrinsicManyOp` allocates `args.length + loopSlots` per loop, so `.[]` holds a read object's walk there.
+
+## Amendment (spec 4 grilling round 1, question 12 and M1)
+
+One tick table for spec 4's natives (ADR-0008). A ticket corrects a row only by a finding, and each
+rate is pinned by two adjacent counts.
+
+- Byte loops (the trim family, `startswith`, `endswith`, `utf8bytelength`, the formats, `fromjson`,
+  `strftime`, `strptime`): one per started KiB of max(input, output).
+- `explode`, `implode` and `builtins`: one per element, as every other array copy, not per KiB.
+- `_strindices` and string `contains`: `split`'s rate plus one per index.
+- Array and object `contains`: one per pair plus Equality's. `bsearch`: one per probe plus the
+  compare's.
+- Regex (ADR-0053): one per search call, one per started KiB from the search start to the match end
+  (or to the input's end when nothing matches, the range `f_match` passes), one per started KiB of
+  the pattern at each lookup, compiled or cached (so a run's steps never depend on the cache).
+- Scalar math: none, except `jn` and `yn`, once per 1 024 steps of any loop that grows with the
+  order (ADR-0051, F-69).
+
+## Amendment (spec 3 grilling round 1, question 10)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14.
+
+`getpath` and `setpath` tick once per path component; `setpath` also once per element it copies;
+`delpaths` once per path plus the ADR-0037 ticks of each compare of its path sort (as `sort`), once
+per path component it walks and once per element it copies; it compacts each container once. A
+copied level charges CONTAINER plus its slots. PathOf ticks once per component of each path value
+it builds. Update ticks nothing of its own.
+
+Amended at spec 3's ticket approval, grilling-adviser for the owner under the delegation of
+2026-11-14.

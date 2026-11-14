@@ -1,6 +1,6 @@
 # JSON tape entry: one long per value
 
-Status: accepted (2026-11-10, owner, issue #5 "What are the value model and the tape layout?"); amended by ADR-0015 (issue #11); amended by F-21 (exact size limits); F-40 amendment (#82) withdrawn 2026-11-13: over its cost bar, owner to decide; duplicate keys amended by ADR-0044 (#85)
+Status: accepted (2026-11-10, owner, issue #5 "What are the value model and the tape layout?"); amended by ADR-0015 (issue #11); amended by F-21 (exact size limits); F-40 amendment (#82) withdrawn 2026-11-13: over its cost bar, owner to decide; duplicate keys amended by ADR-0044 (#85); NONFINITE reserved by F-73 (spec 5)
 
 A document's tape is one `long[]` with **one entry per JSON value, object keys included**. Each
 entry is a 4-bit tag, a 28-bit span and a 32-bit offset. We chose it because it is the smallest
@@ -81,3 +81,8 @@ Withdrawn 2026-11-13 under its own cost bar: #82 measured the reader at +12 % on
 ## Amendment (ADR-0044, ticket #85)
 
 - **Duplicate keys are proved on the walk side**: every walk of a read object (`.[]`, `keys`, `length`, `to_entries`, the writer, Detach and the others ADR-0044 lists) begins with its key proof, about linear in the keys and never n², and takes each key once at its first place with its last value; `.a` still scans to the last match and proves nothing, the reader proves nothing, and tag 10 stays reserved (the reader-side proof of #82, +12 % at 100 KB, +26 % at 10 MB and 2.59x flat, is a considered option of ADR-0044).
+
+## Amendment (F-73, spec 5)
+
+NONFINITE is a reserved bit: no reader writes it, and a NaN or Infinity literal is found when its
+token is decoded (ADR-0012's F-73 amendment). The span keeps its four flag bits and 24-bit length.

@@ -1,6 +1,6 @@
 # Numbers: literals keep jq's decimal meaning, arithmetic is double
 
-Status: accepted (2026-11-10, owner, issue #9 "How do numbers behave and print?"); gives the meaning of ADR-0002's number flags; supersedes the number sentences of founding §5 and §10; closes F-1
+Status: accepted (2026-11-10, owner, issue #9 "How do numbers behave and print?"); gives the meaning of ADR-0002's number flags; supersedes the number sentences of founding §5 and §10; closes F-1; NONFINITE never written, F-73 (spec 5)
 
 A number is in one of three states (ADR-0003):
 - a `NumberView` into the tape;
@@ -105,3 +105,16 @@ round 1, and differential runs on 200 000 random tokens and 477 500 doubles.
   the fallback if printing allocation shows in a benchmark.
 - **A BigDecimal per literal:** an allocation per value, and it has no −0 or Infinity.
 - **FITS_LONG only up to 2^53:** 17–19-digit IDs would fall to BigDecimal.
+
+## Amendment (F-73, spec 5)
+
+- **NONFINITE is never written**; the bit is reserved beside the spare one. A NaN or Infinity
+  literal is found when its token is decoded.
+  - Every NaN and Infinity spelling is a lenient token. An overflow needs an exponent, since a
+    token holds at most 2^24−1 bytes (ADR-0002). So none of them is CANONICAL, and each is decoded
+    at access anyway.
+  - Writing the flag would make the fast path weigh every exponent: `1e1000000000` is a strict
+    token, and jq-ref prints `1.7976931348623157e+308`.
+  - This replaces the NONFINITE flag above; the values it names keep their meaning.
+- A lenient token is never CANONICAL or FITS_LONG (ADR-0015's spec-5 amendment): `+1` → `1`,
+  `2.e3` → `2E+3`, `nan` → `null`.

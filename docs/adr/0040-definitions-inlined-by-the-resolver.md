@@ -1,6 +1,6 @@
 # Definitions are inlined by the resolver in spec 2a; names bind per jq compile level; one inline cap per compile
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #70; designer draft; finding F-41); amends ADR-0006 (passes and lifting, for spec 2a only) and ADR-0038 (which binding errors are reported); Binder order amended by ADR-0042 (native table before the prelude, #71); inline cap amended by F-44 (IR depth, #70)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #70; designer draft; finding F-41); amends ADR-0006 (passes and lifting, for spec 2a only) and ADR-0038 (which binding errors are reported); Binder order amended by ADR-0042 (native table before the prelude, #71); inline cap amended by F-44 (IR depth, #70); recursion and query-core's first user by ADR-0045, the inline cap, the nested expansion and IR depth by F-54 (spec 2b)
 
 Spec 2a compiles no recursion, so every call that compiles is inlined, as ADR-0006 requires. jq 1.8.2 drops unreferenced definitions (`block_bind_referenced`). It checks an inner compile level only when the outer level had no error (`compile`: `if (bc->nsubfunctions && !errors)`). The jq facts were read from jq-1.8.2 source; #70's red records them on jq-ref, and jq-ref wins.
 
@@ -21,14 +21,27 @@ Spec 2a compiles no recursion, so every call that compiles is inlined, as ADR-00
   - A filter param is the caller's closure, lowered on the callee's input for each use. A param passed straight on is not wrapped again.
   - `$a` is `Bind(a, s_a, …)`, with the first param outermost, and `a/0` stays callable.
   - Captured variables, params and labels resolve to the defining scope. A `break` in a closure targets the caller's label slot.
-- **Recursion**: recursive groups are the call graph's cyclic SCCs. A param call is not an edge. Lowering a call into a recursive group is a Stub. A live recursive def that is never expanded compiles.
+- **Recursion**: recursive groups are the call graph's cyclic SCCs. A param call is not an edge.
+  Lowering a call into a recursive group gives a `Call` to the group's lifted function (ADR-0045). A
+  live recursive def that is never expanded compiles.
 - **Natives**: `empty`, `error/0` and `not` move into one native table, looked up after every def, so a user def can shadow them. `error/1` is jq-defined (`def error(msg): msg|error;`), so its argument is an inner compile level (jq-ref: `zz1, error(zz2)` reports zz1 only).
-- **Inline cap**: `Resolver.INLINE_CAP = 65 536`, an internal constant. Each node lowered inside an expansion spends one; past the cap, or with an expansion nested 512 deep, the filter is a Stub. The red measures the census's S2a.20 maximum, and the cap is kept if that maximum is at most 10⁴.
-  - **IR depth** (F-44): the cap also bounds depth. Past `Resolver.MAX_IR_DEPTH = 512` levels of built IR, the filter is a Stub, because node count alone lets nested expansions stack depth (about 30 000 levels under both caps). 512 is the parse depth (#81); a cold 512 KiB thread ran 625 levels and overflowed at 650 (#70 probe). The red shows 512 compiling and running on the 512 KiB stack of ADR-0017 and 513 a Stub, and no ratcheted case becomes a Stub.
+- **Inline cap**: `Resolver.INLINE_CAP = 65 536`, an internal constant. Each node lowered inside an
+  expansion spends one; past the cap, or at an expansion nested 512 deep, a call is a PLAIN `Call`
+  to its function, lowered once from a worklist with real closures, where nesting and depth restart
+  at 0 (F-54). The red measures the census's S2a.20 maximum, and the cap is kept if that maximum is
+  at most 10⁴.
+  - **IR depth** (F-44): the cap also bounds depth. Past `Resolver.MAX_IR_DEPTH = 512` levels of
+    built IR, a call is a PLAIN `Call` (F-54) and any other construct makes the filter a Stub,
+    because node count alone lets nested expansions stack depth (about 30 000 levels under both
+    caps). 512 is the parse depth (#81); a cold 512 KiB thread ran 625 levels and overflowed at 650
+    (#70 probe). The red shows 512 compiling and running on the 512 KiB stack of ADR-0017 and 513 a
+    Stub, and no ratcheted case becomes a Stub.
   - **Chains** (F-44): every step kind of a postfix chain with constant keys and bounds lowers without linear IR depth, not only field reads, and ticks as the nested form does. Computed-key steps count toward the IR-depth bound.
   - **What counts** (F-44): the depth of the built IR wherever the Resolver builds a node, `expand`'s value-parameter Binds and chain Binds included.
-- **Cost**: an inlined call, closure or value parameter ticks nothing and builds nothing.
-- **query-core gains nothing** in 2a. `Call` and the IR function list arrive with their first user (2b), which re-checks ADR-0006's pass order.
+- **Cost**: an inlined call, closure or value parameter ticks nothing and builds nothing; a PLAIN
+  `Call` ticks one step (F-54).
+- **query-core gains nothing** in 2a. `Call` and the IR function list arrive with their first user
+  (2b), which re-checks ADR-0006's pass order: ADR-0045.
 
 ## Considered options
 

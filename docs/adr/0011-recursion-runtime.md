@@ -1,6 +1,6 @@
 # Recursion: weighted stack units, a resumable trampoline only in the interpreter
 
-Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); details the hybrid chosen on issue #3; amended by ADR-0017 (issue #13) and ADR-0018 (issue #12); amended by F-30 (U calibrated in spec 2 without path-mode `..`)
+Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); details the hybrid chosen on issue #3; amended by ADR-0017 (issue #13) and ADR-0018 (issue #12); amended by F-30 (U calibrated in spec 2 without path-mode `..`); amended by ADR-0046 and F-55 (U per filter and run; the trampoline's kinds; what the depth budget counts), F-54 (PLAIN calls' units) and ADR-0047 (tail jumps in the push interpreter)
 
 Tail calls are jumps. Other recursive calls run on the Java stack until the stack units reach a
 limit U, and beyond U they run on a CPS trampoline. A memory-bounded recursion-depth budget limits
@@ -8,11 +8,14 @@ the depth. `StackOverflowError` is only a backstop.
 
 - **Tail calls:** `TAIL_SELF` is a loop that reuses the frame. `TAIL_GROUP` is a call loop, and the
   bytecode backend emits one method per group with an `int` switch on the function, under the
-  method-size limit.
-- **Stack units:** each `RECURSIVE` call and each real-closure `ParamCall` adds `w(site)` units on
-  entry and takes them off on return. `w(site)` is the number of Java frames the backend nests
+  method-size limit. In the push interpreter both are a pending jump in the run state, which the
+  function's entry loop re-enters (ADR-0047).
+- **Stack units:** each `PLAIN` or `RECURSIVE` call and each real-closure `ParamCall` adds `w(site)`
+  units on entry (F-54) and takes them off on return. `w(site)` is the number of Java frames the
+  backend nests
   from the callee's entry to the site, fixed when the tree is built. Starting a trampoline also
-  adds units. At `units ≥ U` the call runs on the trampoline.
+  adds units. At `units ≥ U_f`, the filter's U for this run (ADR-0046), the call runs on the
+  trampoline.
 - **The trampoline is resumable.** The driver stops at each result and returns it to the call that
   started it. That call emits the result from its own frame, then resumes the driver, so its sink
   never runs on top of a driver. Spike A's extension (`spike/recursion-depth` @ `7fd4ea6`,
@@ -29,8 +32,11 @@ the depth. `StackOverflowError` is only a backstop.
     1.3×. The first measurement (`0c6bffe`) dropped a result in form B; the adviser found it on E,
     and it is fixed in `7fd4ea6`.
   - Numbers are in `bench/RESULTS.md`.
-- **U is a constant per release,** set by a calibration test. The test runs cold and warm, on
-  stacks of 512 KB and one other size, on both backends and on a virtual thread, over the T, E, M
+- **U is derived per filter and run** (ADR-0046, F-55): `U_f = (stackBytes − reserve) / b − D_f`,
+  where the bytes per unit `b` and the reserve are release constants set by a calibration test. The
+  test runs under `-Xint`, C1 only and warm, in fresh agent-free JVMs, on stacks of 512 KiB and 1
+  MiB and on a virtual thread, on both backends; each constant is the largest over its calibrated
+  cells, over the T, E, M
   and N shapes, a wide body, a closure chain, the nested-driver shape and path-mode `..` on a
   10 000-deep document.
   - A host may declare the stack bytes one evaluation may use. U is then derived after taking off
@@ -43,8 +49,11 @@ the depth. `StackOverflowError` is only a backstop.
   the caller's `Sink`. In TRACKED path mode it also passes the input's `Path` and the `PathSink`.
   - A closure argument is a `Filter` that exposes its IR node id and its captured values.
   - The speed of recursion beyond U at interpreter speed is not measured yet.
-- **The recursion-depth budget** counts live activations, on the Java stack and on the trampoline
-  together. Its default lets the 10⁶ levels that jq-ref runs complete. The number is set in "What
+- **The recursion-depth budget** counts call activations: one per live PLAIN or RECURSIVE `Call` and
+  one per real-closure `ParamCall`, on the Java stack and on the trampoline together; a tail jump
+  replaces its activation, and a call the Resolver inlined or a `ParamCall` specialisation replaced
+  counts nothing (ADR-0046). Its default lets the 10⁶ levels that jq-ref runs complete. The number
+  is set in "What
   are the public API, …".
 - **The backstop:** `StackOverflowError` is caught only at the evaluation entry and becomes
   `Termination(STACK)` (ADR-0008).
@@ -74,9 +83,11 @@ levels are a `DEVIATIONS.md` row.
 ## Amendment (ADR-0018, issue #12)
 
 Milestone 1 has the interpreter only. The calibration test runs on the interpreter in spec 2. The
-bytecode spec runs it again on both backends, and the release takes the smaller U.
+bytecode spec runs it again on both backends, and the release takes the smaller U: `b` and the
+reserve are maxima over the calibrated cells, and a re-run adds cells (F-55).
 
 ## Amendment (F-30, spec 2)
 
 Spec 2 calibrates U over every shape above except path-mode `..`, which spec 3's path-mode ticket
-adds before re-running the calibration; U may only fall.
+adds before re-running the calibration; U may only fall: `b` and the reserve are maxima over the
+calibrated cells, and a re-run adds cells (F-55).

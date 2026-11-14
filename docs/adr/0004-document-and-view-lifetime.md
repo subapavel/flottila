@@ -1,6 +1,6 @@
 # Document and view lifetime: a new JsonDoc per read, detach() for what is kept
 
-Status: accepted (2026-11-10, owner, issue #5 "What are the value model and the tape layout?"); amended by ADR-0007 (2026-11-10, issue #6), ADR-0008 (issue #7), ADR-0015 (issue #11) and ADR-0016 (issue #13); amended by ADR-0026 (staleness on close and on a failed read)
+Status: accepted (2026-11-10, owner, issue #5 "What are the value model and the tape layout?"); amended by ADR-0007 (2026-11-10, issue #6), ADR-0008 (issue #7), ADR-0015 (issue #11) and ADR-0016 (issue #13); amended by ADR-0026 (staleness on close and on a failed read); amended by ADR-0054 (element documents, spec 5)
 
 A view is valid while its document is alive. Every read makes a new `JsonDoc` (~32 B) over the
 Workspace's reused tape, and the previous `JsonDoc` drops both its tape and its bytes. A view of a
@@ -55,3 +55,9 @@ host holds (a Workspace document until that Workspace's next main read or close,
 until close). An owned document has its own read-only tape and may be shared between steps and
 threads. `detach()` inside an evaluation charges bytes built and ticks per KiB; called by the host
 after a run, it charges nothing.
+
+## Amendment (ADR-0054, spec 5)
+
+During host streaming each element is read into an element document on the Workspace's reused
+element tape, with its root at index 0. Only that document is allocated per element, and it goes
+stale when `rest` returns for that element.

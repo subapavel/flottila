@@ -1,6 +1,6 @@
 # Host SPI, sandbox and budget defaults
 
-Status: accepted (2026-11-11, owner, issue #13 "What are the public API, the host SPI and the sandbox?"); amends ADR-0008 (deadline clock, `CANCELLED`, regex budget) and ADR-0011 (stack bytes, recursion default); amended by ADR-0020 (CLI environment from `Invocation`, locale); rewords the sandbox list of founding §11; amended by spec 2 grilling round 1 (bytes built per slot); amended by ADR-0035 (fixed charges measured with `-prof gc` only, F-39; collectors charge per element)
+Status: accepted (2026-11-11, owner, issue #13 "What are the public API, the host SPI and the sandbox?"); amends ADR-0008 (deadline clock, `CANCELLED`, regex budget) and ADR-0011 (stack bytes, recursion default); amended by ADR-0020 (CLI environment from `Invocation`, locale); rewords the sandbox list of founding §11; amended by spec 2 grilling round 1 (bytes built per slot); amended by ADR-0035 (fixed charges measured with `-prof gc` only, F-39; collectors charge per element); what the recursion-depth budget counts and U per run by ADR-0046 (spec 2b); amended by ADR-0052 (spec 4: fixed English date tables, `strptime` and `strftime` among the zone readers for `%s`) and ADR-0053 (the regex limit per search call); `DebugSink` built in spec 3a (F-61); the module loader SPI and the command-line host's `FileModuleLoader` amended by spec 7 round 1 (F-81; grilling-adviser for the owner under the delegation of 2026-11-14)
 
 Facts marked "jq-ref" were observed on 1.8.2 by the adviser (issue #13 round 1); joni facts on
 joni 2.2.9.
@@ -26,12 +26,13 @@ joni 2.2.9.
 - `input_filename` is null and `input_line_number` 0 unless `RunOptions` supply named inputs.
 - `import`, `include` and run-time `modulemeta` go only through the loader; with none, every name is
   "module not found".
-- `now` reads the host clock; without one injected it reads the system clock (owner, 2026-11-11),
-  so results vary with time as in jq. A host wanting reproducible output injects a fixed clock.
-  `localtime` and `strflocaltime` use the host zone, UTC by default; jq uses the C library's local
-  zone. `mktime`, `gmtime` and `strftime` are UTC in both. Date formats use the root locale. jq
-  calls `setlocale(LC_ALL, "")`, but jq-ref 1.8.2 showed no locale effect under de_DE.UTF-8
-  (ADR-0020).
+- `now` reads the host clock; without one injected it reads the system clock (owner, 2026-11-11), so
+  results vary with time as in jq. A host wanting reproducible output injects a fixed clock. The
+  zone readers `localtime`, `strflocaltime`, and `strptime` and `strftime` for `%s` (F-67), use the
+  host zone, UTC by default; jq uses the C library's local zone. `mktime`, `gmtime` and `strftime`
+  are UTC in both. Date names come from fixed English tables and `%Z` from the JDK's English short
+  zone names (ADR-0052, F-66). jq calls `setlocale(LC_ALL, "")`, but jq-ref 1.8.2 showed no locale
+  effect under de_DE.UTF-8 (ADR-0020).
 - `debug` and `stderr` values are discarded unless a `DebugSink` is set.
 - `input`/`inputs` read only `RunOptions`' inputs; otherwise `input` raises "break" at once.
 - `halt` and `halt_error` end the run with `JqTermination(HALT)` (ADR-0008; jq-ref: `try halt catch
@@ -47,12 +48,14 @@ joni 2.2.9.
   waits for the interpreter's steps per second):
   - 10⁹ steps; a 10 s deadline;
   - parse depth 10 000 (ADR-0015; a jq parse error, not a termination, F-13);
-  - 4 194 304 live activations, which lets 10⁶ levels complete;
+  - 4 194 304 live activations (each live PLAIN or RECURSIVE call and each real-closure call; a tail
+    jump replaces its own, ADR-0046), which lets 10⁶ levels complete; the number is reviewed once
+    the calibration ticket has measured the heap per activation (ADR-0046);
   - 1 GiB bytes built, counted monotonically over string bytes and container slots, not number
     boxes, and restarted at each streamed element (`rest` holds nothing across elements, ADR-0007);
   - 1 GiB bytes written;
-  - 1 s per regex match;
-  - 512 KiB of stack, from which U is derived (ADR-0011).
+  - 1 s per regex search call (ADR-0053);
+  - 512 KiB of stack, from which each run derives its filter's `U_f` (ADR-0011, ADR-0046).
 - **`Limits.cli()`** keeps the parse depth, recursion and regex limits and the stack bytes, and drops
   the other budgets. jq-ref
   completes 10⁷ levels of recursion; jqj's limit is a `DEVIATIONS.md` row.
@@ -66,11 +69,12 @@ joni has a nanosecond timeout and interrupt checks, but no retry limit and no ca
 stack. jq-ref has a retry limit: `("a"*24+"b") | test("^(a+)+$")` gives the catchable error "Regex
 failure: retry-limit-in-match over" in 0.17 s, while n ≤ 23 returns `false`; joni ran 3.2 s at n = 26.
 
-- Each match runs with `matcher(byte[], int, int, long)` at the smaller of `regexMatchTime` and the
-  remaining deadline. A match that hits `regexMatchTime` raises jq's catchable "Regex failure:
-  retry-limit-in-match over"; one that hits the deadline ends with `JqTermination(BUDGET,
-  DEADLINE)`. The cut-off is not reproducible and a band of patterns succeeds where jq errors: a
-  `DEVIATIONS.md` row.
+- Each joni search call runs with `matcher(byte[], int, int, long)` at the smaller of
+  `regexMatchTime` and the remaining deadline; a global scan makes one call per match, as jq's
+  `f_match` calls `onig_search` (ADR-0053). A search call that hits `regexMatchTime` raises jq's
+  catchable "Regex failure: retry-limit-in-match over"; one that hits the deadline ends with
+  `JqTermination(BUDGET, DEADLINE)`. The cut-off is not reproducible and a band of patterns succeeds
+  where jq errors: a `DEVIATIONS.md` row.
 - **Accepted risk**: joni's uncapped stack. `^(a|b)*$` over 4 MB threw `OutOfMemoryError` at
   `-Xmx256m`, where jq-ref matched 40 MB of `a` in 3.0 s (40 MB of `ab` hits its retry limit).
   Recorded until joni can cap it.
@@ -128,3 +132,38 @@ Bytes built are charged, monotonically, as:
 The charge depends on the value built, not on its Java representation, so the two backends stop at
 the same place. G4 at 10⁴ builds about 5.0×10⁷ slots, about 400 MB at 8 B, 2.7× under the 1 GiB
 default.
+
+## Amendment (spec 7 round 1; F-81)
+
+Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14
+(`docs/wayfinder/spec-7-grilling.md`, questions 2–4). Facts: jq-ref 1.8.2; jq 1.8.2's `linker.c`
+and `main.c`. This replaces the `ModuleLoader` bullet of "Host SPI" and the "File loader" bullet
+of "The command-line host" above; the rest of both sections stands.
+
+`interface ModuleLoader { Optional<ModuleSource> module(String relPath, JqObject meta, String
+importer); Optional<ModuleSource> data(String relPath, JqObject meta, String importer); default
+Optional<ModuleSource> home(); default List<String> searchList(); default String programOrigin();
+default String jqOrigin(); }` and `record ModuleSource(String name, byte[] text)`. `importer` is
+the importing module's `name`, null for the main filter and for `modulemeta`. The engine parses
+each `name` once per compile, reports "circular import of <name>", and prints `name` in the
+module's error blocks and in `$__loc__.file`; data is asked for at every import. The engine
+rejects what `validate_relpath` rejects, with "Module path contains a NUL byte" and "module names
+must not have equal consecutive components: <path>" added. It reads `optional` and `raw` from the
+metadata; `search` and every other key reach the loader untouched. `home()` is included into the
+main filter below its imports and above the prelude. `modulemeta` asks `module(name, {"search":
+searchList()}, null)` and gives null for a module that does not parse. Imports are resolved last
+to first, and the first unresolved import or cycle ends resolution. `validate_relpath` also rejects
+`\` ("Modules must be named by relative paths using '/', not '\' (<path>)"), and under `optional` a
+rejected path is skipped. Only `true` switches `optional` and `raw` on.
+
+### The command-line host
+
+`FileModuleLoader` (jq-cli, not exported) follows `linker.c`: without `search` it searches `"."`,
+then the lib dirs; a given `search` replaces both. `"."` is the working directory, `~/` is
+`HOME`, `$ORIGIN/` is the jq origin, and any other relative entry joins the importer's directory,
+or the program origin for the main filter. Candidates are `d/rel.jq`, `d/rel/jq/main.jq`,
+`d/rel/<last>.jq` (`.json` for data). `home()` is `$HOME/.jq` when it is a file, or
+`$HOME/jq/main.jq` when `$HOME/.jq` does not exist. Without `HOME` there is no home module and `~/`
+entries are skipped; jq's " (Could not expand …)" suffix is a `DEVIATIONS.md` row. The program
+origin is the real path of the working directory, or of the `-f` file's directory; the jq origin
+is `Invocation.origin`.
