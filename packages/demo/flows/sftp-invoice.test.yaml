@@ -1,5 +1,6 @@
 # sftp-invoice (at-least-once): the sftp mock feeds the files under fixtures/inbox (no send, an SFTP door has no answer); the partner
-# gets the transformed invoice once; a partner that keeps failing 503 parks the message in the DLQ after the retries.
+# gets the transformed invoice once; a partner that keeps failing 503 parks the message in the DLQ after two runs (the first and the one scheduled retry, 1 s
+# later) of 1 + 3 step retries each: retries 3 + 3 + 1 = 7, flow time 2400ms.
 schemaVersion: 1
 kind: test
 flow: sftp-invoice
@@ -16,4 +17,4 @@ cases:
   - name: partner down
     mocks:
       partner-domestic: { fail: 503 }
-    expect: { dlq: 1, retries: 3 }
+    expect: { dlq: 1, retries: 7 }

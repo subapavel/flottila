@@ -31,8 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * P2-01 (D-075): a flow's {@code delivery.queue}, read where the deploy validates every flow. Absent or {@code postgres}: the
- * node's work queue, as before. {@code kafka}: one problem line — the Kafka hand-over is not built yet — and the package is
- * refused (422). Set on a sync or at-most-once flow: a problem line each — only an at-least-once flow has a work queue.
+ * node's work queue, as before. {@code kafka}: one problem line — Kafka is an optional add-on not in this build (CORE-9, O-1) — and
+ * the package is refused (422). Set on a sync or at-most-once flow: a problem line each — only an at-least-once flow has a work queue.
  * Everything in memory, as {@link DeploymentsTest}: the {@link Doors} component, the in-memory store, DLQ and a
  * {@link CountingQueue}, the fake clock driving every timer.
  */
@@ -99,7 +99,7 @@ class DeploymentsQueueTest {
         DeployRefusedException refused = refused(shop(Map.of("audit", "at-least-once"), Map.of("audit", "kafka")));
 
         assertEquals(Kind.INVALID, refused.kind(), refused.error() + " " + refused.problems());
-        assertEquals(List.of("flow 'audit' sets delivery.queue kafka: the Kafka hand-over is not built yet (Phase 2, later); omit it or use postgres"),
+        assertEquals(List.of("flow 'audit' sets delivery.queue kafka: Kafka is an optional add-on, not in this build; omit it or use postgres"),
                 refused.problems(), "one line, naming the flow and what to do instead");
         nothingStarted();
     }

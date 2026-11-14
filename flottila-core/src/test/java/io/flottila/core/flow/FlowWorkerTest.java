@@ -122,13 +122,31 @@ class FlowWorkerTest {
         Crash(String message) { super(message); }
     }
 
-    static WorkerPolicy policy(Duration lease, int maxAttempts) {
-        return new WorkerPolicy(lease, maxAttempts, TICK);
+    /**
+     * A worker's policy with the bound of {@code maxAttempts} hand-outs: since CORE-14a (D-135 draft) the bound is the flow's schedule
+     * of retries, count = maxAttempts − 1 ({@link FlowBuilder#retries}), its interval {@link #RETRY_INTERVAL}.
+     */
+    record Policy(WorkerPolicy policy, int maxAttempts) {
+
+        /** {@code b}'s worker {@code id} of {@code def} under this policy, {@code b} given the bound as its retries. */
+        FlowWorker worker(FlowBuilder b, FlowDefinition def, String id) {
+            return b.retries(new RetryPolicy(maxAttempts - 1, RETRY_INTERVAL, RETRY_INTERVAL, 1.0)).worker(def, NO_FILES, id, policy);
+        }
+    }
+
+    /** The wait before each retry of a {@link #policy} bound: an hour, past every lease a case runs through. */
+    static final Duration RETRY_INTERVAL = Duration.ofHours(1);
+
+    static Policy policy(Duration lease, int maxAttempts) {
+        return new Policy(new WorkerPolicy(lease, TICK), maxAttempts);
     }
 
     /** An at-least-once flow {@code orders} with these steps and this in-flight request limit (the worker's max). */
     static Map<String, Object> flow(int maxInFlight, List<Map<String, Object>> steps) {
         Map<String, Object> doc = DeliveryTest.flow("at-least-once", steps);
+        // runs are held across several leases on the fake clock: since P2-15b (D-113) a send past the run's deadline is not
+        // started, so the message's time is longer than any case holds a run (the default 30 s is less than one hold here)
+        doc.put("delivery", Map.of("mode", "at-least-once", "timeout", "1h"));
         doc.put("limits", Map.of("maxBodyBytes", 65_536, "maxInFlight", maxInFlight));
         return doc;
     }
@@ -228,6 +246,17 @@ class FlowWorkerTest {
             return worker(builder(), def, id, policy);
         }
 
+        FlowWorker worker(FlowDefinition def, String id, Policy policy) {
+            return worker(builder(), def, id, policy);
+        }
+
+        /** {@code b}'s worker bounded to the policy's maxAttempts hand-outs: count maxAttempts − 1 (CORE-14a). */
+        FlowWorker worker(FlowBuilder b, FlowDefinition def, String id, Policy policy) {
+            FlowWorker worker = policy.worker(b, def, id);
+            workers.add(worker);
+            return worker;
+        }
+
         FlowWorker worker(FlowBuilder b, FlowDefinition def, String id, WorkerPolicy policy) {
             FlowWorker worker = b.worker(def, NO_FILES, id, policy);
             workers.add(worker);
@@ -275,6 +304,18 @@ class FlowWorkerTest {
         /** The attempts of every item a claim handed out, in claim order. */
         List<Integer> claimedAttempts() {
             return queue.claims().stream().filter(c -> c.items != null).flatMap(c -> c.items.stream()).map(WorkQueue.Item::attempts).toList();
+        }
+
+        /**
+         * Advances the clock by the lease and waits for what {@code worker}'s own lease-end wake (D-121 A6) claims there: the
+         * item it left to its lease is claimed again by the worker itself, not by a poll of the test. Returns once that claim
+         * answered and every run it started is settled — completed, held, parked or left to its lease again.
+         */
+        void wokenAtTheLeaseEnd(FlowWorker worker, String workerId) {
+            int before = queue.claimsBy(workerId).size();
+            rt.clock().advance(LEASE);
+            until(() -> queue.claimsBy(workerId).size() > before && queue.claimsInFlight() == 0 && worker.unsettled() == 0,
+                    () -> "the lease-end wake of " + workerId + " claimed and its runs settled: claims " + queue.claims() + ", running " + worker.unsettled());
         }
 
         void close() {
@@ -531,10 +572,10 @@ class FlowWorkerTest {
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(List.of(in.id()), w.sentIds());
         List<RecordingWorkQueue.ClaimCall> claims = w.queue.claims();
-        assertEquals(3, claims.size(), "the failed claim, exactly one follow-up round, the finished item's poll: " + claims);
+        assertEquals(2, claims.size(), "the failed claim and exactly one follow-up round; it asked 4 and got 1, so the finished item's chain end "
+                + "claims nothing (D-121 A6): " + claims);
         assertSame(cause, claims.get(0).failure);
         assertEquals(List.of(in.id()), claims.get(1).items.stream().map(WorkQueue.Item::messageId).toList(), "the follow-up round claimed the item");
-        assertEquals(List.of(), claims.get(2).items, "the finished item's poll found nothing");
         assertEquals(1, w.queue.peakClaimsInFlight(), "never two claims in flight");
         assertEquals(0, w.rows.size());
     }
@@ -562,17 +603,22 @@ class FlowWorkerTest {
         assertEquals(0, w.rows.size());
     }
 
+    /**
+     * P2-16b B5 (rewritten from the 1.5 s tick: the first tick is now offset by the flow's hash): the reconciliation comes every
+     * interval, the first an interval plus {@code floorMod("orders".hashCode(), 30 000) = 9 669} ms after the start (worked
+     * example; a 30 s interval, so the offset is the spec's {@code floorMod(hash(flow), 30 s)}).
+     */
     @Test
     void theTimerPollsOnItsInterval() {
-        Duration every = Duration.ofMillis(1_500);
+        Duration every = Duration.ofSeconds(30);
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
-        FlowWorker w1 = w.worker(def, "w1", new WorkerPolicy(LEASE, 5, every));
+        FlowWorker w1 = w.worker(def, "w1", new WorkerPolicy(LEASE, every));
         w1.start();
         until(() -> w.queue.claimsInFlight() == 0, () -> "start settled");
         int c0 = w.queue.claims().size();
-        assertEquals(every, w.rt.timer().nextDelay(), "the first tick is due one poll interval after start");
+        assertEquals(every.plusMillis(9_669), w.rt.timer().nextDelay(), "the first tick is due one interval plus the flow's offset after start");
 
-        w.rt.clock().advance(every);
+        w.rt.clock().advance(every.plusMillis(9_669));
         until(() -> w.queue.claims().size() == c0 + 1 && w.queue.claimsInFlight() == 0, () -> "the first tick's claim: " + w.queue.claims());
         assertEquals(every, w.rt.timer().nextDelay(), "the next tick an interval later");
         w.rt.clock().advance(every);
@@ -620,56 +666,31 @@ class FlowWorkerTest {
         assertEquals(0, w.rt.timer().pending(), "nothing scheduled any more");
     }
 
+    /**
+     * D-121 A6 (P2-16a): the accept poll is gone — an accepted delivery through an intake without a hand-off (the builder's default)
+     * issues no claim; its item waits for a claim of the started worker, here its tick (until P2-16a: {@code pollingAfterAccept}).
+     */
     @Test
-    void anAcceptedDeliveryPolls() throws Exception {
+    void anAcceptedDeliveryClaimsNothing() throws Exception {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowBuilder b = w.builder();
+        Delivery delivery = b.delivery(def, NO_FILES);
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
-        Function<Envelope, Future<Ack>> handler = w1.pollingAfterAccept(b.delivery(def, NO_FILES));
+        w1.start();
+        until(() -> w.queue.claims().size() == 1 && w.queue.claimsInFlight() == 0, () -> "the start claim");
         w.gate.open();
 
-        Envelope in = w.ingress();
-        assertEquals(new Ack.Accepted(in.id()), handler.apply(in).await(5, SECONDS));
+        Envelope in = w.accept(delivery);
+        assertEquals(1, w.queue.claims().size(), "the accept claims nothing: " + w.queue.claims());
+        assertEquals(List.of(), w.sentIds(), "and runs nothing");
+        // P2-16b B5: the worker's reconciliation, an interval plus the flow's offset after its start, claims it
+        for (int s = 0; s < 31 && w.queue.claims().size() == 1; s++) w.rt.clock().advance(TICK);
         w.partner.awaitSent(1);
-        assertEquals(List.of(in.id()), w.sentIds(), "the accept polled: no tick, no explicit poll");
+        assertEquals(List.of(in.id()), w.sentIds(), "the tick's claim runs it");
         until(() -> w.rows.size() == 0, () -> "the item completed");
         w.gate.joinPassed();
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-
-        int claims = w.queue.claims().size();
-        w.queue.failClaims(new IllegalStateException("claims down"));
-        Envelope next = w.ingress();
-        assertEquals(new Ack.Accepted(next.id()), handler.apply(next).await(5, SECONDS), "a failing poll never fails the accept");
-        until(() -> w.queue.claims().size() == claims + 1 && w.queue.claimsInFlight() == 0, () -> "the accept's claim");
-        until(() -> !logs.at(Level.WARNING, "claims down").isEmpty() || !logs.at(Level.SEVERE, "claims down").isEmpty(),
-                () -> "the trigger's failure logged: " + logs.all());
-    }
-
-    @Test
-    void aNackDoesNotPoll() throws Exception {
-        FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
-        FlowBuilder b = w.builder();
-        Envelope queued = w.accept(b.delivery(def, NO_FILES));   // what a poll would claim
-        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
-
-        Promise<Ack> later = Promise.promise();
-        Future<Ack> nack = w1.pollingAfterAccept(e -> later.future()).apply(w.ingress());
-        later.complete(new Ack.Nack("busy", true));
-        assertEquals(new Ack.Nack("busy", true), nack.await(5, SECONDS), "the Nack passes through");
-        Ack.Reply reply = new Ack.Reply(queued);
-        assertEquals(reply, w1.pollingAfterAccept(e -> Future.succeededFuture(reply)).apply(w.ingress()).await(5, SECONDS));
-        IllegalStateException refused = new IllegalStateException("handler failed");
-        Future<Ack> failed = w1.pollingAfterAccept(e -> Future.<Ack>failedFuture(refused)).apply(w.ingress());
-        until(failed::isComplete, () -> "the failed handler's answer");
-        assertSame(refused, failed.cause(), "a failed handler's future passes through");
-        assertEquals(List.of(), w.queue.claims(), "neither a Nack, a Reply nor a failure polls");
-        assertEquals(1, w.rows.size());
-
-        Future<Ack> accepted = w1.pollingAfterAccept(e -> Future.succeededFuture(new Ack.Accepted(e.id()))).apply(w.ingress());
-        accepted.await(5, SECONDS);
-        until(() -> w.gate.entered() == 1 && w.queue.claimsInFlight() == 0, () -> "the Accepted's poll ran the queued item");
-        assertEquals(1, w.queue.claims().size(), "the same wrapper polls on Accepted, once");
-        assertEquals(List.of(queued.id()), w.queue.claims().get(0).items.stream().map(WorkQueue.Item::messageId).toList());
+        assertEquals(List.of(in.id()), w.queue.claims().get(1).items.stream().map(WorkQueue.Item::messageId).toList(), "claimed by the tick");
     }
 
     @Test
@@ -1023,7 +1044,11 @@ class FlowWorkerTest {
         w.gate.open();
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt + ": the round claimed the item and ended without failing");
+            if (attempt == 1) {
+                assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1: the round claimed the item and ended without failing");
+            } else {
+                w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
+            }
             w.gate.joinPassed();
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
             assertEquals(attempt, w.partner.sentTo("partner").size(), "attempt " + attempt + " ran and crashed unparked");
@@ -1032,9 +1057,8 @@ class FlowWorkerTest {
             List<String> warned = logs.at(Level.WARNING, in.id()).stream().filter(t -> t.contains(counted)).toList();
             assertEquals(1, warned.size(), "one WARNING naming the message and '" + counted + "': " + logs.all());
             assertTrue(warned.get(0).contains("crashed at crash"), "names the failure: " + warned.get(0));
-            w.rt.clock().advance(LEASE);
         }
-        assertEquals(1, w1.poll().await(5, SECONDS), "the claim past the bound");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound, the lease-end wake's
         w.gate.joinPassed();
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
 
@@ -1052,6 +1076,52 @@ class FlowWorkerTest {
         assertEquals(0, w.rows.size(), "parked: the item is completed");
         assertEquals(List.of(), w.queue.holds());
         assertEquals(List.of(), logs.at(Level.WARNING, "attempt " + (maxAttempts + 1) + " of"), "the claim past the bound is no failed attempt");
+    }
+
+    /**
+     * FIX-143 O5 (F-32): {@code onFailure: park} is today's behaviour — an item of a key parked past maxAttempts is completed, so
+     * the key's next item runs after it; until the park the next item waits behind it. Making {@code block} real changes this case.
+     */
+    @Test
+    void aKeyedItemParkedPastMaxAttemptsLetsTheNextItemOfItsKeyRun() throws Exception {
+        int maxAttempts = 1;
+        Map<String, Object> doc = flow(4, List.of(
+                Map.of("type", "extractKey", "name", "key", "language", "header", "key", "customer", "xpath", "x-customer"), TO_PARTNER));
+        doc.put("partitionBy", "customer");
+        doc.put("onFailure", "park");
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowBuilder b = w.builder();
+        Delivery delivery = b.delivery(def, NO_FILES);
+        List<Envelope> accepted = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            Envelope in = w.rt.ingress("orders", Headers.empty().with(Envelope.H_CONTENT_TYPE, "application/xml").with("x-customer", "c1"), ORDER);
+            assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await(), "fixture: accepted");
+            accepted.add(in);
+        }
+        String first = accepted.get(0).id();
+        String second = accepted.get(1).id();
+        assertEquals(List.of("c1", "c1"), w.rows.snapshot().stream().map(WorkQueue.Item::partitionKey).toList(), "fixture: both items of one key");
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+        w.partner.failNext(1, () -> new NackException("order refused", false));
+        w.dlq.failParks(new IllegalStateException("dlq down"));   // attempt 1 fails and is left to its lease: not parked in its run
+
+        w1.poll().otherwiseEmpty().await(5, SECONDS);
+        until(() -> w.queue.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "attempt 1 settled: claims " + w.queue.claims());
+        assertEquals(List.of(first), w.sentIds(), "attempt 1 of the key's first item ran and failed; the key's next item waits behind it");
+        assertEquals(List.of(first, second), w.rows.snapshot().stream().map(WorkQueue.Item::messageId).toList(), "both items queued");
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "fixture: nothing parked yet");
+
+        w.dlq.parksOk();
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound: parked without a run, completed
+        w.drain(w1);
+        until(() -> w.queue.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "every run settled: claims " + w.queue.claims());
+
+        assertEquals(List.of(first, second), w.sentIds(), "the parked item is not sent again; the key's next item ran after its park");
+        Parked p = w.parkedRow();
+        assertEquals(first, p.messageId(), "the key's first item is parked");
+        assertTrue(p.error().contains("AttemptsExhaustedException"), "parked past maxAttempts: " + p.error());
+        assertEquals(List.of(), w.queue.holds(), "parked, not held: nothing blocks the key");
+        assertEquals(0, w.rows.size(), "both items completed");
     }
 
     @Test
@@ -1094,13 +1164,13 @@ class FlowWorkerTest {
         w.dlq.failParks(new IllegalStateException("dlq down"));
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            w1.poll().otherwiseEmpty().await(5, SECONDS);
+            if (attempt == 1) w1.poll().otherwiseEmpty().await(5, SECONDS);
+            else w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
             w.gate.joinPassed();
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
             assertEquals(attempt, w.partner.sent().size(), "attempt " + attempt + " ran; the DLQ refused the park");
-            w.rt.clock().advance(LEASE);
         }
-        w1.poll().otherwiseEmpty().await(5, SECONDS);
+        w.wokenAtTheLeaseEnd(w1, "w1");   // the claim past the bound, the lease-end wake's
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         long seq = w.rows.snapshot().get(0).seq();
         assertEquals(List.of(new RecordingWorkQueue.HoldCall(seq, maxAttempts + 1, true)), w.queue.holds(),
@@ -1141,12 +1211,13 @@ class FlowWorkerTest {
         w.partner.failNext(100, () -> new NackException("order refused", false));
         w.dlq.failParks(new IllegalStateException("dlq down"));
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            w1.poll().otherwiseEmpty().await(5, SECONDS);
+            if (attempt == 1) w1.poll().otherwiseEmpty().await(5, SECONDS);
+            else w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
             w.gate.joinPassed();
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-            w.rt.clock().advance(LEASE);
         }
-        assertEquals(1, w1.poll().await(5, SECONDS), "fixture: the claim past the bound");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // fixture: the claim past the bound, the lease-end wake's
+        assertEquals(List.of(1, 2, 3), w.claimedAttempts(), "fixture: the claim past the bound");
         long seq = w.rows.snapshot().get(0).seq();
         assertEquals(List.of(new RecordingWorkQueue.HoldCall(seq, maxAttempts + 1, true)), w.queue.holds(), "fixture: past the bound and unparkable, held");
         assertEquals(1, logs.at(Level.SEVERE, in.id()).size(), "fixture: one alert");
@@ -1266,53 +1337,42 @@ class FlowWorkerTest {
     }
 
     /**
-     * P1-09j (D-062): a park whose body cannot be made durable fails, writes no row and surfaces the step's failure, so the
-     * worker leaves the item to its lease — a WARNING, no completion, no hold — and the next claim runs it again.
+     * P1-09j (D-062) under CORE-14a P6: the worker parks the ingress — durable since its delivery (D-058) — never a step body, so
+     * a step body that cannot be made durable keeps nothing from the park: the final failure parks the message at step 1 at once
+     * and the item completes; only the run's trail asked to persist the step body.
      */
     @Test
-    void anItemWhoseParkCannotPersistIsLeftToItsLease() throws Exception {
-        int maxAttempts = 3;
+    void aStepBodyThatCannotPersistKeepsNoFinalFailureFromItsPark() throws Exception {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(REWRITE, TO_PARTNER)));
         FlowBuilder b = w.builder();
         Envelope in = w.accept(b.delivery(def, NO_FILES));
-        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 3));
         BlobKey stepBody = BlobKey.body(in.id(), 1);
-        BodyTooLargeException tooLarge = new BodyTooLargeException(stepBody, 70_000, 65_536);
-        w.stepBodies.refuse(tooLarge);
+        w.stepBodies.refuse(new BodyTooLargeException(stepBody, 70_000, 65_536));
         w.partner.failNext(100, () -> new NackException("order refused", false));
 
         assertEquals(1, w1.poll().await(5, SECONDS), "the round claimed the item and ended without failing");
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-        assertEquals(1, w.partner.sent().size(), "fixture: the run reached the partner, which refused");
-        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(),
-                "the park, then the run's trail (D-064: a failed park persist leaves the key not durable), asked to persist the rewritten body");
-        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "no DLQ row: the body could not be made durable");
-        assertEquals(1, w.rows.size(), "the item stays queued");
-        assertEquals(List.of(), w.queue.completes(), "not completed");
-        assertEquals(List.of(), w.queue.holds(), "not held: within the bound");
-        String counted = "attempt 1 of " + maxAttempts;
-        List<String> warned = logs.at(Level.WARNING, in.id()).stream().filter(t -> t.contains(counted)).toList();
-        assertEquals(1, warned.size(), "one WARNING naming the message and '" + counted + "': " + logs.all());
-        assertTrue(warned.get(0).contains("left to its lease"), warned.get(0));
-        assertTrue(warned.get(0).contains("order refused"), "names the step's failure: " + warned.get(0));
-        assertTrue(warned.get(0).contains(tooLarge.getMessage()), "and, suppressed, the persist's: " + warned.get(0));
+        assertEquals(1, w.partner.sent().size(), "fixture: the run reached the partner, which refused for good");
+        assertEquals(List.of(stepBody), w.stepBodies.persists(), "only the run's trail asked to persist the rewritten body");
+        Parked p = w.parkedRow();
+        assertEquals(1, p.step(), "parked at step 1");
+        assertEquals(in.body().key(), p.bodyKey(), "by the ingress");
+        assertEquals(Optional.of(1), p.props().get(Envelope.ATTEMPT), "at once: attempt 1");
+        assertTrue(p.error().contains("order refused"), "the step's failure is the row's error: " + p.error());
+        assertTrue(w.rt.blobs().persisted(in.body().key()), "the ingress body is durable");
+        assertEquals(0, w.rows.size(), "parked: the item is completed");
+        assertEquals(List.of(), w.queue.holds());
         assertEquals(List.of(), logs.at(Level.SEVERE, in.id()));
-
-        assertEquals(0, w1.poll().await(5, SECONDS), "leased: nobody claims it before its lease ran out");
-        w.rt.clock().advance(LEASE);
-        assertEquals(1, w1.poll().await(5, SECONDS), "after its lease the item is claimed again");
-        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-        assertEquals(List.of(1, 2), w.claimedAttempts(), "the second claim is attempt 2");
-        assertEquals(2, w.partner.sent().size(), "and ran again");
-        assertEquals(1, w.rows.size());
     }
 
     /**
-     * P1-09j (D-062): past the bound, a message whose step body can never be made durable is parked by its ingress at step 1 —
-     * durable since its delivery (D-058) — without a run; its item completes.
+     * P1-09j (D-062) under CORE-14a: a retryable failure of a message whose step body can never be made durable is deferred like
+     * any other — the step body is no park's — and the last hand-out its bound allows, claimed by the worker's own retry wake at
+     * its due, parks the ingress at step 1, durable since its delivery (D-058); each run's trail asked to persist the step body.
      */
     @Test
-    void pastTheBoundAnUnpersistableStepBodyParksTheIngressAtTheFirstStep() throws Exception {
+    void anUnpersistableStepBodyIsRetriedAndItsLastRunParksTheIngressAtTheFirstStep() throws Exception {
         int maxAttempts = 2;
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(REWRITE, TO_PARTNER)));
         FlowBuilder b = w.builder();
@@ -1320,43 +1380,40 @@ class FlowWorkerTest {
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
         BlobKey stepBody = BlobKey.body(in.id(), 1);
         w.stepBodies.refuse(new BodyTooLargeException(stepBody, 70_000, 65_536));
-        w.partner.failNext(100, () -> new NackException("order refused", false));
+        w.partner.failNext(100, () -> new NackException("order refused", true));
 
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt);
-            until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-            assertEquals(attempt, w.partner.sent().size(), "attempt " + attempt + " ran");
-            assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "attempt " + attempt + ": no DLQ row, the step body is not durable");
-            assertEquals(1, w.rows.size(), "attempt " + attempt + ": left to its lease");
-            w.rt.clock().advance(LEASE);
-        }
-        assertEquals(1, w1.poll().await(5, SECONDS), "the claim past the bound");
-        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1");
+        until(() -> w.queue.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "attempt 1 settled");
+        assertEquals(1, w.partner.sent().size(), "attempt 1 ran");
+        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "attempt 1: deferred, not parked");
+        assertEquals(List.of(RETRY_INTERVAL), w.queue.deferCalls().stream().map(RecordingWorkQueue.DeferCall::delay).toList(), "by the interval");
+        assertEquals(1, w.rows.size(), "its row waits");
 
-        assertEquals(maxAttempts, w.partner.sent().size(), "the claim past the bound does not run");
-        assertEquals(List.of(1, 2, 3), w.claimedAttempts());
+        w.rt.clock().advance(RETRY_INTERVAL);   // the worker's own retry wake claims it at its due
+        until(() -> w.rows.size() == 0 && w.queue.claimsInFlight() == 0 && w1.unsettled() == 0, () -> "the retry parked it; claims " + w.queue.claims());
+
+        assertEquals(maxAttempts, w.partner.sent().size(), "the retry ran");
+        assertEquals(List.of(1, 2), w.claimedAttempts());
         Parked p = w.parkedRow();
         assertEquals(in.id(), p.messageId());
         assertEquals(1, p.step(), "parked at step 1");
         assertEquals("rewrite", p.stepName());
         assertEquals(in.body().key(), p.bodyKey(), "the ingress, by reference");
-        assertTrue(p.error().contains("AttemptsExhaustedException"), p.error());
+        assertEquals(Optional.of(maxAttempts), p.props().get(Envelope.ATTEMPT), "after its last attempt");
         assertTrue(w.rt.blobs().persisted(in.body().key()), "the ingress body is durable");
-        assertEquals(List.of(stepBody, stepBody, stepBody, stepBody), w.stepBodies.persists(),
-                "the step body was tried by each run's park and each run's trail (D-064), never by the exhausted park");
-        assertEquals(0, w.rows.size(), "parked: the item is completed");
+        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(), "each run's trail tried the step body, the park never");
         assertEquals(List.of(), w.queue.holds());
         assertEquals(List.of(), logs.at(Level.SEVERE, in.id()), "no alert: the park succeeded");
     }
 
     /**
-     * FIX-35 (D-061 amended): a key's durable bytes never change. Attempt 1 parks: its step body is made durable, then the
-     * DLQ refuses the row, so the item is left to its lease. The rerun's step is not deterministic and writes other bytes under
-     * the same key: its park's persist fails with an {@link IllegalStateException}, no DLQ row describes bytes its key does
-     * not hold, and the item is left to its lease again; past the bound the message parks its ingress at step 1.
+     * FIX-35 (D-061 amended) under CORE-14a P6: a key's durable bytes never change, and a DLQ row never describes a step body.
+     * Attempt 1 fails for good: its trail made its step body durable, then the DLQ refuses the ingress park, so the item is left
+     * to its lease. The rerun's step is not deterministic and writes other bytes under the same key, which its trail cannot make
+     * durable; its final failure parks the ingress at step 1 with attempt 2 and the item completes.
      */
     @Test
-    void aRerunWhoseParkedBodyDiffersFromItsDurableBytesEndsInTheIngressPark() throws Exception {
+    void aRerunWhoseStepBodyDiffersFromItsDurableBytesParksTheIngress() throws Exception {
         int maxAttempts = 2;
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(STAMP, TO_PARTNER)));
         FlowBuilder b = w.builder();
@@ -1369,47 +1426,31 @@ class FlowWorkerTest {
         assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1");
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(1, w.partner.sent().size(), "fixture: attempt 1 ran and the partner refused");
-        assertEquals(List.of(stepBody), w.stepBodies.persists(), "fixture: attempt 1's park persisted its step body");
+        assertEquals(List.of(stepBody), w.stepBodies.persists(), "fixture: attempt 1's trail persisted its step body");
         assertTrue(w.stepBodies.persisted(stepBody), "fixture: attempt 1's step body is durable");
         assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "fixture: the DLQ refused the row");
         assertEquals(1, w.rows.size(), "fixture: left to its lease");
+        String counted = "attempt 1 of " + maxAttempts;
+        List<String> warned = logs.at(Level.WARNING, in.id()).stream().filter(t -> t.contains(counted)).toList();
+        assertEquals(1, warned.size(), "one WARNING naming the message and '" + counted + "': " + logs.all());
+        assertTrue(warned.get(0).contains("left to its lease"), warned.get(0));
+        assertTrue(warned.get(0).contains("order refused") && warned.get(0).contains("dlq down"), "names the failure and the park's: " + warned.get(0));
         w.dlq.parksOk();
-        w.rt.clock().advance(LEASE);
 
-        assertEquals(1, w1.poll().await(5, SECONDS), "attempt 2");
-        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // attempt 2, claimed by the lease-end wake (D-121 A6)
+        until(() -> w.queue.claimsInFlight() == 0 && w.rows.size() == 0, () -> "attempt 2 parked; claims " + w.queue.claims());
+        assertEquals(List.of(1, 2), w.claimedAttempts(), "attempt 2");
         assertEquals(2, w.partner.sent().size(), "attempt 2 ran and the partner refused");
         assertEquals(2, w.stamped.size(), "fixture: stamp ran twice");
         assertFalse(w.stamped.get(0).equals(w.stamped.get(1)), "fixture: the rerun wrote other bytes: " + w.stamped);
-        assertEquals(w.stamped.get(1), w.stepBodies.read(stepBody).await(), "fixture: the key holds the rerun's bytes locally");
-        assertEquals(List.of(stepBody, stepBody, stepBody), w.stepBodies.persists(),
-                "attempt 2's park and attempt 2's trail (D-064: its park's persist failed) asked to persist the step body too");
-        assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(),
-                "no DLQ row: the key's durable bytes are attempt 1's, not the bytes attempt 2 parked");
-        assertEquals(1, w.rows.size(), "the item stays queued");
-        assertEquals(List.of(), w.queue.completes(), "not completed");
-        assertEquals(List.of(), w.queue.holds(), "not held: within the bound");
-        String counted = "attempt 2 of " + maxAttempts;
-        List<String> warned = logs.at(Level.WARNING, in.id()).stream().filter(t -> t.contains(counted)).toList();
-        assertEquals(1, warned.size(), "one WARNING naming the message and '" + counted + "': " + logs.all());
-        assertTrue(warned.get(0).contains("order refused"), "names the step's failure: " + warned.get(0));
-        assertTrue(warned.get(0).contains("the durable body under " + stepBody + " holds other bytes than these"),
-                "and, suppressed, the persist's refusal: " + warned.get(0));
-        w.rt.clock().advance(LEASE);
-
-        assertEquals(1, w1.poll().await(5, SECONDS), "the claim past the bound");
-        until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
-        assertEquals(maxAttempts, w.partner.sent().size(), "the claim past the bound does not run");
-        assertEquals(List.of(1, 2, 3), w.claimedAttempts());
+        assertEquals(List.of(stepBody, stepBody), w.stepBodies.persists(), "attempt 2's trail asked to persist the step body too");
         Parked p = w.parkedRow();
         assertEquals(in.id(), p.messageId());
         assertEquals(1, p.step(), "parked at step 1");
         assertEquals("stamp", p.stepName());
-        assertEquals(in.body().key(), p.bodyKey(), "the ingress, by reference");
-        assertTrue(p.error().contains("AttemptsExhaustedException"), p.error());
+        assertEquals(in.body().key(), p.bodyKey(), "the ingress, by reference: never the step body whose durable bytes are attempt 1's");
+        assertEquals(Optional.of(2), p.props().get(Envelope.ATTEMPT));
         assertTrue(w.rt.blobs().persisted(in.body().key()), "the ingress body is durable");
-        assertEquals(List.of(stepBody, stepBody, stepBody), w.stepBodies.persists(), "the exhausted park does not touch the step body");
-        assertEquals(0, w.rows.size(), "parked: the item is completed");
         assertEquals(List.of(), w.queue.holds());
         assertEquals(List.of(), logs.at(Level.SEVERE, in.id()), "no alert: the park succeeded");
     }
@@ -1429,17 +1470,18 @@ class FlowWorkerTest {
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, maxAttempts));
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            assertEquals(1, w1.poll().await(5, SECONDS), "attempt " + attempt);
+            if (attempt == 1) assertEquals(1, w1.poll().await(5, SECONDS), "attempt 1");
+            else w.wokenAtTheLeaseEnd(w1, "w1");   // attempt n > 1: claimed by the lease-end wake of the run before (D-121 A6)
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
             assertEquals(attempt, w.storedKeys.size(), "attempt " + attempt + " ran the store step");
             assertEquals(1, w.rows.size(), "attempt " + attempt + ": the crash leaves the item to its lease");
-            w.rt.clock().advance(LEASE);
         }
         assertEquals(List.of(1, 2, 3), w.claimedAttempts(), "fixture: the item's three claims are attempts 1, 2 and 3");
         assertEquals(List.of(Optional.empty(), Optional.of(2), Optional.of(3)), w.seenAttempts,
                 "the first claim runs as no attempt in particular, every later one carries the claim's attempt");
         List<Snapshot> rows = w.store.timeline(in.id()).await().stream().filter(s -> "store".equals(s.stepName())).toList();
-        assertEquals(1, rows.size(), "fixture: one row per step and message, the first run's: " + rows);
+        // FIX-175 (P2) changed this expectation: each attempt keeps its own row of the step (one row per (id, step, attempt))
+        assertEquals(List.of(1, 2, 3), rows.stream().map(Snapshot::attempt).toList(), "fixture: one row per step and attempt: " + rows);
         BlobKey rowKey = rows.get(0).bodyKey().orElseThrow();
         assertEquals(BlobKey.body(in.id(), 1), rowKey, "the first attempt's row refers to the step's plain key, as before D-066");
 
@@ -1447,8 +1489,10 @@ class FlowWorkerTest {
                 "attempts 2 and 3 write the step's body under keys of their own");
         for (int run = 1; run <= maxAttempts; run++) {
             assertEquals("<store n='" + run + "'/>", w.rt.blobs().read(w.storedKeys.get(run - 1)).await().toString(), "run " + run + "'s bytes stay under its key");
+            Snapshot row = rows.get(run - 1);
+            assertEquals(Optional.of(w.storedKeys.get(run - 1)), row.bodyKey(), "attempt " + run + "'s row refers to its own key");
+            assertEquals(row.bodyHash(), w.rt.hasher().hashOf(w.rt.blobs().read(row.bodyKey().orElseThrow()).await()), "attempt " + run + "'s row reads the bytes it describes");
         }
-        assertEquals(rows.get(0).bodyHash(), w.rt.hasher().hashOf(w.rt.blobs().read(rowKey).await()), "the row still reads the bytes it describes");
     }
 
     // --- P1-09k2 (D-064, D-066, F-10): the run trail
@@ -1533,14 +1577,13 @@ class FlowWorkerTest {
     }
 
     /**
-     * D-066 with the trail (F-8's FIX-35 note): the first run of a message stamps its step body and crashes, so its trail made
-     * the first run's bytes durable under the plain key. The rerun stamps other bytes under a key of its own ({@code body~2}),
-     * so its park at the partner step persists without meeting the first run's durable bytes: the message is parked at the
-     * step that failed, by the rerun's body — never at the ingress past the attempts bound — and the stamp row (the first
-     * run's) still describes durable bytes.
+     * D-066 with the trail (F-8's FIX-35 note) under CORE-14a P6: the first run of a message stamps its step body and crashes, so
+     * its trail made the first run's bytes durable under the plain key. The rerun stamps other bytes under a key of its own
+     * ({@code body~2}), which its trail persists without meeting the first run's durable bytes; its final failure parks the
+     * ingress at step 1 with attempt 2, and the stamp row (the first run's) still describes durable bytes.
      */
     @Test
-    void aRerunOfAStampingNextKeyStepParksAtItsStepNotTheIngress() throws Exception {
+    void aRerunOfAStampingNextKeyStepKeepsItsBodyUnderItsOwnKeyAndParksTheIngress() throws Exception {
         int maxAttempts = 2;
         Map<String, Object> stampNext = Map.of("type", "stamp-next", "name", "stamp");
         Map<String, Object> crashFirst = Map.of("type", "crash-first", "name", "crash-first");
@@ -1556,17 +1599,17 @@ class FlowWorkerTest {
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(1, w.rows.size(), "fixture: attempt 1 crashed, its item is left to its lease");
         assertTrue(w.stepBodies.persisted(first), "attempt 1's trail made its stamp body durable");
-        w.rt.clock().advance(LEASE);
 
-        assertEquals(1, w1.poll().await(5, SECONDS), "attempt 2");
+        w.wokenAtTheLeaseEnd(w1, "w1");   // attempt 2, claimed by the lease-end wake (D-121 A6)
         until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         assertEquals(2, w.stamped.size(), "fixture: stamp ran twice");
         assertNotEquals(w.stamped.get(0), w.stamped.get(1), "fixture: the rerun stamped other bytes");
         Parked p = w.parkedRow();
-        assertEquals(3, p.step(), "parked at the step that failed, not at the ingress");
-        assertEquals("partner", p.stepName());
-        assertEquals(rerun, p.bodyKey(), "by the rerun's body, under its attempt's key");
-        assertTrue(w.stepBodies.persisted(rerun));
+        assertEquals(1, p.step(), "parked at step 1, by the ingress (CORE-14a P6)");
+        assertEquals("stamp", p.stepName());
+        assertEquals(in.body().key(), p.bodyKey());
+        assertEquals(Optional.of(2), p.props().get(Envelope.ATTEMPT), "with the attempt it failed at");
+        assertTrue(w.stepBodies.persisted(rerun), "the rerun's trail made its body durable under its attempt's key");
         assertEquals(w.stamped.get(1), w.stepBodies.read(rerun).await());
         assertEquals(0, w.rows.size(), "parked: the item is completed");
         assertEquals(List.of(1, 2), w.claimedAttempts());
@@ -1581,12 +1624,12 @@ class FlowWorkerTest {
     /**
      * FIX-107: a partner whose send fails with a checked exception — the http producer's refused connection is netty's
      * {@code AnnotatedConnectException}, a {@link java.net.ConnectException}, which {@code Future.await()} rethrows as is — is
-     * a step failure like a Nack: the retryable {@code to} step is retried by the flow's policy on the runtime's timer, then
-     * the message is parked at that step by its input; the item is completed by the one claim that ran it, nothing is left to
-     * its lease and nothing logged at WARNING.
+     * a step failure like a Nack: the retryable {@code to} step is retried by the flow's policy on the runtime's timer, then —
+     * count 0 (CORE-14a: no scheduled retry) — the message is parked by its ingress at step 1 (P6); the item is completed by the
+     * one claim that ran it, nothing is left to its lease and nothing logged at WARNING.
      */
     @Test
-    void aPartnerFailingWithACheckedExceptionIsRetriedThenParkedAtItsStep() throws Exception {
+    void aPartnerFailingWithACheckedExceptionIsRetriedThenParksTheIngress() throws Exception {
         int retries = 2;
         Map<String, Object> doc = flow(4, List.of(STAMP, Map.of("type", "to", "name", "partner", "endpoint", "partner", "retryable", true)));
         doc.put("retry", Map.of("attempts", retries, "initial", "100ms", "max", "2s"));
@@ -1600,7 +1643,7 @@ class FlowWorkerTest {
         };
         FlowBuilder b = w.builder(w.runtimeWith(timer));
         Envelope in = w.accept(b.delivery(def, NO_FILES));
-        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 5));
+        FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 1));
         w.partner.failNext(100, () -> new java.net.ConnectException("Connection refused"));
 
         Future<Integer> round = w1.poll();
@@ -1618,9 +1661,10 @@ class FlowWorkerTest {
         List<Parked> rows = w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(1, rows.size(), "one DLQ row after the retries: " + rows + "; sends " + w.partner.sent().size() + "; logs " + logs.all());
         Parked p = rows.get(0);
-        assertEquals(2, p.step(), "parked at the to step, by its index");
-        assertEquals("partner", p.stepName(), "by its name");
-        assertEquals(BlobKey.body(in.id(), 1), p.bodyKey(), "by the to step's input, the body stamp handed on");
+        assertEquals(1, p.step(), "parked at step 1 (CORE-14a P6)");
+        assertEquals("stamp", p.stepName(), "the first step's name");
+        assertEquals(in.body().key(), p.bodyKey(), "by the ingress");
+        assertEquals(Optional.of(1), p.props().get(Envelope.ATTEMPT), "with the attempt it failed at");
         assertTrue(p.error().contains("ConnectException"), "the partner's failure is the row's error: " + p.error());
         assertEquals(1 + retries, w.partner.sent().size(), "the partner was tried once and retried " + retries + " times");
         assertEquals(List.of(def.retry().delayBefore(1), def.retry().delayBefore(2)), retryWaits, "the retries waited the policy's delays");
@@ -1644,8 +1688,9 @@ class FlowWorkerTest {
         List<Duration> retryWaits = new CopyOnWriteArrayList<>();
         Timer timer = (delay, task) -> {
             Timer.Cancellable pending = w.rt.timer().schedule(delay, task);
-            // a wait the run schedules on its own thread (flottila-worker-<worker>-<seq>) is a retry's
-            if (Thread.currentThread().getName().startsWith("flottila-worker-")) retryWaits.add(delay);
+            // a wait shorter than the lease that the run schedules on its own thread (flottila-worker-<worker>-<seq>) is a
+            // retry's (the policy's waits are 100 ms to 2 s); the item's lease-end wake (D-121 A6) waits the lease
+            if (Thread.currentThread().getName().startsWith("flottila-worker-") && delay.compareTo(LEASE) < 0) retryWaits.add(delay);
             return pending;
         };
         FlowBuilder b = w.builder(w.runtimeWith(timer));
@@ -1714,31 +1759,18 @@ class FlowWorkerTest {
     }
 
     /**
-     * {@code t} parked in a {@code Future.await()} that {@link io.flottila.core.dlq.Parking} called: the run waits for its park,
-     * every listener of the park's persist registered on the run's thread already.
-     */
-    static boolean waitingInPark(Thread t) {
-        if (t.getState() != Thread.State.WAITING) return false;
-        StackTraceElement[] stack = t.getStackTrace();
-        for (int i = 1; i < stack.length; i++) {
-            if (stack[i].getClassName().equals(io.flottila.core.dlq.Parking.class.getName())) return "await".equals(stack[i - 1].getMethodName());
-        }
-        return false;
-    }
-
-    /**
-     * D-066 when the park's persist answers on another thread (P1-09k2, M26): the run parks at the partner step under its
-     * trail; the persist of the parked body is held until the run waits on it, then answered from the test thread, where no
-     * trail is bound. The park still tells the run's trail — the one bound where the park started — that the key is durable,
-     * so the trail's close does not persist it again: the parked key is persisted once in total, and the rows keep it.
+     * D-066 under CORE-14a P6: the worker's pipeline parks nothing, so a run that fails for good first closes its trail — the
+     * persist of its step body, held here until the run waits on it, answered from the test thread — and only then parks its
+     * ingress at step 1, a key durable since its delivery: no DLQ row while the trail's persist is held, the rewritten body
+     * persisted once in total (by the trail), and the rows keep it.
      */
     @Test
-    void aParkPersistAnsweredOffTheRunsThreadStillSparesTheTrailASecondPersist() throws Exception {
+    void aFinalFailureParksTheIngressOnlyOnceTheRunsTrailPersistedItsStepBody() throws Exception {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, REWRITE, TO_PARTNER)));
         FlowBuilder b = w.builder();
         Envelope in = w.accept(b.delivery(def, NO_FILES));
         FlowWorker w1 = w.worker(b, def, "w1", policy(LEASE, 3));
-        BlobKey stepBody = BlobKey.body(in.id(), 2);   // rewrite is step 2 (after the gate); the partner, step 3, parks it
+        BlobKey stepBody = BlobKey.body(in.id(), 2);   // rewrite is step 2 (after the gate); the partner, step 3, refuses for good
         w.partner.failNext(100, () -> new NackException("order refused", false));
         w.gate.open();
         w.stepBodies.hold();
@@ -1746,26 +1778,27 @@ class FlowWorkerTest {
             Future<Integer> polled = w1.poll();
             until(() -> w.gate.entered() == 1, () -> "the run entered the gate");
             Thread run = w.gate.runs().get(0).thread;
-            until(() -> w.stepBodies.held() == 1 && waitingInPark(run),
-                    () -> "the park's persist held and the run waiting on it: held " + w.stepBodies.held() + ", " + run.getState() + " at "
-                            + java.util.Arrays.toString(run.getStackTrace()));
-            assertEquals(List.of(stepBody), w.stepBodies.persists(), "fixture: the park asked to persist the partner's input, the rewritten body");
-            assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "no DLQ row while the persist is held");
+            until(() -> w.stepBodies.held() == 1 && run.getState() == Thread.State.WAITING,
+                    () -> "the trail's persist held and the run waiting on it: held " + w.stepBodies.held() + ", " + run.getState());
+            assertEquals(List.of(stepBody), w.stepBodies.persists(), "fixture: the trail asked to persist the rewritten body");
+            assertEquals(List.of(), w.parked.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "no DLQ row while the trail's persist is held");
             assertFalse(polled.isComplete(), "the round waits for its item: " + polled);
 
-            w.stepBodies.release();   // the persist answers here, on the test thread: no trail is bound on it
+            w.stepBodies.release();   // the persist answers here, on the test thread
             assertEquals(1, polled.await(5, SECONDS));
             until(() -> w.queue.claimsInFlight() == 0, () -> "claims answered");
         } finally {
             w.stepBodies.release();
         }
         assertEquals(1, w.partner.sent().size(), "fixture: the run reached the partner, which refused");
-        assertEquals(stepBody, w.parkedRow().bodyKey(), "parked at the partner by the rewritten body");
+        Parked p = w.parkedRow();
+        assertEquals(1, p.step(), "parked at step 1 (CORE-14a P6)");
+        assertEquals(in.body().key(), p.bodyKey(), "by the ingress");
+        assertEquals(Optional.of(1), p.props().get(Envelope.ATTEMPT), "with the attempt it failed at");
         assertEquals(0, w.rows.size(), "parked: the item is completed");
-        assertEquals(List.of(stepBody), w.stepBodies.persists(),
-                "the parked key persisted once in total: the park marked it durable for the run's trail, whose close did not persist it again");
+        assertEquals(List.of(stepBody), w.stepBodies.persists(), "the rewritten body persisted once in total, by the trail");
         Snapshot rewriteRow = w.store.timeline(in.id()).await().stream().filter(s -> "rewrite".equals(s.stepName())).findFirst().orElseThrow();
-        assertEquals(Optional.of(stepBody), rewriteRow.bodyKey(), "the rewrite row keeps the parked key: it is durable");
+        assertEquals(Optional.of(stepBody), rewriteRow.bodyKey(), "the rewrite row keeps its key: it is durable");
         assertEquals(List.of(), logs.at(Level.WARNING, in.id()), "no persist failed, no row went metadata-only");
     }
 
@@ -1775,18 +1808,14 @@ class FlowWorkerTest {
     void workerPolicyRefusesNonPositiveValues() {
         Duration second = Duration.ofSeconds(1);
         for (Duration bad : List.of(Duration.ZERO, Duration.ofNanos(-1))) {
-            String lease = assertThrows(IllegalArgumentException.class, () -> new WorkerPolicy(bad, 5, second), "lease " + bad).getMessage();
+            String lease = assertThrows(IllegalArgumentException.class, () -> new WorkerPolicy(bad, second), "lease " + bad).getMessage();
             assertTrue(lease.contains("lease"), lease);
-            String interval = assertThrows(IllegalArgumentException.class, () -> new WorkerPolicy(second, 5, bad), "pollInterval " + bad).getMessage();
+            String interval = assertThrows(IllegalArgumentException.class, () -> new WorkerPolicy(second, bad), "pollInterval " + bad).getMessage();
             assertTrue(interval.contains("pollInterval"), interval);
         }
-        for (int bad : new int[] {0, -1}) {
-            String attempts = assertThrows(IllegalArgumentException.class, () -> new WorkerPolicy(second, bad, second), "maxAttempts " + bad).getMessage();
-            assertTrue(attempts.contains("maxAttempts"), attempts);
-        }
-        WorkerPolicy smallest = new WorkerPolicy(Duration.ofNanos(1), 1, Duration.ofNanos(1));
-        assertEquals(1, smallest.maxAttempts(), "the smallest positive values are a policy");
-        assertEquals(new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(1)), WorkerPolicy.DEFAULT);
+        WorkerPolicy smallest = new WorkerPolicy(Duration.ofNanos(1), Duration.ofNanos(1));
+        assertEquals(Duration.ofNanos(1), smallest.lease(), "the smallest positive values are a policy");
+        assertEquals(new WorkerPolicy(Duration.ofSeconds(30), Duration.ofSeconds(30)), WorkerPolicy.DEFAULT, "P2-16b B5: a 30 s reconciliation");
     }
 
     @Test
@@ -1803,7 +1832,10 @@ class FlowWorkerTest {
         assertEquals(WorkerPolicy.DEFAULT.lease().dividedBy(3), w.rt.timer().nextDelay(), "renewed at a third of the default lease");
         w1.start();
         until(() -> w.queue.claimsInFlight() == 0, () -> "start settled");
-        assertEquals(WorkerPolicy.DEFAULT.pollInterval(), w.rt.timer().nextDelay(), "ticks at the default poll interval");
+        w.gate.open();   // P2-16b B5: the run ends and its renewal is cancelled, so the one pending task is the reconciliation
+        until(() -> w1.unsettled() == 0 && w.rt.timer().pending() == 1, () -> "the run settled, its renewal cancelled");
+        assertEquals(WorkerPolicy.DEFAULT.pollInterval().plusMillis(9_669), w.rt.timer().nextDelay(),
+                "reconciles at the default interval plus floorMod(\"orders\".hashCode(), 30 000) = 9 669 ms");
     }
 
     @Test
@@ -1839,7 +1871,7 @@ class FlowWorkerTest {
             Delivery delivery = b.delivery(def, NO_FILES);
             List<String> ids = new ArrayList<>();
             for (int i = 0; i < messages; i++) ids.add(world.accept(delivery).id());
-            List<FlowWorker> workers = List.of(world.worker(b, def, "w1", policy(LEASE, 1_000)), world.worker(b, def, "w2", policy(LEASE, 1_000)));
+            List<FlowWorker> workers = List.of(world.worker(b, def, "w1", policy(LEASE, 101)), world.worker(b, def, "w2", policy(LEASE, 101)));
 
             for (Move m : moves) {
                 switch (m) {
@@ -1874,7 +1906,7 @@ class FlowWorkerTest {
     /** One poll interval passes: the started worker's tick. */
     record Tick() implements Trigger {}
 
-    /** A delivery through {@code pollingAfterAccept}: accepted, then a poll. */
+    /** A delivery accepted: handed off when the worker has a slot (D-121 A1), else a plain row and the backlog flag (P2-16a). */
     record AcceptOne() implements Trigger {}
 
     /** One held run ends: its item finished, it polls once. */
@@ -1901,9 +1933,10 @@ class FlowWorkerTest {
         World world = new World();
         try {
             FlowDefinition def = FlowDefinition.from(flow(max, List.of(RunGate.STEP, TO_PARTNER)));
-            FlowBuilder b = world.builder();
-            FlowWorker worker = world.worker(b, def, "w1", new WorkerPolicy(LEASE, 1_000, TICK));
-            Function<Envelope, Future<Ack>> accepting = worker.pollingAfterAccept(b.delivery(def, NO_FILES));
+            Workers workers = new Workers();   // P2-16a: deliveries hand off to the worker's slots instead of polling after the accept
+            FlowBuilder b = world.builder().workers(workers).intake(new SequentialIntake(world.store, world.queue, workers, "w1"));
+            FlowWorker worker = world.worker(b, def, "w1", new WorkerPolicy(LEASE, TICK));
+            Function<Envelope, Future<Ack>> accepting = b.delivery(def, NO_FILES);
             // running, as seen from outside: handed out to the worker and not yet past the gate (a released run is joined first)
             world.queue.probeRunning(() -> world.queue.handedOutTo("w1") - world.gate.exited());
             worker.start();

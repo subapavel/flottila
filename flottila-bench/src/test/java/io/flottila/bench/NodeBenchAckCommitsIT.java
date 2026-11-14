@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -39,7 +40,7 @@ class NodeBenchAckCommitsIT {
     static final Map<String, String> SERVER = Map.of("fsync", "on", "wal_sync_method", "fsync", "full_page_writes", "off",
             "commit_delay", "7", "commit_siblings", "3", "synchronous_commit", "off");
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17").withCommand("postgres",
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name()).withCommand("postgres",
             "-c", "fsync=on", "-c", "wal_sync_method=fsync", "-c", "full_page_writes=off",
             "-c", "commit_delay=7", "-c", "commit_siblings=3", "-c", "synchronous_commit=off");
     static final AtomicInteger cases = new AtomicInteger();
@@ -65,14 +66,16 @@ class NodeBenchAckCommitsIT {
         for (String name : List.of("commit_siblings", "wal_sync_method", "fsync", "full_page_writes")) {
             assertEquals(SERVER.get(name), setting(json, name), name + " as pg_settings shows it, not a default: " + json.encode());
         }
-        assertEquals(16, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default; the bench does not set it): " + json.encode());
+        assertEquals(21, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default, F-33; the bench does not set it): " + json.encode());
     }
 
     @Test
     void anAtLeastOnceAckCostsAtLeastOneCommitPerMessageAndItsWalSyncsAreCountedPerMessage() throws Exception {
         String db = database();
         JsonObject json = ack(db, 1, "commits");
-        assertEquals(MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"), "every 202 saved its ingress body");
+        // CORE-4c2: the durable ingress body is a journal record named by its body_refs row, no bodies row (D-105)
+        assertEquals(MESSAGES, count(db, "select count(distinct message_id) from body_refs where step = 0"), "every 202 saved its ingress body's ref");
+        assertEquals(0, count(db, "select count(*) from bodies"), "and no bodies row");
 
         Double commits = json.getDouble("commitsPerMessage");
         assertNotNull(commits, "the ack record carries commitsPerMessage: " + json.encode());

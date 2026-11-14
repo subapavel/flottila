@@ -26,7 +26,11 @@ import io.flottila.testkit.InMemoryBlobStore;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxException;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
+import io.vertx.sqlclient.ClosedConnectionException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
 import io.vertx.core.http.HttpClientResponse;
@@ -46,6 +50,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,7 +62,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -239,11 +246,13 @@ class AdminServerTest {
         assertEquals("invoice-sync", t.getString("flow"));
         JsonArray steps = t.getJsonArray("steps");
         assertEquals(4, steps.size(), "one entry per step, in step order");
-        Set<String> fields = Set.of("step", "name", "outcome", "error", "startedAt", "wallNanos", "cpuNanos", "headers", "props", "keys", "body", "versions");
+        // FIX-175 (P3) changed this expectation: each step object gains its attempt (additive), 1 for a first run's rows
+        Set<String> fields = Set.of("step", "attempt", "name", "outcome", "error", "startedAt", "wallNanos", "cpuNanos", "headers", "props", "keys", "body", "versions");
         for (int i = 0; i < 4; i++) {
             JsonObject s = steps.getJsonObject(i);
-            assertEquals(fields, s.fieldNames(), "step " + i + ": the D-057 fields, cpuNanos and error present even when null");
+            assertEquals(fields, s.fieldNames(), "step " + i + ": the D-057 fields and the attempt, cpuNanos and error present even when null");
             assertEquals(i, s.getInteger("step"));
+            assertEquals(1, s.getValue("attempt"), "step " + i + ": a first run's props carry no attempt: attempt 1");
             assertEquals(T0.plusSeconds(i), Instant.parse(s.getString("startedAt")), "startedAt as ISO-8601, microseconds kept");
             assertEquals(Set.of("hash", "size", "kept"), s.getJsonObject("body").fieldNames());
             assertEquals(new JsonObject().put("flow", "invoice-sync@0.1.0"), s.getJsonObject("versions"));
@@ -306,6 +315,110 @@ class AdminServerTest {
         assertTrue(ingress.containsKey("cpuNanos"), "present: " + ingress);
         assertNull(ingress.getValue("cpuNanos"), "step 0 measured nothing: null, never 0 (F-21): " + ingress);
         assertEquals(0L, ingress.getLong("wallNanos"), "its wall time stays 0");
+    }
+
+    // --- FIX-175 (P3, P4): each attempt of a same-id rerun keeps its own rows
+
+    /** A row of {@code id} at {@code step} of {@code attempt} (its props carry {@link Envelope#ATTEMPT} from 2 on, as a rerun's do), over {@code body}. */
+    static Snapshot rerunRow(String id, int step, String name, int attempt, Snapshot.Outcome outcome, Body body, String contentType) {
+        Props props = Props.empty().with(new Key<String>("PARTNER"), "domestic");
+        if (attempt >= 2) props = props.with(Envelope.ATTEMPT, attempt);
+        return new Snapshot(id, "invoice-sync", step, name, outcome, outcome == Snapshot.Outcome.FAILED ? Optional.of("503 from partner (attempt " + attempt + ")") : Optional.empty(),
+                T0.plusSeconds(10L * attempt + step), 1_000L, 10L, Headers.empty().with("content-type", contentType), props, Keys.empty(), body.hash(), body.size(),
+                Optional.of(body.key()), Map.of("flow", "invoice-sync@0.1.0"));
+    }
+
+    /** Step 1's body of each attempt of m-r, by attempt. */
+    final Map<Integer, Body> runs = new java.util.HashMap<>();
+
+    /** The bytes attempt {@code k} of m-r handed on at step 1. */
+    static Buffer runBody(int k) {
+        return Buffer.buffer("<run attempt=\"" + k + "\"/>");
+    }
+
+    /**
+     * m-r, run three times under its id: its ingress (step 0, attempt 1 only, the xml), then step 1 {@code partner} of attempts 1, 3
+     * and 2, recorded in that order — attempts 1 and 2 FAILED, 3 OK — each over bytes of its own ({@link #runBody}) under its
+     * attempt's key, with a content-type of its own.
+     */
+    void recordRerun() {
+        runs.clear();
+        Body arrived = blobs.write(BlobKey.body("m-r", 0), xml, MAX).await();
+        messages.record(rerunRow("m-r", 0, "ingress", 1, Snapshot.Outcome.OK, arrived, "application/xml")).await();
+        for (int k : new int[] {1, 3, 2}) {
+            Body out = blobs.write(new BlobKey("m-r", 1, k >= 2 ? "body~" + k : "body"), runBody(k), MAX).await();
+            runs.put(k, out);
+            messages.record(rerunRow("m-r", 1, "partner", k, k == 3 ? Snapshot.Outcome.OK : Snapshot.Outcome.FAILED, out, k == 1 ? "application/xml" : "text/plain; run=" + k)).await();
+        }
+    }
+
+    /** P3: the timeline stays one flat {@code steps} list, ordered by attempt then step, each step object naming its attempt and its own outcome. */
+    @Test
+    void aRerunsTimelineListsEveryAttemptsRowsByAttemptThenStep() throws Exception {
+        start();
+        recordRerun();
+        Answer a = admin("/admin/messages/m-r");
+        assertEquals(200, a.status(), a.body().toString());
+        JsonObject t = a.json();
+        assertEquals(Set.of("id", "flow", "steps"), t.fieldNames(), "the shape stays a flat steps list: " + t.encode());
+        List<String> rows = t.getJsonArray("steps").stream().map(JsonObject.class::cast)
+                .map(s -> s.getValue("attempt") + " " + s.getInteger("step") + " " + s.getString("name") + " " + s.getString("outcome")).toList();
+        assertEquals(List.of("1 0 ingress OK", "1 1 partner FAILED", "2 1 partner FAILED", "3 1 partner OK"), rows, t.encode());
+        JsonObject second = t.getJsonArray("steps").getJsonObject(2);
+        assertEquals("503 from partner (attempt 2)", second.getString("error"), "attempt 2's own failure");
+        Hash h = runs.get(2).hash();
+        assertEquals(h.algorithm() + ":" + h.hex(), second.getJsonObject("body").getString("hash"), "attempt 2's own body");
+        assertNotEquals(runs.get(3).hash(), h, "fixture: each attempt's bytes are its own");
+    }
+
+    /**
+     * P4: {@code /steps/{n}/body} is the latest attempt's row of step n by default — of step n, not of the message: step 0 has
+     * attempt 1 only — and {@code ?attempt=k} selects attempt k's row: its bytes, its content-type and length.
+     */
+    @Test
+    void aStepsBodyIsTheLatestAttemptsByDefaultAndAttemptKSelectsAttemptK() throws Exception {
+        start();
+        recordRerun();
+        Answer latest = admin("/admin/messages/m-r/steps/1/body");
+        assertEquals(200, latest.status(), latest.body().toString());
+        assertEquals(runBody(3), latest.body(), "the latest attempt's (3) body, though attempt 2's row was recorded last");
+        assertEquals("text/plain; run=3", latest.contentType());
+        assertEquals(String.valueOf(runBody(3).length()), latest.contentLength());
+        for (int k = 1; k <= 3; k++) {
+            Answer at = admin("/admin/messages/m-r/steps/1/body?attempt=" + k);
+            assertEquals(200, at.status(), "attempt " + k + ": " + at.body());
+            assertEquals(runBody(k), at.body(), "attempt " + k + "'s own body");
+            assertEquals(k == 1 ? "application/xml" : "text/plain; run=" + k, at.contentType(), "attempt " + k + "'s own content-type");
+        }
+        Answer ingress = admin("/admin/messages/m-r/steps/0/body");
+        assertEquals(200, ingress.status(), "step 0's latest attempt is its only one, 1: " + ingress.body());
+        assertEquals(xml, ingress.body());
+        assertEquals(xml, admin("/admin/messages/m-r/steps/0/body?attempt=1").body());
+    }
+
+    /** P4: an attempt with no row of step n is 404 with the usual {error} body — not the router's — while a recorded one streams. */
+    @Test
+    void anAttemptWithNoRowOfTheStepIs404() throws Exception {
+        start();
+        recordRerun();
+        Answer nine = admin("/admin/messages/m-r/steps/1/body?attempt=9");
+        assertJsonError(404, nine, "attempt 9 of step 1 was never recorded");
+        assertNotEquals("no such route", nine.error(), "the route's own 404, not the router's");
+        Answer stepZero = admin("/admin/messages/m-r/steps/0/body?attempt=2");
+        assertJsonError(404, stepZero, "the message has an attempt 2, step 0 has none");
+        assertNotEquals("no such route", stepZero.error());
+        assertEquals(200, admin("/admin/messages/m-r/steps/1/body?attempt=2").status(), "witness: attempt 2 of step 1 is recorded");
+    }
+
+    /** P4: an attempt that is not a positive int is 400 {error}; witness: attempt 1 streams. */
+    @Test
+    void anAttemptThatIsNotAPositiveIntIs400() throws Exception {
+        start();
+        recordRerun();
+        for (String bad : List.of("0", "-1", "x", "1.5", "99999999999")) {
+            assertJsonError(400, admin("/admin/messages/m-r/steps/1/body?attempt=" + bad), "attempt " + bad);
+        }
+        assertEquals(runBody(1), admin("/admin/messages/m-r/steps/1/body?attempt=1").body(), "witness: a positive int selects");
     }
 
     @Test
@@ -418,6 +531,26 @@ class AdminServerTest {
         blobs.plainLazily.clear();
         blobs.missingLazily.add(BlobKey.body("m-1", 2));
         assertJsonError(404, admin("/admin/messages/m-1/steps/2/body"), "witness: the miss signal on the same route");
+    }
+
+    /**
+     * CORE-4c2 review r2: the existence check and the open are two calls, so the bytes may be removed between them, and
+     * {@code BlobStore.open} may throw the miss signal at the call. An open that throws {@link BlobNotFoundException} after
+     * {@code exists} answered true is the same 404 "removed by retention" (D-096), never a 500. Witness: a plain
+     * IllegalArgumentException thrown by the same open stays a 500 (as in {@link #aPlainIllegalArgumentFromTheStoreIs500NotRemoved}).
+     */
+    @Test
+    void aBodyRemovedBetweenItsExistenceCheckAndItsOpenIs404() throws Exception {
+        start();
+        recordInvoice();
+        blobs.goneOnOpen.add(BlobKey.body("m-1", 0));
+        Answer missing = admin("/admin/messages/m-1/steps/0/body");
+        assertJsonError(404, missing, "the miss signal thrown by open after exists answered true is the store holding nothing: a 404, not a 500");
+        assertEquals("the bytes of step 0 of message m-1 are no longer stored (removed by retention)", missing.error(), "D-096: says why the bytes are gone");
+        assertTrue(blobs.goneOnOpenThrown.get() > 0, "witness: exists answered true and open threw the BlobNotFoundException");
+        blobs.goneOnOpen.clear();
+        blobs.plainOnOpen.add(BlobKey.body("m-1", 0));
+        assertJsonError(500, admin("/admin/messages/m-1/steps/0/body"), "witness: a plain IllegalArgumentException from the same open is a store failure");
     }
 
     /** The 404 is only for a stream that fails before the head: the miss signal after bytes went out cuts the response like any failure. */
@@ -731,6 +864,201 @@ class AdminServerTest {
         assertEquals(7L, u.getLong("snapshotWriteFailures"), "UP, and the failed snapshot writes are counted (read per request)");
     }
 
+    // --- FIX-144 (D-123): GET /live and GET /ready
+    //
+    // The shape these cases assume (FIX-144 test-author): AdminServer.Readiness(BooleanSupplier lifecycle, BooleanSupplier fence,
+    // BooleanSupplier journal, BooleanSupplier deployments) — true is UP, each read on the request — carried by the HealthProbe
+    // HealthProbe(checks, snapshotWriteFailures, notices, Readiness readiness); /ready names its checks lifecycle, fence,
+    // journal, deployments.
+
+    static final List<String> READINESS = List.of("lifecycle", "fence", "journal", "deployments");
+
+    /** The readiness inputs, each UP until a case sets it, and how often any of them was read. */
+    final Map<String, AtomicBoolean> inputs = Map.of("lifecycle", new AtomicBoolean(true), "fence", new AtomicBoolean(true),
+            "journal", new AtomicBoolean(true), "deployments", new AtomicBoolean(true));
+    final AtomicInteger inputReads = new AtomicInteger();
+
+    BooleanSupplier input(String name) {
+        AtomicBoolean value = inputs.get(name);
+        return () -> {
+            inputReads.incrementAndGet();
+            return value.get();
+        };
+    }
+
+    /** A server with the token, the /health {@code checks} and the readiness inputs above. */
+    void startWithReadiness(Map<String, Supplier<Future<Health>>> checks) throws Exception {
+        AdminServer.Readiness readiness = new AdminServer.Readiness(input("lifecycle"), input("fence"), input("journal"), input("deployments"));
+        AdminServer server = new AdminServer(new AdminServer.Config("127.0.0.1", 0, Optional.of(TOKEN)), messages, dlq, blobs,
+                new AdminServer.HealthProbe(checks, writeFailures::get, List.of(), readiness));
+        port = server.start(vertx).await(10, TimeUnit.SECONDS);
+        started.add(server);
+    }
+
+    /** The /ready body the spec (R2) gives: {@code status}, and every check UP but those named {@code down}. */
+    static JsonObject readyBody(String status, String... down) {
+        JsonObject checks = new JsonObject();
+        for (String name : READINESS) checks.put(name, List.of(down).contains(name) ? "DOWN" : "UP");
+        return new JsonObject().put("status", status).put("checks", checks);
+    }
+
+    static void spinUntil(BooleanSupplier condition, Supplier<String> what) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) fail("not within 10 s: " + what.get());
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * R1: /live answers 200 {"status":"UP"} and nothing else, whatever the node's readiness, without asking a /health check
+     * (one throws, one never completes), reading a readiness input or touching a store. Witnesses: /ready reads the inputs and
+     * /health asks its checks through the same counters.
+     */
+    @Test
+    void liveAnswers200WithoutReadingAnyCheck() throws Exception {
+        AtomicInteger asked = new AtomicInteger();
+        Promise<Health> never = Promise.promise();
+        Map<String, Supplier<Future<Health>>> checks = Map.of(
+                "postgres", () -> {
+                    asked.incrementAndGet();
+                    throw new IllegalStateException("fixture: a check that throws");
+                },
+                "journal", () -> {
+                    asked.incrementAndGet();
+                    return never.future();
+                });
+        inputs.values().forEach(v -> v.set(false));   // not ready on any count: liveness is not readiness
+        startWithReadiness(checks);
+        try {
+            calls.clear();
+            for (int i = 0; i < 3; i++) {
+                Answer live = get("/live", null);
+                assertEquals(200, live.status(), "live while the server runs, not ready on any count: " + live.body());
+                assertNotNull(live.contentType(), "a content-type");
+                assertTrue(live.contentType().startsWith("application/json"), live.contentType());
+                assertEquals(new JsonObject().put("status", "UP"), live.json(), "the status only");
+            }
+            assertEquals(0, asked.get(), "/live asked no /health check");
+            assertEquals(0, inputReads.get(), "/live read no readiness input");
+            assertEquals(List.of(), calls, "/live touched no store");
+
+            // witnesses: the counters count
+            assertEquals(503, get("/ready", null).status(), "fixture: every input is DOWN");
+            assertTrue(inputReads.get() > 0, "witness: /ready reads the inputs through the counter");
+            get("/health", null);   // answers at once: the throwing check ends it (in whichever order the checks are asked)
+            assertTrue(asked.get() > 0, "witness: /health asks its checks through the counter");
+        } finally {
+            never.tryComplete(Health.up());
+        }
+    }
+
+    /**
+     * R2: /ready is 200 {"status":"UP","checks":{...}} with every check UP; one check DOWN makes it 503 {"status":"DOWN"} naming
+     * that one DOWN and the others UP — each of the four in turn, two at once both named — every input read again on each request
+     * (back to 200 once they are UP again). A /health check DOWN (postgres) is no readiness input: /ready never asks it.
+     */
+    @Test
+    void readyIsDownNamingEachFailedCheck() throws Exception {
+        postgres.set(Future.succeededFuture(Health.down("fixture: /health's postgres check is DOWN")));
+        startWithReadiness(Map.of("postgres", () -> {
+            saw("health");
+            return postgres.get();
+        }));
+
+        Answer up = get("/ready", null);
+        assertEquals(200, up.status(), up.body().toString());
+        assertTrue(up.contentType().startsWith("application/json"), up.contentType());
+        assertEquals(readyBody("UP"), up.json(), "every check UP, by name");
+
+        for (String name : READINESS) {
+            inputs.get(name).set(false);
+            Answer down = get("/ready", null);
+            assertEquals(503, down.status(), name + " DOWN: " + down.body());
+            assertTrue(down.contentType().startsWith("application/json"), down.contentType());
+            assertEquals(readyBody("DOWN", name), down.json(), "the body names " + name + " DOWN, the others UP");
+            inputs.get(name).set(true);
+        }
+
+        inputs.get("lifecycle").set(false);
+        inputs.get("journal").set(false);
+        Answer two = get("/ready", null);
+        assertEquals(503, two.status(), two.body().toString());
+        assertEquals(readyBody("DOWN", "lifecycle", "journal"), two.json(), "both DOWN checks are named");
+        inputs.get("lifecycle").set(true);
+        inputs.get("journal").set(true);
+
+        Answer again = get("/ready", null);
+        assertEquals(200, again.status(), "read on every request: UP again: " + again.body());
+        assertEquals(readyBody("UP"), again.json());
+        assertFalse(calls.stream().anyMatch(c -> c.what().equals("health")), "/ready asked no /health check: " + calls);
+    }
+
+    /**
+     * R2: /ready awaits nothing — a /health in flight on a check that never completes does not delay it: /ready answers 200
+     * while that /health still waits, without asking the check itself or touching a store.
+     */
+    @Test
+    void readyAnswersWithoutAwaiting() throws Exception {
+        AtomicInteger asked = new AtomicInteger();
+        Promise<Health> never = Promise.promise();
+        startWithReadiness(Map.of("postgres", () -> {
+            asked.incrementAndGet();
+            return never.future();
+        }));
+        try {
+            calls.clear();
+            Future<Answer> health = send("/health", null);
+            spinUntil(() -> asked.get() == 1, () -> "fixture: /health asks its check (asked " + asked.get() + ")");
+
+            Answer ready = get("/ready", null);   // within get's 10 s bound; a /ready that awaited the check never answers
+            assertEquals(200, ready.status(), ready.body().toString());
+            assertEquals(readyBody("UP"), ready.json());
+            assertFalse(health.isComplete(), "the /health in flight still waits for its check: /ready did not wait for it");
+            assertEquals(1, asked.get(), "/ready asked no /health check");
+            assertEquals(List.of(), calls, "/ready touched no store");
+
+            never.complete(Health.up());
+            assertEquals(200, health.await(10, TimeUnit.SECONDS).status(), "fixture: the /health answers once its check does");
+        } finally {
+            never.tryComplete(Health.up());
+        }
+    }
+
+    /**
+     * FIX-144 (implementer): a probe built without readiness inputs (the 2- and 3-arg HealthProbe) is ready on every check while
+     * the server answers — /health DOWN (its postgres check) is no readiness input — and /live is 200.
+     */
+    @Test
+    void aProbeWithoutReadinessInputsIsReadyOnEveryCheck() throws Exception {
+        postgres.set(Future.succeededFuture(Health.down("fixture: /health's postgres check is DOWN")));
+        start();
+        assertEquals(503, get("/health", null).status(), "fixture: /health is DOWN");
+        Answer ready = get("/ready", null);
+        assertEquals(200, ready.status(), ready.body().toString());
+        assertEquals(readyBody("UP"), ready.json());
+        assertEquals(new JsonObject().put("status", "UP"), get("/live", null).json());
+    }
+
+    /** R1, R2: /live and /ready need no token — none or a wrong one — while /admin/** does (the server has one). */
+    @Test
+    void liveAndReadyNeedNoTokenWhileAdminDoes() throws Exception {
+        startWithReadiness(Map.of());
+        List<String> authorizations = new ArrayList<>();
+        authorizations.add(null);
+        authorizations.add("Bearer wrong");
+        for (String auth : authorizations) {
+            Answer live = get("/live", auth);
+            assertEquals(200, live.status(), "/live with Authorization " + auth + ": " + live.body());
+            assertEquals(new JsonObject().put("status", "UP"), live.json());
+            Answer ready = get("/ready", auth);
+            assertEquals(200, ready.status(), "/ready with Authorization " + auth + ": " + ready.body());
+            assertEquals(readyBody("UP"), ready.json());
+        }
+        assertJsonError(401, get("/admin/dlq", null), "/admin/dlq without the token");
+        assertEquals(200, admin("/admin/dlq").status(), "/admin/dlq with the token");
+    }
+
     // --- threads and errors
 
     @Test
@@ -782,6 +1110,37 @@ class AdminServerTest {
         assertJsonError(405, send(HttpMethod.POST, "/admin/dlq", "Bearer " + TOKEN).await(10, TimeUnit.SECONDS), "a method the route does not take (the router's own error)");
     }
 
+    /**
+     * FIX-172 (D-132): a read the node's Postgres pool refused — its wait queue full ({@link ConnectionPoolTooBusyException}), its
+     * wait elapsed or the pool closed (exactly a {@link VertxException}) — is retryable, 503 {error}; a subclass of
+     * VertxException (a closed connection, any other) stays a store failure, 500.
+     */
+    @Test
+    void aReadThePoolRefusedIs503AndAnyOtherVertxFailure500() throws Exception {
+        start();
+        recordInvoice();
+        messages.failTimeline.set("m-boom");
+        Map<String, Integer> cases = new LinkedHashMap<>();
+        Map<String, Throwable> failures = new LinkedHashMap<>();
+        failures.put("the wait queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        cases.put("the wait queue full", 503);
+        failures.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
+        cases.put("the wait elapsed", 503);
+        failures.put("a closed connection", ClosedConnectionException.INSTANCE);
+        cases.put("a closed connection", 500);
+        failures.put("another VertxException subclass", new VertxException("not the pool's") { });
+        cases.put("another VertxException subclass", 500);
+        for (Map.Entry<String, Throwable> c : failures.entrySet()) {
+            messages.timelineFailure.set(c.getValue());
+            Answer a = admin("/admin/messages/m-boom");
+            assertJsonError(cases.get(c.getKey()), a, c.getKey());
+            if (a.status() == 503) {   // review r1: a fixed text, never the client's message (it may name the server or the pool)
+                assertEquals("the database pool is busy; retry", a.error(), c.getKey() + ": the 503's {error}");
+                assertFalse(a.body().toString().contains(c.getValue().getMessage()), c.getKey() + ": the client's message is not shown: " + a.body());
+            }
+        }
+    }
+
     // --- store-boundary fakes: delegate to the in-memory stores, record the calling thread
 
     record Call(String what, String thread, boolean virtual, boolean eventLoop) {}
@@ -794,6 +1153,7 @@ class AdminServerTest {
     final class RecordingStore implements MessageStore {
         final InMemoryMessageStore inner = new InMemoryMessageStore();
         final AtomicReference<String> failTimeline = new AtomicReference<>();
+        final AtomicReference<Throwable> timelineFailure = new AtomicReference<>(new IllegalStateException("store down"));
         final CountDownLatch reached = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
         volatile boolean holding;
@@ -804,7 +1164,7 @@ class AdminServerTest {
 
         @Override public Future<List<Snapshot>> timeline(String messageId) {
             saw("timeline");
-            if (messageId.equals(failTimeline.get())) return Future.failedFuture(new IllegalStateException("store down"));
+            if (messageId.equals(failTimeline.get())) return Future.failedFuture(timelineFailure.get());
             if (holding) {
                 holding = false;
                 reached.countDown();
@@ -863,6 +1223,10 @@ class AdminServerTest {
         final Set<BlobKey> plainOnOpen = ConcurrentHashMap.newKeySet();
         /** Keys whose open() answers a stream that, once read, fails with a plain IllegalArgumentException before any data. */
         final Set<BlobKey> plainLazily = ConcurrentHashMap.newKeySet();
+        /** Keys that exist() answers true for, whose open() then throws a BlobNotFoundException at the call (gone in between). */
+        final Set<BlobKey> goneOnOpen = ConcurrentHashMap.newKeySet();
+        /** How many BlobNotFoundExceptions open() has thrown for a key gone in between. */
+        final AtomicInteger goneOnOpenThrown = new AtomicInteger();
         /** Keys whose stream delivers these bytes and then fails with a BlobNotFoundException (after the head is out). */
         final Map<BlobKey, Buffer> illegalAfter = new ConcurrentHashMap<>();
 
@@ -873,6 +1237,10 @@ class AdminServerTest {
                     lazyFailures.incrementAndGet();
                     return new BlobNotFoundException(key);
                 }));
+            }
+            if (goneOnOpen.contains(key)) {
+                goneOnOpenThrown.incrementAndGet();
+                throw new BlobNotFoundException(key);   // BlobStore.open: the miss signal may be thrown at the call
             }
             if (plainOnOpen.contains(key)) throw new IllegalArgumentException("not the miss signal: " + key);
             if (plainLazily.contains(key)) return new AttachWatch(new BrokenStream(Buffer.buffer(), () -> new IllegalArgumentException("not the miss signal: " + key)));
@@ -885,6 +1253,12 @@ class AdminServerTest {
         @Override public Future<Buffer> read(BlobKey key) {
             saw("blob");
             return inner.read(key);
+        }
+
+        /** True for a key gone in between (its check came before the removal); else the interface's default, over {@link #read}. */
+        @Override public Future<Boolean> exists(BlobKey key) {
+            if (goneOnOpen.contains(key)) return Future.succeededFuture(Boolean.TRUE);
+            return BlobStore.super.exists(key);
         }
 
         @Override public Future<Void> persist(BlobKey key) { return inner.persist(key); }

@@ -46,7 +46,8 @@ import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
 import static io.flottila.runtime.deploy.DeploymentsRedeployTest.STOP_DEADLINE;
-import static io.flottila.runtime.deploy.DeploymentsRedeployTest.TICK;
+import static io.flottila.runtime.deploy.DeploymentsRedeployTest.FIRST_TICKS;
+import static io.flottila.runtime.deploy.DeploymentsRedeployTest.firstTick;
 import static io.flottila.runtime.deploy.DeploymentsRedeployTest.assertResult;
 import static io.flottila.runtime.deploy.DeploymentsRedeployTest.byId;
 import static io.flottila.runtime.deploy.DeploymentsRedeployTest.changed;
@@ -126,7 +127,7 @@ class DeploymentsRollbackEdgeTest {
         archives = tmp.resolve("archives");
         timer = new TracingTimer(rt.timer());
         Timer ticksMayThrow = (delay, task) -> {
-            if (delay.equals(TICK) && tickSchedulesThrow.compareAndSet(true, false)) {
+            if (FIRST_TICKS.contains(delay) && tickSchedulesThrow.compareAndSet(true, false)) {   // a worker's start (B5)
                 AssertionError unschedulable = new AssertionError(TICK_UNSCHEDULABLE);
                 tickError.set(unschedulable);
                 tickThrows.incrementAndGet();
@@ -138,7 +139,7 @@ class DeploymentsRollbackEdgeTest {
                 throw unschedulable;
             }
             Timer.Cancellable scheduled = timer.schedule(delay, task);
-            if (!delay.equals(TICK)) return scheduled;
+            if (!FIRST_TICKS.contains(delay)) return scheduled;
             return () -> {
                 if (tickCancelsThrow) throw new AssertionError("the poll tick cannot be cancelled");
                 return scheduled.cancel();
@@ -303,7 +304,7 @@ class DeploymentsRollbackEdgeTest {
         OnVirtualThread.Call<DeployResult> d = deploying(version(changed(changed(shop(), "audit", "v2"), "orders", "v2"), "2.0.0"), "r2");
         reachedWhile(d, ordersStart.reached(), "phase B calls v2 orders' start");
         Doors.Door auditV2 = doors.door("shop/audit");
-        untilWhile(d, () -> auditV2.started() && timer.live().stream().filter(t -> t.delay().equals(TICK)).count() == 1, "v2's audit and its worker started: " + timer.all());
+        untilWhile(d, () -> auditV2.started() && timer.live().stream().filter(t -> t.delay().equals(firstTick("shop/audit"))).count() == 1, "v2's audit and its worker started: " + timer.all());
         tickCancelsThrow = true;
 
         ordersStart.fail("address in use");
@@ -427,9 +428,12 @@ class DeploymentsRollbackEdgeTest {
                 .endpoint("u-in", "in", new JsonObject().put("path", "/u")).flow("u", "1.0.0", "sync", "u-in", 1024, PackageDraft.toPartner());
     }
 
-    /** The live poll ticks of workers: one per worker that started and has not stopped. */
+    /**
+     * The live poll ticks of workers: one per worker that started and has not stopped. B5: a started worker's tick is due at its
+     * flow's first tick; no case counting them moves the clock past one, so none has a later tick yet.
+     */
     long liveTicks() {
-        return timer.live().stream().filter(t -> t.delay().equals(TICK) && t.owner().equals("FlowWorker")).count();
+        return timer.live().stream().filter(t -> FIRST_TICKS.contains(t.delay()) && t.owner().equals("FlowWorker")).count();
     }
 
     /** The doors built for {@code flow}, in build order. */

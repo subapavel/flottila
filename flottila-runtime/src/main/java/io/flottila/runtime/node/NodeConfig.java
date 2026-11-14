@@ -1,12 +1,22 @@
 package io.flottila.runtime.node;
 
 import io.flottila.core.admission.Targets;
+import io.flottila.core.flow.FlowBuilder;
+import io.flottila.core.flow.RetryPolicy;
 import io.flottila.runtime.admin.AdminServer;
 import io.flottila.runtime.deploy.Secrets;
+import io.flottila.runtime.journal.JournalConfig;
+import io.flottila.runtime.journal.MasterKeySource;
+import io.flottila.runtime.journal.Replicas;
+import io.flottila.runtime.journal.SweepConfig;
+import io.flottila.runtime.journal.peer.PeerConfig;
 import io.flottila.runtime.store.Retention;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.format.DateTimeParseException;
@@ -23,7 +33,8 @@ import java.util.regex.Pattern;
  * A node's whole configuration, read from its environment (D-057 b). Every key has a default except {@code FLOTTILA_ENV};
  * every refusal is an {@link IllegalArgumentException} whose message names the key. No {@code toString} here carries a secret:
  * {@link Pg}, {@link AdminServer.Config} and {@link S3} redact the password, the token and the secret key, {@link Leases} prints of
- * the Valkey URI its scheme, host, port and database only, {@link Secrets} names its variables only, and this record's prints theirs.
+ * the Valkey URI its scheme, host, port and database only, {@link Secrets} names its variables only, {@link MasterKeySource} names
+ * its source only, and this record's prints theirs.
  *
  * @param nodeId {@code FLOTTILA_NODE_ID}, else {@code $HOSTNAME}: a DNS label (lower-case letters, digits and inner dashes, at most 63)
  * @param env {@code FLOTTILA_ENV}, required
@@ -45,13 +56,52 @@ import java.util.regex.Pattern;
  *                    ISO-8601 duration in whole milliseconds from PT0.001S to PT0.1S; with a period the node runs a CPU sampler
  * @param targets the limits per target system (D-099): {@code FLOTTILA_TARGET_MAX_CALLS}, {@code FLOTTILA_TARGET_MAX_WAIT} and
  *                {@code FLOTTILA_TARGET_LIMITS} ({@link TargetLimits})
+ * @param journal the body journal's keys (CORE-3, D-105): {@code FLOTTILA_JOURNAL_DIR} ({@code <dataDir>/journal}),
+ *                {@code FLOTTILA_JOURNAL_SEGMENT_BYTES} (64 MiB), {@code FLOTTILA_JOURNAL_SEGMENT_RECORDS} (65 536, at most
+ *                2^31 - 1), {@code FLOTTILA_JOURNAL_SEGMENT_AGE} (PT1S), {@code FLOTTILA_JOURNAL_PENDING_BYTES} (16 MiB),
+ *                {@code FLOTTILA_JOURNAL_APPEND_WAIT} (PT5S), {@code FLOTTILA_JOURNAL_RECORD_MAX} (256 KiB or
+ *                {@code FLOTTILA_BLOB_MEMORY_TIER} when that is smaller; at most the tier), {@code FLOTTILA_JOURNAL_MAX_BYTES} (16 GiB),
+ *                {@code FLOTTILA_JOURNAL_READ_CHANNELS} (64, 1..1024), {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} (none, taken as given),
+ *                each range-checked as {@link JournalConfig} says; the node id is the journal's
+ * @param journalKey the journal's master key source (D-106): {@code FLOTTILA_JOURNAL_KEY_FILE}, {@code FLOTTILA_JOURNAL_KEY} or
+ *                   {@code FLOTTILA_JOURNAL_KEY_GENERATE}; a node without one is refused at start, not here
+ * @param journalSweep the segment sweeper's keys (CORE-3 items 10, 14): {@code FLOTTILA_JOURNAL_SWEEP_INTERVAL} (PT10S,
+ *                     PT1S..PT1H), {@code FLOTTILA_JOURNAL_SWEEP_GRACE} (PT1M, PT1S..PT1H), {@code FLOTTILA_JOURNAL_KEEP_MAX_AGE}
+ *                     (PT1H, PT1M..P1D), ISO-8601 each, range-checked as {@link SweepConfig} says
+ * @param intakeGroup the intake's group commit (CORE-6b, D-109): {@code FLOTTILA_INTAKE_GROUP_MAX} (64, 1..1024; 1 = no grouping),
+ *                    {@code FLOTTILA_INTAKE_GROUP_BYTES} (1 MiB, 64 KiB..64 MiB), {@code FLOTTILA_INTAKE_GROUP_WINDOW} (PT0.001S,
+ *                    PT0S..PT0.05S in whole milliseconds), {@code FLOTTILA_INTAKE_GROUP_CONCURRENCY} (1..64, at most
+ *                    max(1, {@code FLOTTILA_PG_POOL_INTAKE} − 1), the intake pool's bound (D-130 draft amends D-109's bound over
+ *                    {@code FLOTTILA_PG_POOL_SIZE}); unset, min(4, that bound)); draft defaults until CORE-GATE
+ * @param nodeLease {@code FLOTTILA_NODE_LEASE} (D-101 (1), F-28), ISO-8601, above zero and at most PT10M (PT30S): the node's
+ *                  lease in the membership; its fence closes half a lease after its last renewed send
+ * @param nodeLeaseRenew {@code FLOTTILA_NODE_LEASE_RENEW}, ISO-8601, above zero and at most a quarter of the lease (PT5S): how
+ *                       often the node renews it
+ * @param retries the node's default schedule of retries for an at-least-once flow that names no {@code delivery.retries}
+ *                (CORE-14a P1, D-135 draft): {@code FLOTTILA_RETRIES_COUNT} (3, 0..100) retries {@code FLOTTILA_RETRIES_INTERVAL}
+ *                (PT5M, ISO-8601, PT1S..PT24H) apart, without growth: multiplier 1, the interval its own cap
+ * @param peer the peer link's keys (CORE-5a S11, draft): {@code FLOTTILA_PEER_BIND} (0.0.0.0), {@code FLOTTILA_PEER_PORT} (8083,
+ *             0..65535, 0 any free port; 8082 is the compose async door), {@code FLOTTILA_PEER_HOST} (the node id),
+ *             {@code FLOTTILA_PEER_TIMEOUT} (PT2S, PT0.1S..PT30S), {@code FLOTTILA_PEER_READS} (16, 1..64 per peer)
+ * @param journalCopies {@code FLOTTILA_JOURNAL_COPIES} (CORE-5 S10, S11, draft): 1 or 2; unset 1 in dev and ci, 2 in every
+ *                      deployed environment. A generated master key ({@code FLOTTILA_JOURNAL_KEY_GENERATE=true}) is one node's
+ *                      alone, which no peer could read with (D-106): with more than one copy it is refused
  * @since 0.1
  */
 public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline,
                          long maxPackageBytes, Pg pg, Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases,
-                         Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets) {
+                         Retention.Config retention, Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal,
+                         MasterKeySource journalKey, SweepConfig journalSweep, IntakeGroup intakeGroup, Duration nodeLease,
+                         Duration nodeLeaseRenew, RetryPolicy retries, PeerConfig peer, int journalCopies) {
 
-    /** The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. */
+    /**
+     * The S3 settings and the archive store say one fact: an s3 store has them, a dir store has none. A journal record is
+     * held in memory whole, so the record max is at most the memory tier (CORE-3 item 5). The intake pool's share of the Postgres
+     * connections is at least 1 and below their total, so each pool keeps a connection (D-130 draft). The intake's groups in flight leave the
+     * intake pool a connection: at most max(1, intake pool size − 1) of them (CORE-6b, D-130 draft). The node lease is renewed at least four times a lease
+     * (D-101 (1)): a renew or two may fail without closing the fence. Each pool's wait for a connection is PT0.001S to PT1M and its
+     * wait queue 1 to 65536 callers (D-132): an in-process {@link Pg} is held to the ranges the env reader names.
+     */
     public NodeConfig {
         Objects.requireNonNull(archives, "archives");
         Objects.requireNonNull(s3, "s3");
@@ -60,10 +110,120 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Objects.requireNonNull(retention, "retention");
         Objects.requireNonNull(cpuSampling, "cpuSampling");
         Objects.requireNonNull(targets, "targets");
+        Objects.requireNonNull(journal, "journal");
+        Objects.requireNonNull(journalKey, "journalKey");
+        Objects.requireNonNull(journalSweep, "journalSweep");
+        Objects.requireNonNull(intakeGroup, "intakeGroup");
+        Objects.requireNonNull(retries, "retries");
+        Objects.requireNonNull(peer, "peer");
+        if (journalCopies < 1 || journalCopies > COPIES_MAX) {
+            throw new IllegalArgumentException("FLOTTILA_JOURNAL_COPIES must be between 1 and " + COPIES_MAX + ", was " + journalCopies);
+        }
+        if (journalKey.generates() && journalCopies > 1) {
+            throw new IllegalArgumentException("FLOTTILA_JOURNAL_KEY_GENERATE=true with FLOTTILA_JOURNAL_COPIES " + journalCopies + ": a generated master key"
+                    + " is this node's alone and no peer could read its bodies with it (D-106); give every node FLOTTILA_JOURNAL_KEY_FILE, or set"
+                    + " FLOTTILA_JOURNAL_COPIES=1 for a single dev node");
+        }
+        if (retries.attempts() > RETRIES_COUNT_MAX) {
+            throw new IllegalArgumentException("FLOTTILA_RETRIES_COUNT " + retries.attempts() + " must be from 0 to " + RETRIES_COUNT_MAX);
+        }
+        if (retries.initial().compareTo(RETRIES_INTERVAL_MIN) < 0 || retries.initial().compareTo(RETRIES_INTERVAL_MAX) > 0) {
+            throw new IllegalArgumentException("FLOTTILA_RETRIES_INTERVAL " + retries.initial() + " must be from " + RETRIES_INTERVAL_MIN + " to "
+                    + RETRIES_INTERVAL_MAX);
+        }
+        if (retries.max().compareTo(RETRIES_INTERVAL_MAX) > 0) {   // the env reader's is the interval itself; an in-process one may grow, never past the range
+            throw new IllegalArgumentException("FLOTTILA_RETRIES_INTERVAL's cap " + retries.max() + " must be at most " + RETRIES_INTERVAL_MAX);
+        }
+        if (!nodeLease.isPositive() || nodeLease.compareTo(NODE_LEASE_MAX) > 0) {
+            throw new IllegalArgumentException("FLOTTILA_NODE_LEASE " + nodeLease + " must be above zero and at most " + NODE_LEASE_MAX);
+        }
+        if (!nodeLeaseRenew.isPositive() || nodeLeaseRenew.multipliedBy(4).compareTo(nodeLease) > 0) {
+            throw new IllegalArgumentException("FLOTTILA_NODE_LEASE_RENEW " + nodeLeaseRenew + " must be above zero and at most a quarter of FLOTTILA_NODE_LEASE "
+                    + nodeLease + ": the node renews at least four times a lease");
+        }
+        if (journal.recordMax() > blobs.memoryTier()) {
+            throw new IllegalArgumentException("FLOTTILA_JOURNAL_RECORD_MAX " + journal.recordMax() + " is above FLOTTILA_BLOB_MEMORY_TIER "
+                    + blobs.memoryTier() + ": a journal record is held in memory whole");
+        }
         if ((archives.store() == Archives.Store.S3) != s3.isPresent()) {
             throw new IllegalArgumentException("FLOTTILA_ARCHIVE_STORE " + archives.store() + " with the S3 settings " + s3
                     + ": an s3 archive store has them, a dir store none");
         }
+        if (pg.intakePoolSize() < 1 || pg.intakePoolSize() >= pg.poolSize()) {
+            throw new IllegalArgumentException("FLOTTILA_PG_POOL_INTAKE " + pg.intakePoolSize() + " must be at least 1 and below FLOTTILA_PG_POOL_SIZE "
+                    + pg.poolSize() + ": the total of both pools, and each pool keeps at least one connection (D-130)");
+        }
+        if (intakeGroup.concurrency() > IntakeGroup.bound(pg.intakePoolSize())) {
+            throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_CONCURRENCY " + intakeGroup.concurrency() + " is above max(1, FLOTTILA_PG_POOL_INTAKE "
+                    + pg.intakePoolSize() + " - 1): each group in flight holds a connection of the intake pool, and it keeps one for the"
+                    + " intake's other statements");
+        }
+        if (pg.poolWait().compareTo(POOL_WAIT_MIN) < 0 || pg.poolWait().compareTo(POOL_WAIT_MAX) > 0) {   // Durations compared: no toMillis overflow
+            throw new IllegalArgumentException("FLOTTILA_PG_POOL_WAIT " + pg.poolWait() + " must be from " + POOL_WAIT_MIN + " to " + POOL_WAIT_MAX
+                    + ": the longest a caller waits for a pooled connection (D-132)");
+        }
+        if (pg.poolQueue() < 1 || pg.poolQueue() > POOL_QUEUE_MAX) {
+            throw new IllegalArgumentException("FLOTTILA_PG_POOL_QUEUE " + pg.poolQueue() + " must be from 1 to " + POOL_QUEUE_MAX
+                    + ": the most callers waiting per pool (D-132)");
+        }
+    }
+
+    /**
+     * A node whose peer link and copies have the default keys (port 8083 on 0.0.0.0, the node id as its host, PT2S, 16 reads;
+     * one copy in dev and ci, two when deployed), as {@link #from} reads an env without them.
+     */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew, RetryPolicy retries) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries,
+                new PeerConfig(PEER_BIND, PeerConfig.PORT, nodeId, PeerConfig.TIMEOUT, PeerConfig.READS), deployed(env) ? COPIES_MAX : 1);
+    }
+
+    /** A node whose node lease has the default keys (PT30S, renewed every PT5S), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, NODE_LEASE_DEFAULT, NODE_LEASE_RENEW_DEFAULT);
+    }
+
+    /** A node whose retries have the default keys (3 × PT5M, {@link FlowBuilder#DEFAULT_RETRIES}), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep,
+                      IntakeGroup intakeGroup, Duration nodeLease, Duration nodeLeaseRenew) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, FlowBuilder.DEFAULT_RETRIES);
+    }
+
+    /** A node whose intake groups have the default keys for its intake pool ({@link IntakeGroup#defaults}), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey, SweepConfig journalSweep) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, journalSweep, IntakeGroup.defaults(pg.intakePoolSize()));
+    }
+
+    /** A node whose sweeper has the default keys (PT10S, PT1M, PT1H), as {@link #from} reads an env without them. */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets, JournalConfig journal, MasterKeySource journalKey) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal, journalKey, SweepConfig.DEFAULTS);
+    }
+
+    /**
+     * A node whose journal has the default keys in {@code <dataDir>/journal} and no master key source (its start is refused
+     * until one is given), as {@link #from} reads an env without the {@code FLOTTILA_JOURNAL_*} keys.
+     */
+    public NodeConfig(String nodeId, String env, AdminServer.Config admin, Path dataDir, Duration stopDeadline, long maxPackageBytes, Pg pg,
+                      Blobs blobs, Archives archives, Optional<S3> s3, Secrets secrets, Leases leases, Retention.Config retention,
+                      Optional<Duration> cpuSampling, TargetLimits targets) {
+        this(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention, cpuSampling, targets,
+                journal(Map.of(), dataDir, nodeId, blobs.memoryTier()), MasterKeySource.fromEnv(Map.of()));
     }
 
     /** A node whose targets have the default limits and no override, as {@link #from} reads them by default (D-099). */
@@ -108,11 +268,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** This configuration with {@code secrets} instead of its own: the CLI's dry build resolves to {@link Secrets#placeholder()}. */
     public NodeConfig withSecrets(Secrets secrets) {
         return new NodeConfig(nodeId, env, admin, dataDir, stopDeadline, maxPackageBytes, pg, blobs, archives, s3, secrets, leases, retention,
-                cpuSampling, targets);
+                cpuSampling, targets, journal, journalKey, journalSweep, intakeGroup, nodeLease, nodeLeaseRenew, retries, peer, journalCopies);
     }
 
     /** Every environment but {@code dev} and {@code ci} (ARCHITECTURE §11: {@code test} is deployed); a deployed node refuses a mock binding. */
     public boolean deployed() {
+        return deployed(env);
+    }
+
+    private static boolean deployed(String env) {
         return !env.equals("dev") && !env.equals("ci");
     }
 
@@ -124,14 +288,225 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * @param database {@code FLOTTILA_PG_DATABASE} (flottila)
      * @param user {@code FLOTTILA_PG_USER} (flottila)
      * @param password {@code FLOTTILA_PG_PASSWORD} (empty)
-     * @param poolSize {@code FLOTTILA_PG_POOL_SIZE}, 1 to 1024 (16)
+     * @param poolSize {@code FLOTTILA_PG_POOL_SIZE}, 2 to 1024 (21 = 5 intake + 16 work, F-33): the pooled connections of both pools together (D-130 draft)
+     * @param sslMode {@code FLOTTILA_PG_SSL_MODE}: {@code disable}, {@code verify-ca} or {@code verify-full} (D-124); unset,
+     *                {@code disable} on a loopback host ({@code localhost}, {@code 127.0.0.1}, {@code ::1}), else {@code verify-full}
+     * @param sslRootCert {@code FLOTTILA_PG_SSL_ROOT_CERT}: the PEM CA bundle that signs the server's certificate, required by a
+     *                    verifying mode (never a silent fallback to plaintext or to an unverified link), refused at start when given but
+     *                    missing, unreadable or empty; not a secret
+     * @param durability {@code FLOTTILA_PG_DURABILITY}: {@code local} or {@code ha} (D-127 draft); unset, {@code local} in a
+     *                   non-deployed environment ({@code dev}, {@code ci}) and {@code ha} in every deployed one, whatever the host
+     * @param intakePoolSize {@code FLOTTILA_PG_POOL_INTAKE}, 1 to 1023 and below {@code poolSize} (D-130 draft): the intake pool's
+     *                       share — the at-least-once saves and the journal's segment rows; unset, {@link #intakeDefault}; the work
+     *                       pool keeps the rest ({@link #workPoolSize}). The split is checked by the {@link NodeConfig} constructor, not here
+     * @param poolWait {@code FLOTTILA_PG_POOL_WAIT}, PT0.001S to PT1M (PT5S, the save timeout; FIX-172, D-132): the longest a caller
+     *                 waits for a connection of either pool before the pool refuses it; the range is checked by the {@link NodeConfig}
+     *                 constructor, not here
+     * @param poolQueue {@code FLOTTILA_PG_POOL_QUEUE}, 1 to 65536 (1024; FIX-172, D-132): the most callers waiting per pool; the next
+     *                  one is refused at once; the range is checked by the {@link NodeConfig} constructor, not here
      * @since 0.1
      */
-    public record Pg(String host, int port, String database, String user, String password, int poolSize) {
-        /** The password redacted: a log line never carries it. */
+    public record Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
+                     Durability durability, int intakePoolSize, Duration poolWait, int poolQueue) {
+
+        /** {@code FLOTTILA_PG_POOL_WAIT} unset: the save timeout (ARCHITECTURE §4). */
+        public static final Duration POOL_WAIT_DEFAULT = Duration.ofSeconds(5);
+
+        /** {@code FLOTTILA_PG_POOL_QUEUE} unset. */
+        public static final int POOL_QUEUE_DEFAULT = 1024;
+
+        /**
+         * What an accepted message survives on the Postgres side (D-127 draft, D-114, D-115), checked once at the node's start
+         * ({@code PgDurability}). Both profiles pin the node's sessions to {@code synchronous_commit=on} and refuse a server in
+         * recovery.
+         *
+         * @since 0.1
+         */
+        public enum Durability {
+            /** A single server's commit: an accepted message survives a Postgres crash, not a promotion or the loss of its host. */
+            LOCAL("local"),
+            /** A commit that waited for a synchronous (or quorum) standby: it survives the promotion of such a standby too. */
+            HA("ha");
+
+            private final String spelling;
+
+            Durability(String spelling) {
+                this.spelling = spelling;
+            }
+
+            /** As written in {@code FLOTTILA_PG_DURABILITY}. */
+            @Override
+            public String toString() {
+                return spelling;
+            }
+        }
+
+        /**
+         * How the node's Postgres links are secured (D-124). TLS without verification ({@code require}, {@code prefer}) is not
+         * offered: it gives no protection against an active attacker.
+         *
+         * @since 0.1
+         */
+        public enum SslMode {
+            /** Plaintext: a loopback server, or a stack that writes its plaintext link down. */
+            DISABLE("disable"),
+            /** TLS, the server's certificate signed by the CA; its name is not checked. */
+            VERIFY_CA("verify-ca"),
+            /** TLS, the server's certificate signed by the CA and naming the host dialled. */
+            VERIFY_FULL("verify-full");
+
+            private final String spelling;
+
+            SslMode(String spelling) {
+                this.spelling = spelling;
+            }
+
+            /** As written in {@code FLOTTILA_PG_SSL_MODE} (and in libpq's and the JDBC driver's {@code sslmode}). */
+            @Override
+            public String toString() {
+                return spelling;
+            }
+        }
+
+        /** A verifying mode carries its CA: a link is never verified against nothing. */
+        public Pg {
+            Objects.requireNonNull(sslMode, "sslMode");
+            Objects.requireNonNull(sslRootCert, "sslRootCert");
+            Objects.requireNonNull(durability, "durability");
+            Objects.requireNonNull(poolWait, "poolWait");
+            if (sslMode != SslMode.DISABLE && sslRootCert.isEmpty()) {
+                throw new IllegalArgumentException("FLOTTILA_PG_SSL_MODE " + sslMode + " (FLOTTILA_PG_HOST " + host
+                        + ") needs FLOTTILA_PG_SSL_ROOT_CERT, the PEM CA that signs the server's certificate: set it, or set FLOTTILA_PG_SSL_MODE=disable"
+                        + " for a server reached in plaintext on purpose");
+            }
+        }
+
+        /**
+         * The pools' wait and queue at their defaults ({@link #POOL_WAIT_DEFAULT}, {@link #POOL_QUEUE_DEFAULT}): in-process callers;
+         * env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the connections of both pools at most
+         * @param sslMode how the link is secured
+         * @param sslRootCert the CA of a verifying mode
+         * @param durability what an accepted message survives
+         * @param intakePoolSize the intake pool's share
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
+                  Durability durability, int intakePoolSize) {
+            this(host, port, database, user, password, poolSize, sslMode, sslRootCert, durability, intakePoolSize, POOL_WAIT_DEFAULT, POOL_QUEUE_DEFAULT);
+        }
+
+        /**
+         * The intake pool's share by {@link #intakeDefault} of {@code poolSize}: in-process callers; env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the connections of both pools at most
+         * @param sslMode how the link is secured
+         * @param sslRootCert the CA of a verifying mode
+         * @param durability what an accepted message survives
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert,
+                  Durability durability) {
+            this(host, port, database, user, password, poolSize, sslMode, sslRootCert, durability, intakeDefault(poolSize));
+        }
+
+        /**
+         * The {@link Durability#LOCAL local} profile: in-process callers; env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the connections of both pools at most
+         * @param sslMode how the link is secured
+         * @param sslRootCert the CA of a verifying mode
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize, SslMode sslMode, Optional<Path> sslRootCert) {
+            this(host, port, database, user, password, poolSize, sslMode, sslRootCert, Durability.LOCAL);
+        }
+
+        /**
+         * A plaintext link ({@link SslMode#DISABLE}, no CA) under the {@link Durability#LOCAL local} profile: in-process callers;
+         * env parsing never uses it.
+         *
+         * @param host the server's host
+         * @param port its port
+         * @param database the database
+         * @param user the user
+         * @param password the user's password
+         * @param poolSize the connections of both pools at most
+         */
+        public Pg(String host, int port, String database, String user, String password, int poolSize) {
+            this(host, port, database, user, password, poolSize, SslMode.DISABLE, Optional.empty());
+        }
+
+        /**
+         * The intake pool's share when {@code FLOTTILA_PG_POOL_INTAKE} is unset: max(1, min(5, {@code poolSize} / 2)) — 5 of 21 (the
+         * default), 4 of 8, 2 of 4, 1 of 2 —, so the work pool keeps at least as many for {@code poolSize} ≥ 2.
+         *
+         * @param poolSize the connections of both pools
+         * @return the intake pool's connections at most
+         */
+        public static int intakeDefault(int poolSize) {
+            return Math.max(1, Math.min(5, poolSize / 2));
+        }
+
+        /**
+         * The work pool's share: everything but the intake pool.
+         *
+         * @return {@code poolSize - intakePoolSize}
+         */
+        public int workPoolSize() {
+            return poolSize - intakePoolSize;
+        }
+
+        /** The password redacted: a log line never carries it; the mode and the CA's path are shown. */
         @Override
         public String toString() {
-            return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize + "]";
+            return "Pg[host=" + host + ", port=" + port + ", database=" + database + ", user=" + user + ", password=***, poolSize=" + poolSize
+                    + ", sslMode=" + sslMode + ", sslRootCert=" + sslRootCert + ", durability=" + durability + ", intakePoolSize=" + intakePoolSize
+                    + ", poolWait=" + poolWait + ", poolQueue=" + poolQueue + "]";
+        }
+    }
+
+    /**
+     * The intake's group commit (CORE-6b, D-109): saves waiting while a group is in flight go together, in one transaction.
+     *
+     * @param max members of a group at most; 1 = no grouping
+     * @param bytes the bytes a group binds at most (a member above it goes alone)
+     * @param window how long a partial group waits for members while a group is in flight; zero = until a group completes
+     * @param concurrency groups in flight at most, each on a connection of its own
+     * @since 0.1
+     */
+    public record IntakeGroup(int max, long bytes, Duration window, int concurrency) {
+
+        /**
+         * A group of one per save, sent at once — as many in flight as the largest pool (1024); the pool's own wait bounds them: the
+         * intake built without a group.
+         */
+        public static final IntakeGroup SINGLE = new IntakeGroup(1, 64 * MIB, Duration.ZERO, 1024);
+
+        /**
+         * Groups in flight at most over an intake pool of {@code intakePoolSize}: max(1, intakePoolSize − 1), one connection left for
+         * the intake's other statements (D-130 draft).
+         */
+        static int bound(int intakePoolSize) {
+            return Math.max(1, intakePoolSize - 1);
+        }
+
+        /** The draft defaults (64, 1 MiB, PT0.001S) with min(4, {@link #bound}) groups in flight over an intake pool of {@code intakePoolSize}. */
+        public static IntakeGroup defaults(int intakePoolSize) {
+            return new IntakeGroup(64, MIB, Duration.ofMillis(1), Math.min(4, bound(intakePoolSize)));
         }
     }
 
@@ -140,7 +515,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
      * {@link Integer#MAX_VALUE}; the memory tier is never above the budget.
      *
      * @param treeLimit {@code FLOTTILA_BLOB_TREE_LIMIT} (8 MiB)
-     * @param memoryTier {@code FLOTTILA_BLOB_MEMORY_TIER} (1 MiB)
+     * @param memoryTier {@code FLOTTILA_BLOB_MEMORY_TIER} (1 MiB, at least 4096)
      * @param memoryBudget {@code FLOTTILA_BLOB_MEMORY_BUDGET} (256 MiB)
      * @param durableMax {@code FLOTTILA_BLOB_DURABLE_MAX} (1 MiB, at most 64 MiB): the largest max body an at-least-once flow
      *                   may declare (D-058, D-059)
@@ -246,10 +621,15 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     }
 
     private static final long MIB = 1024L * 1024;
+    /** The least FLOTTILA_BLOB_MEMORY_TIER: the least FLOTTILA_JOURNAL_RECORD_MAX, which is at most the tier (CORE-4c1 r1). */
+    private static final long MEMORY_TIER_MIN = 4096;
+    /** FLOTTILA_JOURNAL_RECORD_MAX by default, or the memory tier when that is smaller. */
+    private static final long RECORD_MAX_DEFAULT = 256 * 1024;
     private static final long GIB = 1024 * MIB;
-    private static final Pattern NODE_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?");
     private static final Set<String> HTTP = Set.of("http", "https");
     private static final Set<String> REDIS = Set.of("redis", "rediss");
+    /** The {@code FLOTTILA_PG_HOST} values that default to {@code FLOTTILA_PG_SSL_MODE=disable} (D-124): written as-is, never resolved. */
+    private static final Set<String> PG_LOOPBACK = Set.of("localhost", "127.0.0.1", "::1");
     /** The one path of a Valkey URI that is printed: its database number. */
     private static final Pattern DB = Pattern.compile("/\\d+");
     /** The longest ttl and renew period of a poller lease. */
@@ -265,25 +645,45 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
     /** The shortest and the longest CPU-time sampling period (D-094). */
     private static final Duration CPU_SAMPLING_MIN = Duration.ofMillis(1);
     private static final Duration CPU_SAMPLING_MAX = Duration.ofMillis(100);
+    private static final Duration GROUP_WINDOW_MAX = Duration.ofMillis(50);
+    /** The node lease's defaults and bound (D-101 (1)). */
+    private static final Duration NODE_LEASE_DEFAULT = Duration.ofSeconds(30);
+    private static final Duration NODE_LEASE_RENEW_DEFAULT = Duration.ofSeconds(5);
+    private static final Duration NODE_LEASE_MAX = Duration.ofMinutes(10);
+    private static final int RETRIES_COUNT_MAX = 100;
+    private static final Duration RETRIES_INTERVAL_MIN = Duration.ofSeconds(1);
+    private static final Duration RETRIES_INTERVAL_MAX = Duration.ofHours(24);
+    private static final Duration POOL_WAIT_MIN = Duration.ofMillis(1);
+    private static final Duration POOL_WAIT_MAX = Duration.ofMinutes(1);
+    private static final int POOL_QUEUE_MAX = 65536;
+    private static final String PEER_BIND = "0.0.0.0";
+    /** The most {@code FLOTTILA_JOURNAL_COPIES}: the owner's and one holder's (CORE-5 O2, draft). */
+    private static final int COPIES_MAX = 2;
 
     /**
      * Reads {@code env} only (never {@link System#getenv()}): the node's configuration, or the refusal naming the key; its
-     * {@code FLOTTILA_SECRET_*} variables are the node's secrets ({@link Secrets#fromEnv}).
+     * {@code FLOTTILA_SECRET_*} variables are the node's secrets ({@link Secrets#fromEnv}), its {@code FLOTTILA_JOURNAL_KEY*}
+     * variables its master key source ({@link MasterKeySource#fromEnv}).
      */
     public static NodeConfig from(Map<String, String> env) {
         String name = env.get("FLOTTILA_ENV");
         if (name == null || name.isBlank()) throw new IllegalArgumentException("FLOTTILA_ENV must name the environment (dev, ci, test, prod, ...)");
         String nodeId = env.getOrDefault("FLOTTILA_NODE_ID", env.get("HOSTNAME"));
-        if (nodeId == null || !NODE_ID.matcher(nodeId).matches()) {
+        if (nodeId == null || !Replicas.NODE_ID.matcher(nodeId).matches()) {
             throw new IllegalArgumentException("FLOTTILA_NODE_ID (else $HOSTNAME) must be a DNS label of at most 63 lower-case letters, digits and inner dashes, was "
                     + (nodeId == null ? "absent" : "'" + nodeId + "'"));
         }
         AdminServer.Config admin = new AdminServer.Config(env.getOrDefault("FLOTTILA_ADMIN_HOST", "127.0.0.1"),
                 (int) number(env, "FLOTTILA_ADMIN_PORT", 8081, 0, 65535), Optional.ofNullable(env.get("FLOTTILA_ADMIN_TOKEN")));
-        Pg pg = new Pg(env.getOrDefault("FLOTTILA_PG_HOST", "localhost"), (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
+        String pgHost = env.getOrDefault("FLOTTILA_PG_HOST", "localhost");
+        int poolSize = (int) number(env, "FLOTTILA_PG_POOL_SIZE", 21, 2, 1024);
+        int intakePoolSize = (int) number(env, "FLOTTILA_PG_POOL_INTAKE", Pg.intakeDefault(poolSize), 1, 1023);
+        Pg pg = new Pg(pgHost, (int) number(env, "FLOTTILA_PG_PORT", 5432, 1, 65535),
                 env.getOrDefault("FLOTTILA_PG_DATABASE", "flottila"), env.getOrDefault("FLOTTILA_PG_USER", "flottila"),
-                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), (int) number(env, "FLOTTILA_PG_POOL_SIZE", 16, 1, 1024));
-        long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, 0, Integer.MAX_VALUE);
+                env.getOrDefault("FLOTTILA_PG_PASSWORD", ""), poolSize, sslMode(env, pgHost), sslRootCert(env),
+                durability(env, deployed(name)), intakePoolSize, duration(env, "FLOTTILA_PG_POOL_WAIT", Pg.POOL_WAIT_DEFAULT),
+                (int) number(env, "FLOTTILA_PG_POOL_QUEUE", Pg.POOL_QUEUE_DEFAULT, 1, POOL_QUEUE_MAX));   // the constructor checks the range too (an in-process Pg)
+        long memoryTier = number(env, "FLOTTILA_BLOB_MEMORY_TIER", MIB, MEMORY_TIER_MIN, Integer.MAX_VALUE);
         long memoryBudget = number(env, "FLOTTILA_BLOB_MEMORY_BUDGET", 256 * MIB, 1, Long.MAX_VALUE);
         if (memoryTier > memoryBudget) {
             throw new IllegalArgumentException("FLOTTILA_BLOB_MEMORY_TIER " + memoryTier + " is above FLOTTILA_BLOB_MEMORY_BUDGET " + memoryBudget);
@@ -294,7 +694,133 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
         Archives archives = new Archives(archiveStore(env), Path.of(env.getOrDefault("FLOTTILA_ARCHIVE_DIR", dataDir.resolve("archives").toString())));
         Optional<S3> s3 = archives.store() == Archives.Store.S3 ? Optional.of(s3(env)) : Optional.empty();
         return new NodeConfig(nodeId, name, admin, dataDir, stopDeadline(env), number(env, "FLOTTILA_MAX_PACKAGE_BYTES", 64 * MIB, 1, GIB), pg, blobs,
-                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env));
+                archives, s3, Secrets.fromEnv(env), leases(env), retention(env), samplingPeriod(env), targets(env), journal(env, dataDir, nodeId, memoryTier),
+                MasterKeySource.fromEnv(env), journalSweep(env), intakeGroup(env, pg.intakePoolSize()), duration(env, "FLOTTILA_NODE_LEASE", NODE_LEASE_DEFAULT),
+                duration(env, "FLOTTILA_NODE_LEASE_RENEW", NODE_LEASE_RENEW_DEFAULT), retries(env), peer(env, nodeId),
+                (int) number(env, "FLOTTILA_JOURNAL_COPIES", deployed(name) ? COPIES_MAX : 1, 1, COPIES_MAX));
+    }
+
+    /** The {@code FLOTTILA_PEER_*} keys (CORE-5a S11): each range-checked naming its key. */
+    private static PeerConfig peer(Map<String, String> env, String nodeId) {
+        return new PeerConfig(env.getOrDefault("FLOTTILA_PEER_BIND", PEER_BIND), (int) number(env, "FLOTTILA_PEER_PORT", PeerConfig.PORT, 0, 65535),
+                env.getOrDefault("FLOTTILA_PEER_HOST", nodeId),
+                span(env, "FLOTTILA_PEER_TIMEOUT", PeerConfig.TIMEOUT, PeerConfig.TIMEOUT_MIN.toString(), PeerConfig.TIMEOUT_MAX.toString()),
+                (int) number(env, "FLOTTILA_PEER_READS", PeerConfig.READS, 1, PeerConfig.READS_MAX));
+    }
+
+    /** The {@code FLOTTILA_RETRIES_*} keys (CORE-14a P1): each range-checked naming its key; no growth, the interval its own cap. */
+    private static RetryPolicy retries(Map<String, String> env) {
+        int count = (int) number(env, "FLOTTILA_RETRIES_COUNT", FlowBuilder.DEFAULT_RETRIES.attempts(), 0, RETRIES_COUNT_MAX);
+        Duration interval = span(env, "FLOTTILA_RETRIES_INTERVAL", FlowBuilder.DEFAULT_RETRIES.initial(), RETRIES_INTERVAL_MIN.toString(),
+                RETRIES_INTERVAL_MAX.toString());
+        return new RetryPolicy(count, interval, interval, 1.0);
+    }
+
+    /** {@code FLOTTILA_PG_DURABILITY} as written; unset, {@code ha} when {@code deployed}, else {@code local} (D-127 draft). */
+    private static Pg.Durability durability(Map<String, String> env, boolean deployed) {
+        String raw = env.get("FLOTTILA_PG_DURABILITY");
+        if (raw == null) return deployed ? Pg.Durability.HA : Pg.Durability.LOCAL;
+        for (Pg.Durability profile : Pg.Durability.values()) {
+            if (profile.toString().equals(raw)) return profile;
+        }
+        throw new IllegalArgumentException("FLOTTILA_PG_DURABILITY must be local (a single server's commit) or ha (a commit that waits for a "
+                + "synchronous standby), was '" + raw + "'");
+    }
+
+    /** {@code FLOTTILA_PG_SSL_MODE} as written; unset, {@code disable} on a loopback {@code host}, else {@code verify-full} (D-124). */
+    private static Pg.SslMode sslMode(Map<String, String> env, String host) {
+        String raw = env.get("FLOTTILA_PG_SSL_MODE");
+        if (raw == null) return PG_LOOPBACK.contains(host) ? Pg.SslMode.DISABLE : Pg.SslMode.VERIFY_FULL;
+        for (Pg.SslMode mode : Pg.SslMode.values()) {
+            if (mode.toString().equals(raw)) return mode;
+        }
+        throw new IllegalArgumentException("FLOTTILA_PG_SSL_MODE must be disable, verify-ca or verify-full (TLS without verification is not offered), was '"
+                + raw + "'");
+    }
+
+    /**
+     * {@code FLOTTILA_PG_SSL_ROOT_CERT} as given, once its first byte was read, under any mode: a missing file, a directory, a file
+     * the node cannot read and an empty file (a CA that trusts nothing) are refused at start naming both keys, never at the first
+     * handshake; whether a mode needs a CA at all, {@link Pg}'s constructor checks.
+     */
+    private static Optional<Path> sslRootCert(Map<String, String> env) {
+        Optional<Path> ca = Optional.ofNullable(env.get("FLOTTILA_PG_SSL_ROOT_CERT")).map(Path::of);
+        if (ca.isPresent()) {
+            int first;
+            try (InputStream in = Files.newInputStream(ca.get())) {
+                first = in.read();
+            } catch (IOException e) {
+                throw new IllegalArgumentException("FLOTTILA_PG_SSL_ROOT_CERT " + ca.get() + " (the CA of FLOTTILA_PG_SSL_MODE) cannot be read: " + e, e);
+            }
+            if (first < 0) {
+                throw new IllegalArgumentException("FLOTTILA_PG_SSL_ROOT_CERT " + ca.get() + " (the CA of FLOTTILA_PG_SSL_MODE) is empty: a CA without a"
+                        + " certificate trusts nothing");
+            }
+        }
+        return ca;
+    }
+
+    /**
+     * The {@code FLOTTILA_INTAKE_GROUP_*} keys over an intake pool of {@code intakePoolSize}: each range-checked naming its key; the
+     * concurrency's bound by the intake pool is the record's ({@link NodeConfig#NodeConfig}).
+     */
+    private static IntakeGroup intakeGroup(Map<String, String> env, int intakePoolSize) {
+        IntakeGroup defaults = IntakeGroup.defaults(intakePoolSize);
+        return new IntakeGroup((int) number(env, "FLOTTILA_INTAKE_GROUP_MAX", defaults.max(), 1, 1024),
+                number(env, "FLOTTILA_INTAKE_GROUP_BYTES", defaults.bytes(), 64 * 1024, 64 * MIB), groupWindow(env, defaults.window()),
+                (int) number(env, "FLOTTILA_INTAKE_GROUP_CONCURRENCY", defaults.concurrency(), 1, 64));
+    }
+
+    /** {@code FLOTTILA_INTAKE_GROUP_WINDOW}: an ISO-8601 duration in whole milliseconds from PT0S to PT0.05S, else refused naming the key. */
+    private static Duration groupWindow(Map<String, String> env, Duration fallback) {
+        String raw = env.get("FLOTTILA_INTAKE_GROUP_WINDOW");
+        if (raw == null) return fallback;
+        Duration window;
+        try {
+            window = Duration.parse(raw);
+        } catch (DateTimeParseException notIso) {
+            window = Duration.ofDays(1);   // refused below, as any value out of range
+        }
+        if (window.isNegative() || window.compareTo(GROUP_WINDOW_MAX) > 0 || window.getNano() % 1_000_000 != 0) {
+            throw new IllegalArgumentException("FLOTTILA_INTAKE_GROUP_WINDOW must be an ISO-8601 duration in whole milliseconds from PT0S to "
+                    + GROUP_WINDOW_MAX + ", was '" + raw + "'");
+        }
+        return window;
+    }
+
+    /** The {@code FLOTTILA_JOURNAL_SWEEP_*} and {@code FLOTTILA_JOURNAL_KEEP_MAX_AGE} keys; no ISO-8601 duration is refused naming its key. */
+    private static SweepConfig journalSweep(Map<String, String> env) {
+        return new SweepConfig(duration(env, "FLOTTILA_JOURNAL_SWEEP_INTERVAL", SweepConfig.DEFAULTS.interval()),
+                duration(env, "FLOTTILA_JOURNAL_SWEEP_GRACE", SweepConfig.DEFAULTS.grace()),
+                duration(env, "FLOTTILA_JOURNAL_KEEP_MAX_AGE", SweepConfig.DEFAULTS.keepMaxAge()));
+    }
+
+    /**
+     * The {@code FLOTTILA_JOURNAL_*} limits and directory, each with its design default (CORE-3); a value that is no number or
+     * no ISO-8601 duration is refused here naming its key, a range by {@link JournalConfig} naming its key.
+     */
+    private static JournalConfig journal(Map<String, String> env, Path dataDir, String nodeId, long memoryTier) {
+        Path dir = Path.of(env.getOrDefault("FLOTTILA_JOURNAL_DIR", dataDir.resolve("journal").toString()));
+        return new JournalConfig(dir, number(env, "FLOTTILA_JOURNAL_SEGMENT_BYTES", 64 * MIB, Long.MIN_VALUE, Long.MAX_VALUE),
+                (int) number(env, "FLOTTILA_JOURNAL_SEGMENT_RECORDS", 65_536, 1, Integer.MAX_VALUE),
+                duration(env, "FLOTTILA_JOURNAL_SEGMENT_AGE", Duration.ofSeconds(1)),
+                number(env, "FLOTTILA_JOURNAL_PENDING_BYTES", 16 * MIB, Long.MIN_VALUE, Long.MAX_VALUE),
+                duration(env, "FLOTTILA_JOURNAL_APPEND_WAIT", Duration.ofSeconds(5)),
+                number(env, "FLOTTILA_JOURNAL_RECORD_MAX", Math.min(RECORD_MAX_DEFAULT, memoryTier), Long.MIN_VALUE, Long.MAX_VALUE), nodeId,
+                number(env, "FLOTTILA_JOURNAL_MAX_BYTES", JournalConfig.MAX_BYTES, Long.MIN_VALUE, Long.MAX_VALUE),
+                (int) number(env, "FLOTTILA_JOURNAL_READ_CHANNELS", JournalConfig.READ_CHANNELS, Integer.MIN_VALUE, Integer.MAX_VALUE),
+                Optional.ofNullable(env.get("FLOTTILA_JOURNAL_ACCEPT_LOSS")));
+    }
+
+    /** {@code key}'s ISO-8601 duration, {@code fallback} when the key is absent; its range is the caller's to check. */
+    private static Duration duration(Map<String, String> env, String key, Duration fallback) {
+        String raw = env.get(key);
+        if (raw == null) return fallback;
+        try {
+            return Duration.parse(raw);
+        } catch (DateTimeParseException notIso) {
+            throw new IllegalArgumentException(key + " must be an ISO-8601 duration such as " + fallback + ", was '" + raw + "'");
+        }
     }
 
     /**
@@ -488,15 +1014,7 @@ public record NodeConfig(String nodeId, String env, AdminServer.Config admin, Pa
             throw new IllegalArgumentException((accessKey.isPresent() ? "FLOTTILA_S3_SECRET_KEY" : "FLOTTILA_S3_ACCESS_KEY") + " is missing: the S3 keys "
                     + "are given both or neither (neither: the AWS SDK's default credentials chain)");
         }
-        return new S3(bucket, region, endpoint, pathStyle, prefix(env.getOrDefault("FLOTTILA_S3_PREFIX", "flottila")), accessKey, secretKey);
-    }
-
-    /** {@code FLOTTILA_S3_PREFIX}: not blank, neither starting nor ending with a slash (inner slashes are fine). */
-    private static String prefix(String raw) {
-        if (raw.isBlank() || raw.startsWith("/") || raw.endsWith("/")) {
-            throw new IllegalArgumentException("FLOTTILA_S3_PREFIX must not be blank or start or end with a slash, such as flottila or a/b, was '" + raw + "'");
-        }
-        return raw;
+        return new S3(bucket, region, endpoint, pathStyle, env.getOrDefault("FLOTTILA_S3_PREFIX", "flottila"), accessKey, secretKey);
     }
 
     /** {@code key}'s value, which must be there and not blank. */

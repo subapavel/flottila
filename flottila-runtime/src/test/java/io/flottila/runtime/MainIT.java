@@ -2,6 +2,8 @@ package io.flottila.runtime;
 
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.node.TestJournalKey;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
@@ -60,7 +62,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MainIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;      // the test's own: the observer and the holder live on it, never on the Vert.x the stopper closes
     static Pool observer;
@@ -126,6 +128,7 @@ class MainIT {
         env.put("FLOTTILA_PG_USER", pg.getUsername());
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
+        TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         return env;
     }
 

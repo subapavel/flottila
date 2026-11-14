@@ -5,12 +5,14 @@ import io.flottila.api.BlobKey;
 import io.flottila.api.Body;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.api.Health;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
+import io.flottila.api.Timer;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
@@ -19,8 +21,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -50,7 +54,12 @@ import static org.junit.jupiter.api.Assertions.fail;
  * cancel reaches the component as a retryable {@link Ack.Nack} the sender sees as a retryable {@link NackException} — and
  * each delivery calling the handler on a virtual thread of its own, never the sender's (D-057); a handler that throws or
  * answers null fails the send, and a stop after it completes; a reply to a second attempt is keyed by that attempt, carries
- * it on and leaves the first attempt's reply bytes in place (D-066).
+ * it on and leaves the first attempt's reply bytes in place (D-066). P2-15b (D-101 (3), D-113 draft): every send carries the
+ * message id to the partner in {@link Envelope#H_MESSAGE_ID} — one value, the envelope's id, whatever was forwarded under that
+ * name in any case — through {@code send(e)} and {@code send(e, d)} alike; a {@code send(e, d)} with no time left
+ * ({@code d.remaining() <= 0}) fails with a retryable {@link NackException} and reaches no partner; a send still unanswered when
+ * its {@link Deadline} runs out is cut — failed with a retryable {@link NackException} on the {@link Timer} the component was
+ * built with ({@link #component(Timer)}), the deadline re-read there, so a deadline renewed meanwhile is waited for.
  *
  * @since 0.1
  */
@@ -59,6 +68,13 @@ public abstract class ComponentContract {
 
     /** A fresh component under test; called once per test case. */
     protected abstract Component component();
+
+    /**
+     * A fresh component under test whose producers time their sends on {@code timer} — the case's fake timer, on the case's
+     * fake clock, which also drives the {@link Deadline}s it hands over. By default {@link #component()}: a component that takes
+     * a timer overrides this, one that does not cannot pass {@code aSendIsCutWhenItsDeadlineRunsOutButNotWhileItIsRenewed}.
+     */
+    protected Component component(Timer timer) { return component(); }
 
     /**
      * An endpoint whose URI scheme selects {@link #component()}; its options bind the consumer. The producer's target is
@@ -462,6 +478,118 @@ public abstract class ComponentContract {
             answer.tryComplete(new Ack.Nack("contract cleanup", true));
             (stopped == null ? consumer.stop() : stopped).otherwiseEmpty().await(patience().toMillis(), TimeUnit.MILLISECONDS);
             producer.close().await();
+        }
+    }
+
+    /** The values of {@link Envelope#H_MESSAGE_ID} on {@code e}, whatever the case of the header's name. */
+    private static List<String> messageIds(Envelope e) {
+        return e.headers().asMap().entrySet().stream()
+                .filter(h -> h.getKey().toLowerCase(Locale.ROOT).equals(Envelope.H_MESSAGE_ID)).map(java.util.Map.Entry::getValue).toList();
+    }
+
+    /**
+     * D-101 (3): the partner can dedupe on the message id — the envelope its consumer receives carries the sender's id under
+     * {@link Envelope#H_MESSAGE_ID}, once, replacing one forwarded under that name (in any case), for a plain send and a
+     * bounded one. The receiver's own id stays its own business.
+     */
+    @Test
+    public void aSendCarriesTheMessageIdToThePartner() {
+        Component component = component();
+        List<Envelope> seen = new CopyOnWriteArrayList<>();
+        Consumer consumer = component.consumer(endpoint(), e -> { seen.add(e); return Future.succeededFuture(new Ack.Accepted(e.id())); });
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        try {
+            FakeRuntime rt = FakeRuntime.create();
+            Envelope plain = rt.ingress("contract", Headers.empty().with("X-Message-Id", "forwarded-from-upstream"), Buffer.buffer("id-plain"))
+                    .withId("contract-plain-1");
+            assertTrue(settled(producer.send(plain)).succeeded(), "the plain send is answered");
+            Envelope bounded = rt.ingress("contract", Headers.empty(), Buffer.buffer("id-bounded")).withId("contract-bounded-2");
+            Future<Envelope> second = settled(producer.send(bounded, () -> Duration.ofMinutes(1)));
+            assertTrue(second.succeeded(), "the bounded send is answered: " + second.cause());
+            assertTrue(soon(() -> seen.size() == 2), "both delivered: " + seen);
+            assertEquals(List.of("contract-plain-1"), messageIds(seen.get(0)),
+                    "the plain send carries its message id, the forwarded one replaced: " + seen.get(0).headers());
+            assertEquals(List.of("contract-bounded-2"), messageIds(seen.get(1)), "the bounded send carries its message id: " + seen.get(1).headers());
+        } finally {
+            producer.close().await();
+            consumer.stop().await();
+        }
+    }
+
+    /** D-113 (draft): a send with no time left — none, or less than none — starts nothing: it fails retryable and no partner sees it. */
+    @Test
+    public void aSendWithNoTimeLeftIsNotStarted() {
+        Component component = component();
+        AtomicInteger delivered = new AtomicInteger();
+        Consumer consumer = component.consumer(endpoint(), e -> { delivered.incrementAndGet(); return Future.succeededFuture(new Ack.Accepted(e.id())); });
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        try {
+            FakeRuntime rt = FakeRuntime.create();
+            for (Duration left : List.of(Duration.ZERO, Duration.ofMillis(-1))) {
+                Future<Envelope> refused = settled(producer.send(rt.ingress("contract", Headers.empty(), Buffer.buffer("too-late")), () -> left));
+                assertTrue(refused.failed(), left + " left: the send fails: " + refused);
+                NackException nack = assertInstanceOf(NackException.class, refused.cause(), left + " left: a NackException: " + refused.cause());
+                assertTrue(nack.retryable(), left + " left: retryable, a rerun gets fresh time: " + nack);
+            }
+            Future<Envelope> inTime = settled(producer.send(rt.ingress("contract", Headers.empty(), Buffer.buffer("in-time")), () -> Duration.ofMinutes(1)));
+            assertTrue(inTime.succeeded(), "witness: with time left the send is delivered: " + inTime.cause());
+            assertTrue(soon(() -> delivered.get() >= 1), "the send with time left reached the handler");
+            assertEquals(1, delivered.get(), "only the send with time left reached the partner");
+        } finally {
+            producer.close().await();
+            consumer.stop().await();
+        }
+    }
+
+    /**
+     * D-113 (draft): a send still unanswered when its deadline runs out is cut — a retryable {@link NackException} though the
+     * partner never answered — on the component's timer; the deadline is live and re-read when the timer fires, so a send whose
+     * deadline was renewed meanwhile is not cut at the instant it was sent with, and its answer comes through.
+     */
+    @Test
+    public void aSendIsCutWhenItsDeadlineRunsOutButNotWhileItIsRenewed() {
+        FakeClock clock = FakeClock.at(Instant.parse("2026-01-01T00:00:00Z"));
+        FakeTimer timer = new FakeTimer(clock);
+        Component component = component(timer);
+        List<Promise<Ack>> answers = new CopyOnWriteArrayList<>();
+        Consumer consumer = component.consumer(endpoint(), e -> {
+            Promise<Ack> answer = Promise.promise();
+            answers.add(answer);
+            return answer.future();
+        });
+        consumer.start().await();
+        Producer producer = component.producer(producerEndpoint(consumer));
+        AtomicReference<Instant> until = new AtomicReference<>(clock.instant().plusSeconds(5));
+        Deadline deadline = () -> Duration.between(clock.instant(), until.get());
+        try {
+            FakeRuntime rt = FakeRuntime.create();
+            Envelope renewed = rt.ingress("contract", Headers.empty(), Buffer.buffer("renewed"));
+            Future<Envelope> first = producer.send(renewed, deadline);
+            assertTrue(soon(() -> answers.size() == 1), "the handler was invoked");
+            clock.advance(Duration.ofSeconds(4));
+            assertFalse(first.isComplete(), "1 s left: not cut: " + first);
+            until.set(clock.instant().plusSeconds(6));   // renewed: 6 s left, 5 s past the deadline it was sent with
+            clock.advance(Duration.ofSeconds(2));
+            assertFalse(first.isComplete(), "renewed: not cut at the deadline it was sent with: " + first);
+            answers.get(0).complete(new Ack.Reply(renewed.withHeader("x-renewed", "yes")));
+            assertTrue(settled(first).succeeded(), "the renewed send's answer comes through: " + first.cause());
+            assertEquals("yes", first.result().header("x-renewed").orElse(null), "the reply is what the handler answered");
+
+            until.set(clock.instant().plusSeconds(3));
+            Future<Envelope> second = producer.send(rt.ingress("contract", Headers.empty(), Buffer.buffer("cut")), deadline);
+            assertTrue(soon(() -> answers.size() == 2), "the second send reached the handler");
+            clock.advance(Duration.ofMillis(2_999));
+            assertFalse(second.isComplete(), "1 ms left: not cut yet: " + second);
+            clock.advance(Duration.ofMillis(1));
+            assertTrue(settled(second).failed(), "cut at its deadline, the partner silent: " + second);
+            NackException nack = assertInstanceOf(NackException.class, second.cause(), "a cut send fails with a NackException: " + second.cause());
+            assertTrue(nack.retryable(), "retryable: the message may be tried again: " + nack);
+        } finally {
+            answers.forEach(a -> a.tryComplete(new Ack.Nack("contract cleanup", true)));   // a stop drains the answers in flight (D-056)
+            producer.close().await();
+            consumer.stop().await();
         }
     }
 

@@ -2,11 +2,13 @@ package io.flottila.core.flow;
 
 import io.flottila.api.BodyKind;
 import io.flottila.api.Component;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Expressions;
 import io.flottila.api.Headers;
 import io.flottila.api.Key;
+import io.flottila.api.NackException;
 import io.flottila.api.Pipeline;
 import io.flottila.api.Producer;
 import io.flottila.api.Runtime;
@@ -14,11 +16,14 @@ import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
 import io.flottila.api.StepResources;
+import io.flottila.api.Timer;
 import io.flottila.core.admission.Admission;
 import io.flottila.core.admission.TargetLimit;
 import io.flottila.core.admission.Targets;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parking;
+import io.flottila.core.node.Fence;
+import io.flottila.core.node.FencedException;
 import io.flottila.core.pattern.Filter;
 import io.flottila.core.pattern.Retry;
 import io.flottila.core.pattern.Route;
@@ -30,10 +35,13 @@ import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
 import io.flottila.core.record.StepEvent;
 import io.flottila.core.scope.MessageContext;
+import io.vertx.core.Future;
+import io.vertx.core.Promise;
 
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -45,9 +53,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
@@ -77,12 +87,22 @@ import java.util.function.UnaryOperator;
  * {@link Retry} (no permit across a backoff) and inside the {@link Recorder} (the wait is in the step's time), and a replay
  * runs the same stage. A permit not granted within the earlier of the limit's maxWait and the time left until the message's
  * deadline fails the send with a retryable {@link io.flottila.api.NackException}; a send where no {@link MessageContext} is bound
- * waits maxWait.
+ * waits maxWait. Under the permit the producer is handed the time the send has left as a live {@link Deadline} — until the
+ * message's deadline; no time left fails the send with a retryable {@link io.flottila.api.NackException} "deadline passed" and
+ * the producer is not called (D-113 draft); a send where no {@link MessageContext} is bound is the producer's plain
+ * {@code send(e)}. A {@link #worker}'s {@code to} sends only while the node's fence given through {@link #fence} is open, checked
+ * under the permit just before the producer's send: closed, it fails with a {@link FencedException}, which no {@link Retry}
+ * retries and no {@link Parking} parks (D-101 (2)). A {@link Fence} also bounds the worker's sends: the deadline is the earlier
+ * of the message's and the fence's, a timer at the fence's end re-reads it and fails the run's wait with a
+ * {@link FencedException} once it is closed (the item left unsettled; the abandoned send keeps its permit until its own future
+ * settles), and a producer failure landing while it is closed is a {@link FencedException} carrying it; a worker's failed run
+ * is deferred or parked only while the same fence is open — closed, its item is left unsettled, no defer and no DLQ row
+ * ({@link FlowWorker}); a sync, at-most-once or replayed run is never fenced (no other node takes it over).
  *
  * <p>Every pipeline built — {@link #build}, a sync or at-most-once {@link #delivery}'s, a {@link #worker}'s, a {@link #replay}'s
- * {@code from} and {@code retry} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
+ * {@code from} and {@code replayParked} — starts with one stage that binds the message's {@link MessageContext} for the rest of the run
  * (D-100): its deadline is the run's start on the Runtime's clock, taken when the stage runs, plus the flow's
- * {@code delivery.timeout} — fresh per run: each sync call, each at-least-once claim, each replay or retry.
+ * {@code delivery.timeout} — fresh per run: each sync call, each at-least-once claim, each message replay or DLQ replay.
  *
  * <p>The built-ins take their conditions and values from a registered {@link Expressions} language
  * ({@code language} per step, default {@code xpath}), so core never parses a body. The {@link Runtime} is
@@ -100,6 +120,12 @@ public final class FlowBuilder {
     /** The expression language a step uses when it names none. */
     public static final String DEFAULT_LANGUAGE = "xpath";
 
+    /** The fence of an unfenced run: always open. */
+    private static final BooleanSupplier OPEN = () -> true;
+
+    /** The node's default schedule of retries when none is given (O1, D-135 draft): 3 retries 5 minutes apart, no growth. */
+    public static final RetryPolicy DEFAULT_RETRIES = new RetryPolicy(3, Duration.ofMinutes(5), Duration.ofMinutes(5), 1.0);
+
     private final Runtime runtime;
     private final Map<String, StepFactory> factories = new LinkedHashMap<>();
     private final Map<String, Expressions> languages = new LinkedHashMap<>();
@@ -114,6 +140,10 @@ public final class FlowBuilder {
     private Map<String, Path> dependencies = Map.of();
     private boolean stepEvents;   // false: no step is marked (D-094, owner decision 2026-11-03)
     private Targets targets;
+    private BooleanSupplier fence = OPEN;
+    private Workers workers = new Workers();
+    private WorkSignals signals = WorkSignals.NONE;
+    private RetryPolicy retries = DEFAULT_RETRIES;
 
     public FlowBuilder(Runtime runtime, Collection<StepFactory> factories, Collection<Expressions> languages, Map<String, EndpointConfig> endpoints) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
@@ -209,9 +239,51 @@ public final class FlowBuilder {
         return this;
     }
 
+    /**
+     * Fences the workers built from now on by {@code fence}, the node's ({@link io.flottila.core.node.NodeLease}, D-101 (2)):
+     * they claim, their {@code to} steps send, and they defer a failed run, park a message, complete, take the next item of a key
+     * and hold, only while it answers true. A {@link Fence} also bounds their sends by time
+     * (D-113 draft): the producer's deadline is the earlier of the message's and the fence's, and a run stops waiting for a send
+     * still open when the fence closes. It replaces the fence of an earlier call. Without a call the fence is always open.
+     */
+    public FlowBuilder fence(BooleanSupplier fence) {
+        this.fence = Objects.requireNonNull(fence, "fence");
+        return this;
+    }
+
+    /**
+     * Registers the workers built from now on, while started, in {@code workers} — the node's, the one its intake reserves its
+     * hand-off slots in (D-121 (a)); it replaces the registry of an earlier call. Without a call the builder has a registry of its
+     * own, which no intake asks.
+     */
+    public FlowBuilder workers(Workers workers) {
+        this.workers = Objects.requireNonNull(workers, "workers");
+        return this;
+    }
+
+    /**
+     * The node's work events (D-121 (b)) for the workers built from now on: a keyed completion whose key's next row lies on another
+     * node announces it to that node (B4 (i)). It replaces the signals of an earlier call. Without a call nothing is announced.
+     */
+    public FlowBuilder signals(WorkSignals signals) {
+        this.signals = Objects.requireNonNull(signals, "signals");
+        return this;
+    }
+
+    /**
+     * The node's default schedule of retries (CORE-14a P1, D-135 draft: {@code FLOTTILA_RETRIES_COUNT} and
+     * {@code FLOTTILA_RETRIES_INTERVAL}) for the workers built from now on of the flows that name no {@code delivery.retries}; it
+     * replaces the default of an earlier call. Without a call it is {@link #DEFAULT_RETRIES}. One outside the D-135 bounds
+     * ({@link FlowDefinition#MAX_RETRIES} retries, an interval of 1s..24h, a cap of at most 24h) is refused.
+     */
+    public FlowBuilder retries(RetryPolicy nodeDefault) {
+        this.retries = FlowDefinition.withinRetryBounds(Objects.requireNonNull(nodeDefault, "nodeDefault"), "the node's retries");
+        return this;
+    }
+
     /** Builds the flow; {@code baseDir} is where the steps' relative file references resolve (the package directory, D-078). */
     public Pipeline build(FlowDefinition flow, Path baseDir) {
-        return built(flow, baseDir).pipeline(true);
+        return built(flow, baseDir, OPEN, true).pipeline(true);
     }
 
     /**
@@ -244,11 +316,11 @@ public final class FlowBuilder {
         Admission admission = admission(flow);
         return switch (flow.deliveryMode()) {
             case "sync" -> {
-                Built built = built(flow, baseDir);
+                Built built = built(flow, baseDir, OPEN, true);
                 yield Delivery.sync(admission, built.pipeline(true), built.producers(), runtime.timer());
             }
             case "at-most-once" -> {
-                Built built = built(flow, baseDir);
+                Built built = built(flow, baseDir, OPEN, true);
                 yield Delivery.atMostOnce(admission, built.pipeline(true), built.producers(), runtime.timer());
             }
             case "at-least-once" -> {
@@ -257,8 +329,8 @@ public final class FlowBuilder {
                 Function<Envelope, Optional<String>> partitionKey = partitionKey(flow, baseDir);
                 Recorder recorder = new Recorder(store, runtime.clock(), meter, versionsOf(flow));
                 yield Delivery.atLeastOnce(admission, flow.id(), e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
-                        partitionKey, e -> dedupeBy.flatMap(e::get), intake != null ? intake : new SequentialIntake(store, queue), runtime.timer(),
-                        flow.saveTimeout());
+                        partitionKey, e -> dedupeBy.flatMap(e::get), intake != null ? intake : new SequentialIntake(store, queue),
+                        flow.recording().keepsBody(), runtime.timer(), flow.saveTimeout());
             }
             default -> throw new IllegalArgumentException("flow '" + flow.id() + "': unknown delivery.mode '" + flow.deliveryMode() + "'");
         };
@@ -298,9 +370,11 @@ public final class FlowBuilder {
 
     /**
      * The worker {@code workerId} of an at-least-once flow (see {@link FlowWorker}) under {@code policy}: runs at most the flow's
-     * in-flight request limit of items at once and the pipeline without stage 0, leases and polls on the runtime's timer and
-     * parks an item past {@link WorkerPolicy#maxAttempts()} at the flow's first step. Needs the store, the {@link #queue} and
-     * the {@link #dlq}.
+     * in-flight request limit of items at once and the pipeline without stage 0 — its steps not wrapped by {@link Parking}: a failed
+     * run is the worker's to retry or park (CORE-14a P6) —, leases, polls and schedules its retries on the runtime's clock and timer
+     * under the flow's {@code delivery.retries}, else the node's default ({@link #retries}), parks a message at the flow's first step
+     * once its retries are spent or its failure is final and, while started, is registered in the {@link #workers} registry. Needs the
+     * store, the {@link #queue} and the {@link #dlq}.
      */
     public FlowWorker worker(FlowDefinition flow, Path baseDir, String workerId, WorkerPolicy policy) {
         Objects.requireNonNull(flow, "flow");
@@ -309,9 +383,9 @@ public final class FlowBuilder {
         requireDlq(flow);
         int max = (int) Math.min(inFlightRequests(flow), Integer.MAX_VALUE);
         Parking parking = new Parking(dlq, runtime.clock(), versionsOf(flow));
-        Built built = built(flow, baseDir);
-        return new FlowWorker(flow.id(), workerId, max, policy, queue, store, runtime.blobs(), built.pipeline(false),
-                parking, flow.steps().get(0), runtime.timer(), built.producers());
+        Built built = built(flow, baseDir, fence, false);
+        return new FlowWorker(flow.id(), workerId, max, policy, flow.retries().orElse(retries), queue, store, runtime.blobs(), built.pipeline(false),
+                parking, flow.steps().get(0), runtime.clock(), runtime.timer(), built.producers(), fence, workers, signals);
     }
 
     private void requireStoreAndQueue(FlowDefinition flow, String what) {
@@ -375,7 +449,7 @@ public final class FlowBuilder {
     /**
      * The flow's replay, its runs admitted by {@code delivery}'s {@link Admission}: a replay in flight holds one of the permits
      * the consumer's deliveries take, and the other way round (D-067). Needs the recorded snapshots ({@link #recording}) and, for
-     * DLQ retries, the {@link #dlq}. Built once, here: a replay slices the stages built now and holds nothing of this builder or
+     * DLQ replays, the {@link #dlq}. Built once, here: a replay slices the stages built now and holds nothing of this builder or
      * the {@link Runtime}; the producers its steps send through are its own, closed by {@link Replay#close()}.
      */
     public Replay replay(FlowDefinition flow, Path baseDir, Delivery delivery) {
@@ -385,7 +459,7 @@ public final class FlowBuilder {
 
     private Replay replay(FlowDefinition flow, Path baseDir, Admission admission) {
         if (store == null) throw new IllegalStateException("replay needs the recorded snapshots: call recording(store, meter) first");
-        Built built = built(flow, baseDir);
+        Built built = built(flow, baseDir, OPEN, true);
         List<Stage> steps = built.steps();
         Recorder recorder = built.recorder();
         RecordingPolicy policy = flow.recording();
@@ -415,13 +489,17 @@ public final class FlowBuilder {
         }
     }
 
-    /** The flow built; a build that throws closes every producer it created before the failure leaves (FIX-30), unchecked ones included. */
-    private Built built(FlowDefinition flow, Path baseDir) {
+    /**
+     * The flow built, its {@code to} steps sending under {@code fence}; an at-least-once flow's steps wrapped by {@link Parking} when
+     * {@code parking} (a {@link #build} and a replay; a worker's are not, CORE-14a P6). A build that throws closes every producer it
+     * created before the failure leaves (FIX-30), unchecked ones included.
+     */
+    private Built built(FlowDefinition flow, Path baseDir, BooleanSupplier fence, boolean parking) {
         Objects.requireNonNull(flow, "flow");
         Map<String, String> versions = versionsOf(flow);
-        boolean parks = "at-least-once".equals(flow.deliveryMode());
+        boolean parks = parking && "at-least-once".equals(flow.deliveryMode());
         if (parks) requireDlq(flow);
-        Parking parking = parks ? new Parking(dlq, runtime.clock(), versions) : null;
+        Parking parker = parks ? new Parking(dlq, runtime.clock(), versions) : null;
         StepResources resources = resources(flow, baseDir);
         Recorder recorder = store == null ? null : new Recorder(store, runtime.clock(), meter, versions);
         UnaryOperator<Envelope> forward = forwardHeaders(flow.forwardHeaders());
@@ -445,18 +523,18 @@ public final class FlowBuilder {
                 }
                 if (kind == BodyKind.SPLIT_ASSEMBLE) splitBefore = true;
                 Stage stage = switch (step.type()) {
-                    case "to" -> to(step, forward, opened);
+                    case "to" -> to(step, forward, opened, fence);
                     case "route" -> route(step, resources);
                     case "filter" -> new Filter(predicate(step, step.requireString("when"), resources));
                     case "extractKey" -> extractKey(step, resources);
                     case "validate" -> validate(step, resources);
-                    case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources), runtime.ids());
+                    case "split" -> new Split(language(step).parts(step.requireString("xpath"), resources));
                     default -> factoryFor(step).create(step, resources);
                 };
                 if (step.retryable()) stage = Retry.stage(stage, flow.retry(), runtime.timer());
                 stage = numbered(stage, step);
                 if (recorder != null) stage = recorder.wrap(stage, step, step.index() == lastIndex, RecordingPolicy.from(step.config().get("recording"), flow.recording()));
-                if (parking != null) stage = parking.wrap(stage, step);
+                if (parker != null) stage = parker.wrap(stage, step);
                 stages.add(stepEvents ? StepEvent.marked(stage, flow.id(), step) : stage);   // outermost: a step's CPU includes its wrappers (D-094)
             }
             done = true;
@@ -543,9 +621,9 @@ public final class FlowBuilder {
      * The producer gets the envelope through {@code forward} (the flow's {@code forwardHeaders}) under its target's limit;
      * what goes on is its reply. Every producer created is added to {@code opened} at once.
      */
-    private Stage to(StepConfig step, UnaryOperator<Envelope> forward, List<Producer> opened) {
+    private Stage to(StepConfig step, UnaryOperator<Envelope> forward, List<Producer> opened, BooleanSupplier fence) {
         if (step.config().get("endpoint") != null) {
-            Send send = send(step, step.requireString("endpoint"), opened);
+            Send send = send(step, step.requireString("endpoint"), opened, fence);
             return Stage.of(e -> send.apply(forward.apply(e)));
         }
         Key<String> prop = new Key<>(step.requireString("byProp"));
@@ -553,7 +631,7 @@ public final class FlowBuilder {
             throw new IllegalArgumentException(step + ": 'endpoints' must map every value of " + prop.name() + " to an endpoint");
         }
         Map<String, Send> sends = new LinkedHashMap<>();
-        choices.forEach((choice, endpoint) -> sends.put(String.valueOf(choice), send(step, String.valueOf(endpoint), opened)));
+        choices.forEach((choice, endpoint) -> sends.put(String.valueOf(choice), send(step, String.valueOf(endpoint), opened, fence)));
         return Stage.of(e -> {
             String choice = e.get(prop).orElseThrow(() -> new IllegalStateException(step + ": prop " + prop.name() + " is not set; a route step before it decides"));
             Send send = sends.get(choice);
@@ -562,8 +640,8 @@ public final class FlowBuilder {
         });
     }
 
-    /** The producer of {@code endpoint}, added to {@code opened} at once, and the limit of the target its component names. */
-    private Send send(StepConfig step, String endpoint, List<Producer> opened) {
+    /** The producer of {@code endpoint}, added to {@code opened} at once, the limit of the target its component names, and {@code fence}. */
+    private Send send(StepConfig step, String endpoint, List<Producer> opened, BooleanSupplier fence) {
         EndpointConfig cfg = endpoints.get(endpoint);
         if (cfg == null) throw new IllegalArgumentException(step + ": unknown endpoint '" + endpoint + "' (" + endpoints.keySet() + ")");
         Component component;
@@ -574,22 +652,127 @@ public final class FlowBuilder {
         }
         Producer producer = component.producer(cfg);
         opened.add(producer);
-        return new Send(producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock());
+        return new Send(endpoint, producer, component.target(cfg).map(targets::of).orElseGet(targets::unshared), runtime.clock(), runtime.timer(), fence,
+                fence instanceof Fence f ? f : null);   // only a Fence bounds a send by time and abandons it at the fence (D-113)
     }
 
     /**
      * A {@code to}'s send: the producer's, under the limit of its target, waiting no longer than the time left on {@code clock}
-     * until the deadline of the message bound, maxWait when none is; what the send fails with comes out as is.
+     * until the deadline of the message bound, maxWait when none is; under the permit, a closed {@code fence} fails it with a
+     * {@link FencedException} before the producer is called. With a message bound the producer gets
+     * {@code send(e, d)} (D-113 draft): {@code d} is the time left until the message's deadline — the earlier of that and what
+     * the fence has left when {@code fence} is a {@link Fence} — re-read at each {@code remaining()}; no time left fails the send
+     * with a retryable {@link NackException} and the producer is not called. Without a message bound it gets {@code send(e)}.
+     * With a {@link Fence} the run stops waiting once the fence closes ({@link FencedWait}) and a producer failure landing while
+     * it is closed is a {@link FencedException} with that failure as its cause; the permit is held until the producer's own
+     * future settles. Otherwise what the send fails with comes out as is.
      */
-    private record Send(Producer producer, TargetLimit limit, Clock clock) {
+    private record Send(String endpoint, Producer producer, TargetLimit limit, Clock clock, Timer timer, BooleanSupplier fence, Fence bound) {
         Envelope apply(Envelope e) {
+            MessageContext context = MessageContext.isBound() ? MessageContext.current() : null;
+            FencedWait wait = bound == null ? null : new FencedWait(bound, timer, e.id(), endpoint);
+            Supplier<Future<Envelope>> send = () -> {
+                if (!fence.getAsBoolean()) {
+                    throw new FencedException("message " + e.id() + " not sent to endpoint '" + endpoint + "': the node's fence is closed (D-101 (2)); "
+                            + "its item is left to whoever runs it next");
+                }
+                Deadline d = context == null ? null : deadline(context.deadline());
+                if (d != null && !d.remaining().isPositive()) {
+                    return Future.failedFuture(new NackException("message " + e.id() + " not sent to endpoint '" + endpoint + "': its deadline passed (D-113)", true));
+                }
+                if (wait != null) wait.arm();   // before the producer is called: nothing of the send is out before the fence is watched
+                try {   // a null answer fails here, inside the catch, so its re-read is disarmed too
+                    return Objects.requireNonNull(d == null ? producer.send(e) : producer.send(e, d),
+                            () -> "endpoint '" + endpoint + "': the send answered no future");
+                } catch (RuntimeException | Error failure) {
+                    if (wait != null) wait.disarm();
+                    throw failure;
+                }
+            };
+            Duration within = context == null ? limit.gauge().maxWait() : context.remaining(clock);
             try {
-                return MessageContext.isBound()
-                        ? limit.call(MessageContext.current().remaining(clock), () -> producer.send(e))
-                        : limit.call(() -> producer.send(e));
+                return wait == null ? limit.call(within, send) : limit.call(within, send, wait::watch);
             } catch (Exception failure) {   // a checked one too, as the producer's future failed with it, or the interrupt
                 throw FlowBuilder.<RuntimeException>rethrown(failure);
             }
+        }
+
+        /** The time left until {@code until} on the clock, the earlier of that and the fence's when bounded by one; live. */
+        private Deadline deadline(Instant until) {
+            if (bound == null) return () -> Duration.between(clock.instant(), until);
+            return () -> {
+                Duration message = Duration.between(clock.instant(), until);
+                Duration fenced = Duration.ofNanos(bound.openNanos());
+                return message.compareTo(fenced) <= 0 ? message : fenced;
+            };
+        }
+    }
+
+    /**
+     * The wait of one send bounded by the node's {@link Fence} (D-113 draft): {@link #arm} — under the permit, just before the
+     * producer is called — schedules a re-read on the timer at what the fence has left; there a fence still open (renewed) is
+     * re-armed, a closed one fails the wait with a {@link FencedException}: the run stops waiting for a send that may outlive
+     * the fence, the producer's own future goes on (and keeps the target's permit) until it settles. A producer answer that
+     * settles first ends the wait with it — a failure landing while the fence is closed as a {@link FencedException} carrying it
+     * — and cancels the re-read.
+     */
+    private static final class FencedWait {
+        private final Fence fence;
+        private final Timer timer;
+        private final String messageId;
+        private final String endpoint;
+        private final Promise<Envelope> out = Promise.promise();
+        private Timer.Cancellable armed;   // guarded by this: the re-read pending, the latest one scheduled
+
+        FencedWait(Fence fence, Timer timer, String messageId, String endpoint) {
+            this.fence = fence;
+            this.timer = timer;
+            this.messageId = messageId;
+            this.endpoint = endpoint;
+        }
+
+        /** Schedules the re-read at what the fence has left now (at least a nanosecond: one that closed meanwhile is re-read at once). */
+        void arm() {
+            Timer.Cancellable next = timer.schedule(Duration.ofNanos(Math.max(fence.openNanos(), 1)), this::reread);
+            synchronized (this) {
+                armed = next;
+            }
+        }
+
+        /** Cancels the pending re-read, if one was armed: the send settled, or never started (no time left: never armed). */
+        void disarm() {
+            Timer.Cancellable pending;
+            synchronized (this) {
+                pending = armed;
+            }
+            if (pending != null) pending.cancel();
+        }
+
+        /** The timer's task: a wait still open is re-armed while the fence is open, failed once it is closed. */
+        private void reread() {
+            if (out.future().isComplete()) return;   // settled meanwhile: its cancel came too late for this one
+            if (fence.getAsBoolean()) {
+                arm();
+                return;
+            }
+            out.tryFail(new FencedException("message " + messageId + ": its send to endpoint '" + endpoint + "' was abandoned, still open when the "
+                    + "node's fence closed (D-101 (2), D-113); its item is left to whoever runs it next"));
+        }
+
+        /** What the run waits for: {@code sent}'s outcome, unless the fence closes first. */
+        Future<Envelope> watch(Future<Envelope> sent) {
+            sent.onComplete(settled -> {
+                disarm();
+                if (settled.succeeded()) {
+                    out.tryComplete(settled.result());
+                } else if (fence.getAsBoolean()) {
+                    out.tryFail(settled.cause());
+                } else {
+                    out.tryFail(new FencedException("message " + messageId + ": its send to endpoint '" + endpoint + "' failed while the node's fence was "
+                            + "closed (D-101 (2)); its item is left to whoever runs it next", settled.cause()));
+                }
+            });
+            return out.future();
         }
     }
 

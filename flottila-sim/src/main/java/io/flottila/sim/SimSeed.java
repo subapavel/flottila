@@ -3,7 +3,7 @@ package io.flottila.sim;
 import java.util.SplittableRandom;
 
 /**
- * The seed of one run (D-101). {@link #of} gives each {@link Stream} its own seed, {@code SplitMix64(run ^ salt)}; {@link #tick}
+ * The seed of one run (D-143). {@link #of} gives each {@link Stream} its own seed, {@code SplitMix64(run ^ salt)}; {@link #tick}
  * gives each tick of a stream a generator of its own, independent of what earlier ticks drew.
  *
  * @param run the run seed, printed as {@link #hex()}

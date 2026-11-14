@@ -70,7 +70,7 @@ class ModuleBoundaryViolationTest {
     @Test void cliTouchingAPostgresClientIsStillCaughtByTheClientRule() {
         assertFails(Rules.ONLY_RUNTIME_TOUCHES_STORE_CLIENTS, "CliUsesAPostgresClient");
     }
-    // --- flottila-sim (F-25, D-101): over api, core and testkit only; nothing depends on it
+    // --- flottila-sim (F-36, D-143): over api, core and testkit only; nothing depends on it
     @Test void simDependingOnRuntimeIsCaught() { assertFails(Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT, "SimDependsOnRuntime"); }
     @Test void coreDependingOnSimIsCaught() { assertFails(Rules.NOTHING_DEPENDS_ON_SIM, "CoreDependsOnSim"); }
     @Test void simDependingOnApiCoreTestkitAndItselfIsAllowed() {
@@ -92,4 +92,15 @@ class ModuleBoundaryViolationTest {
         assertFails(Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS, "io.flottila.runtime.MainHelper");
     }
     @Test void runtimeDependingOnTheMockIsCaught() { assertFails(Rules.RUNTIME_NEVER_NAMES_THE_MOCK, "RuntimeDependsOnTheMock"); }
+    // --- F-35 (CORE-5a): io.vertx.core.net.Net* only in the peer link
+    @Test void aRuntimeClassOpeningARawSocketIsCaught() { assertFails(Rules.ONLY_THE_PEER_LINK_OPENS_RAW_TCP, "RuntimeOpensARawSocket"); }
+    @Test void aComponentOpeningARawSocketIsCaught() { assertFails(Rules.ONLY_THE_PEER_LINK_OPENS_RAW_TCP, "ComponentOpensARawSocket"); }
+    @Test void thePeerLinkMayOpenRawSockets() {
+        AssertionError e = assertThrows(AssertionError.class, () -> Rules.ONLY_THE_PEER_LINK_OPENS_RAW_TCP.check(fixtures));
+        assertFalse(e.getMessage().contains("PeerLinkFixture"), () -> "the peer link may use Net*, but the report says:\n" + e.getMessage());
+        JavaClasses peerOnly = new ClassFileImporter()
+                .withImportOption(new ImportOption.OnlyIncludeTests())
+                .importClasses(io.flottila.runtime.journal.peer.PeerLinkFixture.class, io.flottila.runtime.violation.RuntimeFixture.class);
+        assertDoesNotThrow(() -> Rules.ONLY_THE_PEER_LINK_OPENS_RAW_TCP.check(peerOnly), "journal.peer -> NetServer, NetClient, NetSocket; beside a runtime class using none");
+    }
 }

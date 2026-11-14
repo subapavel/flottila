@@ -22,6 +22,7 @@ import io.flottila.schemas.Schemas;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -64,7 +65,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InvoiceSyncReplayIT {
 
     static final Path DEMO = Path.of("../packages/demo");
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
     static Buffer invoice;
@@ -107,7 +108,7 @@ class InvoiceSyncReplayIT {
 
     @BeforeEach
     void open() {
-        pool.query("truncate message_keys, messages, dlq, bodies").execute().await();
+        pool.query("truncate message_keys, messages, dlq, bodies, body_refs, journal_segments").execute().await();
         store = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
         dlq = new PgDlq(pool);
         parking = durableBodies(dlq);
@@ -123,9 +124,10 @@ class InvoiceSyncReplayIT {
     }
 
     /**
-     * Fixture change (P2-07b2, D-096): a DLQ row needs the bodies row its {@code body_key} names. The flow's bodies live in the
-     * FakeRuntime's in-memory store, whose persist writes no Postgres row; this DLQ copies a body the park persisted (D-062:
-     * persist, then the row) into Postgres {@code bodies} — what a node's TieredBlobStore persist writes — then parks in Postgres.
+     * Fixture change (P2-07b2, D-096): a DLQ row needs the ref its {@code body_key} names. The flow's bodies live in the
+     * FakeRuntime's in-memory store, whose persist writes no Postgres row; for a body the park persisted (D-062: persist, then
+     * the row) this DLQ writes what a node's TieredBlobStore persist commits — a {@code body_refs} row and its segment row — then
+     * parks in Postgres. (CORE-4c2: was a {@code bodies} row with the bytes; a park now needs its ref and segment row.)
      */
     Dlq durableBodies(PgDlq pg) {
         return new Dlq() {
@@ -134,8 +136,11 @@ class InvoiceSyncReplayIT {
                 BlobKey k = p.bodyKey();
                 if (!rt.blobs().persisted(k)) return pg.park(p);   // not persisted: no durable row, as on a node
                 return rt.blobs().read(k)
-                        .compose(bytes -> pool.preparedQuery("insert into bodies(message_id, step, part, bytes) values ($1, $2, $3, $4) on conflict do nothing")
-                                .execute(Tuple.of(k.messageId(), k.step(), k.part(), bytes)))
+                        .compose(bytes -> pool.query("insert into journal_segments(node, segment, copies) values ('node-test', 1, array['node-test']) on conflict do nothing")
+                                .execute()
+                                .compose(segment -> pool.preparedQuery("insert into body_refs(message_id, step, part, node, segment, position, length)"
+                                                + " values ($1, $2, $3, 'node-test', 1, 0, $4) on conflict do nothing")
+                                        .execute(Tuple.of(k.messageId(), k.step(), k.part(), (long) bytes.length()))))
                         .compose(inserted -> pg.park(p));
             }
 
@@ -180,7 +185,7 @@ class InvoiceSyncReplayIT {
         List<Snapshot> original = store.timeline(in.id()).await();
         assertEquals(Snapshot.Outcome.FAILED, original.get(5).outcome());
         Replay replay = builder().replay(def, DEMO);
-        Object delivered = run(() -> replay.retry(in.id()));
+        Object delivered = run(() -> replay.replayParked(in.id()));
         assertTrue(delivered instanceof Envelope, String.valueOf(delivered));
         Envelope out = (Envelope) delivered;
         assertNotEquals(in.id(), out.id());

@@ -1,6 +1,6 @@
 package io.flottila.sim;
 
-/** What the workload does in a tick (D-101); explicit codes, append-only. */
+/** What the workload does in a tick (D-143); explicit codes, append-only. */
 public enum Action {
     /** A send to the sync flow: Reply = partner(transform(body)), a retryable Nack exactly when the model's in-flight is the limit. */
     SEND_SYNC(1),

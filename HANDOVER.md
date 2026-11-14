@@ -19,12 +19,12 @@ docker compose ps -a                                    # every service healthy,
 curl localhost:8081/health
 curl -H "Authorization: Bearer $FLOTTILA_ADMIN_TOKEN" localhost:8081/admin/packages      # demo 0.1.0
 docker compose --profile history up -d clickhouse      # optional, nothing feeds it yet
-docker compose --profile history down -v               # stop, remove every volume
+docker compose --profile history --profile kafka down -v   # stop, remove every volume
 ```
 
-Services: `flottila` (the node), `postgres`, `kafka` (KRaft, not wired), `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
+Services: `flottila` (the node), `postgres`, `valkey`, `s3` (SeaweedFS), `sftp` + `sftp-keys`,
 `echo` (the partner), `netns` (holds the published ports and the network namespace that the node and the echo share; FIX-105),
-`deploy` (one-shot `flottila deploy` of `packages/demo`). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
+`deploy` (one-shot `flottila deploy` of `packages/demo`); `kafka` is the optional add-on under `--profile kafka` (CORE-9). Ports: 8080 sync door, 8082 async door, 8081 admin, all bound to
 127.0.0.1. The repo-root `docker-compose.yml` is the quickstart variant (`docs/QUICKSTART.md`). More detail:
 `deploy/compose/README.md`.
 
@@ -49,8 +49,9 @@ curl -H "$A" localhost:8081/admin/messages/<id>/steps/3/body                # th
 # Replay and DLQ
 curl -X POST -H "$A" 'localhost:8081/admin/messages/<id>/replay?from=3'     # a new message, replayOf=<id>
 docker compose stop echo; curl -X POST -H 'Content-Type: application/xml' --data-binary @$INV localhost:8082/invoice/async
-curl -H "$A" localhost:8081/admin/dlq                                       # the row appears (1.1 s on the gate run), step 5 `partner`
-docker compose start echo; curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/retry
+curl -H "$A" localhost:8081/admin/dlq                                       # the row appears (gate run: 1.1 s, step 5 `partner`; since CORE-14a after one scheduled retry, at step 1)
+docker compose start echo; curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/retry    # 202, the same id once more (D-136)
+curl -X POST -H "$A" localhost:8081/admin/dlq/<dlq-id>/replay                           # instead of the line above: a new copy, new id, replayOf
 # Kill test (check 5): drop files, then `docker kill -s KILL compose-flottila-1` and `docker compose up -d`
 ```
 
@@ -104,7 +105,7 @@ D-055 – D-063 (worker lease and attempts, stop/cancel, admin API, durable bodi
 durable DLQ bodies, redeploy), D-066, D-067 (durable step bodies, admin write routes), D-070 (deployment record and archive
 store), D-074 – D-076 (WorkQueue fencing, Postgres WorkQueue, sftp consumer), D-078 – D-084 (package folders, CLI, test runner,
 `secret://` from env, one-transaction ACK, poller leases, ingress dedupe), D-085 (gate compose stack), D-086 – D-088 (demo package and sftp options, package dependencies, retention), D-089
-(off-node package dependencies: `flottila lock`, `--deps`), D-090 (the compose network-namespace holder). D-077 (Temurin base images: the JDK is GPLv2 with the Classpath Exception, used as the runtime and not linked) is a
+(off-node package dependencies: `flottila lock`, `--deps`), D-090 (the compose network-namespace holder), D-134 (Kafka under compose profile `kafka`, off by default), D-135 (scheduled retries, then park), D-136 (`/retry` keeps the id, `/replay` a new copy), D-139 (the journal's peer link between nodes: keys, wire format, key rotation; F-35). D-077 (Temurin base images: the JDK is GPLv2 with the Classpath Exception, used as the runtime and not linked) is a
 licence point for the owner. Also left for the owner: D-064/65B/67A/72/73 and the CONSIDER-1..3, 5..8 rows in agent/BACKLOG.md.
 
 ## 7. Open issues

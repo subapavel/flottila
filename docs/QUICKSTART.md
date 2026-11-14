@@ -18,6 +18,11 @@ The node migrates the database itself (Flyway) and serves `/health` on `localhos
 the host's loopback, port 5432; if that port is taken, prefix the `up` with `FLOTTILA_PG_HOST_PORT=55432`. Without a token
 the node exits with "the admin API on 0.0.0.0 is not loopback-only: it needs a token" (`docker compose logs flottila`).
 
+**Upgrading from an earlier checkout:** Postgres runs `postgres:18.6` (D-129), whose volume is mounted at `/var/lib/postgresql`.
+A database volume made by the earlier `postgres:16` cannot be reused: the 18 image refuses to start on it ("there appears to be
+PostgreSQL data in: /var/lib/postgresql", `docker compose logs postgres`). Run `docker compose down -v` once before the `up`;
+it deletes this dev stack's database and the node's archives, so the demo is deployed again afterwards.
+
 The `echo` service is the demo's partner: `deploy/quickstart/PartnerEcho.java` in the network namespace the `netns` service holds for the node (it publishes the ports), on
 `localhost:8090`; it answers every path with the body it was sent.
 
@@ -77,5 +82,5 @@ docker compose down -v          # also remove the volumes: the next start is emp
 
 After a rebuild of the jar, `docker compose up -d --build --force-recreate` replaces all containers (`netns` holds the namespace, so the node and the echo restart independently); the node restores the deployed demo from its volume.
 
-The fuller gate stack (Postgres, Valkey, SeaweedFS S3, Kafka, SFTP, the node, the echo and an automatic deploy of the demo) is in
-[`deploy/compose/`](../deploy/compose/README.md).
+The fuller gate stack (Postgres, Valkey, SeaweedFS S3, SFTP, the node, the echo and an automatic deploy of the demo) is in
+[`deploy/compose/`](../deploy/compose/README.md); Kafka, an optional add-on, starts only with `--profile kafka`.

@@ -15,9 +15,12 @@ import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.runtime.pg.PoolRefusedException;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Future;
+import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.ConnectionPoolTooBusyException;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
@@ -64,6 +67,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -82,7 +86,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  *
  * <p>One log at the SPI and timer boundary orders it all ({@link #log}): the {@link Doors} events ({@code consumer|start|stop
  * <flow>}, {@code stopped <flow>} when a stop() future completed, {@code close <endpoint> #<n>} at a producer close) and the
- * {@link TracingTimer}'s {@code schedule|cancel <delay>} — a worker's start schedules its poll tick ({@link #TICK}), its stop
+ * {@link TracingTimer}'s {@code schedule|cancel <delay>} — a worker's start schedules its poll tick ({@link #firstTick}), its stop
  * cancels it. The {@link CountingQueue} records the items each claim handed out and every {@code hasItems} call with the rows
  * of that flow at the call. Everything runs in memory on a fake clock: nothing waits on wall time.
  *
@@ -95,8 +99,30 @@ class DeploymentsRedeployTest {
 
     static final String NODE = "node-1";
     static final Duration STOP_DEADLINE = Duration.ofSeconds(37);
-    static final Duration TICK = WorkerPolicy.DEFAULT.pollInterval();
+    /**
+     * P2-16b (D-121 (b) B5): a worker's reconciliation period, {@code WorkerPolicy.DEFAULT}'s PT30S. A worker's start schedules
+     * its first tick {@link #firstTick} after it — the period plus the flow's offset — and each tick schedules the next one
+     * period later.
+     */
+    static final Duration TICK = Duration.ofSeconds(30);
     static final Duration LEASE = WorkerPolicy.DEFAULT.lease();
+    static final Duration SECOND = Duration.ofSeconds(1);
+
+    /**
+     * B5, worked by hand for each fixture flow with a worker: the first reconciliation is due P + floorMod(flow.hashCode(), P in
+     * ms) after the worker's start, P = 30 000 ms. The delay thereby names the flow, and a worker's first tick is told from the
+     * node's stop deadline ({@link #STOP_DEADLINE}, PT37S) and from a lease (PT30S).
+     */
+    static Duration firstTick(String flow) {
+        return switch (flow) {
+            case "shop/audit" -> Duration.parse("PT40.258S");   // "shop/audit".hashCode() = 2112400258, floorMod 30 000 = 10 258 ms
+            case "shop/a" -> Duration.parse("PT57.240S");       // "shop/a".hashCode() = -903152760, floorMod 30 000 = 27 240 ms
+            default -> throw new IllegalArgumentException("no first tick worked out for " + flow);
+        };
+    }
+
+    /** The first-tick delays of every fixture flow with a worker: a worker's start schedules one of these, nothing else does. */
+    static final Set<Duration> FIRST_TICKS = Set.of(firstTick("shop/audit"), firstTick("shop/a"));
     static final String XSL = "<xsl:stylesheet xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\" version=\"3.0\">";
 
     @TempDir Path tmp;
@@ -434,7 +460,7 @@ class DeploymentsRedeployTest {
         assertEquals(new Ack.Accepted(alo.id()), within(alo.answer(), "v1's at-least-once answer"), "v1's at-least-once flow still accepts");
         assertTrue(v1Producers.contains(producerOf(alo)), "and its v1 worker sends it on");
         int claims = queue.claims().size();
-        rt.clock().advance(TICK);
+        rt.clock().advance(firstTick("shop/audit"));   // B5: v1 audit's first tick is due its offset past a period after its start
         assertTrue(queue.claims().size() > claims, "v1's worker still polls on its tick: " + queue.claims());
     }
 
@@ -467,14 +493,16 @@ class DeploymentsRedeployTest {
         int firstStop = Math.min(at(l, "stop shop/orders"), at(l, "stop shop/audit"));
         assertTrue(at(l, "consumer shop/orders") < firstStop && at(l, "consumer shop/audit") < firstStop,
                 "v2's consumers are built before anything stops: " + l);
-        assertEquals(1, count(l, "cancel " + TICK), "one poll tick cancelled, v1 audit's worker's: " + l);
-        inOrder(l, "cancel " + TICK, "stop shop/audit");
+        // B5: neither worker reached its first tick (the clock stands still), so each tick is the one due at audit's first tick
+        Duration auditTick = firstTick("shop/audit");
+        assertEquals(1, count(l, "cancel " + auditTick), "one poll tick cancelled, v1 audit's worker's: " + l);
+        inOrder(l, "cancel " + auditTick, "stop shop/audit");
         inOrder(l, "stopped shop/orders", closeOrders);
         int lastOfA = Collections.max(List.of(at(l, "stopped shop/orders"), at(l, "stopped shop/audit"), at(l, closeOrders)));
         int firstOfB = Math.min(at(l, "start shop/orders"), at(l, "start shop/audit"));
         assertTrue(lastOfA < firstOfB, "phase B starts only after every stop of phase A settled, the delivery's producer close included: " + l);
-        assertEquals(1, count(l, "schedule " + TICK), "one poll tick scheduled, v2 audit's worker's: " + l);
-        inOrder(l, "start shop/audit", "schedule " + TICK);
+        assertEquals(1, count(l, "schedule " + auditTick), "one poll tick scheduled, v2 audit's worker's: " + l);
+        inOrder(l, "start shop/audit", "schedule " + auditTick);
         List<String> consumers = consumerEvents(l);
         assertEquals(Set.of("consumer shop/orders", "consumer shop/audit", "stop shop/orders", "stop shop/audit", "start shop/orders", "start shop/audit"),
                 Set.copyOf(consumers), "the two changed flows are rebuilt, stopped and started; ping is not touched: " + l);
@@ -819,7 +847,8 @@ class DeploymentsRedeployTest {
         Ack gone = within(send(auditDoor).answer(), "an answer through the removed audit's consumer");
         assertTrue(gone instanceof Ack.Nack n && n.retryable(), "the removed flow's delivery is stopped: " + gone);
         long polls = queue.claims().stream().filter((NODE + " shop/audit")::equals).count();
-        for (int i = 0; i < 3; i++) rt.clock().advance(TICK);
+        rt.clock().advance(firstTick("shop/audit"));   // three ticks of the removed worker had it run on (B5): its first, then two periods
+        for (int i = 0; i < 2; i++) rt.clock().advance(TICK);
         assertEquals(polls, queue.claims().stream().filter((NODE + " shop/audit")::equals).count(), "the removed worker no longer polls: " + queue.claims());
 
         until(() -> hasItemsCalls("shop/audit").size() == 2, "the removed at-least-once flow is checked before the swap and again once its worker drained: "
@@ -952,6 +981,126 @@ class DeploymentsRedeployTest {
         assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
         assertFalse(audit.stopped());
         assertEquals(flowsBefore, deployments.flows());
+    }
+
+    /**
+     * FIX-172c: v2 removes the at-least-once {@code audit}, and the work queue's question about it is refused by the node's Postgres
+     * pool — its wait elapsed (exactly VertxException), its queue full, a transaction's acquire refused: the deploy is
+     * {@link Kind#BUSY} (503), retryable, its error naming the flow and the cause, no problem lines, and nothing changes: nothing
+     * stops or starts, the flows, the package record and shop's directory as they were. A VertxException subclass is no pool
+     * refusal: the node's IOException, as before. Witness: the queue answering, the same archive deploys and removes audit.
+     */
+    @Test
+    void aQueueQuestionThePoolRefusedIsBusyAndChangesNothing() throws Exception {
+        deploy(shop());
+        Doors.Door audit = doors.door("shop/audit");
+        List<DeployedFlow> flowsBefore = deployments.flows();
+        List<DeployedPackage> packagesBefore = deployments.packages();
+        Path shopDir = data.resolve("packages").resolve("shop");
+        List<String> dirsBefore = children(shopDir);
+        Path archive = removed(shop(), "audit").without("endpoints/archive.yaml").zipTo(archives);
+        Map<String, Throwable> refusals = new LinkedHashMap<>();
+        refusals.put("the wait elapsed", new VertxException("Timeout waiting for connection", true));
+        refusals.put("the queue full", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        refusals.put("the acquire refused", new PoolRefusedException(new VertxException("Timeout", true)));
+        int mark = mark();
+        for (Map.Entry<String, Throwable> r : refusals.entrySet()) {
+            int asked = hasItemsCalls("shop/audit").size();
+            queue.failHasItems(r.getValue());
+            DeployRefusedException refused = refused("shop", archive);
+            assertEquals(Kind.BUSY, refused.kind(), r.getKey() + ": " + refused.error() + " " + refused.problems());
+            assertTrue(hasItemsCalls("shop/audit").size() > asked, r.getKey() + ": witness, the queue was asked about audit: " + queue.hasItemsCalls());
+            assertTrue(refused.error().contains(r.getValue().getMessage()) && refused.error().contains("shop/audit"),
+                    r.getKey() + ": the refusal names the flow and the cause: " + refused.error());
+            assertEquals(List.of(), refused.problems(), r.getKey() + ": no problem lines");
+        }
+        VertxException closed = new VertxException("connection closed by the server") { };
+        queue.failHasItems(closed);
+        IOException failed = assertThrows(IOException.class, () -> deploy("shop", Optional.empty(), archive),
+                "a VertxException subclass is no pool refusal: the node's failure, as before");
+        assertSame(closed, failed.getCause(), "the IOException carries the queue's failure: " + failed);
+
+        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
+        assertFalse(audit.stopped(), "audit's consumer is not stopped: " + audit.history());
+        assertEquals(flowsBefore, deployments.flows(), "the flows are v1's");
+        assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
+        assertEquals(dirsBefore, children(shopDir), "shop's directory holds v1's only");
+        assertEquals(List.of(), children(deployments.incomingDir()), "no unpack is left behind");
+
+        queue.failHasItems(null);
+        assertResult(List.of(), List.of(), List.of("shop/audit"), deploy("shop", Optional.empty(), archive));
+    }
+
+    /**
+     * FIX-172c: v2 removes the at-least-once {@code audit} and is invalid besides (an endpoint its schema refuses), and the pool
+     * refuses the queue's question about audit: the package's problems come first, its 422, not the BUSY of the question (503).
+     * Witness: the queue was asked.
+     */
+    @Test
+    void aQueueQuestionThePoolRefusedOnAnInvalidPackageIs422() throws Exception {
+        deploy(shop());
+        PackageDraft v2 = removed(shop(), "audit").without("endpoints/archive.yaml");
+        v2.endpoint("spare", "sideways", new JsonObject());
+        Path archive = v2.zipTo(archives);
+        DeployRefusedException answering = refused("shop", archive);
+        assertEquals(Kind.INVALID, answering.kind(), "fixture: " + answering.error() + " " + answering.problems());
+        int asked = hasItemsCalls("shop/audit").size();
+        queue.failHasItems(new PoolRefusedException(new VertxException("Timeout", true)));
+
+        DeployRefusedException refused = refused("shop", archive);
+
+        assertEquals(Kind.INVALID, refused.kind(), "the package's problems before the pool's refusal: " + refused.error() + " " + refused.problems());
+        assertEquals(answering.problems(), refused.problems(), "the 422 lists the package's problems");
+        assertTrue(hasItemsCalls("shop/audit").size() > asked, "witness, the queue was asked about audit: " + queue.hasItemsCalls());
+    }
+
+    /**
+     * FIX-173: v1 runs two at-least-once flows, {@code audit} and {@code relay}; v2 removes both, so the work queue is asked about
+     * each. One question fails for real (the queue is down), the other is refused by the node's Postgres pool: in either assignment
+     * — so in either flow order — the deploy is the node's IOException naming the flow whose question really failed and carrying
+     * its cause, never {@link Kind#BUSY}; only when both are pool refusals is it BUSY (503). Nothing stops or starts. Witness: the
+     * queue answering, the same archive removes both.
+     */
+    @Test
+    void aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder() throws Exception {
+        PackageDraft v1 = shop().endpoint("relay-in", "in", new JsonObject().put("path", "/relay")).flow("relay", "1.0.0", "at-least-once", "relay-in", 1024, to("archive"));
+        deploy(v1);
+        Doors.Door audit = doors.door("shop/audit");
+        Doors.Door relay = doors.door("shop/relay");
+        List<DeployedFlow> flowsBefore = deployments.flows();
+        List<DeployedPackage> packagesBefore = deployments.packages();
+        PackageDraft v2 = removed(shop(), "audit"); // shop() never had relay: v2 drops it with its relay-in
+        Path archive = v2.without("endpoints/archive.yaml").zipTo(archives);
+        int mark = mark();
+        for (List<String> order : List.of(List.of("shop/audit", "shop/relay"), List.of("shop/relay", "shop/audit"))) {
+            String really = order.get(0);
+            String pooled = order.get(1);
+            IllegalStateException down = new IllegalStateException("the work queue is down for " + really);
+            queue.failHasItems(really, down);
+            queue.failHasItems(pooled, new PoolRefusedException(new VertxException("Timeout", true)));
+
+            IOException failed = assertThrows(IOException.class, () -> deploy("shop", Optional.empty(), archive),
+                    really + " fails, " + pooled + " is refused by the pool: the node's failure, whatever the flow order");
+
+            assertSame(down, failed.getCause(), "the IOException carries the real failure, not the pool's refusal: " + failed);
+            assertTrue(failed.getMessage().contains("'" + really + "'") && failed.getMessage().contains(down.getMessage()),
+                    "it names the flow whose question really failed and the cause: " + failed.getMessage());
+        }
+        queue.failHasItems("shop/audit", new PoolRefusedException(new VertxException("Timeout", true)));
+        queue.failHasItems("shop/relay", new ConnectionPoolTooBusyException("Connection pool reached max wait queue size of 1"));
+        DeployRefusedException busy = refused("shop", archive);
+        assertEquals(Kind.BUSY, busy.kind(), "every question refused by the pool: retryable, " + busy.error() + " " + busy.problems());
+        assertEquals(List.of(), busy.problems(), "no problem lines");
+
+        assertEquals(List.of(), since(mark).stream().filter(e -> e.startsWith("stop ") || e.startsWith("start ")).toList(), "nothing stops or starts: " + since(mark));
+        assertFalse(audit.stopped(), "audit's consumer is not stopped: " + audit.history());
+        assertFalse(relay.stopped(), "relay's consumer is not stopped: " + relay.history());
+        assertEquals(flowsBefore, deployments.flows(), "the flows are v1's");
+        assertEquals(packagesBefore, deployments.packages(), "the package record is v1's");
+
+        queue.failHasItems("shop/audit", null);
+        queue.failHasItems("shop/relay", null);
+        assertResult(List.of(), List.of(), List.of("shop/audit", "shop/relay"), deploy("shop", Optional.empty(), archive));
     }
 
     /**
@@ -1217,8 +1366,15 @@ class DeploymentsRedeployTest {
         assertResult(List.of(), List.of("shop/audit"), List.of(), r);
         assertEquals(0, heldBy.closes(), "v1's worker producer is not closed while A runs on it: " + doors.producers());
         int renews = queue.renews();
-        for (long s = 0; s < LEASE.toSeconds() + 10; s++) rt.clock().advance(TICK);
+        until(queue::claimsSettled, "no claim in flight on another thread: " + queue.claims());
+        long polls = queue.claims().stream().filter((NODE + " shop/audit")::equals).count();
+        // a second at a time (each renewal on its own step), past A's lease and past v2's first two ticks (B5: its first, then a period)
+        Duration walk = firstTick("shop/audit").plus(TICK);
+        for (long s = 0; s <= walk.toSeconds(); s++) rt.clock().advance(SECOND);
+        assertTrue(walk.compareTo(LEASE) > 0, "fixture: the walk outlasts A's lease");
         assertTrue(queue.renews() >= renews + 3, "A's lease was renewed while it ran: " + queue.renews());
+        until(() -> queue.claims().stream().filter((NODE + " shop/audit")::equals).count() >= polls + 2 && queue.claimsSettled(),
+                "v2's worker polled on its ticks meanwhile: " + queue.claims());
         assertEquals(1, Collections.frequency(queue.claimedIds(), a.id()), "A was claimed once: v2's worker polled and never took it: " + queue.claimedIds());
         assertEquals(0, heldBy.closes());
         assertEquals(0, dlq.size(), "A is not parked");
@@ -1235,7 +1391,8 @@ class DeploymentsRedeployTest {
 
     /**
      * v1 audit runs one item at most: A runs held at the partner, B waits in the queue. v2 sends audit to another endpoint. On
-     * v2's first tick its worker claims B and sends it to v2's endpoint; A finishes on v1's.
+     * its start v2's worker claims B and sends it to v2's endpoint; A finishes on v1's. B5: no tick is needed, and none is
+     * reached — v2's first tick is 30 s and audit's offset away, past A's lease, which the clock never jumps.
      */
     @Test
     void queuedItemsRunOnV2() throws Exception {
@@ -1253,7 +1410,6 @@ class DeploymentsRedeployTest {
         v2.flowDoc("audit").put("steps", to("archive-v2")).getJsonObject("limits").put("maxInFlight", 1);
 
         assertResult(List.of(), List.of("shop/audit"), List.of(), deploy(v2));
-        rt.clock().advance(TICK);
 
         doors.partner().awaitSent(2);
         assertEquals(List.of(b.id()), ids(doors.partner().sentTo("archive-v2")), "B ran on v2: sent to v2's endpoint");

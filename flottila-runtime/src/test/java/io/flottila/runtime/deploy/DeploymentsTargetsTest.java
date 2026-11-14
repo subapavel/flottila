@@ -98,8 +98,11 @@ class DeploymentsTargetsTest {
             e.put("FLOTTILA_DATA_DIR", tmp.resolve(id).toString());
             e.put("FLOTTILA_STOP_DEADLINE", "PT37S");
             Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), Map.of(Doors.SCHEME, doors));
+            // P2-16a (D-121 A6): no accept poll any more; the intake hands off to, or wakes, the node's workers
+            io.flottila.core.flow.Workers workers = new io.flottila.core.flow.Workers();
             deployments = new Deployments(NodeConfig.from(e), runtime, Map.of(Doors.SCHEME, doors), rt.clock(), rt.timer(), List.of(), List.of(),
-                    messages, dlq, queue, () -> 0L, rows, archives, new SequentialIntake(messages, queue), new InMemoryPollerLeases(rt.clock()), targets);
+                    messages, dlq, queue, () -> 0L, rows, archives, new SequentialIntake(messages, queue, workers, id), new InMemoryPollerLeases(rt.clock()),
+                    targets, () -> true, workers);
             peers.add(this);
         }
 
@@ -122,7 +125,7 @@ class DeploymentsTargetsTest {
     }
 
     Peer node(String id) {
-        return new Peer(id, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve(id + "-archives"), 64L << 20));
+        return new Peer(id, new InMemoryDeploymentStore(), new DirArchiveStore(tmp.resolve(id + "-archives")));
     }
 
     Envelope envelope(String flow) {
@@ -200,7 +203,9 @@ class DeploymentsTargetsTest {
         assertNotSame(v1, v2, "fixture: the redeploy swapped a/audit");
         Envelope second = envelope("a/audit");
         assertEquals(new Ack.Accepted(second.id()), within(v2.deliver(second), "B's accept"));
-        rt.clock().advance(DeploymentsRedeployTest.TICK);   // v2's worker claims B on its tick, if not at once
+        // B's save wakes v2's worker (D-121 A6), which claims it at once: its first tick (B5: 30 s past its start and a/audit's
+        // offset, 17 789 ms) is past B's lease and is never reached here
+        until(() -> queue.claimedIds().contains(second.id()), "v2's worker claims B at once: " + queue.claimedIds());
 
         until(() -> n.partner().waiting() == 1, "v2's send of B waits for the permit v1's send of A holds: " + n.targets.gauges() + ", claimed " + queue.claimedIds());
         assertEquals(List.of(first.id()), n.doors.partner().sent().stream().map(Envelope::id).toList(), "the partner has A only while B waits");

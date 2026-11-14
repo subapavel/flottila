@@ -53,7 +53,8 @@ class LedgerMainPartsTest {
     void bothNodesShareTheArchiveDirectoryWithoutS3OptionsAndUseThePathStyleS3StoreWithThem() {
         LedgerMain.Options dir = LedgerMain.options(new String[] {"--db", "x_bench", "--host", "db.local", "--port", "6543", "--user", "u", "--password", "p"});
         assertEquals(Map.of(), dir.s3(), "no --s3-* option: the dir store");
-        Map<String, String> env = LedgerMain.nodeEnv(dir, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/archives"), 0);
+        Map<String, String> env = new java.util.HashMap<>(LedgerMain.nodeEnv(dir, "ledger-node-2", Path.of("/data/n2"), Path.of("/data/archives"), 0));
+        env.put("FLOTTILA_PG_SSL_MODE", "disable");   // FIX-146: a remote host (db.local) defaults to verify-full, refused without a CA
         NodeConfig node = NodeConfig.from(env);
         assertEquals(NodeConfig.Archives.Store.DIR, node.archives().store());
         assertEquals(Path.of("/data/archives"), node.archives().dir(), "the archive directory both nodes are given, not one under a data directory");
@@ -61,7 +62,7 @@ class LedgerMainPartsTest {
         assertEquals("ledger-node-2", node.nodeId());
         assertEquals(0, node.admin().port());
         assertFalse(node.deployed(), "env dev: the run's nodes are not deployed ones");
-        assertEquals(new NodeConfig.Pg("db.local", 6543, "x_bench", "u", "p", 16), node.pg());
+        assertEquals(new NodeConfig.Pg("db.local", 6543, "x_bench", "u", "p", 21), node.pg(), "the FLOTTILA_PG_POOL_SIZE default, 5 intake + 16 work (F-33)");
 
         LedgerMain.Options s3 = LedgerMain.options(new String[] {"--db", "x_bench", "--s3-endpoint", "http://127.0.0.1:4566", "--s3-region", "eu-west-1",
                 "--s3-bucket", "b", "--s3-prefix", "pre", "--s3-access-key", "ak", "--s3-secret-key", "sk"});

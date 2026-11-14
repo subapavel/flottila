@@ -10,7 +10,7 @@ final class Pins {
     /** {@code value}; a failed test naming {@code what} while it is still the null placeholder. */
     static <T> T pinned(T value, String what) {
         if (value == null) {
-            fail("PLACEHOLDER " + what + ": not pinned yet; the implementer fills it in at landing (P2-10a, D-101, bench/RESULTS.md §P2-10)");
+            fail("PLACEHOLDER " + what + ": not pinned yet; the implementer fills it in at landing (P2-10a, D-143, bench/RESULTS.md §P2-10)");
         }
         return value;
     }

@@ -4,7 +4,7 @@
 # the node's data directory (its deployment archives) live in named volumes: `docker compose down -v` removes both together.
 services:
   postgres:
-    image: postgres:16
+    image: postgres:18.6
     container_name: flottila-postgres
     environment:
       POSTGRES_DB: flottila
@@ -13,7 +13,8 @@ services:
     ports:
       - "127.0.0.1:${FLOTTILA_PG_HOST_PORT:-5432}:5432"
     volumes:
-      - flottila-pg:/var/lib/postgresql/data
+      # the 18 image keeps PGDATA at /var/lib/postgresql/18/docker and refuses a mount at .../data; a 16/17 volume is not reused
+      - flottila-pg:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flottila -d flottila"]
       interval: 2s
@@ -46,8 +47,14 @@ services:
     environment:
       FLOTTILA_ENV: dev
       FLOTTILA_NODE_ID: quickstart
+      # the body journal's master key, generated once into <data dir>/journal/MASTER beside the data it protects: a dev stack of
+      # one node only; the node logs a WARNING about it at every start (D-106). Any other node takes FLOTTILA_JOURNAL_KEY_FILE
+      FLOTTILA_JOURNAL_KEY_GENERATE: "true"
       FLOTTILA_PG_HOST: postgres
       FLOTTILA_PG_PASSWORD: flottila
+      # the stack's own network reaches Postgres as 'postgres', which defaults to verify-full: this dev stack's Postgres serves no
+      # TLS, so its plaintext link is written down here (D-124); a deployed node sets verify-full and FLOTTILA_PG_SSL_ROOT_CERT
+      FLOTTILA_PG_SSL_MODE: disable
       FLOTTILA_ADMIN_HOST: 0.0.0.0
       # an admin API off loopback needs a token: the node refuses to start without one (export it, docs/QUICKSTART.md)
       FLOTTILA_ADMIN_TOKEN: ${FLOTTILA_ADMIN_TOKEN:-}

@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * D-101 self-test: the correct world passes every per-push seed with each check above its floor, and each broken variant —
+ * D-143 self-test: the correct world passes every per-push seed with each check above its floor, and each broken variant —
  * built from public seams only — fails its exact set of checks on some per-push seed.
  */
 class SimSelfTest {

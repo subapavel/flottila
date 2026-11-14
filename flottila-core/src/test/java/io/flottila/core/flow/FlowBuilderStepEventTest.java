@@ -307,7 +307,7 @@ class FlowBuilderStepEventTest {
         Delivery sync = b.delivery(flow(syncId, "sync", List.of(step("mark", "a"), step("mark", "b"))), NO_FILES);
         FlowDefinition atLeastOnce = flow(queuedId, "at-least-once", List.of(step("mark", "a"), step("mark", "b")));
         Delivery accepting = b.delivery(atLeastOnce, NO_FILES);
-        FlowWorker worker = b.worker(atLeastOnce, NO_FILES, "w1", new WorkerPolicy(Duration.ofSeconds(30), 3, Duration.ofSeconds(1)));
+        FlowWorker worker = b.worker(atLeastOnce, NO_FILES, "w1", new WorkerPolicy(Duration.ofSeconds(30), Duration.ofSeconds(1)));
         AtomicReference<Ran> synced = new AtomicReference<>();
         List<RecordedEvent> all;
         try {
@@ -355,7 +355,7 @@ class FlowBuilderStepEventTest {
         Delivery sync = b.delivery(flow(syncId, "sync", List.of(step("mark", "a"), step("mark", "b"))), NO_FILES);
         FlowDefinition atLeastOnce = flow(queuedId, "at-least-once", List.of(step("mark", "a"), step("mark", "b")));
         Delivery accepting = b.delivery(atLeastOnce, NO_FILES);
-        FlowWorker worker = b.worker(atLeastOnce, NO_FILES, "w1", new WorkerPolicy(Duration.ofSeconds(30), 3, Duration.ofSeconds(1)));
+        FlowWorker worker = b.worker(atLeastOnce, NO_FILES, "w1", new WorkerPolicy(Duration.ofSeconds(30), Duration.ofSeconds(1)));
         Pipeline witness = new FlowBuilder(rt.runtime(), List.of(MARK), List.of(), Map.of()).stepEvents(true)
                 .build(flow(witnessId, "sync", List.of(step("mark", "a"))), NO_FILES);
         Envelope in = ingress(plainId);

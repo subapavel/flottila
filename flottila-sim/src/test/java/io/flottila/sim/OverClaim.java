@@ -33,6 +33,10 @@ final class OverClaim implements World {
                 return sim.completeAndTakeNext(seq, attempts, workerId, lease);
             }
             @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return sim.renew(seq, attempts, lease); }
+            @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return sim.defer(seq, attempts, delay); }
+            @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+                return sim.restart(messageId, flow, partitionKey, attempt);
+            }
             @Override public Future<Boolean> hold(long seq, int attempts) { return sim.hold(seq, attempts); }
             @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return sim.held(after, limit); }
             @Override public Future<Boolean> release(long seq) { return sim.release(seq); }

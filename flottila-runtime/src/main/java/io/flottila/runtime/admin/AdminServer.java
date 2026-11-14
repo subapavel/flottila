@@ -1,6 +1,8 @@
 package io.flottila.runtime.admin;
 
+import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
+import io.flottila.api.BodyLostException;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
@@ -10,9 +12,12 @@ import io.flottila.core.admission.TargetLimit;
 import io.flottila.core.dlq.Dlq;
 import io.flottila.core.dlq.Parked;
 import io.flottila.core.dlq.ParkedException;
+import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.Replay;
 import io.flottila.core.flow.ReplayRefusedException;
 import io.flottila.core.flow.RowNotRemovedException;
+import io.flottila.core.flow.WorkSignals;
+import io.flottila.core.flow.Workers;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Page;
@@ -24,6 +29,7 @@ import io.flottila.runtime.deploy.DeployedFlow;
 import io.flottila.runtime.deploy.DeployedPackage;
 import io.flottila.runtime.deploy.Deployments;
 import io.flottila.runtime.deploy.UndeployResult;
+import io.flottila.runtime.pg.PgTx;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
@@ -57,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,18 +73,28 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 /**
- * The admin read API (D-057 a, GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step, the
- * payload after step n, key search and the DLQ a page at a time ({@code {items, next|null}}), and {@code /health}.
+ * The admin read API (D-057 a, GATE check 6) over the stores: a message's timeline with wall and CPU nanos per step (the rows of
+ * every attempt by attempt, then step, each naming its {@code attempt}, FIX-175), the payload after step n (the latest attempt's,
+ * or {@code ?attempt=k}'s), key search and the DLQ a page at a time ({@code {items, next|null}}), {@code /health}, and the probes
+ * {@code /live} and {@code /ready} (D-123).
  *
  * <p>A verticle owns the socket and routes on its event loop; every route body runs on a fresh virtual thread — it awaits
  * the stores, encodes the answer and checks its headers there — and the answer is written back on the verticle's context.
  * {@code /admin/**} needs {@code Authorization: Bearer <token>} when a token is configured (the scheme in any case, the
  * token compared with {@link MessageDigest#isEqual}); without one it is open, which only a loopback bind allows.
- * {@code /health} is open and shows status only, never a check's detail. Every error body is {@code {error}}: 400 for a
+ * {@code /health} is open and shows status only, never a check's detail. {@code /live} and {@code /ready} are open too:
+ * {@code /live} answers 200 {@code {"status":"UP"}} while the server runs and reads nothing; {@code /ready} reads its
+ * {@link Readiness} inputs on the request, awaits nothing, and answers 200 {@code {"status":"UP","checks":{..}}} when every
+ * one is UP, else 503 {@code {"status":"DOWN","checks":{..}}}. Every error body is {@code {error}}: 400 for a
  * parameter that does not parse or a limit or cursor a page store refuses, 401 without the token, 404 for what is not
  * there (a message, a step, a body recorded as metadata only, bytes no longer stored), 405 for a method a route does not
- * take, 500 for anything else — a store that failed, a recorded header no response may carry, a stored body whose stream
- * fails before the head is out (after it, the response is reset).
+ * take, 503 for a request the node's Postgres pool refused a connection (its wait elapsed, its wait queue full, or the
+ * pool closed by a stopping node; D-132, D-133: retryable), whether a statement on the pool was refused or a transaction's
+ * acquire ({@link io.flottila.runtime.pg.PoolRefusedException}): the reads, the work queue's discard, the same-id DLQ
+ * {@code /retry}'s read and restart, a message replay's and a DLQ replay's run with a fixed text as {@code error}, a deploy's
+ * work-queue question or record write and an undeploy's work-queue question or record delete with the refusal's own line (below), except a DLQ replay that ran and whose row the pool refused to
+ * remove (500 naming the new message, below); 500 for anything else: a store that failed, a recorded header no response may
+ * carry, a stored body whose stream fails before the head is out (after it, the response is reset).
  *
  * <p>With a {@link Deployments} (D-059, D-060 b) it also deploys: {@code PUT /admin/packages/{name}?revision=} — a Content-Length
  * above {@code maxPackageBytes} is 413 before a byte of the body is read; otherwise {@code Expect: 100-continue} is answered with
@@ -86,7 +103,10 @@ import java.util.function.Supplier;
  * file is deleted before the answer goes out, whatever it is: 200 {@code {package, version, revision|null, archive, flows, added,
  * swapped, removed}} (the last three sorted qualified flow ids: a redeploy swaps only the flows that changed, D-063), or a refusal
  * by its kind — 400, 403, 409 (another deploy runs on the node), 422 {@code {error, problems}}, 500 ({@code {error}}; a redeploy
- * whose start failed and rolled back: {@code {error, problems}}, D-063), 503. An answer given before
+ * whose start failed and rolled back: {@code {error, problems}}, D-063), 503 (the node stops; or the node's Postgres pool refused
+ * the deploy record's write, D-133: the same body as the 500 of a record not written, or its work-queue question: {@code {error}}
+ * naming the flow and the pool's refusal, FIX-172c; only when every failed question was the pool's — a real failure of another
+ * flow's question is 500, FIX-173). An answer given before
  * the request's body was read to its end closes the connection once written: the rest is never read. {@code GET /admin/flows} and
  * {@code GET /admin/packages} list what runs, sorted, not paged; a flow shows its effective {@code hash} and its {@code state}
  * (D-063), a package its {@code state} and its {@code problems} (D-070: FAILED when the restore could not install it, with no
@@ -95,8 +115,10 @@ import java.util.function.Supplier;
  * {@code dependencies:[{name, version, content, archive, direct}]}, the closure its deploy resolved (D-087).
  * {@code DELETE /admin/packages/{name}} undeploys (D-095) on the route's virtual thread: 200 {@code {name, version, flowsRemoved}}
  * (its flows' qualified ids, sorted), or a refusal by the deploy's status map — 400, 403, 409 (another deploy or undeploy runs on
- * the node, or another package's record pins it), 503 — and 404 for a package the node does not list; a record delete that fails
- * is 500. {@code GET /admin/targets} lists the node's limits per target system (D-099), sorted by target: 200
+ * the node, or another package's record pins it, or the work queue holds items of a flow of it), 503 (the node stops; or the
+ * node's Postgres pool refused the work queue's question or the record delete, D-133: nothing changed, retryable; a refused
+ * question only when no other question failed otherwise and no flow holds items — those are 500 and 409, FIX-173) — and 404 for a package the node does not list; a record
+ * delete or a queue question that fails otherwise is 500. {@code GET /admin/targets} lists the node's limits per target system (D-099), sorted by target: 200
  * {@code {items:[{target, maxCalls, maxWaitMs, inFlight, waiting, refused}]}}, every target a built flow named so far; a limit of a
  * component that names no target is not listed. Without one these routes do not exist (404).
  *
@@ -110,18 +132,35 @@ import java.util.function.Supplier;
  * <p>With a {@link WorkQueue} (D-067) it shows and releases held work items: {@code GET /admin/work/held?limit&after} pages every
  * flow's held rows in seq order ({@code {items:[{seq, messageId, flow, step, partitionKey, attempts, heldAt}], next|null}});
  * {@code POST /admin/work/{seq}/release} answers 200 {@code {seq}}, 404 for a seq unknown or not held, 400 for a seq that is
- * not a long. Without one these routes do not exist (404).
+ * not a long. A release wakes the row's flow in the node's {@link Workers} (every flow when the queue cannot tell the row) and
+ * announces it through the node's {@link WorkSignals} to the node whose journal holds its body ({@code *} when unknown; D-121 (b)
+ * B4 (ii)); built without them, a release wakes and announces nothing. Each held row also carries {@code blocks}, the rows of its
+ * key behind it (D-126). {@code GET /admin/work/lost?limit&after} pages the lost rows — their body given up by an accepted
+ * {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} — the same way ({@code {items:[{seq, messageId, flow, partitionKey, lostAt, blocks}],
+ * next|null}}); {@code POST /admin/work/{seq}/discard} deletes a lost row and writes one {@code audit} row in the same transaction,
+ * answering 200 {@code {seq, auditId}}, 404 for a seq unknown or not lost, 400 for a seq that is not a long or an
+ * {@code X-Flottila-Actor} over 128 characters; the actor is that header ({@code unknown} without one), self-declared under the
+ * shared token. A discard wakes the row's flow and announces it to the node of its key's next row, as a release does. Without a
+ * queue these routes do not exist (404).
  *
- * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays and retries:
+ * <p>With a {@link Deployments} and an {@link IdGenerator} (D-067, GATE check 7) it replays:
  * {@code POST /admin/messages/{id}/replay?from=n} runs steps {@code n..end} of the message's flow as deployed now, and
- * {@code POST /admin/dlq/{id}/retry} the parked step, each as a new message whose id the generator mints, through the flow's
- * {@link Replay} on the route's virtual thread. 200 {@code {id, replayOf, from, outcome:"COMPLETE"}}; a run that failed is 502
- * with the same fields, {@code outcome} PARKED or FAILED, and {@code error}. Refusals, nothing run: 400 ({@code from} missing, not
- * an int, outside 1..steps) → 404 (no timeline, no DLQ row) → 409 (the flow does not run here; a retry of the id already runs on
- * this node) → 422 (step n−1 unrecorded or metadata-only, the parked step beyond the flow) → 409 (the input body removed by
- * retention, D-096) → 422 (a body above the flow's byte budget) → 429 with {@code retry-after: 1} (no permit of the flow's
- * admission now). A store that cannot say whether the input body exists is no refusal: 502 FAILED. A retry that went through but whose row could not be
- * removed is 500 naming the new message.
+ * {@code POST /admin/dlq/{id}/replay} (FIX-138a) the parked step, each as a new message whose id the generator mints, through the
+ * flow's {@link Replay} on the route's virtual thread. 200 {@code {id, replayOf, from, outcome:"COMPLETE"}}; a run that failed is
+ * 502 with the same fields, {@code outcome} PARKED or FAILED, and {@code error}. Refusals, nothing run: 400 ({@code from} missing,
+ * not an int, outside 1..steps; on the DLQ replay a {@code from} at all, any value) → 404 (no timeline, no DLQ row) → 409 (the flow
+ * does not run here; a DLQ replay of the id already runs on this node) → 422 (step n−1 unrecorded or metadata-only, the parked
+ * step beyond the flow) → 409 (the input body removed by retention, D-096) → 422 (a body above the flow's byte budget) → 429 with
+ * {@code retry-after: 1} (no permit of the flow's admission now). A store that cannot say whether the input body exists is no
+ * refusal: 502 FAILED — but a run the node's Postgres pool refused a connection (D-133) is 503 with the fixed text, retryable. A
+ * DLQ replay that went through but whose row could not be removed is 500 naming the new message, the pool's refusal of that
+ * removal included (the run went through: retrying would run it again, D-133).
+ *
+ * <p>With a {@link Deployments} and a queue (CORE-14b P8, D-135 draft; FIX-138a), {@code POST /admin/dlq/{id}/retry} runs a
+ * message its flow's worker parked once more under its own id — where {@code /replay} runs a new copy: the DLQ row out and the work
+ * row in, in one transaction, as attempt k + 1 of the row's own bound; 202 {@code {id, attempt}}, 404 (no DLQ row), 409 (its flow
+ * not deployed here, its ingress body no longer kept), 422 naming {@code /replay} (a flow that is not at-least-once, a row its
+ * worker did not park, or a keyed flow's row parked before its key was kept). There is no {@code /restart} route (404).
  *
  * <p>Every {@code /admin/**} request that carries an {@code Origin} header, or a {@code Sec-Fetch-Site} other than {@code none},
  * is 403 {@code {error}} before the token check and the route, token or no token (D-069): what a browser sends, never the CLI.
@@ -134,6 +173,10 @@ public final class AdminServer {
     public static final int DEFAULT_LIMIT = 50;
 
     private static final System.Logger LOG = System.getLogger(AdminServer.class.getName());
+
+    /** The header an admin request declares its actor in, for the audit row (D-126 L4); and its length at most. */
+    static final String ACTOR = "X-Flottila-Actor";
+    static final int ACTOR_MAX = 128;
     private static final String JSON = "application/json";
     private static final String OCTETS = "application/octet-stream";
     private static final String BEARER = "Bearer ";
@@ -173,15 +216,52 @@ public final class AdminServer {
     }
 
     /**
-     * What {@code /health} reports: each check by name (a check that fails is DOWN) and the snapshot writes that failed.
+     * What {@code /health} reports: each check by name (a check that fails is DOWN), the snapshot writes that failed, and —
+     * only when there is one — the node's {@code notices}: facts an operator should act on that fail nothing (D-106: a
+     * generated master key), never a key or a check's detail.
      *
      * @param checks the checks, by name
      * @param snapshotWriteFailures read on every request
+     * @param notices shown as the answer's {@code notices} array when not empty
+     * @param readiness what {@code /ready} reports
      */
-    public record HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures) {
+    public record HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures, List<String> notices, Readiness readiness) {
         public HealthProbe {
             checks = Map.copyOf(checks);
             Objects.requireNonNull(snapshotWriteFailures, "snapshotWriteFailures");
+            notices = List.copyOf(notices);
+            Objects.requireNonNull(readiness, "readiness");
+        }
+
+        /** No readiness inputs: {@code /ready} is UP on every check while the server answers ({@link Readiness#ALWAYS}). */
+        public HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures, List<String> notices) {
+            this(checks, snapshotWriteFailures, notices, Readiness.ALWAYS);
+        }
+
+        /** No notices, no readiness inputs ({@link Readiness#ALWAYS}). */
+        public HealthProbe(Map<String, Supplier<Future<Health>>> checks, LongSupplier snapshotWriteFailures) {
+            this(checks, snapshotWriteFailures, List.of());
+        }
+    }
+
+    /**
+     * What {@code /ready} reports (D-123): four in-memory inputs, true is UP, each read on every request and never awaited — so
+     * {@code /ready} needs no deadline.
+     *
+     * @param lifecycle the node finished its start and its close has not begun
+     * @param fence the node lease's fence is open
+     * @param journal the journal is UP: neither failed nor in outage (DEGRADED is DOWN here)
+     * @param deployments no package or flow is listed FAILED
+     */
+    public record Readiness(BooleanSupplier lifecycle, BooleanSupplier fence, BooleanSupplier journal, BooleanSupplier deployments) {
+        /** Every input UP: what a server built without readiness inputs reports. */
+        public static final Readiness ALWAYS = new Readiness(() -> true, () -> true, () -> true, () -> true);
+
+        public Readiness {
+            Objects.requireNonNull(lifecycle, "lifecycle");
+            Objects.requireNonNull(fence, "fence");
+            Objects.requireNonNull(journal, "journal");
+            Objects.requireNonNull(deployments, "deployments");
         }
     }
 
@@ -211,8 +291,10 @@ public final class AdminServer {
     private final Optional<WorkQueue> work;
     private final Optional<IdGenerator> ids;
     private final Optional<Sampling> sampling;
-    /** The ids whose DLQ retry runs on this node now: a second retry of one is 409 (node-local, D-067). */
-    private final Set<String> retrying = ConcurrentHashMap.newKeySet();
+    private final Workers workers;
+    private final WorkSignals signals;
+    /** The ids whose DLQ replay runs on this node now: a second replay of one is 409 (node-local, D-067). */
+    private final Set<String> replaying = ConcurrentHashMap.newKeySet();
     private volatile Supplier<Future<Void>> undeploy = Future::succeededFuture;
 
     /** The read API only: no deploy routes. */
@@ -222,18 +304,30 @@ public final class AdminServer {
 
     /** The read API and, with {@code deployments}, the deploy routes; no work routes. */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty());
-    }
-
-    /** The read API, with {@code deployments} the deploy routes, and the held-work routes over {@code work}; no replay routes. */
-    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                       WorkQueue work) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty());
+        this(config, messages, dlq, blobs, health, deployments, Optional.empty(), Optional.empty(), Optional.empty(), new Workers(), WorkSignals.NONE);
     }
 
     /**
-     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes and the replay and
-     * retry routes, whose new messages take their ids from {@code ids}.
+     * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over
+     * {@code work}; no replay routes.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work) {
+        this(config, messages, dlq, blobs, health, deployments, work, new Workers(), WorkSignals.NONE);
+    }
+
+    /**
+     * The read API, with {@code deployments} the deploy routes and the same-id DLQ retry, and the held-work routes over {@code work},
+     * a release waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)); no replay routes.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.empty(), Optional.empty(), workers, signals);
+    }
+
+    /**
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy routes, the same-id DLQ retry
+     * and the message and DLQ replay routes, whose new messages take their ids from {@code ids}.
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, IdGenerator ids) {
@@ -241,16 +335,25 @@ public final class AdminServer {
     }
 
     /**
-     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, replay and retry routes and
-     * the flows' CPU, sampled when {@code sampling} is there (D-094).
+     * The read API, the held-work routes over {@code work} and, with {@code deployments}, the deploy, same-id DLQ retry and replay routes
+     * and the flows' CPU, sampled when {@code sampling} is there (D-094).
      */
     public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
                        WorkQueue work, IdGenerator ids, Optional<Sampling> sampling) {
-        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids), sampling);
+        this(config, messages, dlq, blobs, health, deployments, work, ids, sampling, new Workers(), WorkSignals.NONE);
+    }
+
+    /**
+     * {@link #AdminServer(Config, MessageStore, Dlq, BlobStore, HealthProbe, Optional, WorkQueue, IdGenerator, Optional)}, a release
+     * waking its flow in {@code workers} and announcing it through {@code signals} (D-121 (b) B4 (ii)): the node's.
+     */
+    public AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
+                       WorkQueue work, IdGenerator ids, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
+        this(config, messages, dlq, blobs, health, deployments, Optional.of(work), Optional.of(ids), sampling, workers, signals);
     }
 
     private AdminServer(Config config, MessageStore messages, Dlq dlq, BlobStore blobs, HealthProbe health, Optional<Deployments> deployments,
-                        Optional<WorkQueue> work, Optional<IdGenerator> ids, Optional<Sampling> sampling) {
+                        Optional<WorkQueue> work, Optional<IdGenerator> ids, Optional<Sampling> sampling, Workers workers, WorkSignals signals) {
         this.config = Objects.requireNonNull(config, "config");
         this.messages = Objects.requireNonNull(messages, "messages");
         this.dlq = Objects.requireNonNull(dlq, "dlq");
@@ -260,6 +363,8 @@ public final class AdminServer {
         this.work = work;
         this.ids = ids;
         this.sampling = Objects.requireNonNull(sampling, "sampling");
+        this.workers = Objects.requireNonNull(workers, "workers");
+        this.signals = Objects.requireNonNull(signals, "signals");
     }
 
     /** Deploys the listening verticle; completes with the bound port (the actual one when configured 0). */
@@ -287,6 +392,8 @@ public final class AdminServer {
         public Future<?> start() {
             Router router = Router.router(vertx);
             router.get("/health").handler(offload(AdminServer.this::health));
+            router.get("/live").handler(offload(c -> Json.of(200, new JsonObject().put("status", Health.Status.UP.name()))));   // reads nothing (D-123)
+            router.get("/ready").handler(offload(AdminServer.this::ready));
             router.route("/admin/*").handler(AdminServer::browserGuard);   // before the token check (D-069)
             config.token().ifPresent(token -> router.route("/admin/*").handler(bearer(token)));
             router.get("/admin/messages").handler(offload(AdminServer.this::search));
@@ -302,12 +409,15 @@ public final class AdminServer {
                 router.get("/admin/flows/:flow/cpu").handler(offload(c -> cpu(c, d)));
                 ids.ifPresent(minted -> {
                     router.post("/admin/messages/:id/replay").handler(offload(c -> replay(c, d, minted)));
-                    router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, minted)));
+                    router.post("/admin/dlq/:id/replay").handler(offload(c -> dlqReplay(c, d, minted)));
                 });
             });
             work.ifPresent(q -> {
+                deployments.ifPresent(d -> router.post("/admin/dlq/:id/retry").handler(offload(c -> retry(c, d, q))));
                 router.get("/admin/work/held").handler(offload(c -> held(c, q)));
-                router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q)));
+                router.post("/admin/work/:seq/release").handler(offload(c -> release(c, q, workers, signals)));
+                router.get("/admin/work/lost").handler(offload(c -> lost(c, q)));
+                router.post("/admin/work/:seq/discard").handler(offload(c -> discard(c, q, workers, signals)));
             });
             ROUTER_ERRORS.forEach((status, reason) -> router.errorHandler(status, ctx -> answer(ctx.response(), Json.of(status, error(reason)))));
             return vertx.createHttpServer(new HttpServerOptions().setHost(config.host()).setPort(config.port())).requestHandler(router).listen()
@@ -390,6 +500,7 @@ public final class AdminServer {
         } catch (Refused refused) {   // a bad limit, cursor, key or step number: only what the routes map to Refused
             return Json.of(400, error("bad request: " + refused.getMessage()));
         } catch (Throwable failed) {   // a store that failed, a header no response may carry, a checked one thrown sneakily by an await: a 500, never a hang
+            if (PgTx.refusedByThePool(failed)) return busy();
             LOG.log(System.Logger.Level.WARNING, "admin request " + ctx.request().path() + " failed", failed);
             return Json.of(500, error("internal error"));
         }
@@ -477,8 +588,23 @@ public final class AdminServer {
         JsonObject checks = new JsonObject();
         pending.forEach((name, answer) -> checks.put(name, answer.await().status().name()));
         boolean up = !checks.getMap().containsValue(Health.Status.DOWN.name());
-        return Json.of(up ? 200 : 503, new JsonObject().put("status", (up ? Health.Status.UP : Health.Status.DOWN).name()).put("checks", checks)
-                .put("snapshotWriteFailures", health.snapshotWriteFailures().getAsLong()));
+        JsonObject answer = new JsonObject().put("status", (up ? Health.Status.UP : Health.Status.DOWN).name()).put("checks", checks)
+                .put("snapshotWriteFailures", health.snapshotWriteFailures().getAsLong());
+        if (!health.notices().isEmpty()) answer.put("notices", new JsonArray(health.notices()));
+        return Json.of(up ? 200 : 503, answer);
+    }
+
+    /** {@code /ready}: each input read now, none awaited; 200 when all are UP, else 503, each named. */
+    private Reply ready(RoutingContext ctx) {
+        Readiness r = health.readiness();
+        JsonObject checks = new JsonObject().put("lifecycle", status(r.lifecycle())).put("fence", status(r.fence()))
+                .put("journal", status(r.journal())).put("deployments", status(r.deployments()));
+        boolean up = !checks.getMap().containsValue(Health.Status.DOWN.name());
+        return Json.of(up ? 200 : 503, new JsonObject().put("status", (up ? Health.Status.UP : Health.Status.DOWN).name()).put("checks", checks));
+    }
+
+    private static String status(BooleanSupplier input) {
+        return (input.getAsBoolean() ? Health.Status.UP : Health.Status.DOWN).name();
     }
 
     private Reply timeline(RoutingContext ctx) {
@@ -493,16 +619,33 @@ public final class AdminServer {
     private Reply body(RoutingContext ctx) {
         String id = ctx.pathParam("id");
         int n = refusable(() -> Integer.parseInt(ctx.pathParam("n")));
-        Snapshot at = messages.timeline(id).await().stream().filter(s -> s.step() == n).findFirst().orElse(null);
-        if (at == null) return Json.of(404, error("no step " + n + " recorded for message " + id));
+        OptionalInt attempt = attempt(ctx);
+        // the timeline is in attempt order: the last row of step n is its latest attempt's (FIX-175 P4)
+        Snapshot at = messages.timeline(id).await().stream().filter(s -> s.step() == n && (attempt.isEmpty() || s.attempt() == attempt.getAsInt()))
+                .reduce((earlier, later) -> later).orElse(null);
+        if (at == null) {
+            return Json.of(404, error(attempt.isEmpty() ? "no step " + n + " recorded for message " + id
+                    : "no step " + n + " of attempt " + attempt.getAsInt() + " recorded for message " + id));
+        }
         if (at.bodyKey().isEmpty()) return Json.of(404, error("step " + n + " of message " + id + " was recorded as metadata only: hash and size, no bytes"));
         // the head first: a recorded content-type no response may carry is refused here (IllegalArgumentException, a 500), before any stream is opened
         MultiMap head = HttpHeaders.headers().set("content-type", at.headers().getOrDefault("content-type", OCTETS)).set("content-length", Long.toString(at.bodySize()));
         String gone = "the bytes of step " + n + " of message " + id + " are no longer stored (removed by retention)";
+        BlobKey key = at.bodyKey().get();
+        // existence as Postgres names it, never a node's location index (CORE-4c2 r1): no object is retention's removal (D-096);
+        // bytes that go after this check are gone too — an open that throws (a store that finds the key synchronously) or a
+        // stream that fails before its first chunk (a store that opens lazily) answers the same 404
+        boolean stored;
+        try {
+            stored = blobs.exists(key).await();
+        } catch (BodyLostException lost) {   // given up by an accepted loss: stored once, never readable again (D-105)
+            return Json.of(410, error("the bytes of step " + n + " of message " + id + " are gone for good: " + lost.getMessage()));
+        }
+        if (!stored) return Json.of(404, error(gone));
         ReadStream<Buffer> bytes;
         try {
-            bytes = blobs.open(at.bodyKey().get());
-        } catch (BlobNotFoundException missing) {   // the store holds no object under the key: retention took the bytes (D-096)
+            bytes = blobs.open(key);
+        } catch (BlobNotFoundException missing) {   // removed between the check and the open
             return Json.of(404, error(gone));
         }
         return new Bytes(head, bytes, gone);
@@ -525,11 +668,57 @@ public final class AdminServer {
         return Json.of(200, page(refusable(() -> work.held(after(ctx), limit(ctx)).await()), AdminServer::held));
     }
 
-    /** 200 {@code {seq}} for a held row; 404 for any other seq the queue does not release; a seq that is not a long never reaches it. */
-    private static Reply release(RoutingContext ctx, WorkQueue work) {
+    /**
+     * 200 {@code {seq}} for a held row, released: its flow woken here (every flow when untold) and announced to its body's node ({@code
+     * *} when untold), the release committed; 404 for any other seq the queue does not release; a seq that is not a long never reaches it.
+     */
+    private static Reply release(RoutingContext ctx, WorkQueue work, Workers workers, WorkSignals signals) {
         long seq = refusable(() -> Long.parseLong(ctx.pathParam("seq")));
-        if (!work.release(seq).await()) return Json.of(404, error("no held work item " + seq));
+        Optional<WorkQueue.Released> released = work.releaseRow(seq).await();
+        if (released.isEmpty()) return Json.of(404, error("no held work item " + seq));
+        WorkQueue.Released row = released.get();
+        row.flow().ifPresentOrElse(workers::wake, workers::wakeAll);
+        announce(signals, row.bodyNode().orElse(null), row.flow().orElse(null), "released work item " + seq);
         return Json.of(200, new JsonObject().put("seq", seq));
+    }
+
+    /** Announces {@code flow} to {@code target} after a change committed: a throw is logged, the answer stands. */
+    private static void announce(WorkSignals signals, String target, String flow, String what) {
+        try {
+            signals.announce(target, flow);
+        } catch (RuntimeException | Error thrown) {   // the change committed: its answer stands, the body's node finds the row by reconciliation
+            LOG.log(System.Logger.Level.WARNING, "announcing " + what + " failed: " + thrown, thrown);
+        }
+    }
+
+    private static Reply lost(RoutingContext ctx, WorkQueue work) {
+        return Json.of(200, page(refusable(() -> work.lost(after(ctx), limit(ctx)).await()), AdminServer::lost));
+    }
+
+    /**
+     * 200 {@code {seq, auditId}} for a lost row, discarded and audited (D-126): its flow woken here and, when its key has a next row
+     * whose node is known, that node announced, after the commit; 404 for any other seq (nothing deleted, nothing audited); a seq
+     * that is not a long or an actor over {@link #ACTOR_MAX} characters is 400 before the queue is asked.
+     */
+    private static Reply discard(RoutingContext ctx, WorkQueue work, Workers workers, WorkSignals signals) {
+        long seq = refusable(() -> Long.parseLong(ctx.pathParam("seq")));
+        String actor = actor(ctx.request());
+        Optional<WorkQueue.Discarded> discarded = work.discard(seq, actor, ctx.request().remoteAddress().hostAddress()).await();
+        if (discarded.isEmpty()) return Json.of(404, error("no lost work item " + seq));
+        WorkQueue.Discarded d = discarded.get();
+        workers.wake(d.flow());
+        d.nextNode().ifPresent(node -> announce(signals, node, d.flow(), "the key's next row after discarded work item " + seq));
+        return Json.of(200, new JsonObject().put("seq", seq).put("auditId", d.auditId()));
+    }
+
+    /**
+     * The audit actor (D-126 L4): the request's {@value #ACTOR} header, stripped — self-declared under the shared token, never
+     * authenticated — {@code unknown} when absent or blank; over {@link #ACTOR_MAX} characters a 400.
+     */
+    private static String actor(HttpServerRequest req) {
+        String actor = Objects.requireNonNullElse(req.getHeader(ACTOR), "").strip();
+        if (actor.length() > ACTOR_MAX) throw new Refused(ACTOR + " is at most " + ACTOR_MAX + " characters, was " + actor.length());
+        return actor.isEmpty() ? "unknown" : actor;
     }
 
     /**
@@ -549,22 +738,81 @@ public final class AdminServer {
     }
 
     /**
-     * {@code POST /admin/dlq/{id}/retry}: 404 without a DLQ row, 409 when its flow does not run here or a retry of the id runs on
-     * this node already; then the run of the parked step ({@link #ran}). A retry that went through but whose row stays is 500.
+     * {@code POST /admin/dlq/{id}/replay} (FIX-138a): a {@code from} parameter, any value, is 400 first — the run starts at the
+     * parked step; then 404 without a DLQ row, 409 when its flow does not run here or a replay of the id runs on this node already;
+     * then the run of the parked step as a new message ({@link #ran}). A replay that went through but whose row stays is 500.
      */
-    private Reply retry(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
+    private Reply dlqReplay(RoutingContext ctx, Deployments deployments, IdGenerator ids) {
         String id = ctx.pathParam("id");
+        String from = ctx.request().getParam("from");
+        if (from != null) throw new Refused("a DLQ replay runs from the parked step and takes no from, was '" + from + "'");
         Optional<Parked> row = dlq.get(id).await();
         if (row.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
         Optional<Replay> replay = deployments.replay(row.get().flow());
         if (replay.isEmpty()) return notRunning(row.get().flow());
-        if (!retrying.add(id)) return Json.of(409, error("a retry of message " + id + " runs on this node already"));
+        if (!replaying.add(id)) return Json.of(409, error("a DLQ replay of message " + id + " runs on this node already"));
         try {
             String replayId = ids.next();
-            return ran(replayId, id, row.get().step(), () -> replay.get().retry(id, replayId));
+            return ran(replayId, id, row.get().step(), () -> replay.get().replayParked(id, replayId));
         } finally {
-            retrying.remove(id);
+            replaying.remove(id);
         }
+    }
+
+    /**
+     * {@code POST /admin/dlq/{id}/retry} (CORE-14b P8, D-135 draft; FIX-138a): the parked message runs once more under its own id,
+     * from step 1, as attempt k + 1 of its own bound. 404 without a DLQ row; 409 when its flow is not deployed here; 422 when its
+     * flow is not at-least-once, when its worker did not park it — a row at a step other than 1, a replay's ({@code replayOf}), one
+     * without an {@code attempt} k of at least 1 — or when its flow is keyed ({@code partitionBy}) and the row kept no key (parked
+     * before V17, O7); nothing written for any of them; each 422 names {@code /replay}. Then {@link WorkQueue#restart}: the DLQ row
+     * out and the work row in, under the kept key, in one transaction — false (the row went meanwhile) is 404, an ingress body no
+     * longer kept 409, nothing changed. 202 {@code {id, attempt: k + 1}} once it committed: the flow woken here and announced to
+     * every node (the row's body node claims it).
+     */
+    private Reply retry(RoutingContext ctx, Deployments deployments, WorkQueue work) {
+        String id = ctx.pathParam("id");
+        Optional<Parked> found = dlq.get(id).await();
+        if (found.isEmpty()) return Json.of(404, error("no DLQ row for message " + id));
+        Parked row = found.get();
+        String flow = row.flow();
+        Optional<FlowDefinition> def = deployments.definition(flow);
+        if (def.isEmpty()) return Json.of(409, error("flow " + flow + " is not deployed on this node; message " + id + " is not restarted"));
+        if (!"at-least-once".equals(def.get().deliveryMode())) {
+            return Json.of(422, error("message " + id + " of flow " + flow + " is not restarted: the flow is " + def.get().deliveryMode()
+                    + ", only an at-least-once flow's worker runs a restart; use /replay"));
+        }
+        Object attempt = row.props().asMap().get(Envelope.ATTEMPT.name());
+        if (row.step() != 1 || row.props().get(Envelope.REPLAY_OF).isPresent() || !(attempt instanceof Integer k) || k < 1) {
+            return Json.of(422, error("message " + id + " was not parked by its flow's worker (step " + row.step() + ", attempt " + attempt
+                    + (row.props().get(Envelope.REPLAY_OF).isPresent() ? ", a replay" : "") + "): it cannot be restarted; use /replay"));
+        }
+        if (def.get().partitionBy().isPresent() && row.partitionKey().isEmpty()) {
+            return Json.of(422, error("message " + id + " of the keyed flow " + flow + " was parked before its key was kept; use /replay"));
+        }
+        boolean restarted;
+        try {
+            restarted = work.restart(id, flow, row.partitionKey().orElse(null), k).await();
+        } catch (BlobNotFoundException | BodyLostException gone) {
+            return Json.of(409, error("message " + id + " is not restarted: its ingress body is no longer kept (" + gone.getMessage() + ")"));
+        }
+        if (!restarted) return Json.of(404, error("no DLQ row for message " + id + " any more"));
+        workers.wake(flow);
+        announce(signals, null, flow, "restarted message " + id);
+        return Json.of(202, new JsonObject().put("id", id).put("attempt", k + 1));
+    }
+
+    /** The {@code attempt} parameter: empty when missing, else an int of at least 1, else (not an int, below 1) a 400. */
+    private static OptionalInt attempt(RoutingContext ctx) {
+        String raw = ctx.request().getParam("attempt");
+        if (raw == null) return OptionalInt.empty();
+        int attempt;
+        try {
+            attempt = Integer.parseInt(raw);
+        } catch (NumberFormatException notAnInt) {
+            attempt = 0;
+        }
+        if (attempt < 1) throw new Refused("attempt must be an attempt number of at least 1, was '" + raw + "'");
+        return OptionalInt.of(attempt);
     }
 
     /** The {@code from} parameter: an int of at least 1, else (missing, not an int) a 400. */
@@ -582,7 +830,8 @@ public final class AdminServer {
 
     /**
      * The run {@code replayId} of {@code replayOf} from step {@code from}, on this virtual thread: 200 COMPLETE; a refusal by its
-     * reason; a retry that went through but whose row stays, 500 naming {@code replayId}; else 502 PARKED (the run parked again)
+     * reason; a DLQ replay that went through but whose row stays, 500 naming {@code replayId}; a failure the node's Postgres pool refused
+     * a connection with ({@link PgTx#refusedByThePool}, D-133), 503 with the fixed text; else 502 PARKED (the run parked again)
      * or FAILED with the run's error — a checked one thrown sneakily by a step's await included. An Error is the caller's (500).
      */
     private static Reply ran(String replayId, String replayOf, int from, Supplier<Envelope> run) {
@@ -594,7 +843,8 @@ public final class AdminServer {
             return refusal(refused);
         } catch (RowNotRemovedException kept) {
             return Json.of(500, error(kept.getMessage()));
-        } catch (Exception failed) {   // POLICY (D-113): narrow on purpose, as ran's javadoc says - "An Error is the caller's (500)", which the route runner run(Route, RoutingContext)'s Throwable clause answers
+        } catch (Exception failed) {
+            if (PgTx.refusedByThePool(failed)) return busy();   // the run could not take a connection: retryable, never its 502 FAILED
             String outcome = failed instanceof ParkedException ? "PARKED" : "FAILED";
             return Json.of(502, answer.put("outcome", outcome).put("error", Objects.toString(failed.getMessage(), failed.toString())));
         }
@@ -606,7 +856,7 @@ public final class AdminServer {
         return switch (refused.reason()) {
             case STEP_OUT_OF_RANGE -> Json.of(400, error("bad request: " + why));
             case UNKNOWN_MESSAGE, NO_DLQ_ROW -> Json.of(404, error(why));
-            case CLOSED, REMOVED_BY_RETENTION -> Json.of(409, error(why));
+            case CLOSED, REMOVED_BY_RETENTION, BODY_LOST -> Json.of(409, error(why));
             case NOT_RECORDED, METADATA_ONLY, STEP_BEYOND_FLOW, TOO_LARGE -> Json.of(422, error(why));
             case BUSY -> {
                 Json busy = Json.of(429, error(why));
@@ -693,7 +943,10 @@ public final class AdminServer {
         return Json.of(200, new JsonObject().put("items", items));
     }
 
-    /** {@code DELETE /admin/packages/{name}}: the undeploy's result, or its refusal; a record delete that fails throws, a 500. */
+    /**
+     * {@code DELETE /admin/packages/{name}}: the undeploy's result, or its refusal (the pool's refusal of its queue question or its
+     * record delete included: 503); a record delete or a queue question that fails otherwise throws, a 500.
+     */
     private static Reply undeployed(RoutingContext ctx, Deployments deployments) throws IOException {
         try {
             UndeployResult r = deployments.undeploy(ctx.pathParam("name"));
@@ -703,7 +956,11 @@ public final class AdminServer {
         }
     }
 
-    /** A refusal by its kind: 400, 403, 404, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503. */
+    /**
+     * A refusal by its kind: 400, 403, 404, 409, 422 (with every problem), 500 (with every problem of a redeploy rolled back), 503
+     * (the node stops; the pool refused the record's write, with every problem of a redeploy rolled back, a deploy's or an
+     * undeploy's queue question, or an undeploy's record delete).
+     */
     private static Reply refusal(DeployRefusedException refused) {
         int status = switch (refused.kind()) {
             case BAD_REQUEST -> 400;
@@ -711,12 +968,17 @@ public final class AdminServer {
             case CONFLICT -> 409;
             case INVALID -> 422;
             case FAILED -> 500;
-            case STOPPING -> 503;
+            case STOPPING, BUSY -> 503;
             case NOT_FOUND -> 404;
         };
         JsonObject body = error(refused.error());
         if (!refused.problems().isEmpty()) body.put("problems", new JsonArray(refused.problems()));
         return Json.of(status, body);
+    }
+
+    /** 503 for a request the node's Postgres pool refused a connection (D-132, D-133): a fixed text, the client's message not shown. */
+    private static Reply busy() {
+        return Json.of(503, error("the database pool is busy; retry"));
     }
 
     private static Reply tooLarge(long max) {
@@ -732,6 +994,7 @@ public final class AdminServer {
     private static JsonObject step(Snapshot s) {
         return new JsonObject()
                 .put("step", s.step())
+                .put("attempt", s.attempt())
                 .put("name", s.stepName())
                 .put("outcome", s.outcome().name())
                 .put("error", s.error().orElse(null))
@@ -769,7 +1032,19 @@ public final class AdminServer {
                 .put("step", i.step())
                 .put("partitionKey", i.partitionKey())
                 .put("attempts", i.attempts())
-                .put("heldAt", h.heldAt().toString());
+                .put("heldAt", h.heldAt().toString())
+                .put("blocks", h.blocks());
+    }
+
+    private static JsonObject lost(WorkQueue.Lost l) {
+        WorkQueue.Item i = l.item();
+        return new JsonObject()
+                .put("seq", i.seq())
+                .put("messageId", i.messageId())
+                .put("flow", i.flow())
+                .put("partitionKey", i.partitionKey())
+                .put("lostAt", l.lostAt().toString())
+                .put("blocks", l.blocks());
     }
 
     private static String hash(Hash h) {

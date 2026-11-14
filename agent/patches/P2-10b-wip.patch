@@ -207,9 +207,9 @@ index fbe2b60..470772e 100644
  import java.util.stream.Collectors;
  
  /**
-- * The model of a run and its checks (D-101). Each comparison counts under its check; a comparison is one expected text against
+- * The model of a run and its checks (D-143). Each comparison counts under its check; a comparison is one expected text against
 - * one observed text, so a check fails exactly when they differ.
-+ * The model of a run and its checks (D-101). Each comparison is one expected text against one observed text, told to the world
++ * The model of a run and its checks (D-143). Each comparison is one expected text against one observed text, told to the world
 + * and counted under its check, so a check fails exactly when they differ.
   * <ul>
 - * <li>PREDICTED: a send with room in its flow's admission answers as the model says — a sync send the Reply
@@ -785,7 +785,7 @@ index d1b17f6..937ca07 100644
 +    }
 +
 +    /**
-+     * The at-most-once delivery the calling send thread made started the run of {@code id} on a thread of its own (D-101,
++     * The at-most-once delivery the calling send thread made started the run of {@code id} on a thread of its own (D-143,
 +     * P2-10b): registered, the calling thread waits until that thread bound at {@link #bindAtMostOnce} — so it is never
 +     * unregistered once this thread ended — and the run goes on once this thread ended. {@code onEnd} is told as the run ends.
 +     */
@@ -947,7 +947,7 @@ index 0000000..55092b2
 +import java.util.stream.Collectors;
 +
 +/**
-+ * The nightly {@code sim-fuzz} job's run (P2-10b, D-101): fresh seeds from a base (the CI run id) for a wall-clock budget, every
++ * The nightly {@code sim-fuzz} job's run (P2-10b, D-143): fresh seeds from a base (the CI run id) for a wall-clock budget, every
 + * failing run written as a line of the pinned-seeds format.
 + */
 +public final class SimFuzz {
@@ -1021,7 +1021,7 @@ index 754fd9f..238b901 100644
  import java.util.function.LongSupplier;
  
  /**
-  * The partner every {@code to} sends to (scheme {@code sim}, D-101): it answers {@code ack:} and the body it got. Per call, in
+  * The partner every {@code to} sends to (scheme {@code sim}, D-143): it answers {@code ack:} and the body it got. Per call, in
 - * this order: REFUSE fails the call before any effect (a retryable {@link NackException}); DELAY holds it — the run is HELD
 - * until the driver's RELEASE at its tick, parked in {@code send} — and then answers. The oracle sees each call start and end.
 - * It names no target: each {@code to} gets an unshared limit above every flow's maxInFlight.
@@ -1156,7 +1156,7 @@ index 8659b30..c27bb47 100644
  import java.util.function.Function;
  
  /**
-  * One run of one seed (D-101), on the driver thread: the real core — {@link FlowBuilder}, {@link io.flottila.core.flow.Delivery},
+  * One run of one seed (D-143), on the driver thread: the real core — {@link FlowBuilder}, {@link io.flottila.core.flow.Delivery},
 - * {@link FlowWorker}, admission, Retry, the recorder and the DLQ — over in-memory stores, the fake clock and the run's doubles.
 - * Two flows: {@code sync} (transform, then the partner) and {@code alo}, at-least-once by key (extractKey, transform, the
 - * partner), run by workers A and B over one queue. Each tick draws its actions from the WORKLOAD stream, adds the RELEASE of
@@ -1422,7 +1422,7 @@ index c3b70f2..c48ead2 100644
 +import java.util.TreeSet;
  
  /**
-  * The message store as the flows see it (D-101): the in-memory one, its timelines kept per message as it keeps them — the
+  * The message store as the flows see it (D-143): the in-memory one, its timelines kept per message as it keeps them — the
   * first snapshot of each step, in step order — so a read does not scan every row of the run. A timeline read is a worker
 - * run's first simulation call: its thread binds to the run the queue handed out. The oracle reads {@link #recorded}.
 + * run's first simulation call: its thread binds to the run the queue handed out. The oracle reads {@link #recorded}, and
@@ -1499,9 +1499,9 @@ index 7794310..f7f2554 100644
       */
      record Unit(long tick, Kind kind, Optional<String> messageId) {
  
--        /** The driver's units (D-101). */
+-        /** The driver's units (D-143). */
 -        public enum Kind { START, POLL, RELEASE, WAKE, ADVANCE }
-+        /** The driver's units (D-101); REPLAY: a replay or a DLQ retry on a virtual thread of its own, named by its new id (P2-10b). */
++        /** The driver's units (D-143); REPLAY: a replay or a DLQ retry on a virtual thread of its own, named by its new id (P2-10b). */
 +        public enum Kind { START, POLL, RELEASE, WAKE, ADVANCE, REPLAY }
      }
  
@@ -2332,7 +2332,7 @@ index ab9a830..2c89042 100644
 +     *
 +     * <p>The probe spins on thread state on purpose — {@code getState()} and {@code Thread.yield()} loops, bounded by the
 +     * per-seed hang guard — to see from outside what the harness decides from inside; the harness itself never does: it knows a
-+     * run's state by registration and join (D-101).
++     * run's state by registration and join (D-143).
       */
      static final class Probe implements World {
          final AtomicInteger peak = new AtomicInteger();

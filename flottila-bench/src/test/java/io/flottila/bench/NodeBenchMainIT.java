@@ -1,6 +1,6 @@
 package io.flottila.bench;
 
-import io.flottila.runtime.db.Migrations;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class NodeBenchMainIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static final int MESSAGES = 40;
 
@@ -75,7 +75,9 @@ class NodeBenchMainIT {
         assertEquals(true, json.getBoolean("syncCommit"), "observed on the server: " + json.encode());
         assertEquals("test", json.getString("commit"));
         assertNotNull(json.getString("date"), "the record carries its date");
-        assertTrue(json.getString("postgres").startsWith("17."), "server_version of the container: " + json.getString("postgres"));
+        // the major of the image this run started (PostgresImage, D-129), not a literal: the record reads it from the server
+        String major = PostgresImage.name().replaceFirst("^.*:(\\d+).*$", "$1") + ".";
+        assertTrue(json.getString("postgres").startsWith(major), "server_version of the container: " + json.getString("postgres"));
         JsonObject machine = json.getJsonObject("machine");
         assertNotNull(machine, "the record carries the machine: " + json.encode());
         assertEquals(BenchMain.machine().getString("label"), machine.getString("label"), "the machine label picks the baseline (D-037)");
@@ -83,7 +85,8 @@ class NodeBenchMainIT {
 
         assertDistribution(json, scenario);
         assertTrue(json.getDouble("elapsedMs") > 0, "elapsedMs: " + json.encode());
-        for (String rate : List.of("walBytesPerSecond", "bodiesBytesPerSecond", "bodiesGrowthPerHour")) {
+        // CORE-4c2: bodies are journal records (D-105): the body rates are the journal's growth, no longer the bodies table's
+        for (String rate : List.of("walBytesPerSecond", "journalBytesPerSecond", "journalGrowthPerHour")) {
             assertNotNull(json.getDouble(rate), scenario + " records " + rate + ": " + json.encode());
             assertTrue(json.getDouble(rate) >= 0, rate + " is a delta of a growing quantity: " + json.getDouble(rate));
         }
@@ -97,8 +100,8 @@ class NodeBenchMainIT {
         assertEquals(MESSAGES, count(db, "select count(distinct id) from messages"),
                 "every measured " + scenario + " message went through the node and was recorded");
         switch (scenario) {
-            case "ack" -> assertEquals(MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"),
-                    "every 202 came after the durable save of the ingress body (D-061)");
+            case "ack" -> assertEquals(MESSAGES, count(db, "select count(distinct message_id) from body_refs where step = 0"),
+                    "every 202 came after the durable save of the ingress body, its ref (D-061, CORE-4c2)");
             case "worker" -> assertEquals(0, count(db, "select count(*) from work"),
                     "every queued item was claimed and completed: no work row is left");
             default -> { }
@@ -180,51 +183,9 @@ class NodeBenchMainIT {
         assertEquals(8, json.getInteger("concurrency"));
         assertEquals(true, json.getBoolean("syncCommit"), "observed with show synchronous_commit, not echoed from the flag: " + json.encode());
         assertEquals(0, json.getInteger("failed"), json.encode());
-        assertEquals(MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"),
-                "each 202 is a durable save including the bodies insert (D-061)");
+        assertEquals(MESSAGES, count(db, "select count(distinct message_id) from body_refs where step = 0"),
+                "each 202 is a durable save including the body's ref insert (D-061; CORE-4c2: a ref, no bodies row)");
     }
-
-    /**
-     * FIX-128: the warm-up's refusals reach the record. The run's database refuses its first {@value #REFUSED} saves — a BEFORE
-     * INSERT trigger on {@code work} (the intake's last statement, D-082) fails while a sequence, which no rollback undoes, is at
-     * most {@value #REFUSED}; the failed save is a retryable Nack, a 503 — so a warm-up of {@value #WARMUP} has exactly
-     * {@value #REFUSED} refused and the window none. The record says {@value #REFUSED}, and {@code warmup - warmupFailed} is the
-     * warm-up messages the node recorded; a run that waited for all {@value #WARMUP} would never settle.
-     */
-    @Test
-    void aWarmupWhoseFirstSavesAreRefusedRecordsThatCountAndWaitsOnlyForTheRest() throws Exception {
-        String db = database();
-        Migrations.migrate("jdbc:postgresql://" + pg.getHost() + ":" + pg.getMappedPort(5432) + "/" + db, pg.getUsername(), pg.getPassword());
-        // a sequence survives the run's truncate (it is no table) and the rolled-back saves (nextval is not transactional)
-        sql(db, "create sequence it_saves");
-        sql(db, "create function it_refuse_first_saves() returns trigger language plpgsql as $f$ begin"
-                + " if nextval('it_saves') <= " + REFUSED + " then raise exception 'refused by NodeBenchMainIT (FIX-128)'; end if;"
-                + " return new; end $f$");
-        sql(db, "create trigger it_refuse_first_saves before insert on work for each row execute function it_refuse_first_saves()");
-
-        Path out = dir.resolve("ack-refused-warmup.json");
-        assertEquals(0, NodeBenchMain.run(args(db, "ack", "keep", 4, out, "--warmup", String.valueOf(WARMUP))),
-                "the window itself had no failure: the run exits 0");
-        JsonObject json = new JsonObject(Files.readString(out));
-
-        // the fixture did what it says: every save reached the trigger once, the first three were refused and left no message
-        assertEquals(WARMUP + MESSAGES, count(db, "select last_value from it_saves"), "one save per request, none retried: " + json.encode());
-        assertEquals(0, json.getInteger("failed"), "the refusals all fell in the warm-up, the window has none: " + json.encode());
-        assertEquals(WARMUP, json.getInteger("warmup"), json.encode());
-
-        assertEquals(3, json.getInteger("warmupFailed"), "the record counts the warm-up's three refused saves: " + json.encode());
-        // FIX-134 made warmedUp observable: this catches any understatement and an overstated record; an overstated :314 is caught only by
-        // the class @Timeout, because the warm-up settle that warmedUp drives runs before the record is written and waits for rows that never come
-        assertEquals(2, json.getInteger("warmedUp"), "the record's warmedUp is warmup - warmupFailed = " + WARMUP + " - " + REFUSED + ": " + json.encode());
-        assertEquals(2 + MESSAGES, count(db, "select count(distinct id) from messages"),
-                "the node recorded the warm-up's two accepted messages and the window's forty, no refused one: " + json.encode());
-        assertEquals(2 + MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"),
-                "each accepted message's ingress body is durable, a refused one's rolled back with its save");
-    }
-
-    /** The warm-up of the refusing case and how many of its first saves the database refuses. */
-    static final int WARMUP = 5;
-    static final int REFUSED = 3;
 
     /**
      * P2-08b, the twin of {@code NodeBenchAckCommitsIT}'s settings case on Testcontainers' defaults (fsync off): the record carries
@@ -242,7 +203,7 @@ class NodeBenchMainIT {
             assertEquals(text(db, "select setting from pg_settings where name = '" + name + "'"), String.valueOf(json.getValue(name)),
                     name + " as pg_settings shows it on the run's database: " + json.encode());
         }
-        assertEquals(16, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default): " + json.encode());
+        assertEquals(21, json.getInteger("poolSize"), "the node's Postgres pool (FLOTTILA_PG_POOL_SIZE default, F-33): " + json.encode());
         assertNotNull(json.getDouble("commitsPerMessage"), "the ack record carries commitsPerMessage: " + json.encode());
         assertTrue(json.getDouble("commitsPerMessage") >= 1.0, "each 202 is at least one commit: " + json.encode());
         // fsync off: pg_stat_wal.wal_sync does not count, the field is there and zero
@@ -250,6 +211,7 @@ class NodeBenchMainIT {
     }
 
     @Test
+    /** CORE-4c2: "no body" is no {@code body_refs} row and no journal growth (was: no {@code bodies} row, no table growth). */
     void recordingMetadataOnlyWritesNoBodies() throws Exception {
         String metadataOnly = database();
         Path out = dir.resolve("metadata-only.json");
@@ -257,9 +219,10 @@ class NodeBenchMainIT {
         JsonObject json = new JsonObject(Files.readString(out));
         assertEquals("metadata-only", json.getString("recording"));
         assertEquals(MESSAGES, count(metadataOnly, "select count(distinct id) from messages"), "metadata-only still records every message's steps");
-        assertEquals(0, count(metadataOnly, "select count(*) from bodies"), "metadata-only keeps no body");
-        assertEquals(0.0, json.getDouble("bodiesBytesPerSecond"), "the bodies table did not grow: " + json.encode());
-        assertEquals(0.0, json.getDouble("bodiesGrowthPerHour"), json.encode());
+        assertEquals(0, count(metadataOnly, "select count(*) from body_refs"), "metadata-only keeps no body");
+        assertEquals(0, count(metadataOnly, "select count(*) from bodies"), "nor a bodies row");
+        assertEquals(0.0, json.getDouble("journalBytesPerSecond"), "the journal did not grow: " + json.encode());
+        assertEquals(0.0, json.getDouble("journalGrowthPerHour"), json.encode());
 
         // the twin: the same scenario with keep writes bodies, so the zero above is the recording level, not a bench that never writes one
         String keep = database();
@@ -267,32 +230,35 @@ class NodeBenchMainIT {
         assertEquals(0, NodeBenchMain.run(args(keep, "sync", "keep", 4, kept)));
         assertEquals("keep", new JsonObject(Files.readString(kept)).getString("recording"));
         assertEquals(MESSAGES, count(keep, "select count(distinct id) from messages"));
-        assertTrue(count(keep, "select count(distinct message_id) from bodies") > 0, "keep persists the recorded steps' bodies (D-064)");
+        assertTrue(count(keep, "select count(distinct message_id) from body_refs") > 0, "keep persists the recorded steps' bodies (D-064)");
+        assertTrue(new JsonObject(Files.readString(kept)).getDouble("journalBytesPerSecond") > 0, "and its journal grew");
     }
 
+    /**
+     * CORE-4c2 changed the body rate to the journal's ({@code journalBytesPerSecond}, {@code journalGrowthPerHour}; the
+     * {@code bodies} table no longer grows, D-105). Its upper bound (the table's final size) and "the WAL holds the ingress
+     * bytes" are gone with the bytes in Postgres: the WAL carries refs, and the journal directory is the bench's temp dir.
+     */
     @Test
-    void walAndBodiesRatesArePositiveAfterARun() throws Exception {
+    void walAndJournalRatesArePositiveAfterARun() throws Exception {
         String db = database();
         Path out = dir.resolve("rates.json");
         assertEquals(0, NodeBenchMain.run(args(db, "ack", "keep", 4, out)));
         JsonObject json = new JsonObject(Files.readString(out));
         double wal = json.getDouble("walBytesPerSecond");
-        double bodies = json.getDouble("bodiesBytesPerSecond");
-        double perHour = json.getDouble("bodiesGrowthPerHour");
+        double journal = json.getDouble("journalBytesPerSecond");
+        double perHour = json.getDouble("journalGrowthPerHour");
         assertTrue(wal > 0, "walBytesPerSecond: " + json.encode());
-        assertTrue(bodies > 0, "bodiesBytesPerSecond: " + json.encode());
-        assertEquals(bodies * 3600, perHour, Math.abs(bodies * 3600) * 1e-9, "bodiesGrowthPerHour extrapolates the per-second rate");
+        assertTrue(journal > 0, "journalBytesPerSecond: " + json.encode());
+        assertEquals(journal * 3600, perHour, Math.abs(journal * 3600) * 1e-9, "journalGrowthPerHour extrapolates the per-second rate");
 
-        // the rates are bytes per second over the run's duration (elapsedMs): the ingress bodies were inserted inside the run,
-        // the table cannot have grown by more than its size after the run
+        // the rate is bytes per second over the run's duration (elapsedMs): the ingress records were appended inside the run
         double seconds = json.getDouble("elapsedMs") / 1000.0;
-        long ingressBytes = count(db, "select coalesce(sum(octet_length(bytes)), 0) from bodies where step = 0");
-        long finalSize = count(db, "select pg_total_relation_size('bodies')");
-        assertEquals(MESSAGES, count(db, "select count(*) from bodies where step = 0"));
-        assertTrue(bodies * seconds >= ingressBytes,
-                "bodies delta " + bodies * seconds + " B over " + seconds + " s holds at least the " + ingressBytes + " B of ingress bodies");
-        assertTrue(bodies * seconds <= finalSize, "bodies delta " + bodies * seconds + " B is at most the table's size " + finalSize + " B");
-        assertTrue(wal * seconds >= ingressBytes, "WAL delta " + wal * seconds + " B holds at least the " + ingressBytes + " B of ingress bodies");
+        long ingressRecords = count(db, "select coalesce(sum(length), 0) from body_refs where step = 0");
+        assertEquals(MESSAGES, count(db, "select count(*) from body_refs where step = 0"));
+        assertTrue(journal * seconds >= ingressRecords,
+                "journal delta " + journal * seconds + " B over " + seconds + " s holds at least the " + ingressRecords + " B of ingress records");
+        assertEquals(0, count(db, "select count(*) from bodies"), "no bodies row");
     }
 
     @Test
@@ -306,7 +272,7 @@ class NodeBenchMainIT {
         assertEquals(0, json.getInteger("failed"), json.encode());
         assertEquals(0, count(db, "select count(*) from work"), "every queued item was claimed and completed");
         assertEquals(MESSAGES, count(db, "select count(distinct id) from messages"));
-        long smallest = count(db, "select min(octet_length(bytes)) from bodies where step = 0");
+        long smallest = count(db, "select min(body_size) from messages where step = 0");
         assertTrue(smallest >= 50_000 && smallest <= 200_000, "each item's input is the ~100 KB generated XML body: smallest " + smallest + " B");
         assertEquals(MESSAGES, count(db, TRANSFORMED), "for every item a recorded step body after the ingress differs from its input: the XSLT ran");
 
@@ -315,13 +281,16 @@ class NodeBenchMainIT {
         Path twin = dir.resolve("worker-passthrough.json");
         assertEquals(0, NodeBenchMain.run(args(passthrough, "worker", "keep", 4, twin)));
         assertEquals("passthrough", new JsonObject(Files.readString(twin)).getString("step"), "the step defaults to passthrough");
-        assertEquals(MESSAGES, count(passthrough, "select count(distinct message_id) from bodies where step = 0"));
+        assertEquals(MESSAGES, count(passthrough, "select count(distinct message_id) from body_refs where step = 0"));
         assertEquals(0, count(passthrough, TRANSFORMED), "passthrough changes no body");
     }
 
-    /** Items with a body recorded after the ingress whose bytes differ from the ingress body. */
-    static final String TRANSFORMED = "select count(distinct b0.message_id) from bodies b0 join bodies b"
-            + " on b.message_id = b0.message_id and b.step > 0 and b.bytes <> b0.bytes where b0.step = 0";
+    /**
+     * Items with a body recorded after the ingress whose bytes differ from the ingress body, by the rows' body hashes
+     * (CORE-4c2: was by the {@code bodies} rows' bytes; the bytes are journal records now).
+     */
+    static final String TRANSFORMED = "select count(distinct m0.id) from messages m0 join messages m"
+            + " on m.id = m0.id and m.step > 0 and m.body_hash <> m0.body_hash where m0.step = 0";
 
     // --- fixtures
 

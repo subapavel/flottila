@@ -460,4 +460,145 @@ class BatchingWriterTest {
         assertEquals(Duration.ofSeconds(10), BatchingWriter.Options.defaults().maxWait(), "the defaults wait 10 s (the default stop deadline)");
         assertEquals(6_400, BatchingWriter.Options.defaults().maxBacklog(), "the backlog stays 6400");
     }
+
+    // --- CORE-6b (D-109): a byte limit beside the count — new BatchingWriter(sink, timer, options, weight, batchBytes)
+
+    /** An item {@code "<name>-<n>"} weighs n bytes. */
+    static long weight(String item) {
+        return Long.parseLong(item.substring(item.lastIndexOf('-') + 1));
+    }
+
+    private BatchingWriter<String> weighed(FakeSink to, int batchSize, long windowMs, int concurrency, int maxBacklog, long batchBytes) {
+        return new BatchingWriter<>(to, timer, new BatchingWriter.Options(batchSize, Duration.ofMillis(windowMs), concurrency, maxBacklog),
+                BatchingWriterTest::weight, batchBytes);
+    }
+
+    @Test
+    void aBatchStopsAtItsByteLimit() {
+        sink.manual = true;
+        BatchingWriter<String> w = weighed(sink, 10, 60_000, 1, 100, 1_000);
+        w.save("busy-1");
+        var busy = sink.gate();
+        for (String item : List.of("a-300", "b-700", "c-1", "d-400", "e-400", "f-400")) w.save(item);
+        assertEquals(1, sink.batches.size(), "fixture: the one slot is busy, everything else queued");
+
+        busy.complete();
+        assertEquals(List.of("a-300", "b-700"), sink.batches.get(1), "items join while their bytes stay within the limit: 300 + 700 = 1000, c would make 1001");
+        sink.gate().complete();
+        assertEquals(List.of("c-1", "d-400", "e-400"), sink.batches.get(2), "1 + 400 + 400 = 801; the next 400 would make 1201");
+        sink.gate().complete();
+        assertEquals(List.of("f-400"), sink.batches.get(3), "the rest");
+        sink.gate().complete();
+        assertEquals(0, w.backlog());
+        assertEquals(4, sink.batches.size());
+    }
+
+    @Test
+    void anItemAboveTheByteLimitGoesAlone() {
+        sink.manual = true;
+        BatchingWriter<String> w = weighed(sink, 10, 60_000, 1, 100, 1_000);
+        Future<Void> big = w.save("big-5000");
+        assertEquals(List.of(List.of("big-5000")), sink.batches, "an idle writer sends an item above the limit at once, alone");
+        var first = sink.gate();
+        Future<Void> a = w.save("a-100");
+        Future<Void> huge = w.save("huge-2500");
+        Future<Void> b = w.save("b-100");
+
+        first.complete();
+        assertTrue(big.succeeded());
+        assertEquals(List.of("a-100"), sink.batches.get(1), "an item above the limit joins no batch");
+        sink.gate().complete();
+        assertEquals(List.of("huge-2500"), sink.batches.get(2), "it goes alone, never stuck at the head of the queue");
+        sink.gate().complete();
+        assertEquals(List.of("b-100"), sink.batches.get(3), "and nothing joined it");
+        sink.gate().complete();
+        assertTrue(a.succeeded() && huge.succeeded() && b.succeeded(), "each committed with its batch");
+        assertEquals(0, w.backlog());
+    }
+
+    @Test
+    void aBatchFullByBytesSkipsTheWindow() {
+        sink.manual = true;
+        BatchingWriter<String> w = weighed(sink, 100, 60_000, 2, 1_000, 1_000);
+        w.save("busy-1");                              // one slot busy, one free: a partial batch waits for the window
+        w.save("a-400");
+        w.save("b-400");
+        assertEquals(1, sink.batches.size(), "800 of 1000 bytes and 2 of 100 items: a partial batch waits for the window");
+        w.save("c-400");
+        assertEquals(2, sink.batches.size(), "1200 bytes queued: a batch full by bytes goes on the free slot, the window not waited for");
+        assertEquals(List.of("a-400", "b-400"), sink.batches.get(1));
+        assertEquals(1, w.backlog(), "c did not fit: it waits");
+
+        FakeSink exact = new FakeSink();
+        exact.manual = true;
+        BatchingWriter<String> x = weighed(exact, 100, 60_000, 2, 1_000, 1_000);
+        x.save("busy-1");
+        x.save("d-500");
+        assertEquals(1, exact.batches.size(), "500 of 1000 bytes: it waits for the window");
+        x.save("e-500");
+        assertEquals(List.of("d-500", "e-500"), exact.batches.get(1), "exactly 1000 bytes is full: it goes, the window not waited for");
+        assertEquals(0, x.backlog());
+        assertEquals(Instant.EPOCH, clock.instant(), "fixture: the clock never moved");
+    }
+
+    /**
+     * The three-argument constructor batches by count alone, as before: weight 1 per item and a byte limit of {@code batchSize} —
+     * whatever the items' sizes, a batch takes {@code batchSize} items, a partial one waits for the window; and it batches exactly as
+     * the weighed constructor given weight 1 and {@code batchSize} bytes.
+     */
+    @Test
+    void theOldConstructorBatchesAsBefore() {
+        sink.manual = true;
+        BatchingWriter<String> w = writer(3, 50, 2, 300);
+        String heavy = "x".repeat(100_000) + "-";
+        w.save(heavy + 0);
+        w.save(heavy + 1);
+        w.save(heavy + 2);
+        assertEquals(1, sink.batches.size(), "two queued of three: a partial batch waits for the window, whatever the items' size");
+        w.save(heavy + 3);
+        assertEquals(2, sink.batches.size(), "three queued: full by count, it goes");
+        assertEquals(List.of(heavy + 1, heavy + 2, heavy + 3), sink.batches.get(1));
+        w.save(heavy + 4);
+        sink.gate().complete();                        // a slot frees; one queued, one in flight: it waits for the window
+        assertEquals(2, sink.batches.size());
+        clock.advance(Duration.ofMillis(50));
+        assertEquals(List.of(heavy + 4), sink.batches.get(2), "the window sends the partial batch");
+
+        List<List<String>> old = script(new FakeSink(), (s, t) -> new BatchingWriter<>(s, t, new BatchingWriter.Options(3, Duration.ofMillis(50), 2, 300)));
+        List<List<String>> weighedByOne = script(new FakeSink(), (s, t) -> new BatchingWriter<>(s, t, new BatchingWriter.Options(3, Duration.ofMillis(50), 2, 300),
+                item -> 1L, 3));
+        assertEquals(weighedByOne, old, "the old constructor = weight 1, batchSize bytes");
+        assertEquals(List.of(List.of("i-0"), List.of("i-1", "i-2", "i-3"), List.of("i-4", "i-5", "i-6"), List.of("i-7"), List.of("i-8"), List.of("i-9")), old,
+                "worked example: alone when idle, full batches by count, the window's partial batch, alone on an idle writer, then on completion");
+    }
+
+    /** A fixed demand on a fresh writer: ten saves, completions and one window, the batches the sink saw. */
+    private static List<List<String>> script(FakeSink to, java.util.function.BiFunction<FakeSink, FakeTimer, BatchingWriter<String>> build) {
+        FakeClock c = FakeClock.at(Instant.EPOCH);
+        FakeTimer t = new FakeTimer(c);
+        to.manual = true;
+        BatchingWriter<String> w = build.apply(to, t);
+        w.save("i-0");                                 // idle: alone
+        for (int i = 1; i <= 7; i++) w.save("i-" + i); // two full batches go on the second slot and after; i-7 partial
+        to.gate().complete();                          // i-0 done: [i-4 i-5 i-6] goes (full), i-7 stays
+        to.gate().complete();                          // [i-1 i-2 i-3] done
+        c.advance(Duration.ofMillis(50));              // the window: [i-7]
+        to.gate().complete();
+        to.gate().complete();                          // idle again
+        w.save("i-8");                                 // idle: alone
+        w.save("i-9");                                 // waits: goes when [i-8] completes
+        while (to.open() > 0) to.gate().complete();
+        c.advance(Duration.ofMillis(50));
+        while (to.open() > 0) to.gate().complete();
+        return List.copyOf(to.batches);
+    }
+
+    @Test
+    void aByteLimitBelowOneOrNoWeightIsRefused() {
+        BatchingWriter.Options options = new BatchingWriter.Options(10, Duration.ZERO, 1, 100);
+        assertThrows(IllegalArgumentException.class, () -> new BatchingWriter<String>(sink, timer, options, s -> 1L, 0), "a byte limit of 0");
+        assertThrows(IllegalArgumentException.class, () -> new BatchingWriter<String>(sink, timer, options, s -> 1L, -1), "a negative byte limit");
+        assertThrows(NullPointerException.class, () -> new BatchingWriter<String>(sink, timer, options, null, 1_000), "no weight");
+        assertDoesNotThrow(() -> new BatchingWriter<String>(sink, timer, options, s -> 1L, 1), "one byte is a limit");
+    }
 }

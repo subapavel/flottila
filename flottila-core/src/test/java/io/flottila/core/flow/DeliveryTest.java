@@ -2,7 +2,6 @@ package io.flottila.core.flow;
 
 import io.flottila.api.Ack;
 import io.flottila.api.BlobKey;
-import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
@@ -10,7 +9,6 @@ import io.flottila.api.Fault;
 import io.flottila.api.Headers;
 import io.flottila.api.Key;
 import io.flottila.api.NackException;
-import io.flottila.api.Pipeline;
 import io.flottila.api.Stage;
 import io.flottila.api.StepConfig;
 import io.flottila.api.StepFactory;
@@ -40,13 +38,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -58,7 +53,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -66,8 +60,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -76,7 +68,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -495,8 +486,9 @@ class DeliveryTest {
         assertEquals(1, partner.sent().size(), "leased: not run again before the lease runs out");
 
         failing.parksOk();
-        rt.clock().advance(WorkerPolicy.DEFAULT.lease());
-        worker.poll().await();
+        rt.clock().advance(WorkerPolicy.DEFAULT.lease());   // the item's lease end: the worker's own lease-end wake claims it (D-121 A6), no poll of the test
+        FlowWorkerTest.until(() -> queue.size() == 0 && worker.unsettled() == 0,
+                () -> "the lease-end wake reran the item and settled it: rows " + queue.snapshot() + ", running " + worker.unsettled());
         List<Parked> parked = failing.list(Optional.empty(), Page.MAX_LIMIT).await().items();
         assertEquals(1, parked.size(), "after the lease the item runs again and its failure is parked");
         assertEquals(in.id(), parked.get(0).messageId());
@@ -520,8 +512,9 @@ class DeliveryTest {
         assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items());
 
         store.readsOk();
-        rt.clock().advance(WorkerPolicy.DEFAULT.lease());
-        worker.poll().await();
+        rt.clock().advance(WorkerPolicy.DEFAULT.lease());   // the item's lease end: the worker's own lease-end wake claims it (D-121 A6), no poll of the test
+        FlowWorkerTest.until(() -> queue.size() == 0 && worker.unsettled() == 0,
+                () -> "the lease-end wake ran the item and completed it: rows " + queue.snapshot() + ", running " + worker.unsettled());
         List<Envelope> got = partner.sentTo("partner");
         assertEquals(1, got.size(), "after the lease the message runs");
         assertEquals(in.id(), got.get(0).id());
@@ -1517,7 +1510,8 @@ class DeliveryTest {
 
     // --- the intake (P2-08a, D-082): an at-least-once delivery saves through its Intake, once; it persists, records and
     // enqueues nothing itself. The shape assumed: core {@code Intake} (package io.flottila.core.flow) with
-    // {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}
+    // {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+    // Future<?> abandoned)} (CORE-4c2: keepInput; CORE-4d: the answer future)
     // (P2-02D: the future answers the id the Accepted names) and {@code FlowBuilder intake(Intake)}.
 
     /**
@@ -1525,48 +1519,23 @@ class DeliveryTest {
      * with its arguments and a pending promise; {@link #throwNext} makes the next call throw instead of returning a future.
      */
     static final class HeldIntake implements Intake {
-        record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned,
-                    Promise<String> answer) {
+        record Save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                    Future<?> abandoned, Promise<String> answer) {
             /** The save succeeded as the arrived message itself (no duplicate). */
             void saved() { answer.complete(arrived.id()); }
         }
 
         final List<Save> saves = new CopyOnWriteArrayList<>();
         private final AtomicReference<RuntimeException> throwNext = new AtomicReference<>();
-        private volatile Error throwAlways;
-        private volatile Throwable throwSneakily;
-        private volatile Runnable onSave = () -> { };
 
         @Override
-        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                                   Future<?> abandoned) {
             Promise<String> answer = Promise.promise();
-            saves.add(new Save(arrived, ingress, flow, partitionKey, dedupeKey, abandoned, answer));
-            onSave.run();
+            saves.add(new Save(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned, answer));
             RuntimeException thrown = throwNext.getAndSet(null);
             if (thrown != null) throw thrown;
-            Error error = throwAlways;
-            if (error != null) throw error;
-            Throwable checked = throwSneakily;
-            if (checked != null) throw HeldPipeline.sneaky(checked);
             return answer.future();
-        }
-
-        /** FIX-136: every save throws {@code error} (an {@link Error}, not a {@link RuntimeException}) instead of returning a future. */
-        HeldIntake throwing(Error error) {
-            throwAlways = error;
-            return this;
-        }
-
-        /** FIX-136: every save throws {@code checked}, a checked throwable this method declares none of, as a blocked {@code Future.await()} does. */
-        HeldIntake throwingSneakily(Throwable checked) {
-            throwSneakily = checked;
-            return this;
-        }
-
-        /** FIX-136: {@code seen} runs inside every save call, before it answers or throws — what the delivery holds at that moment. */
-        HeldIntake seeing(Runnable seen) {
-            onSave = seen;
-            return this;
         }
 
         HeldIntake throwNext(RuntimeException failure) {
@@ -1589,6 +1558,7 @@ class DeliveryTest {
         HeldIntake intake = new HeldIntake();
         Map<String, Object> doc = flow("at-least-once", List.of(ORDER_KEY, TO_PARTNER));
         doc.put("partitionBy", "orderId");
+        doc.put("onFailure", "park");
         doc.put("recording", Map.of("level", "off"));
         Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
         String id = rt.ids().next();
@@ -1604,7 +1574,7 @@ class DeliveryTest {
         assertEquals(Recorder.INGRESS, save.ingress().stepName(), "the ingress snapshot");
         assertEquals(0, save.ingress().step());
         assertEquals(Optional.of(in.body().key()), save.ingress().bodyKey(), "its payload kept although the flow records nothing");
-        assertFalse(save.abandoned().getAsBoolean(), "an undecided save is not abandoned");
+        assertFalse(save.abandoned().isComplete(), "an undecided save is not abandoned");
         assertFalse(ack.isComplete(), "no ACK before the intake's save completed");
         assertEquals(List.of(), own.persists(), "the delivery persists nothing itself: the intake does");
         assertEquals(0, store.recorded(Recorder.INGRESS), "records nothing itself");
@@ -1619,6 +1589,32 @@ class DeliveryTest {
         assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the ACK");
         assertEquals(0, rt.timer().pending(), "the save timeout went with the answer");
         assertEquals(List.of(), partner.sent(), "nothing of the pipeline runs on the handler's thread");
+    }
+
+    /**
+     * CORE-4c2 (D-105, CORE-3 item 6): the delivery tells its intake whether the flow keeps its input — the flow's
+     * {@code RecordingPolicy.keepsBody()} until CORE-13: payload {@code keep} (the default, whatever the level) → true,
+     * {@code metadata-only} → false (level none: record and work item only, no kept ref).
+     */
+    @Test
+    void anAtLeastOnceDeliveryTellsItsIntakeWhetherTheFlowKeepsItsInput() {
+        Map<String, Boolean> expected = new java.util.LinkedHashMap<>();
+        expected.put("default", true);
+        expected.put("level off", true);
+        expected.put("metadata-only", false);
+        for (Map.Entry<String, Boolean> c : expected.entrySet()) {
+            HeldIntake intake = new HeldIntake();
+            Map<String, Object> doc = flow("at-least-once", List.of(TO_PARTNER));
+            switch (c.getKey()) {
+                case "level off" -> doc.put("recording", Map.of("level", "off"));
+                case "metadata-only" -> doc.put("recording", Map.of("payload", "metadata-only"));
+                default -> { }
+            }
+            Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
+            delivery.apply(ingress(ORDER));
+            assertEquals(c.getValue(), intake.only().keepInput(), c.getKey() + ": keepInput is the flow's keepsBody()");
+            intake.only().saved();
+        }
     }
 
     @ParameterizedTest(name = "throws instead of failing its future: {0}")
@@ -1658,28 +1654,28 @@ class DeliveryTest {
         Delivery delivery = builder().intake(intake).delivery(FlowDefinition.from(doc), NO_FILES);
 
         Future<Ack> ack = delivery.apply(ingress(ORDER));
-        BooleanSupplier abandoned = intake.only().abandoned();
-        assertFalse(abandoned.getAsBoolean(), "just asked: not abandoned");
+        Future<?> abandoned = intake.only().abandoned();
+        assertFalse(abandoned.isComplete(), "just asked: not abandoned");
         rt.clock().advance(Duration.ofMillis(1999));
         assertFalse(ack.isComplete(), "not answered before the timeout");
-        assertFalse(abandoned.getAsBoolean(), "1 ms before the timeout the save may still commit");
+        assertFalse(abandoned.isComplete(), "1 ms before the timeout the save may still commit");
         rt.clock().advance(Duration.ofMillis(1));
         Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "the timeout decided: " + ack);
         assertTrue(nack.retryable() && (nack.reason().contains("PT2S") || nack.reason().contains("2s")), "the save timed out: " + nack.reason());
-        assertTrue(abandoned.getAsBoolean(), "once the timeout decided the answer, the intake must queue nothing");
-        assertTrue(abandoned.getAsBoolean(), "and stays abandoned, however often asked");
+        assertTrue(abandoned.isComplete(), "once the timeout decided the answer, the intake must queue nothing");
+        assertTrue(abandoned.isComplete(), "and stays abandoned, however often asked");
         intake.only().saved();   // a late save the intake did not see abandoned
         assertEquals(nack, ack.result(), "the answer stays the timeout's");
         assertEquals(0, delivery.admission().inFlightRequests(), "the permit came back with the timeout");
 
         // the stop's deadline decides an answer too
         Future<Ack> second = delivery.apply(ingress(ORDER));
-        BooleanSupplier secondAbandoned = intake.saves.get(1).abandoned();
+        Future<?> secondAbandoned = intake.saves.get(1).abandoned();
         delivery.stop(Duration.ofSeconds(1));
-        assertFalse(secondAbandoned.getAsBoolean(), "stopping is not cancelling: the save may still land before the deadline");
+        assertFalse(secondAbandoned.isComplete(), "stopping is not cancelling: the save may still land before the deadline");
         rt.clock().advance(Duration.ofSeconds(1));
         cancelled(second);
-        assertTrue(secondAbandoned.getAsBoolean(), "the stop's deadline decided the answer: abandoned");
+        assertTrue(secondAbandoned.isComplete(), "the stop's deadline decided the answer: abandoned");
     }
 
     // --- the dedupe key (P2-02D, D-084): the component names a prop; the delivery reads it on the envelope as it arrived (absent
@@ -1908,299 +1904,5 @@ class DeliveryTest {
         assertTrue(a.ack().failed(), "answered with the failure: " + a.ack());
         assertSame(notOurs, a.ack().cause(), "the pipeline's InterruptedException, as thrown");
         assertFalse(a.interruptedAfter(), "the delivery does not set a flag the pipeline left clear");
-    }
-
-    // --- FIX-136 (F-30, D-049 d): an Error is an answer, never an exception out of apply — in every mode, and for at-least-once
-    // it must also give the permit back and let stop() complete. The expectations are literals (1 request, ORDER's byte count,
-    // 0, a Nack naming the Error's message); nothing here is computed by the code under test.
-
-    static final String LINKAGE = "linkage broken by the test";
-
-    /** The at-least-once save timeout of the FIX-136 fixtures: a case that advances the fake clock by it fires whatever timeout is still pending. */
-    static final Duration SAVE_TIMEOUT = Duration.ofSeconds(2);
-
-    /** Where an at-least-once ingress save throws an {@link Error}: the intake itself, or one of the two stores inside {@link SequentialIntake}. */
-    enum Site { INTAKE, BODY_PERSIST, INGRESS_RECORD }
-
-    /**
-     * {@code delegate} as a {@code type} whose {@code method} throws {@code error} after running {@code atThrow}; every other call
-     * reaches {@code delegate}. A stand-in at the store boundary, never of the class under test.
-     */
-    static <T> T erroringOn(Class<T> type, T delegate, String method, Error error, Runnable atThrow) {
-        return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, (proxy, called, args) -> {
-            if (called.getName().equals(method)) {
-                atThrow.run();
-                throw error;
-            }
-            try {
-                return called.invoke(delegate, args);
-            } catch (InvocationTargetException thrown) {
-                throw thrown.getCause();
-            }
-        }));
-    }
-
-    /** What {@link #apply} did: the answer it returned, or the throwable that escaped it. Recorded, so a case can look at the permit either way. */
-    record Outcome(Future<Ack> ack, Throwable escaped) {
-        @Override public String toString() { return ack != null ? "answered " + ack : "escaped " + escaped; }
-    }
-
-    static Outcome tryApply(Delivery delivery, Envelope in) {
-        try {
-            return new Outcome(delivery.apply(in), null);
-        } catch (Throwable escaped) {
-            return new Outcome(null, escaped);
-        }
-    }
-
-    /**
-     * An at-least-once delivery of one permit (and {@code 1 << 20} bytes) whose ingress save throws {@code error}; {@code
-     * requestsAtThrow} and {@code bytesAtThrow} hold what the admission counted at each throw — the witness that the permit was taken.
-     */
-    record Subject(Delivery delivery, Admission admission, Supplier<Envelope> arrivals, List<Long> requestsAtThrow, List<Long> bytesAtThrow) {}
-
-    Envelope arrivalOver(BlobStore blobs) {
-        Envelope plain = ingressInOwnStore(ORDER);
-        Body written = plain.body();
-        return Envelope.ingress(plain.id(), "orders", plain.headers(), Body.of(blobs, written.key(), written.hash(), written.size()));
-    }
-
-    Subject erroringAtLeastOnce(Site site, Error error) {
-        Admission admission = new Admission(1, 1 << 20);
-        List<Long> requests = new CopyOnWriteArrayList<>();
-        List<Long> bytes = new CopyOnWriteArrayList<>();
-        Runnable seen = () -> {
-            requests.add(admission.inFlightRequests());
-            bytes.add(admission.inFlightBytes());
-        };
-        Recorder recorder = new Recorder(store, rt.clock(), Meter.system(), Map.of());
-        Function<Envelope, Snapshot> ingress = e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT);
-        Duration saveTimeout = SAVE_TIMEOUT;
-        return switch (site) {
-            case INTAKE -> {
-                HeldIntake intake = new HeldIntake().throwing(error).seeing(seen);
-                Delivery delivery = Delivery.atLeastOnce(admission, "orders", ingress, e -> Optional.empty(), e -> Optional.empty(), intake, rt.timer(), saveTimeout);
-                yield new Subject(delivery, admission, () -> ingressInOwnStore(ORDER), requests, bytes);
-            }
-            case BODY_PERSIST -> {
-                BlobStore erroring = erroringOn(BlobStore.class, own, "persist", error, seen);
-                Delivery delivery = Delivery.atLeastOnce(admission, "orders", ingress, store, queue, rt.timer(), saveTimeout);
-                yield new Subject(delivery, admission, () -> arrivalOver(erroring), requests, bytes);
-            }
-            case INGRESS_RECORD -> {
-                MessageStore erroring = erroringOn(MessageStore.class, store, "record", error, seen);
-                Delivery delivery = Delivery.atLeastOnce(admission, "orders", ingress, erroring, queue, rt.timer(), saveTimeout);
-                yield new Subject(delivery, admission, () -> ingressInOwnStore(ORDER), requests, bytes);
-            }
-        };
-    }
-
-    @ParameterizedTest(name = "an Error from {0}")
-    @EnumSource(Site.class)
-    void anErrorFromTheIngressSaveIsARetryableNackNotAnExceptionOutOfApply(Site site) {
-        Subject s = erroringAtLeastOnce(site, new LinkageError(LINKAGE));
-        Future<Ack> ack = assertDoesNotThrow(() -> s.delivery().apply(s.arrivals().get()), "an Error from the save is an answer, never an exception out of apply (D-049 d)");
-        // Under a correct fix the widened catch has already decided the answer and the save timeout is cancelled, so this advance is a
-        // no-op. Its only job is to let a WRONG implementation (an Error that fell through to the pending timeout) reach the
-        // assertFalse below with the timeout's Nack, instead of hanging in settled() on a fake timer that fires only on advance.
-        rt.clock().advance(SAVE_TIMEOUT);
-        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(ack).result(), "a failed save is an answer, not a failed future: " + ack);
-        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
-        assertTrue(nack.reason().contains(LINKAGE), "names the cause: " + nack.reason());
-        // A timeout reported for an Error that never timed out is a false record, not just a wrong string: the sender and the
-        // monitoring would be told the save timed out while the Error itself is recorded nowhere. The reason is the Error's own message.
-        assertFalse(nack.reason().contains("durable save timed out"), "the save threw, it did not time out — a timeout text here is a false record: " + nack.reason());
-        assertEquals(List.of(1L), s.requestsAtThrow(), "witness: the save really ran, with the permit taken");
-        assertEquals(0, queue.size(), "nothing queued");
-    }
-
-    /**
-     * FIX-136: the widened save catch is {@code Throwable}, so a sneaky checked throwable (what an intake blocking on {@code
-     * Future.await()} throws when a deadline interrupts it) is an answer too, not an exception out of {@code apply}. Discriminates on
-     * the throwable's kind only: an {@link IOException}, neither an {@link Error} nor a {@link RuntimeException}, where the
-     * LinkageError cases above throw an Error. Narrowing the catch to {@code RuntimeException | Error} lets it escape {@code apply}.
-     */
-    @Test
-    void aSneakyCheckedThrowableFromTheIntakeIsARetryableNackNotAnExceptionOutOfApply() {
-        String message = "socket closed under the save";
-        Admission admission = new Admission(1, 1 << 20);
-        List<Long> requests = new CopyOnWriteArrayList<>();
-        HeldIntake intake = new HeldIntake().throwingSneakily(new IOException(message)).seeing(() -> requests.add(admission.inFlightRequests()));
-        Recorder recorder = new Recorder(store, rt.clock(), Meter.system(), Map.of());
-        Delivery delivery = Delivery.atLeastOnce(admission, "orders", e -> recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT),
-                e -> Optional.empty(), e -> Optional.empty(), intake, rt.timer(), SAVE_TIMEOUT);
-
-        Outcome outcome = tryApply(delivery, ingressInOwnStore(ORDER));
-        assertNull(outcome.escaped(), "a sneaky checked throwable from the save is an answer, never an exception out of apply: " + outcome);
-        assertEquals(List.of(1L), requests, "witness: the save really ran, with the permit taken: " + outcome);
-        rt.clock().advance(SAVE_TIMEOUT);   // a no-op when the throw decided the answer; lets a wrong implementation reach the assertions below
-        Ack.Nack nack = assertInstanceOf(Ack.Nack.class, settled(outcome.ack()).result(), "a failed save is an answer, not a failed future: " + outcome);
-        assertTrue(nack.retryable(), "the sender may try again: " + nack.reason());
-        assertTrue(nack.reason().contains(message), "names the cause: " + nack.reason());
-        assertFalse(nack.reason().contains("durable save timed out"), "the save threw, it did not time out: " + nack.reason());
-        assertEquals(0, admission.inFlightRequests(), "the permit is back: " + outcome);
-        assertEquals(0, admission.inFlightBytes(), "its bytes too: " + outcome);
-        assertEquals(0, queue.size(), "nothing queued");
-    }
-
-    @ParameterizedTest(name = "an Error from {0}")
-    @EnumSource(Site.class)
-    void anErrorFromTheIngressSaveReturnsThePermit(Site site) {
-        Subject s = erroringAtLeastOnce(site, new LinkageError(LINKAGE));
-        Outcome first = tryApply(s.delivery(), s.arrivals().get());
-        // the trap: a counter never incremented also reads 0, so first show the permit was taken while the save ran
-        assertEquals(List.of(1L), s.requestsAtThrow(), "witness: one request was in flight while the save ran: " + first);
-        assertEquals(List.of((long) ORDER.length()), s.bytesAtThrow(), "witness: its bytes were counted too: " + first);
-        assertEquals(0, s.admission().inFlightRequests(), "the permit is back once the save failed: " + first);
-        assertEquals(0, s.admission().inFlightBytes(), "and its bytes: " + first);
-        assertSame(s.admission(), s.delivery().admission(), "fixture: the admission the counters are read from is the delivery's own");
-
-        Outcome second = tryApply(s.delivery(), s.arrivals().get());
-        assertEquals(List.of(1L, 1L), s.requestsAtThrow(), "the next message is admitted — the one permit is free again — and reaches the save: " + second);
-        assertEquals(0, s.admission().inFlightRequests(), "and gives it back too: " + second);
-    }
-
-    @ParameterizedTest(name = "an Error from {0}")
-    @EnumSource(Site.class)
-    void stopCompletesAtOnceAfterAnErrorFromTheIngressSave(Site site) {
-        Subject s = erroringAtLeastOnce(site, new LinkageError(LINKAGE));
-        Outcome failed = tryApply(s.delivery(), s.arrivals().get());
-        assertEquals(List.of(1L), s.requestsAtThrow(), "witness: a delivery was admitted and reached the save, so there was a flight to leave: " + failed);
-        Future<Void> stopped = s.delivery().stop(DEADLINE);
-        // no clock advance, no sleep: with nothing in flight stop is done when it returns; a flight that never landed holds it open
-        assertTrue(stopped.isComplete(), "nothing is in flight any more, so stop completes without the deadline: " + failed);
-        assertTrue(stopped.succeeded(), "stop: " + stopped);
-        assertEquals(0, rt.timer().pending(), "neither the save timeout nor the stop's deadline is left pending: " + failed);
-    }
-
-    /**
-     * The sync mode already answers every throwable by its {@code Exception} catch; since FIX-136 an {@link Error} is one too: a
-     * failed future carrying it, not an exception out of {@code apply} that the consumer cannot map to a reply.
-     */
-    @Test
-    void aSyncPipelineErrorFailsTheFutureNotTheCaller() {
-        LinkageError error = new LinkageError(LINKAGE);
-        Pipeline throwing = e -> { throw error; };
-        Delivery delivery = Delivery.sync(new Admission(1, 1 << 20), throwing, rt.timer());
-        Future<Ack> ack = assertDoesNotThrow(() -> delivery.apply(ingress(ORDER)), "an Error from the pipeline is an answer, never an exception out of apply (D-049 d)");
-        assertTrue(ack.isComplete() && ack.failed(), "a failed future, like any step failure: " + ack);
-        assertSame(error, ack.cause(), "the Error as thrown");
-    }
-
-    /**
-     * A regression guard, not the fix: the sync run's {@code finally} already gives the permit back whatever the pipeline threw,
-     * an {@link Error} included, and this pins that it stays so. Green before FIX-136 by design.
-     */
-    @Test
-    void aSyncPipelineErrorKeepsReturningThePermit() {
-        Admission admission = new Admission(1, 1 << 20);
-        List<Long> requestsInFlight = new CopyOnWriteArrayList<>();
-        List<Long> bytesInFlight = new CopyOnWriteArrayList<>();
-        Pipeline throwing = e -> {
-            requestsInFlight.add(admission.inFlightRequests());
-            bytesInFlight.add(admission.inFlightBytes());
-            throw new LinkageError(LINKAGE);
-        };
-        Delivery delivery = Delivery.sync(admission, throwing, rt.timer());
-        Outcome first = tryApply(delivery, ingress(ORDER));
-        assertEquals(List.of(1L), requestsInFlight, "witness: the permit was taken while the pipeline ran: " + first);
-        assertEquals(List.of((long) ORDER.length()), bytesInFlight, "witness: its bytes too: " + first);
-        assertEquals(0, admission.inFlightRequests(), "the permit is back: " + first);
-        assertEquals(0, admission.inFlightBytes(), "its bytes are back: " + first);
-        Outcome second = tryApply(delivery, ingress(ORDER));
-        assertEquals(List.of(1L, 1L), requestsInFlight, "the next message is admitted: " + second);
-        assertEquals(0, admission.inFlightRequests(), "and gives it back: " + second);
-    }
-
-    /** The WARNING lines {@link Delivery}'s logger writes, kept with the latches the cases wait on (a bounded wait, never a sleep). */
-    static final class Lines implements AutoCloseable {
-        private final List<java.util.logging.LogRecord> records = new CopyOnWriteArrayList<>();
-        private final Map<String, CountDownLatch> naming = new ConcurrentHashMap<>();
-        private final java.util.logging.Logger jul = java.util.logging.Logger.getLogger(Delivery.class.getName());   // System.Logger delegates to it
-        private final java.util.logging.Handler handler = new java.util.logging.Handler() {
-            @Override public void publish(java.util.logging.LogRecord r) {
-                records.add(r);
-                String text = new java.util.logging.SimpleFormatter().formatMessage(r);
-                naming.forEach((id, latch) -> {
-                    if (text != null && text.contains(id)) latch.countDown();
-                });
-            }
-            @Override public void flush() { }
-            @Override public void close() { }
-        };
-
-        Lines() {
-            handler.setLevel(java.util.logging.Level.ALL);
-            jul.addHandler(handler);
-        }
-
-        /** Counts down once a line naming {@code id} is written. */
-        CountDownLatch awaiting(String id) {
-            return naming.computeIfAbsent(id, k -> new CountDownLatch(1));
-        }
-
-        List<java.util.logging.LogRecord> naming(String id) {
-            return records.stream().filter(r -> new java.util.logging.SimpleFormatter().formatMessage(r).contains(id)).toList();
-        }
-
-        @Override public void close() { jul.removeHandler(handler); }
-    }
-
-    /**
-     * D-049 b: an at-most-once failure is logged and dropped. An {@link Error} from the pipeline is that failure too: one WARNING
-     * naming the message and carrying the Error, not an uncaught throwable on the run's own virtual thread, which reaches stderr and
-     * no {@code System.Logger} line at all. The ordinary failure beside it proves the capture is not matching everything: each id
-     * has exactly its own line.
-     */
-    @Test
-    void anAtMostOnceErrorIsLoggedAndDroppedNamingTheMessage() throws InterruptedException {
-        Envelope ordinary = ingress(ORDER);
-        Envelope bad = ingress(ORDER);
-        LinkageError error = new LinkageError(LINKAGE);
-        IllegalStateException partnerDown = new IllegalStateException("partner down");
-        Pipeline pipeline = e -> {
-            if (e.id().equals(bad.id())) throw error;
-            throw partnerDown;
-        };
-        Delivery delivery = Delivery.atMostOnce(roomy(), pipeline, rt.timer());
-        try (Lines lines = new Lines()) {
-            CountDownLatch ordinaryLogged = lines.awaiting(ordinary.id());
-            CountDownLatch badLogged = lines.awaiting(bad.id());
-            assertEquals(new Ack.Accepted(ordinary.id()), delivery.apply(ordinary).await());
-            assertTrue(ordinaryLogged.await(3, TimeUnit.SECONDS), "witness: an ordinary failure writes a line naming " + ordinary.id());
-            assertEquals(new Ack.Accepted(bad.id()), delivery.apply(bad).await());
-            assertTrue(badLogged.await(3, TimeUnit.SECONDS), "a line naming " + bad.id() + " — the Error was logged and dropped, not left uncaught on its thread");
-
-            List<java.util.logging.LogRecord> ofBad = lines.naming(bad.id());
-            assertEquals(1, ofBad.size(), "exactly one line for the Error: " + ofBad.stream().map(java.util.logging.LogRecord::getMessage).toList());
-            assertEquals(java.util.logging.Level.WARNING, ofBad.get(0).getLevel());
-            assertTrue(ofBad.get(0).getMessage().contains("failed and is dropped"), ofBad.get(0).getMessage());
-            assertSame(error, ofBad.get(0).getThrown(), "the Error itself");
-            List<java.util.logging.LogRecord> ofOrdinary = lines.naming(ordinary.id());
-            assertEquals(1, ofOrdinary.size(), "witness: the ordinary failure has exactly its own line");
-            assertSame(partnerDown, ofOrdinary.get(0).getThrown(), "witness: and that line is its own, not the Error's");
-        }
-        assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "dropped, not parked");
-    }
-
-    /** A regression guard, not the fix: the at-most-once run's {@code finally} already gives the permit back after an {@link Error}. Green before FIX-136 by design. */
-    @Test
-    void anAtMostOnceErrorKeepsReturningThePermit() {
-        Admission admission = new Admission(1, 1 << 20);
-        List<Long> requestsInFlight = new CopyOnWriteArrayList<>();
-        List<Long> bytesInFlight = new CopyOnWriteArrayList<>();
-        Pipeline throwing = e -> {
-            requestsInFlight.add(admission.inFlightRequests());
-            bytesInFlight.add(admission.inFlightBytes());
-            throw new LinkageError(LINKAGE);
-        };
-        Delivery delivery = Delivery.atMostOnce(admission, throwing, rt.timer());
-        Envelope in = ingress(ORDER);
-        assertEquals(new Ack.Accepted(in.id()), delivery.apply(in).await());
-        assertTrue(settled(delivery.stop(DEADLINE)).succeeded(), "the run is over and its flight landed");
-        assertEquals(List.of(1L), requestsInFlight, "witness: the permit was taken while the pipeline ran");
-        assertEquals(List.of((long) ORDER.length()), bytesInFlight, "witness: its bytes too");
-        assertEquals(0, admission.inFlightRequests(), "the permit is back");
-        assertEquals(0, admission.inFlightBytes(), "its bytes are back");
     }
 }

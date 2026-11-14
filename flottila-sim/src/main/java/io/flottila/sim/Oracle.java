@@ -16,7 +16,7 @@ import java.util.function.LongSupplier;
 import java.util.stream.Collectors;
 
 /**
- * The model of a run and its checks (D-101). Each comparison counts under its check; a comparison is one expected text against
+ * The model of a run and its checks (D-143). Each comparison counts under its check; a comparison is one expected text against
  * one observed text, so a check fails exactly when they differ.
  * <ul>
  * <li>PREDICTED: a send with room in its flow's admission answers as the model says — a sync send the Reply
@@ -27,9 +27,10 @@ import java.util.stream.Collectors;
  * bytes, and no worker runs more than its limit.</li>
  * <li>KEY_ORDER: at most one message of a key is at the partner at a time (from its first call to its last), and the first
  * receipts of a key come in the order its messages were sent.</li>
- * <li>after the drain — ACKED_IS_FINAL: every Accepted message was delivered once, or parked at the {@code to} step after
- * every call was refused; SNAPSHOT_PER_STEP: every message that ran has one snapshot per step, the last FAILED when it was
- * refused throughout; DRAINED: no run, no held call, no wake, no item left, every send answered.</li>
+ * <li>after the drain — ACKED_IS_FINAL: every Accepted message was delivered once, or parked at the flow's first step
+ * (step 1, the ingress, D-135) after every call was refused; SNAPSHOT_PER_STEP: every message that ran has one snapshot per
+ * step, the last FAILED when it was refused throughout; DRAINED: no run, no held call, no wake, no item left, every send
+ * answered.</li>
  * </ul>
  * Each check keeps its first {@value #KEPT_PER_CHECK} failures. Called from the driver and from the message threads, one at a time.
  */
@@ -189,7 +190,7 @@ final class Oracle {
                 String got = delivered + " delivered of " + s.calls.size() + " calls, parked "
                         + dlq.get(s.id).await().map(p -> "at step " + p.step()).orElse("nowhere");
                 String expected = delivered > 0 ? "1 delivered of " + s.calls.size() + " calls, parked nowhere"
-                        : "0 delivered of " + (config.retries() + 1) + " calls, parked at step 3";
+                        : "0 delivered of " + (config.retries() + 1) + " calls, parked at step 1";   // D-135: the worker parks the ingress at step 1
                 if (!got.equals(expected)) fail(Check.ACKED_IS_FINAL, s.id + " was accepted: expected " + expected + ", was " + got);
             }
             if (!s.calls.isEmpty()) {

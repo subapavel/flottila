@@ -35,7 +35,7 @@ class V1MessageStatementsTest {
         List<PgBatchSink.Statement<BenchMessage>> statements = V1MessageStatements.all();
         assertEquals(1, statements.size(), "the messages insert only: no payloads table (V11)");
         String sql = statements.get(0).sql();
-        assertTrue(sql.contains("insert into messages") && sql.contains("unnest") && sql.contains("on conflict (id, step) do nothing"), sql);
+        assertTrue(sql.contains("insert into messages") && sql.contains("unnest") && sql.contains("on conflict (id, step, attempt) do nothing"), sql);
         List<String> columns = columns(sql);
         int hashes = columns.indexOf("body_hash"), algorithms = columns.indexOf("hash_algorithm");
         assertTrue(hashes >= 0 && algorithms >= 0, "body_hash and hash_algorithm are written: " + columns);

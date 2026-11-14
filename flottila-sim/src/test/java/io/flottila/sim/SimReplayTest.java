@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The run a failure line's replay command names (D-101): {@code -Dsim.seed=0x… -Dsim.config=… -Dsim.ticks=… -Dsim.world=…};
+ * The run a failure line's replay command names (D-143): {@code -Dsim.seed=0x… -Dsim.config=… -Dsim.ticks=… -Dsim.world=…};
  * without them seed 0x1, V1, 1 000 ticks, the correct world. It fails with the verdict's report when the run fails.
  */
 class SimReplayTest {

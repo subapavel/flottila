@@ -41,6 +41,9 @@ class RecordingComponentTest extends ComponentContract {
 
     @Override protected Component component() { return new RecordingComponent("http"); }
 
+    /** P2-15b (assumed API): a recording component whose sends are cut on {@code timer} when their deadline runs out. */
+    @Override protected Component component(io.flottila.api.Timer timer) { return new RecordingComponent("http", timer); }
+
     @Override protected EndpointConfig endpoint() { return partner; }
 
     @Test
@@ -185,7 +188,7 @@ class RecordingComponentTest extends ComponentContract {
         Envelope in = rt.ingress("f", Headers.empty(), Buffer.buffer("a"));
         Future<Envelope> sent = http.producer(partner).send(in);
         assertTrue(soon(() -> !handled.isEmpty()), "the send reached the running consumer's handler");   // on a thread of its own (D-057)
-        assertEquals(List.of(in), handled, "the send reached the running consumer's handler");
+        assertEquals(List.of(in.withOutboundId()), handled, "the send reached the running consumer's handler, its message id carried (P2-15b)");
 
         Future<Void> first = consumer.stop();
         Future<Void> again = consumer.stop();

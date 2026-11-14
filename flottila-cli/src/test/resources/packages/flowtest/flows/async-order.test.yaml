@@ -1,4 +1,6 @@
 # The partner-down case runs first: the happy path after it sees nothing of it (a fresh runtime, mocks and stores per case).
+# Partner down: two runs (the first and the one scheduled retry, delivery.retries) of 4 sends each (1 + 3 step retries); retries
+# counts the 3 + 3 step retries and the 1 rerun; flow time 700 ms + 1 s + 700 ms = 2400ms.
 schemaVersion: 1
 kind: test
 flow: async-order
@@ -12,9 +14,9 @@ cases:
     expect:
       status: 202
       dlq: 1
-      retries: 3
+      retries: 7
       sent:
-        partner: { count: 4 }
+        partner: { count: 8 }
   - name: happy path
     send: fixtures/order.xml
     expect:

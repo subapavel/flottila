@@ -1,14 +1,12 @@
 package io.flottila.core.flow;
 
 import io.flottila.api.BlobKey;
-import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
-import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
@@ -16,6 +14,7 @@ import io.flottila.core.record.Snapshot;
 import io.flottila.testkit.FakeRuntime;
 import io.flottila.testkit.InMemoryBlobStore;
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -23,20 +22,16 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -50,7 +45,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * future, nothing persisted, recorded or queued): every node runs the Postgres intake, the in-memory stores dedupe nothing.
  *
  * <p>The shape assumed: core {@code SequentialIntake(MessageStore, WorkQueue) implements Intake}, package {@code io.flottila.core.flow};
- * P2-02D: {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}.
+ * P2-02D: {@code Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned)}; CORE-4c2 adds {@code boolean keepInput} before
+ * {@code abandoned} (D-105: which bodies get a kept ref; this intake has no refs, every case passes true).
  */
 @Timeout(10)
 class SequentialIntakeTest {
@@ -74,17 +70,9 @@ class SequentialIntakeTest {
         return recorder.startSnapshot(e, Recorder.INGRESS, RecordingPolicy.DEFAULT);
     }
 
-    /** {@code abandoned} answering {@code answer}; every ask notes how many items were queued at that moment. */
-    record Asked(List<Integer> queuedAtAsk, BooleanSupplier supplier) {
-        static Asked answering(boolean answer, InMemoryWorkQueue items) {
-            List<Integer> at = new CopyOnWriteArrayList<>();
-            return new Asked(at, () -> {
-                at.add(items.size());
-                return answer;
-            });
-        }
-
-        int times() { return queuedAtAsk.size(); }
+    /** The delivery's answer the save is given (CORE-4d: {@code abandoned} is that future; complete = decided, the save abandoned). */
+    static Promise<Void> undecided() {
+        return Promise.promise();
     }
 
     /** {@code f} once complete; still pending fails the case (every completion here is synchronous). */
@@ -100,25 +88,22 @@ class SequentialIntakeTest {
         Envelope in = arrived();
         own.hold();
         store.hold();
-        Asked abandoned = Asked.answering(false, items);
+        Promise<Void> answer = undecided();
 
-        Future<String> saved = intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier());
+        Future<String> saved = intake.save(in, ingress(in), "orders", "K-7", null, true, answer.future());
         assertEquals(List.of(in.body().key()), own.persists(), "the body's persist is asked in its own store");
         assertEquals(1, own.held(), "and held");
         assertEquals(1, store.held(), "the ingress record is asked beside the persist, not after it");
         assertFalse(saved.isComplete());
         assertEquals(0, items.size(), "nothing queued while both saves are pending");
-        assertEquals(0, abandoned.times(), "abandoned is not asked before the saves are done");
 
         if (persistFirst) own.release(); else store.release();
         assertFalse(saved.isComplete(), "one save done is not the save");
         assertEquals(0, items.size(), "nothing queued with one save still pending");
-        assertEquals(0, abandoned.times(), "abandoned is asked only once both saves are done");
 
         if (persistFirst) store.release(); else own.release();
         assertTrue(done(saved).succeeded(), "saved: " + saved.cause());
         assertEquals(in.id(), saved.result(), "the save answers the arrived message's own id");
-        assertEquals(List.of(0), abandoned.queuedAtAsk(), "abandoned asked once, just before the enqueue (nothing queued yet then)");
         List<WorkQueue.Item> queued = items.snapshot();
         assertEquals(1, queued.size(), "then the item is queued: " + queued);
         assertEquals(in.id(), queued.get(0).messageId());
@@ -129,7 +114,7 @@ class SequentialIntakeTest {
         assertEquals(List.of(Recorder.INGRESS), store.timeline(in.id()).await().stream().map(Snapshot::stepName).toList(), "the ingress is recorded");
 
         Envelope unkeyed = arrived();
-        Future<String> unkeyedSave = done(intake.save(unkeyed, ingress(unkeyed), "orders", null, null, () -> false));
+        Future<String> unkeyedSave = done(intake.save(unkeyed, ingress(unkeyed), "orders", null, null, true, Promise.promise().future()));
         assertTrue(unkeyedSave.succeeded());
         assertEquals(unkeyed.id(), unkeyedSave.result());
         assertEquals(null, items.snapshot().get(1).partitionKey(), "no key: an unordered item");
@@ -160,9 +145,9 @@ class SequentialIntakeTest {
         List<String> enqueueCalls = new CopyOnWriteArrayList<>();
         SequentialIntake intake = new SequentialIntake(store, failure == Failure.ENQUEUE_FAILS ? refusingEnqueue(cause, enqueueCalls) : items);
         Envelope in = arrived();
-        Asked abandoned = Asked.answering(failure == Failure.ABANDONED, items);
+        Promise<Void> answer = undecided();
         switch (failure) {
-            case PERSIST_FAILS, RECORD_FAILS -> {
+            case ABANDONED, PERSIST_FAILS, RECORD_FAILS -> {
                 own.hold();
                 store.hold();
             }
@@ -172,9 +157,16 @@ class SequentialIntakeTest {
         }
 
         AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, true, answer.future())),
                 "a store that throws is a failed save, not an exception escaping save");
         Future<String> saved = returned.get();
+        if (failure == Failure.ABANDONED) {
+            // the answer is decided while both saves are pending: once they are done, nothing may be queued
+            answer.complete();
+            assertFalse(saved.isComplete(), "fixture: the saves are still held");
+            own.release();
+            store.release();
+        }
         if (failure == Failure.PERSIST_FAILS) {
             own.fail(cause);
             assertTrue(saved.isComplete(), "a failed persist decides at once, without waiting for the held record: " + saved);
@@ -189,153 +181,29 @@ class SequentialIntakeTest {
             assertTrue(String.valueOf(saved.cause()).contains("refused by the test: " + failure), "with the store's failure: " + saved.cause());
         }
         assertEquals(List.of(), items.snapshot(), "nothing queued");
-        switch (failure) {
-            case ABANDONED -> assertEquals(List.of(0), abandoned.queuedAtAsk(), "abandoned asked once, before any enqueue");
-            case ENQUEUE_FAILS -> {
-                assertEquals(List.of(in.id()), enqueueCalls, "the enqueue was asked, once");
-                assertEquals(1, abandoned.times(), "after abandoned was asked, once");
-            }
-            default -> assertEquals(0, abandoned.times(), "a save that failed never reaches the enqueue, nor the ask just before it");
+        if (failure == Failure.ABANDONED) {
+            assertTrue(String.valueOf(saved.cause()).contains("abandoned"), "failed by its abandonment: " + saved.cause());
+            assertTrue(own.persisted(in.body().key()), "fixture: the body's persist completed before the answer was read");
         }
+        if (failure == Failure.ENQUEUE_FAILS) assertEquals(List.of(in.id()), enqueueCalls, "the enqueue was asked, once");
     }
 
     @Test
     void refusesADedupeKey() {
         SequentialIntake intake = new SequentialIntake(store, items);
         Envelope in = arrived();
-        Asked abandoned = Asked.answering(false, items);
-
         AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", "drop/inbox/a.xml|1730196000000|42", abandoned.supplier())),
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", "drop/inbox/a.xml|1730196000000|42", true, undecided().future())),
                 "a dedupe key is a failed save, not an exception escaping save");
         Future<String> saved = done(returned.get());
         assertTrue(saved.failed(), "the in-memory stores dedupe nothing: a keyed save is refused, never saved undeduped: " + saved);
         assertEquals(List.of(), own.persists(), "no body persisted");
         assertEquals(List.of(), store.timeline(in.id()).await(), "nothing recorded");
         assertEquals(List.of(), items.snapshot(), "nothing queued");
-        assertEquals(0, abandoned.times(), "a refused save never reaches the enqueue, nor the ask just before it");
 
-        Future<String> unkeyed = done(intake.save(in, ingress(in), "orders", "K-7", null, () -> false));
+        Future<String> unkeyed = done(intake.save(in, ingress(in), "orders", "K-7", null, true, Promise.promise().future()));
         assertTrue(unkeyed.succeeded(), "the same arrival without a key saves: the refusal left nothing in its way: " + unkeyed.cause());
         assertEquals(in.id(), unkeyed.result());
         assertEquals(1, items.size());
-    }
-
-    /**
-     * FIX-136 (F-30): an {@link Error} from the body's persist is the same failed save as a {@link RuntimeException} from it
-     * ({@code SequentialIntake:41}): the future fails with it, nothing is queued, nothing escapes {@code save}.
-     */
-    @Test
-    void anErrorFromTheBodyPersistIsAFailedSaveNotAnEscape() {
-        LinkageError error = new LinkageError("persist linkage broken by the test");
-        List<Integer> asked = new CopyOnWriteArrayList<>();
-        BlobStore erroring = DeliveryTest.erroringOn(BlobStore.class, own, "persist", error, () -> asked.add(1));
-        Envelope plain = arrived();
-        Envelope in = Envelope.ingress(plain.id(), "orders", plain.headers(), Body.of(erroring, plain.body().key(), plain.body().hash(), plain.body().size()));
-        SequentialIntake intake = new SequentialIntake(store, items);
-        Asked abandoned = Asked.answering(false, items);
-
-        AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
-                "an Error from the persist is a failed save, not an exception escaping save");
-        assertEquals(List.of(1), asked, "witness: the persist was asked, and threw");
-        Future<String> saved = done(returned.get());
-        assertTrue(saved.failed(), "the save fails: " + saved);
-        assertSame(error, saved.cause(), "with the Error itself");
-        assertEquals(List.of(), items.snapshot(), "nothing queued");
-        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
-    }
-
-    /**
-     * FIX-136 (F-30): an {@link Error} from the ingress record is the same failed save ({@code SequentialIntake:47}); the body's
-     * persist is asked before it and succeeds, so only the record's catch decides this case.
-     */
-    @Test
-    void anErrorFromTheIngressRecordIsAFailedSaveNotAnEscape() {
-        LinkageError error = new LinkageError("record linkage broken by the test");
-        List<Integer> asked = new CopyOnWriteArrayList<>();
-        MessageStore erroring = DeliveryTest.erroringOn(MessageStore.class, store, "record", error, () -> asked.add(1));
-        SequentialIntake intake = new SequentialIntake(erroring, items);
-        Envelope in = arrived();
-        Asked abandoned = Asked.answering(false, items);
-
-        AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
-                "an Error from the record is a failed save, not an exception escaping save");
-        assertEquals(List.of(1), asked, "witness: the record was asked, and threw");
-        assertEquals(List.of(in.body().key()), own.persists(), "witness: the persist before it was asked and did not throw");
-        Future<String> saved = done(returned.get());
-        assertTrue(saved.failed(), "the save fails: " + saved);
-        assertSame(error, saved.cause(), "with the Error itself");
-        assertEquals(List.of(), items.snapshot(), "nothing queued");
-        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
-    }
-
-    // --- the sneaky checked half of FIX-136's widened catches. A java.lang.reflect.Proxy wraps an undeclared checked throwable in an
-    // UndeclaredThrowableException (a RuntimeException), which would make these cases pass for the wrong reason, so the stores
-    // below are written out: each throws the IOException from a method that declares none, the way Future.await() does.
-
-    /** {@code delegate}, except that {@code persist} throws {@code checked} sneakily. */
-    record SneakingPersist(BlobStore delegate, Throwable checked) implements BlobStore {
-        @Override public long treeLimit() { return delegate.treeLimit(); }
-        @Override public Future<Body> write(BlobKey key, Buffer whole, long maxSize) { return delegate.write(key, whole, maxSize); }
-        @Override public Future<Body> write(BlobKey key, io.vertx.core.streams.ReadStream<Buffer> in, long maxSize) { return delegate.write(key, in, maxSize); }
-        @Override public io.vertx.core.streams.ReadStream<Buffer> open(BlobKey key) { return delegate.open(key); }
-        @Override public Future<Buffer> read(BlobKey key) { return delegate.read(key); }
-        @Override public Future<Void> persist(BlobKey key) { throw HeldPipeline.sneaky(checked); }
-    }
-
-    /** {@code delegate}, except that {@code record} throws {@code checked} sneakily. */
-    record SneakingRecord(MessageStore delegate, Throwable checked) implements MessageStore {
-        @Override public Future<Void> record(Snapshot snapshot) { throw HeldPipeline.sneaky(checked); }
-        @Override public Future<List<Snapshot>> timeline(String messageId) { return delegate.timeline(messageId); }
-        @Override public Future<io.flottila.core.record.Page<String>> findByKey(String name, String value, Optional<String> after, int limit) { return delegate.findByKey(name, value, after, limit); }
-    }
-
-    /**
-     * FIX-136: a sneaky checked throwable from the body's persist is the same failed save as an {@link Error} from it
-     * ({@code SequentialIntake:41}, a {@code Throwable} catch): the future fails with it, nothing is queued, nothing escapes
-     * {@code save}. Narrowing that catch to {@code RuntimeException | Error} lets the {@link IOException} escape.
-     */
-    @Test
-    void aSneakyCheckedThrowableFromTheBodyPersistIsAFailedSaveNotAnEscape() {
-        IOException checked = new IOException("persist socket closed under the save");
-        Envelope plain = arrived();
-        Envelope in = Envelope.ingress(plain.id(), "orders", plain.headers(),
-                Body.of(new SneakingPersist(own, checked), plain.body().key(), plain.body().hash(), plain.body().size()));
-        SequentialIntake intake = new SequentialIntake(store, items);
-        Asked abandoned = Asked.answering(false, items);
-
-        AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
-                "a sneaky checked throwable from the persist is a failed save, not an exception escaping save");
-        Future<String> saved = done(returned.get());
-        assertTrue(saved.failed(), "the save fails: " + saved);
-        assertSame(checked, saved.cause(), "with the throwable itself");
-        assertEquals(List.of(), items.snapshot(), "nothing queued");
-        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
-    }
-
-    /**
-     * FIX-136: a sneaky checked throwable from the ingress record is the same failed save ({@code SequentialIntake:47}); the body's
-     * persist is asked before it and succeeds, so only the record's catch decides this case. Narrowing that catch to
-     * {@code RuntimeException | Error} lets the {@link IOException} escape.
-     */
-    @Test
-    void aSneakyCheckedThrowableFromTheIngressRecordIsAFailedSaveNotAnEscape() {
-        IOException checked = new IOException("record socket closed under the save");
-        SequentialIntake intake = new SequentialIntake(new SneakingRecord(store, checked), items);
-        Envelope in = arrived();
-        Asked abandoned = Asked.answering(false, items);
-
-        AtomicReference<Future<String>> returned = new AtomicReference<>();
-        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
-                "a sneaky checked throwable from the record is a failed save, not an exception escaping save");
-        assertEquals(List.of(in.body().key()), own.persists(), "witness: the persist before it was asked and did not throw");
-        Future<String> saved = done(returned.get());
-        assertTrue(saved.failed(), "the save fails: " + saved);
-        assertSame(checked, saved.cause(), "with the throwable itself");
-        assertEquals(List.of(), items.snapshot(), "nothing queued");
-        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
     }
 }

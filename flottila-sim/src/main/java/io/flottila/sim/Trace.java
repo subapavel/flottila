@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The run's events (D-101), each at a tick under a message id ({@code ""} for the driver's own) with its sequence number within
+ * The run's events (D-143), each at a tick under a message id ({@code ""} for the driver's own) with its sequence number within
  * that id; the digest is sha256 (the platform's {@code sha256-64}) over them sorted by (tick, message id, seq), so how the
  * threads of one tick interleave across messages does not move it.
  */

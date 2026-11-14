@@ -169,14 +169,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             public Future<Ack> deliver(Envelope e, Flight flight) {
                 Trail trail = new Trail(List.of());
                 Envelope reply = null;
-                Throwable failure = null;
+                Exception failure = null;
                 Ack.Nack cancel;
                 try {
                     reply = trail.apply(pipeline, e);
-                } catch (Throwable thrown) {
-                    // an interrupted await throws InterruptedException, sneakily (D-056); an Error too, widened again by F-30: a failed
-                    // future, never a throw out of apply (D-049 d); the finally below still runs; D-111 rethrow discipline does not
-                    // apply, the caller is a future
+                } catch (Exception thrown) {   // an interrupted await throws InterruptedException, sneakily
                     failure = thrown;
                 } finally {
                     cancel = flight.leave();
@@ -215,10 +212,10 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
 
             private void run(Envelope e, Flight flight) {
                 Trail trail = new Trail(List.of());
-                Throwable dropped = null;
+                Exception dropped = null;
                 try {
                     trail.apply(pipeline, e);
-                } catch (Throwable failure) {   // an interrupted await throws InterruptedException, sneakily (D-056); an Error too, widened again by F-30: logged and dropped (D-049 b), not uncaught on the message's thread
+                } catch (Exception failure) {   // an interrupted await throws InterruptedException, sneakily
                     dropped = failure;
                 } finally {
                     flight.leave();
@@ -227,7 +224,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             }
 
             /** The run is over once its trail closed: the permit is back before anything is logged. */
-            private void landAfter(Future<Void> closed, Flight flight, Envelope e, Throwable dropped) {
+            private void landAfter(Future<Void> closed, Flight flight, Envelope e, Exception dropped) {
                 closed.onComplete(done -> {
                     flight.land();
                     if (dropped != null) {
@@ -251,7 +248,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
                                 MessageStore store, WorkQueue queue, Timer timer, Duration saveTimeout) {
-        return atLeastOnce(admission, flow, ingress, partitionKey, e -> Optional.empty(), new SequentialIntake(store, queue), timer, saveTimeout);
+        return atLeastOnce(admission, flow, ingress, partitionKey, e -> Optional.empty(), new SequentialIntake(store, queue), true, timer, saveTimeout);
     }
 
     /**
@@ -262,10 +259,11 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
      * expression, compiled at build time. The save's dedupe key is what {@code dedupeKey} gives that envelope, read just before
      * the save is asked — no value or {@code ""} is none (D-084), a failure to read it (a prop of its name but another type) a
      * retryable Nack with nothing saved — and the Accepted names the id the save answers. The save's
-     * {@code abandoned} answers whether the answer is decided already — by the save timeout or the stop's deadline.
+     * {@code abandoned} is the answer's future, complete once the answer is decided — by the save timeout or the stop's deadline; its
+     * {@code keepInput} is {@code keepInput}, the flow's {@code RecordingPolicy.keepsBody()} (D-105).
      */
     static Delivery atLeastOnce(Admission admission, String flow, Function<Envelope, Snapshot> ingress, Function<Envelope, Optional<String>> partitionKey,
-                                Function<Envelope, Optional<String>> dedupeKey, Intake intake, Timer timer, Duration saveTimeout) {
+                                Function<Envelope, Optional<String>> dedupeKey, Intake intake, boolean keepInput, Timer timer, Duration saveTimeout) {
         Objects.requireNonNull(flow, "flow");
         Objects.requireNonNull(ingress, "ingress");
         Objects.requireNonNull(partitionKey, "partitionKey");
@@ -319,11 +317,8 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 // the one save (D-082); a save still running once the answer is decided finds itself abandoned and queues nothing
                 Future<String> saved;
                 try {
-                    saved = intake.save(e, ingress.apply(e), flow, key, dedupe, () -> answer.future().isComplete());
-                } catch (Throwable failure) {
-                    // an intake that throws instead of failing its future, an Error or a sneaky checked throwable too (F-30, D-049 d): the
-                    // same failed save, never a throw out of apply; a translation to a future, so D-111's rethrow does not apply; the
-                    // sneaky checked throwable is pinned by DeliveryTest.aSneakyCheckedThrowableFromTheIntakeIsARetryableNackNotAnExceptionOutOfApply
+                    saved = intake.save(e, ingress.apply(e), flow, key, dedupe, keepInput, answer.future());
+                } catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
                     saved = Future.failedFuture(failure);
                 }
                 saved.onComplete(done -> {

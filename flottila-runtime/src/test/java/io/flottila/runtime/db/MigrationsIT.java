@@ -1,5 +1,6 @@
 package io.flottila.runtime.db;
 
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
 import io.vertx.pgclient.PgConnectOptions;
@@ -33,12 +34,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * P0-08: a fresh Postgres → migrated → the milestone-1 tables and indexes exist; migrating again changes nothing.
  * FIX-5: every case runs on a database of its own, created on the class's container before the case. P2-07: V10 indexes the
  * retention job's scans by age. P2-07c (D-097, F-23): V11 moves the hash algorithm onto {@code messages} and drops {@code payloads}.
+ * CORE-4c1 (D-105, CORE-3 item 5): V12 adds the body journal's tables and the work row's body ref; the counts below moved from 11
+ * to 12 because V12 is one more packaged version (a changed expectation, not a weakened one). CORE-4c3: V13 adds
+ * {@code work.lost_at} and {@code journal_losses}; the counts moved from 12 to 13 for the same reason, and the fresh table set
+ * gained {@code journal_losses}. P2-15a: V14 adds {@code nodes} and {@code work.doubts}; the counts moved from 13 to 14 for the
+ * same reason, and the fresh table set gained {@code nodes}. P2-16a: V15 adds the index {@code work_flow_key_seq}; the counts moved
+ * from 14 to 15 for the same reason, the table set unchanged. FIX-141 (D-126): V16 adds {@code audit}; the counts moved from 15 to
+ * 16 for the same reason, and the fresh table set gained {@code audit}. CORE-14b (D-135): V17 adds {@code work.max_attempts} and {@code dlq.partition_key}; the counts
+ * moved from 16 to 17 for the same reason, the table set unchanged. CORE-5a: V18 adds {@code nodes.peer_address}; the counts moved
+ * from 17 to 18 for the same reason, the table set unchanged. FIX-175 (P1): V19 adds {@code messages.attempt} and keys the table by
+ * (id, step, attempt); the counts moved from 18 to 19 for the same reason, the table set unchanged.
  */
 // the order that failed in P1-04 (FIX-5): the fresh case leaves V3 applied, the empty location then sees it as current and throws nothing
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class MigrationsIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 
@@ -87,12 +98,14 @@ class MigrationsIT {
     @Test
     @Order(1)
     void freshDatabaseIsMigratedToV1AndASecondRunIsANoOp() {
-        Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "processed_ids", "work");
+        Set<String> app = Set.of("bodies", "deployments", "dlq", "message_keys", "messages", "payloads", "processed_ids", "work", "body_refs", "journal_keys",
+                "journal_nodes", "journal_segments", "journal_losses", "nodes", "audit");
         assertTrue(java.util.Collections.disjoint(tables(), app), "fresh database has none of the application tables: " + tables());
         Migrations.Result first = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(11, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b), V10 (retention indexes, P2-07), V11 (payloads dropped, P2-07c)");
-        assertEquals("11", first.schemaVersion());
-        assertEquals(Set.of("bodies", "deployments", "dlq", "flyway_schema_history", "message_keys", "messages", "processed_ids", "work"), tables(), "V11 dropped payloads (D-097)");
+        assertEquals(19, first.migrationsExecuted(), "V1 (m1 schema), V2 (snapshot columns, P1-04), V3 (DLQ by reference, P1-05), V4 (work attempts, P1-08b), V5 (admin paging, P1-09a), V6 (bodies, P1-09h), V7 (deployments, P1-09c3a), V8 (processed_ids, P2-02D), V9 (deployment dependencies, P2-02b), V10 (retention indexes, P2-07), V11 (payloads dropped, P2-07c), V12 (body journal, CORE-4c1), V13 (journal losses, CORE-4c3), V14 (node lease, P2-15a), V15 (work key index, P2-16a), V16 (audit, FIX-141), V17 (work.max_attempts, dlq.partition_key, CORE-14b), V18 (nodes.peer_address, CORE-5a), V19 (messages.attempt, FIX-175)");
+        assertEquals("19", first.schemaVersion());
+        assertEquals(Set.of("audit", "body_refs", "bodies", "deployments", "dlq", "flyway_schema_history", "journal_keys", "journal_losses", "journal_nodes", "journal_segments",
+                "message_keys", "messages", "nodes", "processed_ids", "work"), tables(), "V11 dropped payloads (D-097); V12 added the journal's four tables (CORE-3 item 5); V13 journal_losses (CORE-4c3); V14 nodes (P2-15a); V16 audit (FIX-141)");
         Set<String> indexes = new TreeSet<>();
         for (Row r : pool.query("select indexname from pg_indexes where schemaname = 'public'").execute().await()) indexes.add(r.getString(0));
         assertTrue(indexes.containsAll(List.of("message_keys_name_value", "work_flow_seq", "dlq_parked_at", "messages_pkey", "dlq_pkey", "work_pkey")), indexes.toString());
@@ -103,12 +116,14 @@ class MigrationsIT {
         assertTrue(defs.get("message_keys_name_value_message").startsWith("CREATE UNIQUE INDEX") && defs.get("message_keys_name_value_message").endsWith("(name, value, message_id)"),
                 "V5: one key row per (name, value, message): " + defs.get("message_keys_name_value_message"));
         assertTrue(String.valueOf(defs.get("work_held")).endsWith("(seq) WHERE (held_at IS NOT NULL)"), "V5: held work rows, partial: " + defs.get("work_held"));
+        assertTrue(String.valueOf(defs.get("work_flow_key_seq")).endsWith("(flow, partition_key, seq) WHERE (partition_key IS NOT NULL)"),
+                "V15 (P2-16a): the keyed rows of a flow by key and seq, partial: " + defs.get("work_flow_key_seq"));
         assertBodiesTable();
         Migrations.Result second = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(0, second.migrationsExecuted(), "already at V11");
-        assertEquals("11", second.schemaVersion());
+        assertEquals(0, second.migrationsExecuted(), "already at V19");
+        assertEquals("19", second.schemaVersion());
         long applied = pool.query("select count(*) from flyway_schema_history where success").execute().await().iterator().next().getLong(0);
-        assertEquals(11, applied);
+        assertEquals(19, applied);
     }
 
     /**
@@ -170,8 +185,8 @@ class MigrationsIT {
                     .execute(io.vertx.sqlclient.Tuple.of(r[0], r[1], r[2], Integer.parseInt(r[3]))).await();
         }
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals(7, r.migrationsExecuted(), "V5, V6, V7, V8, V9, V10 and V11 on top of V4");
-        assertEquals("11", r.schemaVersion());
+        assertEquals(15, r.migrationsExecuted(), "V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, V17, V18 and V19 on top of V4");
+        assertEquals("19", r.schemaVersion());
         List<String> kept = new java.util.ArrayList<>();
         for (Row row : pool.query("select name, value, message_id, step from message_keys order by seq").execute().await()) {
             kept.add(row.getString(0) + "=" + row.getString(1) + " " + row.getString(2) + "@" + row.getInteger(3));
@@ -198,7 +213,7 @@ class MigrationsIT {
     @Order(5)
     void v7DeploymentsHoldsTheRecordAndNoBytes() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("11", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'deployments' order by ordinal_position").execute().await()) {
@@ -234,7 +249,7 @@ class MigrationsIT {
     @Order(6)
     void v8ProcessedIdsHoldsOneRowPerScopeAndKeyHash() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("11", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
         java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
         for (Row c : pool.query("select column_name, data_type, is_nullable from information_schema.columns "
                 + "where table_schema = 'public' and table_name = 'processed_ids' order by ordinal_position").execute().await()) {
@@ -279,8 +294,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(3, r.migrationsExecuted(), "V9, V10 and V11 on top of V8");
-        assertEquals("11", r.schemaVersion());
+        assertEquals(11, r.migrationsExecuted(), "V9, V10, V11, V12, V13, V14, V15, V16, V17, V18 and V19 on top of V8");
+        assertEquals("19", r.schemaVersion());
         Row column = pool.query("select column_default, is_nullable, data_type from information_schema.columns where table_schema = 'public' "
                 + "and table_name = 'deployments' and column_name = 'dependencies'").execute().await().iterator().next();
         assertEquals("'[]'::jsonb", column.getString(0), "V9: the default");
@@ -304,7 +319,7 @@ class MigrationsIT {
     @Order(8)
     void v10IndexesTheRetentionScansByAge() {
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
-        assertEquals("11", r.schemaVersion());
+        assertEquals("19", r.schemaVersion());
         java.util.Map<String, String> expected = java.util.Map.of(
                 "messages", " USING btree (created_at, id, step)",
                 "bodies", " USING btree (created_at, message_id, step, part)",
@@ -342,8 +357,8 @@ class MigrationsIT {
 
         Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
 
-        assertEquals(1, r.migrationsExecuted(), "V11 on top of V10");
-        assertEquals("11", r.schemaVersion());
+        assertEquals(9, r.migrationsExecuted(), "V11, V12, V13, V14, V15, V16, V17, V18 and V19 on top of V10");
+        assertEquals("19", r.schemaVersion());
         List<String> rows = new java.util.ArrayList<>();
         for (Row row : pool.query("select id, step, hash_algorithm, encode(body_hash, 'hex'), body_size from messages order by id, step").execute().await()) {
             rows.add(row.getString(0) + "@" + row.getInteger(1) + " " + row.getString(2) + ":" + row.getString(3) + " " + row.getLong(4));
@@ -365,6 +380,336 @@ class MigrationsIT {
                 "a row naming a hash no table holds is written (no foreign key) and, naming no algorithm, gets the default");
         assertEquals("23502", sqlState(() -> pool.query("insert into messages(id, step, flow, body_hash, hash_algorithm) values "
                 + "('m-5', 0, 'shop/orders', '\\x0000000000000001'::bytea, null)").execute().await()), "an explicit null is refused: not null");
+    }
+
+    /**
+     * V12 (CORE-3 item 5, CORE-4c1, D-105): the body journal's tables — {@code journal_nodes(node pk, journal_id uuid)},
+     * {@code journal_segments(node, segment, copies text[], created_at, pk(node, segment))}, {@code body_refs(message_id, step,
+     * part, node, segment, position, length, archived_at, lost_at, created_at, pk(message_id, step, part))} with no keep and no
+     * hash column, {@code journal_keys(key_id, tenant, wrapped bytea, created_at)} — and the work row's body ref
+     * {@code work.body_node text, body_segment, body_position, body_length bigint}, all nullable (null = pre-V12). Indexes: the
+     * partial {@code body_refs (node, segment, created_at) where archived_at is null} and the retention index by age (V10's
+     * pattern); none on work's body columns (no index before CORE-GATE measures the need). No bytea in the new tables but the
+     * wrapped tenant key: bytes live in the journal (D-105). {@code bodies} unchanged ({@link #assertBodiesTable} after V12).
+     */
+    @Test
+    @Order(10)
+    void v12AddsTheJournalTablesAndTheWorkRowsBodyRefWithoutBodyBytes() {
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        assertEquals("19", r.schemaVersion());
+
+        assertEquals(java.util.Map.of("node", "text not null", "journal_id", "uuid not null"), columnsOf("journal_nodes"),
+                "V12: journal_nodes, one journal id per node");
+        java.util.Map<String, String> segments = columnsOf("journal_segments");
+        assertEquals(Set.of("node", "segment", "copies", "created_at"), segments.keySet(), "V12: the journal_segments columns");
+        assertEquals("text not null", segments.get("node"));
+        assertEquals("bigint not null", segments.get("segment"), "a per-node u64 segment number");
+        assertTrue(segments.get("copies").startsWith("text[]"), "copies is a text array: " + segments.get("copies"));
+        assertEquals("timestamp with time zone not null", segments.get("created_at"));
+        assertEquals(java.util.Map.ofEntries(
+                java.util.Map.entry("message_id", "text not null"), java.util.Map.entry("step", "integer not null"),
+                java.util.Map.entry("part", "text not null"), java.util.Map.entry("node", "text not null"),
+                java.util.Map.entry("segment", "bigint not null"), java.util.Map.entry("position", "bigint not null"),
+                java.util.Map.entry("length", "bigint not null"), java.util.Map.entry("archived_at", "timestamp with time zone"),
+                java.util.Map.entry("lost_at", "timestamp with time zone"), java.util.Map.entry("created_at", "timestamp with time zone not null")),
+                columnsOf("body_refs"), "V12: body_refs — no keep column (every row is a kept ref), no hash column (FIX-35 compares bytes)");
+        assertEquals(java.util.Map.of("key_id", "integer not null", "tenant", "text not null", "wrapped", "bytea not null",
+                "created_at", "timestamp with time zone not null"), columnsOf("journal_keys"), "V12: journal_keys, a tenant key wrapped under the master");
+
+        java.util.Map<String, String> work = columnsOf("work");
+        for (String c : List.of("body_node", "body_segment", "body_position", "body_length")) assertTrue(work.containsKey(c), "V12: work." + c + ": " + work);
+        assertEquals(List.of("text", "bigint", "bigint", "bigint"),
+                List.of(work.get("body_node"), work.get("body_segment"), work.get("body_position"), work.get("body_length")),
+                "V12: work's body ref, every column nullable (null = a pre-V12 item, its body in bodies)");
+
+        assertEquals("PRIMARY KEY (node)", primaryKey("journal_nodes"));
+        assertEquals("PRIMARY KEY (node, segment)", primaryKey("journal_segments"));
+        assertEquals("PRIMARY KEY (message_id, step, part)", primaryKey("body_refs"));
+        assertEquals("PRIMARY KEY (key_id)", primaryKey("journal_keys"));
+
+        List<String> refIndexes = indexDefs("body_refs");
+        List<String> unarchived = refIndexes.stream().filter(d -> d.endsWith(" USING btree (node, segment, created_at) WHERE (archived_at IS NULL)")).toList();
+        assertEquals(1, unarchived.size(), "V12: the partial index of unarchived refs by segment, among " + refIndexes);
+        List<String> byAge = refIndexes.stream().filter(d -> d.endsWith(" USING btree (created_at, message_id, step, part)")).toList();
+        assertEquals(1, byAge.size(), "V12: the retention index by age ending in the key (V10's pattern), among " + refIndexes);
+        assertTrue(byAge.get(0).startsWith("CREATE INDEX "), "a plain index, not unique, not partial: " + byAge.get(0));
+        List<String> onBodyRef = indexDefs("work").stream().filter(d -> d.contains("body_node") || d.contains("body_segment")).toList();
+        assertEquals(List.of(), onBodyRef, "V12: no index on work's body ref until CORE-GATE measures the need (CORE-3 item 5)");
+
+        List<String> bytea = new java.util.ArrayList<>();
+        for (Row c : pool.query("select table_name, column_name from information_schema.columns where table_schema = 'public' and data_type = 'bytea' "
+                + "and (table_name in ('journal_nodes', 'journal_segments', 'body_refs', 'journal_keys') or (table_name = 'work' and column_name like 'body\\_%')) "
+                + "order by table_name, column_name").execute().await()) {
+            bytea.add(c.getString(0) + "." + c.getString(1));
+        }
+        assertEquals(List.of("journal_keys.wrapped"), bytea, "no body bytes in the new tables: the one bytea column is a wrapped 32-byte key");
+        assertBodiesTable();
+    }
+
+    /**
+     * V12 on a database at V11 holding a work row and its body: the row keeps every column it had and reads a null body ref —
+     * a pre-V12 item, its body read from {@code bodies} (CORE-3 item 5) — and the bodies row is untouched.
+     */
+    @Test
+    @Order(11)
+    void v12LeavesAnEarlierWorkRowWithoutABodyRefAndItsBodyInBodies() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("11").load().migrate();
+        long seq = pool.query("insert into work(id, flow, step, partition_key, attempts) values ('m-1', 'shop/orders', 0, 'K', 2) returning seq")
+                .execute().await().iterator().next().getLong(0);
+        pool.query("insert into bodies(message_id, step, part, bytes) values ('m-1', 0, 'body', '\\x0102ff'::bytea)").execute().await();
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(8, r.migrationsExecuted(), "V12, V13, V14, V15, V16, V17, V18 and V19 on top of V11");
+        assertEquals("19", r.schemaVersion());
+        Row row = pool.preparedQuery("select id, flow, step, partition_key, attempts, body_node, body_segment, body_position, body_length from work where seq = $1")
+                .execute(io.vertx.sqlclient.Tuple.of(seq)).await().iterator().next();
+        assertEquals(List.of("m-1", "shop/orders", "0", "K", "2"), List.of(row.getString(0), row.getString(1), String.valueOf(row.getInteger(2)),
+                row.getString(3), String.valueOf(row.getInteger(4))), "the row keeps what it had");
+        assertEquals(java.util.Arrays.asList(null, null, null, null), java.util.Arrays.asList(row.getValue(5), row.getValue(6), row.getValue(7), row.getValue(8)),
+                "a pre-V12 row has no body ref");
+        assertEquals("0102ff", pool.query("select encode(bytes, 'hex') from bodies where message_id = 'm-1'").execute().await().iterator().next().getString(0),
+                "its body stays in bodies");
+    }
+
+    /**
+     * V13 (CORE-4c3, CORE-3 "Review r2 additions"): {@code work.lost_at timestamptz}, nullable (null = not lost: an item an
+     * accepted {@code FLOTTILA_JOURNAL_ACCEPT_LOSS} held gets the time), and {@code journal_losses(node text, journal_id uuid,
+     * digest text, accepted_at timestamptz, pk(node, journal_id, digest))} — each accepted loss once; no bytea. On a database at
+     * V12 holding a work row the row keeps what it had and reads a null {@code lost_at}.
+     */
+    @Test
+    @Order(12)
+    void v13AddsTheWorkRowsLostAtAndTheAcceptedLosses() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("12").load().migrate();
+        long seq = pool.query("insert into work(id, flow, step, partition_key, body_node, body_segment, body_position, body_length) "
+                + "values ('m-1', 'shop/orders', 1, 'K', 'node-1', 3, 64, 400) returning seq").execute().await().iterator().next().getLong(0);
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(7, r.migrationsExecuted(), "V13, V14, V15, V16, V17, V18 and V19 on top of V12");
+        assertEquals("19", r.schemaVersion());
+        assertEquals("timestamp with time zone", columnsOf("work").get("lost_at"), "V13: work.lost_at, nullable: " + columnsOf("work"));
+        Row row = pool.preparedQuery("select id, body_node, body_segment, body_position, body_length, lost_at from work where seq = $1")
+                .execute(io.vertx.sqlclient.Tuple.of(seq)).await().iterator().next();
+        assertEquals(java.util.Arrays.asList("m-1", "node-1", 3L, 64L, 400L, null),
+                java.util.Arrays.asList(row.getString(0), row.getString(1), row.getLong(2), row.getLong(3), row.getLong(4), row.getValue(5)),
+                "an item of V12 keeps its ref and is not lost");
+        assertEquals(java.util.Map.of("node", "text not null", "journal_id", "uuid not null", "digest", "text not null",
+                "accepted_at", "timestamp with time zone not null"), columnsOf("journal_losses"), "V13: journal_losses, one row per accepted loss");
+        assertEquals("PRIMARY KEY (node, journal_id, digest)", primaryKey("journal_losses"));
+        assertEquals("23505", sqlState(() -> pool.query("insert into journal_losses(node, journal_id, digest, accepted_at) values "
+                + "('node-1', '00000000-0000-0000-0000-000000000001', 'd1', now()), ('node-1', '00000000-0000-0000-0000-000000000001', 'd1', now())")
+                .execute().await()), "a loss is recorded once");
+        long bytea = pool.query("select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'journal_losses' "
+                + "and data_type = 'bytea'").execute().await().iterator().next().getLong(0);
+        assertEquals(0, bytea, "no bytes in journal_losses");
+    }
+
+    /**
+     * V16 (FIX-141, D-126 L4): {@code audit(id bigserial, at timestamptz, actor text, action text, subject text, detail jsonb)} in
+     * this order, keyed by its id; no bytea. On a database at V15 holding a work row the row keeps what it had.
+     */
+    @Test
+    @Order(13)
+    void v16AddsTheAuditTable() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("15").load().migrate();
+        long seq = pool.query("insert into work(id, flow, step, partition_key) values ('m-1', 'shop/orders', 1, 'K') returning seq")
+                .execute().await().iterator().next().getLong(0);
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(4, r.migrationsExecuted(), "V16, V17, V18 and V19 on top of V15");
+        assertEquals("19", r.schemaVersion());
+        java.util.Map<String, String> columns = columnsOf("audit");
+        assertEquals(List.of("id", "at", "actor", "action", "subject", "detail"), List.copyOf(columns.keySet()), "V16: the audit columns in order: " + columns);
+        java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
+        expected.put("id", "bigint not null");
+        expected.put("at", "timestamp with time zone not null");
+        expected.put("actor", "text not null");
+        expected.put("action", "text not null");
+        expected.put("subject", "text not null");
+        expected.put("detail", "jsonb not null");
+        assertEquals(expected, columns, "V16: every audit column typed and not null (an entry always says when, who, what, on what and its detail): " + columns);
+        assertEquals("PRIMARY KEY (id)", primaryKey("audit"));
+        List<String> lostIndex = new java.util.ArrayList<>();
+        for (Row row : pool.query("select indexdef from pg_indexes where schemaname = 'public' and indexname = 'work_lost'").execute().await()) {
+            lostIndex.add(row.getString(0));
+        }
+        assertEquals(List.of("CREATE INDEX work_lost ON public.work USING btree (seq) WHERE (lost_at IS NOT NULL)"), lostIndex,
+                "V16: the lost work rows by seq, partial (the work_held pattern): the lost page's scan");
+        long first = pool.query("insert into audit(at, actor, action, subject, detail) values (now(), 'a', 'x', 's', '{}') returning id")
+                .execute().await().iterator().next().getLong(0);
+        long second = pool.query("insert into audit(at, actor, action, subject, detail) values (now(), 'a', 'x', 's', '{}') returning id")
+                .execute().await().iterator().next().getLong(0);
+        assertTrue(second > first, "the id is a sequence: " + first + ", " + second);
+        assertEquals(1, pool.preparedQuery("select count(*) from work where seq = $1").execute(io.vertx.sqlclient.Tuple.of(seq)).await().iterator().next().getLong(0),
+                "a work row of V15 is kept");
+    }
+
+    /**
+     * V17 (CORE-14b P8, D-135): {@code work.max_attempts int}, nullable — a row's own bound on its hand-outs, which a restart writes
+     * (k + 1); null = the flow's bound. On a database at V16 holding a work row the row keeps what it had and its bound is null. O7:
+     * {@code dlq.partition_key text}, nullable — the parked item's key; a DLQ row of V16 keeps what it had and its key is null.
+     */
+    @Test
+    @Order(14)
+    void v17AddsTheWorkRowsMaxAttemptsAndTheDlqRowsPartitionKeyNullForEveryEarlierRow() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("16").load().migrate();
+        long seq = pool.query("insert into work(id, flow, step, partition_key, attempts) values ('m-1', 'shop/orders', 1, 'K', 2) returning seq")
+                .execute().await().iterator().next().getLong(0);
+        pool.query("insert into dlq(id, flow, stage, step, error) values ('m-0', 'shop/orders', 'a', 1, 'partner down')").execute().await();
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(3, r.migrationsExecuted(), "V17, V18 and V19 on top of V16");
+        assertEquals("text", columnsOf("dlq").get("partition_key"), "O7: dlq.partition_key text, nullable: " + columnsOf("dlq"));
+        Row parked = pool.query("select id, step, error, partition_key from dlq").execute().await().iterator().next();
+        assertEquals(java.util.Arrays.asList("m-0", 1, "partner down", null),
+                java.util.Arrays.asList(parked.getString(0), parked.getInteger(1), parked.getString(2), parked.getValue(3)),
+                "a DLQ row of V16 keeps what it had; its key is null (parked before its key was kept)");
+        assertEquals("19", r.schemaVersion());
+        assertEquals("integer", columnsOf("work").get("max_attempts"), "V17: work.max_attempts int, nullable: " + columnsOf("work"));
+        Row row = pool.preparedQuery("select id, attempts, max_attempts from work where seq = $1").execute(io.vertx.sqlclient.Tuple.of(seq)).await().iterator().next();
+        assertEquals(java.util.Arrays.asList("m-1", 2, null), java.util.Arrays.asList(row.getString(0), row.getInteger(1), row.getValue(2)),
+                "a row of V16 keeps its attempts; its bound is null: the flow's");
+        long fresh = pool.query("insert into work(id, flow, step) values ('m-2', 'shop/orders', 1) returning seq").execute().await().iterator().next().getLong(0);
+        assertEquals(null, pool.preparedQuery("select max_attempts from work where seq = $1").execute(io.vertx.sqlclient.Tuple.of(fresh)).await()
+                .iterator().next().getValue(0), "no default: a row inserted without one has the flow's bound");
+    }
+
+    /**
+     * V18 (CORE-5a, packet S1): {@code nodes.peer_address text}, nullable — where a node's peer link listens ({@code host:port}),
+     * written by its join; null for a node that joined before V18 until its next join. On a database at V17 holding a
+     * {@code nodes} row the row keeps what it had and its address is null; no default.
+     */
+    @Test
+    @Order(15)
+    void v18AddsTheNodesPeerAddressNullForEveryEarlierRow() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("17").load().migrate();
+        pool.query("insert into nodes(node, epoch, lease_until) values ('n-old', 3, now() + interval '30 seconds')").execute().await();
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(2, r.migrationsExecuted(), "V18 and V19 on top of V17");
+        assertEquals("19", r.schemaVersion());
+        assertEquals("text", columnsOf("nodes").get("peer_address"), "V18: nodes.peer_address text, nullable: " + columnsOf("nodes"));
+        assertEquals(List.of("node", "epoch", "lease_until", "peer_address"), List.copyOf(columnsOf("nodes").keySet()), "added last, nothing else");
+        Row old = pool.query("select node, epoch, lease_until is not null, peer_address from nodes").execute().await().iterator().next();
+        assertEquals(java.util.Arrays.asList("n-old", 3L, true, null),
+                java.util.Arrays.asList(old.getString(0), old.getLong(1), old.getBoolean(2), old.getValue(3)),
+                "a row of V17 keeps its epoch and lease; its address is null");
+        pool.query("insert into nodes(node, epoch) values ('n-new', 1)").execute().await();
+        assertEquals(null, pool.query("select peer_address from nodes where node = 'n-new'").execute().await().iterator().next().getValue(0),
+                "no default: a row inserted without one has none");
+    }
+
+    /**
+     * FIX-175 A5 (P1): V19 adds {@code messages.attempt int not null default 1} and keys {@code messages} by (id, step, attempt). On
+     * a database at V18 holding a {@code messages} row the row reads as attempt 1; the same (id, step) of attempt 2 is then a row of
+     * its own, and a second row of the same (id, step, attempt) — a row inserted without an attempt is attempt 1 — is a unique
+     * violation (23505).
+     */
+    @Test
+    @Order(16)
+    void v19KeysMessagesByIdStepAndAttemptAndAnEarlierRowIsAttemptOne() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("18").load().migrate();
+        pool.query("insert into messages(id, step, flow, step_name, body_hash) values ('m-old', 1, 'shop/orders', 'partner', '\\x01')").execute().await();
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(1, r.migrationsExecuted(), "V19 on top of V18");
+        assertEquals("19", r.schemaVersion());
+        assertEquals("integer not null", columnsOf("messages").get("attempt"), "V19: messages.attempt int not null: " + columnsOf("messages"));
+        assertEquals("PRIMARY KEY (id, step, attempt)", primaryKey("messages"));
+        Row old = pool.query("select id, step, step_name, attempt from messages").execute().await().iterator().next();
+        assertEquals(java.util.Arrays.asList("m-old", 1, "partner", 1), java.util.Arrays.asList(old.getString(0), old.getInteger(1), old.getString(2), old.getInteger(3)),
+                "a row of V18 keeps what it had and is attempt 1");
+        pool.query("insert into messages(id, step, flow, step_name, body_hash, attempt) values ('m-old', 1, 'shop/orders', 'partner', '\\x02', 2)").execute().await();
+        assertEquals(2L, pool.query("select count(*) from messages where id = 'm-old' and step = 1").execute().await().iterator().next().getLong(0),
+                "the same (id, step) of attempt 2 is a row of its own");
+        assertEquals("23505", sqlState(() -> pool.query("insert into messages(id, step, flow, body_hash) values ('m-old', 1, 'shop/orders', '\\x03')").execute().await()),
+                "a row inserted without an attempt is attempt 1: the same (id, step, attempt) as the V18 row");
+        assertEquals("23505", sqlState(() -> pool.query("insert into messages(id, step, flow, body_hash, attempt) values ('m-old', 1, 'shop/orders', '\\x04', 2)").execute().await()),
+                "a second row of attempt 2");
+        assertEquals(Set.of("audit", "body_refs", "bodies", "deployments", "dlq", "flyway_schema_history", "journal_keys", "journal_losses", "journal_nodes", "journal_segments",
+                "message_keys", "messages", "nodes", "processed_ids", "work"), tables(), "the table set unchanged");
+    }
+
+    /**
+     * FIX-175 r2 (R2): V19 copies a pre-V19 row's attempt from its props before the key swap — only a JSON number that is an int of at
+     * least 1; a string (FIX-47's collision, even "2"), a 0 or no attempt stays 1 — and the migration does not fail on any of them.
+     * Through the store each row reads with that attempt (R3: the column, not the props), its props as they were.
+     */
+    @Test
+    @Order(17)
+    void v19CopiesANumericPropsAttemptIntoTheColumnAndLeavesAnyOtherValueAtOne() {
+        org.flywaydb.core.Flyway.configure().dataSource(url, pg.getUsername(), pg.getPassword()).locations(Migrations.LOCATION).target("18").load().migrate();
+        String insert = "insert into messages(id, step, flow, step_name, outcome, props, body_hash, body_size) values ($1, 1, 'shop/orders', 'partner', 'ok', $2::jsonb, "
+                + "'\\x0000000000000001'::bytea, 1)";
+        java.util.Map<String, io.vertx.core.json.JsonObject> props = java.util.Map.of("m-num", new io.vertx.core.json.JsonObject().put("attempt", 2),
+                "m-str", new io.vertx.core.json.JsonObject().put("attempt", "x"), "m-two", new io.vertx.core.json.JsonObject().put("attempt", "2"),
+                "m-zero", new io.vertx.core.json.JsonObject().put("attempt", 0), "m-none", new io.vertx.core.json.JsonObject());
+        for (var row : props.entrySet()) pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of(row.getKey(), row.getValue())).await();
+        assertEquals(java.util.List.of("object"), pool.query("select distinct jsonb_typeof(props) from messages").execute().await().stream().map(x -> x.getString(0)).toList(),
+                "fixture: every row's props is a JSON object");
+
+        Migrations.Result r = Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+
+        assertEquals(1, r.migrationsExecuted(), "V19 on top of V18, whatever the props held");
+        java.util.Map<String, Integer> column = new java.util.TreeMap<>();
+        for (Row row : pool.query("select id, attempt from messages").execute().await()) column.put(row.getString(0), row.getInteger(1));
+        assertEquals(java.util.Map.of("m-num", 2, "m-str", 1, "m-two", 1, "m-zero", 1, "m-none", 1), column,
+                "a numeric props attempt of at least 1 is copied; a string, a 0 or none stays 1");
+        io.flottila.runtime.store.PgMessageStore store = new io.flottila.runtime.store.PgMessageStore(pool, new io.flottila.runtime.time.VertxTimer(vertx),
+                new io.flottila.core.batch.BatchingWriter.Options(100, java.time.Duration.ofMillis(10), 2, 1000));
+        try {
+            io.flottila.core.record.Snapshot num = store.timeline("m-num").await().getFirst();
+            assertEquals(2, num.attempt(), "m-num's timeline shows attempt 2");
+            io.flottila.core.record.Snapshot str = store.timeline("m-str").await().getFirst();
+            assertEquals(1, str.attempt(), "m-str's timeline reads, attempt 1");
+            assertEquals("x", str.props().asMap().get("attempt"), "its props as they were");
+            assertEquals(1, store.timeline("m-two").await().getFirst().attempt());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** FIX-175 r2 (R2, implementer's case): V19's {@code check (attempt >= 1)} refuses an attempt below 1 (23514); witness: 1 and 2 are taken. */
+    @Test
+    @Order(18)
+    void v19RefusesAMessagesRowWhoseAttemptIsBelowOne() {
+        Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        String insert = "insert into messages(id, step, flow, body_hash, attempt) values ('m-a', 1, 'shop/orders', '\\x01', $1)";
+        for (int below : new int[] {0, -1}) {
+            assertEquals("23514", sqlState(() -> pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of(below)).await()), "attempt " + below + " is a check violation");
+        }
+        for (int ok : new int[] {1, 2}) pool.preparedQuery(insert).execute(io.vertx.sqlclient.Tuple.of(ok)).await();
+        assertEquals(2L, pool.query("select count(*) from messages where id = 'm-a'").execute().await().iterator().next().getLong(0), "witness: attempts 1 and 2 are rows");
+    }
+
+    /** {@code table}'s columns in order: name → {@code format_type} and {@code not null} when the column is. */
+    private java.util.Map<String, String> columnsOf(String table) {
+        java.util.Map<String, String> columns = new java.util.LinkedHashMap<>();
+        for (Row c : pool.preparedQuery("select attname::text, format_type(atttypid, atttypmod), attnotnull from pg_attribute "
+                + "where attrelid = $1::regclass and attnum > 0 and not attisdropped order by attnum").execute(io.vertx.sqlclient.Tuple.of(table)).await()) {
+            columns.put(c.getString(0), c.getString(1) + (c.getBoolean(2) ? " not null" : ""));
+        }
+        return columns;
+    }
+
+    private String primaryKey(String table) {
+        return pool.preparedQuery("select pg_get_constraintdef(oid) from pg_constraint where conrelid = $1::regclass and contype = 'p'")
+                .execute(io.vertx.sqlclient.Tuple.of(table)).await().iterator().next().getString(0);
+    }
+
+    private List<String> indexDefs(String table) {
+        List<String> defs = new java.util.ArrayList<>();
+        for (Row row : pool.preparedQuery("select indexdef from pg_indexes where schemaname = 'public' and tablename = $1")
+                .execute(io.vertx.sqlclient.Tuple.of(table)).await()) {
+            defs.add(row.getString(0));
+        }
+        return defs;
     }
 
     /** The SQLSTATE of the Postgres error {@code call} fails with. */

@@ -1,5 +1,6 @@
 # At-least-once: the sender gets 202 at once; the worker keys the order and sends it to the partner (retryable); a send that
-# fails every retry parks the message in the DLQ.
+# fails every step retry fails the run, which reruns once from the ingress after 1 s (delivery.retries, D-135) and then parks
+# the message in the DLQ.
 schemaVersion: 1
 kind: flow
 id: async-order
@@ -9,6 +10,7 @@ from:
   endpoint: in-async
 delivery:
   mode: at-least-once
+  retries: { count: 1, interval: 1s }
 recording:
   level: all
   payload: keep

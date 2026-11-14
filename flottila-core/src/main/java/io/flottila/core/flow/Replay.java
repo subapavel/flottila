@@ -3,6 +3,7 @@ package io.flottila.core.flow;
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
+import io.flottila.api.BodyLostException;
 import io.flottila.api.Envelope;
 import io.flottila.api.IdGenerator;
 import io.flottila.api.Pipeline;
@@ -29,10 +30,10 @@ import java.util.function.IntFunction;
 /**
  * Replay from any recorded step (ARCHITECTURE §6 recording, GATE check 7): steps {@code n..end} of the flow run as a
  * <em>new</em> message marked {@link Envelope#REPLAY_OF} on the envelope step {@code n−1} handed on — taken from its
- * snapshot ({@link #from}), or from the DLQ row of the failed step ({@link #retry}), which carries that envelope by
- * reference so a retry needs no snapshot. The new message is a first run: the {@link Envelope#ATTEMPT} of the run that left
+ * snapshot ({@link #from}: of the latest attempt whose step {@code n−1} row is OK, FIX-175 O1), or from the DLQ row of the failed step ({@link #replayParked}), which carries that envelope by
+ * reference so replaying it needs no snapshot. The new message is a first run: the {@link Envelope#ATTEMPT} of the run that left
  * that envelope is dropped (D-066). It leaves its own snapshots, the first one its input ({@value #REPLAY_INPUT}), through a
- * {@link Trail} of its own: {@link #from} and {@link #retry} return once its step bodies are durable and its rows written.
+ * {@link Trail} of its own: {@link #from} and {@link #replayParked} return once its step bodies are durable and its rows written.
  * Built by {@link FlowBuilder#replay}.
  *
  * <p>A run is first checked — the step, the message's snapshot or DLQ row, that its input body is still stored, that body
@@ -98,7 +99,8 @@ public final class Replay {
         if (step < 1 || step > n) throw refused(Reason.STEP_OUT_OF_RANGE, "replay step must be 1.." + n + " for flow '" + flow.id() + "', was " + step);
         List<Snapshot> timeline = store.timeline(messageId).await();
         if (timeline.isEmpty()) throw refused(Reason.UNKNOWN_MESSAGE, "no snapshots for message '" + messageId + "'");
-        Optional<Snapshot> recorded = timeline.stream().filter(s -> s.step() == step - 1 && s.outcome() == Snapshot.Outcome.OK).findFirst();
+        // the timeline is in attempt order: the last OK row of step n − 1 is the latest attempt's that handed on (FIX-175 O1)
+        Optional<Snapshot> recorded = timeline.stream().filter(s -> s.step() == step - 1 && s.outcome() == Snapshot.Outcome.OK).reduce((earlier, later) -> later);
         if (recorded.isEmpty()) {
             throw refused(Reason.NOT_RECORDED, "step " + (step - 1) + " of message " + messageId + " was not recorded (recording level); replay from step " + step + " needs it");
         }
@@ -113,9 +115,9 @@ public final class Replay {
         }
     }
 
-    /** {@link #retry(String, String)} as a new message whose id the runtime's generator mints. */
-    public Envelope retry(String messageId) {
-        return retry(messageId, ids::next);
+    /** {@link #replayParked(String, String)} as a new message whose id the runtime's generator mints. */
+    public Envelope replayParked(String messageId) {
+        return replayParked(messageId, ids::next);
     }
 
     /**
@@ -125,14 +127,14 @@ public final class Replay {
      * @throws ReplayRefusedException before anything ran (see the class comment for the order)
      * @throws IllegalStateException  for a replay built without a DLQ
      */
-    public Envelope retry(String messageId, String replayId) {
+    public Envelope replayParked(String messageId, String replayId) {
         Objects.requireNonNull(replayId, "replayId");
-        return retry(messageId, () -> replayId);
+        return replayParked(messageId, () -> replayId);
     }
 
-    private Envelope retry(String messageId, IdGenerator replayId) {
+    private Envelope replayParked(String messageId, IdGenerator replayId) {
         Objects.requireNonNull(messageId, "messageId");
-        if (dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' has no DLQ to retry from");
+        if (dlq == null) throw new IllegalStateException("flow '" + flow.id() + "' has no DLQ to replay from");
         Optional<Parked> row = dlq.get(messageId).await();
         if (row.isEmpty()) throw refused(Reason.NO_DLQ_ROW, "no DLQ row for message '" + messageId + "'");
         Parked parked = row.get();
@@ -177,11 +179,18 @@ public final class Replay {
     }
 
     /**
-     * Refuses REMOVED_BY_RETENTION when nothing is stored under {@code key} any more (D-096), before any permit; a store that
-     * cannot answer throws its own failure, which is no refusal.
+     * Refuses REMOVED_BY_RETENTION when nothing is stored under {@code key} any more (D-096), and BODY_LOST when the store says
+     * its body was given up ({@link BodyLostException}), before any permit; a store that cannot answer throws its own failure,
+     * which is no refusal.
      */
     private void requireStored(BlobKey key, int step, String messageId) {
-        if (!blobs.exists(key).await()) {
+        boolean stored;
+        try {
+            stored = blobs.exists(key).await();
+        } catch (BodyLostException lost) {
+            throw refused(Reason.BODY_LOST, "the body of step " + step + " of message " + messageId + " cannot be replayed: " + lost.getMessage());
+        }
+        if (!stored) {
             throw refused(Reason.REMOVED_BY_RETENTION, "the body of step " + step + " of message " + messageId + " (" + key + ") was removed by retention");
         }
     }

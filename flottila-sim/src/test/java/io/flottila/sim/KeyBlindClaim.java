@@ -90,6 +90,14 @@ final class KeyBlindClaim implements World {
             return Future.succeededFuture(true);
         }
 
+        @Override public synchronized Future<Boolean> defer(long seq, int attempts, Duration delay) {
+            return Future.failedFuture(new UnsupportedOperationException("the simulation's flows schedule no retries (D-135): nothing defers"));
+        }
+
+        @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+            return Future.failedFuture(new UnsupportedOperationException("the simulation restarts no park (D-135)"));
+        }
+
         @Override public synchronized Future<Boolean> hold(long seq, int attempts) {
             Row r = rows.get(seq);
             if (!current(r, attempts)) return Future.succeededFuture(false);

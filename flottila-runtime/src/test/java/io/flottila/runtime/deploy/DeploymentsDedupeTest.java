@@ -36,7 +36,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -78,7 +77,7 @@ class DeploymentsDedupeTest {
         Runtime runtime = new Runtime(rt.clock(), rt.timer(), rt.ids(), rt.blobs(), rt.hasher(), components);
         InMemoryMessageStore messages = new InMemoryMessageStore();
         deployments = new Deployments(config, runtime, components, rt.clock(), rt.timer(), List.of(), List.of(), messages, new InMemoryDlq(),
-                new CountingQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir(), 64L << 20), intake,
+                new CountingQueue(rt.clock()), () -> 0L, new InMemoryDeploymentStore(), new DirArchiveStore(config.archives().dir()), intake,
                 new InMemoryPollerLeases(rt.clock()));
     }
 
@@ -130,7 +129,8 @@ class DeploymentsDedupeTest {
         final List<Save> saves = new CopyOnWriteArrayList<>();
 
         @Override
-        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, BooleanSupplier abandoned) {
+        public Future<String> save(Envelope arrived, Snapshot ingress, String flow, String partitionKey, String dedupeKey, boolean keepInput,
+                                   Future<?> abandoned) {
             saves.add(new Save(arrived.id(), flow, dedupeKey));
             return Future.succeededFuture(FIRST);
         }

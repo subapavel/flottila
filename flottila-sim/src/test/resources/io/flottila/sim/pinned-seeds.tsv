@@ -1,4 +1,4 @@
-# Pinned simulation runs (D-101), replayed by PinnedSeedsTest. One tab-separated line per run:
+# Pinned simulation runs (D-143), replayed by PinnedSeedsTest. One tab-separated line per run:
 #   seed (0x hex) TAB config TAB ticks TAB world TAB PASS | FAIL:Check,... TAB # origin
 # A line is never edited to match a changed verdict: a moved verdict is a finding. Lines starting with # are comments.
 0x1	V1	1000	correct	PASS	# P2-10a landing: per-push seed 0x1, the golden digest of SimReproducibilityTest

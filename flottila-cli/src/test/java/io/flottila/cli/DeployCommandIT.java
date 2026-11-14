@@ -4,6 +4,7 @@ import io.flottila.cli.CliRuns.Ran;
 import io.flottila.runtime.Main;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -62,7 +63,7 @@ class DeployCommandIT {
     static final Duration BOUND = Duration.ofSeconds(60);
     static final String TOKEN = "deploy-command-it-token";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 
@@ -100,6 +101,10 @@ class DeployCommandIT {
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
         env.put("FLOTTILA_ADMIN_TOKEN", TOKEN);
+        // a node needs a journal master key (CORE-4c1, D-106): a required configuration, a key made for this run and never stored
+        byte[] journalKey = new byte[32];
+        new java.security.SecureRandom().nextBytes(journalKey);
+        env.put("FLOTTILA_JOURNAL_KEY", java.util.Base64.getEncoder().encodeToString(journalKey));
         // the demo's sftp-inbox keeps its password and host key as secret:// references (P2-06): the node it is deployed to has both
         env.put("FLOTTILA_SECRET_SFTP_PASSWORD", "demo");
         env.put("FLOTTILA_SECRET_SFTP_HOST_KEY", "SHA256:zuCbj2cX0buHOs3UvKwKc/FsR3hTNWRKrSBVsfc5gzU");

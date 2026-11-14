@@ -1,10 +1,9 @@
 package io.flottila.runtime.blob;
 
+import io.flottila.runtime.journal.ChunkedAead;
+
 import javax.crypto.Cipher;
-import javax.crypto.Mac;
 import javax.crypto.SecretKey;
-import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,7 +11,6 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 
@@ -34,6 +32,9 @@ import java.security.SecureRandom;
  *
  * <p>File layout: {@code salt[16]} then per segment {@code flag[1] (1 = last) · length[4] (ciphertext incl.
  * tag) · ciphertext}. The empty body is one empty last segment, so truncation is always detectable.
+ *
+ * <p>The key derivation and the per-segment cipher are {@link ChunkedAead}, the construction the journal's records share
+ * (CORE-3 item 2); the spool keeps its own info label.
  */
 final class SpoolCipher {
 
@@ -41,11 +42,12 @@ final class SpoolCipher {
     /** The cipher is fed in slices of this size: a one-shot doFinal per segment is invoked too rarely for the JIT to compile
      *  the GCM path (measured 55 MB/s against 1.5–2.3 GB/s once compiled), many update() calls warm it up within a body. */
     static final int SLICE = 64 * 1024;
-    static final int SALT_BYTES = 16;
-    private static final int NONCE_PREFIX_BYTES = 8;
-    static final int TAG_BYTES = 16;
+    static final int SALT_BYTES = ChunkedAead.SALT_BYTES;
+    static final int TAG_BYTES = ChunkedAead.TAG_BYTES;
     private static final int HEADER_BYTES = 5;
-    private static final int LAST = 0x80000000;
+    private static final int LAST = ChunkedAead.LAST;
+    private static final String INFO = "flottila-spool-v1";
+    private static final String KEY_NAME = "spool master key";
 
     private final SecretKey key;
     private final SecureRandom random = new SecureRandom();
@@ -131,27 +133,15 @@ final class SpoolCipher {
 
     /** HKDF-SHA256 (RFC 5869) with the JDK's Mac: extract with the salt, expand one block with a fixed info string → AES-256 key. */
     static SecretKey fileKey(SecretKey master, byte[] salt) throws GeneralSecurityException {
-        byte[] ikm = masterMaterial(master);
-        Mac mac = Mac.getInstance("HmacSHA256");
-        mac.init(new SecretKeySpec(salt, "HmacSHA256"));
-        byte[] prk = mac.doFinal(ikm);
-        mac.init(new SecretKeySpec(prk, "HmacSHA256"));
-        mac.update("flottila-spool-v1".getBytes(StandardCharsets.US_ASCII));
-        mac.update((byte) 1);
-        return new SecretKeySpec(mac.doFinal(), "AES");
+        return ChunkedAead.derive(master, salt, INFO, KEY_NAME);
     }
 
     private static byte[] masterMaterial(SecretKey master) throws java.security.InvalidKeyException {
-        byte[] ikm = master.getEncoded();
-        if (ikm == null || !"AES".equals(master.getAlgorithm())) throw new java.security.InvalidKeyException("spool master key must be an encodable AES key");
-        return ikm;
+        return ChunkedAead.material(master, KEY_NAME);
     }
 
     private static Cipher cipher(SecretKey fileKey, int mode, byte[] salt, int counterWithFlag) throws GeneralSecurityException {
-        byte[] nonce = ByteBuffer.allocate(12).put(salt, 0, NONCE_PREFIX_BYTES).putInt(counterWithFlag).array();
-        Cipher c = Cipher.getInstance("AES/GCM/NoPadding");
-        c.init(mode, fileKey, new GCMParameterSpec(TAG_BYTES * 8, nonce));
-        return c;
+        return ChunkedAead.cipher(fileKey, mode, salt, counterWithFlag);
     }
 
     private final class Encrypting extends OutputStream {

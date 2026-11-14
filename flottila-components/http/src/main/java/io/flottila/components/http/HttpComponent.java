@@ -7,6 +7,7 @@ import io.flottila.api.Body;
 import io.flottila.api.BodyTooLargeException;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Fault;
@@ -16,12 +17,14 @@ import io.flottila.api.IdGenerator;
 import io.flottila.api.Key;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
+import io.flottila.api.Timer;
 import io.vertx.core.Context;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClientAgent;
 import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
@@ -40,6 +43,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -60,7 +64,10 @@ import java.util.function.Function;
  *
  * <p><b>Producer</b> (options {@code url}, {@code maxBodyBytes} for the reply, optional {@code timeoutMs}, {@code poolSize}):
  * one client per endpoint with its connection pool; POSTs the envelope's body — streamed from {@link Body#open()}, so a retry
- * re-opens it — with the envelope's headers (hop-by-hop ones aside); a 2xx response is the reply envelope (its body the next
+ * re-opens it — with the envelope's headers (hop-by-hop ones aside) and its message id as {@code x-message-id}, a forwarded one
+ * replaced ({@link Envelope#withOutboundId()}); a bounded send ({@code send(e, d)}, D-113 draft) is cut at its deadline on the
+ * component's {@link Timer} — the request reset — and a {@code timeoutMs} expiry fails as a cut does, a retryable
+ * {@link NackException}; a 2xx response is the reply envelope (its body the next
  * step's, stored under {@link Envelope#nextKey()} of the envelope sent — the run's own key from its second attempt on, D-066 —
  * {@link #STATUS} prop, the response headers), 503 and 429 fail with a retryable {@link NackException}, any other
  * non-2xx with {@link HttpStatusException} carrying the first {@value #ERROR_BODY_BYTES} bytes of the response (the rest drained). Limits are never defaulted: both {@code maxBodyBytes} are required.
@@ -75,8 +82,8 @@ public final class HttpComponent implements Component {
     public static final Key<String> PATH = new Key<>("http.path");
     /** The response status on a reply envelope. */
     public static final Key<Integer> STATUS = new Key<>("http.status");
-    /** The header carrying the message id on a 202. */
-    public static final String H_MESSAGE_ID = "x-message-id";
+    /** The header carrying the message id on a 202, and on every request a producer sends ({@link Envelope#H_MESSAGE_ID}). */
+    public static final String H_MESSAGE_ID = Envelope.H_MESSAGE_ID;
 
     static final String CONFIG_SCHEMA = """
             {"type":"object","properties":{"host":{"type":"string"},"port":{"type":"integer","minimum":0,"maximum":65535},"path":{"type":"string"},
@@ -91,13 +98,30 @@ public final class HttpComponent implements Component {
     private final Vertx vertx;
     private final BlobStore blobs;
     private final IdGenerator ids;
+    private final Timer timer;
     private final Map<HttpConsumer, Boolean> running = new ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicLong handled = new java.util.concurrent.atomic.AtomicLong();   // numbers the handler threads
 
+    /** One whose producers time their bounded sends on Vert.x timers of {@code vertx}. */
     public HttpComponent(Vertx vertx, BlobStore blobs, IdGenerator ids) {
+        this(vertx, blobs, ids, vertxTimer(vertx));
+    }
+
+    /** One whose producers time their bounded sends on {@code timer} (the node's: {@code Runtime.timer()}). */
+    public HttpComponent(Vertx vertx, BlobStore blobs, IdGenerator ids, Timer timer) {
         this.vertx = Objects.requireNonNull(vertx, "vertx");
         this.blobs = Objects.requireNonNull(blobs, "blobs");
         this.ids = Objects.requireNonNull(ids, "ids");
+        this.timer = Objects.requireNonNull(timer, "timer");
+    }
+
+    /** A {@link Timer} on {@code vertx}'s timers, at least a millisecond (Vert.x refuses less), rounded up. */
+    private static Timer vertxTimer(Vertx vertx) {
+        Objects.requireNonNull(vertx, "vertx");
+        return (delay, task) -> {
+            long id = vertx.setTimer(Math.max(1, (delay.toNanos() + 999_999) / 1_000_000), fired -> task.run());
+            return () -> vertx.cancelTimer(id);
+        };
     }
 
     @Override public String scheme() { return "http"; }
@@ -353,16 +377,120 @@ public final class HttpComponent implements Component {
         public Future<Envelope> send(Envelope e) {
             Objects.requireNonNull(e, "envelope");
             sends.incrementAndGet();
-            RequestOptions options = new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(url).setTimeout(timeoutMs);
+            return request(e, new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(url).setTimeout(timeoutMs), null)
+                    .recover(failure -> Future.failedFuture(retryableIfTimedOut(failure)));
+        }
+
+        /**
+         * {@link #send(Envelope)} bounded by {@code d} (D-113 draft): no time left — no request, not counted, a retryable Nack;
+         * else the request's connect timeout is the earlier of what is left and {@code timeoutMs}, and a timer at what is left
+         * re-reads {@code d}: time left again (renewed), it is re-armed; none, the send is cut — the request reset (one not yet
+         * obtained is reset unsent), no reply stored once the cut fires while the reply is still streaming (a reply already
+         * received whole may still be stored: a race), the send failed with the same retryable Nack as a {@code timeoutMs} one.
+         * A timer that refuses the cut fails the send with its own exception, nothing sent, not counted. The timer is cancelled
+         * once the send settles.
+         */
+        @Override
+        public Future<Envelope> send(Envelope e, Deadline d) {
+            Objects.requireNonNull(e, "envelope");
+            Duration left = d.remaining();
+            if (!left.isPositive()) return Future.failedFuture(new NackException("deadline passed: message " + e.id() + " not sent to " + cfg.name(), true));
+            Cut cut = new Cut(d);
+            try {
+                cut.arm(left);   // before the request exists: a cut that comes first resets it unsent
+            } catch (RuntimeException refused) {   // the timer refused it: a refusal is a failed future, nothing sent, not counted
+                return Future.failedFuture(refused);
+            }
+            sends.incrementAndGet();
+            long leftMs = Math.max(1, (left.toNanos() + 999_999) / 1_000_000);   // rounded up: Vert.x reads 0 as no connect timeout
+            RequestOptions options = new RequestOptions().setMethod(HttpMethod.POST).setAbsoluteURI(url)
+                    .setConnectTimeout(Math.min(leftMs, timeoutMs)).setIdleTimeout(timeoutMs);
+            Future<Envelope> sent = request(e, options, cut).recover(failure -> Future.failedFuture(retryableIfTimedOut(failure)));
+            return cut.watch(sent);
+        }
+
+        /** POSTs {@code e} under {@code options}; with a {@code cut}, a request obtained after the cut is reset unsent. */
+        private Future<Envelope> request(Envelope e, RequestOptions options, Cut cut) {
+            Envelope out = e.withOutboundId();   // the partner dedupes on it: exactly one x-message-id, the forwarded ones dropped
             return client.request(options).compose(req -> {
-                e.headers().asMap().forEach((k, v) -> { if (!HOP_BY_HOP.contains(k)) req.putHeader(k, v); });
+                if (cut != null && !cut.obtained(req)) return Future.failedFuture(cut.failure());   // cut before it was obtained: reset unsent
+                out.headers().asMap().forEach((k, v) -> { if (!HOP_BY_HOP.contains(k)) req.putHeader(k, v); });
                 req.putHeader("content-length", String.valueOf(e.body().size()));
                 // Registered before the send, so it runs in the event-loop callback that delivers the response: nothing flows
                 // until reply() attached its handlers (the store resumes a 2xx reply, head() any other), which runs a deferred
                 // task later (FIX-21: a small reply could end unheard in between, "Response already ended", and a retry sent twice).
                 req.response().onSuccess(HttpClientResponse::pause);
                 return req.send(e.body().open());
-            }).compose(res -> reply(e, res));
+            }).compose(res -> reply(e, res));   // a cut resets the request: a reply still streaming fails its store write
+        }
+
+        /** A {@code timeoutMs} (or connect timeout) expiry is the same retryable Nack as a cut send; any other failure as it is. */
+        private Throwable retryableIfTimedOut(Throwable failure) {
+            return failure instanceof TimeoutException
+                    ? new NackException("HTTP request to " + cfg.name() + " timed out: " + failure.getMessage(), true)
+                    : failure;
+        }
+
+        /**
+         * One bounded send's cut: a timer at what its deadline has left re-reads it — re-armed while time is left, else the send is
+         * cut: the request reset (or, not yet obtained, reset when it is) and the send failed with a retryable Nack.
+         */
+        private final class Cut {
+            private final Deadline d;
+            private final io.vertx.core.Promise<Envelope> out = io.vertx.core.Promise.promise();
+            private Timer.Cancellable armed;    // guarded by this
+            private HttpClientRequest request;  // guarded by this: once obtained
+            private boolean cut;                // guarded by this
+
+            Cut(Deadline d) { this.d = d; }
+
+            void arm(Duration left) {
+                Timer.Cancellable next = timer.schedule(left, this::reread);
+                synchronized (this) { armed = next; }
+            }
+
+            private void reread() {
+                if (out.future().isComplete()) return;   // settled meanwhile: its cancel came too late for this one
+                Duration left = d.remaining();
+                if (left.isPositive()) {
+                    arm(left);
+                    return;
+                }
+                HttpClientRequest obtained;
+                synchronized (this) {
+                    cut = true;
+                    obtained = request;
+                }
+                out.tryFail(failure());
+                if (obtained != null) obtained.reset();
+            }
+
+            /** The request obtained: kept for a cut to reset; false — and reset at once — when the send was cut already. */
+            boolean obtained(HttpClientRequest req) {
+                synchronized (this) {
+                    if (!cut) {
+                        request = req;
+                        return true;
+                    }
+                }
+                req.reset();
+                return false;
+            }
+
+            NackException failure() {
+                return new NackException("deadline passed: the HTTP request to " + cfg.name() + " was cut", true);
+            }
+
+            Future<Envelope> watch(Future<Envelope> sent) {
+                sent.onComplete(settled -> {
+                    Timer.Cancellable pending;
+                    synchronized (this) { pending = armed; }
+                    pending.cancel();
+                    if (settled.succeeded()) out.tryComplete(settled.result());
+                    else out.tryFail(settled.cause());
+                });
+                return out.future();
+            }
         }
 
         private Future<Envelope> reply(Envelope e, HttpClientResponse res) {

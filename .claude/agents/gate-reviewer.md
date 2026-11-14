@@ -1,7 +1,7 @@
 ---
 name: gate-reviewer
 description: Phase-gate reviewer for Flottila, run only on gate rows (P1-GATE, P2-GATE, GATE). Checks that every docs/GATE.md and phase condition has observed evidence, that the numbers come from CI on the gate commit, and that architecture drift since the last gate is justified. Read-only; the strongest model, used only here.
-model: claude-fable-5-1
+model: claude-fable-5-2
 effort: high
 maxTurns: 60
 tools: Read, Grep, Glob

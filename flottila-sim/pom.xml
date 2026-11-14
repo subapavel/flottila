@@ -13,7 +13,7 @@
   <artifactId>flottila-sim</artifactId>
   <packaging>jar</packaging>
   <name>Flottila :: sim</name>
-  <description>Deterministic simulation of the real core over in-memory stores and SPI doubles (F-25, D-101): harness in src/main
+  <description>Deterministic simulation of the real core over in-memory stores and SPI doubles (F-36, D-143): harness in src/main
     (checked by the archtest), variants, self-tests and pinned seeds in src/test. Nothing depends on it; never shipped; floor 75 %
     line and branch, no PIT.</description>
 

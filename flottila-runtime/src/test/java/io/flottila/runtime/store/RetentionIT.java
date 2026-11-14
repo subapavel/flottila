@@ -2,6 +2,7 @@ package io.flottila.runtime.store;
 
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -67,7 +68,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class RetentionIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static final Duration MAX_AGE = Duration.ofDays(7);
     static final Duration INTERVAL = Duration.ofHours(1);
@@ -245,6 +246,13 @@ class RetentionIT {
         body(id, step, "body", created, 10);
     }
 
+    /** A kept ref ({@code body_refs}, V12) of {@code id/step/body} on node-a created {@code at}: what a persist commits (CORE-4c2). */
+    void bodyRef(String id, int step, Instant created) {
+        db.preparedQuery("insert into body_refs(message_id, step, part, node, segment, position, length, created_at) values ($1, $2, 'body', 'node-a', 1, 64, 400, $3)")
+                .execute(Tuple.of(id, step, at(created))).await();
+        seeded.add("ref " + id + "/" + step + "/body");
+    }
+
     /** An open work item of {@code id}; a held one has {@code held_at} set (D-055). */
     void work(String id, boolean held) {
         db.preparedQuery("insert into work(id, flow, step, held_at) values ($1, 'shop/orders', 0, $2)")
@@ -285,6 +293,9 @@ class RetentionIT {
         }
         for (Row r : db.query("select message_id, step, part from bodies").execute().await()) {
             rows.add("body " + r.getString(0) + "/" + r.getInteger(1) + "/" + r.getString(2));
+        }
+        for (Row r : db.query("select message_id, step, part from body_refs").execute().await()) {
+            rows.add("ref " + r.getString(0) + "/" + r.getInteger(1) + "/" + r.getString(2));
         }
         for (Row r : db.query("select message_id from processed_ids").execute().await()) rows.add("processed " + r.getString(0));
         for (Row r : db.query("select id from dlq").execute().await()) rows.add("dlq " + r.getString(0));
@@ -722,6 +733,56 @@ class RetentionIT {
                 + "and the same for processed ids: a cursor that went back would scan more batches");
     }
 
+    /**
+     * CORE-4c2 (packet scope 7): the bodies phase removes a kept ref ({@code body_refs}) with its message, by the rule a
+     * {@code bodies} row goes by — older than the cutoff, and no messages row, no work row and no DLQ row naming it — so a kept
+     * ref outlives no message and no message loses its ref while it stays. The journal's bytes go later, with their segment
+     * (CORE-4d's sweeper).
+     */
+    @Test
+    void bodyRefsGoWithTheirMessage() {
+        message("gone", 0, cutoff.minus(DAY));               // an old message: it goes, its ref with it
+        bodyRef("gone", 0, cutoff.minus(DAY));
+        bodyRef("orphan", 0, cutoff.minus(DAY));             // an old ref whose message went before: it goes
+        message("young", 0, cutoff.plus(DAY));               // a young message keeps its old ref
+        bodyRef("young", 0, cutoff.minus(DAY));
+        message("queued", 0, cutoff.minus(DAY));             // a work row keeps the message and its ref
+        bodyRef("queued", 0, cutoff.minus(DAY));
+        work("queued", false);
+        message("parked", 1, cutoff.minus(DAY));             // a DLQ row naming the ref keeps it (D-062: a DLQ row needs its body)
+        bodyRef("parked", 0, cutoff.minus(DAY));
+        dlq("parked", "parked/0/body", cutoff.minus(DAY));
+        bodyRef("recent", 0, cutoff.plus(DAY));              // a young ref without a message: kept by its age
+
+        Retention.Run run = run(job(1000));
+
+        assertEquals("DONE", outcome(run));
+        assertEquals(seededWithout("messages gone@0", "ref gone/0/body", "ref orphan/0/body"), left(),
+                "a kept ref goes with its message, by the bodies rule, and only then");
+    }
+
+    /**
+     * Each clause of the refs delete keeps a ref on its own (in {@link #bodyRefsGoWithTheirMessage} the messages row keeps both the
+     * queued and the parked ref, so the work and DLQ clauses were never the only keeper): an old ref whose message row is gone stays
+     * while a work row has its message's id, and while a DLQ row — under another id, a replay's — names it. The refs twin of
+     * {@code w-body-only} in {@link #anOpenWorkItemKeepsItsMessageAndBodies} and of
+     * {@link #aDlqRowKeepsTheBodyItNamesUnderAnotherMessage}. The witness, an old ref nothing names, goes in the same run.
+     */
+    @Test
+    void aWorkRowOrADlqRowAloneKeepsAnOldRefWhoseMessageIsGone() {
+        bodyRef("w-ref-only", 0, cutoff.minus(DAY));      // no messages row: only its work row keeps it
+        work("w-ref-only", false);
+        bodyRef("orig", 0, cutoff.minus(DAY));            // no messages row, no work row: only the DLQ row naming it keeps it
+        dlq("retry", "orig/0/body", cutoff.minus(DAY));
+        bodyRef("orphan", 0, cutoff.minus(DAY));          // the witness: nothing names it
+
+        Retention.Run run = run(job(1000));
+
+        assertEquals("DONE", outcome(run));
+        assertEquals(seededWithout("ref orphan/0/body"), left(),
+                "a work row alone, and a DLQ row naming it alone, keep an old ref whose message is gone; an unnamed one goes");
+    }
+
     @Test
     void bodyBytesCountsBytesNotRows() {
         body("o-1", 0, "body", cutoff.minus(DAY), 1);
@@ -1133,5 +1194,36 @@ class RetentionIT {
         assertEquals(seededWithout("body other/0/body"), left(),
                 "the delete checks the DLQ under a snapshot taken after the select: the body the late DLQ row names stays");
         assertEquals(1L, run.bodies());
+    }
+
+    /**
+     * CORE-4d carry (4c2/4c3 reviews): a BODIES batch holds at most {@code batch} rows FOR UPDATE — the rows it returns — not
+     * {@code batch} of {@code bodies} and {@code batch} of {@code body_refs} besides. Five old bodies rows and five old refs,
+     * interleaved by created_at, a batch of 3; the batch is held at its delete (an AFTER DELETE trigger waiting on an advisory
+     * lock this case holds); the rows it holds are those another session cannot take FOR KEY SHARE SKIP LOCKED.
+     */
+    @Test
+    void aBodiesBatchLocksAtMostItsLimit() {
+        int batch = 3;
+        Instant old = cutoff.minus(Duration.ofDays(1));
+        for (int i = 0; i < 5; i++) {
+            body("m-b" + i, 0, old.plusSeconds(2L * i));
+            bodyRef("m-r" + i, 0, old.plusSeconds(2L * i + 1));
+        }
+        db.query("create function hold_delete() returns trigger language plpgsql as $$ begin perform pg_advisory_xact_lock(4747); return old; end $$").execute().await();
+        db.query("create trigger hold_bodies after delete on bodies for each row execute function hold_delete()").execute().await();
+        db.query("create trigger hold_refs after delete on body_refs for each row execute function hold_delete()").execute().await();
+        PgConnection gate = session();
+        gate.query("select pg_advisory_lock(4747)").execute().await();
+
+        Future<Retention.Run> running = job(batch).runOnce();
+        until(() -> waiting("advisory") == 1, "the BODIES batch reached its delete and waits, its rows held");
+        long lockable = db.query("select (select count(*) from (select 1 from bodies for key share skip locked) b)"
+                + " + (select count(*) from (select 1 from body_refs for key share skip locked) r)").execute().await().iterator().next().getLong(0);
+        long held = 10 - lockable;
+        gate.query("select pg_advisory_unlock(4747)").execute().await();
+        await(running, "the run");
+
+        assertEquals(batch, held, "the batch holds exactly its " + batch + " rows: never " + batch + " per table");
     }
 }

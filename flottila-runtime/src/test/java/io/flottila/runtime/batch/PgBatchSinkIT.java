@@ -2,6 +2,7 @@ package io.flottila.runtime.batch;
 
 import io.flottila.core.batch.BatchingWriter;
 import io.flottila.runtime.time.VertxTimer;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.pgclient.PgBuilder;
@@ -32,7 +33,7 @@ class PgBatchSinkIT {
 
     record Item(String id, int n) {}
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool pool;
 

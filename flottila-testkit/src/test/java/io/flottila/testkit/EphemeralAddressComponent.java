@@ -3,11 +3,13 @@ package io.flottila.testkit;
 import io.flottila.api.Ack;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Health;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
+import io.flottila.api.Timer;
 import io.vertx.core.Future;
 
 import java.util.Map;
@@ -35,15 +37,25 @@ final class EphemeralAddressComponent implements Component {
     private final Map<String, Running> running = new ConcurrentHashMap<>();
     private final boolean stopKeepsTheAddressRegistered;
 
+    private final Timer timer;   // null: sends are never cut
+
     /** The correct component: {@link Consumer#stop()} unregisters the consumer's address. */
     EphemeralAddressComponent() { this(false); }
+
+    /** P2-15b: the correct component whose sends are cut on {@code timer} when their deadline runs out ({@link BoundedSends}). */
+    EphemeralAddressComponent(Timer timer) { this(false, timer); }
 
     /**
      * @param stopKeepsTheAddressRegistered {@code true} builds a broken variant for the contract suite's self-test:
      *        {@link Consumer#stop()} forgets the consumer's {@code address()} but leaves its handler registered there, so a
      *        stopped consumer still receives and health stays up
      */
-    EphemeralAddressComponent(boolean stopKeepsTheAddressRegistered) { this.stopKeepsTheAddressRegistered = stopKeepsTheAddressRegistered; }
+    EphemeralAddressComponent(boolean stopKeepsTheAddressRegistered) { this(stopKeepsTheAddressRegistered, null); }
+
+    EphemeralAddressComponent(boolean stopKeepsTheAddressRegistered, Timer timer) {
+        this.stopKeepsTheAddressRegistered = stopKeepsTheAddressRegistered;
+        this.timer = timer;
+    }
 
     @Override public String scheme() { return "ephemeral"; }
 
@@ -59,10 +71,14 @@ final class EphemeralAddressComponent implements Component {
     @Override public Producer producer(EndpointConfig cfg) {
         Object address = Objects.requireNonNull(cfg, "cfg").options().get("address");
         return new Producer() {
+            @Override public Future<Envelope> send(Envelope e, Deadline d) {
+                return BoundedSends.within(d, timer, () -> send(e));
+            }
+
             @Override public Future<Envelope> send(Envelope e) {
                 Running at = running.get(String.valueOf(address));   // no address: "null", never assigned
                 if (at == null) return Future.failedFuture(new IllegalStateException("no consumer at " + address));
-                return at.drain().deliver(at.handler(), e).compose(ack -> switch (ack) {
+                return at.drain().deliver(at.handler(), BoundedSends.carryingItsId(e)).compose(ack -> switch (ack) {
                     case Ack.Reply r -> Future.succeededFuture(r.reply());
                     case Ack.Accepted a -> Future.succeededFuture(e);
                     case Ack.Nack n -> Future.failedFuture(new NackException(n.reason(), n.retryable()));

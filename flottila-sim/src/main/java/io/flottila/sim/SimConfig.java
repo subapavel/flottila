@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.SplittableRandom;
 
 /**
- * What a run is made of (D-101): action weights, fault rates, the four partition keys, the flows' limits. {@link #V1} is frozen
+ * What a run is made of (D-143): action weights, fault rates, the four partition keys, the flows' limits. {@link #V1} is frozen
  * once a seed is pinned under it; a changed one is a new name.
  *
  * @param name the name a failure line and the replay command carry ({@code config=V1})

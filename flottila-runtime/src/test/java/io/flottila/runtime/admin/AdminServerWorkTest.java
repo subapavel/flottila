@@ -205,9 +205,9 @@ class AdminServerWorkTest {
         assertEquals(List.of(50, 11), sizes, "at most 50 without a limit; next null on the last page");
         assertEquals(expectedOrder, walked, "only held rows, every flow's, in seq order, without gaps or repeats");
 
-        Set<String> fields = Set.of("seq", "messageId", "flow", "step", "partitionKey", "attempts", "heldAt");
+        Set<String> fields = Set.of("seq", "messageId", "flow", "step", "partitionKey", "attempts", "heldAt", "blocks");   // FIX-141 (D-126 L2): blocks
         JsonObject keyless = byId.get("w-002");
-        assertEquals(fields, keyless.fieldNames(), "the seven fields, partitionKey present when null: " + keyless);
+        assertEquals(fields, keyless.fieldNames(), "the eight fields, partitionKey present when null: " + keyless);
         assertEquals(seqOf("w-002"), keyless.getLong("seq"));
         assertEquals(FLOW, keyless.getString("flow"));
         assertEquals(3, keyless.getInteger("step"));
@@ -217,7 +217,7 @@ class AdminServerWorkTest {
         JsonObject retried = byId.get("r-1");
         assertEquals(fields, retried.fieldNames());
         assertEquals(new JsonObject().put("seq", r1.seq()).put("messageId", "r-1").put("flow", "orders").put("step", 4).put("partitionKey", "PO-9")
-                .put("attempts", 2).put("heldAt", retried.getString("heldAt")), retried, "as last handed out: the second attempt");
+                .put("attempts", 2).put("heldAt", retried.getString("heldAt")).put("blocks", 0L), retried, "as last handed out: the second attempt; the in-memory queue counts no blocks");
         assertEquals(heldAt.get("r-1"), Instant.parse(retried.getString("heldAt")), "microseconds and the millisecond after the claim kept");
         for (String id : expectedOrder) {
             assertEquals(heldAt.get(id), Instant.parse(byId.get(id).getString("heldAt")), id + ": each row its own hold instant");
@@ -348,6 +348,8 @@ class AdminServerWorkTest {
             return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
         }
         @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return delegate.renew(seq, attempts, lease); }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return delegate.defer(seq, attempts, delay); }
+        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return delegate.restart(messageId, flow, partitionKey, attempt); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
         @Override public Future<Boolean> hasItems(String flow) { return delegate.hasItems(flow); }
     }

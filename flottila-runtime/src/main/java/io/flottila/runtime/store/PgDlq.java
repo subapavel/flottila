@@ -2,6 +2,7 @@ package io.flottila.runtime.store;
 
 import io.flottila.api.BlobKey;
 import io.flottila.api.BlobNotFoundException;
+import io.flottila.api.BodyLostException;
 import io.flottila.api.Hash;
 import io.flottila.api.Headers;
 import io.flottila.api.Keys;
@@ -33,30 +34,34 @@ import java.util.regex.Pattern;
 /**
  * The DLQ over Postgres (ARCHITECTURE §6, §7): one row per parked message in V1's {@code dlq} with V3's columns, written
  * at once — a park is rare and must be durable before the failure surfaces — with no foreign key to {@code messages} (a
- * park never waits on the step rows), but its bodies row must be committed first (D-062 persist → park, D-096): without it
- * the park fails with {@link BlobNotFoundException}. A park writes its row only while the bodies row its {@code body_key}
- * names exists, and holds that row against retention's delete for its one statement (D-096), so a DLQ row implies a durable
- * body (D-062). The first park
- * of a message wins. Listed oldest first by V3's {@code (parked_at, id)} index; the cursor is the page's last position —
+ * park never waits on the step rows), but its body's kept ref must be committed first (D-062 persist → park, D-096, D-105):
+ * without it the park fails with {@link BlobNotFoundException}. A park adds no record (CORE-3 item 10): it writes its row
+ * only while the {@code body_refs} row its {@code body_key} names exists with that ref's {@code journal_segments} row, and
+ * holds both for key share against retention's and the sweeper's deletes for its one statement, so a DLQ row implies a
+ * durable body (D-062). A pre-V12 {@code bodies} row alone admits no park. The first park
+ * of a message wins; it keeps the parked item's partition key (V17, CORE-14b O7; null without one). Listed oldest first by V3's {@code (parked_at, id)} index; the cursor is the page's last position —
  * {@code parked_at} in microseconds, Postgres' precision, and the id — so a removal before it skips nothing.
  *
  * @since 0.1
  */
 public final class PgDlq implements Dlq {
 
-    private static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions";
+    private static final String COLUMNS = "id, flow, stage, step, error, parked_at, headers, props, keys, body_hash, hash_algorithm, body_size, body_key, versions,"
+            + " partition_key";
     /**
-     * The park, one statement (D-096): {@code b} holds the bodies row {@code body_key} names ({@code $15..$17}) for key share —
-     * retention's batch holds the rows it selects for update (it may keep some), so the park either waits for that batch and,
-     * after a delete, finds no row, or holds the row first and the batch passes it — and {@code ins} writes the DLQ row only
-     * from that row ({@code on conflict} skips an id parked already). Answers the rows found; {@code ins} runs to completion
+     * The park, one statement (D-096, CORE-3 item 10): {@code b} holds the {@code body_refs} row {@code body_key} names
+     * ({@code $16..$18}) and its segment row for key share — retention's batch and the sweeper's hold the rows they select for
+     * update, so the park either waits for that batch and, after a delete, finds no row, or holds the rows first and the batch
+     * passes them — and {@code ins} writes the DLQ row only from them ({@code on conflict} skips an id parked already). Answers the rows found; {@code ins} runs to completion
      * unread, as every data-modifying CTE does.
      */
     private static final String PARK = """
-            with b as materialized (select 1 from bodies where message_id = $15 and step = $16 and part = $17 for key share),
-            ins as (insert into dlq(%s) select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14 from b
+            with b as materialized (select 1 from body_refs r join journal_segments s on s.node = r.node and s.segment = r.segment
+                                     where r.message_id = $16 and r.step = $17 and r.part = $18 and r.lost_at is null for key share),
+            ins as (insert into dlq(%s) select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15 from b
                     on conflict (id) do nothing)
-            select count(*) from b""".formatted(COLUMNS);
+            select (select count(*) from b),
+                   exists (select 1 from body_refs where message_id = $16 and step = $17 and part = $18 and lost_at is not null)""".formatted(COLUMNS);
     private static final String LIST = "select " + COLUMNS + " from dlq order by parked_at, id limit $1";
     private static final String LIST_AFTER = "select " + COLUMNS + " from dlq where (parked_at, id) > ($1, $2) order by parked_at, id limit $3";
     private static final Pattern CURSOR = Pattern.compile("(-?\\d+):(.+)");
@@ -75,9 +80,11 @@ public final class PgDlq implements Dlq {
     }
 
     /**
-     * Writes {@code p}'s row unless its id is parked already, and only while the bodies row its {@code body_key} names exists:
-     * without one the park fails with {@link BlobNotFoundException} naming the key and writes nothing (D-062, D-096). A
-     * retention batch holding that row waits the park until it committed or rolled back.
+     * Writes {@code p}'s row unless its id is parked already, and only while the kept ref its {@code body_key} names exists with
+     * its segment row: without one (a pre-V12 {@code bodies} row admits none) the park fails with {@link BlobNotFoundException}
+     * naming the key and writes nothing (D-062, D-096, CORE-4c2) — with {@link BodyLostException} when an accepted loss gave that
+     * ref up ({@code lost_at}, CORE-4c3). A retention batch holding that ref waits the park until it
+     * committed or rolled back.
      */
     @Override
     public Future<Void> park(Parked p) {
@@ -87,9 +94,10 @@ public final class PgDlq implements Dlq {
                 p.messageId(), p.flow(), p.stepName(), p.step(), p.error(), p.parkedAt().atOffset(ZoneOffset.UTC),
                 new JsonObject(new HashMap<>(p.headers().asMap())), json(p.props().asMap()), new JsonObject(new HashMap<>(p.keys().asMap())),
                 PgMessageStore.bytes(p.bodyHash()), p.bodyHash().algorithm(), p.bodySize(), PgMessageStore.text(body), new JsonObject(new HashMap<>(p.versions())),
-                body.messageId(), body.step(), body.part()}))
+                p.partitionKey().orElse(null), body.messageId(), body.step(), body.part()}))
                 .map(rows -> {
-                    if (rows.iterator().next().getLong(0) == 0) throw new BlobNotFoundException(body);
+                    Row r = rows.iterator().next();
+                    if (r.getLong(0) == 0) throw r.getBoolean(1) ? new BodyLostException(body) : new BlobNotFoundException(body);
                     return null;
                 });
     }
@@ -145,7 +153,7 @@ public final class PgDlq implements Dlq {
         return new Parked(r.getString("id"), r.getString("flow"), r.getInteger("step"), r.getString("stage"), r.getString("error"),
                 r.getOffsetDateTime("parked_at").toInstant(), new Headers(strings(r.getJsonObject("headers"))), new Props(r.getJsonObject("props").getMap()),
                 new Keys(strings(r.getJsonObject("keys"))), new Hash(r.getString("hash_algorithm"), r.getBuffer("body_hash").getLong(0)), r.getLong("body_size"),
-                PgMessageStore.blobKey(r.getString("body_key")), strings(r.getJsonObject("versions")));
+                PgMessageStore.blobKey(r.getString("body_key")), strings(r.getJsonObject("versions")), Optional.ofNullable(r.getString("partition_key")));
     }
 
     private static JsonObject json(Map<String, Object> props) {

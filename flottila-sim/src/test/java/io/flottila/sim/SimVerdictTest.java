@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** D-101 verdicts: Σcompared > 0 or EMPTY; a failure names the run and how to replay it. */
+/** D-143 verdicts: Σcompared > 0 or EMPTY; a failure names the run and how to replay it. */
 class SimVerdictTest {
 
     private static final SimSeed SEED = new SimSeed(0x2aL);

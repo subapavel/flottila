@@ -1,10 +1,10 @@
 package io.flottila.sim;
 
-/** The faults a run injects (D-101); explicit codes, append-only. */
+/** The faults a run injects (D-143); explicit codes, append-only. */
 public enum FaultKind {
     /** The partner holds a call 1..8 ticks. */
     DELAY(1),
-    /** The partner refuses a call before its effect: retries, then a DLQ row at the {@code to} step. */
+    /** The partner refuses a call before its effect: retries, then a DLQ row at the flow's first step (step 1, the ingress, D-135). */
     REFUSE(2),
     /** The store refuses the ingress record or the enqueue: a retryable Nack, nothing queued. */
     STORE_REFUSE(3);

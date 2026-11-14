@@ -1,5 +1,6 @@
 # invoice-async (at-least-once): the sender has its 202 after the durable save; a partner that keeps failing 503 parks the message in
-# the DLQ after the retries of the policy (100 + 200 + 400 ms).
+# the DLQ after two runs (the first and the one scheduled retry, 1 s later), each with the step retries of the policy
+# (100 + 200 + 400 ms): retries 3 + 3 + 1 = 7, flow time 2400ms.
 schemaVersion: 1
 kind: test
 flow: invoice-async
@@ -19,4 +20,4 @@ cases:
     send: fixtures/sample-invoice.xml
     mocks:
       partner-domestic: { fail: 503 }
-    expect: { status: 202, dlq: 1, retries: 3 }
+    expect: { status: 202, dlq: 1, retries: 7 }

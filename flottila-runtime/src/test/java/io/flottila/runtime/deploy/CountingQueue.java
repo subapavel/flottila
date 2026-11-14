@@ -31,10 +31,18 @@ public final class CountingQueue implements WorkQueue {
     private final java.util.Map<String, Runnable> afterFirstHasItems = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicInteger renews = new java.util.concurrent.atomic.AtomicInteger();
     private volatile Throwable hasItemsFailure;
+    private final java.util.Map<String, Throwable> hasItemsFailures = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final Clock clock;
+    private final List<java.time.Instant> deferredAt = new CopyOnWriteArrayList<>();
 
     public CountingQueue(Clock clock) {
         this.inner = new InMemoryWorkQueue(clock);
+        this.clock = clock;
     }
+
+    /** The clock at every defer the queue answered true (CORE-14a), in order. */
+    public List<java.time.Instant> deferredAt() { return List.copyOf(deferredAt); }
 
     /** Every claim so far, as {@code "<workerId> <flow>"}. */
     public List<String> claims() { return List.copyOf(claims); }
@@ -112,6 +120,16 @@ public final class CountingQueue implements WorkQueue {
         return inner.renew(seq, attempts, lease);
     }
 
+    /** The in-memory queue's defer (CORE-14a P3); one it answered true recorded with the clock at the call. */
+    @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
+        java.time.Instant at = clock.instant();
+        return inner.defer(seq, attempts, delay).onSuccess(deferred -> {
+            if (deferred) deferredAt.add(at);
+        });
+    }
+
+    @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return inner.restart(messageId, flow, partitionKey, attempt); }
+
     @Override public Future<Boolean> hold(long seq, int attempts) { return inner.hold(seq, attempts); }
 
     @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return inner.held(after, limit); }
@@ -121,9 +139,18 @@ public final class CountingQueue implements WorkQueue {
     /** From now on every {@link #hasItems} call (still recorded) fails with {@code failure}; {@code null} answers again. */
     public void failHasItems(Throwable failure) { hasItemsFailure = failure; }
 
+    /**
+     * FIX-173: from now on every {@link #hasItems}({@code flow}) call (still recorded) fails with {@code failure}, whatever
+     * {@link #failHasItems(Throwable)} says; {@code null} drops this flow's failure (the queue-wide one applies again).
+     */
+    public void failHasItems(String flow, Throwable failure) {
+        if (failure == null) hasItemsFailures.remove(flow);
+        else hasItemsFailures.put(flow, failure);
+    }
+
     @Override public Future<Boolean> hasItems(String flow) {
         hasItemsCalls.add(flow + " rows=" + inner.snapshot().stream().filter(i -> i.flow().equals(flow)).count());
-        Throwable failure = hasItemsFailure;
+        Throwable failure = hasItemsFailures.getOrDefault(flow, hasItemsFailure);
         Future<Boolean> answer = failure == null ? inner.hasItems(flow) : Future.failedFuture(failure);
         Runnable hook = afterFirstHasItems.remove(flow);
         if (hook != null) hook.run();

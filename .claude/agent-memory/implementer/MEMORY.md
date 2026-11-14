@@ -1,65 +1,60 @@
 # implementer — durable facts (seeded from agent/HANDOFF.md at the role split; prune when you add)
 ## Build
-- Agent files (logs, diffs, scratch, the batch marker) live in `agent/work/` (FIX-111), outside every `target/` (`mvn clean`).
-- Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and
-  components need only `-pl flottila-api,flottila-testkit,<module>`.
-- Full check: `mvn -B -ntp -q verify -Pit > agent/work/<task>-verify.log 2>&1`; `-Pit` needs Docker (`sudo dockerd &`) and native
-  Postgres (`sudo pg_ctlcluster 16 main start`); both die between calls: start detached (NOTES "Build and VM"), check
-  `docker info` first — ~31 IT errors "Previous attempts to find a Docker environment failed" mean dockerd is down.
+- Agent files (logs, diffs, scratch, batch marker) live in `agent/work/` (FIX-111), outside every Maven `target/` (`mvn clean`).
+  Reviewer diff = `git diff <packet Base> -- . ':!agent' ':!.claude'`: red tests are committed at approval, absent from `git status`.
+- `-rf :<module>` after a failed reactor fails dependency resolution (nothing installed): rerun whole, or `-Dmaven.test.failure.ignore=true`. Always `-am`: `-pl flottila-runtime` alone resolves a stale core jar from ~/.m2 (NoClassDefFoundError, P1-09c2); steps and components need only `-pl flottila-api,flottila-testkit,<module>`.
+- `verify -Pit` needs Docker + native Postgres (die between calls: start detached, NOTES "Build and VM"; ~31 "find a Docker" errors = dockerd down).
 - Coverage: `python3 ci/coverage_check.py` (band 2 pp, D-029); new code must reach the module's level (FIX-3); JaCoCo counts only a module's own tests.
 - `-q` prints no "Tests run:" lines: count `**/target/{surefire,failsafe}-reports/TEST-*.xml` RECURSIVELY (components/steps are
-  nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start.
-- A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both.
-  `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`.
-- flottila-runtime `verify` without `-Pit` fails `jacoco:check` (unit tests alone ~73 % line) and coverage_check reports a
-  false DECREASE vs the -Pit baseline; for runtime figures run `-Pit`. A `-Dtest=` verify fails the floor check too: read surefire XML.
-- Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:69, BenchMainIT:36; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a).
+  nested: `*/target` misses 26 files), sum `<testsuite>` tests/failures/errors/skipped, check mtimes ≥ the run's start. `find .` also hits `agent/work/FIX-169-bench18-reports` (60 archived bench XMLs): exclude `./agent`.
+- A red core test stops the reactor; for the full picture add a `-Dmaven.test.failure.ignore=true` run (separate log), report both. `-Dtest='Foo*'` also selects nested classes (an EngineTestKit fixture built to fail): use `-Dtest=FooTest,FooConfigTest`. `-Dtest` also overrides an execution's excludes: `Peer*Test` on default-test runs *HeapTest at full heap (its guard fails): add `!PeerReadHeapTest`.
+- Packets miss: Flyway migration → MigrationsIT, PgMessageStoreIT:76, PgDeploymentStoreIT:100, BenchMainIT:36 (schema count); a new /admin JSON field → AdminServerWorkTest field-set pins; public api type → PublicTypesHaveSinceTest:105; new api Component default → api ComponentTest case (P2-09a);
+  a new required node config (CORE-4c1 key): MainIT/MainProcessIT env(), DeployCommandIT, bench mains, both compose files start nodes too.
+  A changed NodeConfig default (CORE-17 r3): NodeConfigTest.defaults:66 and bench LedgerMainPartsTest:65 pin `Pg(..)` defaults too. Messages key change (FIX-175): bench V1MessageStatements' own `on conflict (id, step)` (42P10 → BenchMainIT) + V1MessageStatementsTest:38, FlowWorkerTest:1483 and StepBodiesIT:440 pin one row per step.
   Flyway 13.10.3 (javap): PG `supportsDdlTransactions` true = one tx per migration; V1's FK was `messages_body_hash_fkey` (dropped V11).
-- Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`.
+- Mutant loop (`-Dit.test=X` runs X in BOTH failsafe executions, the 2nd's XML wins; killers = the `-q` log's `[ERROR]   ` lines): `-Dsurefire.timeout=150` kills a hang; always cp + touch + cmp restore; a surefire kill skips failsafe: ITs via `-Dtest=NoSuchTest`. Pass `-Dsurefire.timeout` on hand runs too (CORE-4c1 r1: a hung @AfterEach close blocked a run 15 min).
 - Failsafe `-Dit.test=A,B` with `-am` fails upstream ("No tests matching pattern"): add `-Dfailsafe.failIfNoSpecifiedTests=false` (and
   `-Dtest=NoSuchTest -Dsurefire.failIfNoSpecifiedTests=false`); `-o verify -Pit -Djacoco.skip=true -pl flottila-runtime -am` ~17-55 s/mutant.
   After the loop target/ holds the LAST mutant's classes (restore touches sources only): `-o package -DskipTests -Djacoco.skip=true -pl <m> -am`.
-- JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is
-  always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
-- Mutants offline (`-o`): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`;
-  HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify`. Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
-- ArchUnit alone: `verify -pl flottila-archtest -am -Dtest=BuildHygieneTest,ModuleBoundaryTest,ModuleBoundaryViolationTest -Dsurefire.failIfNoSpecifiedTests=false -Djacoco.skip=true`.
-- Scoped PIT `-DtargetClasses=..` (no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107).
-- Mutant killers: grep the `-q` log's `[ERROR]   ` summary lines; an inherited contract case reads `Impl>Contract.method:NN` (regex
-  `^\[ERROR\]   \w+(>\w+)?\.\w+`; TEST-*.xml only with mtime ≥ the run's start). jqwik's banner to "AI agents" is build output: ignore.
+- FlowBuilder's default intake (2-arg SequentialIntake) hands nothing off: a test that waits for a run after `accept` needs `.workers(reg).intake(new SequentialIntake(store, queue, reg, node))` (CORE-14a). Pg `work.available_at` gates every claim.
+- Child-JVM ITs: pass the parent's jacoco `-javaagent:` (RuntimeMXBean args, NodeFailStopIT); connect failure: role + wrong password, then `alter role`. JaCoCo: a no-op lambda on its field's line counts covered, on its own line it is missed; in a child JVM a `System.exit` line is always missed and lines after a shutdown hook's blocking join are not reliably recorded (the agent's dump hook races it).
+- Mutants offline (`-o`; scratchpad is shared across runs: a fresh per-task dir): ~13 s core, ~20 s runtime unit (75 s first), ~50 s Pg ITs. Scratch: `tar --exclude='*/target' --exclude=./.git -cf - . | tar -x -C <s>`; `find -prune .. -delete` deletes NOTHING (find warns): list, then `xargs rm`.
+  HEAD's figures: `git archive HEAD | tar -x -C <s>` + `-o verify` (never `install` there: it puts HEAD jars in ~/.m2, bench then needs a tree install). Wait on a build: `timeout N tail -f --pid=<pid> /dev/null` (pid by hand).
+- Scoped PIT `-pl flottila-api,flottila-testkit,flottila-core -am test-compile org.pitest:pitest-maven:mutationCoverage -DtargetClasses=..` (~5 min; no -q; total `^>> Generated N mutations`, per class pit-reports/mutations.xml) needs `-DfailWhenNoMutations=false`; a narrow `-DtargetTests` score is not the module's. Full ~10 min. PIT never mutates `instanceof`: hand mutant (FIX-107). Runtime (FIX-139, ~4 min): `-pl flottila-runtime -am -DmutationThreshold=0`, mutations.xml by `mutatedMethod`.
+- `dependency:analyze` (plugin 3.8.1) dies on Java 25 classes ("Unsupported class file major version 69"): `/opt/temurin-25/bin/jdeps -verbose:class -cp <build-classpath> target/classes | grep <pkg>` names the jar per class (CORE-5b1 r2). A test-author building in the same tree deletes surefirebooter jars under you: run loops in a scratch copy.
 - Maven's stale check is mtime-based: never edit a source during a verify, else `touch` it and rebuild before quoting JaCoCo/PIT (P2-01). Stop a loop: `kill -INT <python pid>`.
+- coverage_check after `-pl <m> -am -Pit` flags modules outside that reactor ("has classes but no JaCoCo report": cli, components/mock) and
+  scans a parallel agent's `.claude/worktrees/*`: clean figures need `verify -Pit -pl '!flottila-bench'` (whole reactor, ~7 min, CORE-4a). Disk: node ITs need >= 16 GiB free in /tmp (`df /tmp`).
 ## APIs
-- `/usr/bin/javap` is JDK 21: JDK 22+ API (e.g. `InetAddress.ofLiteral`) only shows with `/opt/temurin-25/bin/javap`. ofLiteral (probe): takes
-  `[::1]`, canonicalises `127.1`/`::ffff:127.0.0.1` to Inet4, IAE on names and blanks. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
-- vertx-web 5.1.10 (javap, P1-09a; fetch with `mvn dependency:get -Dartifact=io.vertx:vertx-web:5.1.10` if ~/.m2 lacks it):
+- `/usr/bin/javap` is JDK 21: JDK 22+ API only shows with `/opt/temurin-25/bin/javap`. Vert.x 5.1.10 NetServerImpl shares a port>0 server by ServerID(port, host string).
+- *HeapTest (-Xmx48m fork, G1 1 MiB regions): a 1 MiB + header array spans TWO humongous regions; a red run by the test-author's launcher is not the fork
+  (CORE-5a r2: :150 passed there, OOMs in surefire). `-DargLine` does not reach heap-bounded; `JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -Xlog:gc*:file=..-%p.log"` does.
+- vertx-web 5.1.10 (javap, P1-09a):
   `Router.router(Vertx)`, `get(String)`/`route(String)` → `Route.handler(Handler<RoutingContext>)`, `Router.errorHandler(int, Handler)`
-  answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`.
-  Vert.x 5 `VerticleBase` (`Future<?> start()/stop()`, fields `vertx`, `context`), `Vertx.deployVerticle(Deployable)`.
-- vertx-web 5.1.10 `Router.post(String)`→Route; RouterImpl never pauses (javap). Pg `UPDATE…RETURNING` has no order: CLAIM sorts in a CTE (P1-09c1).
+  answers an unmatched path (404) and a wrong method (405, observed); `RoutingContext.pathParam`, `request().getParam`; `Router.post`; RouterImpl never pauses. Pg `UPDATE…RETURNING` has no order (P1-09c1). Vert.x 5 `VerticleBase` (`start()/stop()`, `vertx`, `context`).
+- Vert.x 5.1.10 pool acquire (javap, CORE-6b): idle conn on the CALLER's loop, else NEW below max, else any idle; vthread = fresh context. Refusals
+  (FIX-172): queue full `ConnectionPoolTooBusyException`; wait elapsed on pool.query = plain `VertxException("Timeout waiting for connection")` (same class as
+  "Pool closed"), on getConnection `NoStackTraceThrowable("Timeout")` (a VertxException subclass); since FIX-172b every store tx goes through `pg.PgTx` (PoolRefusedException).
 - `ReadStream.pipeTo(res)` ends the destination when the source fails (a truncated 200): use `pipe().endOnFailure(false).to(res)` and
   answer 500 / `res.reset()` by `res.headWritten()`. `HttpHeaders.headers().set(..)` validates a value as `putHeader` does (CRLF → IAE, probe).
 - vertx-sql-client 5.1.10 (javap -c Pool): `Pool`, `SqlConnection` extend `SqlClient`; `withTransaction(fn)` = getConnection → begin →
   fn.apply(conn) called directly (a sync throw skips the rollback: start fn's chain from a completed future) → commit, or rollback
   then fail with fn's cause → close. A statement on the pool is autocommit; on the tx conn it commits with the tx.
+  SqlConnectOptions (javap, CORE-6a): no SQL-limit getter, `setPreparedStatementCacheSqlLimit(n)` = filter `sql.length() <= n` (default 2048, cache off).
 - vertx-pg-client 5.1.10 (javap -c, no source jar): `PgBuilder.pool()..build()` opens no connection (SqlConnectionPool keeps a
   connect lambda, used on acquire); a query's future fires in `PgCommandMessage.handleReadyForQuery`, i.e. after the Sync that
   commits an autocommit statement. `show synchronous_commit` answered `off`, `local`, `remote_write` as set by ALTER DATABASE (NodeIT).
+- JCE `SecretKeySpec` refuses an empty key: HKDF's empty salt is 32 zero bytes (same HMAC, CORE-5a2). Vert.x `SocketAddress.hostAddress()` = the IP string (javap).
 - runtime System.Logger → JUL: capture with a JUL Handler on `Logger.getLogger(<class>)`. Vert.x 5.1.10: `Promise.tryComplete(T)`; `complete(T,Throwable)`/`handle` THROW when already done (race a
   bound with `f.onComplete(p::tryComplete, p::tryFail)`); `Future.join` fails after all settle with the first failure in INDEX order; an `eventually` supplier throw is lost
-  (completes with the ORIGINAL outcome); `compose`/`transform`/`Future.future` fail on any Throwable, a listener's throw is lost.
-- Saxon-HE 12.4 (javap + probe, FIX-6): `XsltCompiler.setResourceResolver` sees only xsl:include/import; DTD entities,
-  static `doc()`/`unparsed-text()`/`use-when` read via `Configuration.getResourceResolver()` (UseWhenFilter builds
-  `new Controller(config)`); default is `CatalogResourceResolver`; resolvers may return `StreamSource`.
+  (completes with the ORIGINAL outcome) — a FAILED supplier future too (FIX-142 M4: `.otherwiseEmpty()` on it is an equivalent mutant); `compose`/`transform`/`Future.future` fail on any Throwable, a listener's throw is lost.
 - Vert.x 5.1.10 source: `Future.toCompletionStage()` is a fresh CompletableFuture completed by onComplete; `.toCompletableFuture()
   .join()` waits uninterruptibly (no catch), for a never-failing close in a finally (P1-09k2). `andThen(Handler<AsyncResult>)` completes after
-  the handler ran; `Future.await()` works on a virtual thread, sneaky-throws the cause.
-- AWS SDK 2.56.0 (javap): `RequestBody.fromFile(Path)` sizes the file at once (missing → UncheckedIOException); a client built without a credentialsProvider
-  resolves `DefaultCredentialsProvider.builder()..build()` (`create()` is a static singleton); `serviceClientConfiguration()` shows region/endpoint/credentials.
-- JDK 25 AQS (P2-09a): parked in `CountDownLatch.await`, interrupt + countDown before it runs → IE; `CompletableFuture.get` returns the value, flag set.
-- JDK 25 (source, P2-03b1): a virtual thread blocked on a monitor leaves its carrier (JEP 491) and, from the release until the
-  `VirtualThread-unblocker` platform thread queues it, is neither mounted nor queued: VirtualThreadSchedulerMXBean misses it.
-  FlowWorker.pollingAfterAccept (wired by Deployments) runs an at-least-once message right after its 202, not at the first tick.
-- Vert.x 5.1.10 client (source jar in ~/.m2, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
+  the handler ran; `Future.await()` works on a virtual thread, returns at once when complete, sneaky-throws the cause; on a platform thread it blocks on a latch.
+- P2-16a: Pg ITs save every message with partition key "K-1" ("keyed" in test names = dedupe key): a per-key xact lock blocks every held-COMMIT
+  fixture. `(key is null or (select true from pg_advisory_xact_lock(..)))` in a WHERE runs the lock in the same statement.
+- jqwik keeps a failing sample in the tracked `flottila-core/.jqwik-database` and replays it first (SAMPLE_FIRST): one property killing EVERY mutant = a real bug sample (P2-16a). `git checkout` the file before a diff. Flakes: FlowWorkerOrderingPropertyTest:182 (FIX-155).
+- Vert.x 5.1.10 client (sources: `mvn dependency:get -Dartifact=io.vertx:vertx-core:5.1.10:jar:sources`, FIX-21): off a Vert.x thread every `getOrCreateContext()` is a NEW context (sticky
   loop); a future listener on another context object runs as a deferred EmitResultTask, so a response handed on through
   `compose` can end unheard. `req.response().onSuccess(HttpClientResponse::pause)` registered BEFORE `send` runs inline in the head emit.
 - BlobStore contract: a stream may be handed over paused; the store resumes it once attached and never resumes one it paused
@@ -76,44 +71,50 @@
 - TieredBlobStore spool files are per write since FIX-35: `<id>/<step>-<part>-<n>.blob` (n per store); a write that replaces a
   spool entry unlinks its own file off-thread; a missing file reads the row only for a `Stored` persist flagged durable, else
   ISE (tier) / NoSuchFileException (none, pinned by TieredBlobStoreOpenedStreamTest). `SqlResult.rowCount()` is int (javap).
-- vertx-pg-client 5.1.10 jsonb (javap + IT, P2-02b): a JsonArray Tuple param goes through ParamExtractor.prepareJson (Json.encode);
-  textDecodeJSONB answers a JsonArray, `Row.getJsonArray(String)` exists. `dirUri.relativize(u).equals(u)` = "u not below dir", no scheme branch.
-- Apache MINA SSHD 2.20.0 (javap, P2-02): SFTP answers wait CoreModuleProperties.IDLE_TIMEOUT (also closes an idle session);
-  NIO2 pools "-nio2" and "-nio2-resume" both sized by NIO_WORKERS; setUpDefaultClient reads ~/.ssh/config unless
-  HostConfigEntryResolver.EMPTY; a client session can still be isOpen() after the server counted it closed (idle DISCONNECT race).
-  loadKeyPairIdentities: garbage → null, PKCS8 with an unknown OID → NoSuchAlgorithmException (a GSE). rename never overwrites.
-- vertx-redis-client 5.1.10 (javap, P2-02L; Apache-2.0/EPL-1.0, no NOTICE): `Redis.createClient(Vertx, String)` lazy, `close()` → Future;
-  `RedisAPI.api(Redis).eval(List)` = [script, numkeys, keys.., args..]; `RedisAPI.close()` is void. Valkey IT image valkey/valkey:8.
-- `-pl flottila-cli` alone compiles against ~/.m2 jars: `-o install -DskipTests -Djacoco.skip=true -pl flottila-cli -am` first (P2-03b2). Full `verify -Pit` ~10 min (P2-08a).
-- P2-03a: `install -DskipTests` needs `-Djacoco.skip=true` (check-floors reads a stale exec) and fails on archtest (no artifact: leave it out); Vert.x 5.1.10 `Future.await()` on a plain platform thread blocks on a latch, an interrupt sneaky-throws InterruptedException (source, FIX-108); Deployments.stop(Flow) arms a consumer-stop bound on the timer per flow even with no consumer.
+- Vert.x 5.1.10 NetSocket (CORE-5a): bytes arriving while its handler is null are DROPPED: connect from a fixed context's loop, set handlers in the callback; arm a watchdog before the first write. Peer 8083 clashes in two-process ITs: `FLOTTILA_PEER_PORT=0`.
+  (source, CORE-5b1 r1): after `pause()` ~2 MiB more is read (InboundMessageQueue high water 16 msgs, then conn `pending` till >= 8 at readComplete, + the read loop; <= 64 KiB each);
+  `close()` = shutdown(0) flushes first (also via channel.close: VertxHandler.writeClose): a peer that never reads keeps it open, no closeHandler. FrameRelay pump: a WRITE failure is blamed on its own fromSide (PeerProtocolTest:767 LISTENER).
+  Abort (r1c, PeerLink.abort): `((NetSocketInternal) s).channelHandlerContext()` is VertxHandler's ctx, `ctx.close()` skips the flush; SO_LINGER 0 = `ctx.channel().config().setOption(..)`, THROWS on a closed channel
+  (guard isOpen). Netty close fails pending writes BEFORE channelInactive (a write waiter wakes before closeHandler). Linux close with unread rx sends RST anyway; a FIN close leaves FIN_WAIT2 in /proc/net/tcp. PeerLink `hold()` (CORE-5b1): the chunk in hand still delivers every frame: a pause case sends its witness in a read of its own (`allRead` + 3x `onLoop`).
+- `-pl flottila-cli`/`flottila-bench` alone compile against ~/.m2 jars: `install -DskipTests -Djacoco.skip=true -pl <m> -am` first, ONLINE (-o lacks install-plugin deps). Full `verify -Pit` ~10 min (P2-08a); whole `clean verify -Pit` incl. bench ~24 min (FIX-138a: runtime 15, bench 7). `install -DskipTests -pl !flottila-bench` fails at archtest (no artifact, after all bench needs): exclude `!flottila-archtest`, `cmp` target vs ~/.m2 jars.
 - vertx-sql-client 5.1.10 (javap -c TransactionImpl, P2-02D): `Transaction.completion()` is a fresh flatMap future completed on the conn's
   context (`isComplete()` lags off-context); a second rollback/commit fails "Transaction already complete". withTransaction fails with fn's own
   cause even when its rollback fails: a private marker exception carries a rolled-back outcome out (PgIntake.Duplicate).
-- JFR, JDK 25.0.5 (src + probes, FIX-108): `-XX:-FlightRecorder` → `isAvailable()` false; `jdk.CPUTimeSample` (Linux) throttle `"<n>ms"`,
-  field `samplingPeriod`; `CPUTimeSamplesLost.lostSamples` int. A live RecordingStream hands vthread events with `getThread()` null (constant
-  written later); a dump read whole resolves all (F-22). `Recording.dump(p)` truncates p, rotates, works on STOPPED, IOException on CLOSED;
-  maxAge trims at each chunk append by the new chunk's end; in a multi-chunk dump all times shift by tens of us when its first chunk
-  changes: compare times within one dump only. CPU-bound VT bursts starve a VT reader 1.5-2.4 s (4 carriers). Harness cp: `dependency:build-classpath`.
+- Vert.x 5.1.10 http client (P2-15b): `setTimeout` = connect + idle, connect 0 = none, both a j.u.c.TimeoutException; `putHeader` = `set`
+  (case-insensitive); unsent `reset()` aborts. D-113: a send past the run's deadline (30 s default) is refused: long fake-clock holds need `delivery.timeout`.
+- PG stats (CORE-15b, FIX-169): pg_stat_wal wal_sync(_time) up to 17 only (counted with fsync on + fdatasync/fsync/fsync_writethrough); 18 = pg_stat_io
+  'wal'/'normal' fsyncs, fsync_time (`DbSampler.WAL_SYNCS`). 18 image: volume /var/lib/postgresql, refuses a 16/17 one. Image a run used: `docker events --since <t> --until <t> --filter event=create --format '{{index .Actor.Attributes "image"}}'`;
+  Testcontainers PostgreSQLContainer's default command is `fsync=off`; `PgConnectOptions.addProperty("statement_timeout",..)` is a startup GUC (IT-proven).
+- PG 17 (FIX-130, EXPLAIN on 50 k rows): `update .. where seq in (<sub> limit n for update skip locked)` = generic-plan Seq Scan of the target; CORE-7: `delete .. using unnest($1::bigint[],$2::int[])` = work_pkey probe per member (generic too); `Tuple.addArrayOfLong` = addValue(Long[]); BatchingWriter `flush()` is a join (fails if one did).
+  `seq = any(array(<sub>))` = InitPlan + pkey Index Cond in both plans; a one-key table hid the keyed form's scan (use ~100 keys).
+- FIX-136: `Set.of(..).contains(null)` throws NPE (jqwik found it); `jsonb_agg(..)` of pg_stat_replication in one select avoids a left join's phantom null row (`Row.getJsonArray(int)`, elements iterate as JsonArray). Startup params `synchronous_commit`/`statement_timeout` beat ALTER DATABASE/ROLE (IT).
+- vertx-pg-client 5.1.10 (javap, P2-16b): `PgConnection.notificationHandler(Handler<PgNotification>)` (`getPayload()`, `getChannel()`),
+  `closeHandler`/`exceptionHandler`; a node's own NOTIFY reaches its own LISTEN. PgWire records the client's Terminate as `Sent('X', null, conn)`:
+  the positive witness that a client closed a connection (a "count 0 in pg_stat_activity" wait also passes when the statement never ran).
+- vertx-pg 5.1.10 TLS (javap -c PgConnectionFactory, FIX-146): VERIFY_FULL needs a non-empty hostnameVerificationAlgorithm (IAE at connect), verify-* need trust options; the name check IS the algorithm (VERIFY_CA+"HTTPS" still checks: equivalent mutant). pgjdbc 42.7.14 parseURL URL-decodes params.
+- PG 17 SyncRep (FIX-137, IT): a commit waits for the sync standby only if its tx wrote WAL before the commit record (xact.c `wrote_xlog`): `select pg_current_xact_id()` alone = no wait; `pg_logical_emit_message(true,..)` writes one (plain role may run it); PG 17 has only `pg_logical_emit_message(boolean,text,text,boolean)` (+bytea; 3-arg is 16): look up with `to_regprocedure` + coalesce, never errors.
 ## Findings that came back in review
-- A fake-timer round-end wait `pending() > 0` is fooled by an at-least-once save timeout on the same timer (P2-02D SftpIngressDedupeIT): wait for the answer too.
-- Tests outside allowed paths: prove a guard's test in a scratch copy, hand its path back (FIX-66); a subclass of the packet's test class
-  reuses its inner fixtures (P2-02b). RestoreIT logs 5 Trail "was not recorded (writer closed)" WARNINGs: expected.
-- Packet red tests can carry fixture bugs no implementation fixes (P1-09k2): check the fixture first, fix with a one-line reason
-  (FIX-109: an assert after a hold's `release()` in `finally` sees the released chain land).
-- Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; a double guard (two never-fail transforms)
+- PgIntake: a throw out of answered()/handOff fails the writer save → fail(m) → Durable.rolledBack, a NO-OP after committed() (save gone):
+  unobservable via openSaves; kill by a later member's skipped side effect (P2-16b r3). Node wiring of PgIntake/AdminServer signals: no Node IT kills NONE.
+  Node.start's catch never stops a started admin server; a flag set at start's end is unobservable before admin.start (FIX-144 M2).
+- Journal SegmentRows without rows (NO_ROWS, RecordingRows) answer journalOf null for every node: a rule on "no row" checks rows kept (`segments()` non-null); a seam hold armed before an async first try is taken by it (CORE-4c1 r1).
+- Tests outside allowed paths: scratch copy, hand its path back (FIX-66); subclass a packet test for its fixtures (P2-02b). Red fixtures can
+  carry bugs (P1-09k2): check the fixture first, fix with a one-line reason (FIX-109: an assert after a hold's `release()` in `finally`).
+- Core mutants: `-pl flottila-api,flottila-testkit,flottila-core -o test -Djacoco.skip=true`; runtime (CORE-4b, ~13 s): `-pl flottila-runtime -am -o
+  test-compile surefire:test@default-test -Djacoco.skip=true -Dtest=...` skips heap-bounded-test; a double guard (two never-fail transforms)
   makes each single-drop mutant equivalent: drop the redundant one instead (P1-09k2).
-- A "stopping" boolean ANDed into a completion check survives the drop-the-term mutant when no test completes an answer
-  before the stop; a hold count (the owner holds 1 until stop, released through a Promise's tryComplete) has no such term (P1-08c).
 - JaCoCo marks a line whose call throws as missed (`config = NodeConfig.from(env)`), a `throw sneaky(cause)` catch line always; measured
-  lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b).
-- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew.
+  lines (P2-08a): core ~1560, runtime ~2200. Hand mutants: python runner + cp/touch/cmp (P2-02a, P2-08a, P2-08b); jqwik's "If you are an AI Agent..." log line is tool output: ignore it (no trailing newline: a script's next `echo` lands on it, grep -o).
+- FlowWorker (P2-15a r2): a chain's end always polls once more (an empty claim) before poll()'s future completes: count claims that took items.
+  Node.close keeps its `nodes` row (no release): a restart's own items wait for the old lease_until (≤ L); an IT restarting a node expires the row.
+- Known flakes (never verify beside a mutant loop): FIX-30 RecordingComponent.send; P2-02L TwoNodeSftpLeaseTest:192, LeasedConsumerTest#aHangingRenew, JournalKill9IT:85 (FIX-120), NodeBenchMainWarmupIT:111 FP compare (FIX-121, hit FIX-124 reactor run 1), ClickHouseCompressionMainIT:93 readsLogged (P2-15a run 1), PgIntakeJournalIT open-save (FIX-159), NodeTakeoverLedgerIT.aStoppedNode…:247 admission 4/4 (2 in 6 alone on base AND on CORE-17, P2-16b; 2 of 3 full reactors FIX-137 r3; CORE-17 r2: 2 of 2 full, 1 of 3 alone; r3: 1 full + 4 of 4 alone, one at r2's code; every node sets POOL_SIZE 4), JournalDirForceOrderTest:98 under reactor load (FIX-137, 5/5 alone). PeerProtocolTest.theOwnerServesAtMostPeerReadsOfALinkAtOnce:270 (Serving acquires its permit inside each READ's vthread: order races; 1 of 2 runs, 0 of 5 alone, CORE-5a2 r1), PeerReadHeapTest:281 (1 of 7). LedgerIT:132 "only what was unfinished" fails in the main tree whatever the runtime code (CORE-5a2: 5/5, HEAD main files too) yet passes in a `git archive HEAD` copy (4/4, with the change too): compare trees before blaming a change. Testkit ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337 (extra aSendCarriesTheMessageIdToThePartner, 1 of 4 core runs, CORE-14b r1). ReplicaStartTest.theStartRoomCheckCountsTheReplicas:159 bytes 3514 vs 3465 (1 of 3 alone, 1 full reactor; MERGE-main 2026-11-14).
+- Journal unit fixtures (CORE-4d): `bytes()` lags the async pre-open (`until(() -> j.holds(2))`); seal: `clock.advance(segmentAge)` + `j.index(n)`
+  on a vthread; own FakeTimer per actor: a shared-timer `pending()` wait is fooled by other tasks (P2-02D save timeout: wait for the answer).
+- Offline: no clean plugin (rm -rf targets); upstream-only changes leave a dependent uncompiled (touch it); `-Dsurefire.excludesFile` drops the `**/*$*` default exclude; a stale failsafe-summary.xml upstream fails `verify` (CORE-4c2). JaCoCo: enum arrow switch leaves a synthetic default missed (P2-07).
 - A multi-step bookkeeping path over SPI calls that catches only RuntimeException leaves state half-written on an Error (P1-09d2c r1,
   rollBack): write the safe state first (stopped flows FAILED), overwrite on success, one catch (RuntimeException | Error) → suppressed.
-- NodeConfig carries `Secrets` (P2-04): tests compare `from(env)` to the 11-arg ctor: a new component needs equality + a defaulting overload.
-- Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp.
-- PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn (log_statement=all).
-- JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07).
-- Sim (P2-10a): FlowWorker.process's VT may end before its starter composes (sim gates each run); InMemoryMessageStore.timeline scans all rows.
-- Node bench by hand: `NodeBenchMain --scenario ack --concurrency 8`, --db must contain "bench", a fresh DB per side; before side in
-  `git worktree add --detach <scratch> HEAD` + `-o package -DskipTests -Djacoco.skip=true -pl flottila-bench -am` (P2-07).
+- Compose (P2-05a/06): native PG holds :5432 → `FLOTTILA_PG_HOST_PORT=55432`; MINA 2.20 offers no ssh-ed25519 (pin RSA); no rsync on the VM: cp. PG 17 (P2-07): `on conflict … do update … where <false>` returns 0 rows yet row-locks; `withTransaction` COMMITs a succeeded fn. | JaCoCo: an arrow switch STATEMENT over an enum leaves a synthetic default branch missed: index arrays by ordinal (P2-07). | Sim (P2-10a): FlowWorker.process's VT may end before its starter composes (sim gates each run); InMemoryMessageStore.timeline scans all rows.
 - PG 17 + vertx-pg (P2-07b2): `insert … select $1..$n from <cte>` types unknown params from the target columns; `$1::text[]` takes `Tuple.addArrayOfString`; a `for key share` CTE waiting on a row deleted+committed returns 0 rows (READ COMMITTED).
+- P2-15b r1: a timer armed before an SPI call must be disarmed for a THROW and a NULL answer (requireNonNull inside the disarming try) and a
+  throwing `Timer.schedule` in a producer is a failed future; a `<=` boundary on a clock needs a case landing exactly on it (mutant `<`).
+- FIX-141: a two-statement "delete then audit insert" in one tx leaves a surviving mutant (audit on the pool inside the tx); one CTE `with gone as (delete .. returning ..) insert into audit .. select .. from gone` makes them inseparable. FIX-172c: Deployments.validate catches every DeployRefusedException from check()/build() as its problem list: a new non-INVALID refusal there (BUSY, FIX-172c) reads as "valid" unless validate rethrows it. FIX-173: queue-question rank, deploy 422 > real IOException > BUSY; undeploy real failure (at once) > 409 > BUSY, all pinned.

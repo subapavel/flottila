@@ -9,12 +9,14 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.ToLongFunction;
 
 /**
  * The persistence batcher (ARCHITECTURE §4 "Writer"): hand-rolled, no reactive operator chain.
  * Adaptive flush — a save commits immediately when no commit is in flight, accumulates to
- * {@code batchSize} or the {@code window} under load; up to {@code commitConcurrency} commits in
- * flight, each completed per batch; a bounded backlog whose overflow fails the save at once with
+ * {@code batchSize} items or {@code batchBytes} bytes (the weighed constructor; an item above {@code batchBytes} goes alone) or
+ * the {@code window} under load — a batch full by count or by bytes goes on a free slot without waiting for the window; up to
+ * {@code commitConcurrency} commits in flight, each completed per batch; a bounded backlog whose overflow fails the save at once with
  * {@link OverloadedException}. {@link #saveWaiting} instead waits for room, in arrival order, at most
  * {@code maxWait} (D-071): a slot that frees is handed to the oldest waiter under the same lock that freed it, so
  * {@code waiting() > 0} implies {@code backlog() == maxBacklog} and a {@link #save} never overtakes a waiter.
@@ -62,13 +64,13 @@ public final class BatchingWriter<T> implements AutoCloseable {
         }
     }
 
-    private record Pending<T>(T item, Promise<Void> done) {}
+    private record Pending<T>(T item, long weight, Promise<Void> done) {}
 
-    /**
-     * What a drain hands out once the lock is released: batches to commit; the window timer's refusal, when it refused
-     * and this is the first refusal of an episode (to be logged); whether this drain's accepted window ends an episode.
-     */
-    private record Drained<T>(List<List<Pending<T>>> commit, Throwable firstRefusal, boolean recovered) {}
+    /** A batch a drain took and then failed: the window for what stayed behind it could not be scheduled. */
+    private record Refused<T>(List<Pending<T>> batch, Throwable cause) {}
+
+    /** What a drain hands out once the lock is released: batches to commit, refused batches to fail. */
+    private record Drained<T>(List<List<Pending<T>>> commit, List<Refused<T>> refused) {}
 
     /** A {@link #saveWaiting} item waiting for room; its deadline is cancelled when it enters the backlog. */
     private static final class Waiter<T> {
@@ -78,32 +80,46 @@ public final class BatchingWriter<T> implements AutoCloseable {
         Waiter(Pending<T> pending) { this.pending = pending; }
     }
 
-    private static final System.Logger LOG = System.getLogger(BatchingWriter.class.getName());
-
     private final BatchSink<T> sink;
     private final Timer timer;
     private final Options options;
+    private final ToLongFunction<? super T> weight;
+    private final long batchBytes;
     private final ArrayDeque<Pending<T>> queue = new ArrayDeque<>();
     private final ArrayDeque<Waiter<T>> waiters = new ArrayDeque<>();   // arrival order; non-empty only while the queue is full
     private final List<List<Pending<T>>> flying = new ArrayList<>();   // batches handed to the sink and not yet completed
     private final Object lock = new Object();
     private int inFlight;
+    private long queuedBytes;   // the weights of the items in the queue
     private Timer.Cancellable armed;
     private boolean closed;
-    private long windowsRefused;      // under the lock: every refusal of the window timer
-    private boolean cancelLogged;  // under the lock: the first throwing cancel was logged
-    private boolean refusing;         // under the lock: a window was refused and none accepted since (one episode)
 
+    /** A writer batching by count alone: every item weighs 1 and a batch holds at most {@code batchSize} of them. */
     public BatchingWriter(BatchSink<T> sink, Timer timer, Options options) {
+        this(sink, timer, options, item -> 1L, Objects.requireNonNull(options, "options").batchSize());
+    }
+
+    /**
+     * A writer batching by count and bytes (D-109): a batch holds at most {@code batchSize} items and at most {@code batchBytes}
+     * bytes, an item's bytes its {@code weight} (asked once, when it is saved; never negative); an item above {@code batchBytes}
+     * goes alone. Queued items whose bytes reach {@code batchBytes} are a full batch, as {@code batchSize} items are.
+     *
+     * @param batchBytes the bytes of a batch at most; positive
+     * @since 0.1
+     */
+    public BatchingWriter(BatchSink<T> sink, Timer timer, Options options, ToLongFunction<? super T> weight, long batchBytes) {
         this.sink = Objects.requireNonNull(sink, "sink");
         this.timer = Objects.requireNonNull(timer, "timer");
         this.options = Objects.requireNonNull(options, "options");
+        this.weight = Objects.requireNonNull(weight, "weight");
+        if (batchBytes < 1) throw new IllegalArgumentException("batchBytes " + batchBytes + " < 1");
+        this.batchBytes = batchBytes;
     }
 
     /**
      * Queues the item; completes when the batch containing it is committed, fails when that commit fails or the backlog is
-     * full. A timer that refuses the window never fails it (D-104): the batch is committed and the refusal is counted
-     * ({@link #windowsRefused}) and logged. Never throws; every failure is the returned future's cause. A {@link Timer.Cancellable} whose {@code cancel()} throws is tolerated (logged once).
+     * full, and with the timer's exception when its batch was taken but the window for the items behind it could not be
+     * scheduled (FIX-69: the batch is then never handed to the sink).
      */
     public Future<Void> save(T item) {
         return enqueue(item, false);
@@ -114,16 +130,12 @@ public final class BatchingWriter<T> implements AutoCloseable {
      * waiter, and enters the moment a slot frees. Completes when the batch containing it is committed; fails when that
      * commit fails, with {@link OverloadedException} when it still waits {@code maxWait} after the call (it is then never
      * handed to the sink), with {@link IllegalStateException} when the writer is closed, and with the timer's exception
-     * (an {@link Error} included) when its deadline cannot be scheduled. Once queued (directly or moved in from the
-     * waiters) a refused window does not fail it, as with {@link #save} (D-104). Never throws. A throwing {@code cancel()} of a waiter's deadline is tolerated; the deadline then fires late and is harmless.
+     * when its deadline cannot be scheduled. Once queued (directly or moved in from the waiters) it also fails, as with
+     * {@link #save}, with the timer's exception when its batch was taken but the window for the items behind it could not
+     * be scheduled (FIX-69: the batch is then never handed to the sink).
      */
     public Future<Void> saveWaiting(T item) {
         return enqueue(item, true);
-    }
-
-    /** How many times the window timer refused a schedule; a refusal commits instead of failing (D-104). */
-    public long windowsRefused() {
-        synchronized (lock) { return windowsRefused; }
     }
 
     /** Items waiting for room in a full backlog ({@link #saveWaiting}). */
@@ -131,17 +143,22 @@ public final class BatchingWriter<T> implements AutoCloseable {
         synchronized (lock) { return waiters.size(); }
     }
 
-    /** {@code item} into the backlog; a full one fails it at once or, if {@code wait}, lines it up behind the waiters. */
+    /**
+     * {@code item} into the backlog; a full one fails it at once or, if {@code wait}, lines it up behind the waiters. A negative
+     * weight is refused (IllegalArgumentException), nothing queued.
+     */
     private Future<Void> enqueue(T item, boolean wait) {
         Objects.requireNonNull(item, "item");
-        Pending<T> p = new Pending<>(item, Promise.promise());
+        long bytes = weight.applyAsLong(item);
+        if (bytes < 0) throw new IllegalArgumentException("a negative weight " + bytes);
+        Pending<T> p = new Pending<>(item, bytes, Promise.promise());
         Drained<T> drained;
         synchronized (lock) {
             if (closed) return Future.failedFuture(new IllegalStateException("writer closed"));
             if (queue.size() >= options.maxBacklog()) {   // full; a waiter already there implies full, so no save overtakes it
                 return wait ? waitLocked(p) : Future.failedFuture(new OverloadedException(options.maxBacklog()));
             }
-            queue.add(p);
+            queue(p);
             drained = drainLocked(false);
         }
         dispatch(drained);
@@ -153,7 +170,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
         Waiter<T> w = new Waiter<>(p);
         try {
             w.deadline = timer.schedule(options.maxWait(), () -> expire(w));
-        } catch (RuntimeException | Error e) {
+        } catch (RuntimeException e) {
             return Future.failedFuture(e);
         }
         waiters.add(w);
@@ -173,12 +190,6 @@ public final class BatchingWriter<T> implements AutoCloseable {
     /**
      * Commits what is queued now without waiting for the window (a free commit slot permitting; the rest follows as slots
      * free) and completes when every item waiting, queued or in flight at this moment is committed or failed.
-     * Never throws: a dropped window whose {@code cancel()} throws is tolerated (logged once). Such a window stays
-     * scheduled, so it may fire later and hand a newer partial batch to the sink before that batch's own window elapses:
-     * a loss of batching, never of data and never of queue order — items are taken from the queue in the
-     * order they were queued, each batch an in-order slice of it, while the order in which batches reach
-     * the sink is unconstrained either way ({@link #drainLocked}) (D-104; pinned by
-     * {@code BatchingWriterErrorTest.aWindowThatFlushDroppedWhoseCancelThrewFiresEarlyButLosesNeitherDataNorOrder}).
      */
     public Future<Void> flush() {
         Drained<T> drained;
@@ -187,7 +198,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
             for (List<Pending<T>> batch : flying) for (Pending<T> p : batch) waiting.add(p.done().future());
             for (Pending<T> p : queue) waiting.add(p.done().future());
             for (Waiter<T> w : waiters) waiting.add(w.pending.done().future());
-            if (armed != null) { cancelQuietly(armed); armed = null; }
+            if (armed != null) { armed.cancel(); armed = null; }
             drained = drainLocked(true);
         }
         dispatch(drained);
@@ -200,100 +211,74 @@ public final class BatchingWriter<T> implements AutoCloseable {
     }
 
     /**
-     * Under the lock: takes every batch that may go now and arms the window timer for what stays; one take, one arm
-     * attempt. A timer that refuses the window (exception or {@link Error}) is never thrown at the caller and fails
-     * nothing (D-104): the batches taken stay in flight and are committed, and what stayed queued rides their completions
-     * ({@code afterCommit} drains again), so nothing stays queued with no commit in flight and no window. When nothing
-     * was taken the queue is non-empty, so a commit is already in flight and its completion drains.
-     *
-     * <p>A drain takes at most one batch today (see {@link #takeLocked} for the invariant that makes it so), so the list
-     * returned holds at most one and {@link #dispatch}'s loop has nothing to put out of order within a single drain; the
-     * rule that the batches are returned oldest first, in the order taken, is the shape the code keeps should that change.
-     * It is <b>not</b> a global sink order: a sink that completes inline re-enters {@code afterCommit}, then
-     * {@code drainLocked} and {@code dispatch}, from inside the dispatch call (nesting, not reordering, unless the
-     * invariant breaks), and drains on other threads run unordered with each other, so across drains the order in which
-     * batches reach the sink is whatever the completions and the scheduler make it. No caller may rely on the order in
-     * which batches reach the sink.
+     * Under the lock: takes every batch that may go now and arms the window timer for what stays. A timer that refuses the
+     * window is never thrown at the caller (FIX-69): the batches just taken are released from flight and refused with its
+     * exception, and the drain runs again on the freed slots, so nothing stays queued with no commit in flight and no window.
      */
     private Drained<T> drainLocked(boolean windowElapsed) {
-        List<List<Pending<T>>> batches = takeLocked(windowElapsed);
-        if (queue.isEmpty() || armed != null || options.window().isZero()) return new Drained<>(batches, null, false);
-        try {
-            armed = timer.schedule(options.window(), this::onWindow);
-        } catch (RuntimeException | Error e) {
-            windowsRefused++;
-            boolean first = !refusing;
-            refusing = true;
-            return new Drained<>(batches, first ? e : null, false);
-        }
-        boolean recovered = refusing;
-        refusing = false;
-        return new Drained<>(batches, null, recovered);
-    }
-
-    /**
-     * Under the lock: cancels a timer handle; a {@code cancel()} that throws (exception or {@link Error}) is tolerated, so
-     * the batch already taken is never stranded. Logged once per writer. A waiter's deadline that stays uncancelled fires
-     * harmlessly: the waiter has left {@code waiters}, so {@code expire} returns, and {@code tryFail} on a settled item is a no-op.
-     */
-    private void cancelQuietly(Timer.Cancellable c) {
-        try {
-            c.cancel();
-        } catch (RuntimeException | Error e) {
-            if (cancelLogged) return;
-            cancelLogged = true;
-            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: a timer handle's cancel() threw; ignored, the writer "
-                    + "carries on (further failures are not logged)", e);
+        Drained<T> out = new Drained<>(new ArrayList<>(), new ArrayList<>());
+        while (true) {
+            List<List<Pending<T>>> batches = takeLocked(windowElapsed);
+            if (queue.isEmpty() || armed != null || options.window().isZero()) {
+                out.commit().addAll(batches);
+                return out;
+            }
+            try {
+                armed = timer.schedule(options.window(), this::onWindow);
+            } catch (RuntimeException | Error e) {
+                // nothing taken: the queue is non-empty, so a commit is in flight and its completion drains again
+                if (batches.isEmpty()) return out;
+                for (List<Pending<T>> batch : batches) {
+                    inFlight--;
+                    flying.remove(batch);
+                    out.refused().add(new Refused<>(batch, e));
+                }
+                continue;
+            }
+            out.commit().addAll(batches);
+            return out;
         }
     }
 
+    /** Under the lock: {@code p} at the back of the queue, its bytes counted. */
+    private void queue(Pending<T> p) {
+        queue.add(p);
+        queuedBytes += p.weight();
+    }
+
     /**
-     * Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees.
-     *
-     * <p>A second pass of the loop is unreachable today, and here is the invariant that makes it so: at rest, either
-     * {@code queue.size() < batchSize} or {@code inFlight == commitConcurrency}, and waiters exist only when the queue is
-     * full, which implies {@code inFlight == commitConcurrency}. Entered with every commit slot taken, the loop condition
-     * is false at once. Entered with at most {@code batchSize} queued, the first pass takes the whole queue and the
-     * waiters, being none, refill nothing, so the loop ends. Entered from {@code afterCommit} with a slot just freed, the
-     * one batch retakes that slot, so the condition is false whatever the waiters refilled. A drain therefore takes at
-     * most one batch and the outer {@code while} runs at most once; {@code dispatch} gets a list of at most one batch.
-     * FIX-69's {@code continue} is the one change that ever produced several batches per drain.
-     *
-     * <p>A {@code while} takes every batch that may go at once; an {@code if} would also be correct, because the batch
-     * taken leaves a commit in flight whose completion drains the rest, but leftovers would wait for the next completion
-     * or window. The {@code while} is kept to avoid that latency should the invariant break (D-112). The cost is one
-     * surviving equivalent mutant (the loop's repeat), unmeasured: PIT has no while-to-if mutator, so it may not be a PIT
-     * mutant at all, and no PIT report has been run on this class.
+     * Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees. A batch is the
+     * queue's front: its first item, then each next one while the batch stays within {@code batchSize} items and {@code batchBytes}
+     * bytes.
      */
     private List<List<Pending<T>>> takeLocked(boolean windowElapsed) {
         List<List<Pending<T>>> batches = new ArrayList<>();
         while (!queue.isEmpty() && inFlight < options.commitConcurrency()
-                && (inFlight == 0 || queue.size() >= options.batchSize() || windowElapsed)) {
-            int n = Math.min(options.batchSize(), queue.size());
-            List<Pending<T>> batch = new ArrayList<>(n);
-            for (int i = 0; i < n; i++) batch.add(queue.poll());
+                && (inFlight == 0 || queue.size() >= options.batchSize() || queuedBytes >= batchBytes || windowElapsed)) {
+            List<Pending<T>> batch = new ArrayList<>();
+            long bytes = 0;
+            do {
+                Pending<T> p = queue.poll();
+                batch.add(p);
+                bytes += p.weight();
+                queuedBytes -= p.weight();
+            } while (!queue.isEmpty() && batch.size() < options.batchSize() && bytes + queue.peek().weight() <= batchBytes);
             inFlight++;
             flying.add(batch);
             batches.add(batch);
             while (!waiters.isEmpty() && queue.size() < options.maxBacklog()) {   // the freed room goes to the waiters first
                 Waiter<T> w = waiters.poll();
-                cancelQuietly(w.deadline);
-                queue.add(w.pending);
+                w.deadline.cancel();
+                queue(w.pending);
             }
         }
         return batches;
     }
 
-    /** Outside the lock: logs the episode's edges, then hands the taken batches to the sink, oldest first. */
+    /** Outside the lock: fails the refused batches, oldest first, then hands the taken ones to the sink. */
     private void dispatch(Drained<T> drained) {
-        if (drained.firstRefusal() != null) {
-            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: the timer refused to schedule the batch window; "
-                    + "committing the taken batches instead of failing them (further refusals are only counted)",
-                    drained.firstRefusal());
-        }
-        if (drained.recovered()) {
-            LOG.log(System.Logger.Level.WARNING, "BatchingWriter: the batch window was scheduled again after "
-                    + "refusals; windowing is back to normal");
+        for (Refused<T> r : drained.refused()) {
+            for (Pending<T> p : r.batch()) p.done().tryFail(r.cause());
         }
         drained.commit().forEach(this::commit);
     }
@@ -321,7 +306,7 @@ public final class BatchingWriter<T> implements AutoCloseable {
         Future<Void> written;
         try {
             written = sink.write(items);
-        } catch (RuntimeException | Error e) {
+        } catch (RuntimeException e) {
             written = Future.failedFuture(e);
         }
         written.onComplete(ar -> afterCommit(batch, ar.succeeded() ? null : ar.cause()));

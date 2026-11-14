@@ -3,6 +3,7 @@ package io.flottila.bench;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.runtime.db.Migrations;
 import io.flottila.runtime.queue.PgWorkQueue;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.pgclient.PgBuilder;
@@ -40,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Timeout(value = 300, unit = TimeUnit.SECONDS)
 class NodeBenchMainWarmupIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final String DB = "warmupbench";
 
     @TempDir Path dir;
@@ -96,14 +97,20 @@ class NodeBenchMainWarmupIT {
     }
 
     @Test
-    void aSyncWindowsBodiesRateHoldsTheRecordingThatLandsAfterTheReplies() throws Exception {
+    /**
+     * CORE-4c2: kept bodies are journal records, no {@code bodies} rows (D-105), so the window's body rate is the journal's
+     * growth ({@code journalBytesPerSecond}, was {@code bodiesBytesPerSecond} over the {@code bodies} table) and what the
+     * messages recorded is the length of the distinct records their {@code body_refs} rows name.
+     */
+    void aSyncWindowsJournalRateHoldsTheRecordingThatLandsAfterTheReplies() throws Exception {
         Path out = dir.resolve("sync-xslt.json");
         assertEquals(0, NodeBenchMain.run(args("sync", 0, out, "--step", "xslt")));
         JsonObject json = new JsonObject(Files.readString(out));
-        double delta = json.getDouble("bodiesBytesPerSecond") * json.getDouble("elapsedMs") / 1000.0;
-        long recorded = count("select coalesce(sum(octet_length(bytes)), 0) from bodies");
+        double delta = json.getDouble("journalBytesPerSecond") * json.getDouble("elapsedMs") / 1000.0;
+        long recorded = count("select coalesce(sum(length), 0) from (select distinct node, segment, position, length from body_refs) r");
         assertTrue(recorded >= 12 * NodeBenchMain.XSLT_BODY_BYTES, "every message's ~100 KB body was kept: " + recorded);
-        assertTrue(delta >= recorded, "the bodies delta " + delta + " B holds the " + recorded + " B the window's messages recorded: " + json.encode());
+        assertTrue(delta >= recorded, "the journal delta " + delta + " B holds the " + recorded + " B of records the window's messages kept: " + json.encode());
+        assertEquals(0, count("select count(*) from bodies"), "no bodies row");
     }
 
     @Test

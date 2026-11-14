@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
-/** D-101 seeds: a stream's seed is SplitMix64(run ^ its explicit salt); a tick's generator is its own. */
+/** D-143 seeds: a stream's seed is SplitMix64(run ^ its explicit salt); a tick's generator is its own. */
 class SimSeedTest {
 
     /** PLACEHOLDER (landing): each stream's explicit salt, e.g. {@code Map.of(WORKLOAD, 0x…L, FAULTS, 0x…L, SCHEDULE, 0x…L)}. */

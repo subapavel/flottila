@@ -4,7 +4,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 
 /**
- * Runs one seed (D-101): builds {@code new Runtime(FakeClock, SimTimer, FakeIds("sim"), blobs, sha256, components)} and the flows over
+ * Runs one seed (D-143): builds {@code new Runtime(FakeClock, SimTimer, FakeIds("sim"), blobs, sha256, components)} and the flows over
  * the {@link World}'s seams, drives {@code ticks} ticks of units on one driver virtual thread, drains with faults off, and
  * judges. Interrupted while it waits — the per-seed hang guard — it prints every run still RUNNING with its stack to
  * {@code System.err}, interrupts the driver and throws an {@link IllegalStateException} naming them; a driver that fails is an

@@ -6,6 +6,7 @@ import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Hash;
@@ -13,6 +14,7 @@ import io.flottila.api.Hasher;
 import io.flottila.api.Health;
 import io.flottila.api.NackException;
 import io.flottila.api.Producer;
+import io.flottila.api.Timer;
 import io.flottila.api.Props;
 import io.flottila.api.Views;
 import io.vertx.core.Future;
@@ -87,6 +89,21 @@ class ComponentContractSelfTest {
         /** With {@link #restoredReplies}: keyed by {@link Envelope#nextKey()}, the attempt kept, but the sender's props dropped. */
         boolean restoredWithoutProps;
         private final Set<Promise<Envelope>> waiting = ConcurrentHashMap.newKeySet();
+        /** P2-15b: the timer its sends are cut on — the case's, handed over by {@link VariantContractTest#component(Timer)}. */
+        volatile Timer timer;
+        /** Broken (P2-15b): the partner receives no {@link Envelope#H_MESSAGE_ID}. */
+        boolean messageIdNotCarried;
+        /** Broken (P2-15b): the id is set only when no {@link Envelope#H_MESSAGE_ID} was forwarded — a forwarded one goes as it is. */
+        boolean forwardedMessageIdKept;
+        /** Broken (P2-15b): a send with no time left is delivered all the same. */
+        boolean startsWithNoTimeLeft;
+        /** Broken (P2-15b): a send is never cut, however long its partner takes. */
+        boolean neverCut;
+        /** Broken (P2-15b): cut at the deadline the send started with, never re-read — a renewal is ignored. */
+        boolean cutWithoutRereading;
+        /** How a cut fails the send; the correct variant: a retryable {@link NackException}. */
+        java.util.function.Supplier<Throwable> cutAs = () -> new NackException("deadline passed: the send was cut", true);
+
         /** What {@link #target} answers (D-099); the correct variant names no target. */
         Function<EndpointConfig, java.util.Optional<String>> targetOf = cfg -> java.util.Optional.empty();
 
@@ -94,6 +111,20 @@ class ComponentContractSelfTest {
 
         /** {@link #target} answers {@code targetOf}. */
         static Variant targeting(Function<EndpointConfig, java.util.Optional<String>> targetOf) { Variant v = correct(); v.targetOf = targetOf; return v; }
+
+        static Variant messageIdNotCarried() { Variant v = correct(); v.messageIdNotCarried = true; return v; }
+        static Variant forwardedMessageIdKept() { Variant v = correct(); v.forwardedMessageIdKept = true; return v; }
+        static Variant startsWithNoTimeLeft() { Variant v = correct(); v.startsWithNoTimeLeft = true; return v; }
+        static Variant neverCut() { Variant v = correct(); v.neverCut = true; return v; }
+        static Variant cutWithoutRereading() { Variant v = correct(); v.cutWithoutRereading = true; return v; }
+        static Variant cutAs(java.util.function.Supplier<Throwable> failure) { Variant v = correct(); v.cutAs = failure; return v; }
+
+        /** The envelope as the partner receives it: its message id carried, unless the variant breaks that. */
+        private Envelope carried(Envelope e) {
+            if (messageIdNotCarried) return e;
+            if (forwardedMessageIdKept && e.headers().asMap().keySet().stream().anyMatch(k -> k.equalsIgnoreCase(Envelope.H_MESSAGE_ID))) return e;
+            return BoundedSends.carryingItsId(e);
+        }
 
         /** Broken (D-099): the target depends on whether a consumer runs — not answered from the config alone. */
         static Variant targetWhileRunning() {
@@ -198,10 +229,16 @@ class ComponentContractSelfTest {
         }
         @Override public Producer producer(EndpointConfig cfg) {
             return new Producer() {
+                @Override public Future<Envelope> send(Envelope e, Deadline d) {
+                    if (startsWithNoTimeLeft && !d.remaining().isPositive()) return send(e);
+                    if (neverCut) return BoundedSends.within(d, null, () -> send(e));
+                    return BoundedSends.within(d, timer, () -> send(e), !cutWithoutRereading, cutAs);
+                }
+
                 @Override public Future<Envelope> send(Envelope e) {
                     Running at = handler;
                     if (at == null) return Future.failedFuture(new IllegalStateException("no consumer running"));
-                    Future<Ack> ack = dispatch(at, deliveredAs.apply(e));
+                    Future<Ack> ack = dispatch(at, deliveredAs.apply(carried(e)));
                     if (ackBeforeHandler) return Future.succeededFuture(e);
                     Promise<Envelope> answer = Promise.promise();
                     waiting.add(answer);
@@ -227,6 +264,10 @@ class ComponentContractSelfTest {
 
     static class VariantContractTest extends ComponentContract {
         @Override protected Component component() { return current; }
+        @Override protected Component component(Timer timer) {
+            if (current instanceof Variant v) v.timer = timer;
+            return current;
+        }
         @Override protected EndpointConfig endpoint() { return LOOP; }
     }
 
@@ -240,6 +281,7 @@ class ComponentContractSelfTest {
     /** An address assigned at start, but the suite never asks the started consumer for it: every producer targets {@link #endpoint()}. */
     static class EphemeralWithoutOverrideContractTest extends ComponentContract {
         @Override protected Component component() { return new EphemeralAddressComponent(); }
+        @Override protected Component component(Timer timer) { return new EphemeralAddressComponent(timer); }
         @Override protected EndpointConfig endpoint() { return EPHEMERAL; }
         @Override protected Duration patience() { return Duration.ofMillis(200); }   // a handler never invoked is waited out
     }
@@ -247,6 +289,7 @@ class ComponentContractSelfTest {
     /** The producer reaches the started consumer's address, but {@link Consumer#stop()} leaves the handler registered there. */
     static class EphemeralStopKeepsTheAddressContractTest extends ComponentContract {
         @Override protected Component component() { return new EphemeralAddressComponent(true); }
+        @Override protected Component component(Timer timer) { return new EphemeralAddressComponent(true, timer); }
         @Override protected EndpointConfig endpoint() { return EPHEMERAL; }
         @Override protected EndpointConfig producerEndpoint(Consumer started) {
             return new EndpointConfig("in", URI.create("ephemeral://in"), Map.of("address", ((EphemeralAddressComponent.EphemeralConsumer) started).address()));
@@ -292,7 +335,7 @@ class ComponentContractSelfTest {
                 failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e,
                         e -> e.withHeader("x-seen", "dropped").withHeader("x-acked", "dropped").withHeader("x-answer", "dropped"))), "reply dropped (headers replaced)");
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged", "aNackFromTheHandlerFailsTheSendWithItsReason",
-                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY),
+                        "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", THROWS, NULL_ANSWER, ATTEMPT_REPLY, CUT),
                 failing(new Variant("loopback", ok.schema, false, false, true, false, e -> e, e -> e)), "acknowledged before the handler answered (the envelope sent comes back)");
         assertEquals(Set.of(), failing(new Variant("loopback", ok.schema, false, false, false, false, e -> e.withId("receiver-minted"), e -> e)),
                 "a receiver that mints its own id (every real transport does) passes: the id is not what crosses");
@@ -384,7 +427,7 @@ class ComponentContractSelfTest {
         assertEquals(Set.of("producerDeliversToTheRunningConsumersHandlerWithTheBodyIntact", "theSendCompletesOnlyAfterTheHandlerAcknowledged",
                         "aNackFromTheHandlerFailsTheSendWithItsReason", "aBodyAboveTheTreeLimitStreamsThroughIntact", "aSecondSendOfTheSameEnvelopeDeliversTheSameBodyAgain",
                         "stopWaitsForTheDeliveryInFlightAndItsAnswerReachesTheSender", "aDeliveryCancelledWhileTheConsumerStopsFailsTheSendRetryable", OWN_THREAD,
-                        THROWS, NULL_ANSWER, ATTEMPT_REPLY),
+                        THROWS, NULL_ANSWER, ATTEMPT_REPLY, MESSAGE_ID, NO_TIME_LEFT, CUT),
                 failing(EphemeralWithoutOverrideContractTest.class),
                 "without producerEndpoint the producer has no address: every case that needs a delivery fails, the component delivers only to the address named");
     }
@@ -490,6 +533,57 @@ class ComponentContractSelfTest {
         Map<String, Throwable> f = failures(Variant.repliedAs(e -> e.get(Envelope.ATTEMPT).isPresent() ? e : e.with(Envelope.ATTEMPT, 1)));
         assertEquals(Set.of(ATTEMPT_REPLY), f.keySet());
         ContractRun.caughtBy(f, ATTEMPT_REPLY, "the first attempt's reply runs on as no attempt in particular");
+    }
+
+    static final String MESSAGE_ID = "aSendCarriesTheMessageIdToThePartner";
+    static final String NO_TIME_LEFT = "aSendWithNoTimeLeftIsNotStarted";
+    static final String CUT = "aSendIsCutWhenItsDeadlineRunsOutButNotWhileItIsRenewed";
+
+    // ---- P2-15b: the message id on the wire and the send's deadline — each defect fails exactly its case ----------------------
+
+    @Test
+    void aPartnerThatReceivesNoMessageIdFailsOnlyTheMessageIdCase() {
+        Map<String, Throwable> f = failures(Variant.messageIdNotCarried());
+        assertEquals(Set.of(MESSAGE_ID), f.keySet());
+        ContractRun.caughtBy(f, MESSAGE_ID, "the plain send carries its message id, the forwarded one replaced");
+    }
+
+    @Test
+    void aForwardedMessageIdSentAsItIsFailsOnlyTheMessageIdCase() {
+        Map<String, Throwable> f = failures(Variant.forwardedMessageIdKept());
+        assertEquals(Set.of(MESSAGE_ID), f.keySet());
+        ContractRun.caughtBy(f, MESSAGE_ID, "expected: <[contract-plain-1]> but was: <[forwarded-from-upstream]>");
+    }
+
+    @Test
+    void aSendStartedWithNoTimeLeftFailsOnlyTheNoTimeCase() {
+        Map<String, Throwable> f = failures(Variant.startsWithNoTimeLeft());
+        assertEquals(Set.of(NO_TIME_LEFT), f.keySet());
+        ContractRun.caughtBy(f, NO_TIME_LEFT, "PT0S left: the send fails");
+    }
+
+    @Test
+    void aSendNeverCutFailsOnlyTheCutCase() {
+        Map<String, Throwable> f = failures(Variant.neverCut());
+        assertEquals(Set.of(CUT), f.keySet());
+        ContractRun.caughtBy(f, CUT, "still pending after PT10S");   // the cut's check waits a patience for the cut that never comes
+    }
+
+    @Test
+    void aCutThatIgnoresARenewalFailsOnlyTheCutCase() {
+        Map<String, Throwable> f = failures(Variant.cutWithoutRereading());
+        assertEquals(Set.of(CUT), f.keySet());
+        ContractRun.caughtBy(f, CUT, "renewed: not cut at the deadline it was sent with");
+    }
+
+    @Test
+    void aCutThatFailsWithAnythingButARetryableNackFailsOnlyTheCutCase() {
+        Map<String, Throwable> f = failures(Variant.cutAs(() -> new IllegalStateException("cut")));
+        assertEquals(Set.of(CUT), f.keySet());
+        ContractRun.caughtBy(f, CUT, "a cut send fails with a NackException");
+        Map<String, Throwable> g = failures(Variant.cutAs(() -> new NackException("cut", false)));
+        assertEquals(Set.of(CUT), g.keySet());
+        ContractRun.caughtBy(g, CUT, "retryable: the message may be tried again");
     }
 
     static final String TARGET = "targetIsAnsweredFromConfigAloneAndStable";

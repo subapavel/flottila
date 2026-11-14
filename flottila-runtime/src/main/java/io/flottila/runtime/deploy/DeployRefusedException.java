@@ -6,7 +6,7 @@ import java.util.Objects;
 /**
  * Why {@link Deployments#deploy} refused a package (D-059), or {@link Deployments#undeploy} an undeploy (D-095): its {@link Kind} — the admin API answers each with its own status —
  * the error line, and for {@link Kind#INVALID} every problem found, one line each, none with an absolute path; for a redeploy that
- * did not start and rolled back ({@link Kind#FAILED}, D-063) every flow that did not start, build or start again.
+ * did not start and rolled back ({@link Kind#FAILED}, D-063; {@link Kind#BUSY}, D-133) every flow that did not start, build or start again.
  *
  * @since 0.1
  */
@@ -20,11 +20,20 @@ public final class DeployRefusedException extends Exception {
         INVALID,
         /**
          * Another deploy or undeploy runs on this node: one at a time per node, whatever the package; or the package to undeploy is
-         * pinned by another package's record (409).
+         * pinned by another package's record, or the work queue holds items of an at-least-once flow of it (409).
          */
         CONFLICT,
         /** The node is closing (503). */
         STOPPING,
+        /**
+         * The node's Postgres pool refused a connection (503, D-133), retryable: to the deploy record's write — otherwise as
+         * {@link #FAILED} for a record not written, a first deploy's flows stopped, a redeploy rolled back — or to an undeploy's
+         * work-queue question or record delete, or to a deploy's work-queue question about a flow the new version no longer runs
+         * at-least-once (after the package's problems: those are its 422), and only when every failed question was the pool's: a
+         * real failure of another flow's question is the node's IOException and, on an undeploy, a flow holding items its CONFLICT
+         * (FIX-173); either refusal then changed nothing (FIX-172c).
+         */
+        BUSY,
         /**
          * A flow did not start (500): every flow the deploy built was stopped again; on a redeploy the flows it replaced or removed
          * run again from the directories they ran from, or are listed FAILED (D-063).
@@ -53,6 +62,6 @@ public final class DeployRefusedException extends Exception {
     /** The error line. */
     public String error() { return error; }
 
-    /** Every problem of an {@link Kind#INVALID} package, or of a {@link Kind#FAILED} redeploy, one line each; otherwise empty. */
+    /** Every problem of an {@link Kind#INVALID} package, or of a {@link Kind#FAILED} or {@link Kind#BUSY} redeploy, one line each; otherwise empty. */
     public List<String> problems() { return problems; }
 }

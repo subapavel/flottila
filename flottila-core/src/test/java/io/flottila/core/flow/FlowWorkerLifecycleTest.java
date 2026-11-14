@@ -81,6 +81,8 @@ class FlowWorkerLifecycleTest {
         @Override public Future<Completion> completeAndTakeNext(long seq, int attempts, String workerId, Duration lease) {
             return delegate.completeAndTakeNext(seq, attempts, workerId, lease);
         }
+        @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return delegate.defer(seq, attempts, delay); }
+        @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) { return delegate.restart(messageId, flow, partitionKey, attempt); }
         @Override public Future<Boolean> hold(long seq, int attempts) { return delegate.hold(seq, attempts); }
         @Override public Future<io.flottila.core.record.Page<Held>> held(Optional<String> after, int limit) { return delegate.held(after, limit); }
         @Override public Future<Boolean> release(long seq) { return delegate.release(seq); }
@@ -99,7 +101,7 @@ class FlowWorkerLifecycleTest {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(RunGate.STEP, TO_PARTNER)));
         FlowBuilder noDlq = new FlowBuilder(w.rt.runtime(), List.of(w.gate, w.crash), List.of(BuiltInStepsTest.HEADERS), w.endpoints)
                 .recording(w.store, Meter.system()).queue(w.queue);
-        String refused = assertThrows(IllegalStateException.class, () -> noDlq.worker(def, NO_FILES, "w1", policy(LEASE, 5))).getMessage();
+        String refused = assertThrows(IllegalStateException.class, () -> policy(LEASE, 5).worker(noDlq, def, "w1")).getMessage();
         assertTrue(refused.contains("DLQ") && refused.contains("dlq(...)"), refused);
     }
 
@@ -131,8 +133,10 @@ class FlowWorkerLifecycleTest {
         w1.start();
         w1.start();
         assertEquals(1, w.rt.timer().pending(), "one tick, however often the worker is started");
-        w.rt.clock().advance(TICK);
-        assertEquals(1, w.queue.claims().size(), "one claim per interval: " + w.queue.claims());
+        assertEquals(1, w.queue.claims().size(), "start() claims once (D-121 A6), however often it is called: " + w.queue.claims());
+        // P2-16b B5: the one pending task is the reconciliation, first due an interval plus the flow's offset after the start
+        w.rt.clock().advance(w.rt.timer().nextDelay());
+        assertEquals(2, w.queue.claims().size(), "then one claim per interval: " + w.queue.claims());
         assertEquals(1, w.rt.timer().pending());
     }
 
@@ -152,7 +156,8 @@ class FlowWorkerLifecycleTest {
         for (int i = 0; i < 3; i++) w.rt.clock().advance(TICK);
         assertEquals(0, w1.poll().await(5, SECONDS), "a stopped worker starts no round, not even on an explicit poll");
         assertEquals(0, never.poll().await(5, SECONDS));
-        assertEquals(List.of(), w.queue.claims());
+        assertEquals(List.of(), w.queue.claimsBy("never"), "never started: no claim");
+        assertEquals(1, w.queue.claimsBy("w1").size(), "w1's one start claim (D-121 A6), nothing after its stop: " + w.queue.claims());
     }
 
     @Test
@@ -185,10 +190,11 @@ class FlowWorkerLifecycleTest {
         FlowWorker w1 = w.worker(w.builder(w.runtimeWith(timer)), def, "w1", policy(LEASE, 5));
         w1.start();
         assertEquals(1, timer.tasks.size(), "the first tick");
+        assertEquals(1, w.queue.claims().size(), "start() claims once (D-121 A6)");
         w1.stop();
 
         timer.tasks.get(0).run();   // it had fired already when stop cancelled it
-        assertEquals(List.of(), w.queue.claims(), "no round after stop");
+        assertEquals(1, w.queue.claims().size(), "no round after stop: " + w.queue.claims());
         assertEquals(1, timer.tasks.size(), "and no further tick");
     }
 

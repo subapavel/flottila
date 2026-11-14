@@ -346,6 +346,99 @@ class HttpComponentTest {
         toNever.close().await();
     }
 
+    /**
+     * P2-15b (D-101 (3)): every request carries the envelope's id as {@code x-message-id}, exactly one value — a value forwarded
+     * under that name, in any case, is dropped, the other headers still go — through {@code send(e)} and {@code send(e, d)}.
+     */
+    @Test
+    void aForwardedMessageIdIsReplaced() {
+        List<String> seen = new CopyOnWriteArrayList<>();
+        HttpServer partner = partner(req -> { req.body().onSuccess(b -> {
+            seen.add(req.headers().getAll("x-message-id") + " " + req.getHeader("x-request-id"));
+            req.response().setStatusCode(202).end();
+        }); return null; });
+        Producer p = producerTo(partner, "/in", Map.of());
+        Envelope in = rt.ingress("f", Headers.empty().with("X-Message-ID", "upstream-1").with("x-message-id", "upstream-2").with("x-request-id", "r-1"),
+                Buffer.buffer("x"));
+        p.send(in).await();
+        Envelope bounded = in.withId("m-bounded");
+        p.send(bounded, () -> java.time.Duration.ofSeconds(30)).await();
+        assertEquals(List.of("[" + in.id() + "] r-1", "[m-bounded] r-1"), seen,
+                "one x-message-id per request, the envelope's own; every forwarded value dropped whatever its case, the other headers kept");
+        p.close().await();
+    }
+
+    /**
+     * P2-15b (D-113 draft): a send whose deadline runs out while its reply is still streaming in is cut on the component's timer:
+     * the request is reset (the partner sees its connection closed), the send fails with a retryable Nack and no reply is stored
+     * under the envelope's next key. Witness: the same partner streaming the same way to a send whose deadline was renewed
+     * meanwhile — not cut, the connection kept, the reply stored, the timer cancelled once the send settled.
+     */
+    @Test
+    void aCutSendResetsTheRequestAndStoresNoReply() {
+        HttpComponent timed = new HttpComponent(vertx, rt.blobs(), rt.ids(), rt.timer());
+        List<String> events = new CopyOnWriteArrayList<>();
+        Map<String, io.vertx.core.http.HttpServerResponse> streaming = new java.util.concurrent.ConcurrentHashMap<>();
+        HttpServer partner = partner(req -> {
+            String path = req.path();
+            req.connection().closeHandler(v -> events.add("closed " + path));   // one handler per connection: the latest request's
+            req.body().onSuccess(b -> {
+                io.vertx.core.http.HttpServerResponse res = req.response().setStatusCode(200).setChunked(true).putHeader("content-type", "text/plain");
+                res.write("partial-");   // the head and a first chunk: the reply streams into the store when the deadline comes
+                streaming.put(path, res);
+                events.add("streaming " + path);
+            });
+            return null;
+        });
+        String base = "http://127.0.0.1:" + partner.actualPort();
+        Producer p = timed.producer(new EndpointConfig("partner", URI.create(base + "/r"), Map.of("url", base + "/r", "maxBodyBytes", 4096)));
+        Producer q = timed.producer(new EndpointConfig("partner", URI.create(base + "/c"), Map.of("url", base + "/c", "maxBodyBytes", 4096)));
+        java.util.concurrent.atomic.AtomicReference<java.time.Instant> until = new java.util.concurrent.atomic.AtomicReference<>(rt.clock().instant().plusSeconds(5));
+        io.flottila.api.Deadline d = () -> java.time.Duration.between(rt.clock().instant(), until.get());
+        try {
+            Envelope kept = rt.ingress("f", Headers.empty(), Buffer.buffer("kept")).advance();
+            Future<Envelope> renewed = p.send(kept, d);
+            assertTrue(soon(() -> events.contains("streaming /r")), "fixture: the reply streams: " + events);
+            rt.clock().advance(java.time.Duration.ofSeconds(4));
+            until.set(rt.clock().instant().plusSeconds(6));   // renewed: 5 s past the deadline it was sent with
+            rt.clock().advance(java.time.Duration.ofSeconds(2));
+            streaming.get("/r").end("rest");
+            Envelope reply = renewed.await(10, TimeUnit.SECONDS);
+            assertEquals("partial-rest", reply.body().whole().toString(), "witness: the renewed send's reply arrives whole");
+            assertTrue(rt.blobs().contains(kept.nextKey()), "and is stored under the envelope's next key");
+            assertTrue(soon(() -> rt.timer().pending() == 0), "the send's timer is cancelled once it settled: " + rt.timer().pending() + " pending");
+            assertFalse(events.contains("closed /r"), "the renewed send's connection kept: " + events);
+
+            Envelope cut = rt.ingress("f", Headers.empty(), Buffer.buffer("cut")).advance();
+            until.set(rt.clock().instant().plusSeconds(3));
+            Future<Envelope> outcome = q.send(cut, d);
+            assertTrue(soon(() -> events.contains("streaming /c")), "fixture: the reply streams: " + events);
+            rt.clock().advance(java.time.Duration.ofSeconds(3));
+            outcome.otherwiseEmpty().await(10, TimeUnit.SECONDS);
+            assertTrue(outcome.failed(), "cut at its deadline: " + outcome);
+            assertTrue(outcome.cause() instanceof NackException n && n.retryable(), "a retryable Nack: " + outcome.cause());
+            assertTrue(soon(() -> events.contains("closed /c")), "the request was reset: the partner's connection closed: " + events);
+            streaming.get("/c").end("rest").otherwiseEmpty().await(10, TimeUnit.SECONDS);   // the partner finishes, too late
+            assertFalse(rt.blobs().contains(cut.nextKey()), "no reply stored for the cut send");
+        } catch (TimeoutException stuck) {
+            throw new AssertionError("a send never settled: " + events, stuck);
+        } finally {
+            p.close().await();
+            q.close().await();
+        }
+    }
+
+    /** Spins (yielding, never sleeping) until {@code condition} holds, at most 10 s. */
+    static boolean soon(java.util.function.BooleanSupplier condition) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() - deadline > 0) return false;
+            Thread.onSpinWait();
+            Thread.yield();
+        }
+        return true;
+    }
+
     /** How long {@link LateListeningStore} waits for a reply to end on its own before it listens anyway (a paused reply never does). */
     static final long LATE_LISTEN_MS = 1_000;
 

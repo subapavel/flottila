@@ -14,7 +14,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * Broken variant REORDERING_FAST_PATH (D-101): the same-key fast path ({@link WorkQueue#completeAndTakeNext}) hands out the
+ * Broken variant REORDERING_FAST_PATH (D-143): the same-key fast path ({@link WorkQueue#completeAndTakeNext}) hands out the
  * newest due row of the key instead of its oldest. Everything else keeps the in-memory queue's rules (a claim takes the oldest
  * row of a key that holds no live lease; leases, attempts as fencing tokens, holds). A {@link WorkQueue} of its own, built
  * over the public interface only: the in-memory queue cannot lease a row that is not the oldest of its key.
@@ -89,6 +89,14 @@ final class ReorderingFastPath implements World {
             if (!current(r, attempts)) return Future.succeededFuture(false);
             r.lockedUntil = clock.instant().plus(lease);
             return Future.succeededFuture(true);
+        }
+
+        @Override public synchronized Future<Boolean> defer(long seq, int attempts, Duration delay) {
+            return Future.failedFuture(new UnsupportedOperationException("the simulation's flows schedule no retries (D-135): nothing defers"));
+        }
+
+        @Override public synchronized Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+            return Future.failedFuture(new UnsupportedOperationException("the simulation restarts no park (D-135)"));
         }
 
         @Override public synchronized Future<Boolean> hold(long seq, int attempts) {

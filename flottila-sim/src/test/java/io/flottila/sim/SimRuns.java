@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * How the tests run the simulation: every run under the per-seed hang guard (D-101), the per-push seeds and ticks, and the
+ * How the tests run the simulation: every run under the per-seed hang guard (D-143), the per-push seeds and ticks, and the
  * search for the seed that detects a broken world.
  */
 final class SimRuns {

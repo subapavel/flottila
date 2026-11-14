@@ -10,7 +10,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Broken variant DOUBLE_ADMISSION (D-101): every flow is built twice — two deliveries, two admissions — and its sends go to
+ * Broken variant DOUBLE_ADMISSION (D-143): every flow is built twice — two deliveries, two admissions — and its sends go to
  * them alternately, so up to twice the flow's limits are admitted. Built over the public {@link Delivery} only.
  */
 final class DoubleAdmission implements World {

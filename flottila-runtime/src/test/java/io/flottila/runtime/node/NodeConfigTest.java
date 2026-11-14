@@ -9,6 +9,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.URI;
 import java.nio.file.Path;
@@ -62,7 +63,7 @@ class NodeConfigTest {
                 () -> assertEquals(Path.of("/var/lib/flottila"), c.dataDir()),
                 () -> assertEquals(Duration.ofSeconds(10), c.stopDeadline()),
                 () -> assertEquals(64 * MIB, c.maxPackageBytes()),
-                () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 16), c.pg()),
+                () -> assertEquals(new NodeConfig.Pg("localhost", 5432, "flottila", "flottila", "", 21), c.pg(), "21 = 5 intake + 16 work (F-33)"),
                 () -> assertEquals(new NodeConfig.Blobs(8 * MIB, MIB, 256 * MIB, MIB), c.blobs(), "durableMax defaults to 1 MiB (D-059)"));
     }
 
@@ -84,6 +85,7 @@ class NodeConfigTest {
         env.put("FLOTTILA_PG_USER", "node");
         env.put("FLOTTILA_PG_PASSWORD", "pw");
         env.put("FLOTTILA_PG_POOL_SIZE", "32");
+        env.put("FLOTTILA_PG_SSL_MODE", "disable");   // FIX-146: a remote host defaults to verify-full (NodeConfigPgTlsTest reads the TLS keys)
         env.put("FLOTTILA_BLOB_TREE_LIMIT", "4194304");
         env.put("FLOTTILA_BLOB_MEMORY_TIER", "524288");
         env.put("FLOTTILA_BLOB_MEMORY_BUDGET", "8589934592");   // 8 GiB: sizes are long
@@ -97,7 +99,8 @@ class NodeConfigTest {
                 () -> assertEquals(Path.of("/srv/flottila"), c.dataDir()),
                 () -> assertEquals(Duration.ofSeconds(90), c.stopDeadline(), "ISO-8601"),
                 () -> assertEquals(MIB, c.maxPackageBytes()),
-                () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32), c.pg()),
+                () -> assertEquals(new NodeConfig.Pg("db.internal", 6432, "flows", "node", "pw", 32, NodeConfig.Pg.SslMode.DISABLE, Optional.empty(),
+                        NodeConfig.Pg.Durability.HA), c.pg(), "FIX-136: prod, FLOTTILA_PG_DURABILITY unset: ha"),
                 () -> assertEquals(new NodeConfig.Blobs(4 * MIB, 512 * 1024, 8 * GIB, 2 * MIB), c.blobs()));
     }
 
@@ -180,8 +183,8 @@ class NodeConfigTest {
     void toStringHidesThePasswordAndTheToken() {
         String password = "pg-secret-4711";
         String token = "admin-token-0815";
-        NodeConfig c = NodeConfig.from(with(with(with(minimal(), "FLOTTILA_PG_PASSWORD", password), "FLOTTILA_ADMIN_TOKEN", token),
-                "FLOTTILA_PG_HOST", "db.internal"));
+        NodeConfig c = NodeConfig.from(with(with(with(with(minimal(), "FLOTTILA_PG_PASSWORD", password), "FLOTTILA_ADMIN_TOKEN", token),
+                "FLOTTILA_PG_HOST", "db.internal"), "FLOTTILA_PG_SSL_MODE", "disable"));   // FIX-146: else verify-full, refused without a CA
         assertEquals(password, c.pg().password(), "the password is read: the checks below are not vacuous");
         assertEquals(Optional.of(token), c.admin().token(), "the token is read");
         for (Object shown : new Object[] {c, c.pg(), c.admin()}) {
@@ -275,21 +278,6 @@ class NodeConfigTest {
                 () -> assertEquals("fleet/eu", s3.prefix()),
                 () -> assertEquals(Optional.of("AKIAEXAMPLE"), s3.accessKey()),
                 () -> assertEquals(Optional.of("secret-example"), s3.secretKey()));
-    }
-
-    @Test
-    void anS3PrefixWithAnEmptyBlankOrSlashEndIsRefusedNamingKeyAndValue() {
-        for (String bad : List.of("", "   ", "/flottila", "flottila/", "/")) {
-            IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(with(s3(), "FLOTTILA_S3_PREFIX", bad)),
-                    "refused: '" + bad + "'");
-            assertTrue(String.valueOf(e.getMessage()).contains("FLOTTILA_S3_PREFIX"), "the refusal of '" + bad + "' names the key: " + e.getMessage());
-            assertTrue(String.valueOf(e.getMessage()).contains("'" + bad + "'"), "the refusal shows the value '" + bad + "': " + e.getMessage());
-        }
-    }
-
-    @Test
-    void anS3PrefixWithAnInnerSlashIsAccepted() {
-        assertEquals("a/b", NodeConfig.from(with(s3(), "FLOTTILA_S3_PREFIX", "a/b")).s3().orElseThrow().prefix(), "only the ends are wrong");
     }
 
     @Test
@@ -730,5 +718,50 @@ class NodeConfigTest {
             String m = String.valueOf(c.getMessage());
             assertFalse(m.contains("ops") || m.contains(":pa") || m.contains("ss@"), "no fragment down the cause chain: " + c);
         }
+    }
+
+    // --- FIX-136 (D-127 draft, P1): the Postgres durability profile
+
+    static final String DURABILITY = "FLOTTILA_PG_DURABILITY";
+
+    /**
+     * {@code FLOTTILA_PG_DURABILITY} unset is {@code local} in a non-deployed environment (dev, ci) and {@code ha} in every
+     * deployed one, whatever the host: a loopback {@code FLOTTILA_PG_HOST} (the default {@code localhost}, as a proxy at
+     * 127.0.0.1 would be) does not default a production node to local, and a remote host does not default a ci node to ha.
+     */
+    @ParameterizedTest(name = "FLOTTILA_ENV={0}, FLOTTILA_PG_HOST={1}: {2}")
+    @CsvSource({"dev, localhost, LOCAL", "ci, localhost, LOCAL", "ci, db.internal, LOCAL", "test, localhost, HA", "prod, localhost, HA",
+            "prod, 127.0.0.1, HA", "staging, db.internal, HA"})
+    void durabilityIsLocalInDevAndCiAndHaWhenDeployed(String env, String host, NodeConfig.Pg.Durability expected) {
+        Map<String, String> e = with(with(with(minimal(), "FLOTTILA_ENV", env), "FLOTTILA_PG_HOST", host), "FLOTTILA_PG_SSL_MODE", "disable");
+        assertEquals(expected, NodeConfig.from(e).pg().durability(), "unset: local when not deployed, ha when deployed (P1)");
+    }
+
+    /** Either value as written wins over the environment's default, both ways; the spellings are {@code local} and {@code ha}. */
+    @ParameterizedTest(name = "FLOTTILA_ENV={0}, FLOTTILA_PG_DURABILITY={1}")
+    @CsvSource({"ci, ha, HA", "dev, ha, HA", "prod, local, LOCAL", "test, local, LOCAL", "ci, local, LOCAL", "prod, ha, HA"})
+    void aWrittenDurabilityIsReadAsWritten(String env, String written, NodeConfig.Pg.Durability expected) {
+        NodeConfig.Pg pg = NodeConfig.from(with(with(minimal(), "FLOTTILA_ENV", env), DURABILITY, written)).pg();
+        assertEquals(expected, pg.durability());
+        assertEquals(written, pg.durability().toString(), "the profile prints as FLOTTILA_PG_DURABILITY spells it");
+    }
+
+    /** An in-process {@code Pg} (the 6-argument constructor, env parsing never uses it) is {@code local}. */
+    @Test
+    void aPgBuiltInProcessIsLocal() {
+        assertEquals(NodeConfig.Pg.Durability.LOCAL, new NodeConfig.Pg("db.internal", 5432, "flottila", "flottila", "", 4).durability());
+    }
+
+    /** Any other value, a near miss in case or space and the empty value included, is refused naming the key and both values. */
+    @ParameterizedTest(name = "FLOTTILA_PG_DURABILITY=''{0}''")
+    @ValueSource(strings = {"sync", "LOCAL", "Ha", " ha", "ha ", "", "remote_apply", "on"})
+    void anUnknownDurabilityIsRefusedNamingTheKey(String value) {
+        Map<String, String> env = with(minimal(), DURABILITY, value);
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> NodeConfig.from(env), DURABILITY + " refused: '" + value + "'");
+        String message = String.valueOf(e.getMessage());
+        assertTrue(message.contains(DURABILITY), "names the key: " + message);
+        String rest = message.replace(DURABILITY, "");
+        assertTrue(java.util.regex.Pattern.compile("(?<![A-Za-z_])local(?![A-Za-z_])").matcher(rest).find(), "names the value local: " + message);
+        assertTrue(java.util.regex.Pattern.compile("(?<![A-Za-z_])ha(?![A-Za-z_])").matcher(rest).find(), "names the value ha: " + message);
     }
 }

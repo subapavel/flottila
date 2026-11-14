@@ -1,0 +1,617 @@
+
+## 2026-11-14 — merge origin/main into the work branch, pushed to main (owner) — done
+- Owner: 119 commits lived only on claude/brave-hopper-5vwaju; new sessions start from main and saw none of it. Owner chose "merge and push to main".
+- main brought dc6a683 flottila-sim (P2-10a), the P2-10b WIP patch, CONSIDER-10/11 (owner 2026-11-10). Colliding ids renumbered on main's side:
+  D-101 → D-143, F-25 → F-36, FIX-120 → FIX-193, CONSIDER-11 (top priority, flow error handling) → CONSIDER-15, CONSIDER-10 → CONSIDER-16.
+- flottila-sim ported to the reworked core (implementer): ClaimCap/SimIntake/SimRun API moves, `maxAttempts=5` → `NO_RETRIES`; Oracle expects a
+  park at step 1 (D-135; main's expectation was written against the pre-D-135 worker), noted in D-143.
+- WORKFLOW §3: every push also goes to main; a session starts with `git fetch origin main` and checks HEAD contains it.
+- Checks: reactor clean verify -Pit 4530 tests, 1 failure = LedgerIT:132 (FIX-184, tree-dependent: passes 2/0 in a copy of the merged tree);
+  run 1 stopped on ReplicaStartTest:159 (new flake → FIX-194); sim 61/0 incl. pinned seeds and golden digest; archtest 48/0; coverage no
+  decrease (sim line 97.2 / branch 95.9); demo 6/6. No reviewer run (a merge, no BACKLOG row). Logs agent/work/MERGE-main-*.
+
+## 2026-11-13 — CORE-5b1 holder side of journal replication — done, review PASS (r5)
+- Context compacted earlier in the session (worker restarted once; Docker and Postgres restarted per NOTES). Deviation: F-35 (changelog 3.21).
+- Repl channel (the dialer's HELLO byte, handshake bytes and order unchanged, C1); frames OPEN 3, DATA 4, SEAL 5 (end, crc32c), RECEIPT 6
+  (OPENED/WRITTEN/SEALED), REFUSE 8 (FULL/FAILED/MISMATCH); replicas `replicas/<owner>/<journal>/<n>.part` → `.seg` after force, rename, dir
+  force; WRITTEN after pwrite with the force on its own thread; replicas refused past half the intake edge; a failed replica keeps its file;
+  epoch bound at proof and every OPEN; supersede = abandon → stop → reset (PeerLink.reset via NetSocketInternal, D-139 bracket); start scan.
+- Red: ReplFramesTest (python golden bytes), PeerReplHandshakeTest, PeerReplEpochTest, ReplicaHolderTest, ReplicaBackpressureTest,
+  ReplicaIdentityIT, ReplicaStartTest, PgMembershipEpochsIT; fix rounds added NodeReplEpochIT, ReplicaSupersedeTest and the r1 reds.
+- r1 FAIL (u64 overflow, count to file size, unbounded receipts, epoch max, docs), r2 FAIL (bound, fail-fast, reset in docs, internal API
+  D-row), r3 FAIL (no lower bound), r4 FAIL (floor overlap), r5 PASS.
+- Evidence: whole reactor 16/16, 4463 tests 0/0/0 (CORE-5b1-reactor4.log; reactor3 failed only FIX-168); later test-only edits run per class;
+  48 hand mutants (M25 equivalent, M46 near-equivalent, known weak pin); demo 6/6; coverage no decrease.
+- Filed FIX-192; FIX-183 gains the FrameRelay race; FIX-180 gains netty/internal confinement; CORE-5c gains close-by-owner.
+
+## 2026-11-13 — CORE-5a2 peer link changes before replication (D-141) — done, review PASS (r2)
+- Context compacted earlier in the session. Deviation: F-35 (peer link; D-139 amended by D-141, ARCHITECTURE §4, changelog 3.20).
+- HELLO: version >= 1, the link speaks the lower, bytes after the v1 fields tolerated up to the cap; channel byte (1 read; 2 repl, 3 bulk
+  refused until CORE-5b, an unknown one named); peer subkey K_peer = HKDF(empty salt, master, "flottila-peer-v1 subkey") keys the fingerprint
+  and the session keys; FLOTTILA_PEER_READS 1..64; 8 handshakes per source address, the entry removed at zero (sourcesHeld probe).
+- Red: PeerHandshakeVersionTest, PeerHelloLinkTest, PeerConfigTest, NodeConfigPeerTest, PeerProtocolTest:243, PeerHandshakeSourceBoundTest,
+  PeerKnownAnswerTest (KAT recomputed in python, 12/12, agent/work/CORE-5a2-kat-compare.txt); r1 red PeerServerProbe (compile).
+- r1 FAIL (M14 survived; KAT provenance; F-35, D-139 brackets, clear list, master-key sentence), r2 PASS.
+- Evidence: runtime verify -Pit 1468 + 706 tests 0/0/0 (CORE-5a2-r1-verify2.log); clean whole reactor 15/16, 4362 tests, 2 failures, both
+  in bench and both pre-existing: LedgerIT:132 fails on HEAD as well (A/B 1 of 3 vs 2 of 3, FIX-184), NodeBenchMainWarmupIT:112 float
+  rounding (FIX-185, 6 of 6 pass in A/B); 20 hand mutants killed; demo 6/6; coverage no decrease.
+- Filed FIX-183 (READ permit order race, PeerLink.send off the event loop), FIX-184, FIX-185.
+
+## 2026-11-13 — FIX-175 each attempt keeps its own snapshots (D-140) — done, review PASS (r4)
+- Context compacted earlier in the session; worker restarted once (Docker and Postgres restarted per NOTES "Build and VM").
+- V19 (stop-all): `messages.attempt` (props' integer attempt copied, else 1; check >= 1), PK (id, step, attempt); Snapshot 17-arg ctor with
+  `attempt`; timeline lists every attempt in (attempt, step) order with `attempt`; step body = latest attempt, `?attempt=k` (404 / 400);
+  a replay from n takes the latest attempt whose step n−1 row is OK; the worker's rerun reads attempt 1's ingress. Bench statement follows.
+- Red: InMemoryMessageStoreTest :68 :83 :87 :97, PgMessageStoreIT :125 :165 :211, MigrationsIT :615 :646 (+ pins 18 → 19), AdminServerTest
+  :238 :357 :379 :401 :415, ReplayTest:224, FlowWorkerRetryTest :820 :845, NodeIT :1801 :1846.
+- r1 FAIL (V19 not stop-all, pre-V19 rerun rows got attempt 1, §7 + D-rows stale), r2/r3 FAIL (D-row brackets D-044/045/047/057/096), r4 PASS.
+- Evidence: whole reactor verify -Pit 16/16, 4316 tests 0/0/0 (agent/work/FIX-175-verify6.log; verify3–5 blocked by disk space and a stopped
+  Docker, not evidence); 20+ hand mutants killed (M13 lock order unobservable, accepted); demo 6/6; coverage no decrease.
+- Filed into FIX-174 (CLI steps count sees every attempt) and FIX-47 (a non-int `attempt` prop is refused when its snapshot is built).
+
+## 2026-11-12 — FIX-176 rename leftovers after FIX-138a — done, review PASS (r3)
+- core `Replay.retry` → `replayParked`; javadocs and messages that called the new copy a "DLQ retry" now say "DLQ replay" (RowNotRemovedException
+  500 body, ReplayRefusedException, FlowBuilder, Deployments, Dlq, Parked, Trail, BodyLostException, flow.schema.json `delivery.timeout`).
+- 176 remaining `retr(y|ies)` hits in src/main sorted by sense, all kept (agent/work/FIX-176-retry-grep.txt). ARCHITECTURE :288/:335/:341 reworded.
+- r1 FAIL (four javadocs missed by the singular grep), r2 FAIL (ARCHITECTURE :288 still "replay or retry" for the 409 text), r3 PASS.
+- Filed: FIX-182 (test texts by the test-author; an IT for the /retry pool 503). Doclint errors at WorkQueue:106/127/128 are older (not run by the build).
+- Evidence: whole reactor verify -Pit 16/16, 4295 tests 0/0/0 (agent/work/FIX-176-verify.log; run 1 hit flake FIX-168, 5/5 alone); schemas 304/0
+  after r2; compile + javadoc (doclint none) green; coverage no decrease. Also in this commit: CORE-5 packet notes (advisor on D-139, 5b draft + advisor).
+
+## 2026-11-12 — CORE-5a peer link + node-to-node body read (D-139, draft) — done, review PASS (r3)
+- Context compacted once (re-read HANDOFF, git status, git log -3). Deviation: F-35 (an internal node-to-node link beside the Component SPI).
+- `journal.peer`: framing v1 + HMAC under the env master key (W7 proof, fingerprint choice of current/previous), READ → BYTES/MISS by
+  (owner, journal id, segment), FLOTTILA_PEER_READS per peer, pause-based flow control; V18 `nodes.peer_address` in the join and the renew;
+  TieredBlobStore reads own journal → live owner; FLOTTILA_PEER_* and FLOTTILA_JOURNAL_COPIES read, KEY_GENERATE refused above 1 copy.
+- Red: PeerLinkTest, PeerReadIT, PeerReadHeapTest (-Xmx48m), PgMembershipPeersIT, NodeConfigPeerTest, MigrationsIT:587, archtest
+  ONLY_THE_PEER_LINK_OPENS_RAW_TCP (packet "Red approved 5a"); r2 PeerProtocolTest/PeerIdentityTest/NodePeerReadIT; r3 PeerKnownAnswerTest.
+- r1 FAIL: pre-auth 4 MiB allocation, a throwing dial hung, paused link unbounded, heap test vacuous, no Node IT, toString key hash, docs.
+  r2 FAIL: no known-answer vector for the pre-auth fingerprint / HKDF. r3 PASS (proof literals recomputed by the architect).
+- Filed: FIX-177 (head-of-line), FIX-178 (previous key + rotation), FIX-179 (peer port clash), FIX-180 (JDK sockets in ArchUnit), FIX-181.
+- Evidence: whole reactor verify -Pit 16/16, 4295 tests 0/0/0 (agent/work/CORE-5a-r3-*); 30+ hand mutants killed (CORE-5a-*mutants.txt,
+  -r3-mut-*); demo 6/6; coverage no decrease. D-054 data: class C (test-author ×4, implementer ×2, reviewer ×3); review rounds 3.
+
+## 2026-11-12 — FIX-138a retry keeps the id, replay mints one (D-136, draft) — done, review PASS (r2)
+- `POST /admin/dlq/{id}/retry` is now the same-id restart (CORE-14b handler; 422 texts name `/replay`); `/restart` removed (404);
+  `POST /admin/dlq/{id}/replay` is the former new-copy retry, `?from=` → 400. F-29 F4.1: the documented route no longer escapes dedupe.
+- Red: AdminDlqRestartIT :369 (/restart 404), :412 (failed restart tx twice, then the same id once at a deduping partner);
+  AdminServerReplayTest :725; NodeIT :1682, :1716; `namesReplay` (A5). Moved tests renamed per route (commit body).
+- r1 FAIL: docs still used the old route sense (changelog 3.11 half-renamed, D-057(c)/D-133/D-135 brackets, :210); fixed by the architect.
+- Filed: FIX-138b (durable copy claim), FIX-175 (a same-id rerun's snapshots dropped: `on conflict do nothing`), FIX-176 (javadoc leftovers),
+  CONSIDER-14 (no same-id path for replay or step-n rows).
+- Evidence: whole reactor verify -Pit 16/16, 4171 tests 0/0/0 (agent/work/FIX-138a-*); 11 hand mutants killed; demo 6/6; coverage no decrease.
+
+## 2026-11-12 — CORE-14b same-id DLQ restart (D-135 [CORE-14b]) — done, review PASS (r3)
+- context compacted (one line, CLAUDE.md); re-verified with git status / git log -3.
+- `POST /admin/dlq/{id}/restart` → 202 {id, attempt}: one transaction deletes the DLQ row (re-checked: step 1, attempt k, no replayOf) and inserts a
+  step-1 work row with the same id, the copied ingress ref, `max_attempts` = k + 1 and the kept partition key; 404/409/422 per D-135; wakes and announces.
+- V17: `work.max_attempts`, `dlq.partition_key`. API: `WorkQueue.restart`, `Item.maxAttempts`, `Parked.partitionKey`.
+- Red: FlowWorkerRetryTest :679/:716/:745/:780, WorkQueueContract :261/:288, DlqRestartIT :162/:237, AdminDlqRestartIT, MigrationsIT:555;
+  r1 PgWorkQueueRestartIT :119/:129/:140 (stale-read re-check).
+- Found: CORE-14a broke the CLI flow tests (partner-down cases past the 10m horizon under 3 × PT5M; gate check 8 4/6). Fixed (O9): demo and
+  flowtest at-least-once flows name `delivery.retries {count: 1, interval: 1s}`; expectations 700ms→2400ms, retries 3→7, sent 4→8. FIX-174 filed.
+- Evidence: whole reactor verify -Pit 16/16 modules, 4167 tests 0/0/0 (agent/work/CORE-14b-r4-*); demo 6/6; 46 hand mutants killed; PIT 95 %.
+
+## 2026-11-12 — CORE-14a retries on a schedule, then park (D-135, draft) — done, review PASS (r3)
+
+- Red first: FlowWorkerRetryTest (15 cases + T1/T2), RetrySchedulePropertiesTest, FlowDefinitionRetriesTest, WorkQueueContract
+  defer cases, PgWorkQueueDeferIT, SegmentSweepIT.aDeferredItemAlonePinsItsSegment, DeploymentsRetriesTest, NodeConfigRetriesTest,
+  FlowRetriesSchemaTest (red observed: CORE-14a-red-{core,runtime,schemas}.log).
+- A failed at-least-once attempt defers its row (same id, not-before in DB time, no thread waits); park the ingress after
+  count + 1; MALFORMED/INVALID/final NACK park at once; `delivery.retries` + FLOTTILA_RETRIES_COUNT/INTERVAL (3 × PT5M).
+- maxAttempts gone; the worker pipeline has no per-step Parking; dead fenced Parking removed. Existing tests rewritten per the
+  packet's (a)–(d), reasons in the commit body.
+- Evidence: verify -Pit exit 0 (CORE-14a-r2.log), coverage no decrease, 22 + 5 hand mutants killed, scoped PIT 97 %.
+- Review r1 FAIL (docs, Error exemption, evidence), r2 FAIL (two PIT survivors) → fixed; r3 PASS. M21 race-only, unpinned.
+- Next: CORE-14b same-id restart. Owner: D-135 defaults, CONSIDER-13 (resume from the failed step).
+
+## 2026-11-12 — CORE-12 ARCHITECTURE rewritten to the core-rework brief (F-34) — done, review PASS (r2) · Deviation: F-34
+
+- Docs task: the red was the scout's contradiction list (agent/packets/CORE-12.md); residue grep agent/work/CORE-12-residue.txt.
+- Built mechanisms in present tense (journal body store, no Kafka on core paths, refs in Postgres); pending ones as
+  "(CORE-n, pending)": mover into ClickHouse (Q-3, CORE-10), retries on a schedule (Q-7, CORE-14), levels (Q-9, CORE-13),
+  sync recording off the hot path (Q-6, CORE-8), copies (O-7, CORE-5), S3 cold tier (CORE-13), bodies drop (CORE-11).
+- New §4 "Body journal" paragraph incl. the interim FLOTTILA_JOURNAL_KEEP_MAX_AGE pin (D-105); changelog 3.14; F-34.
+- Review r1 FAIL (interim pin stated as end state; S3 tier on two rows) → fixed. runtime pom description updated (validate exit 0).
+- For the owner (F-34): deploy refusal above FLOTTILA_BLOB_DURABLE_MAX vs D-110; S3 narrowed to CH cold tier + archives.
+
+## 2026-11-12 — CORE-9 Kafka out of the core (D-134, draft; CORE-REWORK O-1) — done, review PASS (r3)
+
+- Context compacted before this task; re-verified with git status / git log -3.
+- Red first: ComposeStackTest kafkaOnlyUnderTheKafkaProfile, theDefaultUpStartsNeitherKafkaNorClickhouse; DeploymentsQueueTest.kafkaRefusedWithOneLine
+  (red observed, agent/work/CORE-9-red-head.log); NoKafkaClientTest in api, core, runtime, components http/mock/sftp, steps xslt/validate
+  (green pins, red under pom hand mutants M1 runtime / M2 core, CORE-9-red-mutants.log).
+- Compose: `kafka` only under profile `kafka`; a plain `up` no longer starts it; CI teardown and READMEs carry `--profile kafka`.
+- `queue: kafka` refusal and the flow schema name Kafka the optional add-on. No Kafka client existed in src/main; none may reach any core classpath.
+- CORE-GATE condition 6 evidence: `verify -Pit` with no Kafka container — NodeIT sync, replay, DLQ-retry cases, InvoiceAsyncIT, AtLeastOnceIntakeIT green
+  (CORE-9-xml.txt; run 1 hit known flake FIX-168, rerun alone green; run 2 -rf :flottila-runtime exit 0). Coverage no decrease.
+- Docs: ARCHITECTURE §2/§3 + changelog 3.13, GATE check 1, D-134 draft (compose topology) amending D-085, HANDOVER drafts, QUICKSTART.
+  The remaining Kafka text in §2/§3/§7/§8 stays with CORE-12.
+
+## 2026-11-12 — FIX-173 work-queue answers no longer depend on flow order on deploy and undeploy (D-133 [FIX-173]) — done, review PASS (r2)
+Test first: DeploymentsRedeployTest:1065, DeploymentsUndeployTest:914 aRealQueueFailureOutranksAPoolRefusalInEitherFlowOrder,
+DeploymentsUndeployTest itemsOfOneFlowOutrankAPoolRefusalOfAnotherInEitherFlowOrder (red FIX-173-red.log, -r2-red*.log); CountingQueue per-flow hook
+Change: Deployments check() keeps a real failure apart from a pool refusal: 422 problems, then the real IOException (500), then BUSY;
+queued() a real failure at once, then held items 409, then BUSY. §4 + changelog 3.12, D-133, AdminServer and DeployRefusedException javadocs
+Checks: verify -Pit 3762/0/0/0 fresh XML, coverage no decrease VERIFIED_PASS; M1–M9 killed (r1-M9 the gap the r2 test closed)
+Review: r1 FAIL (docs stated the FIX-172c precedence), r2 PASS
+
+## 2026-11-12 — FIX-172c a deploy's own work-queue question refused by the pool is BUSY 503 (D-133 [FIX-172c]) — done, review PASS (r2)
+Test first: DeploymentsRedeployTest:994 aQueueQuestionThePoolRefusedIsBusyAndChangesNothing (red FIX-172c-red.log)
+Change: Deployments:1170 a pool refusal of the queue question → Kind BUSY after the problems check (422 first); :622 validate rethrows
+a BUSY as the node's IOException (an empty problem list would read as valid); javadocs and §4 / 3.11 / D-133 no longer name a 500
+Checks: verify -Pit 3759/0/0/0 fresh XML, coverage no decrease VERIFIED_PASS; M1–M5 killed (FIX-172c-mutants.log)
+Review: r1 FAIL (two Kind.BUSY source lists in javadoc), r2 PASS. Filed FIX-173 (queue answers depend on flow order)
+
+## 2026-11-12 — FIX-172b a typed pool refusal on the transaction path (D-133, amends D-132) — done, review PASS (r3)
+Test first: PgTxTest (9), NodePoolWaitIT discard/replay/retry/deploy/intake-queue/undeploy, AdminServerReplayTest :891/:922,
+NodeConfigPoolWaitTest :188, DeploymentsRecordTest delete-refused (red FIX-172b-red-*.log, -r2-red-*.log; NoStackTraceThrowable observed)
+Change: io.flottila.runtime.pg.PgTx.inTransaction / acquire: a failed acquire is PoolRefusedException (by where it failed); every store
+transaction and the intake's acquire go through it; PgTx.refusedByThePool (exact types) in run(), ran() (replay/retry run 503), deploy
+record write, undeploy queue question and record delete (Kind BUSY → 503, the refusal's own line); queue env refusal names 1..65536
+Checks: verify -Pit 3756/0/0/0 fresh XML, NodePoolWaitIT 10/0, bench 255/0, coverage no decrease VERIFIED_PASS; M1–M18b killed, M11 equivalent
+Found: no DLQ discard route exists, DLQ/deploy reads were already 503 — FIX-172's route list was wrong, docs now enumerate routes
+Residual → FIX-172c: a deploy's own work-queue question still 500. Not done: the replay 503 body keeps no replay id
+Review: r1 FAIL (undeploy 500, DLQ-retry row-removal exception, PgTx begin/rollback cases, D-132 marker), r2 FAIL (javadoc), r3 PASS
+
+## 2026-11-11 — FIX-172 finite wait and queue for a pooled Postgres connection (CORE-17 O2, D-132) — done, review PASS (r2)
+Test first: NodeConfigPoolWaitTest (17), NodePoolWaitIT A2 intake 503 within the wait, A3 admin read 503, A4 claim survives, A5 queue
+(red FIX-172-red-config.log, -red-it.log, -r2-red.log); AdminServerTest:1013 by the implementer, approved (only kill of exact-class)
+Change: Pg poolWait/poolQueue; FLOTTILA_PG_POOL_WAIT PT0.001S..PT1M (PT5S), FLOTTILA_PG_POOL_QUEUE 1..65536 (1024), refused naming
+the key in the NodeConfig ctor; Node sets connectionTimeout + maxWaitQueueSize on both pools; admin read refused by the pool → 503
+"the database pool is busy; retry" (exact VertxException or ConnectionPoolTooBusyException, no message match). Client default was 30 s, unbounded
+Checks: verify -Pit 3735/0/0/0 fresh XML (FIX-172-xml.txt), coverage no decrease VERIFIED_PASS; mutants M1–M7 + 5 range/body killed
+Found: the wait covers the connect (cold first connection 140–380 ms) — docs warn below ~1 s; NodePoolWaitIT warms one node per JVM
+Residual → FIX-172b: transaction-path admin routes 500 (NoStackTraceThrowable), replay 502, intake queue bound unpinned, queue message range
+Review: r1 FAIL (docs claimed every admin request, D-132 cause, BACKLOG done-when, XML evidence, unapproved test), r2 PASS
+
+## 2026-11-11 — CORE-17 Postgres pools by role: intake apart from work, sessions named by role (F-27 I4, D-130 draft) — done, review PASS (r3)
+Deviation: F-33 (the D-130 split of 16 = 5 + 11 starved the workers; default total 21 = 5 intake + 16 work, 23 connections per node)
+Test first: NodeConfigPoolsTest, NodeConfigIntakeGroupTest, NodeConnectOptionsTest:78, NodePoolRolesIT :170/:197 (red CORE-17-red*.log);
+r2 NodeConfigPoolsTest:126/:144, NodePoolRolesIT:198 listen; r3 default 21 (CORE-17-r3-red*.log); InProcess + JournalRowsIT by implementer
+Change: NodeConfig.Pg intakePoolSize, FLOTTILA_PG_POOL_INTAKE, NodeConfig ctor refuses a split leaving either pool none; Node builds
+intake (PgIntake, journal segment rows, durability check) and work pools, application_name flottila-<role>@<node>; bench JSON intakePoolSize
+Checks: verify -Pit 3713/0/0/0 fresh XML, NodeTakeoverLedgerIT 6/6 alone (after FIX-156), bench 255/0, coverage no decrease VERIFIED_PASS
+Mutants: split refusal both terms, formula, bound, names, close, default 21 killed; M8 equivalent, M12/M14 accepted
+Bench (indicative, RESULTS top): at 21/5 ACK p99 51–63 ms vs one pool 81–104, backlog flat; 16/5 grew +25–45 k at r2000 all
+Review: r1 FAIL (in-process split, no measurement, §4), r2 FAIL (takeover flake 10/11, RESULTS, P5), r3 PASS. CONSIDER-12 warm intake
+Owner: F-33 asks whether 23 connections per node is acceptable against max_connections
+
+## 2026-11-11 — FIX-156 NodeTakeoverLedgerIT ack() backs off on a 503 instead of five back-to-back tries — done, review PASS
+Red: the flake itself, "message N was not ACKed: 503 admission refused … 4/4 requests", 2/6 alone on 32840d4 (agent/work/CORE-17-flake/)
+Change: test fixture only. ack() retries a 503 with 10 ms doubling to 200 ms until 10 s, then fails with tries and last answer;
+any other status fails at once (before: any status got 5 tries). Every IT assertion unchanged. The wait is client backoff (D-082)
+Checks: 10/10 green alone on 32840d4 + the IT (worktree), 6/6 on the CORE-17 tree (agent/work/FIX-156/*-summary.txt) VERIFIED_PASS
+Coverage baseline not rewritten: test-only change, and the working tree carries uncommitted CORE-17 code (found while measuring CORE-17)
+
+## 2026-11-11 — FIX-169 Postgres 18.6 as the test image, one source for the version, 17.11 CI floor (owner, D-129) — done, review PASS (r2)
+Test first: PostgresImageTest (5), PostgresImageSourcesTest (scan + compose tag + volume, 6) (red FIX-169-red.log, -scan-after.log)
+Change: testkit PostgresImage (postgres:18.6, property flottila.it.postgres); 97 test classes switched; ledger fixture uses $PGDATA;
+compose files on 18.6 with the volume at /var/lib/postgresql (QUICKSTART: `docker compose down -v` once); CI matrix main 18.6 +
+floor 17.11; bench DbSampler/NodeBenchMain read WAL syncs from pg_stat_io on 18 (PG 18 dropped pg_stat_wal.wal_sync)
+Stale expectations fixed: BenchMainIT:39-41, NodeBenchMainIT:78-80 asserted "17." (now the image's major)
+Checks: verify -Pit on 18.6 3677 tests, 1 failure ComponentContractSelfTest:337 (6/6 alone → FIX-170) EXECUTED_FAIL · runtime -Pit
+on 17.11 3361/0 VERIFIED_PASS · bench -Pit 255/0 on both · coverage no decrease · M1, M2, M4, M5 killed; M3 accepted (init fsyncs)
+Review: r1 FAIL (RESULTS method note, D-129 claimed a green run, BACKLOG done-when), r2 PASS. Follow-ups: FIX-169b, FIX-170, FIX-171
+
+## 2026-11-11 — FIX-137 WAL barrier for a duplicate-only intake group under ha (review F3.2, D-128) — done, review PASS (r2)
+Context compacted once (re-read HANDOFF, git status, git log -3 before changing anything).
+Test first: PgPromotionLedgerIT.aRetriedDuplicateAfterATerminatedSyncWaitIsNot202UntilReplicated and
+.haRefusesARoleThatMayNotRunTheDuplicateBarrier; PgIntakeIT 5 ha/local barrier cases; PgDurabilityTest B5 cases + properties
+(red FIX-137-red*.log, FIX-137-b5-red*.log)
+Change: under ha a group with nothing written runs `pg_current_xact_id(), pg_logical_emit_message(true,'flottila','')` and
+commits (an xid alone writes no WAL, so xact.c skips the SyncRep wait — B1 amended); local keeps the rollback. Owner decision:
+EXECUTE on pg_logical_emit_message(boolean,text,text,boolean) is an ha start condition, refused naming the GRANT; ha needs PG ≥ 17
+Checks: targeted 29+2+7+26+38 /0 VERIFIED_PASS · verify -Pit EXECUTED_FAIL only on flakes NodeTakeoverLedgerIT:246 (FIX-156),
+FlowWorkerOrderingPropertyTest:182 (FIX-155), JournalDirForceOrderTest:98 (new → FIX-168) · coverage no decrease · M1–M5, M1–M7 killed
+Review: r1 FAIL (D-127 residual wording, 9-arg ctor javadoc pre-amendment), r2 PASS. Follow-ups: FIX-168, FIX-169 (PG 18/19, owner)
+
+## 2026-11-11 — FIX-136 Postgres durability profiles local | ha (review F3.1, D-114/D-115, D-127 draft) — done, review PASS (r2)
+Test first: NodeConfigTest durability cases, NodeConnectOptionsTest pin, PgDurabilityTest (+2 jqwik), PgPromotionLedgerIT (two
+postgres:17 with streaming replication, SIGKILL + pg_promote: every 202 survives under ha; async standby loses exactly the
+unreplicated ids under local), NodeIT rewrite of the D-061 refusal (red FIX-136-red*.log)
+Changed: FLOTTILA_PG_DURABILITY (dev/ci → local, deployed → ha); every session pinned synchronous_commit=on,
+statement_timeout=0; PgDurability start check replaces requireSynchronousCommit (recovery, names, pg_read_all_stats, a sync or
+quorum standby streaming); notices on /health. No runtime watch (D-115) → CONSIDER-11; managed PG → ISSUE-5
+Stale expectations fixed: NodeConfigTest:102, NodeIT/NodeJournalIT deployed nodes set local. Finding: PG 17 statement_timeout
+does not cut a SyncRep wait
+Checks: verify -Pit (no bench) 3652/0/0/0 (run 2; run 1 hit /tmp space) · bench parts green · coverage no decrease · mutants
+M1–M13, M11b, X1–X5 killed
+Review: r1 FAIL (stale start javadoc; residuals F3.2 and the later-reload case unwritten), r2 PASS
+
+## 2026-11-11 — FIX-141 lost work listed with what it blocks, discard with an audit row (review F7.2, D-126 draft) — done, review PASS (r2)
+Test first: PgWorkQueueLostIT (8), LostWorkAdminIT (5), MigrationsIT V16 (audit columns not null, work_lost index) (red FIX-141-red*.log)
+Changed: V16 `audit` (append-only, all not null) + partial index work_lost; PgWorkQueue lost listing and `blocks` on
+held/lost; DISCARD one statement (delete while lost_at is not null, key advisory lock, audit insert), next-of-key node read
+in the same tx; GET /admin/work/lost, POST /admin/work/:seq/discard (actor = X-Flottila-Actor ≤ 128, else unknown; remote);
+wake + announce shared with release. No restore (bytes gone, D-105). Stale expectations fixed: V16 counts, held `blocks`
+Checks: verify -Pit (no bench) 3599 tests, only FIX-155/FIX-156 flakes (pass alone) · coverage no decrease · mutants M1–M10 +
+r2 A–C killed · generic plan: Index Scan using work_lost (200k rows, 5 lost)
+Found: FIX-167 (a held+lost row is listed twice and its release answers 200 though it can never run; blocks count uncapped)
+Review: r1 FAIL (not-null unchecked, next-of-key predicates and audit time unpinned, no index), r2 PASS
+
+## 2026-11-11 — FIX-143 an ordered flow states onFailure; block refused until a durable barrier (review F7.4, D-125) — done, review PASS (r2)
+Deviation: F-32 — ARCHITECTURE §4 said an ordered queue blocks by default; it parks and continues (both park sites complete)
+Test first: FlowDefinitionTest (O2 missing key, O3 block, O4 without partitionBy, enum, park readable), FlowWorkerTest
+.aKeyedItemParkedPastMaxAttemptsLetsTheNextItemOfItsKeyRun, SchemasTest, DemoFlowsTest, invalid fixtures (red FIX-143-red*.log)
+Changed: FlowDefinition.onFailure (park | block) with load refusals; flow.schema.json enum + dependentRequired both ways;
+demo flows invoice-async, invoice-sync, sftp-invoice state park; FlowWorker unchanged. Test fixtures with partitionBy gained
+`onFailure: park` (O6, a new required key — reason in the commit body)
+Checks: verify -Pit (no bench) 3577 tests; recount found 3 stale mutant-run failures, unmutated reruns core 631/0, schemas
+293/0 · coverage no decrease · PIT FlowDefinition 59/60 (survivor unchanged :190) · mutants M1–M5, S1, H1, H2 killed
+Review: r1 FAIL (F-32 evidence false, one park site unnamed, D-055 marker, mutant and count evidence missing), r2 PASS
+
+## 2026-11-11 — FIX-146 Postgres TLS with CA and hostname verification (review F9.1, D-124 draft keys) — done, review PASS (r2)
+Test first: NodeConfigPgTlsTest, PgTlsIT (ssl=on hostssl-only servers + a plaintext one, keytool certs at test time; right CA,
+wrong CA, name mismatch, disable refused, verifying mode vs plaintext refused, start's migration verified via a forwarder),
+ComposeStackTest explicit disable; NodeConfigTest/LedgerMainPartsTest/StreamHeapMainPartsTest set disable (red FIX-146-red*.log)
+Changed: FLOTTILA_PG_SSL_MODE disable|verify-ca|verify-full (loopback → disable, else verify-full), FLOTTILA_PG_SSL_ROOT_CERT
+(missing/unreadable/empty refused naming both keys); one PgConnectOptions for pool, membership, LISTEN; Flyway URL with
+sslmode + encoded sslrootcert; both compose files set disable; implementer test NodeJdbcUrlTest
+Checks: verify -Pit (no bench) 3566/0/0/0 fresh XML · bench 257/0 · coverage no decrease · mutants r1 16/17 + r2 5/5 killed;
+survivors equivalent (VERIFY_CA keeping HTTPS; REQUIRE — one Vert.x branch with the given trust and algorithm)
+Found: FIX-165 (IPv6 host unbracketed in JDBC URL), FIX-166 (bench's own PG links carry no TLS)
+Review: r1 FAIL (migration call site and plaintext-server fallback unpinned, tautological URL test, javadoc, bench wording), r2 PASS
+
+## 2026-11-11 — FIX-144 readiness and liveness endpoints (review F4.4, D-123) — done, review PASS (r1)
+Test first: AdminServerTest liveAnswers200WithoutReadingAnyCheck, readyIsDownNamingEachFailedCheck, readyAnswersWithoutAwaiting,
+liveAndReadyNeedNoTokenWhileAdminDoes; NodeIT fencedNodeIsNotReadyButRemainsLive, drainDropsReadinessBeforeListenersStop,
+journalInOutageNodeIsNotReady, failedFlowNodeIsNotReady, liveDoesNotTouchPostgres (red: compile + 404 vs shim, FIX-144-red*.log)
+Changed: AdminServer GET /live (constant) and GET /ready (lifecycle, fence, journal UP, deployments; in-memory, no await, no
+token), Readiness record, 4-arg HealthProbe (2/3-arg = ALWAYS); Node ready flag set last in start, cleared first in close
+Checks: verify -Pit (no bench) 3530 tests, 0 failures, 1 error = FIX-156 flake · coverage no decrease (runtime 99.4/99.6) ·
+hand mutants M1, M3–M5 killed; M2 (ready set early) survives, accepted (visible only with FIX-164's leaked admin port)
+Found: FIX-164 (start failure leaves a started admin server open). Docker healthchecks still use /health (unchanged)
+Review: r1 PASS
+
+## 2026-11-11 — FIX-160 test race: COW subList views read under concurrent append — done, review PASS (r2)
+Test-only. NodeShutdownWaitsForWorkerSettlementIT:363 streamed a live CopyOnWriteArrayList subList the log handler appends to (CME)
+Changed: snapshot (`List.copyOf`) before every subList; lazy failure messages via until(BooleanSupplier, Supplier<String>); same
+fix in JournalKill9IT, OrderedDeliveryIT, ReplayRetentionIT, LostBodyAdminIT, PgWorkSignalsIT, DeploymentsUndeployTest
+Checks: NodeShutdownWaitsForWorkerSettlementIT 20/20 runs exit 0, 4/0/0/0 each (agent/work/FIX-160-v.summary, v1..20.xml) ·
+touched classes 33/0/0/0 (FIX-160-touched.log) · coverage baseline not rewritten (no production change; partial-run reports)
+Review: r1 FAIL (per-run counts missing from -q logs), r2 PASS on the XML evidence
+
+## 2026-11-11 — CORE-7 batched completion of unkeyed work items (D-122 draft, F-31) — done, review PASS (r2)
+Context compacted mid task (re-verified git status/log). Deviation: ARCHITECTURE §4 fence (D-101 (2) amended), §7, changelog 3.7, F-31
+Test first: FlowWorkerCompleteUnkeyedTest, PgWorkQueueBatchedCompletionIT (100 completions → 2 statements, red 101),
+PgWorkQueueBatchedCompletionPropertyIT, WorkQueueContract unkeyed case, PgBatchedWorkQueueContractIT, JournalBlobStoreIT and
+NodeShutdownWaitsForWorkerSettlementIT cases (red agent/work/CORE-7-red*.log); implementer added PgWorkQueueCompletionEdgesIT
+Changed: core WorkQueue.completeUnkeyed, FlowWorker.settle routes unkeyed items to it; runtime PgWorkQueue batch over BatchingWriter
+(256 / PT0S / 2 in flight / 8192 / PT5S, constants), one autocommit unnest DELETE fenced by attempts, held and keyed rows excluded,
+absent = STALE, failed statement fails all, no retry; Node closes the queue after flows, before signals and pool
+Checks: verify -Pit (no bench) 3520 tests, 0 failures, 1 error = FIX-156 flake (passes alone 2/2) · BenchMainIT 2/2 · coverage no
+decrease · PIT FlowWorker/WorkQueue 195/204 (survivors on untouched lines) · hand mutants 13/13 killed; M14 (start-failure close)
+survives, accepted (rows left to their lease) · generic plan one work_pkey probe per member (CORE-7-plan.txt)
+Found: FIX-163 (close wait unbounded). F-31 (2): every row is still deleted; keyed rows keep one transaction per message
+Review: r1 FAIL (delay-bound wording false, D-101 marker missing, start-failure close unpinned), r2 PASS
+
+## 2026-11-11 — P2-16b work events between nodes, PT30S reconciliation (D-121 (b) draft, F-30) — done, review PASS (r2)
+Container restart mid fix round (tree intact, no mutant left: cmp against .r3.bak). Deviation: ARCHITECTURE §4/§7, changelog 3.6
+Test first: FlowWorkerEventsTest, PgWorkSignalsIT, TwoNodeWorkEventsIT, IdleNodeStatementsIT (red agent/work/P2-16b-red*.log)
+Changed: core WorkSignals, WorkEvents (leading edge, one folded statement per 50 ms, cap 64 → `* *`), LocalWorkSignals; runtime
+PgWorkSignals (dedicated LISTEN connection, backoff 100 ms → 5 s until close, wakeAll after every LISTEN); NOTIFY only after commit:
+keyed completion (fast path and plain completeRow) naming the next row's node, admin release (also wakes locally), kept ref on
+another node; WorkerPolicy DEFAULT PT30S, first reconciliation at P + floorMod(hash(flow), P); announce throws isolated and logged
+Test edits (wrong expectations, named in the packet): ~17 tick tests (B5), PgWorkSignalsIT:365, PgIntakeHandoffIT.Claims forward
+Checks: verify -Pit (no bench) 3495 tests, 0 failures, 1 error = FIX-160 test race · coverage no decrease · PIT 465/479 core ·
+hand mutants M1–M24, R1–R8, V1–V6, N1/N5, O1–O3 killed; N2–N4 Node wiring survive → FIX-161
+Review: r1 FAIL (reconnect cap, LISTEN-error close, failed next-row read unpinned), r2 PASS
+Opened: FIX-160 (shutdown IT CME), FIX-161 (Node wiring IT), FIX-162 (spilled wake not isolated)
+Next: CORE-7 (batched completion, class C: designer first)
+## 2026-11-10 — P2-16a local hand-off: a saved item runs on its node without a claim (D-121 (a) draft, F-30) — done, review PASS (r3)
+Context compacted once mid-task (re-verified with git status / log -3). Deviation: ARCHITECTURE §4/§7 + changelog 3.5 (no accept poll)
+Test first: FlowWorkerHandoffTest, PgIntakeHandoffIT, HandoffKeyOrderProperties, WorkQueueContract (red agent/work/P2-16a-red.log);
+after review: FlowWorkerHandoffEdgeTest, FlowWorkerHandoffRefusedRunTest, PgIntakeHandoffGroupIT/LogIT, +R1–R14 IT cases
+Changed: core Workers + FlowWorker.Slot; WorkQueue.enqueueLeased; the intake writes a heading item leased (attempts 1) in its
+transaction; per-key advisory lock on keyed inserts and completes (READ COMMITTED); V15 work(flow, partition_key, seq); accept poll
+gone, lease-end wake instead; claim-room fix (`asking`, found by jqwik); slot calls after the answers, isolated, cleanup suppressed
+Test edits (wrong expectations by design, named in the packet): 12 key-lock ITs, SegmentSweepIT, 17 lease-end core tests, V15 counts
+Checks: verify -Pit (no bench) VERIFIED_PASS 3428 tests, 375 fresh XML · BenchMainIT 2/0 · coverage no decrease · PIT 199/206
+(FlowWorker*/SequentialIntake) · hand mutants M01–M34, R01–R15, O01–O12, r4/r6 logs; survivors argued in the packet
+Review: r1 FAIL (untested paths R1–R3, slot-call order R4), r2 FAIL (lease left renewing N1, primary lost N2), r3 PASS
+Opened: FIX-156 (ledger ack flake), FIX-157 (M20 lost-lease wake), FIX-158 (claimed() loop leak), FIX-159 (open-save flake, base)
+Next: P2-16b (events between nodes, PT30S reconciliation), then CORE-7
+## 2026-11-10 — P2-15c kill -9 ledger and SIGSTOP acceptance (D-112, F-28) — done, review PASS (r2)
+Test: NodeTakeoverLedgerIT (child JVM nodes, Testcontainers PG) — acceptance, green on today's code; red by hand mutants
+Case 1 kill -9 A at 1000 ACKs: 2000 ACKed, partner distinct 2000, raw duplicates 8 = A in flight 8, Σdoubts 8 = reruns 8, none
+before A's old lease_until, B never superseded (59 s). Case 2 SIGSTOP A with 4 held sends: reset after SIGCONT, nothing after the
+fence, no queued item taken, A exits SUPERSEDED (9 s)
+Mutants (agent/work/P2-15c-mut.log): a send ignores the fence — killed; c rejoin does not wait — killed; d claim ignores the fence —
+killed; b TAKE without liveness — survives by construction (a node claims only its own body_node items until CORE-5)
+Review: r1 FAIL (negatives behind three gates, mutant d not run), r2 PASS · No production change
+Next: P2-16 (local hand-off, no claim), then CORE-7
+## 2026-11-10 — FIX-145 a pg_xact_status failure pins only its own save (review F7.3, F-29) — done, review PASS (r1)
+Test first: SegmentSweepIT .futureXidDoesNotBlockUnrelatedSegmentCollection, .aFailingStatusQueryLeavesEveryInDoubtSaveOpenAndThe
+SweepRuns, .oneBadXidDoesNotHoldBackAResolvableOne + InDoubtSeam (red agent/work/FIX-145-red.log, FIX-145-red-scratch.log)
+Changed: PgIntake.settle — batched lookup first, per-xid on its failure; a failed xid stays in doubt (never an outcome), one WARNING
+per xid until it settles; openSaves never throws for a lookup; package-private inDoubt seam (also the production path)
+Checks: runtime -am verify -Pit VERIFIED_PASS 3054 tests, 338 fresh XML · coverage no decrease · hand mutants M1–M3 killed
+Review: r1 PASS · Opened: FIX-153 (xid reused after a failover, class C), FIX-154 (stop the fallback on a connection failure)
+Next: P2-15c (kill -9 ledger, SIGSTOP)
+## 2026-11-10 — FIX-142 node shutdown awaits bounded worker settlement (review F4.3, F-29) — done, review PASS (r2)
+Test first: NodeShutdownWaitsForWorkerSettlementIT (3; red agent/work/FIX-142-red.log, redeploy case a green control); after the red,
+FlowWorkerUnsettledTest (test-author) and DeploymentsProducersTest close case reversed (wrong expectation: close now waits)
+Changed: Deployments.close stops flows, then drains every worker's close within the one stopDeadline (node timer); past it one
+WARNING per flow names its unsettled items, rows stay claimed; redeploy/undeploy unchanged (D-063 amended); FlowWorker.unsettled()
+Checks: verify -Pit (no bench) VERIFIED_PASS 3367 tests, 364 fresh XML · coverage no decrease · PIT FlowWorker 105/108 (survivors
+pre-existing :318/:342/:361) · hand mutants M1–M3 killed, M4/M5b equivalent (agent/work/FIX-142-mut.log)
+Review: r1 FAIL (D-114..D-120 not recorded; M5 run against a fixture without a non-worker flow), r2 PASS
+Decisions: D-114..D-120 (owner answers to F-29) · Opened: FIX-152 (Node javadoc)
+Next: FIX-145 (pg_xact_status failures isolated per xid)
+## 2026-11-09 — FIX-139 durable creation of the journal, segments and key directories (review F7.5, F-29) — done, review PASS (r2)
+context compacted (tree re-verified with git status/log)
+Test first: JournalIoTest (4), JournalDurableDirTest (4) (red agent/work/FIX-139-red.log); implementer's JournalSegmentsEntryTest
+.aFirstStartForcesTheJournalDirectoryOnceSegmentsIsThere approved with M6r1 as its red
+Changed: JournalIo.createDirectoriesDurably — creates each missing level and forces its parent, forces the directory last; used for
+the journal dir, segments/ and the master-key dir; spill keeps plain createDirectories (comment, loss changes nothing durable)
+Checks: verify VERIFIED_PASS 3047 tests (FIX-139-verify.log) · coverage no decrease · hand mutants M1–M7 killed · PIT helper 5/5
+Review: r1 FAIL (implementer's test not approved in the packet), r2 PASS · Opened: FIX-151 (javadoc on a not-retried force; `..`)
+Next: FIX-142 (node shutdown awaits bounded worker settlement)
+## 2026-11-09 — FIX-140 recovery pins agree with sweep pins (review F7.1, F-29) — done, review PASS (r3)
+Test first: SegmentSweepIT.aNormallySweptKeptRefDoesNotRefuseRestart (red: ACCEPT_LOSS refusal), controls
+.aRegisteredSegmentWhoseFileVanishedStillRefuses, .aDlqHeldRefStillPinsItsSegment (agent/work/FIX-140-red.log)
+Changed: PgSegmentRows.PINS_BEYOND — a kept ref pins at recovery only while its segment row is registered; work rows always pin;
+guard comment per branch (key share / active segment + open-save set / FIX-150 window); SegmentRows javadoc; CORE-3 item 9 amended
+Checks: runtime -am verify -Pit VERIFIED_PASS 3035 tests (FIX-140-verify3.log) · coverage no decrease · hand mutants per predicate killed
+Review: r1 FAIL (node predicate unpinned, guard comment, docs), r2 FAIL (comment missing the FIX-150 window), r3 PASS · Opened: FIX-150
+Next: FIX-139 (journal parent-directory fsync)
+## 2026-11-06 — P2-15b send bounded by the fence; x-message-id; split ids (D-113 amends D-100) — done, review PASS (r2) · Deviation: F-28
+Test first: FlowBuilderSendDeadlineTest (7), SendFencePropertiesTest (jqwik), NodeLeaseTest.openNanos…, ProducerTest, ComponentContract
+(3 cases, http + mock + recording), HttpComponentTest (2), SplitTest (jqwik); red agent/work/P2-15b-red.log
+Changed: api Deadline, Producer.send(e, d), Envelope.H_MESSAGE_ID / outboundId(); core Fence, FencedWait abandon, TargetLimit permit
+follows the raw future, Split ids <parent>.<i>; http Timer constructor, cut by reset, timeoutMs → retryable Nack; mock/recording deadline
+Checks: reactor verify -Pit VERIFIED_PASS 3601 tests (P2-15b-reactor2.log; run 1 NodeIT:1425 freePort race → FIX-149) · coverage no
+decrease · PIT api 188/189, core 613/622 · hand mutants 39/40 killed (C3 equivalent)
+Review: r1 FAIL (null answer leaked the fence timer; NodeLease:165 boundary unpinned), r2 PASS
+Decisions: D-113 (draft) · Opened: FIX-148, FIX-149 · owner: benchmarks paused until a dedicated machine; message-id model low priority
+Next: core fixes from F-29 (FIX-140, 139, 142, 145), then P2-15c ledger, P2-16, CORE-7
+## 2026-11-06 — P2-15a node lease and self-fencing (D-101 → D-112, F-28) — done, review PASS (r3) · Deviation: F-28
+context compacted (twice, plus two container restarts; tree re-verified with git status/log before continuing)
+Test first: NodeLeaseTest, NodeLeaseFencePropertiesTest (jqwik), MembershipContract + PgMembershipIT, PgWorkQueueIT/InMemoryWorkQueueTest
+liveness/doubt/rejoin cases, FlowWorkerFenceTest, PgWorkQueueStatementsIT, SegmentSweepIT, NodeIT notices (red agent/work/P2-15a-red.log, r1 P2-15a-r1-red.log)
+Changed: V14 (nodes, work.doubts); core node (Membership, InMemoryMembership, NodeLease, FencedException); PgMembership; claim/TAKE
+liveness + doubts; fence on claim, send, park, settle; renew bounded at L/2 with reconnect; rejoin waits for the old lease end
+Checks: reactor clean verify -Pit VERIFIED_PASS rc 0 (P2-15a-r2-reactor.log) · coverage no decrease VERIFIED_PASS · PIT core
+node/queue/flow/Parking 633/642 VERIFIED_PASS · hand mutants M-A..M-K killed
+Review: r1 FAIL (rejoin with another lease, unfenced park/claim, docs), r2 FAIL (F-28 "never" vs FIX-135), r3 PASS
+Decisions: D-112 (draft) · Opened: FIX-133, FIX-134, FIX-135
+Next: P2-15b (message-id header, split ids, send bounded by the fence, kill -9 ledger); r2000 rerun to show the lease costs nothing
+## 2026-11-05 — FIX-127 sweeper's pinned check linear in work + candidates (F-27 I3) — done, review PASS
+Test first: PgSegmentRowsSweepPlanIT (generic + custom, 49 920 work rows, 200 candidates; red agent/work/FIX-127-red.log);
+implementer's PgSegmentRowsSweepRecheckIT (a pin committed between lock and delete keeps the segment).
+Change: PgSegmentRows PINNED = one materialized CTE (live work segments ∪ fresh or DLQ-held kept refs), LOCK / DELETE anti-join
+against it; no index, no migration; the later-snapshot re-check kept. EXPLAIN 74 k → 670/690 buffers, ~900 → 18–37 ms.
+Checks: reactor verify -Pit exit 0 (3455, 392 fresh); coverage no decrease; M1, M3, M4 killed, M2 (`materialized`) equivalent.
+Preview rerun (moved from FIX-130): RESULTS "FIX-130 + FIX-127 preview" — r2000 drains (≈ 1 890 completes/s, was ≈ 375), ceiling
+≈ 1 800–1 900 msg/s, CPU-bound; ACK p50 79 ms at r2000.
+Review: FAIL r1 (rerun not recorded), PASS after the run. Found: FIX-132 (jqwik log line).
+Next: CORE-17 / D-111 for ACK latency, node CPU split; P2-15 → P2-16 → CORE-7 for commits per message.
+
+## 2026-11-05 — FIX-130 CLAIM bounded by its room, node sessions without JIT (F-27 addendum) — done, review PASS
+Test first: PgWorkQueueClaimPlanIT (generic + custom, 50 k rows), NodeConnectOptionsIT.theNodesPooledSessionsRunWithoutJit
+(test-author; red agent/work/FIX-130-red.log); implementer's PgWorkQueueNextOfKeyPlanIT (red agent/work/FIX-130-M4-next-in-form.log).
+Change: Node.connectOptions adds startup property jit=off; PgWorkQueue CLAIM and CLAIM_NEXT_OF_KEY take rows by
+`w.seq = any(array(<eligible … limit … for update skip locked>))` — no seq scan of `work`; fence, ordering, SKIP LOCKED unchanged.
+Checks: reactor verify -Pit exit 0 (3451, 390 fresh); coverage no decrease; mutants M1..M4 killed. EXPLAIN figures in the commit body.
+Review: FAIL r1 (rerun clause unmet → moved to FIX-127; fast-path test unapproved → approved), PASS r2. Found: FIX-131 (keyed claims).
+Next: FIX-127 sweeper, then the r2000 rerun.
+
+## 2026-11-05 — CORE-15b the open-loop record measures the database (F-27 I1) — done, review PASS
+Test first: OpenLoopSamplerTest, DbSamplerTest, DiskSamplerTest, CpuSourceClusterTest, NodeBenchMainSettleProbeTest,
+NodeBenchMainOpenIoOptionsTest, BenchRunScriptOpenDbTest, NodeBenchOpenDbSeriesIT (test-author; red agent/work/CORE-15b-red.log);
+implementer's DbSamplerCasesTest, CpuSourceClusterCasesTest, NodeBenchMainSamplersTest, DiskSamplerCasesTest, OpenLoopOffloadedTest, DbSamplerPgIT.
+Change: per-second `db` series (commits, pg_stat_wal, `work` tuples/vacuum, top statements by window time) on the sampler's own
+connection; `io` from /proc/diskstats; `pgCpu` over the whole cluster; samples in order; settle probe work-first, 1 s pause.
+Checks: reactor verify -Pit exit 0 (3442, r0); bench verify -Pit r1 exit 0 (3135; earlier runs FIX-121 ×2, PgIntakeJournalIT:351 ×1 → FIX-128);
+coverage no decrease; mutants M1..M9, M11 killed, M10 survives (memory only, accepted).
+Review: FAIL r1 (sample order unpinned; RESULTS lag sentence wrong), PASS r2. Found: FIX-128, FIX-129. The PROGRESS entry was
+missing from its commit aa4a717 (a script error) and is added with FIX-130's ledger fix.
+Preview rerun (c4b197a, RESULTS "CORE-15b preview"): CLAIM 171 ms per call at r2000 → FIX-130.
+
+## 2026-11-05 — FIX-124 open-loop record kept when the settle misses, recording level option — done, review PASS
+Found by the owner's preview run (ack 5 000 msg/s, recording all: settle timed out, no JSON; ~470 k of ~3.15 M accepted, work 376 k left).
+Test first: NodeBenchMainOpenSettleTest, NodeBenchMainRecordingLevelTest (test-author; red agent/work/FIX-124-red.log); implementer's
+NodeBenchMainOpenSettleCasesTest, BenchRunScriptOpenLevelTest, NodeBenchOpenRecordingLevelIT, NodeBenchOpenSettleCountsIT.
+Change: settleOpen writes settled/settleDeadline/settleTarget/messages/work/receipts, exit 4 when unsettled (wins over 3);
+--recording-level none|all (none → flow level off; sync + none refused); run.sh BENCH_RECORDING_LEVEL, BENCH_MAX_IN_FLIGHT, level
+in the run name, summary prints level and settled; RESULTS note updated.
+Checks: reactor verify -Pit exit 0 (3387, run 2; run 1 FIX-121 flake); bench verify r2 exit 0 (199); coverage no decrease; M1..M11 killed.
+Review: FAIL r1 (RESULTS note stale, all/none runs shared a file), PASS r2. Found: FIX-125.
+Next: stepped open-loop run, recording none (owner 2026-11-05), then CORE-8 at-least-once half, P2-15 → P2-16 → CORE-7.
+
+## 2026-11-05 — CORE-15 open-loop load harness (GATE §CORE-GATE condition 2, P2-14 (b)) — done, review PASS
+Test first: OpenLoopScheduleTest, OpenLoopTest (FakeClock/FakeTimer), NodeBenchMainOpenOptionsTest, CpuSourceTest, NodeBenchOpenEchoIT,
+NodeBenchOpenAckIT, BenchRunScriptOpenTest (test-author; red agent/work/CORE-15-red.log); implementer's OpenLoopAccountingTest,
+NodeBenchMainOpenRunTest, BenchRunScriptOpenDefaultsTest, NodeBenchOpenEchoCpuIT.
+Change: NodeBenchMain --rate/--ramp/--window/--max-outstanding/--pg-cpu-source, scenario echo; OpenLoop (fixed schedule, latency
+from the scheduled send time, saturation invalidates, backlog = accepted − partner receipts per second); CpuSource (cgroup or pid,
+null + reason when unreadable); LatencyStats rank ceil(p·n/100); run.sh scenario `open`; RESULTS method note.
+Checks: reactor verify -Pit exit 0 (3368, 367 fresh reports); coverage no decrease (bench 97.8/97.2); mutants M1..M8 killed.
+Review: PASS r1. Found: FIX-123 (sample budget, monotonic clock, clamp pin, timeout label, pg CPU scope).
+D-054 data: class B (scout ×1, test-author ×1, implementer ×1, reviewer ×1); rounds 1.
+Next: preview run at 5 000 msg/s (owner 2026-11-05), then CORE-9/12.
+
+## 2026-11-05 — CORE-6b intake group commit (D-109, FIX-95a) — done, review PASS
+context compacted; re-verified with git status / git log before changing anything.
+Test first: PgIntakeGroupIT (19), PgIntakeGroupPropertyIT (jqwik), NodeConfigIntakeGroupTest, BatchingWriterTest +5, BatchingWriterPropertyTest +1,
+PgWire holdNextConnection / fatalReplyTo (test-author; red agent/work/CORE-6b-red.log, -r1-red, -r2-red); implementer's PgIntakeGroupEdgeIT (8), BatchingWriterWeightTest.
+Change: core BatchingWriter weight + batchBytes; NodeConfig.IntakeGroup + FLOTTILA_INTAKE_GROUP_* (draft until CORE-GATE); PgIntake gathers
+saves into one transaction (unnest claims sorted by flow/key, ON CONFLICT DO NOTHING, failed group re-runs survivors one by one, ERROR
+reply to COMMIT = known abort, FATAL/PANIC/lost = in doubt until pg_xact_status); groupStats(); ARCHITECTURE §4, D-082, D-084, D-071 amended.
+Checks: reactor verify -Pit exit 1 (3317, 1 failure = FIX-121 NodeBenchMainWarmupIT:111 float flake, not intake); class rerun exit 0, 5/0/0
+(agent/work/CORE-6b-r2-bench-rerun2.log); coverage no decrease; PIT core batch+flow 529/535; mutants r1 R1..R7, r2 S1..S3 killed.
+Review: FAIL r1 (re-run order, keyed duplicate in a poisoned group, SINGLE by value, refused COMMIT in doubt), FAIL r2 (FATAL reply as
+known abort could lose a committed body; R1 only a hang), PASS r3.
+Found: FIX-122 (PANIC unpinned). D-054 data: class C (test-author ×1 resumed ×3, implementer ×1 resumed ×2, verifier ×1, reviewer ×1 resumed ×2); rounds 3.
+Next: next ready CORE row (CORE-5 waits for P2-15).
+
+## 2026-11-04 — CORE-6a intake round trips: prepared-statement cache, pipelined turns (D-109, F-26, FIX-95b) — done, review PASS
+Deviation: F-26 (the node pool did not cache prepared statements as §4 Writer says; code brought to the document).
+Test first: PgIntakeRoundTripIT (8), NodeConnectOptionsTest, AtLeastOnceIntakeIT.theNodesPoolParsesEachIntakeStatementOncePerConnection,
+PgWire turn counting (test-author; red agent/work/CORE-6a-red.log); implementer's NodeConnectOptionsCacheLimitTest.
+Change: Node.connectOptions (cache on, SQL limit 8192: KEEP is 2514 chars); PgIntake turns BEGIN | claim + first-id | rows | abandoned
+check | COMMIT alone; PgBatchSink pipelined write(SqlClient, List). Warm connection: unkeyed 3 waits, keyed 4 (was 8+).
+Checks: reactor verify -Pit exit 0 (3310 testcases); coverage no decrease; mutants M1..M12, V1..V3 killed, M8/M9 equivalent.
+Review: FAIL r1 (claim turn's own cause and the sink's statement order unpinned), PASS r2.
+D-054 data: class B (designer ×1 for CORE-6, test-author ×1 resumed ×1, implementer ×1, verifier ×1, reviewer ×1 resumed ×1); rounds 2.
+Next: CORE-6b [C] packet (group commit, D-109).
+
+## 2026-11-04 — CORE-4d segment sweeper, journal bound with 503, open-save outcomes, 4c carries (D-105) — done, review PASS
+context compacted; re-verified with git status / git log before changing anything.
+Test first: SegmentSweepIT (+r1/r2 cases), JournalBoundIT, IntakeAppendWaitIT, GiveUpRaceIT, LargeBodyCrashTest, JournalSpillBoundTest,
+SegmentSweepUnlinkTest, NodeConfigJournalSweepTest, RetentionIT +1, NodeJournalIT +1 (test-author; red agent/work/CORE-4d-red*.log, -r1-red, -r2-red).
+Change: SegmentSweeper/SweepConfig (interval, grace, keepMaxAge), JournalFullException; bound on segments + spill + reservations
+(intake edge max − max/16, spill counted per chunk, 503 + Retry-After, 80 % WARNING); pg_xact_status settles in-doubt commits;
+core Intake.save takes Future<?> abandoned; dir-force generations; giveUp from the cut `for update`; per-extent bytes, unlink
+pending set, NoSuchFile = unlinked; stored() swept fallback keeps corrupt/key failures; Retention BODIES limited batch.
+Checks: reactor verify -Pit exit 0 (3265, r2); coverage no decrease; reviewer and new-guard mutants killed (r1, r2 logs).
+Review: FAIL r1 (spill unbounded while streaming, stored() race, sweeper wiring untested), FAIL r2 (stored():442 rethrow unpinned), PASS r3.
+Found: FIX-121 (bench float flake); IntakeAppendWaitIT wait fixed by its author in r1.
+D-054 data: class C (test-author ×1 resumed ×4, implementer ×1 resumed ×2, reviewer ×1 resumed ×2); rounds 3.
+Next: CORE-5 per BACKLOG.
+
+## 2026-11-04 — CORE-4c3 pinned-cut start refusal, ACCEPT_LOSS, read channels, start carries (D-105) — done, review PASS
+Test first: api BodyLostExceptionTest, core ReplayTest (+2), JournalReadChannelsTest, StoreReadKeyCheckTest, JournalFreeSpaceTest,
+JournalCloseAndDirForceTest, StoreAppendWaitTest, LostBodyReadIT, NodeJournalIT (+13), LostBodyAdminIT, NodeConfigJournalLimitsTest,
+MigrationsIT V13 (test-author; red = test-compile + shimmed semantic reds, agent/work/CORE-4c3-red.log).
+Change: V13 (work.lost_at, journal_losses); JournalStart (room, identity, pins, digest; refusal changes nothing), Recovery plan/apply,
+ReadChannels (LRU), record key check, ACCEPT_LOSS give-up in one tx, lost reads (BodyLostException, 409 BODY_LOST, GET 410),
+lost sources feed no reference/enqueue/park, MASTER tmp cleanup, generated-key notice, quiet close, dir-force re-check.
+Checks: reactor verify -Pit exit 0 (3194); coverage no decrease; 41 + 10 hand mutants killed.
+Review: FAIL r1 (append-wait wiring store-only → deferred to CORE-4d; lost sources fed new pins; digest sort unpinned), PASS r2.
+D-054 data: class C (test-author ×1 resumed ×2, implementer ×1 resumed ×1, reviewer ×1 resumed ×1); rounds 2.
+Next: CORE-4d [C] packet (sweeper, disk bound 503, pg_xact_status, carries in its BACKLOG row).
+
+## 2026-11-04 — CORE-4c2 body store on journal references: intake, DLQ, reads, claim, ledger (D-105) — done, review PASS
+context compacted (twice); re-verified with git status / git log before changing anything.
+Test first: JournalBlobStoreIT, PgIntakeJournalIT, JournalReadIT, PgDlqJournalIT, PgBodyRefsIT, WorkClaimIT, SchemaIT,
+ReferenceEnqueueIT (test-author; red = test-compile 95 errors + semantic reds, agent/work/CORE-4c2-red*.log).
+Change: TieredBlobStore on the journal (forced → keepIn(tx)/committed/rolledBack, LocationIndex, RemoteBodyException), SpoolSink
+gone, PgBodies read-only, PgIntake on refs with openSaves(), PgDlq/PgWorkQueue on refs (claim by body_node), Retention on body_refs,
+core Intake.save keepInput, LateBlobStore; exists() asks Postgres only, admin GET checks it first (r1 decision on the index).
+Checks: reactor verify -Pit exit 0 (2711 + 422; run 1 hit the JournalKill9IT test race → FIX-120); coverage no decrease; mutants killed.
+Review: FAIL r1 (6: keepInput unpinned, BEGIN-before-force unpinned, failed spill persist set, kept CTE locks, retired twins
+missing, exists() from the index), FAIL r2 (admin open() catch removed → 500), PASS r3. Stale CORE-2 worktree removed.
+D-054 data: class C (test-author ×1 resumed ×4, implementer ×1 resumed ×4, reviewer ×1 resumed ×2); rounds 3.
+Next: CORE-4c3 [C] packet (pinned-cut refusal, ACCEPT_LOSS, channel cache, start carries).
+
+## 2026-11-04 — CORE-4c1 V12, journal master and tenant keys, identity, segment rows, node wiring (D-106, D-107) — done, review PASS
+Test first: MasterKeySourceTest, JournalLifecycleTest, JournalSegmentRowsTest, JournalKeysIT, PgSegmentRowsIT, NodeJournalIT,
+NodeConfigJournalTest, MigrationsIT V12 (test-author; red = test-compile exit 1, agent/work/CORE-4c1-red.log). CORE-4c split in 4c1/4c2.
+Change: deploy/postgres/V12__journal.sql; MasterKeySource (file/env/opt-in generate, hard-link publish), JournalKeys (GCM wrap),
+PgSegmentRows, Journal (row before every file, injected id, identity refusal incl. fresh database, close waits, fail-stop for
+spill/persist, pre-open insert retried, health); NodeConfig keys; Node loads the key first; compose data volume; api DEGRADED (D-107).
+Checks: runtime verify exit 0 (2326); reactor verify -Pit exit 0 (3102); coverage no decrease; 74 + 29 hand mutants killed; PIT api NOT_RUN.
+Review: FAIL r1 (fresh database erased the journal; compose without data volume; MASTER generation race; tier < 4096 unstartable;
+one failed row insert fail-stopped the journal), PASS r2. Additions in CORE-3 "Added in CORE-4c1".
+D-054 data: class C (scout ×1, test-author ×1, implementer ×1 resumed ×1, reviewer ×1 resumed ×1); rounds 2.
+Next: CORE-4c2 [C] packet (store on refs, intake, DLQ, reads, claim, ACCEPT_LOSS, ledger; carries in CORE-3).
+
+## 2026-11-04 — CORE-4b large bodies in journal format; S3 blob tier removed (D-105 amended) — done, review PASS — Deviation: format
+Test first: LargeBodyTest (12), LargeBodyHeapTest (-Xmx48m), JournalStartTest.spillIsClearedAtStart (test-author; red =
+test-compile exit 1, 70 errors, agent/work/CORE-4b-red.log); S3TierIT/S3HeapIT and S3 cases deleted with the tier.
+Change: journal Spill (streamed 1 MiB AEAD chunks, hashed once, persist = trailer → force → SegmentRows.insert → ATOMIC_MOVE →
+force dir), Journal.stream, JournalRef.length long, LargeRecord, SegmentRows; blob S3 tier, S3Sink, Sink, preferS3 gone;
+runtime pom `it` profile (empty heap-bounded-it) removed. Format deviation: index length u64, kind-2 record (CORE-3 "Added in 4b").
+Checks: runtime verify exit 0; reactor verify -Pit exit 0 (2988 tests); coverage no decrease (runtime 99.5/99.6); 64+18 hand mutants.
+Review: FAIL r1 (int cut of a long ref length; no outside decrypt of kind 2; format changes unrecorded), PASS r2.
+D-054 data: class C (scout ×1, test-author ×1 resumed ×1, implementer ×1 resumed ×2, reviewer ×1 resumed ×2); rounds 2.
+Next: CORE-4c [C] packet (store over Postgres V12, D-106 key, the 4b/4a carries in CORE-3 "Added in" sections).
+
+## 2026-11-04 — CORE-4a body journal core, no Postgres (D-105) — done, review PASS
+Test first: JournalWriterTest, JournalSegmentTest, JournalRecoveryTest, JournalCipherTest, JournalRecordPropertiesTest,
+JournalConfigTest, JournalKill9IT (test-author; red = test-compile exit 1, agent/work/CORE-4a-red.log). Container restart mid-task.
+Change: flottila-runtime io.flottila.runtime.journal (17 main files: Journal, Recovery, Record/SegmentFormat, ChunkedAead, …);
+blob/SpoolCipher delegates to ChunkedAead, behaviour unchanged; implementer's JournalStart/Read/Append/RecordFormatTest.
+Checks: runtime verify exit 0 (2206), journal 84/0/0/0, JournalKill9IT exit 0, reactor verify -Pit (no bench) exit 0, coverage
+runtime 99.5/99.6 (baseline written for runtime); 69 hand mutants (results.txt), 2 unkillable without a seam (commented).
+Review: FAIL r1 (reserve() changed state before Timer.schedule → position hole and close hang; per-record key derivation unpinned),
+PASS r2. Design additions in agent/packets/CORE-3.md "Added in CORE-4a".
+D-054 data: class C (test-author ×1, implementer ×1 resumed ×2, reviewer ×1 resumed ×1); review rounds 2.
+Next: CORE-4b [C] packet (large bodies, sealer index read paths per CORE-3); owner: CORE-2 inline bound.
+
+## 2026-11-04 — CORE-2 ClickHouse payload compression and size bound — done, review PASS — Deviation: parallel worktree
+Test first: InvoiceGeneratorTest (generator) and ClickHouseCompressionMainIT (harness on the pinned image); a measurement row.
+Change: flottila-bench ClickHouseCompressionMain, ClickHouseHttp, InvoiceGenerator; bench/run.sh `BENCH_SCENARIOS=clickhouse`;
+bench/RESULTS.md §CORE-2 (48 cells × 3 runs, 0 failures; proposal inline ≤ 10 MiB, ZSTD(1), merge memory decides; fan-in limit).
+Run in a git worktree beside CORE-4a on the owner's order (one-writer rule of AGENTS.md set aside, disjoint paths). Container
+restart mid-run: 5 cells re-run on the new VM (2.10 GHz, marked †); recheck with the committed harness reproduced ratio and merge peak.
+Checks: verify -Pit exit 0 (2 572 tests), coverage bench 97.4/96.6 (baseline written for bench only), mutant 'MergeParts' red.
+Review: FAIL r1 (harness edited after the run, IT did not pin merge/insert numbers, fan-in limit, restart wording), PASS r2.
+D-054 data: class B (implementer ×1 resumed ×3, reviewer ×1 resumed ×1); review rounds 2.
+Next: the owner decides the inline bound; CORE-4a review r2.
+
+## 2026-11-03 — CORE-3 body journal design (D-105) — done, review PASS — Deviation: F-25
+Test first: none (design packet); the red tests of CORE-4a..4d are named in agent/packets/CORE-3.md.
+Change: agent/packets/CORE-3.md (segments, per-record AEAD, one group-fsync writer, fail-stop, refs in V12, retention by
+reference, disk bound, ACCEPT_LOSS per digest); D-105; F-25; ISSUE-4 (journal key, blocks CORE-4c); CORE-4 split 4a..4d.
+Checks: ledger-only change, no build run (NOT_RUN).
+Review: FAIL r1 (12: write-order hole, fsyncgate, sweep races, unbounded wait, FIX-35 compare, start checks, tests), FAIL r2
+(large-body grace, sealer hand-off), FAIL r3 (ACCEPT_LOSS), FAIL r4 (wording), PASS r5.
+D-054 data: class C (designer ×1 resumed ×1, reviewer ×1 resumed ×4); review rounds 5.
+Next: CORE-4a [C] — acceptance spec, test-author red tests.
+
+## 2026-11-03 — CORE-0/CORE-1 core-rework brief approved, CORE-GATE conditions (D-103) — done, review PASS
+Test first: none (docs only); acceptance = the owner's approval (CORE-0) and a measurable GATE.md §CORE-GATE (CORE-1).
+Change: docs/CORE-REWORK.md (owner's brief, approved), GATE.md §CORE-GATE (VM, pass rule = median of 3, 7 conditions),
+D-101 (4) amended, D-102, D-103; BACKLOG §Core rework CORE-0..14 + CORE-GATE, P2-14..16, CONSIDER-10/11; ARCHITECTURE status note.
+Checks: ledger-only change, no build run (NOT_RUN).
+Review: FAIL r1 (18 points: no pass rule, gameable throughput condition, brief contradictions), FAIL r2 (5), PASS r3.
+D-054 data: class B (reviewer ×1, resumed ×2); review rounds 3.
+Next: D-104 (no measurement of the old core); CORE-3 [C] designer, CORE-2 [B], CORE-9 [B], CORE-15 [B].
+## 2026-11-02 — FIX-111 agent work files out of target/ (D-093) — done, review PASS
+Test first: none (docs and workflow only); acceptance observed by the verifier (below).
+Change: `agent/work/` (gitignored, `.gitkeep`) replaces `target/` for logs, diffs, harnesses, bisect worktrees and `.batch-in-review` in CLAUDE.md, AGENTS.md, WORKFLOW §1/§10, NOTES, HANDOFF, verifier/reviewer/implementer/test-author definitions, memories, diagnosing-bugs, the gated Stop hook; SessionStart install checks the new marker path and keeps the original's backup (owner-sanctioned §10 D exception).
+Checks: root `mvn -B -ntp -q clean` exit 0 and `clean -pl flottila-runtime -am` exit 0 leave agent/work/ intact, target/ probe gone (verifier, agent/work/FIX-111-clean-am.log); done-when grep 0 hits; SessionStart install tested in a fake HOME (original → backup; old gated copy → replaced, backup kept; rerun idempotent; failing backup (dangling symlink) → exit 1, hook unchanged); check-ignore -v agent/work/x.diff → .gitignore:12, ls-files agent/work = .gitkeep.
+Review: FAIL r1 (installer `;` could overwrite the original hook after a failed backup; ledger stale), PASS r2. WF-2 patch rebased (D-093 moved its context).
+D-054 data: class A (verifier ×1, reviewer ×2); review rounds 2.
+Next: owner decides; a new session picks up the Stop-hook marker path.
+
+## 2026-11-02 — WF-1 workflow skills from mattpocock/skills (D-091) — done, review PASS — Deviation: hook dropped
+Test first: none (docs and agent workflow only). Owner request ("aplikuj patch WF-1"); applied and committed by the architect, an owner-sanctioned §10 D exception. Context compacted.
+Change: .claude/skills/ (retro, writing-for-agents, diagnosing-bugs, grill-handover, MIT licence); reviewer, test-author and implementer definitions (tdd anti-patterns, FIX-row pointer); memories; NOTICE.
+Hook: the command guard (force push, history rewrite, discarded work, reactor-root `mvn clean`) failed review r1 (regex), r2 (blanking parser) and r3 (lexer: `#` comments, `mvn -e`, `-pl X -am`, dir/glob pathspecs, untested `or` arms); owner dropped it; kept unapplied in agent/patches/guard-commands-hook.patch.
+Found: `clean` with `-am` cleans the root `target/` too; the root cause of the P1-08 r2 loss goes to FIX-111 [A] (agent files out of target/).
+Checks: no production code; licence header matches upstream (curl raw LICENSE, observed); `git apply --check` of the hook patch clean.
+Review: FAIL r1–r3 (hook), FAIL r4 (retro still named a PreToolUse hook; NOTICE missed the tracked patches), FAIL r5 (FIX-111 grep could not come back empty), PASS r6.
+D-054 data: class B (raised from A after r2); reviewer ×6; review rounds 6.
+Next: owner decides; then FIX-111 [A].
+
+## 2026-10-29 — P2-08b durable ACK measurement after one transaction — done, review PASS — Deviation: F-18
+Context compacted (once, mid-review); re-verified with git status / git log -3.
+Test first: bench NodeBenchAckCommitsIT, BenchRunScriptTest, NodeBenchMainIT settings case (red: target/P2-08b-red.log); implementer-authored BenchRunScriptCommitDelayTest, NodeBenchAckCountersIT approved after the fact.
+Change: NodeBenchMain records six pg_settings, poolSize, commitsPerMessage, walSyncsPerMessage; run.sh ack loop c=1/8/64, BENCH_COMMIT_DELAY via ALTER SYSTEM + EXIT-trap reset. bench/RESULTS.md "P2-08 — durable ACK, one transaction".
+Result: c=1 p99 10.58 → 8.80 ms; FLOOR (pg_wal on tmpfs, not durable) 8.04 ms → 5 ms target missed, storage not the limit; c=64 msg/s 833 → 733 (−12 %); commit_delay < 10 % on all runs, not in compose. No ISSUE-3.
+Docs: F-18 (major), ARCHITECTURE §7 Sizing restated + changelog; FIX-95 [C] (recover load throughput), CONSIDER-6 (jqwik alternative, owner).
+Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS exit 0 (target/P2-08b-verify.log); BenchRunScript* 6/6 after the comment fix (target/P2-08b-r2-script.log); cleanup state target/P2-08b-cleanup.log; pg_test_fsync target/P2-08b-fsync2.log; coverage no decrease.
+Review: FAIL r1 (−18 % approximation, FLOOR not labelled, overclaim, c=64 overlap, commit_delay rule, cleanup unevidenced, pg_test_fsync path unlogged), PASS r2.
+D-054 data: class B (designer ×1, test-author ×1, implementer ×1 + 1 fix, verifier ×2, reviewer ×2); review rounds 2.
+Next: P2-02L [C].
+
+## 2026-10-29 — P2-02L poller lease held by the node (D-083) — done, review PASS
+Test first: runtime PollerLeasesContract (in-memory + ValkeyPollerLeasesIT on valkey:8), InMemoryPollerLeasesPropertyTest, LeasedConsumerTest, DeploymentsPollerLeaseTest, TwoNodeSftpLeaseTest, NodeIT P2-02L (Valkey / in-memory + WARNING), NodeConfigTest, api ComponentTest, SftpComponentTest (red: target/P2-02L-red*.log).
+Change: api `Component.polls` (default false, sftp true); runtime lease.PollerLeases + InMemory/Valkey (Lua EVAL, PX); deploy.LeasedConsumer (hold per tick on a virtual thread, validity from t0, clock re-read after start, fresh consumer on regain, stop → release); Deployments wraps polling consumers; NodeConfig Leases (FLOTTILA_VALKEY_URI redacted to scheme://host[:port][/db], TTL/RENEW refusals); Node wires Valkey or in-memory. vertx-redis-client 5.1.10 (Apache-2.0/EPL).
+Docs: D-083, §4 pollers sentence, §7 Poller leases row, changelog; BACKLOG Done-when restated (≤ ttl + renew); FIX-96 (standby visibility), FIX-97 (rediss TLS).
+Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS 2380/0/0/0 with report dirs cleared (target/P2-02L-verify3.log), +1 adopted NodeConfig case after it (NodeConfigTest 70/0, target/P2-02L-r3-adopt.log); coverage no decrease; hand mutants 43 + 44 + 11 (target/P2-02L-mutants*.log), PIT api Component 1/1; lease classes 20/20 ×3.
+Review: FAIL r1 (`?password=` printed; delay from a clock read before the start; failed start not stopped; docs overlap), FAIL r2 (hostless URI leaked the password), PASS r3.
+D-054 data: class C (designer ×1, test-author ×1 + 6 follow-ups, implementer ×1 + 2 fixes, verifier ×2, reviewer ×3); review rounds 3.
+Next: P2-02D [C].
+
+## 2026-10-29 — P2-02D ingress dedupe by a consumer-supplied key (D-084) — done, review PASS
+Test first: PgIntakeIT (12 dedupe cases incl. two lock-held races, own scope/key, row gone), DeliveryTest (duplicate answers M1, prop as arrived, absent/empty, wrongly typed → Nack), SequentialIntakeTest.refusesADedupeKey, SftpComponentTest, DeploymentsDedupeTest, SftpIngressDedupeIT (file delivered twice = one message, one item), MigrationsIT V8, PollingConsumerContract dedupe case (red: target/P2-02D-red*.log).
+Change: api `Component.dedupeBy` (sftp `sftp.fileKey`), Ack javadoc; core Intake.save(…, dedupeKey) → Future<String>, Delivery reads the prop guarded and answers Accepted(saved id); V8 processed_ids(scope, sha256 key_hash); PgIntake claims the key first in the tx, a duplicate rolls back, evicts its local body, answers the first id; sftp move suffix from the accepted id.
+Docs: D-084, §4 two sentences, §7 Component block (`polls`, `dedupeBy`), changelog; P2-07 retention note; FIX-98.
+Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS 2415/0/0/0, report dirs cleared (target/P2-02D-verify2.log); coverage no decrease; hand mutants 20/21 + 5/5 (target/P2-02D-mutants*.log; X4 later killed).
+Review: FAIL r1 (FIRST_ID's WHERE unpinned; typed-prop read unguarded), PASS r2.
+D-054 data: class C (designer ×1 (resumed at the turn limit), test-author ×1 (resumed) + 1 fix, implementer ×1 + 1 fix, reviewer ×2); review rounds 2.
+Next: next ready row (FIX-95 [C] or a FIX row).
+
+## 2026-10-29 — P2-05 gate compose stack (D-085) — done, review PASS
+Test first: runtime ComposeStackTest (9 cases; red: target/P2-05-red.log, secret case target/P2-05-red2.log).
+Change: deploy/compose/docker-compose.yml — postgres:17.11, valkey 8.1.11 (persistence off), SeaweedFS 4.50 (S3 identity from env), apache/kafka 3.9.1 (not wired), atmoz/sftp (digest), node (dev, S3 + Valkey, token `:?` from env), echo, one-shot `flottila deploy`, clickhouse under `history`; README; CI `stack` job; D-085 with image licences.
+Observed on this VM (target/P2-05-stack2.log): `up -d` 13.49 s, /health green 13.56 s, deploy exit 0, demo listed, POST :8080/in 200 from the echo, clickhouse healthy, `down -v` clean.
+Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/P2-05-verify.log); ComposeStackTest 9/0 (target/P2-05-test3.log); coverage no decrease.
+Review: PASS r1. Raised FIX-99 (Kafka not-wired assertion, CI up seconds, HANDOVER env note).
+D-054 data: class A (scout ×1, test-author ×1 + 1, implementer ×1 + 1 fix, verifier ×1, reviewer ×1); review rounds 1.
+Next: P2-06 [A].

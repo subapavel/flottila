@@ -12,7 +12,7 @@ import java.util.Optional;
 import java.util.TreeMap;
 
 /**
- * The message store as the flows see it (D-101): the in-memory one, its timelines kept per message as it keeps them — the
+ * The message store as the flows see it (D-143): the in-memory one, its timelines kept per message as it keeps them — the
  * first snapshot of each step, in step order — so a read does not scan every row of the run. A timeline read is a worker
  * run's first simulation call: its thread binds to the run the queue handed out. The oracle reads {@link #recorded}.
  */

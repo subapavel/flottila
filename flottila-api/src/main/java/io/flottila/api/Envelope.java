@@ -29,6 +29,12 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
     /** Header name of the content type, as transports report it. */
     public static final String H_CONTENT_TYPE = "content-type";
 
+    /**
+     * Header name of the message id a producer sends to its partner (D-101 (3), D-113 draft): one value per send,
+     * {@link #outboundId()}, set by {@link #withOutboundId()} — the partner dedupes a rerun on it.
+     */
+    public static final String H_MESSAGE_ID = "x-message-id";
+
     /** Prop carrying the original message id when this envelope is a replay. */
     public static final Key<String> REPLAY_OF = new Key<>("replayOf");
 
@@ -119,6 +125,25 @@ public record Envelope(String id, String flow, int step, Headers headers, Props 
 
     public Envelope withId(String newId) {
         return new Envelope(newId, flow, step, headers, props, keys, body, attachments, views);
+    }
+
+    /**
+     * The value a producer sends under {@link #H_MESSAGE_ID} for this envelope: the message's id. The one place it is computed
+     * — every producer takes it from here (through {@link #withOutboundId()}).
+     */
+    public String outboundId() {
+        return id;
+    }
+
+    /**
+     * This envelope as a producer hands it to its partner: exactly one {@link #H_MESSAGE_ID} header, {@link #outboundId()};
+     * a header of that name in any case (one forwarded from upstream) is dropped, every other header kept.
+     */
+    public Envelope withOutboundId() {
+        var m = new HashMap<String, String>();
+        headers.asMap().forEach((name, value) -> { if (!H_MESSAGE_ID.equalsIgnoreCase(name)) m.put(name, value); });
+        m.put(H_MESSAGE_ID, outboundId());
+        return new Envelope(id, flow, step, new Headers(m), props, keys, body, attachments, views);
     }
 
     /** A parsed view of the body, computed once per body and shared with every envelope carrying it. */

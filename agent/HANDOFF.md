@@ -1,20 +1,20 @@
 # Handoff
-state: RUNNING (owner RESUME 11-14, autonomous to Mon 11-16 08:00 Prague). Max 2 subagent slots is the parallelism ceiling, not the 4 CPUs
-commits: FIX-143 is the newest (`git log -1`), before it 07bbac6 FIX-146, 232ed9d FIX-145, e885ed8 CONSIDER-13 prompt, 7ccbaad FIX-147
-PUSHED and observed 2026-11-14: eb15a31..232ed9d, cleared by an integrated `clean verify -Pit` in the main tree - 17/17 modules SUCCESS,
-  core 566, 0 skipped, `coverage: no decrease`, FIX-144 flake did NOT fire. FIX-146 is committed on top, NOT pushed; it changes no code.
-FIX-143 and FIX-146 are committed and NOT pushed. Neither changes behaviour (comments, journal, ledgers), so no new reactor run is
-  owed before the next push; the last integrated run covered 232ed9d and is recorded above.
-next: FIX-144 + FIX-148 (same test, judge TOGETHER; flake REAL and load-dependent, idle 0/20 vs loaded 1/20; that class
-  burns 39.6 s per run in expired 2 s patiences; do NOT shorten patience() - at 2 s load decides the interleaving, the flake's mechanism.
-STANDING RULE earned twice today (NOTES): the reviewer has Read/Grep/Glob and NO shell. Anything proved only by a command must be ON DISK
-  before the review is dispatched - the diff via `git add -A && git diff --cached`, the build log, the PIT report copied out of target/.
-Ledgers are never edited in a lane, so a reviewer reading a lane worktree sees a STALE row: say so in every review packet.
-Lanes: never two Maven jobs in one worktree; ask what the others are MEASURING first. DIRECTORY NAME IS NOT BRANCH NAME -
-  flottila-lane2 is on branch `lane5` (lane2/lane4 are checked out nowhere, both carry nothing unique). Name the PATH, reset by path.
-OWNER, CONSIDER-13 (the message log): prompt at agent/packets/CONSIDER-13-fable-brainstorm-prompt.md plus CONSIDER-13-fable-addendum.md
-  (the designer's rejections verbatim - two SENTENCES, not two paragraphs as my prompt said). NOT DECIDED. main is still 634983a.
-open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2 answered 2026-10-28 (option 1+2); ISSUE-3 answered 2026-10-30 (option 2)
-open fixes: 16,18..20,22..29,31,33,34,36..43,45..52,54..58,61,63,64,68,72..75,77..104,109,112,113,122,124,126,127,129,135,143,144,148..156; CONSIDER-1..11
-pending at hand-over: D-022, D-025-61 exc 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..113
-owner at hand-over: F-18 (5 ms); D-064/65B/67A/72/73; P1-08 (D-049); /DirArchiveStore.bak + /S3ArchiveStore.bak (root deletes); `commit -F -` takes INDEX
+
+owner 2026-11-06: no benchmarks until the dedicated test machine (next week, or rented per run); work the external review (docs/review/)
+state: RUNNING core rework; CORE-0..4, 5a, 5a2, 5b1, 6a/b, 7, 9, 12, 14a/b, 15, 17, P2-15a..c, P2-16a/b, FIX-136..146 (not 138b), 156, 169, 172b/c, 173, 175/6
+WIP FIX-47: git apply agent/wip/FIX-47-lane2.patch (reds + docs + partial impl, unverified) → implementer finishes → reviewer; then FIX-174, 184/185
+last commit: merge origin/main (this; sim D-143, CONSIDER-15 top priority); 4390a9b handoff; 84d6e83 wip; 3da4141 `Task: CORE-5b1`
+owner 2026-11-13 (D-142): all advisor recommendations accepted (agent/review/owner-items-2026-11-13.md) → FIX-186..191
+owner 2026-11-03: D-101/P2-15 lease, D-102/P2-16 events, P2-14, CONSIDER-10; core rework rows CORE-0..12, CORE-GATE
+branch: work on claude/brave-hopper-5vwaju, every push also to main (WORKFLOW §3, owner 2026-11-14); main = branch after the merge
+next exact action: CONSIDER-15 [C] (owner top priority, flow error handling) designer; WIP CORE-5b2a1 git apply agent/wip/CORE-5b2a1-red.patch
+P1-08 owner points at hand-over (D-049): reply-direction header allow-list; refuse metadata-only at-least-once at load; Q-2 (bytes)
+CI: c652f49 run 148 green (tree = 7506325 + docs); fea6c5c runs 145 + 146 (dispatch: build, stack, bench, mutation) green; FIX-101 open
+baseline: `ci/coverage-baseline.json` is the measured value (D-050), `--write` at every task commit (FIX-6: api 99.0/100, validate 100/90.0, xslt 100/96.6)
+open issues: ISSUE-1 (Context7 quota; javap fallback); ISSUE-2..5 answered (ISSUE-5 by D-142 → FIX-191)
+open fixes: FIX-16,18..20,22..29,31,33,34,36..43,45..52,54..64, 68,71..75,77..84,86..104,109,112,113; CONSIDER-1..3,5..9 (owner)
+pending at hand-over: D-022, D-025–61 exc. 28/48/53/54, D-062/F-7, D-063, D-066..69/F-10, F-11, D-070/F-12, D-071/74..88, F-15..24, D-096..97, D-099, D-100
+owner at hand-over: F-18 (5 ms target; load regression until FIX-95); D-064/65B/67A/72/73
+roles (D-054): architect Opus 5.5 medium; row class sets model+effort; designer Opus xhigh (C); gate-reviewer + architecture advisor Fable 5.2 (D-131, D-137)
+notes: agent/NOTES.md by area (delivery modes, steps, components, DLQ, recording, pipeline, core, bench, VM; fixtures "FIX-10", "FIX-12")
+VM: services detached (NOTES "Build and VM"); review rule since FIX-7 in reviewer memory; lane worktrees are per machine

@@ -179,7 +179,8 @@ class FlowBuilderContextTest {
     /**
      * The at-least-once worker binds a fresh context per claim: accepted, then claimed an hour later (a backlog), the run's
      * deadline is the claim + 7 s, not the accept + 7 s; the first run crashes (left to its lease), the item is claimed again
-     * after the lease and that run's deadline is the second claim + 7 s. Same id and trace id both times.
+     * after the lease — by the worker's own lease-end wake (D-121 A6) — and that run's deadline is the second claim + 7 s. Same
+     * id and trace id both times.
      */
     @Test
     void eachWorkerClaimBindsAFreshDeadlineFromTheClaim() throws Exception {
@@ -187,7 +188,7 @@ class FlowBuilderContextTest {
         FlowBuilder b = builder().recording(new InMemoryMessageStore(), () -> 0).dlq(new InMemoryDlq()).queue(queue);
         FlowDefinition def = flow("ctx-worker", "at-least-once", "7s", List.of(step("probe", "p"), step("crash-first", "c")));
         Delivery accepting = b.delivery(def, NO_FILES);
-        FlowWorker worker = b.worker(def, NO_FILES, "w1", new WorkerPolicy(LEASE, 3, Duration.ofSeconds(1)));
+        FlowWorker worker = b.worker(def, NO_FILES, "w1", new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
         try {
             Envelope in = ingress("ctx-worker");
             assertEquals(new Ack.Accepted(in.id()), accepting.apply(in).await(5, TimeUnit.SECONDS), "fixture: saved and queued");
@@ -198,10 +199,10 @@ class FlowBuilderContextTest {
             Thread firstRun = seen.get(0).thread();
             assertTrue(firstRun.join(BOUND), "fixture: the first run crashed and ended, at " + Arrays.toString(firstRun.getStackTrace()));
 
-            rt.clock().advance(LEASE);   // the crashed run's lease runs out
+            rt.clock().advance(LEASE);   // the crashed run's lease runs out: the worker's lease-end wake claims it again (D-121 A6), no poll of the test
             Instant secondClaim = rt.clock().instant();
-            assertEquals(1, worker.poll().await(5, TimeUnit.SECONDS), "fixture: the item was claimed again after its lease");
-            until(() -> seen.size() == 2 && queue.size() == 0, () -> "the second run reached its probe and completed: " + seen + ", " + queue.snapshot());
+            until(() -> seen.size() == 2 && queue.size() == 0 && worker.unsettled() == 0,
+                    () -> "fixture: the item was claimed again after its lease, the second run reached its probe and completed: " + seen + ", " + queue.snapshot());
 
             assertEquals(context(in.id(), "ctx-worker", firstClaim.plus(Duration.ofSeconds(7))), seen.get(0).context(),
                     "the first claim's run: deadline from the claim, not from the accept an hour earlier");
@@ -214,7 +215,7 @@ class FlowBuilderContextTest {
     }
 
     /**
-     * A replay ({@code from}) and a DLQ retry each bind the context of the new message they run: its new id as id and trace id,
+     * A replay ({@code from}) and a DLQ replay each bind the context of the new message they run: its new id as id and trace id,
      * and a deadline from the replay's start + 7 s — not the original's. The original run (a built pipeline) bound its own.
      */
     @Test
@@ -240,7 +241,7 @@ class FlowBuilderContextTest {
 
         rt.clock().advance(Duration.ofMinutes(1));
         Instant retried = rt.clock().instant();
-        Ran retry = onVirtualThread(() -> replay.retry(in.id(), "r-2"));
+        Ran retry = onVirtualThread(() -> replay.replayParked(in.id(), "r-2"));
         assertInstanceOf(Envelope.class, retry.outcome(), "fixture: the retry went through");
 
         MessageContext originalContext = context(in.id(), "ctx-replay", original.plus(Duration.ofSeconds(7)));

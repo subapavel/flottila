@@ -5,7 +5,8 @@
 # against the baselines recorded in bench/RESULTS.md. Only numbers from native Linux runs are
 # recorded in RESULTS.md, by hand, with machine, date, configuration and commit.
 #
-# Environment: PGHOST (localhost), PGPORT (5432), PGUSER (flottila), PGPASSWORD (flottila),
+# Environment: PGHOST (localhost — loopback: the node benches start nodes with FLOTTILA_PG_SSL_MODE's loopback default disable;
+# a remote PGHOST defaults to verify-full for the nodes, but the bench's own migration and pool links carry no TLS — FIX-166, D-124), PGPORT (5432), PGUSER (flottila), PGPASSWORD (flottila),
 # BENCH_DB (flottila_bench — created if missing, via psql as PGUSER), BENCH_MESSAGES (20000),
 # BENCH_WARMUP (1000), BENCH_CONCURRENCY (64), BENCH_MACHINE (the machine label the run is judged
 # against in RESULTS.md, D-037; unset → "host:<hostname>", which no baseline matches: set it on purpose,
@@ -22,7 +23,27 @@
 # A node run that exits non-zero stops the script, with one exception: in the cpu scenario (refusals_ok=1) an exit 3 whose record
 # counts no error (errors 0: every failure is the flow's admission refusing, 503) stands — refusals occur even at 1 in flight against
 # the default limit 64×c, a permit outliving its reply (FIX-113), and FIX-112 judges their share. Every node run's summary names its
-# refused and warm-up failures ("refused R of M", "warm-up failed W"); the flow's limit stays NodeBenchMain's default (no --max-in-flight).
+# refused and warm-up failures ("refused R of M", "warm-up failed W"); the flow's limit stays NodeBenchMain's default (no --max-in-flight)
+# but in the open scenario with BENCH_MAX_IN_FLIGHT set.
+# `clickhouse` (CORE-2, needs Docker, not Postgres): ClickHouseCompressionMain against clickhouse/clickhouse-server:25.8.33.6 (the compose
+# pin) started with `docker run` on 127.0.0.1:BENCH_CH_PORT (18123), default server settings, data inside the container on the host's
+# disk; stopped and removed with its data when the scenario ends, failed or not. BENCH_CH_ARGS (unset: the full matrix) passes harness
+# arguments, e.g. "--sizes 100 --counts 50 --levels 1 --runs 1". Writes bench/out/clickhouse-compression.{json,log}, prints the table.
+# `open` (CORE-15): one NodeBenchMain run open loop (requests sent at times fixed in advance, whatever the answers) of
+# BENCH_OPEN_SCENARIO (ack; sync, or echo — the raw echo alone, the harness' own ceiling) at BENCH_RATE msg/s (5000, passed through:
+# NodeBenchMain refuses a value outside 1..100000), after a linear BENCH_RAMP (NodeBenchMain's PT1M unless set) for BENCH_WINDOW
+# (PT10M unless set); BENCH_PG_CPU (unset) names Postgres' cgroup v2 directory or pid for its CPU over the window
+# (--pg-cpu-source). BENCH_RECORDING_LEVEL (unset: NodeBenchMain's all) is passed as --recording-level (none|all, FIX-124: the
+# CORE-GATE cell runs none; NodeBenchMain refuses none for sync), BENCH_MAX_IN_FLIGHT (unset: NodeBenchMain's default) as
+# --max-in-flight, each as given for NodeBenchMain to judge. Named node-open-<scenario>-r<rate>, with -<level> appended when
+# BENCH_RECORDING_LEVEL is set (an all and a none run never share a file); its summary prints the record's open fields, its
+# recording level and whether it settled (bench/RESULTS.md, "Harness: open loop (CORE-15)"). A run whose settle did not land
+# within PT10M writes its record and exits 4 (FIX-124), which stops the script as any non-zero exit does.
+# CORE-15b: BENCH_IO_DEVICE (unset) names the block device of Postgres' data directory as /proc/diskstats lists it (--io-device,
+# the record's per-second `io` series); BENCH_PG_STATEMENTS=1 (unset/0: off) creates the pg_stat_statements extension in BENCH_DB
+# before the run (the server must preload it, shared_preload_libraries; a refusal is printed and the run goes on, its record
+# then says the statements are unknown). The summary adds the window's totals from the record's `db` series: commits/s and WAL
+# syncs/s (the series summed, over scheduled / offered rate seconds) and the top statement by execution time; n/a when unknown.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${PGHOST:=localhost}" "${PGPORT:=5432}" "${PGUSER:=flottila}" "${PGPASSWORD:=flottila}" "${BENCH_DB:=flottila_bench}"
@@ -40,7 +61,18 @@ if [[ -n "${BENCH_COMMIT_DELAY:-}" ]]; then
   ack_suffix="-cd$BENCH_COMMIT_DELAY"
 fi
 
-if ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "select 1 from pg_database where datname = '$BENCH_DB'" | grep -q 1; then
+open_scenario="${BENCH_OPEN_SCENARIO:-ack}"
+case "$open_scenario" in
+  ack|sync|echo) ;;
+  *) echo "BENCH_OPEN_SCENARIO: unknown open-loop scenario '$open_scenario' (ack, sync, echo)" >&2
+     exit 2 ;;
+esac
+
+needs_pg=0   # every scenario but clickhouse runs against Postgres
+for scenario in $BENCH_SCENARIOS; do
+  if [[ "$scenario" != clickhouse ]]; then needs_pg=1; fi
+done
+if (( needs_pg )) && ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "select 1 from pg_database where datname = '$BENCH_DB'" | grep -q 1; then
   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -v ON_ERROR_STOP=1 -c "create database $BENCH_DB"
 fi
 
@@ -70,7 +102,57 @@ set_commit_delay() { # µs — in force for every later run of the script, reset
   exit 4
 }
 
+clickhouse_run() { # CORE-2, in a subshell: its EXIT trap stops and removes the container (and its data) however the run ends
+  local image="clickhouse/clickhouse-server:25.8.33.6" name="flottila-bench-clickhouse" port="${BENCH_CH_PORT:-18123}" password="flottila-bench"
+  trap "docker rm -f -v $name > /dev/null" EXIT
+  docker run -d --name "$name" -p "127.0.0.1:$port:8123" -e CLICKHOUSE_PASSWORD="$password" "$image" > /dev/null
+  for _ in $(seq 120); do
+    if curl -sf "http://127.0.0.1:$port/ping" > /dev/null; then break; fi
+    sleep 0.5
+  done
+  curl -sf "http://127.0.0.1:$port/ping" > /dev/null || { echo "ClickHouse ($image) did not answer on port $port" >&2; exit 5; }
+  # shellcheck disable=SC2086 # BENCH_CH_ARGS is a list of harness arguments, split on purpose
+  java -Xmx2g -cp "$cp" io.flottila.bench.ClickHouseCompressionMain --url "http://127.0.0.1:$port" --password "$password" --image "$image" \
+    --out bench/out/clickhouse-compression.json --commit "$commit" ${BENCH_CH_ARGS:-} > bench/out/clickhouse-compression.log
+  grep '^|' bench/out/clickhouse-compression.log
+}
+
+pg_statements() { # BENCH_PG_STATEMENTS: the extension in BENCH_DB, where the node's statements run; a refusal keeps the run going
+  if ! psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$BENCH_DB" -v ON_ERROR_STOP=1 -tAc "create extension if not exists pg_stat_statements" > /dev/null; then
+    echo "BENCH_PG_STATEMENTS: pg_stat_statements could not be created in $BENCH_DB (the error above); the run goes on, its statements unknown" >&2
+  fi
+}
+
+# an open-loop record's summary line (CORE-15), nothing for a closed-loop record
+OPEN_SUMMARY='
+import json, sys
+j = json.load(open(sys.argv[1]))
+o = j.get("open")
+if o:
+    na = lambda v: "n/a" if v is None else str(v).lower()
+    ms = lambda v: "n/a" if v is None else "%.2f ms" % v
+    cpu = ", ".join(k + " " + ("n/a" if v is None else "%.0f ms" % v) for k, v in o["cpuMs"].items())
+    pct = "n/a" if o["backlogGrowthPercent"] is None else "%.2f %%" % o["backlogGrowthPercent"]
+    why = "" if o["valid"] else " (" + "; ".join(o["invalidReasons"]) + ")"
+    db = o.get("db")
+    seconds = o["scheduled"] / o["offeredRate"]
+    per_second = lambda v: "n/a" if v is None or None in v else "%.0f/s" % (sum(v) / seconds)
+    top = lambda s: "n/a" if s is None else "none" if not s else "%.0f ms in %d calls: %s" % (s[0]["totalExecTimeMs"], s[0]["calls"],
+          " ".join(s[0]["query"].split())[:100])
+    dbs = "" if db is None else "; db over the window: commits {0}, wal syncs {1}, top statement {2}".format(per_second(db.get("xactCommit")),
+          per_second(db.get("walSync")), top(db.get("statements")))
+    print(("open loop: offered {offeredRate:.0f} msg/s, achieved {achievedRate:.1f} msg/s, sent {sent} of {scheduled} scheduled,"
+           " accepted {accepted}, refused 503 {refused503}, refused {refused}, timeouts {timeouts}, errors {errors},"
+           " clientSaturated {clientSaturated}, p50 {p50}, p99 {p99}, p99.9 {p999}, max {max}, receipts {receipts},"
+           " backlog growth {backlogGrowth} ({pct}), cpu over the window: {cpu}; valid {ok}{why}; recording level {level_shown},"
+           " settled {settled_shown}{dbs}").format(**o, dbs=dbs, p50=ms(o["p50Ms"]), p99=ms(o["p99Ms"]), p999=ms(o["p999Ms"]), max=ms(o["maxMs"]), pct=pct,
+          cpu=cpu, ok=str(o["valid"]).lower(), why=why, level_shown=na(j.get("recordingLevel")), settled_shown=na(o.get("settled"))))
+'
+
 summary() { # name
+  local open
+  open="$(python3 -c "$OPEN_SUMMARY" "bench/out/$1.json")"
+  if [[ -n "$open" ]]; then echo "$1: $open"; return; fi
   echo "$1: $(python3 -c "import json,sys; j=json.load(open('bench/out/$1.json')); print(f\"{j['throughputPerSecond']:.0f} msg/s, p50 {j['p50Ms']:.2f} ms, p95 {j['p95Ms']:.2f} ms, p99 {j['p99Ms']:.2f} ms, max {j['maxMs']:.1f} ms\" + (f\", overhead p50 {j['overheadP50Ms']:.2f} ms\" if 'overheadP50Ms' in j else '') + (f\", process cpu {j['processCpuMsPerMessage']:.3f} ms/msg\" if 'processCpuMsPerMessage' in j else '') + (f\", refused {j['refused']} of {j['messages']}\" if 'refused' in j else '') + (f\", warm-up failed {j['warmupFailed']}\" if 'warmupFailed' in j else ''))")"
 }
 
@@ -126,8 +208,20 @@ for scenario in $BENCH_SCENARIOS; do
           done
         done
       done ;;
+    clickhouse)
+      (clickhouse_run) ;;
+    open)
+      open_args=(--scenario "$open_scenario" --rate "${BENCH_RATE:-5000}")
+      if [[ -n "${BENCH_RAMP:-}" ]]; then open_args+=(--ramp "$BENCH_RAMP"); fi
+      if [[ -n "${BENCH_WINDOW:-}" ]]; then open_args+=(--window "$BENCH_WINDOW"); fi
+      if [[ -n "${BENCH_PG_CPU:-}" ]]; then open_args+=(--pg-cpu-source "$BENCH_PG_CPU"); fi
+      if [[ -n "${BENCH_IO_DEVICE:-}" ]]; then open_args+=(--io-device "$BENCH_IO_DEVICE"); fi
+      if [[ "${BENCH_PG_STATEMENTS:-0}" != 0 ]]; then pg_statements; fi
+      if [[ -n "${BENCH_RECORDING_LEVEL:-}" ]]; then open_args+=(--recording-level "$BENCH_RECORDING_LEVEL"); fi
+      if [[ -n "${BENCH_MAX_IN_FLIGHT:-}" ]]; then open_args+=(--max-in-flight "$BENCH_MAX_IN_FLIGHT"); fi
+      run_node "node-open-$open_scenario-r${BENCH_RATE:-5000}${BENCH_RECORDING_LEVEL:+-$BENCH_RECORDING_LEVEL}" "${open_args[@]}" ;;
     *)
-      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu)" >&2
+      echo "BENCH_SCENARIOS: unknown scenario '$scenario' (batched, sync, ack, worker, cpu, clickhouse, open)" >&2
       exit 2 ;;
   esac
 done

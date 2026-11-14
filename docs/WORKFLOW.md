@@ -14,7 +14,8 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
    depends-on column is `done`. Phase gates are rows too; nothing in the next phase becomes
    `ready` until the gate row is `done`.
 3. Read the row's class (A/B/C/G, `AGENTS.md`); it sets the model and effort of every call below.
-   For a class-C row the designer drafts the design first. Write the acceptance spec
+   For a class-C row the designer drafts the design first and the architecture advisor opposes the
+   draft (D-137); decide with both. Write the acceptance spec
    (`AGENTS.md`); the test-author writes the red tests; approve them by reading the test files.
    Red first: the failing test exists, observed red, before the code. Then the task packet.
 4. Implement through the implementer (model and effort by the row's class). The coordinator never
@@ -27,7 +28,7 @@ is binding for every session working on Flottila; `CLAUDE.md` summarises it.
    `agent/work/<task>.diff`. When the diff goes to the reviewer the architect runs
    `touch agent/work/.batch-in-review` (§10). `FAIL` reopens the task at step 4; a second `FAIL`
    reopens it at step 3 with a rewritten spec, drafted by the designer, and raises the row's class
-   if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.1) instead.
+   if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.2) instead.
 7. Commit and push to `main`: `rm -f agent/work/.batch-in-review && git commit …`. Append the
    PROGRESS entry, rewrite HANDOFF, set the row to `done`. These three edits go in the same
    commit as the code.
@@ -76,6 +77,12 @@ Next: P1-05
 
 - One task, one commit, direct to `main`. Never push red; a red `main` makes "fix main" the only
   ready task.
+- `main` is the only place a new session looks (owner, 2026-11-14, after 119 commits lived only on a
+  session branch). When the environment makes a session commit on its own branch, every push goes to
+  both: `git push -u origin <branch>` and `git push origin HEAD:main`. A push to `main` that is not
+  a fast-forward is never forced: fetch, merge `origin/main` into the branch, resolve (renumber
+  colliding D-, F-, FIX- and CONSIDER- ids on the side that came later), verify, push again. The
+  first action of every session is `git fetch origin main` and a check that `HEAD` contains it.
 - Conventional Commits: `feat(core): …`, `fix(runtime): …`, `test(api): …`, `chore(ci): …`,
   `bench: …`, `docs: …`, `refactor(…)`. Scope = module without the `flottila-` prefix.
 - Body: what and why, then the evidence line (the `Checks:` line of the PROGRESS entry).

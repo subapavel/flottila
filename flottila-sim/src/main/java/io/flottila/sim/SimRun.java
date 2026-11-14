@@ -43,7 +43,7 @@ import java.util.SplittableRandom;
 import java.util.function.Function;
 
 /**
- * One run of one seed (D-101), on the driver thread: the real core — {@link FlowBuilder}, {@link io.flottila.core.flow.Delivery},
+ * One run of one seed (D-143), on the driver thread: the real core — {@link FlowBuilder}, {@link io.flottila.core.flow.Delivery},
  * {@link FlowWorker}, admission, Retry, the recorder and the DLQ — over in-memory stores, the fake clock and the run's doubles.
  * Two flows: {@code sync} (transform, then the partner) and {@code alo}, at-least-once by key (extractKey, transform, the
  * partner), run by workers A and B over one queue. Each tick draws its actions from the WORKLOAD stream, adds the RELEASE of
@@ -61,6 +61,8 @@ final class SimRun {
     static final List<String> WORKERS = List.of("A", "B");
     private static final String PARTNER = "partner";
     private static final Path BASE = Path.of("");
+    /** The at-least-once flow's delivery.retries (D-135): none, so a run whose in-thread retries are spent parks at once. */
+    private static final RetryPolicy NO_RETRIES = new RetryPolicy(0, FlowDefinition.MIN_RETRY_INTERVAL, FlowDefinition.MIN_RETRY_INTERVAL, 1.0);
 
     /** One unit of the driver. */
     @FunctionalInterface
@@ -129,12 +131,12 @@ final class SimRun {
         FlowDefinition sync = new FlowDefinition(SYNC, "1", "in", "sync", FlowDefinition.DEFAULT_SAVE_TIMEOUT, config.maxBodyBytes(),
                 Optional.of(config.syncMaxInFlight()), Optional.of(config.syncMaxInFlightBytes()), Optional.empty(), List.of(), retry,
                 RecordingPolicy.DEFAULT, List.of(transform1, to(2)));
-        FlowDefinition alo = new FlowDefinition(ALO, "1", "in", "at-least-once", FlowDefinition.DEFAULT_SAVE_TIMEOUT, config.maxBodyBytes(),
-                Optional.of(config.aloMaxInFlight()), Optional.of(config.aloMaxInFlightBytes()), Optional.of(KEY), List.of(), retry,
-                RecordingPolicy.DEFAULT, List.of(new StepConfig(1, "extractKey", "key", false,
+        FlowDefinition alo = new FlowDefinition(ALO, "1", "in", "at-least-once", FlowDefinition.DEFAULT_SAVE_TIMEOUT, FlowDefinition.DEFAULT_TIMEOUT,
+                config.maxBodyBytes(), Optional.of(config.aloMaxInFlight()), Optional.of(config.aloMaxInFlightBytes()), Optional.of(KEY),
+                Optional.of(FlowDefinition.PARK), List.of(), retry, Optional.of(NO_RETRIES), RecordingPolicy.DEFAULT, List.of(new StepConfig(1, "extractKey", "key", false,
                         Map.of("key", KEY, "xpath", KEY_HEADER, "language", SimSteps.LANGUAGE)), transform2, to(3)));
         entries = Map.of(SYNC, world.entry(SYNC, () -> builder.delivery(sync, BASE)), ALO, world.entry(ALO, () -> builder.delivery(alo, BASE)));
-        WorkerPolicy policy = new WorkerPolicy(Duration.ofSeconds(30), 5, Duration.ofSeconds(1));
+        WorkerPolicy policy = new WorkerPolicy(Duration.ofSeconds(30), Duration.ofSeconds(1));
         workers = Map.of(WORKERS.get(0), builder.worker(alo, BASE, WORKERS.get(0), policy), WORKERS.get(1), builder.worker(alo, BASE, WORKERS.get(1), policy));
     }
 

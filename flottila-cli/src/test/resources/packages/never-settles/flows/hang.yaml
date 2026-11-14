@@ -8,6 +8,8 @@ from:
   endpoint: in
 delivery:
   mode: sync
+  # longer than the 10 min horizon: the partner's delay is what the cases time, not the deadline (D-113 cuts a send at it)
+  timeout: 15m
 limits:
   maxBodyBytes: 1048576
   maxInFlight: 4

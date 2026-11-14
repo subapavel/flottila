@@ -1,6 +1,7 @@
 package io.flottila.runtime;
 
 import io.flottila.api.Ack;
+import io.flottila.api.BlobKey;
 import io.flottila.api.Component;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
@@ -22,8 +23,10 @@ import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
 import io.flottila.runtime.node.PlainComponent;
+import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.testkit.PostgresImage;
 import io.flottila.testkit.RecordingComponent;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
@@ -91,9 +94,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.logging.Handler;
@@ -105,6 +110,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -121,7 +127,7 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class NodeIT {
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
     static Pool observer;
@@ -186,6 +192,7 @@ class NodeIT {
         env.put("FLOTTILA_PG_USER", pg.getUsername());
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
+        TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         return env;
     }
 
@@ -198,6 +205,7 @@ class NodeIT {
     @Test
     void startMigratesAndServesHealth() throws Exception {
         Map<String, String> env = env("prod");
+        env.put("FLOTTILA_PG_DURABILITY", "local");   // FIX-136: a deployed node defaults to ha; the case's one Postgres has no standby
         env.put("FLOTTILA_BLOB_TREE_LIMIT", "65536");
         // P1-09c3a (D-070): a deployed node refuses the dir archive store and a plain-http endpoint; it builds its S3 client at
         // start and contacts S3 only to restore a recorded package (none here), so an https endpoint nothing listens on will do
@@ -281,18 +289,19 @@ class NodeIT {
         }
     }
 
-    /** A spooled object is encrypted with a key that died with its process: what a previous run left under the spool is garbage. */
+    /**
+     * Expectation changed by CORE-4c2 (D-105): the spool tier and its per-start key are gone — a body the memory tier does not
+     * hold is a large body in the journal — so a started node keeps no {@code <data>/spool}; its bodies live under the journal
+     * directory ({@code <data>/journal} by default). (The case used to pin that a start clears the spool a previous run left.)
+     */
     @Test
-    void startClearsTheSpoolLeftByAPreviousRun() throws Exception {
-        Path spool = data.resolve("spool");
-        Path leftover = Files.writeString(Files.createDirectories(spool).resolve("leftover.bin"), "spooled by the previous run");
-        Path nested = Files.writeString(Files.createDirectories(spool.resolve("previous-run")).resolve("part-0"), "and in a directory of its own");
-        Path besides = Files.writeString(data.resolve("not-the-spool.txt"), "outside the spool");
+    void aStartedNodeKeepsNoSpool() throws Exception {
+        Path besides = Files.writeString(data.resolve("not-the-spool.txt"), "outside the journal");
         start(env("ci"), ctx -> List.of(new PlainComponent("sftp")));
         assertEquals(200, get(node.adminPort(), "/health").statusCode(), "the node runs");
-        assertFalse(Files.exists(leftover), "a file the previous run left in the spool is gone after start");
-        assertFalse(Files.exists(nested.getParent()), "a directory the previous run left in the spool is gone with its files");
-        assertTrue(Files.exists(besides), "only the spool is cleared: the rest of the data directory stays");
+        assertFalse(Files.exists(data.resolve("spool")), "no spool directory");
+        assertTrue(Files.isDirectory(data.resolve("journal").resolve("segments")), "the journal is where bodies go");
+        assertTrue(Files.exists(besides), "the rest of the data directory stays");
     }
 
     @Test
@@ -1495,7 +1504,7 @@ class NodeIT {
         }
     }
 
-    // --- P1-09c2 (D-067, GATE check 7): replay and DLQ retry over the admin API
+    // --- P1-09c2 (D-067, GATE check 7): message replay, same-id DLQ retry and DLQ replay over the admin API
 
     /** The demo flow's {@code retry.attempts}: retries after the first try (RetryPolicy). */
     static final int DEMO_RETRIES = 3;
@@ -1600,72 +1609,267 @@ class NodeIT {
         }
     }
 
-    /**
-     * GATE check 7, DLQ: the demo switched to at-least-once, its partner down (503). The worker tries the partner step once and
-     * retries it per the flow's policy ({@value #DEMO_RETRIES} retries), then parks the message: {@code GET /admin/dlq} lists its
-     * row at step 5 (partner) naming the 503. The partner comes back; {@code POST /admin/dlq/{id}/retry} answers 200 with exactly
-     * {@code {id, replayOf, from, outcome}} — a new id, the parked one, 5, COMPLETE — the partner gets the mapped invoice once
-     * more and answers it, the row is gone from {@code GET /admin/dlq}, and the new message's rows are the parked input at step 4
-     * and the partner step, marked {@code replayOf}.
-     */
-    @Test
-    void partnerDownParksAndRetryDeliversOncePartnerIsBack() throws Exception {
-        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
-        List<String> partnerSaw = new CopyOnWriteArrayList<>();
+    /** The demo's partner, down (503) until {@code down} is cleared: every request as {@code "<status> <path> <body>"}, its {@code x-message-id}. */
+    record DownPartner(io.vertx.core.http.HttpServer server, List<String> saw, List<String> ids, AtomicBoolean down) {}
+
+    DownPartner downPartner(Buffer ack) {
+        List<String> saw = new CopyOnWriteArrayList<>();
+        List<String> ids = new CopyOnWriteArrayList<>();
         AtomicBoolean down = new AtomicBoolean(true);
-        io.vertx.core.http.HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
+        io.vertx.core.http.HttpServer server = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
             boolean isDown = down.get();
-            partnerSaw.add((isDown ? "503 " : "200 ") + req.path() + " " + b);
+            ids.add(String.valueOf(req.getHeader(HttpComponent.H_MESSAGE_ID)));
+            saw.add((isDown ? "503 " : "200 ") + req.path() + " " + b);
             if (isDown) req.response().setStatusCode(503).end("partner down");
             else req.response().putHeader("content-type", "application/xml").end(ack);
         })).listen(0, "127.0.0.1").await();
+        return new DownPartner(server, saw, ids, down);
+    }
+
+    /**
+     * The demo switched to at-least-once on a node whose retries are at count 0, {@code partner} down: one invoice accepted, then
+     * parked by the worker — {@code GET /admin/dlq} lists its one row at step 1 (validate) naming the 503, after the first try and
+     * {@value #DEMO_RETRIES} step retries. Returns the parked id.
+     */
+    String parkedWhilePartnerDown(HttpClient client, DownPartner partner) throws Exception {
+        int inPort = freePort();
+        Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.server().actualPort());
+        files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+        assertTrue(new String(files.get("flows/invoice-sync.yaml"), StandardCharsets.UTF_8).contains("attempts: " + DEMO_RETRIES),
+                "fixture: the demo flow retries its partner step " + DEMO_RETRIES + " times");
+        Map<String, String> env = env("ci");
+        env.put("FLOTTILA_RETRIES_COUNT", "0");   // CORE-14a (P6): the worker run's failure parks its ingress at once
+        startDemoNode(env);
+        int admin = node.adminPort();
+        assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
+        HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+        assertEquals(202, accepted.statusCode(), accepted.body());
+        String parked = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
+
+        until(() -> !dlqItems(admin).isEmpty(), "the message is parked once the partner step's retries are spent");
+        JsonArray rows = dlqItems(admin);
+        assertEquals(1, rows.size(), "one DLQ row: " + rows.encode());
+        JsonObject row = rows.getJsonObject(0);
+        assertEquals(parked, row.getString("id"), row.encode());
+        assertEquals("demo/invoice-sync", row.getString("flow"), row.encode());
+        assertEquals(1, row.getInteger("step"), "parked by its ingress, at step 1: " + row.encode());
+        assertEquals("validate", row.getString("name"), row.encode());
+        assertTrue(row.getString("error").contains("503"), "the row names the partner's 503: " + row.encode());
+        assertEquals(1 + DEMO_RETRIES, partner.saw().size(), "the first try and " + DEMO_RETRIES + " retries, no more: " + partner.saw());
+        assertTrue(partner.saw().stream().allMatch(s -> s.startsWith("503 /echo ")), "each answered 503: " + partner.saw());
+        assertEquals(List.of(parked), partner.ids().stream().distinct().toList(), "fixture: every try under the parked id: " + partner.ids());
+        return parked;
+    }
+
+    /** The {@code work} rows, as a session of its own sees them. */
+    long workRows() {
+        PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+        try {
+            return reader.query("select count(*) from work").execute().await().iterator().next().getLong(0);
+        } finally {
+            reader.close().await();
+        }
+    }
+
+    /**
+     * GATE check 7, DLQ retry (FIX-138a, D-045: a retry keeps the message's identity): the demo switched to at-least-once, its
+     * partner down (503), the message parked by its worker ({@link #parkedWhilePartnerDown}). The partner comes back;
+     * {@code POST /admin/dlq/{id}/retry} answers 202 with exactly {@code {id, attempt}} — the parked id, attempt 2 — the row is gone
+     * from {@code GET /admin/dlq}, and the worker delivers the mapped invoice once more, once, under the same {@code x-message-id}:
+     * a partner deduplicating by message id sees one message.
+     */
+    @Test
+    void partnerDownParksAndRetryDeliversTheSameIdOncePartnerIsBack() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = downPartner(ack);
         try (HttpClient client = http()) {
-            int inPort = freePort();
-            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
-            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
-            assertTrue(new String(files.get("flows/invoice-sync.yaml"), StandardCharsets.UTF_8).contains("attempts: " + DEMO_RETRIES),
-                    "fixture: the demo flow retries its partner step " + DEMO_RETRIES + " times");
-            startDemoNode(env("ci"));
+            String parked = parkedWhilePartnerDown(client, partner);
             int admin = node.adminPort();
-            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
-            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
-            assertEquals(202, accepted.statusCode(), accepted.body());
-            String parked = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
 
-            until(() -> !dlqItems(admin).isEmpty(), "the message is parked once the partner step's retries are spent");
-            JsonArray rows = dlqItems(admin);
-            assertEquals(1, rows.size(), "one DLQ row: " + rows.encode());
-            JsonObject row = rows.getJsonObject(0);
-            assertEquals(parked, row.getString("id"), row.encode());
-            assertEquals("demo/invoice-sync", row.getString("flow"), row.encode());
-            assertEquals(5, row.getInteger("step"), "parked at the partner step: " + row.encode());
-            assertEquals("partner", row.getString("name"), row.encode());
-            assertTrue(row.getString("error").contains("503"), "the row names the partner's 503: " + row.encode());
-            assertEquals(1 + DEMO_RETRIES, partnerSaw.size(), "the first try and " + DEMO_RETRIES + " retries, no more: " + partnerSaw);
-            assertTrue(partnerSaw.stream().allMatch(s -> s.startsWith("503 /echo ")), "each answered 503: " + partnerSaw);
-
-            down.set(false);
+            partner.down().set(false);
             HttpResponse<String> retried = post(client, admin, "/admin/dlq/" + parked + "/retry");
 
-            assertEquals(200, retried.statusCode(), retried.body());
-            JsonObject answer = new JsonObject(retried.body());
-            String id = answer.getString("id");
-            assertTrue(id != null && !id.equals(parked), "the retry is a new message: " + answer);
-            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 5).put("outcome", "COMPLETE"), answer, "the retry's answer");
-            assertEquals(2 + DEMO_RETRIES, partnerSaw.size(), "delivered once the partner is back, once: " + partnerSaw);
-            String delivered = partnerSaw.getLast();
-            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
+            assertEquals(202, retried.statusCode(), retried.body());
+            assertEquals(new JsonObject().put("id", parked).put("attempt", 2), new JsonObject(retried.body()), "the retry keeps the parked id: its attempt 2");
             assertEquals(new JsonArray(), dlqItems(admin), "the row is gone");
-            until(() -> stepsOf(admin, id).size() == 2, "the retry's rows are recorded: its input and the partner step");
+            until(() -> partner.saw().size() == 2 + DEMO_RETRIES, "the worker delivers it once the partner is back");
+            until(() -> workRows() == 0, "the restarted run completed");
+            assertEquals(2 + DEMO_RETRIES, partner.saw().size(), "delivered once more, once: " + partner.saw());
+            String delivered = partner.saw().getLast();
+            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
+            assertEquals(parked, partner.ids().getLast(), "delivered under the parked message id");
+            assertEquals(List.of(parked), partner.ids().stream().distinct().toList(), "a partner deduplicating by message id sees one message: " + partner.ids());
+            assertEquals(new JsonArray(), dlqItems(admin), "not parked again");
+        } finally {
+            partner.server().close().await();
+        }
+    }
+
+    /**
+     * GATE check 7, DLQ replay (FIX-138a: today's {@code /retry} copy, moved): the message parked as above
+     * ({@link #parkedWhilePartnerDown}). The partner comes back; {@code POST /admin/dlq/{id}/replay} answers 200 with exactly
+     * {@code {id, replayOf, from, outcome}} — a new id, the parked one, 1, COMPLETE — the partner gets the mapped invoice once more,
+     * under the new id, and answers it, the row is gone from {@code GET /admin/dlq}, and the new message's rows are the parked input
+     * at step 0 and the five steps, marked {@code replayOf}.
+     */
+    @Test
+    void partnerDownParksAndReplayDeliversANewCopyOncePartnerIsBack() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = downPartner(ack);
+        try (HttpClient client = http()) {
+            String parked = parkedWhilePartnerDown(client, partner);
+            int admin = node.adminPort();
+
+            partner.down().set(false);
+            HttpResponse<String> replayed = post(client, admin, "/admin/dlq/" + parked + "/replay");
+
+            assertEquals(200, replayed.statusCode(), replayed.body());
+            JsonObject answer = new JsonObject(replayed.body());
+            String id = answer.getString("id");
+            assertTrue(id != null && !id.equals(parked), "the replay is a new message: " + answer);
+            assertEquals(new JsonObject().put("id", id).put("replayOf", parked).put("from", 1).put("outcome", "COMPLETE"), answer, "the replay's answer");
+            assertEquals(2 + DEMO_RETRIES, partner.saw().size(), "delivered once the partner is back, once: " + partner.saw());
+            String delivered = partner.saw().getLast();
+            assertTrue(delivered.startsWith("200 /echo ") && delivered.contains("<PartnerInvoice number=\"4711\""), "the mapped invoice reached the partner and was answered: " + delivered);
+            assertEquals(id, partner.ids().getLast(), "under the new id");
+            assertEquals(new JsonArray(), dlqItems(admin), "the row is gone");
+            until(() -> stepsOf(admin, id).size() == 6, "the replay's rows are recorded: its input and the five steps");
             JsonArray steps = stepsOf(admin, id);
-            assertEquals(List.of("4 replay", "5 partner"), stepNames(steps), "only the parked step ran, on the parked input: " + steps.encode());
+            assertEquals(List.of("0 replay", "1 validate", "2 extractKey", "3 route", "4 toPartner", "5 partner"), stepNames(steps),
+                    "the run from the parked step ran on the parked input: " + steps.encode());
             for (Object each : steps) {
                 JsonObject step = (JsonObject) each;
                 assertEquals("OK", step.getString("outcome"), step.encode());
                 assertEquals(parked, step.getJsonObject("props").getString("replayOf"), "marked replayOf the parked message: " + step.encode());
             }
         } finally {
-            partner.close().await();
+            partner.server().close().await();
+        }
+    }
+
+    // --- FIX-175 (P1–P3): each attempt of a same-id rerun keeps its own rows, over the admin API and a real Postgres
+
+    /** The demo's partner answering 503 to its first {@code failures} requests and the ack after: as {@link #downPartner}, its {@code down} unused. */
+    DownPartner failingFirst(Buffer ack, int failures) {
+        List<String> saw = new CopyOnWriteArrayList<>();
+        List<String> ids = new CopyOnWriteArrayList<>();
+        AtomicInteger requests = new AtomicInteger();
+        io.vertx.core.http.HttpServer server = vertx.createHttpServer().requestHandler(req -> req.body().onSuccess(b -> {
+            boolean isDown = requests.incrementAndGet() <= failures;
+            ids.add(String.valueOf(req.getHeader(HttpComponent.H_MESSAGE_ID)));
+            saw.add((isDown ? "503 " : "200 ") + req.path() + " " + b);
+            if (isDown) req.response().setStatusCode(503).end("partner down");
+            else req.response().putHeader("content-type", "application/xml").end(ack);
+        })).listen(0, "127.0.0.1").await();
+        return new DownPartner(server, saw, ids, new AtomicBoolean(false));
+    }
+
+    /**
+     * The {@code steps} of {@code id} once at least {@code n} rows are there, or as they are after 20 s (the writer commits
+     * asynchronously): a timeline that never grows is compared, not timed out.
+     */
+    static JsonArray stepsOnceThere(int admin, String id, int n) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        JsonArray steps = stepsOf(admin, id);
+        while (steps.size() < n && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+            Thread.yield();
+            steps = stepsOf(admin, id);
+        }
+        return steps;
+    }
+
+    /** Each row as {@code "<attempt> <step> <name> <outcome>"}. */
+    static List<String> attemptRows(JsonArray steps) {
+        return steps.stream().map(JsonObject.class::cast)
+                .map(s -> s.getValue("attempt") + " " + s.getInteger("step") + " " + s.getString("name") + " " + s.getString("outcome")).toList();
+    }
+
+    /** The demo's five steps of one worker run as {@link #attemptRows} names them: the partner step's outcome last. */
+    static List<String> run(int attempt, String partnerOutcome) {
+        return List.of(attempt + " 1 validate OK", attempt + " 2 extractKey OK", attempt + " 3 route OK", attempt + " 4 toPartner OK", attempt + " 5 partner " + partnerOutcome);
+    }
+
+    /**
+     * FIX-175 A1: the demo switched to at-least-once on a node retrying twice a second apart ({@code FLOTTILA_RETRIES_COUNT} 2,
+     * {@code FLOTTILA_RETRIES_INTERVAL} PT1S); the partner answers 503 to the first two attempts (each the first try and
+     * {@value #DEMO_RETRIES} step retries), then takes the invoice. {@code GET /admin/messages/{id}} lists the ingress (attempt 1)
+     * and the five steps of each of attempts 1, 2 and 3, by attempt then step, each with its {@code attempt} and its own outcome —
+     * the partner step FAILED in attempts 1 and 2, OK in attempt 3.
+     */
+    @Test
+    void aMessageWhosePartnerFailsTwiceThenSucceedsShowsTheRowsOfEachAttempt() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = failingFirst(ack, 2 * (1 + DEMO_RETRIES));
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.server().actualPort());
+            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_RETRIES_COUNT", "2");
+            env.put("FLOTTILA_RETRIES_INTERVAL", "PT1S");
+            startDemoNode(env);
+            int admin = node.adminPort();
+            assertEquals(200, send(client, "PUT", admin, "/admin/packages/demo", zip(files), "application/zip").statusCode(), "fixture: the demo deploys");
+            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            assertEquals(202, accepted.statusCode(), accepted.body());
+            String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
+
+            until(() -> partner.saw().size() == 2 * (1 + DEMO_RETRIES) + 1, "the third attempt reaches the partner");
+            until(() -> workRows() == 0, "the third attempt completed");
+            assertTrue(partner.saw().getLast().startsWith("200 "), "fixture: the third attempt was taken: " + partner.saw());
+            assertEquals(List.of(id), partner.ids().stream().distinct().toList(), "fixture: every attempt under the message's id: " + partner.ids());
+            assertEquals(new JsonArray(), dlqItems(admin), "fixture: not parked");
+
+            List<String> expected = new java.util.ArrayList<>(List.of("1 0 ingress OK"));
+            expected.addAll(run(1, "FAILED"));
+            expected.addAll(run(2, "FAILED"));
+            expected.addAll(run(3, "OK"));
+            JsonArray steps = stepsOnceThere(admin, id, expected.size());
+            assertEquals(expected, attemptRows(steps), "the rows of attempts 1, 2 and 3, each with its attempt and outcome: " + steps.encode());
+            for (Object each : steps) {
+                JsonObject row = (JsonObject) each;
+                int attempt = row.getInteger("attempt");
+                assertEquals(attempt == 1 ? null : attempt, row.getJsonObject("props").getValue("attempt"), "the row's attempt is its run's: " + row.encode());
+            }
+        } finally {
+            partner.server().close().await();
+        }
+    }
+
+    /**
+     * FIX-175 A2: the message parked as in {@link #parkedWhilePartnerDown} (attempt 1, count 0), the partner back, then
+     * {@code POST /admin/dlq/{id}/retry} (attempt 2): once the worker delivered it, {@code GET /admin/messages/{id}} lists attempt
+     * 2's five rows — the partner step OK — beside attempt 1's ingress and five rows, the partner step FAILED, unchanged.
+     */
+    @Test
+    void aRetriedMessagesTimelineShowsTheRetriedAttemptsRowsBesideTheParkedOnes() throws Exception {
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        DownPartner partner = downPartner(ack);
+        try (HttpClient client = http()) {
+            String parked = parkedWhilePartnerDown(client, partner);
+            int admin = node.adminPort();
+            List<String> first = new java.util.ArrayList<>(List.of("1 0 ingress OK"));
+            first.addAll(run(1, "FAILED"));
+            JsonArray before = stepsOnceThere(admin, parked, first.size());
+            assertEquals(first, attemptRows(before), "fixture: attempt 1's rows: " + before.encode());
+
+            partner.down().set(false);
+            HttpResponse<String> retried = post(client, admin, "/admin/dlq/" + parked + "/retry");
+            assertEquals(202, retried.statusCode(), retried.body());
+            assertEquals(new JsonObject().put("id", parked).put("attempt", 2), new JsonObject(retried.body()), "fixture: the retry is attempt 2");
+            until(() -> partner.saw().size() == 2 + DEMO_RETRIES, "the worker delivers it once the partner is back");
+            until(() -> workRows() == 0, "the restarted run completed");
+
+            List<String> expected = new java.util.ArrayList<>(first);
+            expected.addAll(run(2, "OK"));
+            JsonArray steps = stepsOnceThere(admin, parked, expected.size());
+            assertEquals(expected, attemptRows(steps), "attempt 2's rows beside attempt 1's: " + steps.encode());
+            JsonArray head = new JsonArray();
+            for (int i = 0; i < first.size(); i++) head.add(steps.getJsonObject(i));
+            assertEquals(before, head, "attempt 1's rows as they were");
+        } finally {
+            partner.server().close().await();
         }
     }
 
@@ -1673,11 +1877,13 @@ class NodeIT {
 
     /**
      * The demo package with its flow switched to at-least-once (its 1 MiB body limit is FLOTTILA_BLOB_DURABLE_MAX's default):
-     * the 202 promises the body, so another session sees its {@code bodies} row the moment the 202 arrives, with the posted
-     * bytes; the worker then reads the body back from Postgres (the node keeps no local copy after persist) and sends it on.
+     * the 202 promises the body. Expectation changed by CORE-4c2 (D-105): the promise is the journal's — another session sees,
+     * the moment the 202 arrives, the ingress body's kept ref ({@code body_refs}, the flow keeping its input) on this node and
+     * no {@code bodies} row; the worker reads the body back from the journal and sends it on. The invoice is padded above the
+     * memory tier (4 KiB here, so RECORD_MAX is 4 KiB too): a large body of its own in the journal, and no {@code <data>/spool}.
      */
     @Test
-    void anAcceptedAtLeastOnceMessageHasItsBodiesRow() throws Exception {
+    void anAcceptedAtLeastOnceMessageIsKeptInTheJournalNotInBodies() throws Exception {
         Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
         List<String> partnerSaw = new CopyOnWriteArrayList<>();
         io.vertx.core.http.HttpServer partner = partner(partnerSaw, Future.succeededFuture(), ack);
@@ -1685,63 +1891,105 @@ class NodeIT {
             int inPort = freePort();
             Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
             files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
-            startDemoNode(env("ci"));
+            Map<String, String> env = env("ci");
+            env.put("FLOTTILA_BLOB_MEMORY_TIER", "4096");
+            startDemoNode(env);
             HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip(files), "application/zip");
             assertEquals(200, put.statusCode(), put.body());
 
-            byte[] invoice = Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml"));
+            byte[] invoice = (Files.readString(DEMO.resolve("fixtures/sample-invoice.xml")) + "<!-- " + "padding ".repeat(1024) + "-->")
+                    .getBytes(StandardCharsets.UTF_8);
+            assertTrue(invoice.length > 8192, "fixture: above the 4 KiB memory tier");
             HttpResponse<String> accepted = send(client, "POST", inPort, "/in", invoice, "application/xml");
             assertEquals(202, accepted.statusCode(), accepted.body());
             String id = accepted.headers().firstValue(HttpComponent.H_MESSAGE_ID).orElseThrow(() -> new AssertionError("the 202 names its message id: " + accepted.headers()));
-            assertEquals(Optional.of(Buffer.buffer(invoice)), bodiesRow(id), "no wait: what the 202 promised is in Postgres, the ingress body's bytes under (id, 0, body)");
+            assertEquals(List.of("node-it"), keptRefNodes(id), "no wait: what the 202 promised is kept in this node's journal, under (id, 0, body)");
+            assertEquals(Optional.empty(), bodiesRow(id), "and no bytes went to Postgres");
+            assertFalse(Files.exists(data.resolve("spool")), "nor to a spool");
 
-            until(() -> partnerSaw.size() == 1, "the worker sends the invoice on, its body read back from Postgres");
+            until(() -> partnerSaw.size() == 1, "the worker sends the invoice on, its body read back from the journal");
             assertTrue(partnerSaw.get(0).startsWith("/echo ") && partnerSaw.get(0).contains("<PartnerInvoice number=\"4711\""), "the mapped invoice went to the domestic partner: " + partnerSaw);
         } finally {
             partner.close().await();
         }
     }
 
+    /** The nodes of the message's ingress body ref ({@code body_refs} under (id, 0, body)), as a session of its own sees them. */
+    List<String> keptRefNodes(String messageId) {
+        PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+        try {
+            List<String> nodes = new java.util.ArrayList<>();
+            for (io.vertx.sqlclient.Row r : reader.preparedQuery("select node from body_refs where message_id = $1 and step = 0 and part = 'body'")
+                    .execute(Tuple.of(messageId)).await()) {
+                nodes.add(r.getString(0));
+            }
+            return nodes;
+        } finally {
+            reader.close().await();
+        }
+    }
+
     /**
-     * D-061: a node refuses to start unless {@code synchronous_commit} is {@code on}, {@code remote_write} or {@code remote_apply}
-     * for its sessions — an ACK promises a commit that survives a crash. Set on the case database: {@code off} stops {@code Main}
-     * with one {@code flottila:} line and exit 1; {@code local} fails {@code Node.start}, which closes the pool it opened; the
-     * same database with {@code remote_write} starts — the refusal is the setting's, nothing else's.
+     * FIX-136 P2 (D-127 draft). Rewritten from aNodeRefusesAsynchronousCommit: D-061 is amended by the session pin — its start
+     * refusal of a database-level async commit is replaced by the node's startup parameters {@code synchronous_commit=on} and
+     * {@code statement_timeout=0}, which a session's start sets above any database or role default. The case database runs
+     * {@code synchronous_commit=off} and a 45 s statement timeout for every new session (witness: a plain session shows both); the
+     * node starts on it anyway, and the session its at-least-once intake commits on — seen by a BEFORE INSERT trigger on
+     * {@code messages} noting that session's own settings — commits {@code on} without a statement timeout.
      */
     @Test
-    void aNodeRefusesAsynchronousCommit() throws Exception {
+    void aDatabaseLevelAsynchronousCommitDoesNotWeakenTheNodesSessions() throws Exception {
         synchronousCommit("off");
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        PrintStream err = new PrintStream(bytes, true, StandardCharsets.UTF_8);
-        int code = OnVirtualThread.call(() -> Main.run(env("ci"), err));
-        List<String> lines = bytes.toString(StandardCharsets.UTF_8).lines().toList();
-        assertEquals(1, code, "a node that does not start exits with 1: " + lines);
-        assertEquals(1, lines.size(), "one line on stderr, no stack trace: " + lines);
-        assertTrue(lines.get(0).startsWith("flottila:"), lines.get(0));
-        assertTrue(lines.get(0).contains("synchronous_commit") && lines.get(0).contains("off"), "the line names the setting and its value: " + lines.get(0));
-        until(() -> connections() == 0, "the refused node left no connection to its database");
-        assertEquals(List.of(), tables(), "the check runs before migrate: the refused node left its database untouched, no flyway_schema_history");
-
-        synchronousCommit("local");
-        NodeConfig config = NodeConfig.from(env("ci"));
-        Set<String> before = Set.copyOf(vertx.deploymentIDs());
-        Exception refused = null;
-        try {
-            node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new PlainComponent("sftp")), List.of(), List.of()));
-        } catch (Exception expected) {
-            refused = expected;
+        try (Connection admin = DriverManager.getConnection(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword());
+             Statement alter = admin.createStatement()) {
+            alter.execute("ALTER DATABASE \"" + database + "\" SET statement_timeout = '45s'");
         }
-        assertNotNull(refused, "local commits only wait for the local flush: refused too (the node started on port " + (node == null ? "?" : node.adminPort()) + ")");
-        assertTrue(causes(refused).stream().anyMatch(c -> c.contains("synchronous_commit")), "names the setting: " + causes(refused));
-        node = null;
-        until(() -> connections() == 0, "the failed start closed the pool it opened: no connection to the case database is left");
-        assertEquals(before, Set.copyOf(vertx.deploymentIDs()), "no verticle stays deployed");
-        assertEquals(List.of(), tables(), "refused before migrate: still no flyway_schema_history, no table at all");
+        PgConnection plain = PgConnection.connect(vertx, options(database)).await();
+        try {
+            assertEquals("off", plain.query("show synchronous_commit").execute().await().iterator().next().getString(0),
+                    "witness: a new session of the case database commits asynchronously");
+            assertEquals("45s", plain.query("show statement_timeout").execute().await().iterator().next().getString(0),
+                    "witness: and runs with the database's statement timeout");
+        } finally {
+            plain.close().await();
+        }
 
-        synchronousCommit("remote_write");
-        start(env("ci"), ctx -> List.of(new PlainComponent("sftp")));
-        assertEquals(200, get(node.adminPort(), "/health").statusCode(), "remote_write commits synchronously: the node starts on the same database");
-        assertTrue(tables().contains("public.flyway_schema_history"), "witness for the refusals: a started node migrates, so the history table shows: " + tables());
+        Buffer ack = Buffer.buffer(Files.readAllBytes(DEMO.resolve("fixtures/partner-ack.xml")));
+        io.vertx.core.http.HttpServer partner = partner(new CopyOnWriteArrayList<>(), Future.succeededFuture(), ack);
+        try (HttpClient client = http()) {
+            int inPort = freePort();
+            Map<String, byte[]> files = demoFiles(inPort, "http://127.0.0.1:" + partner.actualPort());
+            files.put("flows/invoice-sync.yaml", replaced(files.get("flows/invoice-sync.yaml"), Map.of("mode: sync", "mode: at-least-once")));
+            startDemoNode(env("ci"));   // before FIX-136: refused, "synchronous_commit is off for the node's sessions"
+            assertEquals(200, get(node.adminPort(), "/health").statusCode(), "the node starts on the database whose default is off");
+            HttpResponse<String> put = send(client, "PUT", node.adminPort(), "/admin/packages/demo", zip(files), "application/zip");
+            assertEquals(200, put.statusCode(), put.body());
+
+            PgConnection ddl = PgConnection.connect(vertx, options(database)).await();
+            try {
+                ddl.query("create table commit_settings(sc text, st text)").execute().await();
+                ddl.query("create function note_settings() returns trigger language plpgsql as $$ begin insert into commit_settings "
+                        + "values (current_setting('synchronous_commit'), current_setting('statement_timeout')); return new; end $$").execute().await();
+                ddl.query("create trigger note_settings before insert on messages for each row execute function note_settings()").execute().await();
+            } finally {
+                ddl.close().await();
+            }
+
+            HttpResponse<String> accepted = send(client, "POST", inPort, "/in", Files.readAllBytes(DEMO.resolve("fixtures/sample-invoice.xml")), "application/xml");
+            assertEquals(202, accepted.statusCode(), accepted.body());
+            PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+            try {
+                List<String> seen = new java.util.ArrayList<>();
+                for (io.vertx.sqlclient.Row r : reader.query("select sc || ' ' || st from commit_settings").execute().await()) seen.add(r.getString(0));
+                assertFalse(seen.isEmpty(), "witness: the trigger saw the intake's insert of the ingress row");
+                assertEquals(List.of(), seen.stream().filter(s -> !s.equals("on 0")).toList(),
+                        "the intake's session commits on, without a statement timeout, over the database's off and 45s: " + seen);
+            } finally {
+                reader.close().await();
+            }
+        } finally {
+            partner.close().await();
+        }
     }
 
     /** D-061: {@code remote_apply} waits for the standby to apply the commit — accepted, as {@code remote_write} is. */
@@ -1855,6 +2103,291 @@ class NodeIT {
             if (System.nanoTime() > deadline) fail("not within 20 s: " + what);
             Thread.onSpinWait();
             Thread.yield();
+        }
+    }
+
+    /**
+     * P2-15a acceptance 6 (D-101 (5)): a node states, once at start and in the admin health's notices, that its at-least-once
+     * items wait for it while it is down (one journal copy, until CORE-5) and that no other member is live — never a refusal
+     * (health 200). "Once": two renews of its node lease later (a short lease, FLOTTILA_NODE_LEASE PT2S, renewed every PT0.5S,
+     * seen as {@code nodes.lease_until} moving on the case database) each line is still logged once.
+     */
+    @Test
+    void aSingleCopyNodeStatesItOnceAtStartAndInTheAdminHealth() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        Handler all = new Handler() {
+            @Override public void publish(LogRecord r) { lines.add(r.getLevel() + " " + new SimpleFormatter().formatMessage(r)); }
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        all.setLevel(Level.ALL);
+        Logger flottila = Logger.getLogger("io.flottila");
+        flottila.addHandler(all);
+        try {
+            Map<String, String> env = env("dev");
+            env.put("FLOTTILA_NODE_LEASE", "PT2S");
+            env.put("FLOTTILA_NODE_LEASE_RENEW", "PT0.5S");
+            Node n = start(env, ctx -> List.of());
+
+            JsonObject h = health(n.adminPort(), 200);   // a notice is no failure
+            List<String> notices = h.getJsonArray("notices", new JsonArray()).stream().map(String::valueOf).toList();
+            assertTrue(notices.stream().anyMatch(t -> t.contains("one journal copy") && t.contains("D-101 (5)")),
+                    "the single-copy notice in the admin health: " + h.encode());
+            assertTrue(notices.stream().anyMatch(t -> t.contains("no other live member")), "the no-other-member notice: " + h.encode());
+
+            PgConnection reader = PgConnection.connect(vertx, options(database)).await();
+            try {
+                Object joined = leaseUntil(reader);
+                until(() -> !java.util.Objects.equals(leaseUntil(reader), joined), "the node renews its lease");
+                Object renewed = leaseUntil(reader);
+                until(() -> !java.util.Objects.equals(leaseUntil(reader), renewed), "and renews it again");
+            } finally {
+                reader.close().await();
+            }
+            assertEquals(1, lines.stream().filter(l -> l.contains("one journal copy")).count(),
+                    "the single-copy notice logged once at start, not at every renew: " + lines);
+            assertEquals(1, lines.stream().filter(l -> l.contains("no other live member")).count(),
+                    "the no-other-member notice logged once: " + lines);
+        } finally {
+            flottila.removeHandler(all);
+        }
+    }
+
+    /**
+     * P2-15a review r1 decision 6: the "no other live member" notice is only stated when no other member is live. Another node's
+     * live {@code nodes} row on the case database before the start (migrated first, the row inserted) silences it, in the admin
+     * health and in the log; the single-copy notice stays.
+     */
+    @Test
+    void aNodeThatFindsAnotherLiveMemberAtStartDoesNotStateItIsAlone() throws Exception {
+        List<String> lines = new CopyOnWriteArrayList<>();
+        Handler all = new Handler() {
+            @Override public void publish(LogRecord r) { lines.add(r.getLevel() + " " + new SimpleFormatter().formatMessage(r)); }
+            @Override public void flush() {}
+            @Override public void close() {}
+        };
+        all.setLevel(Level.ALL);
+        Logger flottila = Logger.getLogger("io.flottila");
+        flottila.addHandler(all);
+        try {
+            OnVirtualThread.call(() -> Migrations.migrate(url, pg.getUsername(), pg.getPassword()));
+            PgConnection writer = PgConnection.connect(vertx, options(database)).await();
+            try {
+                writer.query("insert into nodes(node, epoch, lease_until) values ('node-peer', 1, now() + interval '10 minutes')").execute().await();
+            } finally {
+                writer.close().await();
+            }
+            Node n = start(env("dev"), ctx -> List.of());
+
+            JsonObject h = health(n.adminPort(), 200);
+            List<String> notices = h.getJsonArray("notices", new JsonArray()).stream().map(String::valueOf).toList();
+            assertTrue(notices.stream().anyMatch(t -> t.contains("one journal copy") && t.contains("D-101 (5)")),
+                    "the single-copy notice still in the admin health: " + h.encode());
+            assertFalse(notices.stream().anyMatch(t -> t.contains("no other live member")),
+                    "another member is live: no no-other-member notice in the admin health: " + h.encode());
+            assertEquals(1, lines.stream().filter(l -> l.contains("one journal copy")).count(), "the single-copy notice logged once: " + lines);
+            assertEquals(0, lines.stream().filter(l -> l.contains("no other live member")).count(), "nor in the log: " + lines);
+        } finally {
+            flottila.removeHandler(all);
+        }
+    }
+
+    /** The node's {@code nodes.lease_until} on the case database (null: no row yet). */
+    static Object leaseUntil(PgConnection reader) {
+        var rows = reader.query("select lease_until from nodes where node = 'node-it'").execute().await();
+        return rows.size() == 0 ? null : rows.iterator().next().getValue(0);
+    }
+
+    // --- FIX-144 (D-123): GET /live and GET /ready over the node's real wiring
+    //
+    // No sleep: each case spins (to a 20 s deadline) on a condition. The node's lease runs on its own clock (System::nanoTime and
+    // the Vert.x timer: Node.start takes no clock), so the fence closes the way a real outage closes it — the node's renews wait
+    // on its nodes row, which a test session holds, for half a lease (FLOTTILA_NODE_LEASE PT2S, renewed every PT0.5S).
+
+    static final List<String> READINESS = List.of("lifecycle", "fence", "journal", "deployments");
+
+    /** The /ready body the spec (R2) gives: {@code status}, and every check UP but those named {@code down}. */
+    static JsonObject readyBody(String status, String... down) {
+        JsonObject checks = new JsonObject();
+        for (String name : READINESS) checks.put(name, List.of(down).contains(name) ? "DOWN" : "UP");
+        return new JsonObject().put("status", status).put("checks", checks);
+    }
+
+    static final JsonObject LIVE = new JsonObject().put("status", "UP");
+
+    /** {@code GET path}, its status asserted, its JSON body. */
+    static JsonObject answer(int port, String path, int status) throws Exception {
+        HttpResponse<String> r = get(port, path);
+        assertEquals(status, r.statusCode(), path + ": " + r.body());
+        return new JsonObject(r.body());
+    }
+
+    /** Asks {@code GET path} until it answers {@code status} (20 s, no sleep); that answer's JSON body. */
+    static JsonObject answering(int port, String path, int status) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        while (true) {
+            HttpResponse<String> r = get(port, path);
+            if (r.statusCode() == status) return new JsonObject(r.body());
+            if (System.nanoTime() > deadline) fail("not within 20 s: " + path + " answering " + status + "; last " + r.statusCode() + " " + r.body());
+            Thread.onSpinWait();
+        }
+    }
+
+    /** The node's backends of the case database waiting on a lock in an {@code update nodes} (its renews). */
+    long renewsWaitingOnALock() {
+        return observer.preparedQuery("select count(*) from pg_stat_activity where datname = $1 and wait_event_type = 'Lock' and query ilike '%update nodes%'")
+                .execute(Tuple.of(database)).await().iterator().next().getLong(0);
+    }
+
+    /**
+     * R2 fence, R1: a test session holds the node's {@code nodes} row, so its renews wait; half a lease after the last renewed
+     * send its fence closes — /ready 503 naming fence DOWN (lifecycle, journal, deployments UP) while /live stays 200. Released,
+     * the renews go through, the fence opens again and /ready is 200 (read on every request).
+     */
+    @Test
+    void fencedNodeIsNotReadyButRemainsLive() throws Exception {
+        Map<String, String> env = env("dev");
+        env.put("FLOTTILA_NODE_LEASE", "PT2S");
+        env.put("FLOTTILA_NODE_LEASE_RENEW", "PT0.5S");
+        start(env, ctx -> List.of());
+        int port = node.adminPort();
+
+        PgConnection holder = PgConnection.connect(vertx, options(database)).await();
+        try {
+            Transaction tx = holder.begin().await();
+            try {
+                int held = holder.query("select 1 from nodes where node = 'node-it' for no key update").execute().await().size();
+                assertEquals(1, held, "fixture: the node's row is held");
+                until(() -> renewsWaitingOnALock() > 0, "fixture: a renew of the node waits on its held row");
+
+                JsonObject fenced = answering(port, "/ready", 503);
+                assertEquals(readyBody("DOWN", "fence"), fenced, "the fence closed (no renew answered for half a lease): not ready, fence named");
+                assertEquals(LIVE, answer(port, "/live", 200), "a fenced node is still live");
+            } finally {
+                tx.rollback().await();
+            }
+        } finally {
+            holder.close().await();
+        }
+        assertEquals(readyBody("UP"), answering(port, "/ready", 200), "the renews answer again: the fence opens and the node is ready again");
+    }
+
+    /**
+     * R3: Node.close drops readiness before its deployments stop the listeners. A sync delivery is held at the partner; the
+     * close reaches the door's stop (held, draining that open answer): /ready is 503 naming lifecycle DOWN — the fence and the
+     * rest still UP — /live 200, and the listener still answers the delivery it took once the partner does.
+     */
+    @Test
+    void drainDropsReadinessBeforeListenersStop() throws Exception {
+        Doors doors = new Doors();
+        AtomicReference<ComponentContext> context = new AtomicReference<>();
+        NodeConfig config = NodeConfig.from(env("ci"));
+        node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> {
+            context.set(ctx);
+            return List.of(doors);
+        }, List.of(), List.of()));
+        int port = node.adminPort();
+        putOk(port, "shop", doorsPackage("shop", "a").zip());
+
+        CountDownLatch partner = doors.partner().holdNext(1);
+        Doors.Gate stop = doors.holdStopOf("shop/a");
+        try {
+            ComponentContext ctx = context.get();
+            String id = ctx.ids().next();
+            Envelope e = Envelope.ingress(id, "shop/a", Headers.empty(),
+                    ctx.blobs().write(BlobKey.body(id, 0), Buffer.buffer("<invoice/>"), 1024).await());
+            Future<Ack> delivery = doors.door("shop/a").deliver(e);
+            doors.partner().awaitSent(1);   // the sync answer is open on the listener until the partner answers
+
+            Node closed = node;
+            node = null;
+            closing = OnVirtualThread.start(closed::close);
+            assertTrue(stop.reached().await(20, TimeUnit.SECONDS), "fixture: close reached the listener's stop (it drains its open answer)");
+            assertFalse(delivery.isComplete(), "fixture: the delivery is still open, held at the partner");
+
+            assertEquals(readyBody("DOWN", "lifecycle"), answer(port, "/ready", 503), "closing: not ready while the listener still drains");
+            assertEquals(LIVE, answer(port, "/live", 200), "a draining node is still live");
+
+            partner.countDown();
+            Ack ack = delivery.await(20, TimeUnit.SECONDS);
+            assertInstanceOf(Ack.Reply.class, ack, "the listener still answers the delivery it took after readiness dropped: " + ack);
+        } finally {
+            partner.countDown();
+            stop.release();
+        }
+    }
+
+    /**
+     * R2 journal (FIX-144 deviation: the in-process node's journal cannot be fail-stopped — Node.start opens it over the real
+     * files — so the outage stands in, the rule's DEGRADED-counts-DOWN half): a trigger refuses the next segment's
+     * {@code journal_segments} row, the pre-open retries and the journal is DEGRADED on /health; /ready is 503 naming journal
+     * DOWN, /live 200. The trigger dropped, the retry goes in and /ready is 200 again.
+     */
+    @Test
+    void journalInOutageNodeIsNotReady() throws Exception {
+        Migrations.migrate(url, pg.getUsername(), pg.getPassword());
+        try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword()); Statement s = c.createStatement()) {
+            s.execute("""
+                    create function fix144_refuse_next_segment() returns trigger language plpgsql as $$
+                    begin
+                      if exists (select 1 from journal_segments where node = new.node) then
+                        raise exception 'fixture: the next journal segment''s row is refused';
+                      end if;
+                      return new;
+                    end $$""");
+            s.execute("create trigger fix144_refuse_next_segment before insert on journal_segments for each row execute function fix144_refuse_next_segment()");
+        }
+        start(env("dev"), ctx -> List.of());
+        int port = node.adminPort();
+        until(() -> {
+            try {
+                HttpResponse<String> h = get(port, "/health");
+                return "DEGRADED".equals(new JsonObject(h.body()).getJsonObject("checks").getString("journal"));
+            } catch (Exception e) {
+                throw new AssertionError("GET /health", e);
+            }
+        }, "fixture: the journal is DEGRADED on /health (its pre-open's row refused)");
+
+        assertEquals(readyBody("DOWN", "journal"), answer(port, "/ready", 503), "a journal in outage: not ready, journal named");
+        assertEquals(LIVE, answer(port, "/live", 200), "a node whose journal is in outage is still live");
+
+        try (Connection c = DriverManager.getConnection(url, pg.getUsername(), pg.getPassword()); Statement s = c.createStatement()) {
+            s.execute("drop trigger fix144_refuse_next_segment on journal_segments");
+        }
+        assertEquals(readyBody("UP"), answering(port, "/ready", 200), "the retried row went in: the journal is UP and the node ready again");
+    }
+
+    /** R2 deployments: a node restored with a FAILED flow is not ready — /ready 503 naming deployments DOWN — and live. */
+    @Test
+    void failedFlowNodeIsNotReady() throws Exception {
+        deployedAndClosed(Map.of("shop", doorsPackage("shop", "a", "b").zip()));
+        Doors second = new Doors();
+        second.failStartOf("shop/b", "address in use");
+        node = startWith(env("ci"), second);
+        int port = node.adminPort();
+        assertEquals("FAILED", itemOf(listed(port, "flows", "id"), "shop/b", "restored with b failed").getString("state"), "fixture: b did not start on restore");
+
+        assertEquals(readyBody("DOWN", "deployments"), answer(port, "/ready", 503), "a FAILED flow: not ready, deployments named");
+        assertEquals(LIVE, answer(port, "/live", 200), "a node with a FAILED flow is still live");
+    }
+
+    /**
+     * R1: /live touches no Postgres. The case database stops taking connections and the node's backends are ended: /health
+     * reports postgres DOWN (the node's PG is unreachable), /live still answers 200 {"status":"UP"}.
+     */
+    @Test
+    void liveDoesNotTouchPostgres() throws Exception {
+        start(env("dev"), ctx -> List.of());
+        int port = node.adminPort();
+        try {
+            observer.query("alter database \"" + database + "\" with allow_connections false").execute().await();
+            observer.preparedQuery("select pg_terminate_backend(pid) from pg_stat_activity where datname = $1").execute(Tuple.of(database)).await();
+            JsonObject health = answering(port, "/health", 503);
+            assertEquals("DOWN", health.getJsonObject("checks").getString("postgres"), "fixture: the node's Postgres is unreachable: " + health.encode());
+
+            for (int i = 0; i < 3; i++) assertEquals(LIVE, answer(port, "/live", 200), "live without Postgres");
+        } finally {
+            observer.query("alter database \"" + database + "\" with allow_connections true").execute().await();
         }
     }
 }

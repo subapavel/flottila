@@ -130,11 +130,11 @@ class ReplayTest {
         assertThrows(ParkedException.class, () -> builder().build(atLeastOnce, Path.of("")).apply(in4));
         IllegalArgumentException pastTheEnd = assertThrows(IllegalArgumentException.class, () -> builder().replay(atLeastOnce, Path.of("")).from(in4.id(), 4));
         assertTrue(pastTheEnd.getMessage().contains("3"), "a parked message is replayed from its parked step at most: " + pastTheEnd.getMessage());
-        assertThrows(IllegalArgumentException.class, () -> builder().replay(def, Path.of("")).retry("nobody"), "no such DLQ row");
+        assertThrows(IllegalArgumentException.class, () -> builder().replay(def, Path.of("")).replayParked("nobody"), "no such DLQ row");
         FlowBuilder unrecorded = new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of());
         assertTrue(assertThrows(IllegalStateException.class, () -> unrecorded.replay(def, Path.of(""))).getMessage().contains("recording"), "replay needs the snapshots");
         FlowBuilder noDlq = new FlowBuilder(rt.runtime(), factories, List.of(), Map.<String, EndpointConfig>of()).recording(store, () -> 0);
-        assertTrue(assertThrows(IllegalStateException.class, () -> noDlq.replay(def, Path.of("")).retry(in.id())).getMessage().contains("DLQ"), "a retry needs the DLQ");
+        assertTrue(assertThrows(IllegalStateException.class, () -> noDlq.replay(def, Path.of("")).replayParked(in.id())).getMessage().contains("DLQ"), "a retry needs the DLQ");
     }
 
     @Test
@@ -172,13 +172,13 @@ class ReplayTest {
         ParkedException parked = assertThrows(ParkedException.class, () -> p.apply(in));
         assertEquals(3, parked.parked().step());
         Replay replay = builder().replay(def, Path.of(""));
-        ParkedException still = assertThrows(ParkedException.class, () -> replay.retry(in.id()));
+        ParkedException still = assertThrows(ParkedException.class, () -> replay.replayParked(in.id()));
         assertNotEquals(in.id(), still.parked().messageId(), "the retry is its own message");
         assertEquals(Optional.of(in.id()), Optional.ofNullable(still.parked().props().asMap().get("replayOf")));
         assertEquals(2, dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items().size(), "the retry parked itself; the original row stays");
         assertEquals(2, cCalls.get());
         partnerDown.set(false);
-        Envelope delivered = replay.retry(in.id());
+        Envelope delivered = replay.replayParked(in.id());
         assertEquals("yes", delivered.header("sent").orElseThrow());
         assertEquals(Optional.of(in.id()), delivered.get(Envelope.REPLAY_OF));
         assertEquals(3, cCalls.get(), "only the parked step ran");
@@ -189,7 +189,7 @@ class ReplayTest {
         List<Snapshot> t = store.timeline(delivered.id()).await();
         assertEquals(List.of(2, 3), t.stream().map(Snapshot::step).toList(), "'ends': the replay input and the last step");
         assertEquals(Optional.of(parked.parked().bodyKey()), t.get(0).bodyKey(), "the parked body reference (step 2's output), not a new copy");
-        Envelope retried = replay.retry(left.get(0).messageId());
+        Envelope retried = replay.replayParked(left.get(0).messageId());
         assertEquals("yes", retried.header("sent").orElseThrow());
         assertEquals(List.of(), dlq.list(Optional.empty(), Page.MAX_LIMIT).await().items(), "the failed retry's own row is retried and removed too");
     }
@@ -214,7 +214,79 @@ class ReplayTest {
         assertEquals(BlobKey.body(again.id(), 2), again.body().key(), "the replay's step b writes under the plain key");
     }
 
-    /** D-066: a DLQ retry is a new message's first run too: the attempt the parked run carried is dropped. */
+    /**
+     * FIX-175 A6 (P5): after a message ran twice under its id — attempt 1, then attempt 2 as the worker reruns it — each attempt keeps
+     * its own rows, and a replay from step n starts from the latest attempt's step n − 1 row: here step 1 ({@code stamp}) wrote
+     * bytes and a header naming its attempt, so the replay from step 2 runs {@code b} on attempt 2's step-1 body, and the replay from
+     * step 3 takes attempt 2's step-2 row (its body under attempt 2's key).
+     */
+    @Test
+    void aReplayFromStepNAfterATwoAttemptRunStartsFromTheLatestAttemptsStepNMinusOneRow() {
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("stamp", s -> Stage.of(e -> {
+            String k = String.valueOf(e.get(Envelope.ATTEMPT).orElse(1));
+            Envelope stamped = e.withHeader("run", k);
+            return stamped.next(rt.store(stamped, Buffer.buffer("<run attempt=\"" + k + "\"/>")));
+        })));
+        Map<String, Object> doc = new java.util.HashMap<>(flow("at-least-once", null));
+        doc.put("steps", List.of(Map.of("type", "stamp", "name", "stamp"), Map.of("type", "b", "name", "b"), Map.of("type", "c", "name", "c")));
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowBuilder b = new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+        Pipeline p = b.build(def, Path.of(""));
+        Envelope in = in();
+        p.apply(in);
+        Envelope second = p.apply(in.with(Envelope.ATTEMPT, 2));   // the run of a second attempt, as the worker starts it
+        assertEquals(new BlobKey(in.id(), 2, "body~2"), second.body().key(), "fixture: attempt 2's step b wrote under its attempt");
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of(1, 2), t.stream().filter(s -> s.step() == 1).map(Snapshot::attempt).toList(), "fixture: step 1 has a row of each attempt (P2): " + t);
+
+        Replay replay = b.replay(def, Path.of(""));
+        Envelope fromTwo = replay.from(in.id(), 2);
+        assertEquals("<b><run attempt=\"2\"/></b>", fromTwo.body().whole().toString(), "step b ran on attempt 2's step-1 body");
+        assertEquals(Optional.of("2"), fromTwo.header("run"), "with attempt 2's step-1 headers");
+        assertEquals(Optional.empty(), fromTwo.get(Envelope.ATTEMPT), "still a new message's first run (D-066)");
+        Envelope fromThree = replay.from(in.id(), 3);
+        Snapshot input = store.timeline(fromThree.id()).await().getFirst();
+        assertEquals(Replay.REPLAY_INPUT, input.stepName());
+        assertEquals(Optional.of(new BlobKey(in.id(), 2, "body~2")), input.bodyKey(), "the replay from step 3 took attempt 2's step-2 body");
+        assertEquals(Optional.of("2"), fromThree.header("run"));
+    }
+
+    /**
+     * FIX-175 O1: a replay from step n takes the latest attempt whose step n − 1 row is OK, not merely the latest attempt's row: here
+     * attempt 2's step 2 failed (its FAILED row is the latest of step 2), so the replay from step 3 starts from attempt 1's OK step-2
+     * row — its body, its headers — and runs to the end.
+     */
+    @Test
+    void aReplayFromStepNSkipsALaterAttemptsFailedStepNMinusOneRowForAnEarlierAttemptsOkOne() {
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("stamp", s -> Stage.of(e -> e.withHeader("run", String.valueOf(e.get(Envelope.ATTEMPT).orElse(1))))));
+        all.add(factory("flaky", s -> Stage.of(e -> {
+            int k = e.get(Envelope.ATTEMPT).orElse(1);
+            if (k >= 2) throw new IllegalStateException("step 2 down in attempt " + k);
+            return e.next(rt.store(e, Buffer.buffer("<flaky attempt=\"" + k + "\"/>")));
+        })));
+        Map<String, Object> doc = new java.util.HashMap<>(flow("sync", null));
+        doc.put("steps", List.of(Map.of("type", "stamp", "name", "stamp"), Map.of("type", "flaky", "name", "flaky"), Map.of("type", "c", "name", "c")));
+        FlowDefinition def = FlowDefinition.from(doc);
+        FlowBuilder b = new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, () -> 0).dlq(dlq);
+        Pipeline p = b.build(def, Path.of(""));
+        Envelope in = in();
+        p.apply(in);
+        assertThrows(RuntimeException.class, () -> p.apply(in.with(Envelope.ATTEMPT, 2)), "fixture: attempt 2 fails at step 2");
+        List<String> stepTwo = store.timeline(in.id()).await().stream().filter(s -> s.step() == 2).map(s -> s.attempt() + " " + s.outcome()).toList();
+        assertEquals(List.of("1 OK", "2 FAILED"), stepTwo, "fixture: step 2's latest row is attempt 2's FAILED one");
+
+        Envelope fromThree = b.replay(def, Path.of("")).from(in.id(), 3);
+        Snapshot input = store.timeline(fromThree.id()).await().getFirst();
+        assertEquals(Replay.REPLAY_INPUT, input.stepName());
+        assertEquals(Optional.of(BlobKey.body(in.id(), 2)), input.bodyKey(), "attempt 1's OK step-2 body, not attempt 2's failed input");
+        assertEquals("<flaky attempt=\"1\"/>", fromThree.body().whole().toString());
+        assertEquals(Optional.of("1"), fromThree.header("run"), "with attempt 1's step-2 headers");
+        assertEquals("yes", fromThree.header("sent").orElseThrow(), "step 3 ran");
+    }
+
+    /** D-066: a DLQ replay is a new message's first run too: the attempt the parked run carried is dropped. */
     @Test
     void aDlqRetryDropsTheAttempt() {
         FlowDefinition def = FlowDefinition.from(flow("at-least-once", null));
@@ -223,7 +295,7 @@ class ReplayTest {
         ParkedException parked = assertThrows(ParkedException.class, () -> builder().build(def, Path.of("")).apply(in.with(Envelope.ATTEMPT, 2)));
         assertEquals(Optional.of(2), parked.parked().props().get(Envelope.ATTEMPT), "fixture: the second attempt parked with its attempt");
         partnerDown.set(false);
-        Envelope delivered = builder().replay(def, Path.of("")).retry(in.id());
+        Envelope delivered = builder().replay(def, Path.of("")).replayParked(in.id());
         assertEquals(Optional.empty(), delivered.get(Envelope.ATTEMPT), "the retry is no attempt of the parked run's");
         assertEquals(Optional.of(in.id()), delivered.get(Envelope.REPLAY_OF), "and still a replay of it");
         List<Snapshot> t = store.timeline(delivered.id()).await();
@@ -287,7 +359,7 @@ class ReplayTest {
     }
 
     /**
-     * A DLQ retry runs under a trail of its own, seeded with the parked body (P1-09k2 r1b): it returns — and removes the DLQ
+     * A DLQ replay runs under a trail of its own, seeded with the parked body (P1-09k2 r1b): it returns — and removes the DLQ
      * row — only once that trail closed, its step body persisted once, then its rows written; the parked input is never
      * persisted again.
      */
@@ -318,7 +390,7 @@ class ReplayTest {
         held.hold();
 
         java.util.concurrent.atomic.AtomicReference<Envelope> out = new java.util.concurrent.atomic.AtomicReference<>();
-        Thread caller = Thread.ofVirtual().start(() -> out.set(replay.retry(id)));
+        Thread caller = Thread.ofVirtual().start(() -> out.set(replay.replayParked(id)));
         DeliveryTest.until(() -> held.held() >= 1 && DeliveryTest.endedOrWaiting(caller),
                 () -> "the retry's step body persist asked: held " + held.held() + ", caller " + caller.getState());
         assertNotEquals(Thread.State.TERMINATED, caller.getState(), "the retry has not returned while its step body's persist is held");
@@ -430,7 +502,7 @@ class ReplayTest {
     }
 
     /**
-     * The overloads with a given id: {@code from(id, n, replayId)} and {@code retry(id, replayId)} run as {@code replayId} — the
+     * The overloads with a given id: {@code from(id, n, replayId)} and {@code replayParked(id, replayId)} run as {@code replayId} — the
      * envelope, its rows, and a retry that parks again parks under it (the id a 502 names) — and mint nothing; the old forms take
      * exactly one id from the runtime's generator.
      */
@@ -456,14 +528,14 @@ class ReplayTest {
         Envelope parked = parkedAtC(in());
         Replay retries = builder().replay(atLeastOnce, NO_FILES);
         partnerDown.set(true);
-        ParkedException again = assertThrows(ParkedException.class, () -> retries.retry(parked.id(), "given-2"));
+        ParkedException again = assertThrows(ParkedException.class, () -> retries.replayParked(parked.id(), "given-2"));
         assertEquals("given-2", again.parked().messageId(), "a retry that parks again parks under the given id");
         assertTrue(dlq.get("given-2").await().isPresent(), "its row is the given id's");
         assertTrue(dlq.get(parked.id()).await().isPresent(), "the original row stays");
         partnerDown.set(false);
         long before = rt.ids().issued();
 
-        Envelope delivered = retries.retry(parked.id(), "given-3");
+        Envelope delivered = retries.replayParked(parked.id(), "given-3");
 
         assertEquals("given-3", delivered.id());
         assertEquals(Optional.of(parked.id()), delivered.get(Envelope.REPLAY_OF));
@@ -471,7 +543,7 @@ class ReplayTest {
         assertEquals(Optional.empty(), dlq.get(parked.id()).await(), "the original row is removed once the given id went through");
         assertEquals(before, rt.ids().issued(), "a retry that was given its id mints none");
         Envelope parkedAgain = parkedAtC(in());
-        Envelope oldForm = retries.retry(parkedAgain.id());
+        Envelope oldForm = retries.replayParked(parkedAgain.id());
         assertEquals("m-" + (before + 2), oldForm.id(), "the old retry form takes one id from the generator (the fixture's ingress took the one before)");
     }
 
@@ -530,15 +602,18 @@ class ReplayTest {
             seen.put(ReplayRefusedException.Reason.NOT_RECORDED, refusal(() -> replay.from(ends.id(), 3, "refused-ends")));
             seen.put(ReplayRefusedException.Reason.METADATA_ONLY, refusal(() -> replay.from(meta.id(), 2, "refused-meta")));
             seen.put(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.from(removed.id(), 2, "refused-removed")));
-            assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.retry(parkedRemoved.id(), "refused-removed-retry")).reason(),
+            retained.failExists(new io.flottila.api.BodyLostException(BlobKey.body(removed.id(), 0)));   // CORE-4c3: the store says the body was given up
+            seen.put(ReplayRefusedException.Reason.BODY_LOST, refusal(() -> replay.from(removed.id(), 2, "refused-lost")));
+            retained.failExists(null);
+            assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> replay.replayParked(parkedRemoved.id(), "refused-removed-retry")).reason(),
                     "a parked body taken by retention, refused while the permit is held: never BUSY");
             seen.put(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> replay.from(big.id(), 3, "refused-big")));
-            seen.put(ReplayRefusedException.Reason.NO_DLQ_ROW, refusal(() -> replay.retry("nobody", "refused-no-row")));
-            seen.put(ReplayRefusedException.Reason.STEP_BEYOND_FLOW, refusal(() -> replay.retry(parkedAtFive.id(), "refused-beyond")));
-            assertEquals(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> replay.retry(parkedBig.id(), "refused-big-retry")).reason(),
+            seen.put(ReplayRefusedException.Reason.NO_DLQ_ROW, refusal(() -> replay.replayParked("nobody", "refused-no-row")));
+            seen.put(ReplayRefusedException.Reason.STEP_BEYOND_FLOW, refusal(() -> replay.replayParked(parkedAtFive.id(), "refused-beyond")));
+            assertEquals(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> replay.replayParked(parkedBig.id(), "refused-big-retry")).reason(),
                     "a parked body above the byte budget");
             seen.put(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.from(big.id(), 1, "refused-busy")));   // 9 bytes: it fits, no permit is free
-            assertEquals(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.retry(parked.id(), "refused-busy-retry")).reason(), "a retry takes a permit too");
+            assertEquals(ReplayRefusedException.Reason.BUSY, refusal(() -> replay.replayParked(parked.id(), "refused-busy-retry")).reason(), "a retry takes a permit too");
         } finally {
             held.release();
         }
@@ -552,7 +627,7 @@ class ReplayTest {
 
         replay.close().await(5, java.util.concurrent.TimeUnit.SECONDS);
         seen.put(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.from(in.id(), 3, "refused-closed")));
-        assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.retry(parked.id(), "refused-closed-retry")).reason(), "a closed replay retries nothing");
+        assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.replayParked(parked.id(), "refused-closed-retry")).reason(), "a closed replay retries nothing");
 
         seen.forEach((reason, refused) -> {
             assertEquals(reason, refused.reason(), "refused for " + reason + ": " + refused.getMessage());
@@ -696,7 +771,7 @@ class ReplayTest {
         io.vertx.core.Future<Void> closed = replay.close();
 
         assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.from(in.id(), 2, "late")).reason(), "no new run once close was called");
-        assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.retry(parked.id(), "late-retry")).reason(), "no new retry either");
+        assertEquals(ReplayRefusedException.Reason.CLOSED, refusal(() -> replay.replayParked(parked.id(), "late-retry")).reason(), "no new retry either");
         assertEquals(2, gate.entered(), "the refused runs never started");
         assertEquals(List.of(), stepsOf("late"));
         assertFalse(closed.isComplete(), "two runs are in flight");
@@ -838,7 +913,7 @@ class ReplayTest {
     }
 
     /**
-     * A DLQ retry of a message whose parked input retention took is refused REMOVED_BY_RETENTION naming the parked step's input
+     * A DLQ replay of a message whose parked input retention took is refused REMOVED_BY_RETENTION naming the parked step's input
      * step, the message and the key; nothing ran, nothing was read, opened or persisted, no row or DLQ row under the given id —
      * and the original DLQ row stays as it was, for the operator. Witness: a sibling parked message retries and its row goes.
      */
@@ -854,7 +929,7 @@ class ReplayTest {
         int c = cCalls.get();
         int mark = blobs.eventCount();
 
-        ReplayRefusedException refused = refusal(() -> replay.retry(gone.id(), "refused-retry"));
+        ReplayRefusedException refused = refusal(() -> replay.replayParked(gone.id(), "refused-retry"));
 
         assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refused.reason(), refused.getMessage());
         assertEquals(removed(1, gone.id(), input), refused.getMessage());
@@ -864,7 +939,7 @@ class ReplayTest {
         assertEquals(List.of(), stepsOf("refused-retry"));
         assertEquals(Optional.empty(), dlq.get("refused-retry").await(), "no DLQ row under the refused run's id");
 
-        assertEquals("yes", replay.retry(kept.id(), "kept-retry").header("sent").orElseThrow(), "witness: a stored parked body retries");
+        assertEquals("yes", replay.replayParked(kept.id(), "kept-retry").header("sent").orElseThrow(), "witness: a stored parked body retries");
         assertEquals(Optional.empty(), dlq.get(kept.id()).await(), "witness: and its row goes");
         assertEquals(Optional.of(row), dlq.get(gone.id()).await(), "the removed one's row still stays");
     }
@@ -902,13 +977,13 @@ class ReplayTest {
 
         Replay oneStep = over(blobs, reading()).replay(FlowDefinition.from(shaped(flow("at-least-once", null), List.of(step("a", "a")), 4096, 4, null)), NO_FILES);
         int beyondMark = blobs.eventCount();
-        assertEquals(ReplayRefusedException.Reason.STEP_BEYOND_FLOW, refusal(() -> oneStep.retry(parkedGone.id(), "beyond")).reason(), "beyond the flow first");
+        assertEquals(ReplayRefusedException.Reason.STEP_BEYOND_FLOW, refusal(() -> oneStep.replayParked(parkedGone.id(), "beyond")).reason(), "beyond the flow first");
         assertEquals(List.of(), touched(blobs, beyondMark, parkedGone.id()), "a step beyond the flow: the store is not asked");
         Replay narrowRetry = over(blobs, reading()).replay(FlowDefinition.from(shaped(flow("at-least-once", null), List.of(step("a", "a"), step("cr", "c")), 4, 1, 4L)),
                 NO_FILES);
-        assertEquals(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> narrowRetry.retry(parkedKept.id(), "parked-kept-big")).reason(),
+        assertEquals(ReplayRefusedException.Reason.TOO_LARGE, refusal(() -> narrowRetry.replayParked(parkedKept.id(), "parked-kept-big")).reason(),
                 "witness: a stored 5-byte parked input is too large");
-        assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> narrowRetry.retry(parkedGone.id(), "parked-gone-big")).reason(),
+        assertEquals(ReplayRefusedException.Reason.REMOVED_BY_RETENTION, refusal(() -> narrowRetry.replayParked(parkedGone.id(), "parked-gone-big")).reason(),
                 "a removed parked input: removed before too large");
         for (String id : List.of("meta", "kept-big", "gone-big", "beyond", "parked-kept-big", "parked-gone-big")) assertEquals(List.of(), stepsOf(id), id);
     }
@@ -931,7 +1006,7 @@ class ReplayTest {
         blobs.failExists(new IllegalStateException("postgres down"));
         IllegalStateException down = assertThrows(IllegalStateException.class, () -> replay.from(recorded.id(), 2, "down"));
         assertEquals("postgres down", down.getMessage(), "the store's failure, as is");
-        IllegalStateException retryDown = assertThrows(IllegalStateException.class, () -> retries.retry(parked.id(), "retry-down"));
+        IllegalStateException retryDown = assertThrows(IllegalStateException.class, () -> retries.replayParked(parked.id(), "retry-down"));
         assertEquals("postgres down", retryDown.getMessage());
         assertEquals(Optional.of(row), dlq.get(parked.id()).await(), "the retry keeps its row");
 
@@ -945,6 +1020,67 @@ class ReplayTest {
             assertEquals(List.of(), stepsOf(id), id + ": no row");
             assertEquals(Optional.empty(), dlq.get(id).await(), id + ": no DLQ row");
         }
+    }
+
+    // --- CORE-4c3 (D-105, D-062's exception): a body given up by an accepted FLOTTILA_JOURNAL_ACCEPT_LOSS is refused BODY_LOST
+
+    static final String LOST = "body lost by ACCEPT_LOSS";
+
+    /**
+     * A replay whose input body the store reports lost ({@code exists} fails with the store's {@link io.flottila.api.BodyLostException}
+     * naming the key) is refused BODY_LOST — never REMOVED_BY_RETENTION, never the store's failure as is — saying "body lost by
+     * ACCEPT_LOSS" and naming the message, before anything ran: no step, no row under the given id. Witness: once the store
+     * answers again the same replay runs.
+     */
+    @Test
+    void aReplayFromALostBodyIsRefusedBodyLostBeforeAnythingRan() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope lost = recordedOver(blobs);
+        BlobKey input = BlobKey.body(lost.id(), 0);
+        Replay replay = over(blobs, reading()).replay(FlowDefinition.from(flow("sync", null)), NO_FILES);
+        List<Integer> calls = List.of(aCalls.get(), bCalls.get(), cCalls.get());
+        blobs.failExists(new io.flottila.api.BodyLostException(input));
+
+        ReplayRefusedException refused = refusal(() -> replay.from(lost.id(), 2, "refused-lost"));
+
+        assertEquals(ReplayRefusedException.Reason.BODY_LOST, refused.reason(), refused.getMessage());
+        assertTrue(refused.getMessage().contains(LOST) && refused.getMessage().contains(lost.id()), "says why and names the message: " + refused.getMessage());
+        assertEquals(calls, List.of(aCalls.get(), bCalls.get(), cCalls.get()), "no step ran");
+        assertEquals(List.of(), stepsOf("refused-lost"), "no row under the refused run's id");
+        assertEquals(ReplayRefusedException.Reason.BODY_LOST, refusal(() -> replay.from(lost.id(), 1, "refused-lost-1")).reason(),
+                "from step 1 the ingress row names the same lost key");
+
+        blobs.failExists(null);
+        assertEquals("after", replay.from(lost.id(), 2, "after").id(), "witness: with the body there the replay runs");
+    }
+
+    /**
+     * A DLQ replay of a message whose parked input the store reports lost is refused BODY_LOST saying "body lost by ACCEPT_LOSS"
+     * (D-062's exception: this DLQ row has no durable body), the parked step did not run, and the row stays as it was, for the
+     * operator. Witness: once the store answers again the same row retries and goes.
+     */
+    @Test
+    void aRetryOfALostParkedBodyIsRefusedBodyLostAndItsRowStays() {
+        ForgettingBlobStore blobs = forgetting();
+        Envelope lost = parkedOver(blobs);
+        BlobKey input = BlobKey.body(lost.id(), 0);
+        Parked row = dlq.get(lost.id()).await().orElseThrow();
+        Replay replay = over(blobs, reading()).replay(aThenC(), NO_FILES);
+        int c = cCalls.get();
+        blobs.failExists(new io.flottila.api.BodyLostException(input));
+
+        ReplayRefusedException refused = refusal(() -> replay.replayParked(lost.id(), "refused-lost-retry"));
+
+        assertEquals(ReplayRefusedException.Reason.BODY_LOST, refused.reason(), refused.getMessage());
+        assertTrue(refused.getMessage().contains(LOST) && refused.getMessage().contains(lost.id()), "says why and names the message: " + refused.getMessage());
+        assertEquals(Optional.of(row), dlq.get(lost.id()).await(), "the refused retry keeps its row, unchanged");
+        assertEquals(c, cCalls.get(), "the parked step did not run");
+        assertEquals(List.of(), stepsOf("refused-lost-retry"));
+        assertEquals(Optional.empty(), dlq.get("refused-lost-retry").await(), "no DLQ row under the refused run's id");
+
+        blobs.failExists(null);
+        assertEquals("yes", replay.replayParked(lost.id(), "lost-retry").header("sent").orElseThrow(), "witness: with the body there the row retries");
+        assertEquals(Optional.empty(), dlq.get(lost.id()).await(), "witness: and goes");
     }
 
     /**
@@ -973,7 +1109,7 @@ class ReplayTest {
 
         blobs.forgetAfterExists(parkedInput);
         int mark = blobs.eventCount();
-        Exception retryFailed = assertThrows(Exception.class, () -> retries.retry(parked.id(), "vanished-retry"));
+        Exception retryFailed = assertThrows(Exception.class, () -> retries.replayParked(parked.id(), "vanished-retry"));
         assertFalse(retryFailed instanceof ReplayRefusedException, "the run's outcome, not a refusal: " + retryFailed);
         assertFalse(retryFailed instanceof ParkedException, "nothing parked: " + retryFailed);
         assertEquals(parkedInput, missSignal(retryFailed).key(), String.valueOf(retryFailed));

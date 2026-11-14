@@ -10,6 +10,7 @@ from:
 delivery:
   mode: at-least-once
 partitionBy: orderId
+onFailure: park
 recording:
   level: all
   payload: keep

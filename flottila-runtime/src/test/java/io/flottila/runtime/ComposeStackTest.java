@@ -105,9 +105,73 @@ class ComposeStackTest {
         for (var it = services().fields(); it.hasNext(); ) {
             var e = it.next();
             if (e.getKey().equals("clickhouse")) continue;
-            assertFalse(e.getValue().has("profiles"), e.getKey() + " must start without a profile");
             assertFalse(e.getValue().path("depends_on").toString().contains("clickhouse"), e.getKey() + " must not wait for clickhouse");
         }
+    }
+
+    // ---- CORE-9 (O-1): Kafka is the optional event-broker add-on, off by default ------------------------------------------------
+
+    /** The profiles of a service as written ({@code profiles: [...]}); empty when it has none. */
+    private static List<String> profiles(JsonNode service) {
+        List<String> out = new ArrayList<>();
+        service.path("profiles").forEach(p -> out.add(p.asText()));
+        return out;
+    }
+
+    /** The services a service waits for, whether its depends_on is written as a list or as a map. */
+    private static List<String> dependencies(JsonNode service) {
+        List<String> out = new ArrayList<>();
+        JsonNode dependsOn = service.path("depends_on");
+        if (dependsOn.isObject()) dependsOn.fieldNames().forEachRemaining(out::add);
+        else dependsOn.forEach(d -> out.add(d.asText()));
+        return out;
+    }
+
+    @Test
+    void kafkaOnlyUnderTheKafkaProfile() throws IOException {
+        JsonNode kafka = service("kafka");
+        assertTrue(kafka.path("profiles").isArray(), "kafka's profiles is a list, was " + kafka.path("profiles"));
+        assertEquals(List.of("kafka"), profiles(kafka), "kafka is under profiles: [kafka] and no other");
+    }
+
+    @Test
+    void theDefaultUpStartsNeitherKafkaNorClickhouse() throws IOException {
+        Set<String> unprofiled = new java.util.TreeSet<>();
+        services().fields().forEachRemaining(e -> {
+            if (!e.getValue().has("profiles")) unprofiled.add(e.getKey());
+        });
+        assertEquals(new java.util.TreeSet<>(Set.of("postgres", "valkey", "s3", "sftp-keys", "sftp", "netns", "flottila", "echo", "deploy")),
+                unprofiled, "a plain `docker compose up` starts exactly these: everything but kafka and clickhouse");
+    }
+
+    @Test
+    void noServiceWaitsForKafka() throws IOException {
+        List<String> named = new ArrayList<>();
+        for (var it = services().fields(); it.hasNext(); ) {
+            var e = it.next();
+            List<String> deps = dependencies(e.getValue());
+            named.addAll(deps);
+            assertFalse(deps.stream().anyMatch(d -> d.toLowerCase(java.util.Locale.ROOT).contains("kafka")),
+                    e.getKey() + " must not wait for kafka: depends_on " + deps);
+        }
+        // witness (not vacuous): the depends_on maps are read — the node waits for postgres and sftp-keys, the echo for netns
+        assertTrue(named.contains("postgres") && named.contains("netns") && named.contains("sftp-keys"), "depends_on read: " + named);
+    }
+
+    @Test
+    void noServiceIsConfiguredForKafka() throws IOException {
+        int keys = 0;
+        for (var it = services().fields(); it.hasNext(); ) {
+            var e = it.next();
+            if (e.getKey().equals("kafka")) continue; // the broker's own settings are not a wiring to it
+            Map<String, String> env = environment(e.getValue());
+            keys += env.size();
+            for (String key : env.keySet()) {
+                assertFalse(key.toUpperCase(java.util.Locale.ROOT).contains("KAFKA"), e.getKey() + " sets " + key + ": nothing is wired to Kafka (O-1)");
+            }
+        }
+        // witness (not vacuous): the environments are read — the node alone sets FLOTTILA_ENV, FLOTTILA_PG_HOST and more
+        assertTrue(environment(service("flottila")).containsKey("FLOTTILA_ENV") && keys >= 10, "environment keys read: " + keys);
     }
 
     @Test
@@ -377,9 +441,12 @@ class ComposeStackTest {
         assertFalse(environment(node).containsKey("FLOTTILA_SECRET_SFTP_HOST_KEY"),
                 "the fingerprint is unknown until the key exists: it is not a fixed value of the compose file");
         List<Mount> mounted = mounts(node);
-        assertEquals(List.of("sftp-fingerprint"), mounted.stream().map(Mount::source).toList(),
-                "the node mounts the fingerprint volume and no other (in particular none that holds a host key): " + mounted);
-        assertTrue(mounted.get(0).readOnly(), "and only reads it: " + mounted);
+        // CORE-4c1 r1 (architect): the node's data directory is a named volume too, so a recreated container keeps its journal
+        assertEquals(List.of("sftp-fingerprint", "flottila-data"), mounted.stream().map(Mount::source).toList(),
+                "the node mounts the fingerprint volume and its data volume, no other (in particular none that holds a host key): " + mounted);
+        assertTrue(mounted.get(0).readOnly(), "and only reads the fingerprint: " + mounted);
+        assertEquals(new Mount("flottila-data", "/var/lib/flottila", false), mounted.get(1), "the data volume is the node's data directory, written");
+        assertTrue(new ObjectMapper(new YAMLFactory()).readTree(FILE.toFile()).path("volumes").has("flottila-data"), "flottila-data is a declared volume");
         String wrapper = script(node) + " " + environment(node);
         assertFalse(wrapper.contains("ssh_host"), "nothing the node runs names a host key file, public or private, of any type: " + wrapper);
         String assigned = script(node);
@@ -413,5 +480,24 @@ class ComposeStackTest {
         assertTrue(readme.contains("8082") && readme.contains("/invoice/async"), "the async door: port and path");
         assertTrue(readme.contains("inbox") && (readme.contains("docker compose cp") || readme.contains("sftp ")), "how to drop a file into the sftp inbox");
         assertTrue(readme.toLowerCase(java.util.Locale.ROOT).contains("fingerprint") && readme.contains("ssh-keygen"), "the fingerprint command");
+    }
+
+    // ---- FIX-146 T4: a stack that reaches Postgres by a non-loopback name says it runs it in plaintext, never implicitly ------------
+
+    @Test
+    void everyServiceReachingPostgresByANameSetsItsSslModeExplicitly() throws IOException {
+        int reaching = 0;
+        for (Path file : NODE_PORTS.keySet()) {
+            JsonNode services = new ObjectMapper(new YAMLFactory()).readTree(file.toFile()).path("services");
+            for (var service : (Iterable<Map.Entry<String, JsonNode>>) services::fields) {
+                Map<String, String> env = environment(service.getValue());
+                String host = env.get("FLOTTILA_PG_HOST");
+                if (host == null || List.of("localhost", "127.0.0.1", "::1").contains(host)) continue;
+                reaching++;
+                assertEquals("disable", env.get("FLOTTILA_PG_SSL_MODE"), file + ": " + service.getKey() + " reaches Postgres as '" + host
+                        + "', whose default is verify-full: the stack's plaintext link must be written down (FIX-146 T4)");
+            }
+        }
+        assertEquals(2, reaching, "witness: the node of each stack reaches Postgres by its service name (not vacuous)");
     }
 }

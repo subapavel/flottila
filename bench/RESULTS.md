@@ -1,5 +1,377 @@
 # Bench results — Phase 2 (P2-08), Phase 1 (gate P1-10, P1-01, P1-02) and Phase 0 (gate, spikes, baselines)
 
+## CORE-17 indicative — one shared pool vs pools by role, A/B/A/B + diagnostics — cloud VM, 4 vCPU @ 2.10 GHz (NOT CORE-GATE)
+
+Date 2026-11-11. Same host and PostgreSQL 16.15 cluster as the FIX-169 entry below (fsync on, synchronous_commit on), the same
+base-run.sh settings (open, ack, concurrency 512, max in flight 256, ramp PT30S, window PT3M, BENCH_IO_DEVICE vda, BENCH_PG_CPU
+postmaster, BENCH_PG_STATEMENTS 1), each tree built by bench/run.sh, nothing else running. Trees: **A** = 32840d4 clean (one pool
+of 16, 18 connections per node); **B1/B2** = CORE-17 review-round-2 tree (JSON commit "32840d4+dirty"; default 16 = 5 intake + 11
+work); **B3/B4** = the CORE-17 tree as committed (JSON commit "32840d4+dirty"; only a Node.java comment changed after the runs; default 21 = 5 + 16, 23 connections); **D0–D3** = the B1/B2 tree with a scratch bench
+patch passing `FLOTTILA_PG_POOL_SIZE` / `FLOTTILA_PG_POOL_INTAKE` (JSON commit "unknown"). Order A1 B1 A2 B2, then D1 D2 D3 D0, then
+B3 B4. All exit 0, valid, settled, work 0, timeouts 0. Raw agent/work/CORE-17-ab/, CORE-17-diag/ (not committed). Completes/s ≈ accepted ÷ 180 s.
+
+r3000 recording none — ACK p50 / p99 / p99.9 ms · accepted / 503 · backlogGrowth · warmupFailed · pool/intake
+| run | ACK ms | accepted / 503 | backlog | warmupFailed | pool |
+|---|---|---|---|---|---|
+| A1 | 18.9 / 87.1 / 157.5 | 537 893 / 2 107 | 0 | 414 | 16 shared |
+| A2 | 16.2 / 81.0 / 137.7 | 538 415 / 1 585 | −1 | 393 | 16 shared |
+| B1 | 14.4 / 53.5 / 147.2 | 538 775 / 1 225 | +1 | 321 | 16/5 |
+| B2 | 16.7 / 60.8 / 121.6 | 539 239 / 761 | +33 | 256 | 16/5 |
+| B3 | 15.5 / 58.1 / 126.5 | 539 193 / 807 | +14 | 69 | 21/5 |
+| B4 | 17.7 / 63.4 / 134.2 | 538 994 / 1 006 | +61 | 255 | 21/5 |
+
+r2000 recording all
+| run | ACK ms | accepted / 503 | backlog | warmupFailed | pool |
+|---|---|---|---|---|---|
+| A1 | 33.5 / 103.8 / 209.2 | 358 995 / 1 005 | +26 | 396 | 16 shared |
+| A2 | 26.7 / 98.4 / 267.4 | 358 750 / 1 250 | +34 | 542 | 16 shared |
+| B1 | 13.9 / 49.3 / 137.7 | 359 750 / 250 | **+24 945** | 47 | 16/5 |
+| B2 | 16.0 / 53.2 / 131.2 | 359 763 / 237 | **+44 657** | 16 | 16/5 |
+| D0 | 15.6 / 51.0 / 166.6 | 359 347 / 653 | **+40 840** | 0 | 16/5 |
+| D1 | 18.5 / 52.9 / 178.6 | 359 471 / 529 | −138 | 42 | 21/5 |
+| D2 | 37.4 / 144.4 / 226.1 | 357 741 / 2 259 | +217 | 265 | 16/2 |
+| D3 | 19.2 / 59.4 / 135.4 | 359 777 / 223 | +1 000 | 93 | 24/8 |
+| B3 | 18.2 / 50.6 / 159.4 | 359 636 / 364 | 0 | 187 | 21/5 |
+| B4 | 19.4 / 56.5 / 130.1 | 359 776 / 224 | +60 | 46 | 21/5 |
+
+Same-commit spread: A r3000 p99 81–87, r2000 p99 98–104; B3/B4 r3000 p99 58–63, r2000 p99 51–57 ms. Reading (indicative only): at
+21 = 5 + 16 the ACK p99 under worker load lies below A's whole spread in both shapes, 503s are lower, and the r2000 recording-all
+backlog stays flat; 16 = 5 + 11 had the same ACK gain but starved the workers (F-33). The comparison is not like-for-like: B3/B4 hold
+23 connections per node against A's 18. D*-activity.txt (5 pg_stat_activity samples per run): intake sessions 0–3 of 5 active,
+work sessions mostly waiting on LWLock WALWrite / IO WALSync — the work pool's size sets the backlog, the intake pool's sets ACK latency.
+
+## Indicative after FIX-169 — r2000 / r3000 twice, the P2-15a baseline repeated — cloud VM, 4 vCPU @ 2.10 GHz (owner request; NOT CORE-GATE)
+
+Date 2026-11-11. Commit 45948fe (clean worktree). Owner: "not real test results, only whether we are on a good path". Same host
+shape as the baseline below (Intel Xeon @ 2.10 GHz × 4 vCPU, KVM; kernel 6.18.44-fc-v378, JDK 25.0.5), the same native
+PostgreSQL 16.15 cluster, the baseline's script agent/work/base-run.sh with paths renamed (session scratchpad, not committed: open, ack,
+recording none, concurrency 512, max in flight 256, ramp PT30S, window PT3M, BENCH_IO_DEVICE vda, BENCH_PG_CPU postmaster,
+BENCH_PG_STATEMENTS 1). Four runs back to back, nothing else running. Raw agent/work/ind-r{2000,3000}-{1,2}.json, ind-machine.txt
+(not committed). All exit 0, valid, settled, work 0, timeouts 0; warmupFailed 482 / 336 / 271 / 405 (outside the window, FIX-123).
+Completes/s is not a JSON field: with work 0 after settle and the backlog flat, completes ≈ accepted ÷ 180 s (shown with ≈).
+
+| run | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog growth | completes/s | Postgres CPU | bench JVM CPU | CLAIM ms (calls) |
+|---|---|---|---|---|---|---|---|
+| r2000-1 | 359 362 / 638 | 8.90 / 46.07 / 163.06 | +0.001 % | ≈ 1 997 | 1.17 | 1.63 | 1.16 (788) |
+| r3000-1 | 537 686 / 2 314 | 19.09 / 81.55 / 191.61 | +0.027 % | ≈ 2 987 | 1.32 | 1.63 | 3.66 (6 822) |
+| r2000-2 | 360 000 / 0 | 8.75 / 35.92 / 84.87 | −0.001 % | ≈ 2 000 | 1.16 | 1.63 | 0.85 (569) |
+| r3000-2 | 538 529 / 1 471 | 22.62 / 80.80 / 142.65 | −0.000 % | ≈ 2 992 | 1.37 | 1.64 | 3.77 (8 455) |
+
+DB series (window means): xact commits/s 3 036 / 3 672 / 3 062 / 3 589; walSync/s 959 / 615 / 984 / 531. `delete from work`
+(batched completion, CORE-7) 0.17 / 0.11 ms per call at r2000 with 101 943 / 105 563 calls (≈ 3.5 items per statement).
+
+Reading, against the baseline below (same shape, same Postgres): r3000 now holds in both runs — backlog flat (was +6 % / +21 %),
+503s 1.5–2.3 k (was 14 k / 47 k), ACK p50 19–23 ms (was 55–73), p99 81–82 ms (was 128–153). r2000: p99 36–46 ms (was 67–75),
+p50 unchanged at ≈ 9 ms. Postgres CPU per message fell: 1.32–1.37 cores at ≈ 2 990 msg/s against 1.28 at 2 170–2 750. CLAIM
+calls dropped by two orders of magnitude at r2000 (569–788 against 75–157 k: event-driven pickup and local hand-off, P2-16a/b).
+The ceiling on this host is now above 3 000 msg/s; r3000 is no longer over it, so the new ceiling is not measured here. One run
+pair per rate on a shared cloud VM: a direction, not a number to plan on.
+
+## Baseline after P2-15a — r2000 / r3000 twice, one host — cloud VM, 4 vCPU @ 2.10 GHz (owner request; NOT CORE-GATE)
+
+Date 2026-11-06. Commit aa4ca58 (clean worktree). Settings as the P2-15a preview below; four runs back to back, nothing else
+running. **Host: Intel Xeon @ 2.10 GHz × 4 vCPU — not the CORE-GATE reference (2.80 GHz, GATE.md); earlier previews ran on the
+2.80 GHz shape, so they are not comparable with this section.** Raw agent/work/base-r{2000,3000}-{1,2}.json, base-machine.txt
+(not committed). All exit 0, valid, settled; warmupFailed 314 / 323 / 469 / 416 (outside the window, FIX-123).
+
+| run | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog growth | completes/s | Postgres CPU | bench JVM CPU | CLAIM ms (calls) |
+|---|---|---|---|---|---|---|---|
+| r2000-1 | 359 780 / 220 | 8.99 / 66.67 / 142.13 | +0.002 % | 1 999 | 1.23 | 1.59 | 0.10 (157 246) |
+| r3000-1 | 526 058 / 13 942 | 55.41 / 127.98 / 203.83 | +5.95 % | 2 748 | 1.28 | 1.65 | 2.26 (7 253) |
+| r2000-2 | 359 887 / 113 | 14.92 / 74.86 / 134.42 | −0.003 % | 2 000 | 1.33 | 1.57 | 0.43 (75 558) |
+| r3000-2 | 493 258 / 46 742 | 73.47 / 152.96 / 265.96 | +20.8 % | 2 170 | 1.28 | 1.73 | 2.57 (5 744) |
+
+Reading: r2000 holds on this host in both runs (≈ 2 000 completes/s, backlog flat, a few hundred 503s, ACK p50 9–15 ms, p99
+67–75 ms). r3000 is over the ceiling: 2 170–2 750 completes/s, backlog growing 6–21 %, thousands of 503s; the spread between
+the two r3000 runs is large (one run each is not a number to plan on). The ceiling on this host is ≈ 2 200–2 700 msg/s,
+CPU-bound (Postgres ≈ 1.3 cores + bench JVM ≈ 1.6–1.7 of 4). This is the baseline for P2-16 / CORE-7.
+
+## P2-15a preview — r2000 after the node lease — cloud VM, 4 vCPU (owner request; NOT CORE-GATE)
+
+Date 2026-11-06. Commit 7db5453. Configuration as the FIX-130 + FIX-127 preview below (BENCH_IO_DEVICE vda, BENCH_PG_CPU
+postmaster, BENCH_PG_STATEMENTS on). One run; raw agent/work/P2-15a-r2000.json (not committed). Exit 0, valid, settled, work 0.
+Caveat: the container restarted twice since the previous preview (kernel 6.18.44-fc-v236 → v242); the host may differ, so the
+gains below are not attributed to P2-15a; warmupFailed 160 (outside the window, unexplained — FIX-123).
+
+| cell | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog growth | completes/s | Postgres CPU | bench JVM CPU |
+|---|---|---|---|---|---|---|
+| r2000 | 360 000 / 0 | 13.19 / 47.98 / 102.78 | +18 (0.005 %) | ≈ 2 000 | 1.38 cores | 1.52 cores |
+
+Lease cost: `update nodes set lease_until …` 36 calls, 3.2 ms in the window (one per 5 s); no statement per message added.
+CLAIM 66 223 calls, 0.90 ms per call (4.97 ms before); sweeper check 15 calls, ≈ 63 ms each.
+Reading: the lease costs nothing measurable; r2000 now keeps up with no 503s. Whether the lower ACK latency comes from the code
+(the fenced poll path) or the host needs a repeat on one host before it is claimed.
+
+## FIX-130 + FIX-127 preview — r2000 / r3000 after the claim and sweeper fixes — cloud VM, 4 vCPU (owner request; NOT CORE-GATE)
+
+Date 2026-11-05. Commit 0f3c6d5 + the FIX-127 working tree (records labelled `0f3c6d5+dirty`; FIX-127 commits next with this
+section). Configuration exactly as the CORE-15b preview below (PG 16.15, pg_stat_statements, track_wal_io_timing, vda, recording
+none, client 512, in-flight 256, ramp PT30S, window PT3M, 132 B). One run per cell; raw agent/work/fix-r{2000,3000}.json (not
+committed). Statement figures are window deltas.
+
+| cell | accepted / 503 | ACK p50 / p99 / p99.9 ms | backlog 30 s → 180 s | settled | completes/s | commits/s | Postgres CPU | bench JVM CPU |
+|---|---|---|---|---|---|---|---|---|
+| r2000 | 356 809 / 3 191 | 79.32 / 154.24 / 202.47 | 6 683 → 16 985 (+4.7 %) | yes, work 0 | ≈ 1 890 | 3 857 | 1.31 cores | 1.72 cores |
+| r3000 | 438 032 / 101 968 | 94.01 / 186.91 / 267.51 | 24 705 → 127 422 (+28 %) | yes, work 0 | ≈ 1 750 | 3 568 | 1.30 cores | 1.77 cores |
+
+CLAIM: 4.97 ms per call at r2000 (was 171 ms in the CORE-15b preview), 2.55 ms at r3000; the sweeper's check is no longer among
+the top statements; every other statement ≤ 1.2 ms per call. WAL 0.53–0.58 ms per sync, disk util ≤ 40 %.
+Reading: the hand-over no longer collapses with depth — at r2000 the worker delivers ≈ 1 890/s against ≈ 375/s before, and both
+runs drain completely. The end-to-end ceiling on this VM is now ≈ 1 800–1 900 msg/s, with ≈ 3.0–3.1 of 4 cores busy (Postgres
+1.3, the bench JVM — node, client and echo together — 1.7–1.8): CPU, not the disk. ≈ 2 commits per message remain (claim and
+per-message delete: P2-16, CORE-7). ACK latency rose (p50 79 ms at r2000) now that the worker competes for the shared pool and CPU
+(CORE-17, D-111); the node's own CPU share is not separated yet (cpu sampling off).
+
+## CORE-15b preview — r1000 / r2000 with database series — cloud VM, 4 vCPU (owner request; NOT the CORE-GATE measurement)
+
+Date 2026-11-05. Commit aa4a717. Same machine and configuration as the CORE-15 preview below, plus PostgreSQL 16.15 with
+shared_preload_libraries pg_stat_statements, track_wal_io_timing on (wal_sync_method fdatasync, full_page_writes on),
+BENCH_IO_DEVICE=vda, BENCH_PG_CPU = the postmaster. pg_test_fsync on the data filesystem: fdatasync 3 178 ops/s (315 µs).
+One run per cell; raw agent/work/db-r1000.json, db-r2000.json, db2-r2000.json (with pg_stat_statements) — not committed.
+
+| cell | accepted / 503 | ACK p50 / p99 ms | backlog 30 s → 180 s | commits/s 0–29 s → 30 s–end | WAL ms/sync | disk util | Postgres CPU |
+|---|---|---|---|---|---|---|---|
+| r1000 | 180 000 / 0 | 9.96 / 47.10 | 40 → 14 (settled) | 2 825 → 3 012 | 0.49 | 46 % | 1.27 cores |
+| r2000 | 353 860 / 6 140 | 33.11 / 179.97 | 6 968 → 232 906 (not settled) | 3 629 → 1 173 | 0.78 | 40 % | 1.28 → 1.85 cores |
+| r2000 (2) | 359 189 / 811 | 15.9 / 124.1 | 13 722 → 255 762 (not settled) | 3 248 → 1 126 | 0.67 | 38 % | 1.56 → 1.87 cores |
+
+pg_stat_statements over the r2000 (2) window (180 s): the worker's CLAIM ran 957 times at **171 ms per call** (2 041 buffers per
+call, 164 s in total — one claim in flight at a time, so the worker spent the window waiting on it); the segment sweeper's pinned
+check ran 12 times at 1.7 s per call (203 k buffers per call); every other statement is below 0.3 ms per call.
+EXPLAIN (ANALYZE, BUFFERS) of CLAIM on the left-over `work` (42 192 rows, none leased): 479–530 ms, of which **JIT 461–492 ms**
+(the planner estimates the whole table for the seq-ordered index scan, cost ≈ 3.9e8, above jit_above_cost); the generic plan
+(what a cached prepared statement gets) adds a Seq Scan of `work` as a hash semi-join probe (5 196 buffers); the custom plan
+reads 410 buffers.
+Reading: not the disk (fdatasync 0.3–0.9 ms, util ≤ 47 %), not dead tuples (autovacuum kept n_dead_tup down while the backlog
+grew). The hand-over ceiling is the CLAIM statement, whose cost grows with the queue depth through JIT and the generic plan's
+seq scan (F-27 addendum); the sweeper's check is the second cost. Fixes: FIX-130, then FIX-127.
+
+## CORE-15 preview — open loop, at-least-once, recording none — cloud VM, 4 vCPU (owner request; NOT the CORE-GATE measurement)
+
+Date 2026-11-05 (UTC 11:07–11:29). Commit 6d5e4c3. Machine: Intel Xeon @ 2.80 GHz × 4 vCPU, 15 GiB, Linux 6.18.44; Java 25.0.5;
+PostgreSQL 16.15 native (fsync on, synchronous_commit on, commit_delay 0), pool 16, schema v13. One node, journal copies 1.
+Configuration: `BENCH_SCENARIOS=open BENCH_OPEN_SCENARIO=ack BENCH_RECORDING_LEVEL=none BENCH_CONCURRENCY=512
+BENCH_MAX_IN_FLIGHT=256 BENCH_RAMP=PT30S BENCH_WINDOW=PT3M bench/run.sh`, body 132 B, one run per rate (the gate needs 3 and a
+PT10M window). CPU per process not measured (node sampling off; no Postgres cgroup on this VM). Warm-up (closed loop, 1 000) had
+328 / 266 / 419 failed requests (client 512 > in-flight 256). Raw: agent/work/step-r{500,1000,2000}.json (not committed).
+
+| offered msg/s | accepted (window) | 503 | ACK p50 / p99 / p99.9 / max ms | backlog first → last | growth | settled (PT10M) |
+|---|---|---|---|---|---|---|
+| 500  | 90 000 / 90 000   | 0      | 9.65 / 38.49 / 207.04 / 336.23   | 3 → 3          | 0 %     | yes |
+| 1000 | 180 000 / 180 000 | 0      | 20.34 / 66.91 / 102.82 / 172.63  | 8 → 17         | 0.005 % | yes |
+| 2000 | 329 961 / 360 000 | 30 039 | 37.31 / 213.83 / 3235.23 / 3481.26 | 3 239 → 265 431 | 79.46 % | no: work 131 384 left |
+
+Reading: at 2 000 msg/s the intake still answered 92 % with 202, but the partner hand-over fell behind. The backlog grew ~497/s
+for the window's first 30 s (receipts ≈ 1.3–1.5 k/s), then ~1 766/s (receipts ≈ 170/s) from a depth of ≈ 17 k: the worker
+collapsed ~8×, it is not a flat ceiling (F-27). The settle drain rate is withdrawn: the settle probe's `count(distinct id)` every
+5 ms loaded the shared CPU (F-27). The sustained at-least-once rate on this VM at 6d5e4c3 is between 1 000 and 2 000 msg/s; ACK
+p99 is above the 50 ms target already at 1 000. An earlier run at 5 000 msg/s with recording `all` (aa01415) lost its record
+(FIX-124) and gives no figures here.
+
+## Harness: open loop (CORE-15) — method note, no numbers
+
+`NodeBenchMain --rate <msg/s>` (1..100 000) runs scenario `ack` or `sync` open loop; `--scenario echo --rate ..` runs it straight
+at the raw echo (no node, no Postgres): the harness' own ceiling. `bench/run.sh` scenario `open` (BENCH_RATE 5000, BENCH_RAMP,
+BENCH_WINDOW, BENCH_OPEN_SCENARIO ack|sync|echo, BENCH_PG_CPU). Without `--rate` the closed loop is unchanged.
+
+- **Schedule.** Request i is due at an instant fixed in advance: a linear ramp from 0 to the rate over `--ramp` (PT1M; i is due at
+  sqrt(2·ramp·i/rate)), then the constant rate for `--window` (PT10M). A request is sent when due whatever the answers to earlier
+  ones; sends run on a Vert.x timer rounded up to whole milliseconds (a timer that fires late sends everything due by then).
+  Nothing is scheduled at or after the window's end. The closed-loop `--warmup` runs before the ramp.
+- **Bound.** At most `--max-outstanding` (rate × 2 s) requests in flight; one due while the bound is full is never sent and counts
+  `clientSaturated`. Client connections are `--concurrency`; a request beyond them waits in the client's queue, on the clock.
+  A request without a connection or an answer within 30 s counts as a timeout.
+- **Window figures** count only the requests scheduled inside the window: `scheduled` (rate × window), `sent`, `achievedRate`
+  (window requests whose actual send fell inside the window, per window second), `accepted` (202 for ack, 200 for sync and echo),
+  `refused503` (the flow's admission), `refused` (any other status, by code), `timeouts`, `errors` (`firstFailure` the first).
+- **Latency** p50/p99/p99.9/max of the accepted answers, each from the request's **scheduled** send time to its answer: a late
+  send counts its delay (no coordinated omission). Null when nothing was accepted.
+- **Backlog** = accepted − partner receipts (the echo counts each request it answers; ramp included in both), sampled at the
+  window's start, each second, and its end (`backlog`); `backlogGrowth` = end − start, `backlogGrowthPercent` over the window's
+  `accepted`. `acceptedTotal` is ramp + window. `receipts` is re-read when the settle returns: once the node settled
+  (everything accepted landed) or at its deadline (FIX-124).
+  In the echo self-test a receipt is counted before its answer reaches the client, so a sample can be slightly negative.
+- **CPU over the window** (`cpuMs`, read at the window's start and end): `bench` the bench JVM (client, node and echo together);
+  `node` the bench flow's step CPU as the node's sampler attributed it (`--cpu-sampling` on; the sampler reads every 5 s and keeps
+  2 s of lateness, so a short window reads low or 0 — meaningful for minutes-long windows only); `postgres` from
+  `--pg-cpu-source` (a cgroup v2 directory's `cpu.stat` `usage_usec`, or — since CORE-15b — the postmaster's pid: the whole
+  cluster, below). A figure that cannot be read is JSON null with its reason in `cpuNotes`, never 0.
+- **valid** is false, with `invalidReasons`, when any request was `clientSaturated` or `achievedRate` is more than 1 % off the
+  scheduled rate (`scheduled` / window seconds, the offered rate whenever rate × window is whole). An invalid run measured the
+  client, not the node. The run exits 3 on window errors or timeouts; refusals and invalidity are recorded, not failed.
+- **Settle** (FIX-124): after the window the run waits up to PT10M (`settleDeadline`) until `settleTarget` messages (the warm-up requests that succeeded +
+  `acceptedTotal`) are recorded and the work queue is empty. `settled` says whether that landed; `messages` (distinct recorded
+  messages) and `work` (work-queue items) are read when the wait returns, landed or at the deadline. The record is written
+  either way; a run with `settled: false` exits 4, which takes precedence over 3. The echo self-test does not settle (no
+  `settled`).
+- **recordingLevel** (record top level, FIX-124): `--recording-level` — `all` (default) records every step, `none` deploys the
+  flow with `recording.level: off` (the CORE-GATE cell); `recording` stays the payload setting. Sync refuses `none`.
+- Latency samples are kept exactly (8 bytes per window request: 24 MB at 5 000/s × PT10M).
+- **Per-sample series** (CORE-15b, F-27 I1): taken with each backlog sample (the window's start, each second, its end), one entry
+  per sample, each read on a virtual thread off the loop's timer (the record waits for the last read). A delta entry is the
+  change since the sample before; the first entry is 0 (the window's start is the baseline). An entry that could not be read is
+  null, a field no sample could read is JSON null, and either way its reason is in the object's `notes` — never 0.
+  - `db` (ack and sync; the echo self-test has none): one statement per sample on a Postgres session of its own (never the
+    node's pool nor the bench's; application_name `flottila-bench-sampler`, statement_timeout 10 s; its one commit per sample
+    is in `xactCommit`). `xactCommit` Δ pg_stat_database.xact_commit of the run's database; `walFpi`, `walBytes` Δ pg_stat_wal
+    (the cluster's); `walSync`, `walSyncTimeMs` Δ pg_stat_wal.wal_sync / wal_sync_time on 16 and 17, Δ the sum of pg_stat_io
+    fsyncs / fsync_time where object = 'wal' and context = 'normal' on 18 (D-129: the same count, issue_xlog_fsync, cluster-wide;
+    a new segment's `init` fsync is in neither) — null unless fsync is on and wal_sync_method is fdatasync, fsync or
+    fsync_writethrough (the only cases either counts), and `walSyncTimeMs` also null with
+    track_wal_io_timing off); `workDeadTup` / `workLiveTup` pg_stat_user_tables n_dead_tup / n_live_tup of `work` as read (not
+    deltas), `workHotUpd` / `workUpd` Δ n_tup_hot_upd / n_tup_upd (all null when the schema has no `work` statistics row);
+    `workAutovacuum` / `workAutoanalyze` `[{sample, at}]` for each new last_autovacuum / last_autoanalyze time a sample saw
+    (one the window's start already saw is not listed); `statements` the 12 statements with the most execution time between
+    the window's first and last sample — `queryid`, `query`, `calls`, `totalExecTimeMs`, `sharedBlks` (hit + read), each a
+    window delta, summed per queryid over the run's database (`dbid`), only those called in the window, the sampler's own statements (they name the pg_stat_ views) left
+    out — null when pg_stat_statements cannot be read in the run's database (probed once when the sampler opens: the
+    extension must be created there and the server must preload it, `shared_preload_libraries`). Columns as PostgreSQL 16, 17
+    and 18 name them (16 and 17 checked with `\d` on 16.15 and the 17 image; the 18 source run by the bench ITs on 18.6, FIX-169). The cumulative pg_stat counters are what backends have published: a
+    busy backend publishes up to 1 s late and one that goes idle up to 10 s late (PGSTAT_IDLE_INTERVAL), so the per-second
+    entries and the window's sum are shifted by that lag at both ends; pg_stat_statements updates when a statement ends, no lag.
+  - `pgCpu`: `cpuMs` per sample from `--pg-cpu-source` — a cgroup v2 directory, or the postmaster's pid: utime + stime +
+    cutime + cstime of the postmaster and of every process whose parent it is (backends, checkpointer, walwriter, archiver;
+    the c-times hold the backends that exited and what a child ran and reaped), read from `/proc/<pid>/stat`; a child that exits
+    while the tree is read is left out of that sample and counted in the next one's. Null with "no --pg-cpu-source" unless set.
+    Both `pgCpu` and the window's `cpuMs.postgres` include the `db` sampler's own backend (one statement per second).
+  - `io` (`--io-device <name>`, `BENCH_IO_DEVICE`): the device's line of `/proc/diskstats` (the name exactly, not a partition):
+    `reads` (field 4), `writes` (8), `writeMs` (11), `ioMs` (13) as deltas, `utilPercent` = Δ ioMs over the sample's own
+    interval. Null with "no --io-device" unless named; a device not listed or an unreadable file is null with that reason.
+- **Settle probe** (CORE-15b, F-27): the open settle asks whether `work` is empty first and counts the recorded messages
+  (`count(distinct id)`) only then, once per probe, one probe per second; the closed-loop settles keep their 5 ms poll with the
+  same order. `bench/run.sh` scenario `open` adds BENCH_IO_DEVICE and BENCH_PG_STATEMENTS=1 (creates the extension in BENCH_DB
+  before the run; a refusal is printed and the run goes on) and prints the window's commits/s and WAL syncs/s (the `db` series
+  summed over `scheduled` / `offeredRate` seconds, n/a when an entry is unknown) and the top statement by time.
+
+## CORE-2 — ClickHouse payload compression — cloud VM, 4 vCPU
+
+Date: 2026-11-04. Commit: the CORE-2 working tree on d2e2845 (records labelled `d2e2845+dirty`). Machine: Intel Xeon @ 2.80 GHz
+× 4 vCPU, 15.7 GiB, kernel 6.18.44-fc-v230, JDK 25.0.5, Docker 29.9.2. ClickHouse `clickhouse/clickhouse-server:25.8.33.6` (the
+compose pin) started by `BENCH_SCENARIOS=clickhouse bench/run.sh` with `docker run`, default server settings (only
+`CLICKHOUSE_PASSWORD` set), data inside the container on the VM disk, removed with the container after the run. Observed server
+settings: max_server_memory_usage 14.1 GiB (0.9 × RAM), index_granularity_bytes 10 MiB, max_compress_block_size 1 MiB.
+Harness `ClickHouseCompressionMain` (JDK HttpClient, ClickHouse HTTP interface): per cell a fresh table
+`(flow LowCardinality(String), created_at DateTime64(3), id String, payload String CODEC(ZSTD(n)))`, MergeTree `ORDER BY (flow,
+created_at, id)`; payloads generated (`InvoiceGenerator`, seed 20261104: the demo invoice shape plus dates, partner, line text,
+amounts and total; lines appended to the target size; `mixed` = 200 partners with own catalogs and 8 flows, `similar` = one
+partner's template and one flow; JSON = the same content, compact); inserted in RowBinary batches of at most 64 MiB (100 KiB: 4
+inserts, 1 MiB: 8, 10 MiB: 17, 50 MiB: one payload per insert, 20), then `OPTIMIZE TABLE … FINAL`; then 50 warm-up and 200 timed
+random reads `SELECT payload … WHERE id = {id} FORMAT RawBLOB` (client-side to the last byte; every read checked against the
+inserted length and CRC32C: 0 mismatches). Counts: 100 KiB × 2 000, 1 MiB × 500, 10 MiB × 100, 50 MiB × 20 (200 MiB to 1 GiB raw
+per cell; 33.9 GB raw per pass of 48 cells). Every run took < 5 min (max 122 s), so every cell ran 3 times; median [min–max].
+Raw JSON agent/work/CORE-2-run.json (merged), parts and logs agent/work/CORE-2-run-part{1,2,3}.json, CORE-2-run.log,
+CORE-2-resume.log (not committed). Other load on the VM during the first 43 cells was not recorded.
+
+**Harness edits after the run (review, for the IT `ClickHouseCompressionMainIT`):** arguments checked up front (size against the
+batch, counts, zstd level 1..22, runs); the batching moved into an inner class (same rule: a row that would overflow 64 MiB
+starts the next insert); the read check compares one value (length and CRC32C together); the memory sampler runs until it is
+interrupted and reports `serverMemorySamples`; two dead empty/`\N` guards in the TSV parsing removed; the merge fan-in
+(`length(merged_from)` in `system.part_log`: `mergeFanInMax`, `mergePeakFanIn`, `finalMergeFanIn`) added. **Recheck with the
+edited harness** (2026-11-04, the 2.10 GHz VM; `BENCH_CH_ARGS="--sizes 100,51200 --counts 2000,20 --mixes similar --formats xml
+--levels 1 --runs 1"`, agent/work/CORE-2-recheck.log/.json): 100 KiB similar xml zstd 1 ratio 8.53 and merge peak 123 MiB (table:
+8.53 / 123), one merge of 4 parts; 50 MiB similar xml zstd 1 ratio 8.62 and merge peak 582 MiB (table: 8.62 / 582), 4 merges, the
+peak one (the final OPTIMIZE merge) of 5 parts, the largest of 6. Ratio and merge peak reproduced; times not compared (other CPU).
+
+**Five cells ran after a restart, on another VM (marked †).** The whole VM restarted during 50 MiB similar xml zstd 3 run 3
+(runs 1 and 2 were logged, the cell's record was not written); the five missing cells (50 MiB similar: xml zstd 3, 9; json zstd 1,
+3, 9) were re-run with the same seed after the restart, on a VM that had changed: kernel 6.18.44-fc-v230 → **v233**, Intel Xeon
+@ 2.80 GHz → **2.10 GHz**, while another session's Maven build ran (load 1.8–5.1). As a
+control, the completed cell 50 MiB similar xml zstd 1 was run again there: ratio 8.62 (same), merge peak 582 MiB (same), insert
+4.1 s (4.0 s before), OPTIMIZE 4.4 s (5.5 s), read p50 137.6 ms (199.0 ms), p99 198.2 ms (350.2 ms). The † rows' ratios and
+memory are comparable with the others; their times are not (reads ran 31 % faster in the control, zstd 9 inserts 37–44 % faster
+than in the other 50 MiB zstd 9 rows).
+
+Columns: ratio (part) = `system.parts_columns` data_uncompressed_bytes / data_compressed_bytes of the one active part after
+OPTIMIZE (the whole part; the payload column alone, column_data_*, differs by ≤ 0.04); insert s = sum of the inserts'
+query_duration_ms (`system.query_log`); insert peak = max memory_usage of one insert; OPTIMIZE s = its query_duration_ms;
+merge peak = max peak_memory_usage over all merges of the table (`system.part_log`; the OPTIMIZE query's own memory_usage is
+~1.2 MiB, the merge is not accounted to it); server peak = `system.metrics` MemoryTracking sampled every 100 ms during inserts
+and OPTIMIZE (it includes caches and grows over the session: idle 67 MiB at the start, so it is an upper bound, not the cell's
+cost); read bytes = average read_bytes per timed read on the server; failed = insert, merge or OPTIMIZE errors, query
+exceptions and read mismatches over all runs.
+
+| size × count | mix | format | zstd | runs | ratio (part) | ratio (payload col) | insert s (server, sum) | insert peak MiB | OPTIMIZE FINAL s | merge peak MiB (part_log) | server peak MiB | read p50 ms | read p99 ms | read server p50 ms | read bytes/read MiB | failed |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 100 KiB × 2000 | mixed | xml | 1 | 3 | 7.09 [7.08–7.09] | 7.10 [7.10–7.11] | 1.1 [1.0–1.5] | 141 | 1.0 [0.9–1.2] | 145 | 229 [210–236] | 16.0 [15.2–16.9] | 43.3 [42.1–45.8] | 13 [11–14] | 6.4 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | xml | 3 | 3 | 6.89 [6.88–6.89] | 6.91 [6.90–6.91] | 1.1 [1.1–1.3] | 141 | 1.1 [1.1–1.2] | 145 | 247 [238–250] | 16.6 [16.2–17.1] | 35.0 [32.0–35.2] | 14 | 6.4 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | xml | 9 | 3 | 8.15 [8.14–8.15] | 8.17 [8.16–8.17] | 5.1 [4.5–5.1] | 155 | 5.3 [4.7–5.3] | 145 | 291 [284–293] | 14.7 [14.5–14.8] | 38.4 [31.4–43.0] | 13 | 6.4 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | json | 1 | 3 | 5.59 [5.59–5.60] | 5.60 [5.60–5.61] | 1.1 [1.0–1.2] | 141 | 1.2 [1.1–1.3] | 145 | 298 [291–300] | 16.2 [16.1–16.3] | 33.0 [31.4–43.0] | 14 | 6.3 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | json | 3 | 3 | 5.39 [5.38–5.39] | 5.40 [5.39–5.40] | 1.4 [1.3–1.5] | 141 | 1.6 [1.6–1.7] | 145 | 317 [307–325] | 16.9 [16.6–17.7] | 39.2 [35.6–39.5] | 15 [15–16] | 6.3 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | mixed | json | 9 | 3 | 6.28 [6.27–6.28] | 6.29 | 5.4 [5.3–6.5] | 155 | 6.2 [5.5–6.8] | 145 | 376 [352–387] | 17.2 [15.9–17.8] | 35.4 [34.0–45.5] | 15 [14–16] | 6.3 [6.2–6.5] | 0 |
+| 100 KiB × 2000 | similar | xml | 1 | 3 | 8.53 | 8.56 | 1.0 [0.8–1.3] | 98 | 1.4 [0.8–1.6] | 123 | 356 [352–358] | 14.1 [13.6–15.8] | 34.2 [27.3–61.0] | 12 [12–13] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | xml | 3 | 3 | 8.52 | 8.55 | 0.9 [0.9–1.6] | 98 | 0.9 [0.8–0.9] | 123 | 359 [359–366] | 15.2 [12.4–16.0] | 31.4 [28.5–37.8] | 13 [10–14] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | xml | 9 | 3 | 9.94 | 9.98 | 4.6 [4.1–4.7] | 98 | 4.4 [4.1–5.4] | 123 | 390 [384–760] | 12.6 [11.8–13.9] | 32.4 [24.5–34.3] | 11 [10–12] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | json | 1 | 3 | 6.53 | 6.55 | 1.0 [0.9–1.0] | 98 | 0.9 [0.9–1.2] | 123 | 403 [397–416] | 16.6 [14.5–16.6] | 42.8 [40.2–43.1] | 15 [12–15] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | json | 3 | 3 | 6.51 | 6.52 | 1.1 [1.0–1.1] | 98 | 1.1 | 123 | 415 [411–430] | 16.4 [16.1–16.5] | 36.1 [33.2–50.5] | 14 [14–15] | 6.7 [6.3–6.8] | 0 |
+| 100 KiB × 2000 | similar | json | 9 | 3 | 7.57 | 7.59 | 5.0 [5.0–5.3] | 98 | 4.8 [4.6–4.9] | 123 | 526 [510–817] | 14.7 [13.5–16.0] | 37.8 [35.3–43.5] | 13 [12–14] | 6.7 [6.3–6.8] | 0 |
+| 1 MiB × 500 | mixed | xml | 1 | 3 | 8.32 | 8.32 | 2.9 [2.8–3.0] | 141 | 3.5 [3.2–3.8] | 200 | 706 [685–843] | 18.9 [18.2–19.6] | 43.4 [41.4–45.7] | 16 [15–17] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | xml | 3 | 3 | 8.26 | 8.26 | 3.1 [2.8–4.0] | 141 | 4.7 [4.7–4.8] | 200 | 712 [700–727] | 19.1 [19.1–20.1] | 43.5 [41.2–46.8] | 16 [16–17] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | xml | 9 | 3 | 9.67 [9.66–9.67] | 9.67 | 12.5 [12.4–13.7] | 155 | 17.4 [17.3–17.9] | 200 | 807 [800–829] | 18.7 [17.4–19.3] | 40.9 [39.3–47.4] | 16 [14–16] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | json | 1 | 3 | 6.42 | 6.42 | 2.6 [2.5–2.8] | 141 | 4.5 [3.9–4.6] | 200 | 776 [775–788] | 20.2 [20.0–20.4] | 40.0 [38.7–44.2] | 17 | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | json | 3 | 3 | 6.35 | 6.35 | 3.2 [3.0–3.4] | 141 | 5.0 [4.9–5.1] | 200 | 767 [759–821] | 21.0 [19.1–21.5] | 54.2 [36.6–54.2] | 18 [16–18] | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | mixed | json | 9 | 3 | 7.40 | 7.40 | 14.3 [13.8–14.5] | 155 | 22.4 [21.9–22.8] | 200 | 802 [774–837] | 19.5 [19.2–19.6] | 39.1 [38.1–43.0] | 16 | 6.5 [6.4–6.8] | 0 |
+| 1 MiB × 500 | similar | xml | 1 | 3 | 8.52 | 8.52 | 2.0 [1.9–2.2] | 98 | 2.8 [2.6–3.0] | 178 | 683 [675–692] | 20.2 [19.3–20.9] | 44.2 [37.7–51.9] | 17 [16–17] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | xml | 3 | 3 | 8.44 | 8.45 | 2.6 [2.5–2.6] | 98 | 3.1 [3.0–3.2] | 178 | 660 [657–679] | 21.3 [20.2–22.1] | 46.1 [45.1–50.8] | 18 [17–18] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | xml | 9 | 3 | 9.85 | 9.85 | 12.0 [11.4–12.2] | 98 | 17.0 [16.0–18.2] | 178 | 692 [687–693] | 19.0 [18.4–19.3] | 41.3 [35.8–45.0] | 16 [15–16] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | json | 1 | 3 | 6.55 | 6.55 | 2.5 [2.3–2.5] | 98 | 3.6 [3.5–3.7] | 178 | 657 [643–669] | 20.9 [20.2–22.0] | 48.5 [39.1–48.5] | 18 [17–19] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | json | 3 | 3 | 6.47 | 6.47 | 2.7 [2.7–2.9] | 98 | 4.7 [4.2–4.8] | 178 | 662 [655–667] | 21.1 [20.1–21.4] | 40.5 [38.5–41.4] | 18 [17–18] | 7.4 [6.9–7.6] | 0 |
+| 1 MiB × 500 | similar | json | 9 | 3 | 7.52 | 7.52 | 13.1 [12.7–13.9] | 98 | 21.8 [19.8–22.0] | 178 | 690 [687–701] | 21.0 [20.2–22.5] | 49.8 [39.5–60.2] | 18 [17–19] | 7.4 [6.9–7.6] | 0 |
+| 10 MiB × 100 | mixed | xml | 1 | 3 | 8.43 | 8.43 | 4.9 [4.8–5.2] | 141 | 4.4 [4.3–4.4] | 199 | 732 [722–739] | 49.3 [48.2–49.6] | 68.2 [64.9–71.9] | 29 [28–29] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | xml | 3 | 3 | 8.38 | 8.38 | 5.8 [5.5–6.5] | 141 | 5.2 [5.2–5.4] | 199 | 726 [714–1091] | 51.0 [50.2–51.7] | 68.9 [67.6–81.3] | 30 | 10.0 | 0 |
+| 10 MiB × 100 | mixed | xml | 9 | 3 | 9.82 | 9.82 | 24.3 [24.0–25.3] | 155 | 26.0 [25.8–27.6] | 199 | 748 [736–750] | 48.6 [47.0–49.4] | 73.3 [62.0–80.3] | 29 [28–30] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | json | 1 | 3 | 6.52 | 6.52 | 5.9 [5.7–6.0] | 141 | 5.6 [5.5–5.9] | 200 | 707 [703–772] | 48.2 [47.2–48.3] | 71.2 [71.2–71.3] | 30 [29–30] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | json | 3 | 3 | 6.44 | 6.44 | 7.0 [6.4–7.1] | 141 | 6.7 [6.1–7.0] | 200 | 735 [734–765] | 49.0 [48.1–49.0] | 69.2 [66.1–69.4] | 31 [29–32] | 10.0 | 0 |
+| 10 MiB × 100 | mixed | json | 9 | 3 | 7.53 | 7.53 | 28.7 [26.3–30.3] | 155 | 30.6 [27.8–33.3] | 200 | 724 [723–796] | 49.8 [47.2–50.1] | 67.5 [66.8–73.9] | 31 [29–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | xml | 1 | 3 | 8.57 | 8.57 | 4.7 [4.2–4.8] | 98 | 5.0 [4.3–5.1] | 199 | 622 [615–637] | 51.0 [47.1–52.1] | 74.2 [69.4–75.5] | 31 [29–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | xml | 3 | 3 | 8.47 | 8.47 | 5.2 [4.8–5.4] | 98 | 5.1 [5.1–5.5] | 199 | 617 [606–638] | 48.0 [47.5–49.1] | 68.2 [65.2–75.2] | 30 [29–30] | 10.0 | 0 |
+| 10 MiB × 100 | similar | xml | 9 | 3 | 9.92 | 9.92 | 25.4 [25.0–26.2] | 98 | 23.2 [22.9–25.1] | 199 | 668 [654–676] | 49.3 [44.5–50.2] | 80.2 [57.4–96.1] | 31 [28–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | json | 1 | 3 | 6.62 | 6.62 | 4.8 [4.7–4.9] | 98 | 5.3 [5.2–5.3] | 200 | 647 [638–652] | 47.9 [46.4–49.3] | 69.0 [68.0–72.3] | 29 [29–33] | 10.0 | 0 |
+| 10 MiB × 100 | similar | json | 3 | 3 | 6.52 | 6.52 | 5.6 [5.5–5.7] | 98 | 6.1 [6.0–6.4] | 200 | 639 [628–641] | 47.9 [47.6–48.5] | 65.3 [62.6–71.4] | 32 [31–32] | 10.0 | 0 |
+| 10 MiB × 100 | similar | json | 9 | 3 | 7.60 | 7.60 | 27.0 [25.4–28.0] | 98 | 27.2 [26.5–29.6] | 200 | 955 [853–1037] | 49.7 [46.5–50.1] | 76.0 [70.9–77.2] | 33 [30–33] | 10.0 | 0 |
+| 50 MiB × 20 | mixed | xml | 1 | 3 | 8.49 | 8.49 | 5.6 [4.4–5.9] | 79 | 6.7 [4.5–6.8] | 582 [580–582] | 940 [913–1115] | 222.0 [218.5–226.9] | 333.9 [330.8–340.6] | 161 [159–165] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | xml | 3 | 3 | 8.42 | 8.42 | 5.7 [4.5–5.8] | 79 | 6.0 [4.9–6.3] | 582 [580–582] | 891 [877–912] | 221.4 [212.7–221.7] | 349.4 [296.9–550.9] | 159 [151–166] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | xml | 9 | 3 | 9.87 | 9.87 | 24.8 [24.7–26.3] | 91 | 27.2 [26.4–29.8] | 582 [580–582] | 1037 [891–1190] | 219.4 [219.1–227.7] | 529.0 [356.0–600.6] | 156 [155–161] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | json | 1 | 3 | 6.56 | 6.56 | 5.2 [4.4–5.4] | 79 | 5.9 [5.6–7.3] | 582 [580–582] | 897 [888–900] | 216.2 [206.6–216.8] | 307.1 [285.1–333.0] | 160 [154–161] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | json | 3 | 3 | 6.50 | 6.50 | 5.2 [5.2–5.4] | 79 | 7.0 [6.8–7.6] | 582 [580–582] | 877 [876–887] | 209.0 [203.8–209.5] | 263.4 [256.4–268.4] | 153 [151–155] | 50.0 | 0 |
+| 50 MiB × 20 | mixed | json | 9 | 3 | 7.60 | 7.60 | 25.1 [21.4–25.2] | 91 | 29.7 [26.0–29.8] | 582 [580–582] | 904 [895–962] | 203.0 [195.1–206.1] | 260.4 [249.2–338.8] | 150 [142–150] | 50.0 | 0 |
+| 50 MiB × 20 | similar | xml | 1 | 3 | 8.62 | 8.62 | 4.0 [3.4–4.7] | 79 | 5.5 [4.8–5.8] | 582 | 890 [883–891] | 199.0 [195.9–206.8] | 350.2 [254.8–365.9] | 147 [142–152] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | xml | 3 | 3 | 8.51 | 8.51 | 3.4 [3.1–3.4] | 79 | 4.7 [4.6–5.0] | 582 | 712 [691–754] | 136.1 [132.7–136.9] | 176.0 [170.1–184.2] | 98 [95–99] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | xml | 9 | 3 | 9.97 | 9.97 | 13.9 [12.6–15.1] | 91 | 15.2 [14.4–15.8] | 582 | 806 [767–909] | 129.3 [129.2–135.5] | 173.5 [173.0–245.7] | 92 [92–94] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | json | 1 | 3 | 6.66 | 6.66 | 3.4 [3.4–3.5] | 79 | 5.1 [5.0–5.7] | 582 | 757 [716–779] | 146.0 [143.1–147.1] | 186.3 [176.4–192.2] | 112 [108–112] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | json | 3 | 3 | 6.57 | 6.57 | 3.8 [3.6–4.2] | 79 | 6.2 [5.0–6.4] | 582 | 828 [805–855] | 146.0 [134.3–155.3] | 213.6 [178.1–233.3] | 108 [101–114] | 50.0 | 0 |
+| 50 MiB × 20 † | similar | json | 9 | 3 | 7.67 | 7.67 | 15.7 [15.6–15.9] | 91 | 18.3 [17.4–22.8] | 582 | 928 [888–961] | 143.7 [129.8–144.9] | 192.3 [191.0–220.2] | 105 [98–106] | 50.0 | 0 |
+
+- **Nothing failed.** 144 runs, 0 insert, merge or OPTIMIZE errors, 0 query exceptions, 0 read mismatches; every table ended in
+  one Wide part. 50 MiB payloads in one 1 GiB table fit the default server limits on this VM.
+- **The ratio depends on the format and the level, hardly on the size.** zstd 1: XML 7.1–8.6 (100 KiB mixed is the low end), JSON
+  5.6–6.7. zstd 9 is 12–17 % better than zstd 1 in every cell; zstd 3 is 0.1–3.6 % *worse* than zstd 1 in every cell (observed,
+  not explained here). `similar` beats `mixed` by 1–24 %, most at 100 KiB.
+- **zstd 9 costs 4.3–6.0× the insert time and 3.0–6.1× the OPTIMIZE time of zstd 1** (non-† cells): e.g. 10 MiB mixed XML ingests
+  at 215 MB/s raw with zstd 1 and 43 MB/s with zstd 9 (one insert stream, raw bytes / server insert time).
+- **Insert memory follows the batch, not the payload**: 98–155 MiB per 64 MiB batch for 100 KiB–10 MiB payloads, 79–91 MiB for
+  a single 50 MiB payload.
+- **Merge memory follows the payload from 10 MiB on**: 123–145 MiB (100 KiB), 178–200 MiB (1 MiB), 199–200 MiB (10 MiB),
+  **582 MiB (50 MiB)** peak per merge, the same for every level, format and mix. A table here holds one cell's parts only: 4
+  inserts (100 KiB), 8 (1 MiB), 17 (10 MiB) or 20 (50 MiB), so a merge combined at most that many parts; the fan-in observed in
+  the recheck was 4 (100 KiB) and 5 at the 50 MiB peak (6 the largest). The harness runs one table at a time; how many such
+  merges run at once in production (background pool) was not measured.
+- **A small payload is not a small read**: a read by id reads its whole granule (index_granularity_bytes 10 MiB): 6.3–7.4 MiB per
+  read for 100 KiB and 1 MiB payloads, so p50 is 13–21 ms at both sizes; 10 MiB reads take 48–51 ms p50 (65–80 ms p99), 50 MiB
+  reads 199–222 ms p50 (260–529 ms p99; non-† rows). Reads filter on id only (the third key column) over at most 2 000 rows per
+  table; a production table with millions of rows was not measured.
+
+**Proposal for the owner (CORE-2):** store payloads inline in ClickHouse up to **10 MiB**, column codec **ZSTD(1)**.
+- Size, decided by merge memory: a 50 MiB payload costs **582 MiB per merge** against 199–200 MiB for 10 MiB (part_log
+  peak_memory_usage, every cell), and its read takes 199–222 ms p50 against 48–51 ms. Nothing failed at 50 MiB on this VM, so 50 MiB
+  is a possible bound if the owner accepts ~0.6 GiB per concurrent merge of such parts.
+- **Limit of this evidence**: the merge peaks were measured at the fan-in observed here (4 parts at 100 KiB, 5 at the 50 MiB
+  peak, at most 20 parts per table); a long-lived table's merges may combine more parts, and their peak was not measured. The
+  10 MiB bound and the ~0.6 GiB per 50 MiB merge hold for the observed fan-in only; concurrent merges were not measured either.
+- Level, decided by ingest time: ZSTD(9) gains 12–17 % ratio for 4.3–6.0× the insert time (43 vs 215 MB/s per stream at 10 MiB);
+  ZSTD(3) is not better than ZSTD(1) on these payloads.
+
+---
+
 ## FIX-108 — CPU sampling overhead (partial: round 1 only) — cloud VM, 4 vCPU
 
 Date: 2026-11-02. Commits: the FIX-108 working tree on 84b47f0 (records labelled `84b47f0+dirty`) and the parent 84b47f0 (a git
@@ -146,7 +518,7 @@ Processor @ 2.80GHz" (model hidden), MemTotal 16 477 352 kB, /dev/vda virtio-blk
 an fdatasync reaches on the host can be read from inside, so "durable" means what the guest's fdatasync returns. Java 25.0.5,
 native PostgreSQL 16.15 (Ubuntu), default configuration; every record reads from pg_settings `synchronous_commit` on
 (ALTER DATABASE by the bench), `commit_delay` 0 (214 in the commit_delay rows), `commit_siblings` 5, `wal_sync_method`
-fdatasync, `fsync` on, `full_page_writes` on; node Pg pool 16 (`poolSize`). The 5432 cluster's pg_wal is on /dev/vda ext4
+fdatasync, `fsync` on, `full_page_writes` on; node Pg pool 16 (`poolSize`, the default then; a record from CORE-17 on also carries `intakePoolSize`, the intake pool's share of it, D-130, and the default total is 21 = 5 + 16, F-33). The 5432 cluster's pg_wal is on /dev/vda ext4
 (`df -T`, target/P2-08b-cleanup.log). `pg_test_fsync -s 5`, one 8 kB write, rerun after the cells with the command lines and
 exit codes logged (target/P2-08b-fsync2.log): `-f /var/lib/postgresql/16/main/pg_wal/p208b_pg_test_fsync.tmp` fdatasync
 2628 ops/s (381 µs/op), open_datasync 3104 ops/s (322 µs/op); `-f /dev/shm/p208b_pg_test_fsync.tmp` (the FLOOR's pg_wal
@@ -817,7 +1189,7 @@ Machine: cloud VM, 4 vCPU Intel Xeon @ 2.10 GHz, 15 GB RAM, Linux 6.18. Date: 20
 uncommitted P2-10a tree (review round 3). JDK: Java 25.0.5 LTS. Config: `SimConfig.V1`. Per push: the correct world on 32 seeds
 (0x1..0x20) × 1 000 ticks; each variant runs those seeds until one fails.
 
-What the 15 s VM budget (D-101 (c)) measures: the **sum of the flottila-sim surefire suite times** (the `time` attributes of
+What the 15 s VM budget (D-143 (c)) measures: the **sum of the flottila-sim surefire suite times** (the `time` attributes of
 `TEST-*.xml`), i.e. the tests themselves. The `mvn` wall time is listed beside it; it also includes Maven start-up, the
 up-to-date checks and the fork. flottila-sim has 61 cases. Three runs in a row:
 

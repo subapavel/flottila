@@ -4,8 +4,10 @@ import io.flottila.components.http.HttpComponent;
 import io.flottila.runtime.node.Node;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.node.TestJournalKey;
 import io.flottila.steps.validate.XsdValidate;
 import io.flottila.steps.xslt.SaxonXml;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
@@ -80,7 +82,7 @@ class QuickstartIT {
     /** The node's admin token: deploy.sh sends it from FLOTTILA_ADMIN_TOKEN, the case's own admin requests carry it too. */
     static final String TOKEN = "quickstart-it-token";
 
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static final AtomicInteger cases = new AtomicInteger();
     static Vertx vertx;
 
@@ -120,6 +122,7 @@ class QuickstartIT {
         env.put("FLOTTILA_PG_PASSWORD", pg.getPassword());
         env.put("FLOTTILA_PG_POOL_SIZE", "4");
         env.put("FLOTTILA_ADMIN_TOKEN", TOKEN);   // /admin/** needs the bearer token (allowed on the loopback bind too)
+        TestJournalKey.with(env);   // a node needs a journal master key (CORE-4c1, D-106): a required configuration
         NodeConfig config = NodeConfig.from(env);
         SaxonXml xml = new SaxonXml();
         node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),

@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** D-101: a seed is the whole run; the streams do not move each other. */
+/** D-143: a seed is the whole run; the streams do not move each other. */
 class SimReproducibilityTest {
 
     /** PLACEHOLDER (landing): the trace digest of seed 0x1, V1, 1 000 ticks, the correct world. */

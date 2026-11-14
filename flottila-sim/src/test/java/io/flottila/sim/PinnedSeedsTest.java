@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Every line of {@code pinned-seeds.tsv} — {@code seed⇥config⇥ticks⇥world⇥PASS|FAIL:Check,…⇥# origin} (D-101) — runs again
+ * Every line of {@code pinned-seeds.tsv} — {@code seed⇥config⇥ticks⇥world⇥PASS|FAIL:Check,…⇥# origin} (D-143) — runs again
  * and ends as it was pinned: PASS passes, FAIL fails exactly the checks it lists.
  */
 class PinnedSeedsTest {

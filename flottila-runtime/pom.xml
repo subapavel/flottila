@@ -13,7 +13,7 @@
   <artifactId>flottila-runtime</artifactId>
   <packaging>jar</packaging>
   <name>Flottila :: runtime</name>
-  <description>Vert.x bootstrap, endpoint verticles, Postgres/Kafka/Valkey/S3/ClickHouse implementations, admin API.</description>
+  <description>Vert.x bootstrap, endpoint verticles, Postgres stores, the body journal, Valkey poller leases, the S3 deployment archive store, admin API.</description>
 
   <build>
     <resources>
@@ -62,8 +62,8 @@
         </executions>
       </plugin>
       <plugin>
-        <!-- *HeapTest / *HeapIT run in their own JVM with a heap far below the body they stream: a store that holds the
-             body at once fails with OutOfMemoryError, deterministically, instead of a GC heuristic deciding (P1-01 review). -->
+        <!-- *HeapTest run in their own JVM with a heap far below the body they stream: a store that holds the body at once
+             fails with OutOfMemoryError, deterministically, instead of a GC heuristic deciding (P1-01 review). -->
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
@@ -140,6 +140,12 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-redis-client</artifactId>
+    </dependency>
+    <!-- journal.peer.PeerLink resets a superseded repl link's socket on its channel (CORE-5b1, FIX-180); version from the
+         netty-bom vertx-stack-depchain imports (4.2.19.Final), Apache-2.0 (netty-transport-4.2.19.Final.pom) -->
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-transport</artifactId>
     </dependency>
     <dependency>
       <groupId>io.vertx</groupId>
@@ -234,33 +240,4 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-
-  <profiles>
-    <profile>
-      <!-- the heap-bounded IT needs Docker like every IT: only under -Pit, as the parent binds failsafe -->
-      <id>it</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-failsafe-plugin</artifactId>
-            <configuration>
-              <excludes><exclude>**/*HeapIT.java</exclude></excludes>
-            </configuration>
-            <executions>
-              <execution>
-                <id>heap-bounded-it</id>
-                <goals><goal>integration-test</goal><goal>verify</goal></goals>
-                <configuration>
-                  <excludes><exclude>none</exclude></excludes>
-                  <includes><include>**/*HeapIT.java</include></includes>
-                  <argLine>@{argLine} -Xmx96m</argLine>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-  </profiles>
 </project>

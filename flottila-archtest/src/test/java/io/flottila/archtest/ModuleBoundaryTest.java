@@ -37,7 +37,7 @@ class ModuleBoundaryTest {
     @Test void simDependsOnApiCoreTestkitOnly() { Rules.SIM_DEPENDS_ON_API_CORE_TESTKIT.check(tree); }
     @Test void nothingDependsOnSim() { Rules.NOTHING_DEPENDS_ON_SIM.check(tree); }
 
-    /** The two sim rules check the harness, not an empty set: its src/main is on the archtest classpath (F-25, DoNotIncludeTests). */
+    /** The two sim rules check the harness, not an empty set: its src/main is on the archtest classpath (F-36, DoNotIncludeTests). */
     @Test void simIsOnTheArchtestClasspath() {
         for (String harness : List.of("io.flottila.sim.Simulation", "io.flottila.sim.World", "io.flottila.sim.Verdict", "io.flottila.sim.SimSeed")) {
             assertTrue(tree.contain(harness), "the production tree holds " + harness + " (flottila-sim is a test dependency of the archtest)");
@@ -47,6 +47,7 @@ class ModuleBoundaryTest {
     @Test void flottilaPackagesAreFreeOfCycles() { Rules.NO_CYCLES.check(tree); }
     @Test void onlyMainWiresComponentsAndStepsInRuntime() { Rules.ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS.check(tree); }
     @Test void noRuntimeClassNamesTheMock() { Rules.RUNTIME_NEVER_NAMES_THE_MOCK.check(tree); }
+    @Test void onlyThePeerLinkUsesVertxNetTypes() { Rules.ONLY_THE_PEER_LINK_OPENS_RAW_TCP.check(tree); }
 
     /**
      * The exemption of {@link Rules#ONLY_MAIN_WIRES_COMPONENTS_AND_STEPS} is used, not idle: the production Main exists and

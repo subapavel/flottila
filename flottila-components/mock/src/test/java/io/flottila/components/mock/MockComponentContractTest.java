@@ -16,6 +16,11 @@ class MockComponentContractTest extends ComponentContract {
         return new MockComponent("http", rt.blobs(), rt.timer());
     }
 
+    /** P2-15b: the mock's sends are cut on the timer it is built with. */
+    @Override protected Component component(io.flottila.api.Timer timer) {
+        return new MockComponent("http", FakeRuntime.create().blobs(), timer);
+    }
+
     @Override protected EndpointConfig endpoint() {
         return new EndpointConfig("partner-domestic", URI.create("http://localhost:8081/echo"), Map.of("url", "http://localhost:8081/echo"));
     }

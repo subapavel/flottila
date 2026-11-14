@@ -16,9 +16,9 @@ final class RenumberedIngress implements World {
     @Override public String name() { return NAME; }
 
     @Override public Intake intake(Intake sim) {
-        return (arrived, s, flow, partitionKey, dedupeKey, abandoned) -> sim.save(arrived,
+        return (arrived, s, flow, partitionKey, dedupeKey, keepInput, abandoned) -> sim.save(arrived,
                 new Snapshot(s.messageId(), s.flow(), 1, s.stepName(), s.outcome(), s.error(), s.startedAt(), s.wallNanos(), s.cpuNanos(),
                         s.headers(), s.props(), s.keys(), s.bodyHash(), s.bodySize(), s.bodyKey(), s.versions()),
-                flow, partitionKey, dedupeKey, abandoned);
+                flow, partitionKey, dedupeKey, keepInput, abandoned);
     }
 }

@@ -25,14 +25,16 @@ import io.flottila.core.flow.FlowDefinition;
 import io.flottila.core.flow.FlowWorker;
 import io.flottila.core.flow.WorkerPolicy;
 import io.flottila.core.record.Meter;
-import io.flottila.runtime.blob.PgBodies;
 import io.flottila.runtime.blob.TieredBlobStore;
 import io.flottila.runtime.db.Migrations;
+import io.flottila.runtime.journal.JournalRef;
+import io.flottila.runtime.journal.TestJournals;
 import io.flottila.runtime.queue.PgWorkQueue;
 import io.flottila.runtime.store.PgDlq;
 import io.flottila.runtime.store.PgMessageStore;
 import io.flottila.runtime.time.VertxTimer;
 import io.flottila.testkit.FakeRuntime;
+import io.flottila.testkit.PostgresImage;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -58,6 +60,8 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -82,9 +86,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * FIX-107 (GATE run 1, check 7): an at-least-once flow on the Postgres work queue whose {@code to} step sends through the real
  * {@link HttpComponent} producer. A partner that refuses the connection (a loopback port bound, then closed: nothing listens)
- * is the partner's failure like a 503 is: the step is retried by the flow's policy, then the message is parked at that step —
- * one DLQ row, stage = the step's name, step = its index, body = the step's input — and its work item is completed by the
- * claim that ran it, with no WARNING "left to its lease". The 503 partner is the control: it behaves so today.
+ * is the partner's failure like a 503 is: the step is retried by the flow's policy, then (CORE-14a, P6: the worker has no
+ * per-step park; the node's retries at count 0) the message is parked by its ingress at step 1 with prop {@code attempt} 1 —
+ * one DLQ row — and its work item is completed by the claim that ran it, with no WARNING "left to its lease". The 503
+ * partner is the control.
  *
  * <p>Flow {@code orders}: {@code stamp} (hands on a new body written into the runtime's store, so the {@code to} step's input
  * is not the ingress), then {@code to partner}, retryable, retry 3 × from 100 ms. The fake clock and timer drive the retry
@@ -97,9 +102,8 @@ class PartnerFailureParkIT {
     static final Buffer ORDER = Buffer.buffer("<order id=\"1\"/>");
     static final long MIB = 1L << 20;
     static final Duration LEASE = Duration.ofSeconds(30);
-    static final int MAX_ATTEMPTS = 5;
     static final int RETRIES = 3;
-    static final PostgreSQLContainer pg = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer pg = new PostgreSQLContainer(PostgresImage.name());
     static Vertx vertx;
     static Pool admin;   // the test's own sessions: truncate, counts, rows as another session sees them
 
@@ -108,6 +112,7 @@ class PartnerFailureParkIT {
     final List<Scheduled> scheduled = new CopyOnWriteArrayList<>();
     final List<Pool> pools = new CopyOnWriteArrayList<>();
     final List<PgMessageStore> messageStores = new CopyOnWriteArrayList<>();
+    final List<TestJournals.Opened> journals = new CopyOnWriteArrayList<>();
     final List<FlowWorker> workers = new CopyOnWriteArrayList<>();
     final List<HttpServer> servers = new CopyOnWriteArrayList<>();
     /** The bytes every {@code stamp} run handed on, in run order. */
@@ -119,7 +124,7 @@ class PartnerFailureParkIT {
         @Override public void flush() { }
         @Override public void close() { }
     };
-    @TempDir Path spool;
+    @TempDir Path data;
 
     @BeforeAll
     static void start() {
@@ -138,7 +143,8 @@ class PartnerFailureParkIT {
 
     @BeforeEach
     void empty() {
-        admin.query("truncate message_keys, messages, dlq, work, bodies").execute().await();
+        // the case's node journal lives in its own temp dir: its node row and segment rows go with the case
+        admin.query("truncate message_keys, messages, dlq, work, bodies, body_refs, journal_segments, journal_nodes").execute().await();
         capture.setLevel(Level.ALL);
         core.addHandler(capture);
     }
@@ -156,6 +162,13 @@ class PartnerFailureParkIT {
             Thread.yield();
         }
         messageStores.forEach(PgMessageStore::close);
+        for (TestJournals.Opened j : journals) {
+            try {
+                j.close();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
         for (Pool p : pools) p.close().await();
         for (HttpServer s : servers) s.close().await();
     }
@@ -250,8 +263,12 @@ class PartnerFailureParkIT {
         }
     }
 
-    /** One node's stores over a pool of its own, the http partner at {@code partnerUri}, and a worker of flow {@code orders}. */
+    /**
+     * One node's stores over a pool of its own — its journal under {@code <data>/journal}, the tiered store over it (CORE-4c2: no
+     * spool, no {@code bodies} rows) — the http partner at {@code partnerUri}, and a worker of flow {@code orders}.
+     */
     final class Node {
+        final TestJournals.Opened journal;
         final TieredBlobStore blobs;
         final Watched http;
         final FlowBuilder builder;
@@ -261,16 +278,22 @@ class PartnerFailureParkIT {
         Node(URI partnerUri) {
             Pool pool = PgBuilder.pool().connectingTo(connectOptions()).with(new PoolOptions().setMaxSize(4)).using(vertx).build();
             pools.add(pool);
-            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 1024, 16 * MIB, spool.resolve("node"), DeliveryModesIT.freshKey(), null, false),
-                    Hasher.sha256(), new PgBodies(pool, 4096));
+            try {
+                journal = TestJournals.open(pool, Files.createDirectories(data.resolve("journal")), "node-a");
+            } catch (Exception e) {
+                throw new IllegalStateException("fixture: the node's journal did not open", e);
+            }
+            journals.add(journal);
+            blobs = new TieredBlobStore(new TieredBlobStore.Config(MIB, 1024, 16 * MIB, 4096), Hasher.sha256(), journal.journal(), journal.tenant(), pool);
             PgMessageStore messages = new PgMessageStore(pool, new VertxTimer(vertx), new BatchingWriter.Options(100, Duration.ofMillis(10), 2, 1000));
             messageStores.add(messages);
             http = new Watched(new HttpComponent(vertx, blobs, rt.ids()));
             Runtime runtime = new Runtime(rt.clock(), recordingTimer(), rt.ids(), blobs, rt.hasher(), Map.of(http.scheme(), http));
             Map<String, EndpointConfig> endpoints = Map.of("partner", new EndpointConfig("partner", partnerUri, Map.of("maxBodyBytes", 65_536L)));
             builder = new FlowBuilder(runtime, List.of(stamp()), List.of(), endpoints)
-                    .recording(messages, Meter.system()).queue(new PgWorkQueue(pool)).dlq(new PgDlq(pool));
-            worker = builder.worker(def, NO_FILES, "w-1", new WorkerPolicy(LEASE, MAX_ATTEMPTS, Duration.ofSeconds(1)));
+                    .recording(messages, Meter.system()).queue(new PgWorkQueue(pool, "node-a")).dlq(new PgDlq(pool));
+            worker = builder.retries(new io.flottila.core.flow.RetryPolicy(0, Duration.ofHours(1), Duration.ofHours(1), 1.0))   // CORE-14a (P6): count 0, the run's failure parks at once
+                    .worker(def, NO_FILES, "w-1", new WorkerPolicy(LEASE, Duration.ofSeconds(1)));
             workers.add(worker);
         }
 
@@ -323,11 +346,18 @@ class PartnerFailureParkIT {
         return server;
     }
 
-    /** The bytes of {@code key}'s {@code bodies} row as another session sees them, or empty. */
-    static Optional<Buffer> bodiesRow(BlobKey key) {
-        for (Row r : admin.preparedQuery("select bytes from bodies where message_id = $1 and step = $2 and part = $3")
+    /**
+     * The bytes of the record {@code key}'s {@code body_refs} row names, read through {@code node}'s journal, or empty
+     * (CORE-4c2: a durable body is a kept ref to a journal record, no {@code bodies} row).
+     */
+    static Optional<Buffer> kept(Node node, BlobKey key) {
+        for (Row r : admin.preparedQuery("select segment, position, length from body_refs where message_id = $1 and step = $2 and part = $3")
                 .execute(Tuple.of(key.messageId(), key.step(), key.part())).await()) {
-            return Optional.of(r.getBuffer(0));
+            try {
+                return Optional.of(Buffer.buffer(node.journal.journal().read(new JournalRef(r.getLong(0), r.getLong(1), r.getLong(2)))));
+            } catch (IOException e) {
+                throw new UncheckedIOException("the kept ref of " + key + " does not read", e);
+            }
         }
         return Optional.empty();
     }
@@ -365,21 +395,23 @@ class PartnerFailureParkIT {
     }
 
     /**
-     * What both partners' failures end in: after the retries, one DLQ row at {@code partner} (step 2) by the step's input — the
-     * body {@code stamp} wrote, durable in Postgres —, the item completed by the one claim that ran it, no WARNING logged.
+     * What both partners' failures end in: after the step's retries, one DLQ row by the ingress at step 1 ({@code stamp}) with
+     * prop {@code attempt} 1 (CORE-14a, P6), the item completed by the one claim that ran it, no WARNING logged.
      */
-    void assertParkedAtThePartnerStep(Node node, String id, int polled) {
+    void assertParkedByTheIngress(Node node, String id, int polled) {
         String seen = node.http.describe() + "; scheduled " + scheduled + "; warnings " + describeWarnings();
         List<Parked> rows = dlqRows();
         assertEquals(1, rows.size(), "one DLQ row after the retries: " + rows + "; " + seen);
         Parked parked = rows.get(0);
         assertEquals(id, parked.messageId(), seen);
-        assertEquals("partner", parked.stepName(), "parked at the to step, by its name: " + parked + "; " + seen);
-        assertEquals(2, parked.step(), "parked at the to step, by its index: " + parked + "; " + seen);
+        assertEquals("stamp", parked.stepName(), "parked at the first step, by its name: " + parked + "; " + seen);
+        assertEquals(1, parked.step(), "parked at the first step, by its index: " + parked + "; " + seen);
+        assertEquals(Optional.of(1), parked.props().get(Envelope.ATTEMPT), "with the attempt it failed at: " + parked);
         assertFalse(parked.error().contains("AttemptsExhaustedException"), "the partner's failure, not the attempts bound: " + parked.error());
-        assertEquals(BlobKey.body(id, 1), parked.bodyKey(), "by the to step's input, the body stamp handed on: " + parked);
+        assertEquals(BlobKey.body(id, 0), parked.bodyKey(), "by the ingress: " + parked);
         assertEquals(List.of(stamped.get(0)), stamped, "stamp ran once: the retries re-ran only the to step");
-        assertEquals(Optional.of(stamped.get(0)), bodiesRow(BlobKey.body(id, 1)), "the parked input is durable, byte-equal to what stamp handed on");
+        assertEquals(Optional.of(ORDER), kept(node, BlobKey.body(id, 0)), "the parked ingress is durable, byte-equal to what was delivered");
+        assertEquals(0, count("bodies"), "a kept ref, no bodies row (CORE-4c2)");
         assertEquals(1, polled, "one claim ran it");
         assertEquals(1 + RETRIES, node.http.sends.get(), "the partner was tried once and retried " + RETRIES + " times: " + seen);
         assertEquals(List.of(node.def.retry().delayBefore(1), node.def.retry().delayBefore(2), node.def.retry().delayBefore(3)),
@@ -393,19 +425,19 @@ class PartnerFailureParkIT {
     // --- cases
 
     @Test
-    void aRefusedPartnerParksAtItsStepAfterTheRetries() throws IOException {
+    void aRefusedPartnerParksTheIngressAfterTheRetries() throws IOException {
         Node node = new Node(URI.create("http://127.0.0.1:" + refusingPort() + "/partner"));
         String id = node.deliver("refused-1");
 
         int polled = node.pollDrivingRetries();
 
-        assertParkedAtThePartnerStep(node, id, polled);
+        assertParkedByTheIngress(node, id, polled);
         assertTrue(node.http.failures.stream().allMatch(f -> String.valueOf(f.getMessage()).contains("Connection refused")),
                 "fixture: every send was refused at the connection: " + node.http.describe());
     }
 
     @Test
-    void a503PartnerStillParksAtItsStep() {
+    void a503PartnerStillParksTheIngress() {
         List<String> saw = new CopyOnWriteArrayList<>();
         HttpServer partner = unavailablePartner(saw);
         Node node = new Node(URI.create("http://127.0.0.1:" + partner.actualPort() + "/partner"));
@@ -413,7 +445,7 @@ class PartnerFailureParkIT {
 
         int polled = node.pollDrivingRetries();
 
-        assertParkedAtThePartnerStep(node, id, polled);
+        assertParkedByTheIngress(node, id, polled);
         assertEquals(1 + RETRIES, saw.size(), "the partner saw each try: " + saw);
         assertTrue(saw.stream().allMatch(b -> b.equals(stamped.get(0).toString(StandardCharsets.UTF_8))), "each try sent the step's input: " + saw);
         assertTrue(dlqRows().get(0).error().contains("503"), "the row names the partner's answer: " + dlqRows().get(0).error());

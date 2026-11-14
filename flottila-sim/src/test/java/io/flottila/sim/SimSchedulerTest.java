@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * D-101 scheduler: at most one message thread is runnable at a time, held at boundaries the simulation owns — the claim cap
+ * D-143 scheduler: at most one message thread is runnable at a time, held at boundaries the simulation owns — the claim cap
  * of POLL and the WAKE of a Retry backoff among them.
  */
 class SimSchedulerTest {
@@ -180,8 +180,8 @@ class SimSchedulerTest {
         }
 
         @Override public Intake intake(Intake sim) {
-            return (arrived, ingress, flow, partitionKey, dedupeKey, abandoned) ->
-                    call("save", arrived.id(), () -> sim.save(arrived, ingress, flow, partitionKey, dedupeKey, abandoned));
+            return (arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned) ->
+                    call("save", arrived.id(), () -> sim.save(arrived, ingress, flow, partitionKey, dedupeKey, keepInput, abandoned));
         }
 
         @Override public WorkQueue queue(WorkQueue sim, Clock clock) {
@@ -205,6 +205,12 @@ class SimSchedulerTest {
                 }
                 @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) {
                     return call("renew", id(seq), () -> sim.renew(seq, attempts, lease));
+                }
+                @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) {
+                    return call("defer", id(seq), () -> sim.defer(seq, attempts, delay));
+                }
+                @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+                    return call("restart", messageId, () -> sim.restart(messageId, flow, partitionKey, attempt));
                 }
                 @Override public Future<Boolean> hold(long seq, int attempts) { return call("hold", id(seq), () -> sim.hold(seq, attempts)); }
                 @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return call("held", null, () -> sim.held(after, limit)); }
@@ -255,6 +261,10 @@ class SimSchedulerTest {
                     });
                 }
                 @Override public Future<Boolean> renew(long seq, int attempts, Duration lease) { return sim.renew(seq, attempts, lease); }
+                @Override public Future<Boolean> defer(long seq, int attempts, Duration delay) { return sim.defer(seq, attempts, delay); }
+                @Override public Future<Boolean> restart(String messageId, String flow, String partitionKey, int attempt) {
+                    return sim.restart(messageId, flow, partitionKey, attempt);
+                }
                 @Override public Future<Boolean> hold(long seq, int attempts) { return sim.hold(seq, attempts); }
                 @Override public Future<Page<Held>> held(Optional<String> after, int limit) { return sim.held(after, limit); }
                 @Override public Future<Boolean> release(long seq) { return sim.release(seq); }

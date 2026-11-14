@@ -137,14 +137,14 @@ class ReplayEdgeTest {
         Replay replay = b.replay(def, NO_FILES);
         dlq.failRemoves = true;
 
-        RowNotRemovedException kept = assertThrows(RowNotRemovedException.class, () -> replay.retry(in.id(), "retry-1"));
+        RowNotRemovedException kept = assertThrows(RowNotRemovedException.class, () -> replay.replayParked(in.id(), "retry-1"));
 
         assertTrue(kept.getMessage().contains("retry-1") && kept.getMessage().contains(in.id()), "names both ids: " + kept.getMessage());
         assertEquals("removal refused for " + in.id(), assertInstanceOf(IllegalStateException.class, kept.getCause()).getMessage());
         assertEquals(List.of(Replay.REPLAY_INPUT, "c"), store.timeline("retry-1").await().stream().map(Snapshot::stepName).toList(), "the retry went through");
         assertTrue(dlq.get(in.id()).await().isPresent(), "the row stays");
         dlq.failRemoves = false;
-        assertEquals("retry-2", replay.retry(in.id(), "retry-2").id(), "the permit came back: the next retry runs");
+        assertEquals("retry-2", replay.replayParked(in.id(), "retry-2").id(), "the permit came back: the next retry runs");
         assertEquals(Optional.empty(), dlq.get(in.id()).await(), "and removes the row");
     }
 }

@@ -27,10 +27,10 @@ public final class LatencyStats {
 
     public synchronized int count() { return count; }
 
-    /** Nearest-rank percentile (0..100) in milliseconds. */
-    public synchronized double percentileMillis(int percentile) {
+    /** Nearest-rank percentile (0..100, fractions taken: 99.9) in milliseconds. */
+    public synchronized double percentileMillis(double percentile) {
         sort();
-        int rank = (int) Math.ceil(percentile / 100.0 * count);
+        int rank = (int) Math.ceil(percentile * count / 100.0);   // percentile / 100.0 first is a rank high at 99.9 of 1000
         int index = Math.max(0, Math.min(count - 1, rank - 1));
         return samples[index] / 1_000_000.0;
     }

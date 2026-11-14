@@ -3,10 +3,12 @@ package io.flottila.testkit;
 import io.flottila.api.Ack;
 import io.flottila.api.Component;
 import io.flottila.api.Consumer;
+import io.flottila.api.Deadline;
 import io.flottila.api.EndpointConfig;
 import io.flottila.api.Envelope;
 import io.flottila.api.Health;
 import io.flottila.api.Producer;
+import io.flottila.api.Timer;
 import io.vertx.core.Future;
 
 import java.util.function.Function;
@@ -24,6 +26,12 @@ final class LoopbackComponent implements Component {
 
     private volatile Running handler;
     private volatile boolean running;
+    private final Timer timer;   // null: sends are never cut
+
+    LoopbackComponent() { this(null); }
+
+    /** P2-15b: sends carry their message id and are cut on {@code timer} when their deadline runs out ({@link BoundedSends}). */
+    LoopbackComponent(Timer timer) { this.timer = timer; }
 
     @Override public String scheme() { return "loopback"; }
 
@@ -39,10 +47,14 @@ final class LoopbackComponent implements Component {
 
     @Override public Producer producer(EndpointConfig cfg) {
         return new Producer() {
+            @Override public Future<Envelope> send(Envelope e, Deadline d) {
+                return BoundedSends.within(d, timer, () -> send(e));
+            }
+
             @Override public Future<Envelope> send(Envelope e) {
                 Running at = handler;
                 if (at == null) return Future.failedFuture(new IllegalStateException("no consumer running"));
-                return at.drain().deliver(at.handler(), e).compose(ack -> switch (ack) {
+                return at.drain().deliver(at.handler(), BoundedSends.carryingItsId(e)).compose(ack -> switch (ack) {
                     case Ack.Reply r -> Future.succeededFuture(r.reply());
                     case Ack.Accepted a -> Future.succeededFuture(e);
                     case Ack.Nack n -> Future.failedFuture(new io.flottila.api.NackException(n.reason(), n.retryable()));

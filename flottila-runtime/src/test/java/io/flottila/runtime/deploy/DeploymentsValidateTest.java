@@ -8,8 +8,10 @@ import io.flottila.runtime.Main;
 import io.flottila.runtime.node.ComponentContext;
 import io.flottila.runtime.node.NodeConfig;
 import io.flottila.runtime.node.OnVirtualThread;
+import io.flottila.runtime.pg.PoolRefusedException;
 import io.flottila.testkit.FakeRuntime;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxException;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -346,5 +348,26 @@ class DeploymentsValidateTest {
         DeployRefusedException refused = assertThrows(DeployRefusedException.class,
                 () -> OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), withoutAudit.zipTo(tmp.resolve("zips")))));
         assertEquals(refused.problems(), problems, "the same problem lines a deploy of that version is refused with");
+    }
+
+    /**
+     * FIX-172c: a deploy turns a work-queue question the node's Postgres pool refused into BUSY (503), a refusal with no problem
+     * lines; validate asks the same question and answers only problems, so that refusal is the node's IOException there, as any
+     * other queue failure is — never an empty list that says "valid". Witness: the queue answering, the version without audit validates.
+     */
+    @Test
+    void aQueueQuestionThePoolRefusedFailsTheValidateAsTheNodes() throws Exception {
+        Deployments deployments = overDoors();
+        OnVirtualThread.call(() -> deployments.deploy("shop", Optional.empty(), DeploymentsTest.shop("shop").zipTo(tmp.resolve("zips"))));
+        Path dir = written(DeploymentsTest.shop("shop").without("flows/audit.yaml").without("endpoints/audit-in.yaml"), "shop-without-audit");
+        PoolRefusedException refusal = new PoolRefusedException(new VertxException("Timeout", true));
+        queue.failHasItems(refusal);
+
+        IOException failed = assertThrows(IOException.class, () -> validate(deployments, "shop", dir), "the pool's refusal is the node's failure");
+
+        assertTrue(failed.getMessage().contains("shop/audit") && failed.getMessage().contains(refusal.getMessage()),
+                "it names the flow and the pool's refusal: " + failed.getMessage());
+        queue.failHasItems(null);
+        assertEquals(List.of(), validate(deployments, "shop", dir), "witness: the queue answering, the version validates");
     }
 }
