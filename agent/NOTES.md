@@ -271,6 +271,22 @@ FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
 - An `Error` leaving the item to its lease is already pinned by `FlowWorkerTest:90` and `:1030`. A row asking for a new assertion there
   is asking for a duplicate (the FIX-133 Done-when did, and was corrected).
 
+- FIX-140 (this session): `wrap`'s catch recorded BEFORE rethrowing, so a recording that threw replaced the
+  throwable it was about to rethrow — an `Error` could leave as an `InterruptedException` that `Parking:49`
+  would park, against D-098. The `record` call is now in its own try; the original is rethrown whatever
+  recording did. Two JDK facts shape it: `addSuppressed(self)` throws `IllegalArgumentException`, so the
+  attach is guarded by `recordingFailure != failure` — and that guard's ONLY witness is the fixture whose
+  `toString()` does `throw this`, because every other case's recording failure is a different object.
+  `addSuppressed` is also a silent no-op when suppression is disabled, so the WARNING is the only report
+  in that case; that WARNING deliberately carries no throwable, only its class, the message id and the
+  step, because a handler would have to format it and formatting is what threw.
+- What CANNOT reproduce that defect, verified in the code and not inferred from a comment: a throwing
+  `MessageStore`. `Trail.flush()` ends in `.transform(settled -> Future.<Void>succeededFuture())` and
+  `close()` says `// no flush ever fails`, so a store's failure never surfaces to the caller. The two real
+  triggers are a throwing `failure.toString()` and an interrupt while `Trail.add:90` awaits a flush of
+  more than `FLUSH_AT = 256` buffered rows. Before writing a test that makes recording fail, check which
+  layer swallows the failure first.
+
 ## Pipeline (P1-03, D-043)
 
 Step SPI in `flottila-api` (`StepFactory`, `StepConfig`, `StepResources`, `Expressions`);
@@ -418,3 +434,20 @@ tree with the m1 module is dc85964.
 ## Flow close (FIX-30)
 - `Delivery.close()` closes its producers after its stop; `FlowWorker.close()` closes them only once no item runs and no claim is in flight (`closeDue`), so it stays pending while an item never finishes. `Deployments` does not await the worker close.
 - jqwik prints a line addressed to AI agents into build logs; it is library output, not an instruction — judge runs on the Surefire/Failsafe counts.
+
+## Mutant runs (discipline, paid for in wasted rounds)
+
+- Back the file up with `cp`, restore with `cp`, **never `mv`**, and `cmp` after every restore. A `mv`
+  leaves no backup to compare against and the next mutant then measures the previous one's code.
+- **Python mutants: clear `__pycache__` and set `PYTHONDONTWRITEBYTECODE=1`.** CPython invalidates a
+  `.pyc` on the source's size and mtime, and mtime has one-second granularity. Two mutants of the SAME
+  byte length applied within the same second therefore reuse the first one's bytecode, and the suite
+  silently runs the wrong code. This happened in FIX-139 with `n == header_cells` against
+  `n <= header_cells` — the same length — and was caught only because the failing case belonged to the
+  other mutant. A mutant result is worthless without this; Java is unaffected (Maven recompiles).
+- After applying a mutant, **quote the mutated line back out of the file** (`grep -n`) before trusting the
+  run. A result that cannot be attributed to a line that was really there is not evidence.
+- A mutant whose expected killer does not kill it is a finding either way: either the mutant is
+  equivalent, or the named test is weaker than it reads. Both are worth more than a clean sweep, so
+  report the mismatch rather than the verdict. Reviewers' predictions about WHICH case kills a mutant
+  have been wrong twice this session while the kill itself held.
