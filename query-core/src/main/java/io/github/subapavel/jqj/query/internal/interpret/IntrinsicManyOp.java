@@ -28,7 +28,7 @@ public final class IntrinsicManyOp extends Op {
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     Object[] values = NO_ARGS;
-    if (width > 0) {
+    if (width != 0) {
       values = new Object[width];
       for (int i = 0; i < args.length; i++) {
         values[i] = args[i].read(slots, in);
