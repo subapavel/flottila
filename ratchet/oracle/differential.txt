@@ -802,6 +802,7 @@ control/label-break-after-error	af8ba84ae845	interpreter
 control/label-break-generator	39a04c6311c2	interpreter
 control/label-break-inner	ec6f36616198	interpreter
 control/label-break-outer	e9355b265bd3	interpreter
+control/label-break-then-comma	29db9a47264e	interpreter
 control/label-collect-break	349ffc6115d7	interpreter
 control/label-if-break	947be8e9146f	interpreter
 control/label-nested-same-name	ea41155c8cfe	interpreter
