@@ -57,6 +57,7 @@
 | 2026-11-03 | 3.4 | §4 the target limit is node-wide: one Targets per node from FLOTTILA_TARGET_MAX_CALLS/_MAX_WAIT/_LIMITS, shared across packages and versions; GET /admin/targets | P2-09b, D-099 |
 | 2026-11-03 | 3.4 | §4 MessageContext bound on every deployed pipeline (deadline = run start + `delivery.timeout`, default 30 s); the target wait takes the earlier of maxWait and the deadline; RequestScope per message still open (FIX-117) | FIX-115, D-100, F-24 |
 | 2026-11-03 | 3.4 | §11, §12: `flottila-sim` (deterministic simulation, P2-10), over api, core, testkit; nothing depends on it | F-25, D-101 |
+| 2026-11-14 | 3.4 | §5: `http.status` from egress moves in the Envelope table from `headers` to `props`, where the code has always carried it (`HttpComponent.STATUS`); the `headers` row keeps ingress headers only. A table correction: no mechanism changes, and as a prop the status reaches producers never, so no `forwardHeaders` entry can leak it | F-26, CONSIDER-11 |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -194,8 +195,8 @@ record Envelope(String id, String flow, int step,
 
 | Field | What goes there | Persisted | Indexed | Reaches producers |
 | --- | --- | --- | --- | --- |
-| `headers` | HTTP/JMS/mail headers from ingress, `http.status` from egress | jsonb | no | only what the flow allow-lists (`forwardHeaders`); nothing propagates implicitly |
-| `props` | split index, router decision, partner, validation result, replay-of — anything a later stage decides on | jsonb, JSON-serialisable values only | no | never |
+| `headers` | HTTP/JMS/mail headers from ingress | jsonb | no | only what the flow allow-lists (`forwardHeaders`); nothing propagates implicitly |
+| `props` | split index, router decision, partner, validation result, replay-of, the egress status (`http.status`) — anything a later stage decides on | jsonb, JSON-serialisable values only | no | never |
 | `keys` | what operators search by (invoiceId, orderNo, meteringPoint); filled by `extractKey`, declared per flow | own table `message_keys(name, value, message_id, step)` / CH columns with skip index | yes | never |
 | `attachments` | multipart parts (mail, SOAP/MTOM, AS2/AS4) | reference only; content kept per retention policy | no | yes, as parts |
 
