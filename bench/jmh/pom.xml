@@ -42,6 +42,14 @@
                   <version>${jmh.version}</version>
                 </path>
               </annotationProcessorPaths>
+              <!-- BuiltSizes measures the built values themselves (#64, ADR-0035), PreludeParse the parser (#71,
+                   ADR-0042); the jar runs on the class path. -->
+              <compilerArgs combine.children="append">
+                <arg>--add-exports</arg>
+                <arg>io.github.subapavel.jqj/io.github.subapavel.jqj.internal.value=io.github.subapavel.jqj.bench</arg>
+                <arg>--add-exports</arg>
+                <arg>io.github.subapavel.jqj/io.github.subapavel.jqj.internal.parse=io.github.subapavel.jqj.bench</arg>
+              </compilerArgs>
             </configuration>
           </execution>
         </executions>

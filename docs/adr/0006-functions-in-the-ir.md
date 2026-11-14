@@ -1,6 +1,6 @@
 # Functions in the IR: lifted, called by name, specialised away
 
-Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0009 (issue #7)
+Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0009 (issue #7); amended by F-31 (the natives sentence covers jq-defined builtins only); amended for spec 2a by ADR-0040 (F-41: inlined by the resolver, #70); `to_entries` a replacing native by ADR-0044 (#85)
 
 Every jq `def` is lifted into the program's function list. Captured variables and enclosing
 closure parameters become trailing parameters. A jq closure is a node of the caller's scope, run
@@ -49,3 +49,9 @@ recursive group.
 so `[last(empty)]` is `[]` and `path(last(.[]))` raises (F-9).
 
 Recursive calls count stack units against U (ADR-0011), not calls against K.
+
+## Amendment (F-31)
+
+"The only natives" counts jq's jq-defined builtins: of those only `inputs`, `flatten` and
+`to_entries` (ADR-0042 as amended by ADR-0044, #85) are natives. Every builtin jq writes in C or bytecode (`empty`, `not`, `path/1`, `length`, `type`, …)
+is a native in jqj.

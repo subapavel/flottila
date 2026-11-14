@@ -3,7 +3,7 @@ name: test-author
 description: Writes the red tests of one class-C ticket from the architect's acceptance spec, in its own worktree — tests and fixtures only, observed red before hand-back. Never writes production code; never reviews.
 model: claude-opus-5-5
 effort: xhigh
-maxTurns: 80
+maxTurns: 150
 memory: project
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

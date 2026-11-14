@@ -1,0 +1,9 @@
+# The required cases of #93 "wide constructs lower to one Binds" (ADR-0043, ADR-0020): give this file to the ticket
+# gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines
+# skipped.
+
+# differential: every case of binds.cases.
+binds/object-of-70-constant-keys-in-jq-order
+binds/object-of-70-computed-keys-in-jq-order
+binds/interpolation-of-70-parts-last-part-outermost
+binds/pattern-of-70-keys-first-key-outermost

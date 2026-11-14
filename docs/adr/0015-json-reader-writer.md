@@ -1,6 +1,6 @@
 # JSON reader and writer: jq's grammar, jq's messages by replay, a byte[] loop
 
-Status: accepted (2026-11-11, owner, issue #11 "How do the JSON reader and writer behave?"); amends ADR-0002 (document limit, tag 7), ADR-0004 (built values from `-R` and `--stream`) and ADR-0008 (`tick(int n)`, fuel reset); closes F-3; findings F-12 and F-13; founding §2's licence sentence is read through this ADR; amended by F-21 (exact size limits); amended by F-22 (depth counting); F-24 open (whole-container copy and whitespace)
+Status: accepted (2026-11-11, owner, issue #11 "How do the JSON reader and writer behave?"); amends ADR-0002 (document limit, tag 7), ADR-0004 (built values from `-R` and `--stream`) and ADR-0008 (`tick(int n)`, fuel reset); closes F-3; findings F-12 and F-13; founding §2's licence sentence is read through this ADR; amended by F-21 (exact size limits); amended by F-22 (depth counting); F-24 open (whole-container copy and whitespace); amended by ADR-0030 (run state, #59)
 
 jq-ref 1.8.2 decides what the reader accepts and what it prints. The adviser ran every rule below
 on it (issue #11 round 1, commands K1–K8) and read jq-1.8.2's `jv_parse.c`, `jv_unicode.c`,
@@ -127,7 +127,7 @@ non-exported package `.internal.json`.
   the offset on a slice). Any other segment (native, mapped, read-only, or backed by another array
   type) is copied once into a `byte[]`.
   Reading eight bytes at a time comes later, measured.
-- **Why `byte[]` is enough for Flottila** (owner, 2026-11-11): Flottila never hands a whole body as
+- **Why `byte[]` is enough for Rail8 (R8)** (owner, 2026-11-11): R8 never hands a whole body as
   a direct buffer. A step that needs the whole document copies it once into a `byte[]` from the
   body's whole-content call, which is allowed only below the blob store's tree limit, always under
   2 GiB. Larger bodies are only ever streamed in chunks. So no `MemorySegment` loop spike is needed.
@@ -136,7 +136,7 @@ non-exported package `.internal.json`.
 
 ## Later: a chunked reader
 
-A reader fed a stream of chunks (Flottila reads every large body as one) is a separate later
+A reader fed a stream of chunks (R8 reads every large body as one) is a separate later
 item, not part of milestone 1. The input stream reader's rotating buffers are its starting point.
 
 ## Later: skipped subtrees
@@ -165,7 +165,7 @@ tapeReused; skipAll's 58/39/31 % does not validate).
   strings anyway.
 - **jq's check order inside the fast loop; a resumable fast reader.**
 - **A `MemorySegment` loop now:** keeps 4 GiB and zero copy for native input, but unmeasured, and
-  Flottila never passes a whole document as a direct buffer (owner).
+  R8 never passes a whole document as a direct buffer (owner).
 - **Accepting NUL as jq 1.8.2 does:** bytes would hide behind a NUL in a host's message; jq master
   already rejects it.
 - **Slurp as N documents; `-R` lines or `--stream` events on a tape; duplicate detection in the

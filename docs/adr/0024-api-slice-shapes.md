@@ -1,6 +1,6 @@
 # API slice shapes: unlimited budgets, output options, the Stub mark and bench ids
 
-Status: accepted (2026-11-11, architect, on the designer's draft for #24 "S1.02 API slice"); amends ADR-0016 (null and booleans are enums; the exception shapes), ADR-0019 (scenario ids) and ADR-0020 (the Stub verdict); records F-20
+Status: accepted (2026-11-11, architect, on the designer's draft for #24 "S1.02 API slice"); amends ADR-0016 (null and booleans are enums; the exception shapes), ADR-0019 (scenario ids) and ADR-0020 (the Stub verdict); records F-20; bench ids of G2, G3 and G4 added by #74
 
 These shapes bind from the first publish (ADR-0016). They were left open by the ADRs and fixed by
 spec 1's API slice, `docs/wayfinder/spec-1-grilling.md` round 1 item 1.
@@ -28,6 +28,8 @@ spec 1's API slice, `docs/wayfinder/spec-1-grilling.md` round 1 item 1.
   - `G1.1k`, `G1.100k`, `G1.10m`;
   - `G6.compact.10m`, `G6.pretty.10m`;
   - `G7.engine.1k` (build the engine, compile `.a`, run on 1 KB) and `G7.process.1k` (`jqj -c .a`).
+  - (#74) `G2.1k`, `G2.100k`, `G2.10m`; `G3.100k`, `G3.10m`; `G4.1e4`, whose size is the element
+    count 10⁴ of ADR-0019's G4 input, not a byte size (`1k` already means 1 KiB).
 
   Their differential cases are `bench.G1.1k`, `bench.G6.compact.1k`, `bench.G6.pretty.1k` and
   `bench.G7.1k`. In the case format (`<family>/<name>`, ADR-0020) they are written

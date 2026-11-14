@@ -1,0 +1,275 @@
+# Differential cases (ADR-0020) of #73 "S2a.23 Sort and its kin": sort, unique, min and max, the hidden _sort_by_impl,
+# _group_by_impl, _unique_by_impl, _min_by_impl and _max_by_impl (jq 1.8.2's C functions, src/builtin.c and
+# src/jv_aux.c), and the prelude's sort_by, group_by, unique_by, min_by and max_by over them. Each on a document's array
+# (stdin) and on a built one, jq's value order over mixed kinds, its stable order on equal keys, its errors, min and max
+# of [], group_by on objects, and where "Comparison too deep" (ADR-0029) and "Equality check too deep" bite. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in sort.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# jq's value order over every kind: null, false, true, numbers, strings by their UTF-8 bytes, arrays element by element,
+# objects by their sorted key lists and then their values.
+
+case sort/kinds-mixed
+arg -c
+filter sort
+stdin [{"b":1},{"a":2},{"a":1,"b":0},{},[2],[1,5],[1],[],"é","z","ab","a","",2,1.5,-1,0,true,false,null,[null],{"a":[]},"Z",-0.5,1e1000]\n
+end
+
+case sort/kinds-mixed-built
+arg -c
+filter [{"b":1},{"a":2},{"a":1,"b":0},{},[2],[1,5],[1],[],"é","z","ab","a","",2,1.5,-1,0,true,false,null,infinite,-infinite,(1 / 3)] | sort
+stdin null\n
+end
+
+case sort/unique-kinds
+arg -c
+filter unique
+stdin [3,1,"a",[1],{"a":1},null,true,false,1,"a",[1],{"a":1},null,true,false,3,1.0,{"a":1.0},[1.0],-0,0]\n
+end
+
+case sort/unique-built
+arg -c
+filter [3, 1, "a", [1], 1, "a", [1], (2 - 1), {"a": 1}, {"a": (3 - 2)}] | unique
+stdin null\n
+end
+
+# min keeps the first of equal values and max the last (minmax_by replaces on < for min, on >= for max).
+
+case sort/min-max-equal-values
+arg -c
+filter [min, max, unique, sort]
+stdin [1.0,1,1.00,0.5e1,5,5.0]\n
+end
+
+case sort/min-max-kinds
+arg -c
+filter [min, max]
+stdin [{"a":1},[2],"b",3,true,false,null]\n
+end
+
+case sort/min-max-built
+arg -c
+filter [3, 1, 2] | [min, max]
+stdin null\n
+end
+
+# Stability: equal keys keep the input's order in sort_by and inside each group of group_by; unique_by keeps the first of
+# each key, min_by the first least and max_by the last greatest. The built input is longer than one run of the sort.
+
+case sort/stable-equal-keys
+arg -c
+filter (sort_by(.k) | map(.i)), (group_by(.k) | map(map(.i))), (unique_by(.k) | map(.i)), min_by(.k).i, max_by(.k).i
+stdin [{"k":2,"i":0},{"k":1,"i":1},{"k":2,"i":2},{"k":1,"i":3},{"k":2,"i":4},{"k":1,"i":5},{"k":1.0,"i":6},{"k":2,"i":7}]\n
+end
+
+case sort/stable-equal-keys-long
+arg -c
+filter [range(200) | {k: ((. * 7) % 5), i: .}] | (sort_by(.k) | map(.i)), (group_by(.k) | map(map(.i))), (unique_by(.k) | map(.i)), min_by(.k).i, max_by(.k).i
+stdin null\n
+end
+
+case sort/stable-equal-arrays
+arg -c
+filter sort_by(.[0]) | map(.[1])
+stdin [[[1,"x"],0],[[0],1],[[1,"x"],2],[[0],3],[[1,"x"],4],[[1],5],[[0.0],6]]\n
+end
+
+case sort/sort-by-several-keys
+arg -c
+filter sort_by(.a, .b), sort_by(.b, .a), group_by(.a, .b)
+stdin [{"a":2,"b":1},{"a":1,"b":2},{"a":2,"b":0},{"a":1,"b":1}]\n
+end
+
+# min, max, min_by and max_by of [] are null; sort, unique, sort_by, group_by and unique_by of [] are [].
+
+case sort/min-max-of-empty
+arg -c
+filter [min, max, min_by(.a), max_by(.a), _min_by_impl([]), _max_by_impl([])]
+stdin []\n
+end
+
+case sort/empty-sorts
+arg -c
+filter [sort, unique, sort_by(.a), group_by(.a), unique_by(.a), _sort_by_impl([]), _group_by_impl([]), _unique_by_impl([])]
+stdin []\n
+end
+
+case sort/empty-built
+arg -c
+filter [] | [min, max, sort, unique, group_by(.)]
+stdin null\n
+end
+
+# group_by on objects: object keys group by jq's object order and equality; an object input is jq's error.
+
+case sort/group-by-object-keys
+arg -c
+filter group_by(.k) | map(map(.i))
+stdin [{"k":{"b":1},"i":0},{"k":{"a":1},"i":1},{"k":{"b":1},"i":2},{"k":{},"i":3},{"k":{"a":1,"b":1},"i":4},{"k":{"a":1.0},"i":5},{"k":{"b":1,"a":1},"i":6}]\n
+end
+
+case sort/group-by-objects
+arg -c
+filter group_by(.)
+stdin [{"a":1},{"b":1},{"a":1},{"a":1,"b":2},{"b":2,"a":1}]\n
+end
+
+case sort/group-by-an-object-input
+arg -c
+filter try group_by(.) catch .
+stdin {"a":1,"b":2}\n
+end
+
+case sort/by-forms-on-an-object-input
+arg -c
+filter (try sort_by(.) catch .), (try unique_by(.) catch .), (try min_by(.) catch .), (try max_by(.) catch .)
+stdin {"a":1,"b":[2]}\n
+end
+
+case sort/by-forms-on-null
+arg -c
+filter (try sort_by(.) catch .), (try group_by(.) catch .), (try min_by(.) catch .)
+stdin null\n
+end
+
+# Errors: the input of sort, unique, min and max must be an array; an _impl's input and keys must both be arrays of one
+# length, each with jq's own text.
+
+case sort/errors-not-an-array
+arg -c
+filter .[] | [(try sort catch .), (try unique catch .), (try min catch .), (try max catch .)]
+stdin [null,true,1,"a",{"a":1}]\n
+end
+
+case sort/errors-built
+arg -c
+filter ({"a": [1]}, "x" * 3) | [(try sort catch .), (try min catch .)]
+stdin null\n
+end
+
+case sort/impl-errors
+arg -c
+filter [1, 2] | (try _sort_by_impl([1]) catch .), (try _group_by_impl({}) catch .), (try _unique_by_impl("a") catch .), (try _min_by_impl([1]) catch .), (try _max_by_impl(null) catch .), (try _min_by_impl({"a": 1}) catch .), (try _max_by_impl([1, 2, 3]) catch .)
+stdin null\n
+end
+
+case sort/impl-errors-input
+arg -c
+filter .[] | [(try _sort_by_impl([]) catch .), (try _group_by_impl([]) catch .), (try _unique_by_impl([]) catch .), (try _min_by_impl([]) catch .), (try _max_by_impl([]) catch .)]
+stdin [null,"a",{"a":1},3]\n
+end
+
+case sort/impl-generator-argument
+arg -c
+filter _sort_by_impl([1, 2, 3], [3, 2, 1]), _min_by_impl([1, 2, 3], [3, 2, 1]), _group_by_impl([1, 1, 2])
+stdin ["a","b","c"]\n
+end
+
+case sort/impl-argument-in-level
+arg -c
+filter zz1, _sort_by_impl(zz2), _min_by_impl(zz3)
+stdin null\n
+end
+
+# Comparison too deep (ADR-0029): [$x, $x] of 10 001 nested arrays sorts, as a key of _sort_by_impl or _min_by_impl too;
+# group_by's key wraps it once more, so it raises there; one level more raises in every native.
+
+case sort/depth-10001-arrays-compare
+arg -c
+filter (reduce range(10000) as $_ ([]; [.])) as $x | [([$x, $x] | sort | length), ([$x, $x] | min | length), ([$x, $x] | max | length), ([1, 1] | _sort_by_impl([$x, $x]) | length), ([1, 1] | _min_by_impl([$x, $x])), ([$x, $x] | unique | length), (try ([$x, $x] | group_by(.) | length) catch .)]
+stdin null\n
+end
+
+case sort/depth-10002-arrays-too-deep
+arg -c
+filter (reduce range(10001) as $_ ([]; [.])) as $x | [$x, $x] | (try sort catch .), (try min catch .), (try max catch .), (try sort_by(.) catch .), (try group_by(.[0]) catch .), (try unique_by(.) catch .), (try min_by(.) catch .), (try max_by(.) catch .), (try ([1, 1] | _sort_by_impl([$x, $x])) catch .)
+stdin null\n
+end
+
+case sort/too-deep-after-an-unequal-pair
+arg -c
+filter (reduce range(10001) as $_ ([]; [.])) as $x | (try ([[0], $x, [1], $x] | sort) catch .), (try ([[0], [1], $x, $x] | max) catch .)
+stdin null\n
+end
+
+case sort/objects-too-deep
+arg -c
+filter (reduce range(9999) as $_ ({}; {a: .})) as $x | (try ([$x, $x] | sort | length) catch .), (try ([{a: $x}, {a: $x}] | sort | length) catch .), (try ([{a: $x}, {a: $x}] | min | length) catch .)
+stdin null\n
+end
+
+# Equality check too deep: a sort that decided early on one key, and then jq's jv_equal of the two keys, which walks
+# an object's members in their own order, reaches the depth first.
+
+case sort/equality-too-deep
+arg -c
+filter (reduce range(10001) as $_ ([]; [.])) as $x | (reduce range(10001) as $_ ([]; [.])) as $y | (try ([{"b": $x, "a": 1}, {"b": $y, "a": 2}] | group_by(.) | length) catch .), (try ([{"a": 1, "b": $x}, {"a": 2, "b": $y}] | group_by(.) | length) catch .), (try ([{"b": $x, "a": 1}, {"b": $y, "a": 2}] | unique | length) catch .), (try ([[1, $x], [1, $y]] | group_by(.[0]) | length) catch .), (try ([$x, $y] | unique | length) catch .)
+stdin null\n
+end
+
+# NaN lies below every number and above true; a pair of NaNs compares as less either way in jq's jv_cmp, and jq's
+# merge sort keeps such a pair in the input's order; min_by replaces on it and max_by does not.
+
+case sort/nan-order
+arg -c
+filter [[nan, 1], [0], [nan, 2], [-1], [nan, 3], [nan, 4], [nan], 1, [nan, 0, 1], [nan, [1]], true, nan, -infinite] | sort
+stdin null\n
+end
+
+case sort/nan-pairs-keep-their-order
+arg -c
+filter ([[nan, 2], [nan, 1]] | sort), ([[nan, 3], [nan, 1], [nan, 2]] | sort_by(.)), ([[nan, 1], [nan, 2], [nan, 3]] | min_by(.[0]), max_by(.[0])), ([nan, 1, nan] | sort, unique, min, max), ([{"a": nan, "i": 1}, {"a": nan, "i": 0}] | sort)
+stdin null\n
+end
+
+case sort/nan-pairs-long
+arg -c
+filter [range(40) | [nan, (. * 7) % 40]] | sort | map(.[1])
+stdin null\n
+end
+
+# DEVIATIONS.md "Order inside a comparison cycle" (ADR-0012): two literals of one double and a computed number equal to
+# both form a cycle of jq's pairwise rule. jq's order there is its libc qsort's, jqj's its own merge sort's; min and
+# max are jq's left-to-right scan, so they match, and so does unique where both merges end with the same run.
+
+case sort/deviation-cycle-sort
+arg -c
+filter [100000000000000000001,(1e20+0),100000000000000000000] | sort
+stdin null\n
+deviation comparison-cycle
+jqj-rc 0
+jqj-stdout [100000000000000000000,100000000000000000001,1e+20]\n
+jqj-stderr
+end
+
+case sort/deviation-cycle-unique
+arg -c
+filter [100000000000000000001,(1e20+0),100000000000000000000] | unique
+stdin null\n
+deviation comparison-cycle
+jqj-rc 0
+jqj-stdout [100000000000000000000,100000000000000000001]\n
+jqj-stderr
+end
+
+case sort/deviation-cycle-group-by
+arg -c
+filter [100000000000000000001,(1e20+0),100000000000000000000] | group_by(.)
+stdin null\n
+deviation comparison-cycle
+jqj-rc 0
+jqj-stdout [[100000000000000000000],[100000000000000000001,1e+20]]\n
+jqj-stderr
+end
+
+case sort/cycle-min-max
+arg -c
+filter [100000000000000000001,(1e20+0),100000000000000000000] | min, max, min_by(.), max_by(.)
+stdin null\n
+end
+
+case sort/cycle-unique-one-run
+arg -c
+filter [(1e20+0),100000000000000000001,100000000000000000000] | unique
+stdin null\n
+end

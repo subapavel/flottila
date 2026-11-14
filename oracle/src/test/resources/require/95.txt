@@ -1,0 +1,27 @@
+# The required cases of #95 "Equality's key index" (ADR-0044 as amended by #95, ADR-0020): give this file to
+# the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; #
+# and blank lines skipped.
+
+# differential: every case of key-index.cases.
+key-index/reordered-wide
+key-index/reordered-colliding
+key-index/reordered-pairwise
+key-index/miss-last-key
+key-index/miss-last-key-colliding
+key-index/miss-pairwise
+key-index/fewer-right-keys
+key-index/repeat-last-wins
+key-index/repeat-last-wins-wide
+key-index/repeat-last-wins-colliding
+key-index/repeat-escaped
+key-index/nested-objects
+key-index/built-left-read-right
+key-index/built-left-read-right-colliding
+key-index/read-left-built-right
+key-index/not-equal
+key-index/not-equal-colliding
+key-index/unique-objects
+key-index/group-by-object
+key-index/array-index-of-object
+key-index/array-index-of-object-built
+key-index/empty-objects

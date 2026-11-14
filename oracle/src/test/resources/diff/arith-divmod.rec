@@ -1,0 +1,155 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case arith-divmod/one-by-zero
+def 3e4d59f2e173
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (0) cannot be divided because the divisor is zero\n
+end
+
+case arith-divmod/zero-by-zero
+def e0f12640f8a0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (0) and number (0) cannot be divided because the divisor is zero\n
+end
+
+case arith-divmod/one-by-negative-zero
+def a4a1c0a15d1e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (-0) cannot be divided because the divisor is zero\n
+end
+
+case arith-divmod/input-by-zero
+def d0ee26572d1b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (0) cannot be divided because the divisor is zero\n
+end
+
+case arith-divmod/input-by-literal-negative-zero
+def c9d4d187caa3
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (-0) cannot be divided because the divisor is zero\n
+end
+
+case arith-divmod/input-by-zero-point-zero
+def 38f703ec1e4b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (0.0) cannot be divided because the divisor is zero\n
+end
+
+case arith-divmod/mod-by-zero
+def ce8c29d667c3
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (0) cannot be divided (remainder) because the divisor is zero\n
+end
+
+case arith-divmod/mod-by-half
+def 46da8fd18844
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (5) and number (0.5) cannot be divided (remainder) because the divisor is zero\n
+end
+
+case arith-divmod/mod-input-by-truncated-zero
+def dd892ac56ac3
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (0.9) cannot be divided (remainder) because the divisor is zero\n
+end
+
+case arith-divmod/mod-signs
+def f5488fe302ba
+rc 0
+stdout [1,-2,2,-2,1,0,0]\n
+stderr
+end
+
+case arith-divmod/mod-saturating
+def 6d1926d75299
+rc 0
+stdout [0,-1,5,0,1,-2,3]\n
+stderr
+end
+
+case arith-divmod/mod-long-min-by-minus-one
+def 8e1e82876b02
+rc 0
+stdout 0\n
+stderr
+end
+
+case arith-divmod/mod-long-min-by-minus-one-input
+def 819dc9ce5ac6
+rc 0
+stdout 0\n
+stderr
+end
+
+case arith-divmod/mod-long-max
+def 0ee185145fd4
+rc 0
+stdout 1\n
+stderr
+end
+
+case arith-divmod/mod-nan
+def 7e5e27660b6a
+rc 0
+stdout [null,null]\n
+stderr
+end
+
+case arith-divmod/split-commas
+def 1065cb9a2df4
+rc 0
+stdout ["a","b","c"]\n
+stderr
+end
+
+case arith-divmod/split-empty-separator
+def b1ec5fc83eba
+rc 0
+stdout [["a","b","c"],["a","é","b"]]\n
+stderr
+end
+
+case arith-divmod/split-empty-string
+def d21ccfd9bcae
+rc 0
+stdout [[],[]]\n
+stderr
+end
+
+case arith-divmod/split-empty-pieces
+def d03eef984b6f
+rc 0
+stdout [["a","","b"],["","a",""],["",""]]\n
+stderr
+end
+
+case arith-divmod/split-overlapping-separator
+def 6deab33a86e5
+rc 0
+stdout [["","",""],["","a"],["abc"]]\n
+stderr
+end
+
+case arith-divmod/split-multibyte-separator
+def 92b85dd82338
+rc 0
+stdout ["a","b","c"]\n
+stderr
+end
+
+case arith-divmod/split-input
+def 7582da766e7a
+rc 0
+stdout ["a","b","c"]\n
+stderr
+end

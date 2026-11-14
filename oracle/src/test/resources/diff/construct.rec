@@ -1,0 +1,372 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case construct/object-pairs-product
+def 3f63df3cd1dd
+rc 0
+stdout {"a":1,"b":3}\n{"a":1,"b":4}\n{"a":2,"b":3}\n{"a":2,"b":4}\n
+stderr
+end
+
+case construct/object-key-outside-value
+def cbfb5339f4f0
+rc 0
+stdout {"a":1}\n{"a":2}\n{"b":1}\n{"b":2}\n
+stderr
+end
+
+case construct/object-repeated-key
+def 7a48a38b4f23
+rc 0
+stdout {"a":3}\n{"a":3}\n
+stderr
+end
+
+case construct/object-repeated-key-keeps-first-place
+def 820e02171cbf
+rc 0
+stdout {"a":3,"b":2}\n
+stderr
+end
+
+case construct/object-insertion-order
+def cd18898a3223
+rc 0
+stdout {"b":1,"a":2}\n
+stderr
+end
+
+case construct/array-of-commas
+def d3cf1fb073cc
+rc 0
+stdout [1,2,3,4]\n
+stderr
+end
+
+case construct/objects-then-field
+def 5b08fb48c791
+rc 0
+stdout 1\n2\n3\n
+stderr
+end
+
+case construct/object-empty-value
+def 0acaafc4b2fe
+rc 0
+stdout
+stderr
+end
+
+case construct/array-empty-body
+def b0e295b24d5a
+rc 0
+stdout []\n
+stderr
+end
+
+case construct/object-iterate
+def 3e9e435a6cb5
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case construct/object-index-number
+def 44f11055dfca
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (0)\n
+end
+
+case construct/array-index-and-slice
+def 1dd964e7a623
+rc 0
+stdout 2\n[2,3]\n
+stderr
+end
+
+case construct/object-field
+def 0077487fd720
+rc 0
+stdout 2\n
+stderr
+end
+
+case construct/shorthand-keys
+def 29a92c76542b
+rc 0
+stdout {"a":1,"b c":2,"d":null}\n
+stderr
+end
+
+case construct/shorthand-key-on-array
+def d104a68a18b4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case construct/shorthand-and-computed
+def 1dec68a7fc0d
+rc 0
+stdout {"a":1,"z":1}\n
+stderr
+end
+
+case construct/key-number-computed
+def 303b886b6aec
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(1):2}\n      ^\njq: 1 compile error\n
+end
+
+case construct/key-null-computed
+def 2a2cff44cf98
+rc 3
+stdout
+stderr jq: error: Cannot use null (null) as object key at <top-level>, line 1, column 3:\n    {(null):1}\n      ^^^^\njq: 1 compile error\n
+end
+
+case construct/key-true-computed
+def 72ee57d18a46
+rc 3
+stdout
+stderr jq: error: Cannot use boolean (true) as object key at <top-level>, line 1, column 3:\n    {(true):1}\n      ^^^^\njq: 1 compile error\n
+end
+
+case construct/key-false-computed
+def b091685ca7c5
+rc 3
+stdout
+stderr jq: error: Cannot use boolean (false) as object key at <top-level>, line 1, column 3:\n    {(false):1}\n      ^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-in-parentheses
+def 9eced839fbc5
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {((1)):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case construct/key-number-then-dot
+def 9dbab71fdf7d
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(1|.):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case construct/key-dot-then-number
+def 5f2a2558bfe1
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(.|1):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case construct/key-number-then-dots
+def 9187609b6680
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(1|.|.):1}\n      ^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-number-second-pair
+def 30fe1a520d53
+rc 3
+stdout
+stderr jq: error: Cannot use number (2) as object key at <top-level>, line 1, column 7:\n    {a:1,(2):3}\n          ^\njq: 1 compile error\n
+end
+
+case construct/key-two-errors
+def 7671f70ced2f
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(1):2} | {(true):3, (.a):4}\n      ^\njq: error: Cannot use boolean (true) as object key at <top-level>, line 1, column 13:\n    {(1):2} | {(true):3, (.a):4}\n                ^^^^\njq: 2 compile errors\n
+end
+
+case construct/key-string-computed
+def 485c4cb85629
+rc 0
+stdout {"a":1}\n
+stderr
+end
+
+case construct/key-array-constant
+def 1e8b5356ef5c
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1]) as object key at <top-level>, line 1, column 3:\n    {([1]):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case construct/key-object-constant
+def 54984193cd23
+rc 3
+stdout
+stderr jq: error: Cannot use object ({"a":1}) as object key at <top-level>, line 1, column 3:\n    {({a:1}):1}\n      ^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-number-at-run-time
+def 0323efa52aa1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use number (1) as object key\n
+end
+
+case construct/key-null-at-run-time
+def 5c76d54572c4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use null (null) as object key\n
+end
+
+case construct/key-after-a-string-key
+def a556afd7bee5
+rc 5
+stdout {"a":2}\n
+stderr jq: error (at <stdin>:1): Cannot use number (1) as object key\n
+end
+
+case construct/key-length-at-run-time
+def 2b7b0272547e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use number (1) as object key\n
+end
+
+case construct/key-array-two-constants
+def 5ac1393a82fb
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1,2]) as object key at <top-level>, line 1, column 3:\n    {([1,2]):1}\n      ^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-array-left-nested-commas
+def f267ccb09cdb
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1,2,3]) as object key at <top-level>, line 1, column 3:\n    {([(1,2),3]):1}\n      ^^^^^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-array-right-nested-commas
+def ac74d8b3d0e9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use array ([1,2,3]) as object key\n
+end
+
+case construct/key-array-empty
+def af0125d02011
+rc 3
+stdout
+stderr jq: error: Cannot use array ([]) as object key at <top-level>, line 1, column 3:\n    {([]):1}\n      ^^\njq: 1 compile error\n
+end
+
+case construct/key-array-of-dot
+def 38aa1995866d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use array ([null]) as object key\n
+end
+
+case construct/key-parentheses-pipe-dot
+def dfb0886dad09
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {((1)|(.)):1}\n      ^^^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-object-nested-constants
+def bc8c13812515
+rc 3
+stdout
+stderr jq: error: Cannot use object ({"a":1,"b":[2]}) as object key at <top-level>, line 1, column 3:\n    {({"a":1,b:[2]}):1}\n      ^^^^^^^^^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-object-shorthand
+def 275c9d1c11f8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use object ({"a":null}) as object key\n
+end
+
+case construct/key-interpolated-string
+def 860ec1adaff7
+rc 0
+stdout {"a1":1}\n
+stderr
+end
+
+case construct/key-interpolated-string-then-constant-key
+def 2e2ac6b66824
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 19:\n    {("a\\(1)"):1} | {(1):2}\n                      ^\njq: 1 compile error\n
+end
+
+case construct/key-array-dot-then-commas
+def c3f91d6009ad
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1,2]) as object key at <top-level>, line 1, column 3:\n    {([.|(1,2)]):1}\n      ^^^^^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-array-commas-then-dot
+def 1df240edd1b4
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1,2]) as object key at <top-level>, line 1, column 3:\n    {([(1,2)|.]):1}\n      ^^^^^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-array-dot-then-commas-on-the-left
+def 54ca919802bf
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1,2,3]) as object key at <top-level>, line 1, column 3:\n    {([(.|(1,2)),3]):1}\n      ^^^^^^^^^^^^^\njq: 1 compile error\n
+end
+
+case construct/key-array-pipe-of-constants
+def 79357e3aa285
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use array ([2]) as object key\n
+end
+
+case construct/key-object-variable-shorthand-then-constant-key
+def 85cc202f4a8f
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 26:\n    . as $x | {({$x}):1} | {(1):2}\n                             ^\njq: 1 compile error\n
+end
+
+case construct/key-computed-repeated
+def b83fadbc4a6e
+rc 0
+stdout {"a":3,"b":2}\n
+stderr
+end
+
+case construct/key-computed-then-missing-field
+def 874f94c4bea3
+rc 0
+stdout null\n
+stderr
+end
+
+case construct/key-computed-then-field
+def 07d26872865a
+rc 0
+stdout 1\n
+stderr
+end
+
+case construct/object-empty-iterate
+def 96329c596618
+rc 0
+stdout
+stderr
+end
+
+case construct/object-field-second
+def 5e06efde1453
+rc 0
+stdout 2\n
+stderr
+end

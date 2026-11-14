@@ -1,0 +1,1828 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case arith-kinds/plus-null-null
+def ce528a6636c9
+rc 0
+stdout null\n
+stderr
+end
+
+case arith-kinds/plus-null-false
+def 3db14eb82b25
+rc 0
+stdout false\n
+stderr
+end
+
+case arith-kinds/plus-null-true
+def a24b7ce42c31
+rc 0
+stdout true\n
+stderr
+end
+
+case arith-kinds/plus-null-number
+def 1088a7f45efd
+rc 0
+stdout 1\n
+stderr
+end
+
+case arith-kinds/plus-null-string
+def a3e0981e6897
+rc 0
+stdout "a"\n
+stderr
+end
+
+case arith-kinds/plus-null-array
+def d8c1341845e7
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-kinds/plus-null-object
+def 227360fccfff
+rc 0
+stdout {"a":1}\n
+stderr
+end
+
+case arith-kinds/plus-false-null
+def 2e88e20f1cb2
+rc 0
+stdout false\n
+stderr
+end
+
+case arith-kinds/plus-false-false
+def c79bde0dbe32
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (false) cannot be added\n
+end
+
+case arith-kinds/plus-false-true
+def 8b8a2a73682c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (true) cannot be added\n
+end
+
+case arith-kinds/plus-false-number
+def b36cef43e562
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and number (1) cannot be added\n
+end
+
+case arith-kinds/plus-false-string
+def 986c81a3a1e1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and string ("a") cannot be added\n
+end
+
+case arith-kinds/plus-false-array
+def 14d3b9707fef
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and array ([1]) cannot be added\n
+end
+
+case arith-kinds/plus-false-object
+def 674ce9d23e6d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and object ({"a":1}) cannot be added\n
+end
+
+case arith-kinds/plus-true-null
+def 9b1fc3492d3f
+rc 0
+stdout true\n
+stderr
+end
+
+case arith-kinds/plus-true-false
+def f7523989a96a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (false) cannot be added\n
+end
+
+case arith-kinds/plus-true-true
+def 2745a838c951
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (true) cannot be added\n
+end
+
+case arith-kinds/plus-true-number
+def 104a0d928436
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and number (1) cannot be added\n
+end
+
+case arith-kinds/plus-true-string
+def 901983e78baa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and string ("a") cannot be added\n
+end
+
+case arith-kinds/plus-true-array
+def 02ee9fb7fe75
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and array ([1]) cannot be added\n
+end
+
+case arith-kinds/plus-true-object
+def 9d839a0dcc81
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and object ({"a":1}) cannot be added\n
+end
+
+case arith-kinds/plus-number-null
+def 83eeaa69220b
+rc 0
+stdout 1\n
+stderr
+end
+
+case arith-kinds/plus-number-false
+def 1f56e76f15e5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (false) cannot be added\n
+end
+
+case arith-kinds/plus-number-true
+def b6803dcd231f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (true) cannot be added\n
+end
+
+case arith-kinds/plus-number-number
+def dc90e1f82417
+rc 0
+stdout 2\n
+stderr
+end
+
+case arith-kinds/plus-number-string
+def 8c7c82b9e182
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and string ("a") cannot be added\n
+end
+
+case arith-kinds/plus-number-array
+def fbe3b23880fb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and array ([1]) cannot be added\n
+end
+
+case arith-kinds/plus-number-object
+def 104312018d68
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and object ({"a":1}) cannot be added\n
+end
+
+case arith-kinds/plus-string-null
+def cc21227b0c1c
+rc 0
+stdout "a"\n
+stderr
+end
+
+case arith-kinds/plus-string-false
+def dce71e348d23
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (false) cannot be added\n
+end
+
+case arith-kinds/plus-string-true
+def f611aec50aca
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (true) cannot be added\n
+end
+
+case arith-kinds/plus-string-number
+def 951f3b0477d3
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and number (1) cannot be added\n
+end
+
+case arith-kinds/plus-string-string
+def 6eb5006ca8cf
+rc 0
+stdout "aa"\n
+stderr
+end
+
+case arith-kinds/plus-string-array
+def fca86f0ff77d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and array ([1]) cannot be added\n
+end
+
+case arith-kinds/plus-string-object
+def 8c9b30e9f2e5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and object ({"a":1}) cannot be added\n
+end
+
+case arith-kinds/plus-array-null
+def c47c596f3660
+rc 0
+stdout [1]\n
+stderr
+end
+
+case arith-kinds/plus-array-false
+def 11d99308de59
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (false) cannot be added\n
+end
+
+case arith-kinds/plus-array-true
+def cdf3e3cad961
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (true) cannot be added\n
+end
+
+case arith-kinds/plus-array-number
+def ac7a3c9fc614
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and number (1) cannot be added\n
+end
+
+case arith-kinds/plus-array-string
+def be5e163dcb20
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and string ("a") cannot be added\n
+end
+
+case arith-kinds/plus-array-array
+def da581f9551f9
+rc 0
+stdout [1,1]\n
+stderr
+end
+
+case arith-kinds/plus-array-object
+def 0121c1faa711
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and object ({"a":1}) cannot be added\n
+end
+
+case arith-kinds/plus-object-null
+def 7c550a808ca3
+rc 0
+stdout {"a":1}\n
+stderr
+end
+
+case arith-kinds/plus-object-false
+def b2c52bfb0fdd
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (false) cannot be added\n
+end
+
+case arith-kinds/plus-object-true
+def a406cc67529e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (true) cannot be added\n
+end
+
+case arith-kinds/plus-object-number
+def 1c392fb08958
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and number (1) cannot be added\n
+end
+
+case arith-kinds/plus-object-string
+def 059a9381ef5d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and string ("a") cannot be added\n
+end
+
+case arith-kinds/plus-object-array
+def 15f1704f524f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and array ([1]) cannot be added\n
+end
+
+case arith-kinds/plus-object-object
+def 351e19c5330f
+rc 0
+stdout {"a":1}\n
+stderr
+end
+
+case arith-kinds/minus-null-null
+def f8b009d66b5e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and null (null) cannot be subtracted\n
+end
+
+case arith-kinds/minus-null-false
+def 6cb424ce40d1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (false) cannot be subtracted\n
+end
+
+case arith-kinds/minus-null-true
+def fd1f141ca461
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (true) cannot be subtracted\n
+end
+
+case arith-kinds/minus-null-number
+def c13c3f76ff67
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/minus-null-string
+def e27b5dfd305a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/minus-null-array
+def 7d863c99fdb9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and array ([1]) cannot be subtracted\n
+end
+
+case arith-kinds/minus-null-object
+def 1ab46c1c4829
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and object ({"a":1}) cannot be subtracted\n
+end
+
+case arith-kinds/minus-false-null
+def 7472b63d0ac8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and null (null) cannot be subtracted\n
+end
+
+case arith-kinds/minus-false-false
+def 8368c21cfb85
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (false) cannot be subtracted\n
+end
+
+case arith-kinds/minus-false-true
+def a1e05c3f7159
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (true) cannot be subtracted\n
+end
+
+case arith-kinds/minus-false-number
+def 452721b6ba32
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/minus-false-string
+def 2acc2682c232
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/minus-false-array
+def 5c066295fb76
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and array ([1]) cannot be subtracted\n
+end
+
+case arith-kinds/minus-false-object
+def 3cfd9b6a69e5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and object ({"a":1}) cannot be subtracted\n
+end
+
+case arith-kinds/minus-true-null
+def 7550097ceaa3
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and null (null) cannot be subtracted\n
+end
+
+case arith-kinds/minus-true-false
+def df91d162f45b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (false) cannot be subtracted\n
+end
+
+case arith-kinds/minus-true-true
+def f52d8744f184
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (true) cannot be subtracted\n
+end
+
+case arith-kinds/minus-true-number
+def 4f5592f06fd9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/minus-true-string
+def 888e5073feff
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/minus-true-array
+def bb16dff1e257
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and array ([1]) cannot be subtracted\n
+end
+
+case arith-kinds/minus-true-object
+def 0b736d49f7d7
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and object ({"a":1}) cannot be subtracted\n
+end
+
+case arith-kinds/minus-number-null
+def 4b09bbb9d1fb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and null (null) cannot be subtracted\n
+end
+
+case arith-kinds/minus-number-false
+def 06947bd1d7c0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (false) cannot be subtracted\n
+end
+
+case arith-kinds/minus-number-true
+def e4153f82bfb1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (true) cannot be subtracted\n
+end
+
+case arith-kinds/minus-number-number
+def 369feab18d8e
+rc 0
+stdout 0\n
+stderr
+end
+
+case arith-kinds/minus-number-string
+def cad192c87b54
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/minus-number-array
+def 5c5ea41e28ae
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and array ([1]) cannot be subtracted\n
+end
+
+case arith-kinds/minus-number-object
+def ace411f2e1d5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and object ({"a":1}) cannot be subtracted\n
+end
+
+case arith-kinds/minus-string-null
+def 7bf35a302f61
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and null (null) cannot be subtracted\n
+end
+
+case arith-kinds/minus-string-false
+def e03371c633ed
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (false) cannot be subtracted\n
+end
+
+case arith-kinds/minus-string-true
+def b6a7af436967
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (true) cannot be subtracted\n
+end
+
+case arith-kinds/minus-string-number
+def 99ec7023187f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/minus-string-string
+def b69b75600de2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/minus-string-array
+def 87357ed0f27e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and array ([1]) cannot be subtracted\n
+end
+
+case arith-kinds/minus-string-object
+def 017415a033c4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and object ({"a":1}) cannot be subtracted\n
+end
+
+case arith-kinds/minus-array-null
+def 8dcd06b25d10
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and null (null) cannot be subtracted\n
+end
+
+case arith-kinds/minus-array-false
+def 59fbd0de55e4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (false) cannot be subtracted\n
+end
+
+case arith-kinds/minus-array-true
+def 61601bbce6a0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (true) cannot be subtracted\n
+end
+
+case arith-kinds/minus-array-number
+def bb33b2b69edf
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/minus-array-string
+def ad8190145efa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/minus-array-array
+def 8de52a3ce674
+rc 0
+stdout []\n
+stderr
+end
+
+case arith-kinds/minus-array-object
+def ab5f55846e74
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and object ({"a":1}) cannot be subtracted\n
+end
+
+case arith-kinds/minus-object-null
+def cf9a224ac6df
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and null (null) cannot be subtracted\n
+end
+
+case arith-kinds/minus-object-false
+def c283fc7b5c48
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (false) cannot be subtracted\n
+end
+
+case arith-kinds/minus-object-true
+def 329c151a3eff
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (true) cannot be subtracted\n
+end
+
+case arith-kinds/minus-object-number
+def 0e991e264533
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/minus-object-string
+def 8c3893d8302d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/minus-object-array
+def 5293168aa5f0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and array ([1]) cannot be subtracted\n
+end
+
+case arith-kinds/minus-object-object
+def e32d3b5345de
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and object ({"a":1}) cannot be subtracted\n
+end
+
+case arith-kinds/times-null-null
+def 03a8c792883d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and null (null) cannot be multiplied\n
+end
+
+case arith-kinds/times-null-false
+def a5a5f0aef27e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (false) cannot be multiplied\n
+end
+
+case arith-kinds/times-null-true
+def 0ef7f5d3cee8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (true) cannot be multiplied\n
+end
+
+case arith-kinds/times-null-number
+def 7680aa3b2738
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and number (1) cannot be multiplied\n
+end
+
+case arith-kinds/times-null-string
+def 089b37a1fbdc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and string ("a") cannot be multiplied\n
+end
+
+case arith-kinds/times-null-array
+def 0e78110755ec
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and array ([1]) cannot be multiplied\n
+end
+
+case arith-kinds/times-null-object
+def 5a89acbbfffa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and object ({"a":1}) cannot be multiplied\n
+end
+
+case arith-kinds/times-false-null
+def b722d7333f6f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and null (null) cannot be multiplied\n
+end
+
+case arith-kinds/times-false-false
+def 70e81798ffe7
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (false) cannot be multiplied\n
+end
+
+case arith-kinds/times-false-true
+def 3983a6b20fae
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (true) cannot be multiplied\n
+end
+
+case arith-kinds/times-false-number
+def 96376453614c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and number (1) cannot be multiplied\n
+end
+
+case arith-kinds/times-false-string
+def f4dae9dc44dd
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and string ("a") cannot be multiplied\n
+end
+
+case arith-kinds/times-false-array
+def 1985e6a3f58b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and array ([1]) cannot be multiplied\n
+end
+
+case arith-kinds/times-false-object
+def c793c4a6028e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and object ({"a":1}) cannot be multiplied\n
+end
+
+case arith-kinds/times-true-null
+def 322044adae88
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and null (null) cannot be multiplied\n
+end
+
+case arith-kinds/times-true-false
+def 509941f174f1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (false) cannot be multiplied\n
+end
+
+case arith-kinds/times-true-true
+def 74d020b10733
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (true) cannot be multiplied\n
+end
+
+case arith-kinds/times-true-number
+def 75b17f6b95b8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and number (1) cannot be multiplied\n
+end
+
+case arith-kinds/times-true-string
+def 728bd38bdd32
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and string ("a") cannot be multiplied\n
+end
+
+case arith-kinds/times-true-array
+def 64ac2384e57f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and array ([1]) cannot be multiplied\n
+end
+
+case arith-kinds/times-true-object
+def b23a265b50f8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and object ({"a":1}) cannot be multiplied\n
+end
+
+case arith-kinds/times-number-null
+def 20a54694e5fc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and null (null) cannot be multiplied\n
+end
+
+case arith-kinds/times-number-false
+def 3d0db16ff405
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (false) cannot be multiplied\n
+end
+
+case arith-kinds/times-number-true
+def aa35054a4573
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (true) cannot be multiplied\n
+end
+
+case arith-kinds/times-number-number
+def a1cfb6ea6645
+rc 0
+stdout 1\n
+stderr
+end
+
+case arith-kinds/times-number-string
+def a51b97764faa
+rc 0
+stdout "a"\n
+stderr
+end
+
+case arith-kinds/times-number-array
+def 898dd631a7ee
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and array ([1]) cannot be multiplied\n
+end
+
+case arith-kinds/times-number-object
+def f4a9fb46cb53
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and object ({"a":1}) cannot be multiplied\n
+end
+
+case arith-kinds/times-string-null
+def 109fc62d528c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and null (null) cannot be multiplied\n
+end
+
+case arith-kinds/times-string-false
+def 4958b727940c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (false) cannot be multiplied\n
+end
+
+case arith-kinds/times-string-true
+def f86c79db843b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (true) cannot be multiplied\n
+end
+
+case arith-kinds/times-string-number
+def 00aae45efad5
+rc 0
+stdout "a"\n
+stderr
+end
+
+case arith-kinds/times-string-string
+def 17a6e7a3a550
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and string ("a") cannot be multiplied\n
+end
+
+case arith-kinds/times-string-array
+def a7a89b5d4058
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and array ([1]) cannot be multiplied\n
+end
+
+case arith-kinds/times-string-object
+def aa1a5689a8ba
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and object ({"a":1}) cannot be multiplied\n
+end
+
+case arith-kinds/times-array-null
+def 7b7eeec9e054
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and null (null) cannot be multiplied\n
+end
+
+case arith-kinds/times-array-false
+def 30314337a19f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (false) cannot be multiplied\n
+end
+
+case arith-kinds/times-array-true
+def a3dd84f65f50
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (true) cannot be multiplied\n
+end
+
+case arith-kinds/times-array-number
+def 99f0f666a492
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and number (1) cannot be multiplied\n
+end
+
+case arith-kinds/times-array-string
+def 58563520d0c4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and string ("a") cannot be multiplied\n
+end
+
+case arith-kinds/times-array-array
+def d3fb8fecbefa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and array ([1]) cannot be multiplied\n
+end
+
+case arith-kinds/times-array-object
+def 5773e7ff0f95
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and object ({"a":1}) cannot be multiplied\n
+end
+
+case arith-kinds/times-object-null
+def 184df62ed3ca
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and null (null) cannot be multiplied\n
+end
+
+case arith-kinds/times-object-false
+def 1988bf8caa8e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (false) cannot be multiplied\n
+end
+
+case arith-kinds/times-object-true
+def 38834b41d63f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (true) cannot be multiplied\n
+end
+
+case arith-kinds/times-object-number
+def fe309ee30232
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and number (1) cannot be multiplied\n
+end
+
+case arith-kinds/times-object-string
+def eed96cdecf9e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and string ("a") cannot be multiplied\n
+end
+
+case arith-kinds/times-object-array
+def f49aa68c2909
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and array ([1]) cannot be multiplied\n
+end
+
+case arith-kinds/times-object-object
+def 1086af7cc857
+rc 0
+stdout {"a":1}\n
+stderr
+end
+
+case arith-kinds/divide-null-null
+def 98e1e6d8513c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and null (null) cannot be divided\n
+end
+
+case arith-kinds/divide-null-false
+def 04397934af15
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (false) cannot be divided\n
+end
+
+case arith-kinds/divide-null-true
+def f1a995335996
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (true) cannot be divided\n
+end
+
+case arith-kinds/divide-null-number
+def 4b43b16a9d16
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and number (1) cannot be divided\n
+end
+
+case arith-kinds/divide-null-string
+def 3ace68601a0a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and string ("a") cannot be divided\n
+end
+
+case arith-kinds/divide-null-array
+def 3b4a062089d0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and array ([1]) cannot be divided\n
+end
+
+case arith-kinds/divide-null-object
+def a85dac3aae05
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and object ({"a":1}) cannot be divided\n
+end
+
+case arith-kinds/divide-false-null
+def 56f3da4efacb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and null (null) cannot be divided\n
+end
+
+case arith-kinds/divide-false-false
+def 161e679735b2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (false) cannot be divided\n
+end
+
+case arith-kinds/divide-false-true
+def db9c2704e064
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (true) cannot be divided\n
+end
+
+case arith-kinds/divide-false-number
+def 3f72cc54fed9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and number (1) cannot be divided\n
+end
+
+case arith-kinds/divide-false-string
+def 099af8c3e13b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and string ("a") cannot be divided\n
+end
+
+case arith-kinds/divide-false-array
+def 15a3952adc67
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and array ([1]) cannot be divided\n
+end
+
+case arith-kinds/divide-false-object
+def 0e45ca4b3a4d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and object ({"a":1}) cannot be divided\n
+end
+
+case arith-kinds/divide-true-null
+def 22f9ca558133
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and null (null) cannot be divided\n
+end
+
+case arith-kinds/divide-true-false
+def f3636029a4c2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (false) cannot be divided\n
+end
+
+case arith-kinds/divide-true-true
+def 8037c72e0d5f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (true) cannot be divided\n
+end
+
+case arith-kinds/divide-true-number
+def 7778a218a933
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and number (1) cannot be divided\n
+end
+
+case arith-kinds/divide-true-string
+def f110075d36fc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and string ("a") cannot be divided\n
+end
+
+case arith-kinds/divide-true-array
+def 91de53d1ad06
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and array ([1]) cannot be divided\n
+end
+
+case arith-kinds/divide-true-object
+def 4858be919d37
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and object ({"a":1}) cannot be divided\n
+end
+
+case arith-kinds/divide-number-null
+def a277ada50810
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and null (null) cannot be divided\n
+end
+
+case arith-kinds/divide-number-false
+def cf5f2ced2719
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (false) cannot be divided\n
+end
+
+case arith-kinds/divide-number-true
+def fff9c9bcc577
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (true) cannot be divided\n
+end
+
+case arith-kinds/divide-number-number
+def dc177fc26bfc
+rc 0
+stdout 1\n
+stderr
+end
+
+case arith-kinds/divide-number-string
+def c73f76b98fe6
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and string ("a") cannot be divided\n
+end
+
+case arith-kinds/divide-number-array
+def efd78863d653
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and array ([1]) cannot be divided\n
+end
+
+case arith-kinds/divide-number-object
+def 673cbb185276
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and object ({"a":1}) cannot be divided\n
+end
+
+case arith-kinds/divide-string-null
+def 79f978fea96c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and null (null) cannot be divided\n
+end
+
+case arith-kinds/divide-string-false
+def 4d05cac0d508
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (false) cannot be divided\n
+end
+
+case arith-kinds/divide-string-true
+def b52664701914
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (true) cannot be divided\n
+end
+
+case arith-kinds/divide-string-number
+def cc15b5c6ae73
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and number (1) cannot be divided\n
+end
+
+case arith-kinds/divide-string-string
+def c9d1279d2081
+rc 0
+stdout ["",""]\n
+stderr
+end
+
+case arith-kinds/divide-string-array
+def 29eda6c4d725
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and array ([1]) cannot be divided\n
+end
+
+case arith-kinds/divide-string-object
+def 40e1453d9361
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and object ({"a":1}) cannot be divided\n
+end
+
+case arith-kinds/divide-array-null
+def 9f12c48c4920
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and null (null) cannot be divided\n
+end
+
+case arith-kinds/divide-array-false
+def 2a1291e8bf02
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (false) cannot be divided\n
+end
+
+case arith-kinds/divide-array-true
+def ecb68ab66f22
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (true) cannot be divided\n
+end
+
+case arith-kinds/divide-array-number
+def 444501694228
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and number (1) cannot be divided\n
+end
+
+case arith-kinds/divide-array-string
+def 0cfa3d4bf415
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and string ("a") cannot be divided\n
+end
+
+case arith-kinds/divide-array-array
+def 8b566aadef12
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and array ([1]) cannot be divided\n
+end
+
+case arith-kinds/divide-array-object
+def 44ad3e5492c2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and object ({"a":1}) cannot be divided\n
+end
+
+case arith-kinds/divide-object-null
+def 5cd6f9b93250
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and null (null) cannot be divided\n
+end
+
+case arith-kinds/divide-object-false
+def 098e84e722e0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (false) cannot be divided\n
+end
+
+case arith-kinds/divide-object-true
+def 94d3ac37c540
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (true) cannot be divided\n
+end
+
+case arith-kinds/divide-object-number
+def de519743bb5f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and number (1) cannot be divided\n
+end
+
+case arith-kinds/divide-object-string
+def 3bcbaf5bd3fb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and string ("a") cannot be divided\n
+end
+
+case arith-kinds/divide-object-array
+def 32b285d32c36
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and array ([1]) cannot be divided\n
+end
+
+case arith-kinds/divide-object-object
+def f2e68c2b6189
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and object ({"a":1}) cannot be divided\n
+end
+
+case arith-kinds/mod-null-null
+def fa15b1cc3ae0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and null (null) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-null-false
+def ec0ecc08a598
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (false) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-null-true
+def de325d5e4dce
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and boolean (true) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-null-number
+def af416767d4da
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and number (1) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-null-string
+def d2654cbb1852
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and string ("a") cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-null-array
+def 84f45e0f34bb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and array ([1]) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-null-object
+def db06dbd02507
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and object ({"a":1}) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-false-null
+def 7988321bb2aa
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and null (null) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-false-false
+def 8be93d76e7a0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (false) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-false-true
+def 1e81b801d5a9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and boolean (true) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-false-number
+def 14d959483488
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and number (1) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-false-string
+def 8c412032439f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and string ("a") cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-false-array
+def 20ef8ae82530
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and array ([1]) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-false-object
+def ed282197b91f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (false) and object ({"a":1}) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-true-null
+def de38fcf9ca91
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and null (null) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-true-false
+def 40df34bc3b4e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (false) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-true-true
+def 1a5b5b7fa874
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and boolean (true) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-true-number
+def 8803a0fb358b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and number (1) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-true-string
+def 7d79326f5b35
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and string ("a") cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-true-array
+def eeb47c7d8854
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and array ([1]) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-true-object
+def 2b71dada8b13
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): boolean (true) and object ({"a":1}) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-number-null
+def fccafb7e124d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and null (null) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-number-false
+def 386e00a4a2dc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (false) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-number-true
+def bd9feb115d0a
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and boolean (true) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-number-number
+def c4e8a07480a9
+rc 0
+stdout 0\n
+stderr
+end
+
+case arith-kinds/mod-number-string
+def 29c6b00d53d4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and string ("a") cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-number-array
+def 5c85011feeb7
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and array ([1]) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-number-object
+def 5b35077afc5c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and object ({"a":1}) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-string-null
+def 4f55d8f1ef44
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and null (null) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-string-false
+def ea51508aa888
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (false) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-string-true
+def 36834195d761
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and boolean (true) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-string-number
+def 7d20378c153d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and number (1) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-string-string
+def 6bd40f970595
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and string ("a") cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-string-array
+def 3482210c4875
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and array ([1]) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-string-object
+def adeea43df573
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and object ({"a":1}) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-array-null
+def f6de96413f0e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and null (null) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-array-false
+def 41973c177a88
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (false) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-array-true
+def eda8b45a7975
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and boolean (true) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-array-number
+def e192d3f61801
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and number (1) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-array-string
+def 5f14a60bf1f1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and string ("a") cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-array-array
+def e5beea2d3729
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and array ([1]) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-array-object
+def 7105f2e075cf
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1]) and object ({"a":1}) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-object-null
+def 8461f994f548
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and null (null) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-object-false
+def d3af19bf2eb4
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (false) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-object-true
+def 22cdec390314
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and boolean (true) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-object-number
+def de5be2163788
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and number (1) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-object-string
+def 5352208705af
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and string ("a") cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-object-array
+def bca78cc4d111
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and array ([1]) cannot be divided (remainder)\n
+end
+
+case arith-kinds/mod-object-object
+def 99fe9846ba61
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"a":1}) and object ({"a":1}) cannot be divided (remainder)\n
+end
+
+case arith-kinds/cut-string-29-bytes-whole
+def 0a4808382704
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("abcdefghijklmnopqrstuvwxyz0") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-string-30-bytes
+def 46e8c7551276
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("abcdefghijklmnopqrstuvwx...") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-string-right-operand
+def 2562a08fa87c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and string ("abcdefghijklmnopqrstuvwx...") cannot be subtracted\n
+end
+
+case arith-kinds/cut-array-29-bytes-whole
+def f8274e2e9ef8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1,2,3,4,5,6,7,8,9,10,11,123]) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-array-30-bytes
+def a159ac058ed5
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): array ([1,2,3,4,5,6,7,8,9,10,11,...]) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-object-29-bytes-whole
+def 9cd5a30a691e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"aaaaaaaa":1,"bbbbbbbbbb":2}) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-object-30-bytes
+def b437d2a91220
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): object ({"aaaaaaaaa":1,"bbbbbbbbb...}) and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-multibyte-at-the-cut
+def 776f072a43ec
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("aééééééééééé...") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-multibyte-even
+def 0345b072b062
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("éééééééééééé...") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-escapes-even
+def 63f2b2714bc2
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n...") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-escapes-split
+def 494a8f1e1cb1
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\...") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-unicode-escape-split
+def 8975fc09007d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("aaaaaaaaaaaaaaaaaaaaaa\\u...") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-unicode-escape-split-later
+def 3ea10370b5bd
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("aaaaaaaaaaaaaaaaaaaaa\\u0...") and number (1) cannot be subtracted\n
+end
+
+case arith-kinds/cut-both-operands
+def e1c188cc09d8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("abcdefghijklmnopqrstuvwx...") and array ([1,2,3,4,5,6,7,8,9,10,11,...]) cannot be subtracted\n
+end
+
+case arith-kinds/cut-long-literal-number
+def 81918e447834
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1.000000000000000000000000...) and string ("a") cannot be subtracted\n
+end
+
+case arith-kinds/cut-divide-by-zero-long-number
+def bb741393e35e
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1.000000000000000000000000...) and number (0) cannot be divided because the divisor is zero\n
+end

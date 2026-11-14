@@ -1,0 +1,99 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case arith-order/plus-right-operand-outer
+def 0df75183daa2
+rc 0
+stdout [11,12,21,22]\n
+stderr
+end
+
+case arith-order/minus-right-operand-outer
+def 24f257d465ef
+rc 0
+stdout [-9,-8,-19,-18]\n
+stderr
+end
+
+case arith-order/times-right-operand-outer
+def cf7e70ad859b
+rc 0
+stdout [10,20,20,40]\n
+stderr
+end
+
+case arith-order/divide-right-operand-outer
+def 730f4254b7e8
+rc 0
+stdout [10,20,5,10]\n
+stderr
+end
+
+case arith-order/mod-right-operand-outer
+def d08740302bbe
+rc 0
+stdout [1,2,3,6]\n
+stderr
+end
+
+case arith-order/strings-right-operand-outer
+def 017a2fd42719
+rc 0
+stdout ["ac","bc","ad","bd"]\n
+stderr
+end
+
+case arith-order/input-operands-right-outer
+def e610dd2e9685
+rc 0
+stdout [0,1,-1,0]\n
+stderr
+end
+
+case arith-order/right-error-first-folded
+def 347276a7c9e7
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and string ("b") cannot be subtracted\n
+end
+
+case arith-order/right-error-first-input
+def 9dfda70ca33c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("y") and number (1) cannot be subtracted\n
+end
+
+case arith-order/results-before-right-error
+def 24650db72318
+rc 5
+stdout 11\n12\n
+stderr jq: error (at <stdin>:1): string ("y") and number (1) cannot be subtracted\n
+end
+
+case arith-order/left-error-inside-right-loop
+def 20b3af4cb680
+rc 5
+stdout 11\n
+stderr jq: error (at <stdin>:1): string ("x") and number (1) cannot be subtracted\n
+end
+
+case arith-order/negate-generator
+def f728cd8ae822
+rc 0
+stdout [-1,-2]\n
+stderr
+end
+
+case arith-order/precedence-constants
+def 5c91561d6c96
+rc 0
+stdout [7,9,3,2,2,1,-6,3]\n
+stderr
+end
+
+case arith-order/precedence-input
+def e1b2abe73e9c
+rc 0
+stdout [7,9,0]\n
+stderr
+end

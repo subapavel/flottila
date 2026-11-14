@@ -1,0 +1,243 @@
+# A computed object key whose fold goes past the 4 KiB cap of a Const (ADR-0035 amendments, #65 standards reviews):
+# jq folds without a cap, so a key that folds to an array or an object is jq's compile error (rc 3) however large it
+# is; jqj's check takes the fold whatever its size, within the compile's budget. A key that folds to a long string is
+# valid, and a pipe whose sides are not . alone is no fold, so both run (rc 0), as do a remainder of a string and a
+# merge of an array, to their errors (rc 5).
+# jq's -n is not built in jqj's command line yet, so
+# every case runs on stdin null. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java.
+# Expected outputs live in constant-key-cap.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# rc 3: past the cap, the fold is an array or an object
+
+case constant-key-cap/split
+arg -c
+filter {(("x"*5000)/"x"):1}
+stdin null\n
+end
+
+case constant-key-cap/split-in-parentheses
+arg -c
+filter {((("x"*5000)/"x")):1}
+stdin null\n
+end
+
+case constant-key-cap/split-after-dot
+arg -c
+filter {(. | ("x"*5000)/"x"):1}
+stdin null\n
+end
+
+case constant-key-cap/array
+arg -c
+filter {([("x"*5000)]):1}
+stdin null\n
+end
+
+case constant-key-cap/object
+arg -c
+filter {({a:("x"*5000)}):1}
+stdin null\n
+end
+
+case constant-key-cap/difference
+arg -c
+filter {([("x"*5000)] - []):1}
+stdin null\n
+end
+
+case constant-key-cap/array-plus
+arg -c
+filter {([] + [("x"*5000)]):1}
+stdin null\n
+end
+
+case constant-key-cap/null-plus-array
+arg -c
+filter {(null + [("x"*5000)]):1}
+stdin null\n
+end
+
+case constant-key-cap/merge
+arg -c
+filter {({a:("x"*5000)} * {}):1}
+stdin null\n
+end
+
+case constant-key-cap/merge-of-a-plus
+arg -c
+filter {((. | {a:("x"*5000)} + {}) * {}):1}
+stdin null\n
+end
+
+case constant-key-cap/merge-of-null-plus-an-object
+arg -c
+filter {((null + {a:("x"*5000)}) * {}):1}
+stdin null\n
+end
+
+case constant-key-cap/merge-of-a-merge
+arg -c
+filter {(({a:("x"*5000)} * {}) * {}):1}
+stdin null\n
+end
+
+case constant-key-cap/array-plus-null
+arg -c
+filter {([("x"*5000)] + null):1}
+stdin null\n
+end
+
+case constant-key-cap/merge-of-an-object-plus-null
+arg -c
+filter {(({a:("x"*5000)} + null) * {}):1}
+stdin null\n
+end
+
+# A pipe of a pipe in an array: (. | .) is . alone, so the outer pipe joins away and [1] folds; (1 | .) | 2 and
+# (. | 1) | 2 are no fold, and their keys fail at run time (rc 5)
+
+case constant-key-cap/pipe-of-dots
+arg -c
+filter {([(. | .) | 1]):1}
+stdin null\n
+end
+
+case constant-key-cap/pipe-of-a-constant-and-dot
+arg -c
+filter {([(1 | .) | 2]):1}
+stdin null\n
+end
+
+case constant-key-cap/pipe-of-dot-and-a-constant
+arg -c
+filter {([(. | 1) | 2]):1}
+stdin null\n
+end
+
+# The 1 MiB edge: ("x"*N)/"x" builds its two literals "x", 41 bytes each, 40 + N, then 64 + 48 x (N + 1): 1048540
+# bytes for N = 21394, under the bound
+
+case constant-key-cap/check-edge-under
+arg -c
+filter {(("x"*21394)/"x"):1}
+stdin null\n
+end
+
+# rc 0: a string past the cap is a valid key; a pipe of two non-dot sides is no fold
+
+case constant-key-cap/string-repeat
+arg -c
+filter {((("x"*2049) + "y") * 2):1}
+stdin null\n
+end
+
+case constant-key-cap/string-plus
+arg -c
+filter {(("x"*4097) + "y"):1}
+stdin null\n
+end
+
+case constant-key-cap/split-then-index
+arg -c
+filter {(("x"*5000)/"x" | .[0]):1}
+stdin null\n
+end
+
+# rc 5: a remainder of a string and a merge of an array are no fold, and their errors come at run time
+
+case constant-key-cap/remainder-of-a-string
+arg -c
+filter {(("x"*5000) % 2):1}
+stdin null\n
+end
+
+case constant-key-cap/merge-of-a-split
+arg -c
+filter {((("x"*5000)/"x") * {}):1}
+stdin null\n
+end
+
+# Deviation: past the compile's 1 MiB budget jqj leaves the key to the run, rc 5 (DEVIATIONS "Huge constant keys")
+
+case constant-key-cap/huge-split
+deviation huge-constant-keys
+arg -c
+filter {(("x"*2000000)/"x"):1}
+stdin null\n
+jqj-rc 5
+jqj-stderr jq: error (at <stdin>:1): Cannot use array (["","","","","","","","",...]) as object key\n
+end
+
+# N = 21395 builds 1048589 bytes, 13 past the bound
+
+case constant-key-cap/check-edge-over
+deviation huge-constant-keys
+arg -c
+filter {(("x"*21395)/"x"):1}
+stdin null\n
+jqj-rc 5
+jqj-stderr jq: error (at <stdin>:1): Cannot use array (["","","","","","","","",...]) as object key\n
+end
+
+# The bound holds for the whole fold: two strings of 1000040 bytes each, together past 1 MiB
+
+case constant-key-cap/check-whole-fold
+deviation huge-constant-keys
+arg -c
+filter {([("x"*1000000),("x"*1000000)]):1}
+stdin null\n
+jqj-rc 5
+jqj-stderr jq: error (at <stdin>:1): Cannot use array (["xxxxxxxxxxxxxxxxxxxxxxx...]) as object key\n
+end
+
+# Outside a key the 4 KiB cap holds for the whole fold too: two strings of 4040 bytes are no 8 KiB Const, so the run
+# builds them (jq-core HugeConstantKeyTest); the output is the same
+
+case constant-key-cap/fold-whole-array
+arg -c
+filter [("x"*4000),("x"*4000)] + []
+stdin null\n
+end
+
+# A key that is a pipe of dots piped to a split: the parenthesised pipe of dots folds to . alone, so the check folds
+# the split
+
+case constant-key-cap/pipe-of-dots-to-a-split
+arg -c
+filter {((. | .) | ("x"*5000)/"x"):1}
+stdin null\n
+end
+
+# Every fold of a compile shares 2^20 steps (ADR-0035, bd34167): 1024 ones less 1023 twos and a one take 1024 x 1024
+# steps and a few more, so the difference is left to the run, which gives jq's output (jq-core HugeConstantKeyTest)
+
+case constant-key-cap/difference-past-the-step-budget
+arg -c
+filter [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1] - [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1]
+stdin null\n
+end
+
+# Deviation: every fold of a compile shares 1 MiB of bytes built (ADR-0035, bd34167). The first key's check builds
+# 1048540 bytes, so the second key is left to the run; the compile still fails on the first, with one error, not two
+
+case constant-key-cap/check-after-the-compile-budget
+deviation huge-constant-keys
+arg -c
+filter {(("x"*21394)/"x"):1},{(("x"*5000)/"x"):1}
+stdin null\n
+jqj-rc 3
+jqj-stderr jq: error: Cannot use array (["","","","","","","","",...]) as object key at <top-level>, line 1, column 3:\n    {(("x"*21394)/"x"):1},{(("x"*5000)/"x"):1}\n      ^^^^^^^^^^^^^^^\njq: 1 compile error\n
+end
+
+# Deviation: jq checks a key at parse time wherever it stands; past the compile budget jqj leaves it to the run, which
+# never reaches a key behind empty, so the filter gives its other output, rc 0 (DEVIATIONS "Huge constant keys")
+
+case constant-key-cap/unreached-huge-key
+deviation huge-constant-keys
+arg -c
+filter 1, (empty | {(("x"*2000000)/"x"):1})
+stdin null\n
+jqj-rc 0
+jqj-stdout 1\n
+jqj-stderr
+end

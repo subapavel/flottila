@@ -1,0 +1,98 @@
+# The required cases of #64 "S2a.14 Construction" (ADR-0020): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# The implementation merges after #63 (comma and navigation), which several of these cases also need.
+
+# jqtest: the cases of the design approval (oracle/src/test/resources/census/jqtest.tsv). The census credits them to
+# S2a.15 although they need only S2a.13 and S2a.14 (and S2a.11); crediting them to S2a.14 is a carry on #75. jq.test
+# lines 1741, 118, 2042, 826, 277, 183, 191, 179, 273, 269, 265, 195, 138. Lines 1456 (#5f103bd8e523) and 1452
+# (#eeb224a1461b) need term? (Try), which is #68's, and moved to #68's list (implementer's hand-back, correction round).
+jq.test#165e9d49e412
+jq.test#33233245fd79
+jq.test#809eb1cc7c72
+jq.test#90eb24abe650
+jq.test#a75eed83e41a
+jq.test#ac0addfcdfca
+jq.test#b9d51fb64b51
+jq.test#ca87b4084b53
+jq.test#caa482c8e621
+jq.test#d9512412a4af
+jq.test#ddfc0b9f24d0
+jq.test#e30d7814d724
+jq.test#e5fd7cd60864
+# man.test lines 129, 137, 53, 831.
+man.test#08248976a999
+man.test#490d2216ccf2
+man.test#57fce177cbff
+man.test#63bdfbca2583
+
+# jqtest: the census cases whose ticket column is S2a.14 (the ticket body's "census cases assigned to S2a.14"),
+# jq.test lines 126 ({(0):1}), 261, 31, 35, 253, 257, 114 and man.test line 142.
+jq.test#2fce37f74ea4
+jq.test#3da339a812bc
+jq.test#6030a2ec413f
+jq.test#ac88d93274ab
+jq.test#c2a8cb6b0b12
+jq.test#e9512ef8e30c
+jq.test#fac015c9b4bf
+man.test#471ca600c8d6
+
+# differential: diff/construct.cases, except construct/key-length-at-run-time (length is #72's) and
+# construct/key-interpolated-string (an interpolation is #67's, F-35; its parse-time fold is witnessed by
+# construct/key-interpolated-string-then-constant-key, whose parse fails before resolution). A constant container as a
+# key is folded as jq folds it, so its error is at parse time (ADR-0036 as corrected at fec65f1).
+construct/array-empty-body
+construct/array-index-and-slice
+construct/array-of-commas
+construct/key-after-a-string-key
+construct/key-array-commas-then-dot
+construct/key-array-constant
+construct/key-array-dot-then-commas
+construct/key-array-dot-then-commas-on-the-left
+construct/key-array-empty
+construct/key-array-left-nested-commas
+construct/key-array-of-dot
+construct/key-array-pipe-of-constants
+construct/key-array-right-nested-commas
+construct/key-array-two-constants
+construct/key-computed-repeated
+construct/key-computed-then-field
+construct/key-computed-then-missing-field
+construct/key-dot-then-number
+construct/key-false-computed
+construct/key-in-parentheses
+construct/key-interpolated-string-then-constant-key
+construct/key-null-at-run-time
+construct/key-null-computed
+construct/key-number-at-run-time
+construct/key-number-computed
+construct/key-number-second-pair
+construct/key-number-then-dot
+construct/key-number-then-dots
+construct/key-object-constant
+construct/key-object-nested-constants
+construct/key-object-shorthand
+construct/key-object-variable-shorthand-then-constant-key
+construct/key-parentheses-pipe-dot
+construct/key-string-computed
+construct/key-true-computed
+construct/key-two-errors
+construct/object-empty-iterate
+construct/object-empty-value
+construct/object-field
+construct/object-field-second
+construct/object-index-number
+construct/object-insertion-order
+construct/object-iterate
+construct/object-key-outside-value
+construct/object-pairs-product
+construct/object-repeated-key
+construct/object-repeated-key-keeps-first-place
+construct/objects-then-field
+construct/shorthand-and-computed
+construct/shorthand-key-on-array
+construct/shorthand-keys
+
+# differential: the #64 section of diff/syntax.cases (rc and stdout; ConstantKeyTest checks the blocks).
+syntax/object-key-error-after-a-recovery
+syntax/object-key-error-then-syntax-error
+syntax/object-key-number-literal

@@ -1,0 +1,13 @@
+# The required cases of #81 "a deeply nested filter ends like jq's parser does" (ADR-0020): give this file to the
+# ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank
+# lines skipped.
+
+# depth: jq-ref's last accepted and first rejected depth per shape (diff/depth.cases).
+depth/paren-9994
+depth/paren-9995
+depth/array-9994
+depth/array-9995
+depth/object-3331
+depth/object-3332
+# a pipe chain nests as deep; the comma chains (depth/comma-*) are Stubs until #63 lowers Comma.
+depth/pipe-10000

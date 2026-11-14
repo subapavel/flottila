@@ -59,7 +59,7 @@ integration branch (`docs/WORKFLOW.md` §5).
 - Readers (scout, verifier, reviewers, designer) run beside the writers, at most two at once.
 - `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=4` (`.claude/settings.json`). The VM has 4 vCPU; a
   fourth Maven build in parallel makes every build slower, not the batch faster (measured in
-  flottila-mapping: a scoped build of 4 s alone took 9–10 s with three in parallel). The build
+  r8-mapping: a scoped build of 4 s alone took 9–10 s with three in parallel). The build
   skeleton ticket re-measures this here and records it in `bench/RESULTS.md`.
 - Worktrees share `~/.m2/repository` (file locking in `.mvn/maven.config`). JMH runs alone:
   no other build while a benchmark is measuring.

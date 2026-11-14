@@ -2,8 +2,10 @@
 # Remove merged agent worktrees (.claude/worktrees/agent-* and verify-*) of the current repository.
 # Usage: scripts/clean-worktrees.sh [base-ref]   (default origin/main)
 # Per worktree, one line:
-#   - HEAD not an ancestor of the base: kept, "not merged".
-#   - clean: unlocked if locked, removed.
+#   - HEAD not an ancestor of the base, and HEAD's tree not among the trees of the base's history
+#     (a rewritten commit keeps its tree): kept, "not merged". With the tree found, the worktree
+#     goes on like a merged one below.
+#   - clean: unlocked if locked, removed ("tree already in <base>" when HEAD is not an ancestor).
 #   - dirty: its index tree and its working tree (untracked files included) are each compared with
 #     the trees of the base's history. Both found: nothing unique is lost, removed with --force.
 #     Otherwise kept, and the paths that differ from its HEAD are listed.
@@ -29,13 +31,14 @@ git worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r wt
   case "$wt" in */.claude/worktrees/*) ;; *) continue ;; esac
   [ "$wt" = "$self" ] && { echo "$wt: kept, current worktree"; continue; }
   head=$(git -C "$wt" rev-parse HEAD 2> /dev/null) || { echo "$wt: kept, unreadable"; continue; }
+  why=
   if ! git merge-base --is-ancestor "$head" "$base"; then
-    echo "$wt: kept, not merged"
-    continue
+    in_history "$(git rev-parse "$head^{tree}")" || { echo "$wt: kept, not merged"; continue; }
+    why=", tree already in $base"
   fi
   if [ -z "$(git -C "$wt" status --porcelain)" ]; then
     git worktree unlock "$wt" 2> /dev/null
-    if git worktree remove "$wt"; then echo "$wt: removed"; else echo "$wt: kept, remove failed"; fi
+    if git worktree remove "$wt"; then echo "$wt: removed$why"; else echo "$wt: kept, remove failed"; fi
     continue
   fi
   idx=$(git -C "$wt" write-tree)

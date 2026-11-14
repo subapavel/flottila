@@ -1,7 +1,7 @@
 # Workflow
 
-How work goes from an idea to `main`. Taken from flottila-mapping on 2026-11-10 (ADR-0001), where
-it has carried several specs to `main`. It keeps Flottila's rigour (architect who never codes, red
+How work goes from an idea to `main`. Taken from r8-mapping on 2026-11-10 (ADR-0001), where
+it has carried several specs to `main`. It keeps Rail8's rigour (architect who never codes, red
 first, evidence words, findings, class-based model choice, gate reviewer) on Matt Pocock's skill
 chain (wayfinder, grilling, specs, tracer-bullet tickets, parallel implementers on an integration
 branch, two-axis review). Skills are in `.claude/skills/`; the upstream ones are unchanged
@@ -69,8 +69,8 @@ The architect runs `.claude/skills/run-spec/SKILL.md`. In short, per ticket on t
 5. class C only: `/code-review` on the ticket diff (both axes, xhigh) — FAIL goes back to the
    same implementer; a second FAIL means the ticket was wrong: the designer rewrites it;
 6. merger merges the ticket branch into the integration branch; the architect posts the evidence
-   comment and closes the ticket. The verifier then regenerates the oracle pass lists
-   (`regen --oracles`, ADR-0020); coverage, mutation and bench move only in the spec gate (§6);
+   comment and closes the ticket. The verifier then runs `scripts/after-merge.sh <ticket>`
+   (verify with the compile-mode oracle, then `regen --oracles`; ADR-0020); coverage, mutation and bench move only in the spec gate (§6);
 7. the frontier is recomputed and freed writer slots are refilled at once.
 
 Up to three tickets are in flight at any time (`AGENTS.md`, Concurrency).
@@ -83,6 +83,8 @@ Up to three tickets are in flight at any time (`AGENTS.md`, Concurrency).
 3. One implementer fixes every finding in one pass; the verifier re-runs the full gate.
 4. `/pr` writes the PR body (summary, evidence, merge danger); the PR closes the spec.
 5. CI green on the PR → merge commit to `main` (history of tickets kept). Never squash, never force-push.
+   `scripts/merge-spec.sh <pr>` writes and checks the merge message (F-28) and prints the merge
+   command; `--execute` runs it. Never merge from the web UI: its default message fails `trailers`.
 6. `agent/HANDOFF.md` is rewritten in the same PR.
 
 ## 6. Checks, ratchet, CI
@@ -137,7 +139,7 @@ hand-back.
 GitHub Issues replace the backlog and the progress journal: the spec, its tickets and their
 evidence comments are the record. Nothing that matters lives only in the conversation.
 
-## 10. Turn economy (lessons from Flottila and flottila-mapping)
+## 10. Turn economy (lessons from R8 and r8-mapping)
 
 - The architect is the most expensive context; deep design goes to a fresh designer, not into it.
 - Wait for a single agent in the foreground; background only with two or more in flight.

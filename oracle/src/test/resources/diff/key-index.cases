@@ -1,0 +1,156 @@
+# Differential cases (ADR-0020) of #95, Equality's key index (ADR-0044 as amended by #95): == and != take a
+# read right side through its key proof, one lookup per left key among the pairwise proof's pairs (8 keys or
+# fewer), in its table or by a search of its sorted keys (keys of Aa/BB blocks, which share one hash). The
+# objects are reordered copies, with a repeated key whose last value wins, a missing last key, nested wide
+# objects, a built side, and unique, group_by and an array indexed by an array (index's way), which
+# compare objects by equality. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# key-index.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# 20 keys each, the second side reversed: past the 8 pairwise keys, so the table.
+case key-index/reordered-wide
+arg -c
+filter .[0] == .[1], .[1] == .[0]
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}]\n
+end
+
+# 16 keys of Aa/BB blocks share one hash, so the proof sorts and a lookup searches the sorted keys.
+case key-index/reordered-colliding
+arg -c
+filter .[0] == .[1], .[1] == .[0]
+stdin [{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"BBBBBBBB":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0}]\n
+end
+
+# 3 keys each: the pairwise proof.
+case key-index/reordered-pairwise
+arg -c
+filter .[0] == .[1]
+stdin [{"a":1,"b":2,"c":3},{"c":3,"a":1,"b":2}]\n
+end
+
+# The left side's last key, k19, is the one the right side lacks: one length, one count.
+case key-index/miss-last-key
+arg -c
+filter .[0] == .[1], .[1] == .[0]
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}]\n
+end
+
+# The sorted path: the left side's last key, BBBBBBBB, is missing on the right.
+case key-index/miss-last-key-colliding
+arg -c
+filter .[0] == .[1]
+stdin [{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"BBBBBBBA":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0}]\n
+end
+
+case key-index/miss-pairwise
+arg -c
+filter .[0] == .[1]
+stdin [{"a":1,"b":2},{"b":2,"c":1}]\n
+end
+
+# One key fewer on the right: every right key is found, then the left side's twentieth is not.
+case key-index/fewer-right-keys
+arg -c
+filter .[0] == .[1], .[1] == .[0]
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18}]\n
+end
+
+# A repeated key on the right compares by its last value.
+case key-index/repeat-last-wins
+arg -c
+filter .[0] == .[1], .[0] == .[2]
+stdin [{"a":1,"b":2},{"b":2,"a":0,"a":1},{"a":1,"b":2,"a":0}]\n
+end
+
+# The table with repeats: k3 and k19 again, each last with its own value; then k3 last with another.
+case key-index/repeat-last-wins-wide
+arg -c
+filter .[0] == .[1], .[1] == .[0], .[0] == .[2]
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"k19":0,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0,"k3":99,"k3":3,"k19":19},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0,"k3":99}]\n
+end
+
+# The sorted path with repeats: AaAaAaAa again, last with its own value, then with another.
+case key-index/repeat-last-wins-colliding
+arg -c
+filter .[0] == .[1], .[0] == .[2]
+stdin [{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"BBBBBBBB":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0,"AaAaAaAa":7,"AaAaAaAa":0},{"BBBBBBBB":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0,"AaAaAaAa":7}]\n
+end
+
+# Tag-6 keys: an escaped a repeats a by its decoded bytes, and the last of the two wins.
+case key-index/repeat-escaped
+arg -c
+filter .[0] == .[1], .[0] == .[2]
+stdin [{"a":1,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8},{"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"a":0,"\\u0061":1},{"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"\\u0061":1,"a":0}]\n
+end
+
+# Wide objects of wide objects, reordered at each level; the third differs in one nested key.
+case key-index/nested-objects
+arg -c
+filter .[0] == .[1], .[0] == .[2]
+stdin [{"k0":{"x":0,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k1":{"x":1,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k2":{"x":2,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k3":{"x":3,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k4":{"x":4,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k5":{"x":5,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k6":{"x":6,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k7":{"x":7,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k8":{"x":8,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k9":{"x":9,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k10":{"x":10,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}},"k11":{"x":11,"y":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}}},{"k11":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":11},"k10":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":10},"k9":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":9},"k8":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":8},"k7":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":7},"k6":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":6},"k5":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":5},"k4":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":4},"k3":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":3},"k2":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":2},"k1":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":1},"k0":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":0}},{"k11":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":11},"k10":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":10},"k9":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":9},"k8":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":8},"k7":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":7},"k6":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":6},"k5":{"y":{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},"x":5},"k4":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":4},"k3":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":3},"k2":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":2},"k1":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":1},"k0":{"y":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"x":0}}]\n
+end
+
+# A built left side against a read right one.
+case key-index/built-left-read-right
+arg -c
+filter (.[0] | with_entries(.)) == .[1], {k0:0,k1:1,k2:2,k3:3,k4:4,k5:5,k6:6,k7:7,k8:8,k9:9,k10:10,k11:11,k12:12,k13:13,k14:14,k15:15,k16:16,k17:17,k18:18,k19:19} == .[1], {k0:0} == .[1]
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}]\n
+end
+
+case key-index/built-left-read-right-colliding
+arg -c
+filter (.[0] | with_entries(.)) == .[1], (.[0] | with_entries(select(.key != "AaAaAaAa"))) == .[1]
+stdin [{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"BBBBBBBB":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0}]\n
+end
+
+case key-index/read-left-built-right
+arg -c
+filter .[0] == (.[1] | with_entries(.)), .[0] == (.[1] | with_entries(select(.key != "k0")))
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}]\n
+end
+
+# != over the same pairs: a reordered copy, a missing last key, a built left side, a value against itself.
+case key-index/not-equal
+arg -c
+filter .[0] != .[1], .[0] != .[2], .[1] != .[0], (.[0] | with_entries(.)) != .[2], .[0] != .[0]
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}]\n
+end
+
+case key-index/not-equal-colliding
+arg -c
+filter .[0] != .[1], .[0] != .[2]
+stdin [{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"BBBBBBBB":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0},{"BBBBBBBA":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0}]\n
+end
+
+# unique keeps one of each group of equal objects.
+case key-index/unique-objects
+arg -c
+filter unique
+stdin [{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15}]\n
+end
+
+# group_by on an object key: the equal ones in one group.
+case key-index/group-by-object
+arg -c
+filter group_by(.o) | map(length)
+stdin [{"o":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"i":0},{"o":{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},"i":1},{"o":{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},"i":2},{"o":{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},"i":3},{"o":{"BBBBBBBB":15,"AaBBBBBB":14,"BBAaBBBB":13,"AaAaBBBB":12,"BBBBAaBB":11,"AaBBAaBB":10,"BBAaAaBB":9,"AaAaAaBB":8,"BBBBBBAa":7,"AaBBBBAa":6,"BBAaBBAa":5,"AaAaBBAa":4,"BBBBAaAa":3,"AaBBAaAa":2,"BBAaAaAa":1,"AaAaAaAa":0},"i":4},{"o":{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},"i":5}]\n
+end
+
+# An array indexed by an array, which index, rindex and indices take for an array: each place where the objects equal those of the index, in order (jqj's prelude index still ends in a Stub through _strindices).
+case key-index/array-index-of-object
+arg -c
+filter .[1] as $n | .[0] | .[[$n]], .[[$n, $n]], .[[{}]]
+stdin [[{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}],{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19}]\n
+end
+
+case key-index/array-index-of-object-built
+arg -c
+filter .[0] | .[[{k0:0,k1:1,k2:2,k3:3,k4:4,k5:5,k6:6,k7:7,k8:8,k9:9,k10:10,k11:11,k12:12,k13:13,k14:14,k15:15,k16:16,k17:17,k18:18,k19:19}]]
+stdin [[{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0},{"k19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}]]\n
+end
+
+case key-index/empty-objects
+arg -c
+filter .[0] == .[1], .[0] == .[2], .[2] == .[0], {} == .[0]
+stdin [{},{},{"a":1}]\n
+end

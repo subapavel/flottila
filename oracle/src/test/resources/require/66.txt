@@ -1,0 +1,161 @@
+# The required cases of #66 "S2a.16 Comparison and sort order" (ADR-0020): give this file to the ticket gate as
+# ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+# The implementation merges after #65 (arithmetic, Equality and the number compare), which several of these need.
+# Left out: the NaN rows, #72's (design approval O4); the cases with error/1 or try, #68's; nan-in-an-array also needs
+# as (#67).
+
+# jqtest: the census cases whose ticket column is S2a.16 (oracle/src/test/resources/census/jqtest.tsv), man.test
+# lines 17, 801, 754, 773, 805, 777.
+man.test#27f35cc53626
+man.test#4a106423ef6a
+man.test#5bc64f426e59
+man.test#6e384b17c186
+man.test#a4c781accd63
+man.test#ac0f022d428e
+
+# jqtest: census cases credited to a later ticket whose tickets column needs only S2a.11 and S2a.13 to S2a.16 (the
+# design approval: extra census ids are required at #66 if they pass; crediting them here is a carry on #75).
+# jq.test lines 1489, 1416, 1390, 668, 1407, 1399, 1403, 1370, 1378, 674, 1394, 1411; man.test lines 762, 758, 813,
+# 781, 786, 809.
+jq.test#0806a3fc361f
+jq.test#108504723642
+jq.test#2c4eccc8a912
+jq.test#594b4c8163d6
+jq.test#5e648b631870
+jq.test#7d6cc6033a84
+jq.test#92d684574562
+jq.test#a1121bdecdc5
+jq.test#a7ac2f630acd
+jq.test#b1b4da0a8506
+jq.test#da40100f483d
+jq.test#e618b5e06608
+man.test#006cf2b52a80
+man.test#3793b964d73e
+man.test#37e59e76d0fc
+man.test#653df95494b7
+man.test#9428d54f82a8
+man.test#c801ba41e4d2
+
+# jqtest: not, built here as If(., F, T) (design approval C2; the census credits not/0 to S2a.22, a carry on #75).
+# jq.test line 1385, man.test line 793.
+jq.test#6ad20475b077
+man.test#2e715c2cc7f5
+
+# differential: diff/compare.cases, except the two nan-* cases.
+compare/arrays-element-wise-then-length
+compare/arrays-first-difference-decides
+compare/arrays-from-the-document
+compare/constant-and-identity
+compare/identity-operands
+compare/key-folded-containers
+compare/key-folded-equal
+compare/key-folded-greater
+compare/key-folded-greater-or-equal
+compare/key-folded-less
+compare/key-folded-less-or-equal
+compare/key-folded-nested
+compare/key-folded-not-equal
+compare/key-folded-nulls
+compare/key-folded-objects
+compare/key-folded-strings
+compare/key-not-folded-alternative
+compare/key-not-folded-alternative-constants
+compare/key-not-folded-and
+compare/key-not-folded-comparison-and
+compare/key-not-folded-dot
+compare/key-not-folded-field
+compare/key-not-folded-not
+compare/key-not-folded-or
+compare/kinds-equal
+compare/kinds-from-the-document
+compare/kinds-greater
+compare/kinds-greater-or-equal
+compare/kinds-less
+compare/kinds-less-or-equal
+compare/kinds-not-equal
+compare/numbers
+compare/numbers-from-the-document
+compare/objects-built-and-read
+compare/objects-from-the-document
+compare/objects-key-bytes
+compare/objects-keys-first
+compare/objects-values-in-sorted-key-order
+compare/right-operand-outer-error
+compare/right-operand-outer-greater-or-equal
+compare/right-operand-outer-less
+compare/right-operand-outer-not-equal
+compare/strings-bytes-then-length
+compare/strings-escaped-and-raw
+compare/strings-from-the-document
+compare/strings-unsigned-bytes
+compare/strings-utf8-not-utf16
+
+# differential: diff/compare-depth.cases, except arrays-10001-caught (try, #68).
+compare-depth/arrays-10000-less
+compare-depth/arrays-10000-wrapped-less
+compare-depth/arrays-10001-collected
+compare-depth/arrays-10001-differ-at-the-top
+compare-depth/arrays-10001-differ-before-the-depth
+compare-depth/arrays-10001-equal
+compare-depth/arrays-10001-equal-before-the-depth
+compare-depth/arrays-10001-greater
+compare-depth/arrays-10001-greater-or-equal
+compare-depth/arrays-10001-less
+compare-depth/arrays-10001-less-or-equal
+compare-depth/arrays-10001-not-equal
+compare-depth/empty-object-at-10000
+compare-depth/empty-object-at-9999
+compare-depth/object-at-9998
+compare-depth/object-at-9999
+compare-depth/object-at-9999-differ-at-the-top
+compare-depth/object-wrapped-at-the-top
+compare-depth/object-wrapped-at-the-top-10001
+
+# differential: diff/logic.cases, except the four *-error-builtin cases (#68).
+logic/and-false-skips-the-right
+logic/and-generators
+logic/and-left-error
+logic/and-left-outer
+logic/and-left-outer-error
+logic/and-no-left-result
+logic/and-no-right-result
+logic/and-null-skips-the-right
+logic/and-true-runs-the-right
+logic/and-truthiness
+logic/not-generator
+logic/not-of-the-document
+logic/not-truthiness
+logic/or-false-runs-the-right
+logic/or-generators
+logic/or-left-error
+logic/or-left-outer
+logic/or-left-outer-error
+logic/or-no-right-result
+logic/or-no-right-result-skipped
+logic/or-number-skips-the-right
+logic/or-true-skips-the-right
+logic/or-truthiness
+logic/results-are-booleans
+
+# differential: diff/alternative.cases, except the six error-builtin* cases (#68).
+alternative/chain
+alternative/comparison-results
+alternative/falsy-left-runs-the-right
+alternative/falsy-right-results
+alternative/field-or-default
+alternative/iterate-truthy-elements
+alternative/left-error
+alternative/left-error-after-a-falsy-result
+alternative/left-error-after-a-truthy-result
+alternative/left-error-collected
+alternative/no-left-result-runs-the-right
+alternative/no-result-at-all
+alternative/no-truthy-left-runs-the-right
+alternative/truthy-left-results
+alternative/truthy-left-skips-the-right
+
+# differential: the precedence cases of #62 whose constructs are built once #65 and #66 are (diff/precedence.cases).
+precedence/and-below-compare
+precedence/comma-below-alternative
+precedence/compare-below-additive
+precedence/or-below-and

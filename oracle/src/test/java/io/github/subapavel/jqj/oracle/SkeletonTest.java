@@ -2,9 +2,11 @@ package io.github.subapavel.jqj.oracle;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.query.compile.Compiler;
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.Source;
+import io.github.subapavel.jqj.query.run.RunState;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,8 +31,9 @@ class SkeletonTest {
     Object input = new Object();
     List<Object> emitted = new ArrayList<>();
     boolean ranOut =
-        Compiler.compile(new Identity(new Source(0, 1)))
+        Compiler.compile(new Identity(new Source(0, 1)), CompileMode.OPTIMISED)
             .run(
+                new RunState(),
                 input,
                 v -> {
                   emitted.add(v);

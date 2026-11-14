@@ -1,0 +1,23 @@
+# The required cases of #83 "a built object past 8 keys looks up by an index" (ADR-0020): give this file to the ticket
+# gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines
+# skipped.
+
+# differential: every case of diff/wide.cases.
+wide/computed-all-keys
+wide/computed-colliding-keys
+wide/computed-escaped-key
+wide/computed-nine-iterate
+wide/computed-nine-lookups
+wide/computed-repeated-eight-distinct
+wide/computed-repeated-nine
+wide/computed-repeated-nine-distinct
+wide/computed-repeated-nine-iterate
+wide/computed-two-repeated
+wide/shape-colliding-keys
+wide/shape-eight-iterate
+wide/shape-eight-lookups
+wide/shape-nine-each
+wide/shape-nine-iterate
+wide/shape-nine-lookup-then-iterate
+wide/shape-nine-lookups
+wide/shape-ten-lookups

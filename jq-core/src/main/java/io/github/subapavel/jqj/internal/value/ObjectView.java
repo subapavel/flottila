@@ -2,20 +2,20 @@ package io.github.subapavel.jqj.internal.value;
 
 import io.github.subapavel.jqj.internal.json.JsonStrings;
 import io.github.subapavel.jqj.internal.json.Printer;
+import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.value.JqObject;
 import io.github.subapavel.jqj.value.JqValue;
-import java.util.Arrays;
 import java.util.function.BiConsumer;
 
 /**
  * An object of a document (ADR-0003, ADR-0016): its document and tape index. Public only so the kind can permit it.
- * Its entries alternate key and value. The tape keeps duplicate keys, so every member checks them again, as jq does:
- * a key keeps its first position and its last value (ADR-0002). That check compares each key with the earlier ones,
- * so {@link #size()} and {@link #forEach} take time quadratic in the number of keys. Keys compare by their decoded
- * bytes (#35): a tag-6 key is decoded at each compare, so {@code "\\u0061"} and {@code "a"} are one key. The writer
- * walks the keys with the same pair, {@link #isFirst} and {@link #lastValueOf}.
+ * Its entries alternate key and value. The tape keeps repeated keys, and jq keeps a key's first place with its last
+ * value (ADR-0002), so the view is no {@link Members}: every walk of it begins with its {@link KeyProof}, whose
+ * {@link ObjectWalk} takes each key once (ADR-0044). Keys are one when their decoded bytes are (#35): {@code
+ * "\\u0061"} and {@code "a"} are one key. A field read scans every key, since the last one wins, and needs no proof.
+ * The host's {@link #size()} and {@link #forEach} prove on a run state of their own and charge no run (ADR-0016).
  */
-public record ObjectView(Document doc, int index) implements JqObject {
+public record ObjectView(Document doc, int index) implements JqObject, Keyed {
 
   /** jq's compact text (ADR-0015). */
   @Override
@@ -25,93 +25,72 @@ public record ObjectView(Document doc, int index) implements JqObject {
 
   @Override
   public int size() {
-    long[] tape = doc.live();
-    byte[] bytes = doc.bytes;
-    int end = Tape.end(tape, index);
-    int size = 0;
-    for (int k = index + 1; k < end; k = Tape.next(tape, k + 1)) {
-      if (isFirst(tape, bytes, index, k)) {
-        size++;
-      }
-    }
-    return size;
+    return KeyProof.walk(new RunState(), this, false).size();
   }
 
   /** The value of the last {@code key}, or Java {@code null} when the object has no such key (ADR-0026). */
   @Override
   public JqValue get(String key) {
+    return valueAt((int) find(key));
+  }
+
+  /**
+   * {@link #get(String)} for a filter: one tick per key scanned, which is every key, since the last one wins (ADR-0034,
+   * decision 3 of #63's approval).
+   */
+  @Override
+  public JqValue get(RunState state, String key) {
+    long found = find(key);
+    state.tick((int) (found >>> 32));
+    return valueAt((int) found);
+  }
+
+  /** The keys scanned for {@code key} in the high half; in the low half the tape index of its last value, 0 for none. */
+  private long find(String key) {
     long[] tape = doc.live();
     byte[] bytes = doc.bytes;
     int end = Tape.end(tape, index);
+    int keys = 0;
     int value = 0; // none yet: index 0 is the root, never a member's value
     for (int k = index + 1; k < end; k = Tape.next(tape, k + 1)) {
+      keys++;
       if (spells(bytes, tape[k], key)) {
         value = k + 1;
       }
     }
-    return value == 0 ? null : doc.valueAt(tape, value);
+    return (long) keys << 32 | value;
+  }
+
+  /** The value at tape index {@code value}, or Java {@code null} for 0. */
+  private JqValue valueAt(int value) {
+    return value == 0 ? null : doc.valueAt(doc.live(), value);
+  }
+
+  /** The key at tape index {@code k}. */
+  @Override
+  public StringView key(int k) {
+    return new StringView(doc, k);
   }
 
   /**
-   * Each key at its first position, decoded, with its last value. Each step after a call checks the document again:
-   * the action may have read another document onto this tape (ADR-0016, STALE_VIEW).
+   * Each key at its first place, decoded, with its last value, through its walk. Each step after a call checks the
+   * document again: the action may have read another document onto this tape (ADR-0016, STALE_VIEW).
    */
   @Override
   public void forEach(BiConsumer<? super String, ? super JqValue> action) {
-    long[] tape = doc.live();
-    byte[] bytes = doc.bytes;
-    int end = Tape.end(tape, index);
-    for (int k = index + 1; k < end; k = Tape.next(tape, k + 1)) {
-      if (isFirst(tape, bytes, index, k)) {
-        int value = lastValueOf(tape, bytes, k, end);
-        action.accept(StringView.text(bytes, tape[k]), doc.valueAt(tape, value));
-        tape = doc.live();
-      }
+    RunState free = new RunState();
+    ObjectWalk walk = KeyProof.walk(free, this, false);
+    for (int c = walk.first(); c != -1; c = walk.next(free, c)) {
+      long[] tape = doc.live();
+      action.accept(StringView.text(doc.bytes, tape[walk.keyAt(c)]), doc.valueAt(tape, walk.valueAt(c)));
     }
-  }
-
-  /** Whether no key before the key at {@code k} of the object at {@code object} equals it. */
-  public static boolean isFirst(long[] tape, byte[] bytes, int object, int k) {
-    int first = object + 1;
-    while (!sameKey(tape, bytes, first, k)) {
-      first = Tape.next(tape, first + 1);
-    }
-    return first == k;
-  }
-
-  /**
-   * The value of the last key equal to the key at {@code k}; {@code end} is the object's {@link Tape#end}.
-   */
-  public static int lastValueOf(long[] tape, byte[] bytes, int k, int end) {
-    int value = k + 1;
-    for (int later = Tape.next(tape, k + 1); later < end; later = Tape.next(tape, later + 1)) {
-      if (sameKey(tape, bytes, later, k)) {
-        value = later + 1;
-      }
-    }
-    return value;
-  }
-
-  /**
-   * Two keys are equal when their decoded bytes are: two tag-5 keys compare their bytes, quotes included, without a
-   * copy; any other pair compares decoded arrays.
-   */
-  private static boolean sameKey(long[] tape, byte[] bytes, int a, int b) {
-    long x = tape[a];
-    long y = tape[b];
-    if (Tape.tag(x) == Tape.STRING && Tape.tag(y) == Tape.STRING) {
-      int from = Tape.off(x);
-      int other = Tape.off(y);
-      return Arrays.equals(bytes, from, from + Tape.span(x), bytes, other, other + Tape.span(y));
-    }
-    return Arrays.equals(JsonStrings.decode(bytes, x), JsonStrings.decode(bytes, y));
   }
 
   /**
    * Whether the key {@code entry} spells {@code key}: a tag-5 key over the document's bytes, a tag-6 key over its
    * decoded bytes.
    */
-  private static boolean spells(byte[] bytes, long entry, String key) {
+  static boolean spells(byte[] bytes, long entry, String key) {
     if (Tape.tag(entry) == Tape.STRING) {
       return spells(bytes, Tape.off(entry) + 1, Tape.off(entry) + Tape.span(entry) - 1, key);
     }
@@ -124,7 +103,7 @@ public record ObjectView(Document doc, int index) implements JqObject {
    * point, so a key holding one never matches; encoding {@code key} with a charset instead would turn it into {@code ?}
    * and find the key {@code "?"}.
    */
-  private static boolean spells(byte[] bytes, int p, int end, String key) {
+  static boolean spells(byte[] bytes, int p, int end, String key) {
     int n = key.length();
     for (int i = 0; i < n; i++) {
       char c = key.charAt(i);

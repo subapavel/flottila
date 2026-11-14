@@ -23,6 +23,8 @@
     <module>query-core</module>
     <module>jq-core</module>
     <module>jq-cli</module>
+    <!-- Build tool: oracle's PIT run loads it as a plugin dependency (F-84). -->
+    <module>pit-filter</module>
     <module>oracle</module>
   </modules>
 
@@ -175,6 +177,8 @@
             </targetTests>
             <!-- A ticket that changes only records or interfaces has no mutants (ADR-0014). -->
             <failWhenNoMutations>false</failWhenNoMutations>
+            <!-- Two minions: F-84 (c); 3 needs a measured peak RSS, 4 is never allowed. -->
+            <threads>2</threads>
             <outputFormats>
               <outputFormat>XML</outputFormat>
               <outputFormat>HTML</outputFormat>

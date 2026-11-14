@@ -1,0 +1,126 @@
+# The required cases of #69 "S2a.19 reduce, foreach and range/2" (ADR-0020, ADR-0041): give this file to the ticket
+# gate as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines
+# skipped. The implementation merges after #65 (arithmetic), #66 (comparison, If), #67 (variables, AltBind) and #68
+# (try, error, label and break), which several of these cases also need (reduce.cases says which).
+
+# jqtest: the census cases whose ticket column is S2a.19 (oracle/src/test/resources/census/jqtest.tsv), jq.test lines
+# 287, 291, 341, 345, 349, 353, 357, 899, 903, 907, 911, 915, 919, 924, 2289, 2297, 2538 and man.test lines 409, 414,
+# 911, 915, 923, 931, 939. None needs range/1 or another prelude function. The census rows that do, the 15
+# arith-depth/reduce-* cases of #65 and [foreach range(5) ...] (jq.test#7587b2c9ce99) are required at #71's gate
+# (ADR-0041 O2).
+jq.test#0a789e1d5ab4
+jq.test#29654eee949f
+jq.test#349dd9fd1478
+jq.test#399756af877a
+jq.test#5d4c68b18082
+jq.test#5efbe6cab008
+jq.test#5f094768e4ca
+jq.test#6dcfb1c9a7df
+jq.test#71dfc9a2a335
+jq.test#87ab256fd08a
+jq.test#8b680f7e7a21
+jq.test#93cbc6d60640
+jq.test#96d026d3e0df
+jq.test#979dddba4513
+jq.test#a597d377bb97
+jq.test#c6fc5c3c10b6
+jq.test#dce32f394f5f
+man.test#1d03740706e9
+man.test#529fa268669c
+man.test#5e789a5c5d46
+man.test#6c815331a494
+man.test#72b68a833703
+man.test#7adca24d001a
+man.test#dafaa56949d8
+
+# differential: every case of diff/reduce.cases.
+reduce/range2-last
+reduce/range2-single
+reduce/range2-pairs
+reduce/range2-sum
+reduce/multi-update
+reduce/multi-update-last-wins
+reduce/multi-update-same-start
+reduce/update-empty
+reduce/update-empty-then-next
+reduce/empty-source
+reduce/empty-array-source
+reduce/null-init-sum
+reduce/null-init-pairs
+reduce/init-generator
+reduce/init-generator-pairs
+reduce/init-empty
+reduce/input-is-the-sources-and-inits
+reduce/nested
+reduce/pattern-array
+reduce/pattern-object
+reduce/source-error
+reduce/update-error
+reduce/range2-hundred-thousand
+reduce/deep-million
+reduce/foreach-multi-update
+reduce/foreach-multi-update-pairs
+reduce/foreach-extract-two
+reduce/foreach-pairs
+reduce/foreach-extract-pairs
+reduce/foreach-extract-empty
+reduce/foreach-update-empty
+reduce/foreach-update-empty-then-next
+reduce/foreach-empty-source
+reduce/foreach-init-generator
+reduce/foreach-range2
+reduce/foreach-extract-error
+reduce/foreach-stop-downstream
+reduce/scope-init-unbound
+reduce/scope-source-unbound
+reduce/scope-after-unbound
+reduce/scope-foreach-init-unbound
+reduce/scope-foreach-extract-sees-pattern
+reduce/scope-init-outer
+reduce/scope-init-outer-pairs
+reduce/scope-source-outer
+reduce/scope-outer-after
+reduce/altbind-no-rollback
+reduce/altbind-foreach-downstream
+reduce/altbind-match-error
+reduce/altbind-last-error
+reduce/break-in-update
+reduce/break-in-init
+reduce/break-in-foreach
+reduce/break-in-source
+reduce/wrap-depth
+reduce/wrap-depth-foreach
+reduce/source-error-caught
+reduce/range2-ten
+reduce/range2-fractional-start
+reduce/range2-fractional-end
+reduce/range2-negative
+reduce/range2-negative-both
+reduce/range2-descending
+reduce/range2-equal
+reduce/range2-one
+reduce/range2-generators
+reduce/range2-bounds-from-input
+reduce/range2-past-double
+reduce/range2-end-string
+reduce/range2-start-null
+reduce/range2-both-strings
+reduce/range2-error-before-results
+reduce/range2-end-string-caught
+reduce/range2-start-null-caught
+reduce/range2-literal-start
+reduce/range2-literal-one-point-zero
+reduce/range2-literal-exponent
+reduce/range2-literal-from-input
+reduce/range2-literal-from-input-direct
+reduce/range2-literal-end
+
+# The precedence cases #69 owns (diff/precedence.cases), whose filters left ResolverTest.PRECEDENCE when #69 lowered
+# reduce and foreach.
+precedence/reduce-source-takes-a-sum
+precedence/foreach-source-takes-a-sum
+precedence/reduce-is-a-term
+
+# A census row that needs only S2a.11 to S2a.19 but is credited to S2a.22 (census/jqtest.tsv), passing once #69
+# lowers foreach, as #68 required its own such rows (review ruling 4 on #68): [label $out | foreach .[] as $item ...].
+jq.test#a45caa2bc474

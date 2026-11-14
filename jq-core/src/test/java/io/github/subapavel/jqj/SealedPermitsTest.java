@@ -28,14 +28,20 @@ class SealedPermitsTest {
               "io.github.subapavel.jqj.value.JqArray",
               "io.github.subapavel.jqj.value.JqObject"),
           "io.github.subapavel.jqj.value.JqNumber",
-          Set.of("io.github.subapavel.jqj.internal.value.NumberView"),
+          // #61 design: a number written in the filter is a LiteralNumber; #65 (ADR-0003): a computed one is a DoubleNumber.
+          Set.of(
+              "io.github.subapavel.jqj.internal.value.NumberView",
+              "io.github.subapavel.jqj.internal.value.LiteralNumber",
+              "io.github.subapavel.jqj.internal.value.DoubleNumber"),
           "io.github.subapavel.jqj.value.JqString",
           // #34 design section 7: a string built at run time (jq's error texts) is a BuiltString.
           Set.of("io.github.subapavel.jqj.internal.value.StringView", "io.github.subapavel.jqj.internal.value.BuiltString"),
           "io.github.subapavel.jqj.value.JqArray",
-          Set.of("io.github.subapavel.jqj.internal.value.ArrayView"),
+          // #63 (decision 1 of its approval): an array a slice builds, man.test .[2:4], is a BuiltArray.
+          Set.of("io.github.subapavel.jqj.internal.value.ArrayView", "io.github.subapavel.jqj.internal.value.BuiltArray"),
           "io.github.subapavel.jqj.value.JqObject",
-          Set.of("io.github.subapavel.jqj.internal.value.ObjectView"),
+          // #64 (ADR-0003): an object a construction builds, jq.test {a: 1}, is a BuiltObject.
+          Set.of("io.github.subapavel.jqj.internal.value.ObjectView", "io.github.subapavel.jqj.internal.value.BuiltObject"),
           "io.github.subapavel.jqj.JqException",
           Set.of(
               "io.github.subapavel.jqj.JqCompileException",

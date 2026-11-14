@@ -1,0 +1,143 @@
+# Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": division and modulo by zero, jq's %
+# (both operands truncated to intmax_t, saturating; -1 as the divisor gives 0; NaN on either side gives NaN) and the
+# string split by /. A filter that ignores its input runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-divmod.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable.
+
+# division by zero
+
+case arith-divmod/one-by-zero
+arg -c
+filter 1/0
+stdin null\n
+end
+
+case arith-divmod/zero-by-zero
+arg -c
+filter 0/0
+stdin null\n
+end
+
+case arith-divmod/one-by-negative-zero
+arg -c
+filter 1/(0*-1)
+stdin null\n
+end
+
+case arith-divmod/input-by-zero
+arg -c
+filter .[0] / .[1]
+stdin [1,0]\n
+end
+
+case arith-divmod/input-by-literal-negative-zero
+arg -c
+filter .[0] / .[1]
+stdin [1,-0]\n
+end
+
+case arith-divmod/input-by-zero-point-zero
+arg -c
+filter .[0] / .[1]
+stdin [1,0.0]\n
+end
+
+# modulo
+
+case arith-divmod/mod-by-zero
+arg -c
+filter 1 % 0
+stdin null\n
+end
+
+case arith-divmod/mod-by-half
+arg -c
+filter 5 % 0.5
+stdin null\n
+end
+
+case arith-divmod/mod-input-by-truncated-zero
+arg -c
+filter .[0] % .[1]
+stdin [1,0.9]\n
+end
+
+case arith-divmod/mod-signs
+arg -c
+filter [5.5 % 2, -5 % 3, 5 % -3, -5 % -3, 5 % 2.9, 0.5 % 1, (0*-1) % 1]
+stdin null\n
+end
+
+case arith-divmod/mod-saturating
+arg -c
+filter [1e19 % 7, -1e19 % 7, 5 % 1e19, 1e19 % 1e19, 1e1000 % 3, -1e1000 % 3, 3 % 1e1000]
+stdin null\n
+end
+
+case arith-divmod/mod-long-min-by-minus-one
+arg -c
+filter -9223372036854775808 % -1
+stdin null\n
+end
+
+case arith-divmod/mod-long-min-by-minus-one-input
+arg -c
+filter .[0] % .[1]
+stdin [-9223372036854775808,-1]\n
+end
+
+case arith-divmod/mod-long-max
+arg -c
+filter 9223372036854775807 % 2
+stdin null\n
+end
+
+case arith-divmod/mod-nan
+arg -c
+filter [(1e1000 - 1e1000) % 1, 1 % (1e1000 - 1e1000)]
+stdin null\n
+end
+
+# string split
+
+case arith-divmod/split-commas
+arg -c
+filter "a,b,c" / ","
+stdin null\n
+end
+
+case arith-divmod/split-empty-separator
+arg -c
+filter ["abc" / "", "aéb" / ""]
+stdin null\n
+end
+
+case arith-divmod/split-empty-string
+arg -c
+filter ["" / ",", "" / ""]
+stdin null\n
+end
+
+case arith-divmod/split-empty-pieces
+arg -c
+filter ["a,,b" / ",", ",a," / ",", "abc" / "abc"]
+stdin null\n
+end
+
+case arith-divmod/split-overlapping-separator
+arg -c
+filter ["abab" / "ab", "aaa" / "aa", "abc" / "abcd"]
+stdin null\n
+end
+
+case arith-divmod/split-multibyte-separator
+arg -c
+filter "aébéc" / "é"
+stdin null\n
+end
+
+case arith-divmod/split-input
+arg -c
+filter .s / .d
+stdin {"s":"aXbXc","d":"X"}\n
+end

@@ -21,7 +21,7 @@ need; where the two differ, this file is the one agents follow.
   2. **Memory proportional to the output, not the input**, and a hard budget on every evaluation.
   3. **jq compatibility**, proven by jq's own test files and by comparison with the real jq
      binary. Every deliberate difference is written down (`DEVIATIONS.md`).
-  4. **Modern Java, final APIs only.** JDK 25 is the baseline (Flottila's runtime). Preview and
+  4. **Modern Java, final APIs only.** JDK 25 is the baseline (Rail8's runtime). Preview and
      incubator features are opt-in extras, never required.
   5. **Safe to host.** A filter written by a flow author cannot block a thread, read the
      environment, run forever or exhaust the node's memory.
@@ -33,17 +33,17 @@ need; where the two differ, this file is the one agents follow.
 
 ## 2. Home, role, licence (owner's decisions)
 
-- A **neutral standalone project** that Flottila consumes. It is designed with Flottila's model in
+- A **neutral standalone project** that R8 consumes. It is designed with R8's model in
   mind (a message body is bytes, envelope data as variables, `whole` / `stream` step kinds) but has
-  no dependency on Flottila code. The adapter (`flottila-step-jq`) lives in the Flottila repo.
-- In Flottila, jq is **one of several tools**, not the only mapping language: mapping, routing
+  no dependency on R8 code. The adapter (`r8-step-jq`) lives in the R8 repo.
+- In R8, jq is **one of several tools**, not the only mapping language: mapping, routing
   and filter predicates, key extraction, splitting, in any number of steps.
 - **Apache 2.0.** An independent implementation carries no obligation toward jq's licence. Only
   files copied from jq (its function library written in jq, its test files) keep jq's copyright
   notice, listed in `NOTICE` together with joni. Confirm jq's `COPYING` before copying; do not
   copy jq manual text.
 - **Regex engine: joni** (the Java port of Oniguruma, the library jq uses; works on UTF-8 bytes).
-- **`import` is supported.** A host resolves module names; in Flottila only from the flow's
+- **`import` is supported.** A host resolves module names; in R8 only from the flow's
   package and its declared dependencies, never from disk.
 
 ## 3. What is taken from jq and what differs
@@ -158,7 +158,7 @@ Recommended JVM settings, not required: `-XX:+UseCompactObjectHeaders`; generati
 - **Interpreter backend**: each IR node is a small object with `run(ctx, in, out)` on the same
   push protocol. Its jobs: the oracle for the bytecode backend, cold one-off filters, and a
   GraalVM native-image CLI (no run-time class definition there).
-- Policy: Flottila compiles at deploy time and caches by content hash; the CLI interprets small
+- Policy: R8 compiles at deploy time and caches by content hash; the CLI interprets small
   inputs and compiles above a size threshold.
 - Not used: Vector API (incubator in JDK 25; opt-in flag only), Stable Values (preview),
   `invokedynamic` type speculation.
@@ -174,7 +174,7 @@ Recommended JVM settings, not required: `-XX:+UseCompactObjectHeaders`; generati
   container is copied whole when the input was already compact. Output modes as jq (compact,
   pretty, raw, sorted keys, ASCII, join). Number formatting has its own routine matching jq.
 
-## 11. Embedding API and Flottila
+## 11. Embedding API and R8
 
 - Modules: `query-core` (format-neutral: execution, code generation, control IR, workspace,
   budgets; JDK only), `jq-core` (jq parser, resolver, builtins, JSON tape, reader, writer; depends
@@ -186,7 +186,7 @@ Recommended JVM settings, not required: `-XX:+UseCompactObjectHeaders`; generati
 - Sandbox defaults for an embedding host: `env`/`$ENV` empty, `input_filename` off, `halt` an
   error, `import` through the host only, `now` from the injected clock, `debug`/`stderr` to the
   host's sink, `input`/`inputs` only when the host supplies documents. The CLI turns them on.
-- Flottila (in its own repo): a memory-tier body is wrapped as a heap segment, a spooled body is
+- R8 (in its own repo): a memory-tier body is wrapped as a heap segment, a spooled body is
   mapped in an `Arena` for the step; `JsonDoc` can be the envelope's shared parsed view;
   `$headers`, `$props`, `$keys`, `$partner` bound per message; compiled filters cached by content
   hash; small payloads on the message's virtual thread, large ones on the CPU worker pool.
@@ -214,7 +214,7 @@ Recommended JVM settings, not required: `-XX:+UseCompactObjectHeaders`; generati
 | 3 | **Path semantics** (dynamic `path()`, `paths`, `del`, `\|=`) | Second compiled variant; the largest single piece of work |
 | 4 | **Views pin the input** (a ten-byte view keeps a 10 MB document alive) | The `detach()` rule; a host detaches what it stores |
 | 5 | **Number edge cases** (big literals exact, comparisons precise, arithmetic in doubles) | Follow jq 1.8 case by case; oracles |
-| 6 | **Tape cost for tiny reads.** Indexing a whole document to read one field is wasted work, and Flottila does such reads on every message | Touched-field skipping; measure against a forward cursor that stops at the field. **Needs a spike** (Phase 0 ticket 4); a second light reading mode if the difference is large |
+| 6 | **Tape cost for tiny reads.** Indexing a whole document to read one field is wasted work, and R8 does such reads on every message | Touched-field skipping; measure against a forward cursor that stops at the field. **Needs a spike** (Phase 0 ticket 4); a second light reading mode if the difference is large |
 
 ## 14. Keeping the door open for XML
 
@@ -230,5 +230,5 @@ XPath / XQuery, as a second front end on the shared core.
 
 ## 15. Way of working
 
-ADR-0001: the workflow of `subapavel/flottila-mapping`, unchanged in substance. The environment is
+ADR-0001: the workflow of `subapavel/r8-mapping`, unchanged in substance. The environment is
 Claude Code Cloud (4 vCPU). GitHub Issues are the tracker; one integration branch per spec.

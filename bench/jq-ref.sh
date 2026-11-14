@@ -10,7 +10,8 @@
 # ./mvnw -B -Pbench package; its class Inputs writes the documents), MACHINE (default claude-cloud-4vcpu).
 #
 # Per cell: one discarded run, then the best of 5 wall-clock runs, output to /dev/null. A 1k document runs as 10 000
-# concatenated copies, a 100k document as 100, a 10m document once (K). Per document = (best - start-up) / K, where
+# concatenated copies, a 100k document as 100, a 10m document once, the ints of G4.1e4 (10^4 elements) as 100 (K).
+# Per document = (best - start-up) / K, where
 # start-up is the best of 5 runs of the same filter on /dev/null. G7.process.1k is one whole process on one 1k
 # document, start-up included: its best of 5, with nothing subtracted (G7 has no factor, ADR-0019).
 # Output: a header of `# key: value` lines, then one tab-separated line per bench id.
@@ -40,6 +41,8 @@ copies() {
 }
 copies "$dir/orders-1k.json" 10000 "$dir/orders-1k-x10000.json"
 copies "$dir/orders-100k.json" 100 "$dir/orders-100k-x100.json"
+copies "$dir/recs-100k.json" 100 "$dir/recs-100k-x100.json"
+copies "$dir/ints-1e4.json" 100 "$dir/ints-1e4-x100.json"
 
 # best_us <args…>: jq-ref <args…> once discarded, then the best of 5 wall-clock runs in µs. The clock is bash's
 # EPOCHREALTIME read in place: a $(…) around it would add a fork to every run.
@@ -76,6 +79,14 @@ printf 'id\tfilter\tK\tbest_ms\tstartup_ms\tper_document_us\n'
 cell G1.1k 10000 "$dir/orders-1k-x10000.json" -c .a.b.c
 cell G1.100k 100 "$dir/orders-100k-x100.json" -c .a.b.c
 cell G1.10m 1 "$dir/orders-10m.json" -c .a.b.c
+g2='.orders[] | select(.total > 100) | {id, total}'
+cell G2.1k 10000 "$dir/orders-1k-x10000.json" -c "$g2"
+cell G2.100k 100 "$dir/orders-100k-x100.json" -c "$g2"
+cell G2.10m 1 "$dir/orders-10m.json" -c "$g2"
+g3='group_by(.k) | map({k: .[0].k, n: length})'
+cell G3.100k 100 "$dir/recs-100k-x100.json" -c "$g3"
+cell G3.10m 1 "$dir/recs-10m.json" -c "$g3"
+cell G4.1e4 100 "$dir/ints-1e4-x100.json" -c 'reduce .[] as $x ([]; . + [$x])'
 cell G6.compact.10m 1 "$dir/orders-10m.json" -c .
 cell G6.pretty.10m 1 "$dir/orders-10m.json" .
 cell G7.engine.1k 10000 "$dir/orders-1k-x10000.json" -c .a

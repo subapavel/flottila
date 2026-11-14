@@ -1,6 +1,6 @@
 # Operation call forms
 
-Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); completes ADR-0005, amends ADR-0006; amended by ADR-0022 (issue #8: `keepsArgs`, in-place operations)
+Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); completes ADR-0005, amends ADR-0006; amended by ADR-0022 (issue #8: `keepsArgs`, in-place operations); amended by ADR-0030 (run state, #59); completed by ADR-0034 (sealed CallForm, NONE and END, #63)
 
 An `Operation` (ADR-0005) is called through a functional interface that matches its cardinality.
 

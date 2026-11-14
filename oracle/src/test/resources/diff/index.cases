@@ -1,0 +1,543 @@
+# Differential cases (ADR-0020) of #63: the index .[e] and the field's quiet variant .a?; format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in index.rec, written
+# by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# P1: each form on each kind (null true 1 "abc" [1] {"a":1}).
+
+case index/zero-null
+arg -c
+filter .[0]
+stdin null\n
+end
+
+case index/zero-true
+arg -c
+filter .[0]
+stdin true\n
+end
+
+case index/zero-number
+arg -c
+filter .[0]
+stdin 1\n
+end
+
+case index/zero-string
+arg -c
+filter .[0]
+stdin "abc"\n
+end
+
+case index/zero-array
+arg -c
+filter .[0]
+stdin [1]\n
+end
+
+case index/zero-object
+arg -c
+filter .[0]
+stdin {"a":1}\n
+end
+
+case index/string-null
+arg -c
+filter .["a"]
+stdin null\n
+end
+
+case index/string-true
+arg -c
+filter .["a"]
+stdin true\n
+end
+
+case index/string-number
+arg -c
+filter .["a"]
+stdin 1\n
+end
+
+case index/string-string
+arg -c
+filter .["a"]
+stdin "abc"\n
+end
+
+case index/string-array
+arg -c
+filter .["a"]
+stdin [1]\n
+end
+
+case index/string-object
+arg -c
+filter .["a"]
+stdin {"a":1}\n
+end
+
+case index/true-null
+arg -c
+filter .[true]
+stdin null\n
+end
+
+case index/true-true
+arg -c
+filter .[true]
+stdin true\n
+end
+
+case index/true-number
+arg -c
+filter .[true]
+stdin 1\n
+end
+
+case index/true-string
+arg -c
+filter .[true]
+stdin "abc"\n
+end
+
+case index/true-array
+arg -c
+filter .[true]
+stdin [1]\n
+end
+
+case index/true-object
+arg -c
+filter .[true]
+stdin {"a":1}\n
+end
+
+case index/null-null
+arg -c
+filter .[null]
+stdin null\n
+end
+
+case index/null-true
+arg -c
+filter .[null]
+stdin true\n
+end
+
+case index/null-number
+arg -c
+filter .[null]
+stdin 1\n
+end
+
+case index/null-string
+arg -c
+filter .[null]
+stdin "abc"\n
+end
+
+case index/null-array
+arg -c
+filter .[null]
+stdin [1]\n
+end
+
+case index/null-object
+arg -c
+filter .[null]
+stdin {"a":1}\n
+end
+
+case index/field-quiet-null
+arg -c
+filter .a?
+stdin null\n
+end
+
+case index/field-quiet-true
+arg -c
+filter .a?
+stdin true\n
+end
+
+case index/field-quiet-number
+arg -c
+filter .a?
+stdin 1\n
+end
+
+case index/field-quiet-string
+arg -c
+filter .a?
+stdin "abc"\n
+end
+
+case index/field-quiet-array
+arg -c
+filter .a?
+stdin [1]\n
+end
+
+case index/field-quiet-object
+arg -c
+filter .a?
+stdin {"a":1}\n
+end
+
+case index/zero-quiet-null
+arg -c
+filter .[0]?
+stdin null\n
+end
+
+case index/zero-quiet-true
+arg -c
+filter .[0]?
+stdin true\n
+end
+
+case index/zero-quiet-number
+arg -c
+filter .[0]?
+stdin 1\n
+end
+
+case index/zero-quiet-string
+arg -c
+filter .[0]?
+stdin "abc"\n
+end
+
+case index/zero-quiet-array
+arg -c
+filter .[0]?
+stdin [1]\n
+end
+
+case index/zero-quiet-object
+arg -c
+filter .[0]?
+stdin {"a":1}\n
+end
+
+# P2: a number key on an array, taken from the input (-1 and NaN need no - in the filter, #65).
+
+case index/key-1.7
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":1.7}\n
+end
+
+case index/key-m1
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":-1}\n
+end
+
+case index/key-m1.5
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":-1.5}\n
+end
+
+case index/key-m0.5
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":-0.5}\n
+end
+
+case index/key-3
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":3}\n
+end
+
+case index/key-m4
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":-4}\n
+end
+
+case index/key-1e300
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":1e300}\n
+end
+
+case index/key-m1e300
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":-1e300}\n
+end
+
+case index/key-nan
+arg -c
+filter .a[.n]
+stdin {"a":[0,1,2],"n":NaN}\n
+end
+
+case index/key-1e1000
+arg -c
+filter .[1e1000]
+stdin [0]\n
+end
+
+# P2: a number key on an object: the number in the message.
+
+case index/object-key-1.0
+arg -c
+filter .[1.0]
+stdin {}\n
+end
+
+case index/object-key-1e2
+arg -c
+filter .[1e2]
+stdin {}\n
+end
+
+case index/object-key-big
+arg -c
+filter .[100000000000000000001]
+stdin {}\n
+end
+
+# P2: a string key of 27 to 31 bytes on an array: the cut of the key in the message.
+
+case index/array-key-27
+arg -c
+filter .["abcdefghijklmnopqrstuvwxyz0"]
+stdin []\n
+end
+
+case index/array-key-28
+arg -c
+filter .["abcdefghijklmnopqrstuvwxyz01"]
+stdin []\n
+end
+
+case index/array-key-29
+arg -c
+filter .["abcdefghijklmnopqrstuvwxyz012"]
+stdin []\n
+end
+
+case index/array-key-30
+arg -c
+filter .["abcdefghijklmnopqrstuvwxyz0123"]
+stdin []\n
+end
+
+case index/array-key-31
+arg -c
+filter .["abcdefghijklmnopqrstuvwxyz01234"]
+stdin []\n
+end
+
+# P5: the key is the outer loop (ADR-0034), and its error comes before the target's.
+
+case index/order-key-outer
+arg -c
+filter .[][0,1]
+stdin [[1,2],[3,4]]\n
+end
+
+case index/scope-key-error-first
+arg -c
+filter .a[.b]
+stdin "s"\n
+end
+
+# P5: a quiet variant drops only its own error: the target's and the key's propagate.
+
+case index/quiet-target-error
+arg -c
+filter .a.b?
+stdin "s"\n
+end
+
+case index/quiet-key-error
+arg -c
+filter .[.b]?
+stdin "s"\n
+end
+
+# P2: an array or object key in the message, dumped by jv_dump_string_trunc: whole at 29 bytes, cut from 30, inside a
+# nested container, at a UTF-8 character and at an escape, and for an array a slice builds.
+
+case index/dump-array-key-29
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":[10,11,12,13,14,15,16,17,1,2]}\n
+end
+
+case index/dump-array-key-30
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":[10,11,12,13,14,15,16,17,18,1]}\n
+end
+
+case index/dump-array-key-long
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":[10,11,12,13,14,15,16,17,18,19,20]}\n
+end
+
+case index/dump-array-key-nested
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":[[10,11],[12,13],[14,15],[16,17],[18,19]]}\n
+end
+
+case index/dump-array-key-e-acute-at-23
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":["aaaaaaaaaaaaaaaaaaaaaéaaaaaa"]}\n
+end
+
+case index/dump-array-key-e-acute-at-24
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":["aaaaaaaaaaaaaaaaaaaaaaéaaaaaa"]}\n
+end
+
+case index/dump-array-key-escape-at-24
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":["aaaaaaaaaaaaaaaaaaaaaa\\naaaaaa"]}\n
+end
+
+case index/dump-built-array-key
+arg -c
+filter .a[.k[1:]]
+stdin {"a":{},"k":[0,10,11,12,13,14,15,16,17,18,19,20]}\n
+end
+
+case index/dump-object-key-29
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":{"a":1,"b":2,"c":3,"d":45678}}\n
+end
+
+case index/dump-object-key-30
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":{"a":1,"b":2,"c":3,"d":456789}}\n
+end
+
+case index/dump-object-key-long
+arg -c
+filter .a[.k]
+stdin {"a":{},"k":{"a":1,"b":2,"c":3,"d":4,"e":5,"f":6}}\n
+end
+
+case index/dump-object-key-on-number
+arg -c
+filter .a[.k]
+stdin {"a":5,"k":{"a":1,"b":2,"c":3,"d":4,"e":5,"f":6}}\n
+end
+
+# P1: null and a key that is an object or an array.
+
+case index/object-key-on-null
+arg -c
+filter .a[.k]
+stdin {"a":null,"k":{}}\n
+end
+
+case index/slice-key-on-null
+arg -c
+filter .a[.k]
+stdin {"a":null,"k":{"start":1,"end":2}}\n
+end
+
+case index/array-key-on-null
+arg -c
+filter .a[.k]
+stdin {"a":null,"k":[1]}\n
+end
+
+# #72 (the #63 hand-over): a NaN key from the filter's nan/0, which a document cannot give until spec 5 (#63's
+# index/key-nan stays a reader Stub): null on an array, quiet or not; jq's error on a string or an object.
+
+case index/nan-key-on-array
+arg -c
+filter .[nan], .[nan]?
+stdin [1,2,3]\n
+end
+
+case index/nan-key-on-built-array
+arg -c
+filter [1,2,3] | .[nan]
+stdin null\n
+end
+
+case index/nan-key-on-null
+arg -c
+filter .[nan]
+stdin null\n
+end
+
+case index/nan-key-on-string
+arg -c
+filter try .[nan] catch .
+stdin "abc"\n
+end
+
+case index/nan-key-on-object
+arg -c
+filter .[nan]
+stdin {"a":1}\n
+end
+
+# #72 (the #63 hand-over): an array key on an array, jq's jv_array_indexes: the index of each place where the key's
+# elements start a run of equal elements, in order and overlapping; none for an empty key.
+
+case index/array-key-on-array-runs
+arg -c
+filter .[[1,2]], .[[1]], .[[1,2,1]], .[[2,1,2]], .[[3]], .[[]], .[[1,2,1,2,1,2]]
+stdin [1,2,1,2,1]\n
+end
+
+case index/array-key-on-array-overlap
+arg -c
+filter .[[1,1]]
+stdin [1,1,1]\n
+end
+
+case index/array-key-on-array-containers
+arg -c
+filter .[[[1]]], .[[{"a":1}]], .[["a"]]
+stdin [[1],{"a":1},[1]]\n
+end
+
+case index/array-key-on-array-nan
+arg -c
+filter [1, nan] | .[[nan]]
+stdin null\n
+end
+
+case index/array-key-on-empty-array
+arg -c
+filter .[[1]], ([] | .[[]])
+stdin []\n
+end
+
+case index/array-key-on-array-quiet
+arg -c
+filter .[[2]]?
+stdin [1,2]\n
+end
+
+case index/array-key-on-built-array
+arg -c
+filter [.[] | . * 2] | .[[4, 6]]
+stdin [1,2,3,2,3]\n
+end
+
+
+case index/array-key-on-array-deep-after-unequal
+arg -c
+filter def d: reduce range(10001) as $i (0; [.]); [0, d] | try .[[1, d]] catch .
+stdin null\n
+end

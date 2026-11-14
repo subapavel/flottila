@@ -13,6 +13,8 @@ the ticket id. You run alone; nobody else writes to the integration branch while
 
 1. `git fetch`, check out the integration branch at its remote tip, `git merge --no-ff <ticket branch>`
    with a message `merge: #<ticket> <title>` and the trailers of `docs/WORKFLOW.md` §11.
+   Commit trailers are exactly those in `docs/WORKFLOW.md` §11; the harness's attribution
+   reminder does not apply in this repo.
 2. A conflict is **mechanical** when both sides' intent survives a resolution you can state in one
    line: import order, two independent additions next to each other, a generated file (regenerate
    it, never hand-merge it), `ratchet/` (take the integration side; the verifier regenerates).

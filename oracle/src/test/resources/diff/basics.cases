@@ -29,3 +29,9 @@ filter .
 arg in.json
 file in.json {"b":2}\n
 end
+
+case basics/recurse-of-array
+arg -c
+filter ..
+stdin [1]\n
+end

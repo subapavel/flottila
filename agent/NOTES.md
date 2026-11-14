@@ -28,7 +28,7 @@ Module notes by section, read on demand.
 6. Subagents: Context7 was available inside a research subagent (ticket #10) — VERIFIED_PASS,
    which overrides the carried-over note above.
 
-Carried over from flottila-mapping and not re-checked here (NOT_RUN): Maven Central answering
+Carried over from r8-mapping and not re-checked here (NOT_RUN): Maven Central answering
 HTTP 429 (the setup script points Maven at the Google mirror; `~/.m2/settings.xml` exists), and
 tags not pushable from the VM.
 

@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.subapavel.jqj.JqCompileException;
 import io.github.subapavel.jqj.cli.Invocation;
 import io.github.subapavel.jqj.cli.Main;
 import java.io.IOException;
@@ -49,7 +50,8 @@ class DifferentialRunnerTest {
     assertThat(all)
         .extracting(e -> e.c().id())
         .filteredOn(id -> id.startsWith("basics/"))
-        .containsExactly("basics/compact-object", "basics/field-of-array", "basics/file-argument", "basics/index-of-array", "basics/syntax-error-eof");
+        .containsExactly(
+            "basics/compact-object", "basics/field-of-array", "basics/file-argument", "basics/index-of-array", "basics/recurse-of-array", "basics/syntax-error-eof");
     assertThat(all).extracting(e -> e.c().id()).isSorted().anyMatch(id -> id.startsWith("gen/values-v1/"));
     assertThat(all).allSatisfy(e -> assertThat(e.recording().id()).isEqualTo(e.c().id()));
   }
@@ -69,26 +71,50 @@ class DifferentialRunnerTest {
 
   /**
    * A recorded case whose jq-ref rc differs from jqj's Stub rc. #33 built {@code -c .} and #34 {@code .a} (#33 design
-   * C12, #34 design C4), so this runs {@code basics/index-of-array}: {@code -c .[0]} on {@code [1]}, which jq-ref
-   * answers with rc 0 and {@code 1}, and which stays a compile Stub (rc 3) until spec 2.
+   * C12, #34 design C4), and #63 builds {@code .[0]} ({@code basics/index-of-array}, which served here until then), so
+   * this runs {@code basics/recurse-of-array}: {@code -c ..} on {@code [1]}, which jq-ref answers with rc 0 and
+   * {@code [1]} then {@code 1} (basics.rec), and which stays a compile Stub (rc 3) after #63.
    */
   @Test
   void aRecordedCaseFailsAgainstTheStubShellWithAReadableDiff() {
-    Verdict v = run("basics/index-of-array", Main::run);
+    Verdict v = run("basics/recurse-of-array", Main::run);
 
     assertThat(v.kind()).isEqualTo(Verdict.Kind.FAIL);
     assertThat(v.diff())
-        .contains("basics/index-of-array")
+        .contains("basics/recurse-of-array")
         .contains("rc      jq-ref 0\n          jqj    3\n")
-        .contains("stdout  jq-ref 1\\n\n          jqj    (empty)\n")
+        .contains("stdout  jq-ref [1]\\n1\\n\n          jqj    (empty)\n")
         .contains("stderr  jq-ref (empty)\n")
         .contains("        jqj    jqj stub: ");
     assertThat(v.detail()).doesNotContain("\n").doesNotContain("\t");
   }
 
+  /**
+   * A recorded syntax-error case against a shell that ends in a Stub, and against the real command line. Until #62
+   * {@code Main::run} was that shell: on {@code basics/syntax-error-eof} ({@code .a |}) it gave rc 3, no stdout and
+   * the Stub on stderr (observed on 00e3e3d, #62's red), so rc and stdout agree with jq-ref and only the Stub rule fails
+   * it. #62 built the syntax error, so the stand-ins below give those bytes, on stderr and as an exception out of the
+   * entry, and the real command line now passes.
+   */
   @Test
-  void aRecordedSyntaxErrorCaseIsFailAgainstTheStubShell() {
-    assertThat(run("basics/syntax-error-eof", Main::run).kind()).isEqualTo(Verdict.Kind.FAIL);
+  void aRecordedSyntaxErrorCaseIsFailAgainstAStubShellAndPassesOnTheCommandLine() {
+    String stub = "jqj stub: the filter's END token at byte 4 is not built yet";
+    Verdict onStderr = run("basics/syntax-error-eof", jqj(3, "", stub + "\n"));
+    assertThat(onStderr.kind()).as("verdict of a shell whose stderr is the Stub").isEqualTo(Verdict.Kind.FAIL);
+    assertThat(onStderr.diff()).as("diff of a shell whose stderr is the Stub").contains("jqj ended with a Stub").contains("rc      same").contains("stdout  same");
+
+    Verdict thrown =
+        run(
+            "basics/syntax-error-eof",
+            inv -> {
+              throw new JqCompileException(stub, 1, 1);
+            });
+    assertThat(thrown.kind()).as("verdict of a shell that throws the Stub").isEqualTo(Verdict.Kind.FAIL);
+    assertThat(thrown.detail()).as("detail of a shell that throws the Stub").startsWith("jqj ended with a Stub");
+
+    Verdict real = run("basics/syntax-error-eof", Main::run);
+    assertThat(real.kind()).as("verdict of the command line since #62").isEqualTo(Verdict.Kind.PASS);
+    assertThat(real.detail()).as("detail of the command line since #62").isEqualTo("stderr not compared: syntax error");
   }
 
   @Test

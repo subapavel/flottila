@@ -1,0 +1,512 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case bind/var-body-sees-input-and-slot
+def 63aa1ac276ea
+rc 0
+stdout [1,1]\n
+stderr
+end
+
+case bind/var-per-result
+def 76d1858303b8
+rc 0
+stdout [1,null]\n[2,null]\n
+stderr
+end
+
+case bind/var-inner-shadows-outer
+def 4446431c8630
+rc 0
+stdout 2\n1\n
+stderr
+end
+
+case bind/var-as-argument
+def 9efb05ea3731
+rc 0
+stdout 6\n
+stderr
+end
+
+case bind/var-as-field-name
+def 5ea52b499c17
+rc 0
+stdout 2\n
+stderr
+end
+
+case bind/var-empty-source
+def bdddf48eb5d8
+rc 0
+stdout []\n
+stderr
+end
+
+case bind/array-pattern
+def 4ce2be308f91
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case bind/array-pattern-short-array
+def c895665c3464
+rc 0
+stdout [1,null,null]\n
+stderr
+end
+
+case bind/array-pattern-on-null
+def 1db3c717590d
+rc 0
+stdout [null]\n
+stderr
+end
+
+case bind/object-shorthand
+def a4600da2466f
+rc 0
+stdout 1\n
+stderr
+end
+
+case bind/object-string-key
+def 8375be48fca6
+rc 0
+stdout 2\n
+stderr
+end
+
+case bind/object-keyword-key
+def 12f2ae97c786
+rc 0
+stdout 3\n
+stderr
+end
+
+case bind/object-computed-key
+def 653ffac46b1b
+rc 0
+stdout 4\n
+stderr
+end
+
+case bind/object-name-pattern
+def 5b0d0ad2ca3e
+rc 0
+stdout [[5],5]\n
+stderr
+end
+
+case bind/object-absent-key
+def 278b5bddc0d1
+rc 0
+stdout [null,null]\n
+stderr
+end
+
+case bind/object-pattern-on-null
+def 96544cee21c2
+rc 0
+stdout [null]\n
+stderr
+end
+
+case bind/nested-patterns
+def f544fd4323c4
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case bind/object-constant-string-key
+def 9739f2d0dd04
+rc 0
+stdout 6\n
+stderr
+end
+
+case bind/key-runs-on-own-level
+def 8b904857bf3c
+rc 0
+stdout 1\n
+stderr
+end
+
+case bind/key-generator
+def 99d05ccb57b4
+rc 0
+stdout 1\n2\n
+stderr
+end
+
+case bind/key-generator-two-entries
+def b154fc377853
+rc 0
+stdout [1,3]\n[1,4]\n[2,3]\n[2,4]\n
+stderr
+end
+
+case bind/key-generator-in-array-pattern
+def 56e5378be25f
+rc 0
+stdout [1,3]\n[2,3]\n[1,4]\n[2,4]\n
+stderr
+end
+
+case bind/key-sees-outer-variable
+def f3001484465e
+rc 0
+stdout ["c",1]\n
+stderr
+end
+
+case bind/key-own-name-unbound
+def 6dc109cdf20f
+rc 3
+stdout
+stderr jq: error: $k is not defined at <top-level>, line 1, column 15:\n    . as {a: $k, ($k): $v} | $v\n                  ^^\njq: 1 compile error\n
+end
+
+case bind/key-runtime-number
+def 1065cff59977
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (1)\n
+end
+
+case bind/key-constant-number
+def 8869c8a2d7d0
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 8:\n    . as {(1): $a} | $a\n           ^\njq: 1 compile error\n
+end
+
+case bind/key-constant-null
+def 5b11f735ce5f
+rc 3
+stdout
+stderr jq: error: Cannot use null (null) as object key at <top-level>, line 1, column 8:\n    . as {(null): $a} | $a\n           ^^^^\njq: 1 compile error\n
+end
+
+case bind/array-pattern-on-number
+def 989c49dbb16f
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with number (0)\n
+end
+
+case bind/array-pattern-on-object
+def be337aa91ea8
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with number (0)\n
+end
+
+case bind/object-pattern-on-array
+def 90615aa2ddaf
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case bind/object-pattern-on-string
+def bdf296c1f59b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with string ("a")\n
+end
+
+case bind/inner-pattern-on-number
+def 6ae91f680e54
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with number (0)\n
+end
+
+case bind/order-array-elements
+def a101239788fe
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("b")\n
+end
+
+case bind/order-object-entries
+def efce0a091882
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with number (0)\n
+end
+
+case bind/order-results-array
+def fe5103f72be7
+rc 0
+stdout 1\n2\n
+stderr
+end
+
+case bind/repeat-array
+def 2fbaf543aee7
+rc 0
+stdout 2\n
+stderr
+end
+
+case bind/repeat-object
+def 238e9ac84c5d
+rc 0
+stdout 1\n
+stderr
+end
+
+case bind/repeat-nested
+def 95adc9190516
+rc 0
+stdout 2\n
+stderr
+end
+
+case bind/repeat-array-alt
+def 1d6589636337
+rc 0
+stdout 1\n
+stderr
+end
+
+case bind/repeat-object-alt
+def 2c2332d51957
+rc 0
+stdout 2\n
+stderr
+end
+
+case bind/alt-first-matches
+def c6862c0c5643
+rc 0
+stdout 1\n
+stderr
+end
+
+case bind/alt-second-on-match-error
+def b0bbee841ba4
+rc 0
+stdout 1\n
+stderr
+end
+
+case bind/alt-value-error-propagates
+def d567098fb665
+rc 5
+stdout 1\n
+stderr jq: error (at <stdin>:1): Cannot index string with number (0)\n
+end
+
+case bind/alt-downstream-error
+def fdb4527483bb
+rc 0
+stdout 1\n
+stderr
+end
+
+case bind/alt-downstream-error-last
+def f16d20c9dfbe
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("x")\n
+end
+
+case bind/alt-last-match-error
+def 7a573cf94209
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("a")\n
+end
+
+case bind/alt-last-body-error
+def 3b9d0d6c31c0
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("x")\n
+end
+
+case bind/alt-results-before-error-kept
+def d2d6f01abd87
+rc 0
+stdout 5\n[5]\n5\n
+stderr
+end
+
+case bind/alt-absent-name-is-null
+def 88cc434e564c
+rc 0
+stdout [1,null]\n
+stderr
+end
+
+case bind/alt-earlier-name-cleared
+def 64d0f519b90e
+rc 0
+stdout [1,null,null]\n
+stderr
+end
+
+case bind/alt-group-name-in-key
+def ef1f3df2f1e2
+rc 0
+stdout 5\n
+stderr
+end
+
+case bind/alt-group-name-in-key-first
+def f6c399a9ca30
+rc 0
+stdout 5\n
+stderr
+end
+
+case bind/alt-group-name-in-key-before-store
+def fbf0af1a4319
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with null (null)\n
+end
+
+case bind/alt-group-name-in-key-after-failed-store
+def 2c199c777d62
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index object with null (null)\n
+end
+
+case bind/alt-per-result-restart
+def 1a9ee481d567
+rc 0
+stdout 1\n2\n3\n
+stderr
+end
+
+case bind/alt-three-all-fail
+def e5c01308072b
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index string with number (0)\n
+end
+
+case bind/loc-line-1
+def 1da93ccc9291
+rc 0
+stdout {"file":"<top-level>","line":1}\n
+stderr
+end
+
+case bind/loc-line-3
+def 70b61f7cecd1
+rc 0
+stdout {"file":"<top-level>","line":3}\n
+stderr
+end
+
+case bind/loc-after-two-cr
+def c32e8bba3149
+rc 0
+stdout {"file":"<top-level>","line":1}\n
+stderr
+end
+
+case bind/loc-shorthand
+def c8319f15af53
+rc 0
+stdout {"__loc__":{"file":"<top-level>","line":1}}\n
+stderr
+end
+
+case bind/loc-as-key
+def 92009af46ceb
+rc 3
+stdout
+stderr jq: error: Cannot use object ({"file":"<top-level>","li...}) as object key at <top-level>, line 1, column 3:\n    {($__loc__): 1}\n      ^^^^^^^^\njq: 1 compile error\n
+end
+
+case bind/loc-as-pattern-key
+def 911e8e86f5df
+rc 3
+stdout
+stderr jq: error: Cannot use object ({"file":"<top-level>","li...}) as object key at <top-level>, line 1, column 8:\n    . as {($__loc__): $x} | 1\n           ^^^^^^^^\njq: 1 compile error\n
+end
+
+case bind/unbound-one
+def b680610679ce
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 1:\n    $x\n    ^^\njq: 1 compile error\n
+end
+
+case bind/unbound-two
+def c869c6f45ea4
+rc 3
+stdout
+stderr jq: error: $b is not defined at <top-level>, line 1, column 2:\n    [$b, $a]\n     ^^\njq: error: $a is not defined at <top-level>, line 1, column 6:\n    [$b, $a]\n         ^^\njq: 2 compile errors\n
+end
+
+case bind/unbound-outside-scope
+def 947c9c5b5122
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 17:\n    (1 as $x | $x), $x\n                    ^^\njq: 1 compile error\n
+end
+
+case bind/unbound-in-own-source
+def ebc2b7ff6093
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 1:\n    $x as $x | $x\n    ^^\njq: 1 compile error\n
+end
+
+case bind/unbound-in-pattern-key
+def 35c63b51699b
+rc 3
+stdout
+stderr jq: error: $k is not defined at <top-level>, line 1, column 8:\n    . as {($k): $v} | $v\n           ^^\njq: 1 compile error\n
+end
+
+case bind/unbound-and-constant-key
+def 3abddaf6eeee
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(1): $a} | $b\n      ^\njq: 1 compile error\n
+end
+
+case bind/unbound-operator-operands
+def c8c222492180
+rc 3
+stdout
+stderr jq: error: $b is not defined at <top-level>, line 1, column 1:\n    $b + $a\n    ^^\njq: error: $a is not defined at <top-level>, line 1, column 6:\n    $b + $a\n         ^^\njq: 2 compile errors\n
+end
+
+case bind/object-var-shorthand
+def 85fc398f7e0f
+rc 0
+stdout {"x":1}\n
+stderr
+end
+
+case bind/object-var-key
+def 05f0b6055db2
+rc 0
+stdout {"k":2}\n
+stderr
+end
+
+case bind/object-var-key-number
+def f317968f1aec
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use number (1) as object key\n
+end
+
+case bind/object-var-key-generator
+def 2b84481ae82c
+rc 0
+stdout {"a":1,"x":"a"}\n{"b":1,"x":"b"}\n
+stderr
+end

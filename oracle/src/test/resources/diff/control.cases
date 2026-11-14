@@ -1,0 +1,531 @@
+# Differential cases (ADR-0020) of #68 "S2a.18 Control flow: if, try, error, label": if and elif, the catch set of
+# try and postfix ?, the wrap depth of a downstream error (ADR-0039), errors with any value and the CLI's message for
+# them, and label and break orders. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java; a
+# backslash of the filter is \\ here, a raw LF \n. Expected outputs live in control.rec, written by
+# scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# if: elif chains, the missing else (Identity), a condition with several results (the condition is the outer loop).
+
+case control/if-then-else
+arg -c
+filter [.[] | if . then "t" else "f" end]
+stdin [0,"",[],{},null,false,true]\n
+end
+
+case control/if-elif-chain
+arg -c
+filter [.[] | if . == 1 then "a" elif . == 2 then "b" elif . == 3 then "c" else "d" end]
+stdin [1,2,3,4]\n
+end
+
+case control/if-no-else
+arg -c
+filter [.[] | if . == 1 then "a" end]
+stdin [1,2,null]\n
+end
+
+case control/if-elif-no-else
+arg -c
+filter [.[] | if . == 1 then "a" elif . == 2 then "b" end]
+stdin [1,2,3]\n
+end
+
+case control/if-cond-several
+arg -c
+filter [if (true, false, null, 1) then "t" else "f" end]
+stdin null\n
+end
+
+case control/if-cond-outer-loop
+arg -c
+filter [if (true, false) then (1, 2) else (3, 4) end]
+stdin null\n
+end
+
+case control/if-elif-cond-several
+arg -c
+filter [if false then 1 elif (true, false) then 2 else 3 end]
+stdin null\n
+end
+
+case control/if-cond-several-no-else
+arg -c
+filter [if (false, true) then "t" end]
+stdin 5\n
+end
+
+case control/if-cond-error
+arg -c
+filter if error("c") then 1 else 2 end
+stdin null\n
+end
+
+case control/if-cond-error-after-result
+arg -c
+filter if (true, error("c")) then 1 else 2 end
+stdin null\n
+end
+
+case control/if-branch-input
+arg -c
+filter if .a then .b else .c end
+stdin {"a":1,"b":"B","c":"C"}\n
+end
+
+# try and ?: what is caught (an error of the body), what passes (a downstream error, an error of the handler), and the
+# body abandoned after its first error.
+
+case control/try-catch-value
+arg -c
+filter try error({"a":1}) catch .a
+stdin null\n
+end
+
+case control/try-no-catch
+arg -c
+filter [try error("x")]
+stdin null\n
+end
+
+case control/try-no-error
+arg -c
+filter [try (1, 2) catch "c"]
+stdin null\n
+end
+
+case control/try-handler-generator
+arg -c
+filter [try error("x") catch (., .)]
+stdin null\n
+end
+
+case control/try-handler-input
+arg -c
+filter try error([1,2]) catch .[1]
+stdin null\n
+end
+
+case control/try-navigation-error
+arg -c
+filter try .a catch .
+stdin [1]\n
+end
+
+case control/try-per-element
+arg -c
+filter [.[] | try (if . == 2 then error("e") else . end) catch "c"]
+stdin [1,2,3]\n
+end
+
+case control/try-downstream-passes
+arg -c
+filter (try 1 catch "c") | error("x")
+stdin null\n
+end
+
+case control/try-nested-downstream
+arg -c
+filter (try (try 1)) | error("x")
+stdin null\n
+end
+
+case control/try-triple-downstream
+arg -c
+filter (try (try (try 1 catch "a") catch "b") catch "c") | error("x")
+stdin null\n
+end
+
+case control/try-inner-downstream
+arg -c
+filter try ((try 1) | error("x")) catch .
+stdin null\n
+end
+
+case control/try-inner-downstream-handler
+arg -c
+filter try ((try 1 catch "i") | error("x")) catch "o"
+stdin null\n
+end
+
+case control/try-op-downstream
+arg -c
+filter (try 1 catch "c") + "a"
+stdin null\n
+end
+
+case control/try-collect-downstream
+arg -c
+filter [(try (1, 2)) | if . == 2 then error("x") else . end]
+stdin null\n
+end
+
+case control/try-collect-downstream-caught
+arg -c
+filter try [(try (1, 2)) | if . == 2 then error("x") else . end] catch .
+stdin null\n
+end
+
+case control/try-postfix-downstream
+arg -c
+filter (1?) | error("x")
+stdin null\n
+end
+
+case control/try-handler-raises
+arg -c
+filter try error("a") catch error("b")
+stdin null\n
+end
+
+case control/try-handler-raises-caught
+arg -c
+filter try (try error("a") catch error("b")) catch .
+stdin null\n
+end
+
+case control/try-handler-downstream
+arg -c
+filter (try error("a") catch (1, 2)) | error("x")
+stdin null\n
+end
+
+case control/try-abandons
+arg -c
+filter [try (1, error(2), 3) catch .]
+stdin null\n
+end
+
+case control/try-abandons-no-handler
+arg -c
+filter [try (1, error(2), 3)]
+stdin null\n
+end
+
+case control/try-postfix-generator
+arg -c
+filter [(1, error("x"), 3)?]
+stdin null\n
+end
+
+case control/try-postfix-per-element
+arg -c
+filter [.[] | (if . == 2 then error("e") else . end)?]
+stdin [1,2,3]\n
+end
+
+# O2 (#67 AltBind): green only once #67 lands. An AltBind inside a try's body catches the try's downstream error, of
+# any wrap depth, and runs its next alternative; its last alternative rethrows the instance it caught (ADR-0039).
+
+case control/try-altbind-downstream
+arg -c
+filter [[1]] | [(try (.[] as [$a] ?// $a | $a) catch "c") | if . == 1 then error("x") else . end]
+stdin null\n
+end
+
+case control/try-altbind-inner
+arg -c
+filter [[1]] | [try ((try (.[] as [$a] ?// $a | $a)) | error("x")) catch "outer"]
+stdin null\n
+end
+
+# errors: error/0 and error/1 with any value; rc and stderr as jq-ref gives them.
+
+case control/error-string
+arg -c
+filter error("boom")
+stdin null\n
+end
+
+case control/error-input-string
+arg -c
+filter error
+stdin "msg"\n
+end
+
+case control/error-null-uncaught
+arg -c
+filter error(null)
+stdin null\n
+end
+
+case control/error-null-caught
+arg -c
+filter try error(null) catch .
+stdin null\n
+end
+
+case control/error-null-input
+arg -c
+filter [try error catch .]
+stdin null\n
+end
+
+case control/error-number
+arg -c
+filter error(1)
+stdin null\n
+end
+
+case control/error-big-literal
+arg -c
+filter error(100000000000000000000000001)
+stdin null\n
+end
+
+case control/error-big-literal-view
+arg -c
+filter .a | error
+stdin {"a":100000000000000000000000001}\n
+end
+
+case control/error-false
+arg -c
+filter error(false)
+stdin null\n
+end
+
+case control/error-array
+arg -c
+filter error([1,"a",null])
+stdin null\n
+end
+
+case control/error-object-utf8
+arg -c
+filter {"a":[1,"é"]} | error
+stdin null\n
+end
+
+case control/error-view-payload
+arg -c
+filter .a | error
+stdin {"a":{"b":1}}\n
+end
+
+case control/error-view-string
+arg -c
+filter .a | error
+stdin {"a":"from the input"}\n
+end
+
+case control/error-view-caught
+arg -c
+filter try (.a | error) catch .b
+stdin {"a":{"b":[1,2]}}\n
+end
+
+case control/error-nul-string
+arg -c
+filter "a\\u0000b" | error
+stdin null\n
+end
+
+case control/error-escapes
+arg -c
+filter error("a\\"b\\\\c\\nd\\te")
+stdin null\n
+end
+
+case control/error-generator-arg
+arg -c
+filter [error(1, 2)]
+stdin null\n
+end
+
+case control/error-long-object
+arg -c
+filter error
+stdin {"k":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\n
+end
+
+case control/error-long-string
+arg -c
+filter .k | error
+stdin {"k":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}\n
+end
+
+case control/error-no-input
+arg -n
+arg -c
+filter error("x")
+end
+
+case control/error-each-input
+arg -c
+filter error
+stdin 1\n"two"\n
+end
+
+case control/error-second-input
+arg -c
+filter if . == 2 then error("x") else . end
+stdin 1\n2\n3\n
+end
+
+case control/error-after-results
+arg -c
+filter 1, error("x"), 2
+stdin null\n
+end
+
+case control/error-forged-break-uncaught
+arg -c
+filter error({"__jq":0})
+stdin null\n
+end
+
+# label and break: a Break returns false with its token; every node passes a false on at once; Collect emits nothing
+# after a false, Alt does not run its right side after one (ADR-0039).
+
+case control/label-no-break
+arg -c
+filter [label $l | 1, 2]
+stdin null\n
+end
+
+case control/label-break-generator
+arg -c
+filter [label $l | .[] | if . > 1 then break $l else . end]
+stdin [1,2,3]\n
+end
+
+case control/label-collect-break
+arg -c
+filter [label $l | [1, break $l]]
+stdin null\n
+end
+
+case control/label-alt-break
+arg -c
+filter [label $l | (break $l) // 1]
+stdin null\n
+end
+
+case control/label-alt-left-then-break
+arg -c
+filter [label $l | (1, break $l, 2) // 3]
+stdin null\n
+end
+
+case control/label-if-break
+arg -c
+filter [label $l | if (1, break $l) then 2 else 3 end]
+stdin null\n
+end
+
+case control/label-bind-break
+arg -c
+filter [label $l | (1, break $l, 2) as $x | $x]
+stdin null\n
+end
+
+case control/label-nested-same-name
+arg -c
+filter [label $l | (label $l | 1, break $l), 2]
+stdin null\n
+end
+
+# #194 (F-85): the false of a Break ends at its own Label, which then runs out, so the Comma after it runs its right
+# side.
+case control/label-break-then-comma
+arg -c
+filter [(label $l | 1, break $l), 2]
+stdin null\n
+end
+
+case control/label-break-outer
+arg -c
+filter [(label $a | label $b | 1, break $a, 2), 3]
+stdin null\n
+end
+
+case control/label-break-inner
+arg -c
+filter [(label $a | (label $b | 1, break $b, 2), 3), 4]
+stdin null\n
+end
+
+case control/label-var-shadow
+arg -c
+filter label $x | 1 as $x | $x, break $x
+stdin null\n
+end
+
+case control/label-each-input
+arg -c
+filter label $l | ., break $l
+stdin 1\n2\n
+end
+
+case control/label-break-after-error
+arg -c
+filter [label $l | 1, error("x"), break $l]
+stdin null\n
+end
+
+case control/label-as-var
+arg -c
+filter label $l | $l
+stdin null\n
+end
+
+case control/break-unknown
+arg -c
+filter break $l
+stdin null\n
+end
+
+case control/break-out-of-scope
+arg -c
+filter (label $l | 1), break $l
+stdin null\n
+end
+
+case control/break-and-var-unknown
+arg -c
+filter $x, break $l, $y
+stdin null\n
+end
+
+# DEVIATIONS.md "A break is not an error", rows 1 to 4: jq raises a break as the error {"__jq":n}; jqj's break is no
+# error, so no catch set holds it (try, ? and ?//, ADR-0008), and a forged {"__jq":0} is an ordinary error.
+
+case control/deviation-try-break
+arg -c
+filter [label $f | 1, (try (break $f) catch .), 2]
+stdin null\n
+deviation break-not-error
+jqj-rc 0
+jqj-stdout [1]\n
+jqj-stderr
+end
+
+case control/deviation-postfix-break
+arg -c
+filter [label $f | 1, (break $f)?, 2]
+stdin null\n
+deviation break-not-error
+jqj-rc 0
+jqj-stdout [1]\n
+jqj-stderr
+end
+
+case control/deviation-altbind-break
+arg -c
+filter [label $l | [[1]] | .[] as [$a] ?// $a | $a, break $l]
+stdin null\n
+deviation break-not-error
+jqj-rc 0
+jqj-stdout [1]\n
+jqj-stderr
+end
+
+case control/deviation-forged-break
+arg -c
+filter [label $f | 1, error({"__jq":0}), 2]
+stdin null\n
+deviation break-not-error
+jqj-rc 5
+jqj-stdout
+jqj-stderr jq: error (at <stdin>:1) (not a string): {"__jq":0}\n
+end

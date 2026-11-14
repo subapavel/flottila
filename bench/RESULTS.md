@@ -4,6 +4,203 @@ Every measured number with machine label, date, configuration and commit. A numb
 in this file does not exist (`AGENTS.md`, Evidence vocabulary). Written by the architect from
 verifier output; newest section first.
 
+## Spec 56 gate run at bba3de4 (F-84), 2026-11-13
+
+- Machine: `claude-cloud-4vcpu`. Command: `gate-spec.sh 56` on `spec/56-core-language-2a` @ `bba3de4`:
+  `gate-spec: 56 passed`, rc 0, 3 440 s. Logs `.logs/spec56-steps.tsv`, `.logs/spec56-gate.log`,
+  `.logs/spec56-pit.log`.
+- Step times (s): clean-verify 238.3, record 62.6, pit 2858.8, jmh 211.9, regen 1.2, census 1.1; every rc 0.
+- PIT `Completed in` per module (s): query-core 149 (307 mutants), jq-core 1945 (3439), jq-cli 212
+  (3868), oracle 319 (168). Sum of the four 2 625 s (43.75 min); the `pit` step 2 858.8 s (47.6 min);
+  F-84's target is 45 min.
+- Own-report statuses (TIMED_OUT / MEMORY_ERROR): query-core 1 / 0, jq-core 56 / 5, jq-cli 29 / 2,
+  oracle 0 / 0.
+- `ratchet/mutation.tsv` (surviving / generated): jq-core 63 / 3439 (was 17 / 1029), query-core 0 / 307
+  (was 0 / 20).
+- `ratchet/bench.tsv` (old -> new): G1.1k 2.654 -> 2.186 us/op; G1.100k 240.996 -> 194.822 us/op;
+  G1.10m 27 868.501 -> 19 146.306 us/op; G2.1k new 4.355 us/op; G2.100k new 427.370 us/op; G2.10m new
+  41 236.547 us/op; G3.100k new 2 915.774 us/op; G3.10m new 1 550 401.627 us/op; G4.1e4 new
+  236 819.173 us/op; G6.compact.10m 56 541.427 -> 40 057.006 us/op; G6.pretty.10m 65 583.134 ->
+  49 179.404 us/op; G7.engine.1k 20.847 -> 48.475 ms/op (up 2.3 times); G7.process.1k 140.424 ->
+  156.885 ms/op.
+
+## #85: the walk-side key proof against 2fe9654 and jq-ref (ADR-0044, ADR-0019 bar 10 %), 2026-11-13
+
+- Machine: `claude-cloud-4vcpu` (4 × Intel Xeon Processor @ 2.10 GHz, Linux 6.18.44-fc-v445), JDK
+  25.0.5.0.3 (Java HotSpot 64-Bit Server VM), JMH 1.37, jq-ref jq-1.8.2. Load average 2.08 before,
+  2.61 between and 5.39 after the two runs: other worktrees ran, so the errors are wide.
+- #85: `d83af2d`. Baseline: `2fe9654` exported with `git archive`, with the branch's `bench/jmh`
+  sources and pom. Each built with `./mvnw -o -B -Pbench -pl bench/jmh -am package -DskipTests`.
+- Command: `java -jar <jar> KeyProofCost -foe true -prof gc -rf json -rff <json>`, ADR-0019's
+  operation and settings (2 forks, 3 x 1 s warm-up, 5 x 1 s, `-Xms2g -Xmx2g`, compact output); the
+  branch first, then the baseline; then G1.10m twice more on each, alternately. Logs
+  `.logs/85-jmh3-{branch,base}.{log,json}`, `.logs/85-jmh3-g1-{branch,base}-{1,2}.log`,
+  `.logs/85-jmh3-jqref.log`.
+- `KeyProofCost`: G1 `.a.b.c`, G2 and G6's `-c .` on `Inputs.orders` at each size; `recs20` is an
+  array of 20-key records (`KeyProofCost.recs20`, padded to the size); `wide` is ReaderCost's flat
+  78 841-key object (#82) and an LF. jq-ref per document: best of 5 minus the best of 5 on
+  `/dev/null`, one document (K = 1).
+
+| µs/op (± 99.9 %) | #85 | 2fe9654 | change | B/op #85 / 2fe9654 |
+| --- | --- | --- | --- | --- |
+| G1.1k | 2.245 ± 0.161 | 2.264 ± 0.157 | −0.8 % | 368 / 368 |
+| G1.100k | 214.005 ± 13.138 | 210.440 ± 13.590 | +1.7 % | 369 / 369 |
+| G1.10m | 20 268.381 ± 3 023.874 | 19 270.525 ± 1 790.882 | +5.2 % | 621 / 613 |
+| G1.10m, pair 2 | 19 646.403 ± 972.016 | 20 823.424 ± 1 601.337 | −5.7 % | 616 / 624 |
+| G1.10m, pair 3 | 19 881.885 ± 2 294.841 | 20 492.129 ± 2 017.598 | −3.0 % | 618 / 621 |
+| G2.1k | 4.739 ± 0.539 | 4.647 ± 0.487 | +2.0 % | 4 696 / 4 920 |
+| G2.100k | 476.548 ± 71.160 | 436.782 ± 61.144 | +9.1 % | 418 448 / 444 137 |
+| G2.10m | 45 321.492 ± 5 734.008 | 46 271.393 ± 4 383.439 | −2.1 % | 40 311 400 / 42 792 117 |
+| G6 `-c .` 1k | 4.907 ± 0.454 | 5.118 ± 0.419 | −4.1 % | 192 / 212 |
+| G6 `-c .` 100k | 438.063 ± 37.986 | 496.562 ± 55.217 | −11.8 % | 195 / 208 |
+| G6 `-c .` 10m | 41 627.509 ± 2 748.468 | 46 528.887 ± 3 290.923 | −10.5 % | 629 / 702 |
+| recs20 `-c .` 1k | 5.354 ± 0.420 | 19.904 ± 2.143 | −73.1 % | 192 / 192 |
+| recs20 `-c .` 100k | 477.470 ± 48.761 | 1 680.599 ± 90.391 | −71.6 % | 195 / 356 |
+| recs20 `-c .` 10m | 43 346.612 ± 1 930.151 | 144 720.413 ± 11 386.679 | −70.0 % | 639 / 1 279 |
+| recs20 `.[]\|.[]` 1k | 7.579 ± 1.013 | 21.714 ± 2.542 | −65.1 % | 3 088 / 2 792 |
+| recs20 `.[]\|.[]` 100k | 673.387 ± 63.676 | 1 878.497 ± 152.024 | −64.2 % | 240 546 / 216 605 |
+| recs20 `.[]\|.[]` 10m | 59 950.808 ± 4 471.934 | 167 809.499 ± 21 354.755 | −64.3 % | 21 154 249 / 19 039 542 |
+
+| wide (78 841 keys) | #85 µs/op | jq-ref µs per document | #85 / jq-ref |
+| --- | --- | --- | --- |
+| `.[]` | 9 026.280 ± 1 522.706 | 51 065 | 0.18 |
+| `-c .` | 6 835.715 ± 471.581 | 46 876 | 0.15 |
+
+- No cell is over the 10 % bar. G2.100k is the highest at +9.1 %, inside both errors; it was −8.0 %
+  and +6.3 % in this ticket's two earlier rounds (`.logs/85-jmh-*.log` at `fd81c29`,
+  `.logs/85-jmh2-*.log` at `e152ad0`), and G2 walks no read object. G1.10m over its three pairs:
+  −1.3 % (means 19 932 against 20 195).
+- 2fe9654's wide cells are n² and were not run here: `-c .` took 39.9 s on `25ef36c` (ADR-0044).
+- recs20 `.[]|.[]` allocates the walk `.[]` holds for each record (+11 % B/op); the Printer keeps
+  no walk object. Round 1 found the Printer making one per object (G6.10m 9 923 691 B/op against
+  668), removed by `e152ad0`; round 2 a record per proof (recs20 `-c .` 10m 907 225 B/op), removed
+  by `d83af2d`. Their times were within the bar, so only the B/op moved.
+- recs20 jq-ref at 10m, same session: `-c .` 444 269 µs, `.[]|.[]` 414 664 µs per document.
+
+## #82: the distinct-key proof's reader cost (ADR-0002 as amended by F-40), 2026-11-13
+
+Ported unchanged by #85 from `t/82-distinct-keys` at `a01fda2`, which is deleted at #85's merge
+(ADR-0002's withdrawn amendment and ADR-0044 cite this section); `ReaderCost.java` came with it.
+
+- Machine: `claude-cloud-4vcpu` (4 vCPU, Linux 6.18.44-fc-v445), JDK 25.0.5.0.3 (HotSpot 64-Bit
+  Server VM), JMH 1.37. `uptime` before the first run: load average 1.67, 1.40, 0.90; no other
+  build of this agent ran during a measurement, other worktrees' load was not checked further.
+- Baseline: `5ab4aa7` (the tip before #82; the reader is unchanged up to `23c8009`), exported with
+  `git archive`, plus `ReaderCost.java`. #82: `500fcaa` plus the same `ReaderCost.java` (committed
+  with this section). Each built with `./mvnw -o -B -Pbench -pl bench/jmh -am package -DskipTests`.
+- Command: `java -jar <jar> ReaderCost -foe true -prof gc -rf json -rff <json>`, the class's
+  settings (Spike B's: 2 forks, 3 x 1 s warm-up, 5 x 1 s, `-Xms2g -Xmx2g`), run alternately
+  baseline, #82, baseline, #82. Logs `.logs/82-jmh-{base,new}-{1,2}.{log,json}`.
+- `ReaderCost.reader` is one `Workspace.read` of the document, tape and table warmed. The Spike B
+  documents are `Docs.make(size, "middle")` of `spike/field-read`, ported: 969 / 107 765 /
+  11 206 791 bytes, 185 / 19 997 / 2 049 843 entries, root objects of 8 / 770 / 78 841 keys (the
+  same counts as "Spike B" below). `flat-78841` is `{"k000000":0,…}`, 1 250 347 bytes. With #82
+  the roots of 100 KB, 10 MB and flat-78841 are tag 10, the 1 KB root (8 keys) tag 9 (scratch
+  probe over the #82 jar).
+
+| µs/op | baseline 1 | baseline 2 | #82 1 | #82 2 | #82 / baseline (means) |
+| --- | --- | --- | --- | --- | --- |
+| spikeB-1k | 2.128 ± 0.279 | 1.911 ± 0.252 | 1.954 ± 0.195 | 1.897 ± 0.175 | 0.95 |
+| spikeB-100k | 241.563 ± 25.476 | 215.372 ± 32.261 | 265.939 ± 39.481 | 244.061 ± 51.870 | 1.12 |
+| spikeB-10m | 24 198.839 ± 2 102.878 | 22 734.112 ± 2 662.731 | 28 795.355 ± 3 771.406 | 30 138.253 ± 1 515.417 | 1.26 |
+| flat-78841 | 1 593.367 ± 284.133 | 1 536.638 ± 263.769 | 4 083.801 ± 322.124 | 4 011.661 ± 460.328 | 2.59 |
+
+`gc.alloc.rate.norm` per read, baseline / #82: 48 / 48 B at 1 KB, 50 / 50 B at 100 KB, 237–246 /
+279–286 B at 10 MB, 91 / 108 B on flat-78841.
+
+**Over the owner's ~10 % line** at 10 MB (+26 %; +19 % and +33 % per pair) and at 100 KB (+12 %;
++10 % and +13 % per pair, inside each run's error). By the amendment's cost bar #82 stops
+`ready-for-human`. The
+same 78 841 keys cost +2.5 ms dense (flat) and +6.0 ms spread over Spike B's 11 MB and 16 MB of
+tape, so the proof's second walk over memory that is cold by the object's close looks like more
+than half of the 10 MB cost (an inference from these two rows, not a profile).
+
+Table size (scratch simulation, `.logs/82-probe-sim.log`): random 32-bit home slots, linear
+probing, more than 8 probes ends the proof. Distinct key sets that failed, by slots per key:
+
+| keys (trials) | 2 per key | 4 per key | 8 per key |
+| --- | --- | --- | --- |
+| 9 (20 000) | 0 % | 0 % | 0 % |
+| 40 (20 000) | 0.45 % | 0.005 % | 0 % |
+| 770 (20 000) | 43.8 % | 0.48 % | 0 % |
+| 5 000 (20 000) | 65.0 % | 0.91 % | 0.015 % |
+| 78 841 (200) | 100 % | 11.0 % | 0 % |
+| 300 000 (200) | 100 % | 100 % | 100 % |
+
+#82's reader takes 8 slots per key, rounded up to a power of two, at most 2^20: a 4 MiB table for
+78 841 keys, cleared after each proof.
+
+## Bench recording G2, G3, G4 and the tick-loop diagnostic (ticket #74, ADR-0019, F-33), 2026-11-13
+
+- Machine: `claude-cloud-4vcpu` (4 × Intel Xeon @ 2.10 GHz, Linux 6.18.44-fc-v445), Java 25.0.5.0.3,
+  jq-ref jq-1.8.2. Commit measured: `45a4978` (scores), `eddb639` plus `Ticks` (diagnostic; no
+  measured code changed). JMH with the class annotations, 2 GiB heap. Load average 1.4–4.0
+  (scores) and 3.9–7.0 (diagnostic): other writers ran, so the errors are wide. Logs (implementer
+  worktree of #74): `.logs/74-jmh.log`/`.json`, `.logs/74-jq-ref.log`, `.logs/74-ticks*.log`.
+- jq-ref per document from `bench/jq-ref.sh` in the same session (K copies; start-up 2.04–2.43 ms).
+
+| scenario | jqj (± 99.9 %) | B/op | jq-ref per doc (K) | ratio |
+| --- | --- | --- | --- | --- |
+| G2.1k | 4.871 ± 0.854 us/op | 4 920 | 34.911 us (10000) | 0.140 |
+| G2.100k | 461.512 ± 70.814 us/op | 444 127 | 3737.030 us (100) | 0.123 |
+| G2.10m | 47096.244 ± 9634.524 us/op | 42 792 122 | 548171 us (1) | 0.086 |
+| G3.100k | 3085.177 ± 359.099 us/op | 3 677 606 | 10046.310 us (100) | 0.307 |
+| G3.10m | 1780700.734 ± 251428.130 us/op | 505 813 593 | 2901609 us (1) | 0.614 |
+| G4.1e4 | 318281.415 ± 36281.656 us/op | 201 482 326 | 5640.850 us (100) | 56.4 |
+
+- G4.1e4 is over 1.0× (reported to the owner at 2a's end): `. + [$x]` copies the array each step
+  until spec 3's in-place updates; its 5.0×10⁷ ticks match ADR-0017's slot-copy estimate.
+- G2 `-c` at 10 MB in a 64 MiB fork (`-Xms64m -Xmx64m`, the `G2_10m` method): completes,
+  49454.588 ± 4299.078 us/op, 42 792 136 B/op, 630 GCs over 714 ms.
+- Tick-loop diagnostic (ADR-0019), mean per tick (ticks counted by bisecting the step budget,
+  `bench/.../Ticks.java`; JMH re-run in the same session):
+
+| scenario | ticks/op | us/op | ns/tick |
+| --- | --- | --- | --- |
+| G2.1k | 131 | 4.685 ± 0.473 | 35.8 |
+| G2.100k | 12 166 | 433.318 ± 46.040 | 35.6 |
+| G2.10m | 1 173 032 | 43863.410 ± 5170.671 | 37.4 |
+| G3.100k | 134 665 | 3026.556 ± 637.036 | 22.5 |
+| G3.10m | 19 504 189 | 2084021.741 ± 525378.997 | 106.9 |
+| G4.1e4 | 50 015 096 | 273786.876 ± 65717.589 | 5.5 |
+
+- A 4096-tick refuel window lasts 22 us (G4) to 438 us (G3.10m), under ADR-0019's 16 ms.
+  NOT_RUN: the longest gap between two ticks at one site and the 1 % refuel-cost bound (both need
+  a hook in query-core's `RunState`; carried to spec 6).
+
+## Cold parse of the prelude, `builtin.jq` (ticket #71, ADR-0042), 2026-11-13
+
+- Machine: `claude-cloud-4vcpu` (4 vCPU, Linux 6.18.44-fc-v445), JDK 25.0.5.0.3 (HotSpot 64-Bit
+  Server VM), JMH 1.37. Commit measured: `5ab488a` plus the uncommitted `PreludeParse` benchmark
+  (committed with this section). Other worktrees' load was not checked.
+- Command: `java -jar bench/jmh/target/benchmarks.jar PreludeParse -foe true -rf json -rff
+  .logs/71-prelude-parse.json` (the class's settings: single shot, 10 forks, each a fresh JVM, no
+  warm-up, 1 measurement of batch size 1, `-Xms2g -Xmx2g`). Log `.logs/71-prelude-parse.log`. The
+  shot is one `Parser.parse` of the prelude's text, read in setup; no parser class is loaded before it.
+
+| method | what is timed | shots | mean | min | p50 | max |
+| --- | --- | --- | --- | --- | --- | --- |
+| `prelude_cold_parse` | `Parser.parse(builtin.jq)` in a fresh JVM | 10 | 39.009 ± 9.615 ms (99.9 %) | 30.161 ms | 39.905 ms | 51.977 ms |
+
+## Fixed charges of bytes built, CONTAINER and STRING (ticket #64, ADR-0035, F-39), 2026-11-13
+
+- Machine: `claude-cloud-4vcpu` (4 vCPU, Linux 6.18.44-fc-v445), JDK 25.0.5.0.3 (HotSpot 64-Bit
+  Server VM), JMH 1.37. Commit measured: `20e4d59` plus the uncommitted `BuiltSizes` benchmark
+  (committed with this section). Other worktrees' load was not checked.
+- Command: `java -jar bench/jmh/target/benchmarks.jar BuiltSizes -prof gc -foe true -rf json -rff
+  .logs/64-builtsizes.json` (the class's settings: 1 fork, 3 x 1 s warm-up, 3 x 1 s measurement,
+  default heap). Log `.logs/64-builtsizes.log`. Each method builds one empty value; the result is
+  `gc.alloc.rate.norm`, the bytes allocated per value besides its elements, entries or bytes.
+
+| method | what is built | gc.alloc.rate.norm |
+| --- | --- | --- |
+| `sizes_array` | `new BuiltArray(new Object[0], 0)` | 40.000 ± 0.001 B/op |
+| `sizes_shaped` | `new BuiltObject(shape, new Object[0])` | 48.000 ± 0.001 B/op |
+| `sizes_growable` | `BuiltObject.ofPairs(new Object[0])` | 64.000 ± 0.001 B/op |
+| `sizes_string` | `BuiltString.of(new byte[0])` | 40.000 ± 0.001 B/op |
+
+`Charges.CONTAINER` is the largest container, 64 B; `Charges.STRING` is 40 B.
+
 ## Ticket-gate steps 1 and 2 and PIT per 1000 seeds (ticket #40, F-19), 2026-11-12
 
 - Machine: `claude-cloud-4vcpu` (4 vCPU, 15 GiB, Linux 6.18.44-fc-v378), `java version
@@ -90,6 +287,18 @@ script's `javac` of the recorder and the JVM start (`.logs/40-rec.tsv`, `.logs/4
 | `--verify …/gen/values-v1.rec` as committed (2100 seeds) | 18.61 s, 18.64 s, 18.43 s | about 11 s per 1000 (so 23 s) |
 
 Both are far under the 10-minute bound the ticket set for re-measuring.
+
+**Recording `core-v1` (ticket #58, ADR-0033), 2026-11-12**
+
+`scripts/oracle-record.sh` in the `t/58-core-v1` worktree (52e54b1 merged with `spec/56-core-language-2a` at
+56174c7), the cloud container (4 vCPU Intel Xeon @ 2.30 GHz, load average 1.4–2.1), jq-ref 1.8.2, three runs
+each, wall clock including the script's `javac` and the JVM start (`.logs/58-record.log`, `.logs/58-record3.log`).
+All 2100 seeds recorded, 0 dropped; the three recordings are byte-identical.
+
+| command | runs | per 1000 seeds |
+| --- | --- | --- |
+| `--generate core-v1 0 2100` (2100 cases, 0 dropped) | 14.68 s, 16.20 s, 15.77 s | about 7.3 s |
+| `--verify …/gen/core-v1.rec` (2100 seeds) | 15.31 s, 15.86 s, 15.63 s | about 7.4 s |
 
 ## Bench recording G1, G6, G7: jqj against jq-ref (ticket #39), 2026-11-12
 

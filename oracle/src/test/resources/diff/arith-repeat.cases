@@ -1,0 +1,99 @@
+# Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": string repetition, either operand
+# order. jq 1.8.2 truncates the count to an int (a negative count or NaN gives null, a count past INT_MAX is INT_MAX)
+# and raises "Repeat string result too long" when the result would hold 2147483639 bytes or more; jq-ref builds
+# 2147483638 ("ab" * 1073741819 | length, "a" * 2147483638 | length, observed 2026-11-13), which no case prints. A
+# filter that ignores its input runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-repeat.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable.
+
+case arith-repeat/counts-number-left
+arg -c
+filter [.[]*"ab"]
+stdin [-1,-0.5,0,0.5,1,2.7]\n
+end
+
+case arith-repeat/counts-number-right
+arg -c
+filter ["ab" * .[]]
+stdin [-1,-0.5,0,0.5,1,2.7]\n
+end
+
+case arith-repeat/empty-string-many-times
+arg -c
+filter "" * 1e10
+stdin null\n
+end
+
+case arith-repeat/negative-zero-count
+arg -c
+filter "ab" * (0*-1)
+stdin null\n
+end
+
+case arith-repeat/fraction-multibyte-empty
+arg -c
+filter ["ab" * 1.9, "é" * 3, "" * 5]
+stdin null\n
+end
+
+case arith-repeat/nan-count
+arg -c
+filter "ab" * (1e1000 - 1e1000)
+stdin null\n
+end
+
+case arith-repeat/over-a-kibibyte
+arg -c
+filter "abc" * 400
+stdin null\n
+end
+
+case arith-repeat/input-number-left
+arg -c
+filter .n * .s
+stdin {"s":"ab","n":3}\n
+end
+
+# Repeat string result too long
+
+case arith-repeat/too-long-one-byte
+arg -c
+filter "a" * 2147483639
+stdin null\n
+end
+
+case arith-repeat/too-long-two-bytes
+arg -c
+filter "ab" * 1073741820
+stdin null\n
+end
+
+case arith-repeat/too-long-three-bytes
+arg -c
+filter "abc" * 715827880
+stdin null\n
+end
+
+case arith-repeat/too-long-literal-past-double
+arg -c
+filter "ab" * 1e1000
+stdin null\n
+end
+
+case arith-repeat/too-long-past-int-max
+arg -c
+filter ["abc" * 1e10]
+stdin null\n
+end
+
+case arith-repeat/too-long-fraction-past-int-max
+arg -c
+filter "ab" * 2147483647.5
+stdin null\n
+end
+
+case arith-repeat/too-long-input
+arg -c
+filter .s * .n
+stdin {"s":"a","n":2147483639}\n
+end

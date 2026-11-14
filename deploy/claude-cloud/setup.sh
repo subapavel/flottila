@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# jqj — Claude Code Cloud environment setup script (v1, 2026-11-10; adapted from flottila-mapping v3).
+# jqj — Claude Code Cloud environment setup script (v1, 2026-11-10; adapted from r8-mapping v3).
 # Runs as root on the Ubuntu 24.04 VM before Claude Code starts. Must finish in ~5 minutes to
-# be snapshotted, so it does four things: install JDK 25 beside the pre-installed JDK 21, point
+# be snapshotted, so it does six things: install JDK 25 beside the pre-installed JDK 21, point
 # Maven and the Maven Wrapper at the Google mirror of Central (Central answers HTTP 429 to the VM),
-# pre-approve the project's Context7 MCP server in the user settings, and install the reference jq
-# binary the differential oracle compares against.
-# Docker images, apt extras and Maven dependencies are fetched by the agent on first use.
-# Self-contained (no repository paths), idempotent, reports every step.
+# pre-approve the project's Context7 MCP server in the user settings, install the reference jq
+# binary the differential oracle compares against, and, when the jqj checkout is present, set its
+# commit-msg hook (#50) and fetch every Maven plugin a gate or CI step invokes so that
+# `./mvnw -o` works (#54).
+# The stored copy in the environment is this file with its comments stripped (100-line limit).
+# Docker images and apt extras are fetched by the agent on first use.
+# Self-contained apart from the optional `jqj` checkout in the working directory, idempotent,
+# reports every step.
 # Paste this file's contents into the environment's "Setup script" field.
 set -uo pipefail
 log() { echo "[jqj-setup] $*"; }
@@ -57,10 +61,7 @@ else
   fi
 fi
 
-if [ ! -x "$JDK/bin/java" ]; then
-  log "FAILED: no JDK 25 could be installed from any source"
-  exit 1
-fi
+if [ ! -x "$JDK/bin/java" ]; then log "FAILED: no JDK 25 could be installed from any source"; exit 1; fi
 
 for tool in java javac jar jshell jcmd jfr; do
   [ -x "$JDK/bin/$tool" ] || continue
@@ -82,17 +83,8 @@ mkdir -p "$(dirname "$m2")"
 if [ -f "$m2" ] && ! grep -q storage-download.googleapis.com "$m2"; then
   log "keeping existing $m2 (no Google mirror in it; add one by hand)"
 else
-  cat > "$m2" <<EOF
-<settings>
-  <mirrors>
-    <mirror>
-      <id>google-maven-central</id>
-      <mirrorOf>central</mirrorOf>
-      <url>$MIRROR</url>
-    </mirror>
-  </mirrors>
-</settings>
-EOF
+  printf '<settings>\n  <mirrors>\n    <mirror>\n      <id>google-maven-central</id>\n' > "$m2"
+  printf '      <mirrorOf>central</mirrorOf>\n      <url>%s</url>\n    </mirror>\n  </mirrors>\n</settings>\n' "$MIRROR" >> "$m2"
   log "maven mirror written to $m2"
 fi
 echo "export MVNW_REPOURL=$MIRROR" > /etc/profile.d/mvnw-mirror.sh
@@ -130,4 +122,13 @@ else
     log "could not install reference jq $JQ_REF_VERSION (continuing; oracle:differential is ENVIRONMENT_BLOCKED)"
   fi
 fi
+# Commit-msg hook (#50, docs/agents/environment.md): the relative path makes each worktree use its own scripts/hooks.
+if [ -d jqj/.git ]; then git -C jqj config core.hooksPath scripts/hooks && log "git hooks: core.hooksPath=scripts/hooks in jqj (#50)"; else log "no jqj checkout (hooks not set)"; fi
+# Maven plugins for `./mvnw -o` (#54, docs/agents/environment.md), from the jqj checkout in the working
+# directory. go-offline takes the plugins of the build model (clean and PIT included); verify adds what a
+# plugin resolves only while it runs (surefire's JUnit Platform provider); javadoc:help fetches the unpinned
+# javadoc plugin. Test failures do not stop the fetch; clean leaves the checkout without target/.
+if [ -x jqj/mvnw ]; then fetch=(-Pbench,compile-oracle -Dmaven.test.failure.ignore=true dependency:go-offline verify javadoc:help)
+  (cd jqj && . /etc/profile.d/mvnw-mirror.sh && ./mvnw -q -B "${fetch[@]}" && ./mvnw -q -B -Pbench clean) </dev/null && log "maven plugins fetched" || log "maven plugin fetch failed (continuing)"
+else log "no jqj checkout: maven plugins not fetched"; fi
 log "done"

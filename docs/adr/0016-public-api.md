@@ -1,6 +1,6 @@
 # Public API: engine, filter, Workspace, documents and values
 
-Status: accepted (2026-11-11, owner, issue #13 "What are the public API, the host SPI and the sandbox?"); amends ADR-0004 (the host rule); supersedes the API sketch of founding §11; amended by ADR-0018 (issue #12), ADR-0020 (issue #15) and ADR-0024 (#24: kinds, exception shapes, F-20); amended by ADR-0026 (accessor edges); amended by ADR-0027 (JsonWriter sinks)
+Status: accepted (2026-11-11, owner, issue #13 "What are the public API, the host SPI and the sandbox?"); amends ADR-0004 (the host rule); supersedes the API sketch of founding §11; amended by ADR-0018 (issue #12), ADR-0020 (issue #15) and ADR-0024 (#24: kinds, exception shapes, F-20); amended by ADR-0026 (accessor edges); amended by ADR-0027 (JsonWriter sinks); amended by ADR-0031 (compile-error blocks, #61)
 
 Type and method names are binding from the first publish; until then a rename is one mechanical
 ticket (ADR-0013). Facts marked "jq-ref" were observed on 1.8.2 by the adviser (issue #13 round 1).
@@ -32,7 +32,7 @@ ticket (ADR-0013). Facts marked "jq-ref" were observed on 1.8.2 by the adviser (
     true when the results ran out, false when the sink stopped;
   - `boolean stream(MemorySegment, Bindings, JqSink, Workspace, RunOptions)`: the host's streaming
     switch (ADR-0007), `IllegalStateException` if `needsWholeDocument()`. It takes a whole segment;
-    Flottila's large bodies arrive in chunks and wait for the chunked reader (ADR-0015, later);
+    Rail8's large bodies arrive in chunks and wait for the chunked reader (ADR-0015, later);
   - `boolean needsWholeDocument()`, `Set<String> variables()`;
   - `String explain()`: the IR and its facts, unstable, also `jqj --explain` (a jqj-only flag).
     Bytecode listing (founding §9) is the backend ticket's.

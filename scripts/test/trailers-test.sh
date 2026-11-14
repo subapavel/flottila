@@ -51,6 +51,37 @@ printf 'feat: x\n\nTicket: #3\nCo-authored-by: Claude <noreply@anthropic.com>\n'
 commit
 check "missing Signed-off-by" "$(run)" 1
 
+# only the exact co-author line of WORKFLOW section 11 is allowed, and no session line (#49)
+g checkout -q -b extracoauth main
+good "feat: extra co-author"
+echo "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" >> "$tmp/msg"
+commit
+extra=$(g rev-parse --short=7 HEAD)
+check "extra Co-Authored-By" "$(run)" 1
+grep -q "^$extra .*Co-Authored-By: Claude Opus 5.5" "$tmp/out"
+check "extra co-author names the commit and the line" "$?" 0
+
+g checkout -q -b lowercoauth main
+good "feat: lower-case co-author"
+echo "co-authored-by: Someone <s@x.y>" >> "$tmp/msg"
+commit
+check "lower-case co-authored-by key" "$(run)" 1
+
+g checkout -q -b session main
+good "feat: session"
+echo "Claude-Session: https://example.invalid/session/1" >> "$tmp/msg"
+commit
+session=$(g rev-parse --short=7 HEAD)
+check "Claude-Session line" "$(run)" 1
+grep -q "^$session .*Claude-Session:" "$tmp/out"
+check "session line names the commit" "$?" 0
+
+g checkout -q -b lowersession main
+good "feat: lower-case session"
+echo "claude-session: x" >> "$tmp/msg"
+commit
+check "lower-case claude-session key" "$(run)" 1
+
 # a merge commit written by the merger is checked like any other
 g checkout -q -b side main
 good "feat: side"

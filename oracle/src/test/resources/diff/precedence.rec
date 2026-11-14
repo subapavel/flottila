@@ -1,0 +1,246 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case precedence/def-scopes-the-pipe
+def c69357e3cdf5
+rc 0
+stdout 1\n
+stderr
+end
+
+case precedence/def-after-a-pipe
+def ae6fe0fab803
+rc 0
+stdout 2\n
+stderr
+end
+
+case precedence/as-scopes-the-pipe
+def 064bf86f96b1
+rc 0
+stdout 1\n
+stderr
+end
+
+case precedence/as-nests-right
+def 71729cb0517f
+rc 0
+stdout "xy"\n
+stderr
+end
+
+case precedence/label-scopes-the-comma
+def 5ba93603a4f8
+rc 0
+stdout 1\n
+stderr
+end
+
+case precedence/pipe-below-comma
+def f78ae02e9c4f
+rc 0
+stdout 11\n12\n
+stderr
+end
+
+case precedence/comma-below-alternative
+def 78503339b86d
+rc 0
+stdout 1\n2\n
+stderr
+end
+
+case precedence/alternative-below-assign
+def b0d06df856d4
+rc 0
+stdout {"a":null}\n
+stderr
+end
+
+case precedence/assign-below-or
+def b3a701c72509
+rc 0
+stdout {"a":true}\n
+stderr
+end
+
+case precedence/or-below-and
+def 52aa40d0e602
+rc 0
+stdout true\n
+stderr
+end
+
+case precedence/and-below-compare
+def 5f7a5ae1c7b4
+rc 0
+stdout false\n
+stderr
+end
+
+case precedence/compare-below-additive
+def 094627c429fe
+rc 0
+stdout true\n
+stderr
+end
+
+case precedence/additive-below-multiplicative
+def 7d837f5b38db
+rc 0
+stdout 7\n
+stderr
+end
+
+case precedence/multiplicative-above-additive-on-the-left
+def 095a5ca859d5
+rc 0
+stdout 7\n
+stderr
+end
+
+case precedence/multiplicative-below-negation
+def 721460e5f1be
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") cannot be negated\n
+end
+
+case precedence/additive-below-negation
+def 116b54055af9
+rc 0
+stdout 1\n
+stderr
+end
+
+case precedence/pipe-below-negation
+def 221b6931c8aa
+rc 0
+stdout 0\n
+stderr
+end
+
+case precedence/negation-below-optional
+def c5c07636f3c9
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") cannot be negated\n
+end
+
+case precedence/additive-left
+def d9dcb2f94520
+rc 0
+stdout -4\n
+stderr
+end
+
+case precedence/additive-left-mixed
+def 76d5db048d79
+rc 0
+stdout 2\n
+stderr
+end
+
+case precedence/multiplicative-left
+def b6d671b7cad6
+rc 0
+stdout 1\n
+stderr
+end
+
+case precedence/multiplicative-left-mixed
+def 75e82c7bb05a
+rc 0
+stdout 6\n
+stderr
+end
+
+case precedence/as-source-takes-a-product
+def 073fe81d2721
+rc 0
+stdout 7\n
+stderr
+end
+
+case precedence/as-source-takes-an-alternative
+def 78a043ec2db7
+rc 0
+stdout 11\n
+stderr
+end
+
+case precedence/as-source-stops-at-a-comma
+def 201a1c37340d
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case precedence/reduce-source-takes-a-sum
+def 5043ba8d72dd
+rc 0
+stdout 3\n
+stderr
+end
+
+case precedence/foreach-source-takes-a-sum
+def 4c100c64cc32
+rc 0
+stdout 3\n
+stderr
+end
+
+case precedence/catch-takes-a-postfix-term
+def d7a4fe760464
+rc 0
+stdout 4\n
+stderr
+end
+
+case precedence/try-takes-a-postfix-term
+def b01c8050eb13
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): x\n
+end
+
+case precedence/object-value-takes-a-pipe
+def a7fb2321b1f9
+rc 0
+stdout {"a":2}\n
+stderr
+end
+
+case precedence/term-index-after-a-space
+def bd562493e69a
+rc 0
+stdout 6\n
+stderr
+end
+
+case precedence/if-is-a-term
+def 6bc244bf9fb9
+rc 0
+stdout 2\n
+stderr
+end
+
+case precedence/reduce-is-a-term
+def 2e0780f0f7cf
+rc 0
+stdout 6\n
+stderr
+end
+
+case precedence/optional-binds-the-term
+def d22a3f50a625
+rc 0
+stdout 1\n
+stderr
+end
+
+case precedence/postfix-chain
+def 4c4b3aeab54a
+rc 0
+stdout 1\n
+stderr
+end

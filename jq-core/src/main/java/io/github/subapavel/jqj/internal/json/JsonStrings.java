@@ -32,8 +32,9 @@ import java.util.Arrays;
  * jq's decoding of a JSON string (ADR-0015 and its #35 amendment, F-26), in jq's two steps: the escape-sequence pass
  * of {@code found_string} ({@link #unescape}), then {@code jv_string_sized}'s replacement of each sequence that
  * {@code jvp_utf8_next} ({@link #step}) calls invalid by one U+FFFD, over the escape-sequence pass's output and the raw
- * bytes together ({@link #decode}). The input is a string the reader accepted, so its escape sequences are well formed
- * and every high surrogate escape sequence is followed by a low one.
+ * bytes together ({@link #decode(byte[], int, int)}). The input is a string the reader accepted, so its escape
+ * sequences are well formed and every high surrogate escape sequence is followed by a low one, or a filter's escape
+ * run that {@code found_string}'s checks ({@link #escapeError}) passed.
  */
 public final class JsonStrings {
   /** U+FFFD REPLACEMENT CHARACTER in UTF-8. */
@@ -84,7 +85,11 @@ public final class JsonStrings {
     return o;
   }
 
-  /** The value of the four hex digits at {@code b[p]}, which the reader checked. */
+  /**
+   * The value of the four hex digits at {@code b[p]}, or a negative number when one of them is no hex digit, as jq's
+   * {@code unhex4} gives -1: that digit's -1 from {@code Character.digit} sets every bit, and no shift after it clears
+   * the sign. A byte from 0x80 is negative here, so no hex digit.
+   */
   private static int hex4(byte[] b, int p) {
     int v = 0;
     for (int i = p; i < p + 4; i++) {
@@ -151,8 +156,8 @@ public final class JsonStrings {
   }
 
   /**
-   * A string entry's value, jq's string: for tag 5 its bytes between the quotes, for tag 6 {@link #unescape}, then one
-   * U+FFFD for each negative {@link #step} ({@code jv_string_sized}). The array is new.
+   * A string entry's value, jq's string: for tag 5 its bytes between the quotes, for tag 6 {@link #decode(byte[], int,
+   * int)} of them. The array is new.
    */
   public static byte[] decode(byte[] doc, long entry) {
     int from = Tape.off(entry) + 1;
@@ -160,19 +165,36 @@ public final class JsonStrings {
     if (Tape.tag(entry) == Tape.STRING) {
       return Arrays.copyOfRange(doc, from, to);
     }
+    return decode(doc, from, to);
+  }
+
+  /**
+   * The value of the string text {@code b[from, to)}, whose escape sequences are well formed with every high surrogate
+   * paired (a tag-6 string the reader accepted, or an escape run of a filter that {@link #escapeError} passed):
+   * {@link #unescape}, then {@link #replaceBad}. The array is new.
+   */
+  public static byte[] decode(byte[] b, int from, int to) {
     byte[] s = new byte[to - from];
-    int n = unescape(doc, from, to, s);
+    int n = unescape(b, from, to, s);
+    return replaceBad(s, 0, n);
+  }
+
+  /**
+   * {@code jv_string_sized} over {@code s[from, to)}: each sequence {@link #step} calls invalid becomes one U+FFFD, and
+   * every other byte stays. The array is new.
+   */
+  public static byte[] replaceBad(byte[] s, int from, int to) {
     // The bytes the result needs: a valid sequence keeps its own, a bad one becomes the three of U+FFFD.
     int size = 0;
-    for (int i = 0; i < n; ) {
-      int length = step(s, i, n);
+    for (int i = from; i < to; ) {
+      int length = step(s, i, to);
       size += length > 0 ? length : REPLACEMENT.length;
       i += Math.abs(length);
     }
     byte[] out = new byte[size];
     int o = 0;
-    for (int i = 0; i < n; ) {
-      int length = step(s, i, n);
+    for (int i = from; i < to; ) {
+      int length = step(s, i, to);
       if (length > 0) {
         System.arraycopy(s, i, out, o, length);
         o += length;
@@ -183,5 +205,53 @@ public final class JsonStrings {
       i += Math.abs(length);
     }
     return out;
+  }
+
+  /**
+   * {@code found_string}'s checks over {@code b[from, to)}, a string's text between its quotes, when every byte of it is
+   * in an escape sequence, a backslash and its letter (or the U+FFFD of a bad byte), as in the filter lexer's escape run
+   * with its bad UTF-8 replaced (GLOSSARY "Escape run"): jq's
+   * message for the first bad sequence, or null when all are well formed. A {@code \\u} needs four bytes before
+   * {@code to}, all hex digits, and a high surrogate a {@code \\u} low surrogate right after it.
+   */
+  public static String escapeError(byte[] b, int from, int to) {
+    int in = from;
+    while (in < to) {
+      // b[in] is the backslash, b[in + 1] its letter.
+      in += 2;
+      switch (b[in - 1]) {
+        case '"', '\\', '/', 'b', 'f', 'n', 'r', 't' -> {
+          // A one-letter escape sequence.
+        }
+        case 'u' -> {
+          if (in + 4 > to) {
+            return "Invalid \\uXXXX escape";
+          }
+          int unit = hex4(b, in);
+          if (unit < 0) {
+            return "Invalid characters in \\uXXXX escape";
+          }
+          in += 4;
+          if (unit >= 0xD800 && unit <= 0xDBFF) {
+            // jq tells a missing, malformed or wrong second unit apart in no word: one message for all three. A
+            // malformed one is negative, below every low surrogate. jq also checks that a \\u follows; here b[in] is
+            // the next sequence's backslash, as every byte is in one, and a sequence that is no \\u has a backslash or a
+            // byte of U+FFFD at in + 2, no hex digit, so it is a malformed unit too.
+            if (in + 6 > to || !isLowSurrogate(hex4(b, in + 2))) {
+              return "Invalid \\uXXXX\\uXXXX surrogate pair escape";
+            }
+            in += 6;
+          }
+        }
+        default -> {
+          return "Invalid escape";
+        }
+      }
+    }
+    return null;
+  }
+
+  private static boolean isLowSurrogate(int unit) {
+    return unit >= 0xDC00 && unit <= 0xDFFF;
   }
 }

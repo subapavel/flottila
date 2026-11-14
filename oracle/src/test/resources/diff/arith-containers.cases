@@ -1,0 +1,148 @@
+# Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": + on strings, arrays and objects,
+# null as the identity of +, array difference (jq's jv_equal per pair, so 1.10 and 1.1 are one value and integers
+# past 17 digits are not), and the object merge * (GLOSSARY "Object merge"). Objects read with a repeated key keep its
+# first place and last value (ADR-0002). A filter that ignores its input runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# arith-containers.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# strings
+
+case arith-containers/string-concat
+arg -c
+filter ["" + "", "ab" + "cd", "a" + null, null + "a"]
+stdin null\n
+end
+
+case arith-containers/string-concat-escaped-input
+arg -c
+filter .a + .b
+stdin {"a":"\\u00e9","b":"\\u00fc"}\n
+end
+
+# null is the identity of +
+
+case arith-containers/null-identity-containers
+arg -c
+filter [{} + null, null + {}, [] + null, null + []]
+stdin null\n
+end
+
+case arith-containers/input-object-plus-null-keeps-order
+arg -c
+filter . + null
+stdin {"b":1,"a":2}\n
+end
+
+# arrays
+
+case arith-containers/array-concat
+arg -c
+filter [[1] + [2,3], [] + []]
+stdin null\n
+end
+
+case arith-containers/array-concat-input
+arg -c
+filter .[0] + .[1]
+stdin [[1,2],[3]]\n
+end
+
+case arith-containers/array-difference
+arg -c
+filter [[1,2,3,1] - [1], [1,[2],{"a":3}] - [[2]], [] - [1], [1] - [], [] - []]
+stdin null\n
+end
+
+case arith-containers/array-difference-trailing-zeros
+arg -c
+filter [1.10, 1.1, 1.100] - [1.1]
+stdin null\n
+end
+
+case arith-containers/array-difference-trailing-zeros-input
+arg -c
+filter .[0] - .[1]
+stdin [[1.10,1.1,1.100],[1.1]]\n
+end
+
+case arith-containers/array-difference-big-integers
+arg -c
+filter [100000000000000000001, 100000000000000000002] - [100000000000000000001]
+stdin null\n
+end
+
+case arith-containers/array-difference-big-integers-input
+arg -c
+filter .[0] - .[1]
+stdin [[100000000000000000001,100000000000000000002],[100000000000000000001]]\n
+end
+
+# object +
+
+case arith-containers/object-plus-repeated-key
+arg -c
+filter {"a":1,"b":2} + {"a":3,"c":4}
+stdin null\n
+end
+
+case arith-containers/object-plus-input
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1,"b":2},{"a":3,"c":4}]\n
+end
+
+case arith-containers/object-plus-read-repeated-key-left
+arg -c
+filter .[0] + .[1]
+stdin [{"a":1,"b":2,"a":3},{"c":4}]\n
+end
+
+case arith-containers/object-plus-read-repeated-key-right
+arg -c
+filter .[0] + .[1]
+stdin [{"x":1},{"b":1,"b":2}]\n
+end
+
+case arith-containers/object-plus-literal-repeated-key
+arg -c
+filter {"a":1,"a":2} + {"a":3}
+stdin null\n
+end
+
+# object merge
+
+case arith-containers/merge-nested
+arg -c
+filter {"a":{"b":1,"c":2}} * {"a":{"b":3},"d":4}
+stdin null\n
+end
+
+case arith-containers/merge-object-replaces-number
+arg -c
+filter [{"a":1} * {"a":{"b":2}}, {"a":{"b":2}} * {"a":1}, {} * {}]
+stdin null\n
+end
+
+case arith-containers/merge-key-order
+arg -c
+filter {"a":1,"b":{"x":1}} * {"c":2,"b":{"y":2}}
+stdin null\n
+end
+
+case arith-containers/merge-null-values
+arg -c
+filter [{"a":{"x":1}} * {"a":null}, {"a":null} * {"a":{"x":1}}]
+stdin null\n
+end
+
+case arith-containers/merge-input
+arg -c
+filter .[0] * .[1]
+stdin [{"a":{"b":1}},{"a":{"c":2}}]\n
+end
+
+case arith-containers/merge-read-repeated-key
+arg -c
+filter .[0] * .[1]
+stdin [{"a":{"x":1},"a":{"y":2}},{"a":{"z":3}}]\n
+end

@@ -78,7 +78,7 @@ These extend the upstream conventions above; `/run-spec` and `/gate` rely on the
 
 ## Cloud VM: REST only
 
-In Flottila's Claude Code Cloud environment (2026-10-17) `gh issue …` and `gh pr …` failed because
+In Rail8's Claude Code Cloud environment (2026-10-17) `gh issue …` and `gh pr …` failed because
 the proxy blocked GraphQL, while `gh api` (REST) worked. Until a session observes `gh issue list`
 working here, use these REST forms; `{owner}/{repo}` is filled in by `gh api` inside a clone.
 

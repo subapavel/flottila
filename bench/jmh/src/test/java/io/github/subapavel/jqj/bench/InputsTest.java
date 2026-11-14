@@ -19,7 +19,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
-/** The `orders` input of ADR-0019 for the bench ids of ADR-0024: its size per id, its shape and its determinism. */
+/**
+ * The inputs of ADR-0019 for the bench ids of ADR-0024: the `orders` size per id, the shape and the determinism of
+ * `orders`, `recs` (G3) and `ints` (G4).
+ */
 class InputsTest {
 
   /** Every ADR-0024 bench id with the input size it runs on. */
@@ -28,6 +31,9 @@ class InputsTest {
         argumentSet("G1.1k", Size.K1, 1_024),
         argumentSet("G1.100k", Size.K100, 102_400),
         argumentSet("G1.10m", Size.M10, 10_485_760),
+        argumentSet("G2.1k", Size.K1, 1_024),
+        argumentSet("G2.100k", Size.K100, 102_400),
+        argumentSet("G2.10m", Size.M10, 10_485_760),
         argumentSet("G6.compact.10m", Size.M10, 10_485_760),
         argumentSet("G6.pretty.10m", Size.M10, 10_485_760),
         argumentSet("G7.engine.1k", Size.K1, 1_024),
@@ -85,11 +91,78 @@ class InputsTest {
   }
 
   @Test
-  void mainWritesOneFilePerSize(@TempDir Path dir) throws IOException {
+  void mainWritesOneFilePerSizeAndTheIntsOfG4(@TempDir Path dir) throws IOException {
     Inputs.main(new String[] {dir.toString()});
     for (Size size : Size.values()) {
       assertThat(Files.readAllBytes(dir.resolve("orders-" + size.label() + ".json"))).isEqualTo(Inputs.orders(size));
+      assertThat(Files.readAllBytes(dir.resolve("recs-" + size.label() + ".json"))).isEqualTo(Inputs.recs(size));
     }
+    assertThat(Files.readAllBytes(dir.resolve("ints-1e4.json"))).isEqualTo(Inputs.ints(10_000));
+  }
+
+  /** The `recs` digests freeze its generator and its seed, as the `orders` digests do. */
+  static Stream<Arguments> recsDigests() {
+    return Stream.of(
+        argumentSet("1k", Size.K1, "866530aea93f12345b517a6a9fe31d83d24f13aeaa7ea3b7742855dfe297934f"),
+        argumentSet("100k", Size.K100, "f737263174752da1eedff25a9076a165674b9537067d9fa31ed1c9d871c23efd"),
+        argumentSet("10m", Size.M10, "d8fdb99b862c0937528b63a811c8eb8c364235ac4f14b9435d30ead708e1f454"));
+  }
+
+  @ParameterizedTest(name = "{argumentSetName}")
+  @MethodSource("recsDigests")
+  void theRecsBytesOfEachSizeAreFixed(Size size, String sha256) {
+    assertThat(Inputs.recs(size)).hasSize(size.bytes());
+    assertThat(sha256(Inputs.recs(size))).isEqualTo(sha256);
+  }
+
+  /** ADR-0019's `recs` shape: one array of `{"k":"k0".."k63","v":n}`, then padding and the LF. */
+  @ParameterizedTest
+  @EnumSource(Size.class)
+  void theRecsDocumentIsOneArrayOfKeyedRecords(Size size) {
+    String text = new String(Inputs.recs(size), US_ASCII);
+    assertThat(text).endsWith("\n");
+    String array = text.stripTrailing();
+    assertThat(array).startsWith("[{").endsWith("}]");
+    for (String rec : array.substring(2, array.length() - 2).split("\\},\\{", -1)) {
+      assertThat(rec).matches("\"k\":\"k([0-9]|[1-5][0-9]|6[0-3])\",\"v\":(0|[1-9][0-9]{0,5})");
+    }
+  }
+
+  /** A smaller document holds the first records of a larger one: the draws come in the same order. */
+  @Test
+  void theRecsOf1kArePrefixOfTheRecsOf100k() {
+    String small = new String(Inputs.recs(Size.K1), US_ASCII).stripTrailing();
+    String large = new String(Inputs.recs(Size.K100), US_ASCII);
+    assertThat(large).startsWith(small.substring(0, small.length() - 1) + ",");
+  }
+
+  @ParameterizedTest
+  @EnumSource(Size.class)
+  void theIntsOfEachSizeAreZeroUpwardsPaddedToTheSize(Size size) {
+    byte[] bytes = Inputs.ints(size);
+    assertThat(bytes).hasSize(size.bytes());
+    String array = new String(bytes, US_ASCII).stripTrailing();
+    String[] ints = array.substring(1, array.length() - 1).split(",", -1);
+    for (int i = 0; i < ints.length; i++) {
+      assertThat(ints[i]).isEqualTo(Integer.toString(i));
+    }
+    // Packed: the next integer would not have fit.
+    assertThat(array.length() + 1 + Integer.toString(ints.length).length() + 1).isGreaterThan(size.bytes());
+  }
+
+  @Test
+  void theIntsOf1kAreZeroTo282() {
+    assertThat(sha256(Inputs.ints(Size.K1))).isEqualTo("21da99301cb91cde1cc1c6905940ddcace13246e44b20a65f08fce40c07305cd");
+    assertThat(new String(Inputs.ints(Size.K1), US_ASCII)).startsWith("[0,1,2,").endsWith(",281,282]\n");
+  }
+
+  @Test
+  void theIntsOfG4AreZeroTo9999WithNoPadding() {
+    assertThat(Inputs.INTS_1E4).isEqualTo(10_000);
+    assertThat(sha256(Inputs.ints(Inputs.INTS_1E4)))
+        .isEqualTo("185223f3feacfcffb2e6eef5e787cbdaa7984fa82127c4ffd16602a793abf172");
+    assertThat(new String(Inputs.ints(3), US_ASCII)).isEqualTo("[0,1,2]\n");
+    assertThat(new String(Inputs.ints(0), US_ASCII)).isEqualTo("[]\n");
   }
 
   private static String sha256(byte[] bytes) {

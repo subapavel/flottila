@@ -28,20 +28,17 @@ jobs:
           set -e
           bash scripts/test/trailers-test.sh
           bash scripts/test/trailers-root-test.sh
+          bash scripts/test/trailer-range-test.sh
+      # scripts/trailer-range.sh chooses the range (#51): FROM is the pull request's base or the push's before-SHA.
       - name: Range check
         env:
           EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           set -e
           git fetch --no-tags origin main
-          case "$EVENT" in
-            pull_request) range="$BASE_SHA..${{ github.event.pull_request.head.sha }}" ;;
-            push)
-              if [ -n "$BEFORE_SHA" ] && [ "${BEFORE_SHA//0/}" != "" ]; then range="$BEFORE_SHA..$GITHUB_SHA"; else range="origin/main..$GITHUB_SHA"; fi ;;
-            *) range="origin/main..$GITHUB_SHA" ;;
-          esac
+          range=$(bash scripts/trailer-range.sh "$EVENT" "$SHA" "$FROM")
           echo "range $range"
           bash scripts/check-trailers.sh "$range"
 

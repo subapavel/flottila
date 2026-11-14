@@ -18,16 +18,19 @@ module | requires mandated java.base
 io.github.subapavel.jqj.Bindings | public final class io.github.subapavel.jqj.Bindings
 io.github.subapavel.jqj.Bindings | public static io.github.subapavel.jqj.Bindings$Builder io.github.subapavel.jqj.Bindings.builder()
 io.github.subapavel.jqj.Bindings$Builder | public io.github.subapavel.jqj.Bindings io.github.subapavel.jqj.Bindings$Builder.build()
+io.github.subapavel.jqj.Bindings$Builder | public io.github.subapavel.jqj.Bindings$Builder io.github.subapavel.jqj.Bindings$Builder.put(java.lang.String,io.github.subapavel.jqj.value.JqValue)
 io.github.subapavel.jqj.Bindings$Builder | public static final class io.github.subapavel.jqj.Bindings$Builder
 
 io.github.subapavel.jqj.JqCompileException | public final class io.github.subapavel.jqj.JqCompileException extends io.github.subapavel.jqj.JqException
 io.github.subapavel.jqj.JqCompileException | public int io.github.subapavel.jqj.JqCompileException.column()
 io.github.subapavel.jqj.JqCompileException | public int io.github.subapavel.jqj.JqCompileException.line()
 io.github.subapavel.jqj.JqCompileException | public io.github.subapavel.jqj.JqCompileException(java.lang.String,int,int)
+io.github.subapavel.jqj.JqCompileException | public io.github.subapavel.jqj.JqCompileException(java.util.List<java.lang.String>,int,int)
 io.github.subapavel.jqj.JqCompileException | public java.util.List<java.lang.String> io.github.subapavel.jqj.JqCompileException.blocks()
 
 io.github.subapavel.jqj.JqEngine | public final class io.github.subapavel.jqj.JqEngine
 io.github.subapavel.jqj.JqEngine | public io.github.subapavel.jqj.JqFilter io.github.subapavel.jqj.JqEngine.compile(java.lang.String)
+io.github.subapavel.jqj.JqEngine | public io.github.subapavel.jqj.JqFilter io.github.subapavel.jqj.JqEngine.compile(java.lang.String,java.util.Set<java.lang.String>)
 io.github.subapavel.jqj.JqEngine | public io.github.subapavel.jqj.Workspace io.github.subapavel.jqj.JqEngine.newWorkspace()
 io.github.subapavel.jqj.JqEngine | public static io.github.subapavel.jqj.JqEngine$Builder io.github.subapavel.jqj.JqEngine.builder()
 io.github.subapavel.jqj.JqEngine$Builder | public io.github.subapavel.jqj.JqEngine io.github.subapavel.jqj.JqEngine$Builder.build()

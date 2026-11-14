@@ -39,6 +39,11 @@ git -C "$r" add side.txt
 git -C "$r" commit -q -m side
 git -C "$r" worktree add -q --detach "$w/agent-unmerged" side
 git -C "$r" checkout -q main
+# a rewritten commit (#52): another sha, not an ancestor of main, with c2's tree
+rw=$(git -C "$r" commit-tree -p "$c1" -m rewritten "$c2^{tree}")
+git -C "$r" worktree add -q --detach "$w/agent-rewritten" "$rw"
+git -C "$r" worktree add -q --detach "$w/agent-rewritten-dirty" "$rw"
+echo fresh > "$w/agent-rewritten-dirty/rewritten-work.txt"
 
 out=$(cd "$r" && "$tool" main 2>&1); rc=$?
 printf '%s\n' "$out"
@@ -57,7 +62,15 @@ printf '%s\n' "$out" | grep "agent-unmerged" | grep -q "not merged"
 check "unmerged reported" "$?" 0
 printf '%s\n' "$out" | grep "agent-stale" | grep -q "forced"
 check "stale reports force" "$?" 0
-[ "$(printf '%s\n' "$out" | grep -c 'agent-\|verify-')" = 6 ]
+[ ! -e "$w/agent-rewritten" ]; check "rewritten with tree in main removed" "$?" 0
+printf '%s\n' "$out" | grep "agent-rewritten:" | grep -q "removed, tree already in main"
+check "rewritten reports tree in main" "$?" 0
+[ -e "$w/agent-rewritten-dirty/rewritten-work.txt" ]; check "rewritten new work kept" "$?" 0
+printf '%s\n' "$out" | grep "agent-rewritten-dirty" | grep -q "unique paths: rewritten-work.txt"
+check "rewritten new path printed" "$?" 0
+printf '%s\n' "$out" | grep "agent-unmerged" | grep -vq "tree already"
+check "unmerged tree not in main" "$?" 0
+[ "$(printf '%s\n' "$out" | grep -c 'agent-\|verify-')" = 8 ]
 check "one line per worktree" "$?" 0
 
 exit "$fails"

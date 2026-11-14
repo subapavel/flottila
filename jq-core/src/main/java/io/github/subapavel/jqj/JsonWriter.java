@@ -23,7 +23,8 @@ public final class JsonWriter {
 
   /**
    * A sink that prints each result and one LF into {@code out}, charging one step per started KiB of each drain
-   * (F-23). A target's IOException leaves emit as an UncheckedIOException with it as the cause (ADR-0027).
+   * (F-23) and, in a run, the drain's bytes against its bytes-written budget before they are written (ADR-0030). A
+   * target's IOException leaves emit as an UncheckedIOException with it as the cause (ADR-0027).
    *
    * @throws NullPointerException if {@code options} is null
    */
@@ -34,12 +35,15 @@ public final class JsonWriter {
     Printer printer = workspace.printer;
     Printer.Target target =
         (buffer, length) -> {
+          // A drain that would pass the budget ends the run unwritten, so the output never exceeds it.
+          workspace.state.chargeWritten(length);
           try {
             out.write(buffer, 0, length);
           } catch (IOException e) {
             throw new UncheckedIOException(e);
           }
-          workspace.tick((length + 1023) >>> 10);
+          // Outside a run these ticks count in the steps but not against the next run (ADR-0030, #77).
+          workspace.state.tickWritten((length + 1023) >>> 10);
         };
     return v -> {
       printer.line(v, pretty, target);

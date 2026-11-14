@@ -16,6 +16,7 @@ import io.github.subapavel.jqj.OutputOptions;
 import io.github.subapavel.jqj.Workspace;
 import io.github.subapavel.jqj.host.Host;
 import io.github.subapavel.jqj.value.JqString;
+import io.github.subapavel.jqj.value.JqValue;
 import java.io.BufferedOutputStream;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
@@ -28,6 +29,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 /**
  * The command line (ADR-0013). Not exported API: the oracle reaches {@link #run} on the class path, and the launcher
@@ -37,8 +39,9 @@ import java.util.Set;
  * of stdin; {@code -c} and {@code -M}, alone, combined or as {@code --compact-output} and {@code --monochrome-output},
  * before or after either; {@code --}, after which every argument is the filter or a file. A missing file and an
  * option jq does not know end with jq's text and exit code 2; any other jq option is a Stub with exit code 2. A filter
- * error ends the run with jq's line {@code jq: error (at <name>:N): <text>} and exit code 5. Without {@code -c} the
- * output is pretty, jq's default indent 2 (#37).
+ * error ends the run with jq's line {@code jq: error (at <name>:N): <text>}, or {@code jq: error (at <name>:N) (not a
+ * string): <value>} for a value that is no string (#68), and exit code 5. Without {@code -c} the output is pretty, jq's
+ * default indent 2 (#37).
  */
 public final class Main {
 
@@ -96,6 +99,16 @@ public final class Main {
    * @throws UncheckedIOException when stdin, stdout or stderr fails
    */
   public static int run(Invocation invocation) {
+    return run(invocation, UnaryOperator.identity());
+  }
+
+  /**
+   * As {@link #run(Invocation)}, with the engine built from what {@code engine} makes of the command line's builder
+   * (ADR-0020 amendment for #60): the compile-mode oracle sets its limits and compile mode there.
+   *
+   * @throws UncheckedIOException when stdin, stdout or stderr fails
+   */
+  public static int run(Invocation invocation, UnaryOperator<JqEngine.Builder> engine) {
     boolean compact = false;
     boolean optionsDone = false;
     String filter = null;
@@ -131,14 +144,14 @@ public final class Main {
       }
     }
 
-    JqEngine engine = JqEngine.builder().limits(Limits.cli()).host(Host.sandboxed()).build();
+    JqEngine built = engine.apply(JqEngine.builder().limits(Limits.cli()).host(Host.sandboxed())).build();
     JqFilter compiled;
     try {
-      compiled = engine.compile(filter == null ? "." : filter);
+      compiled = built.compile(filter == null ? "." : filter);
     } catch (JqCompileException e) {
       return report(invocation, COMPILE, e.getMessage());
     }
-    Workspace workspace = engine.newWorkspace();
+    Workspace workspace = built.newWorkspace();
     try {
       JqSink sink = JsonWriter.sink(workspace, invocation.out(), compact ? OutputOptions.compact() : OutputOptions.pretty());
       byte[] input;
@@ -157,10 +170,10 @@ public final class Main {
         try (JsonDoc doc = workspace.read(MemorySegment.ofArray(input))) {
           compiled.run(doc.root(), Bindings.builder().build(), sink, workspace);
         } catch (JqFilterException e) {
-          // The results before the error leave first, as jq's do. Every error value built so far is a string (#34).
+          // The results before the error leave first, as jq's do.
           invocation.out().flush();
           String name = file == null ? "<stdin>" : file;
-          return report(invocation, FAILED, "jq: error (at " + name + ":" + ErrorLine.of(input) + "): " + ((JqString) e.value()).value());
+          return report(invocation, FAILED, "jq: error (at " + name + ":" + ErrorLine.of(input) + ")" + message(e.value()));
         }
       }
       invocation.out().flush();
@@ -172,6 +185,20 @@ public final class Main {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
+  }
+
+  /**
+   * What jq prints of an error value after its position (ADR-0039; jq-ref 1.8.2, recorded: diff/control.rec): a
+   * string's text, cut at its first NUL as jq's {@code %s} prints it (control/error-nul-string), after {@code ": "};
+   * any other value's compact text after {@code " (not a string): "} (control/error-null-uncaught, error-array).
+   */
+  private static String message(JqValue value) {
+    if (value instanceof JqString s) {
+      String text = s.value();
+      int nul = text.indexOf('\0');
+      return ": " + (nul < 0 ? text : text.substring(0, nul));
+    }
+    return " (not a string): " + value.toJson();
   }
 
   /**

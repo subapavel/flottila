@@ -1,6 +1,6 @@
 # Host SPI, sandbox and budget defaults
 
-Status: accepted (2026-11-11, owner, issue #13 "What are the public API, the host SPI and the sandbox?"); amends ADR-0008 (deadline clock, `CANCELLED`, regex budget) and ADR-0011 (stack bytes, recursion default); amended by ADR-0020 (CLI environment from `Invocation`, locale); rewords the sandbox list of founding §11
+Status: accepted (2026-11-11, owner, issue #13 "What are the public API, the host SPI and the sandbox?"); amends ADR-0008 (deadline clock, `CANCELLED`, regex budget) and ADR-0011 (stack bytes, recursion default); amended by ADR-0020 (CLI environment from `Invocation`, locale); rewords the sandbox list of founding §11; amended by spec 2 grilling round 1 (bytes built per slot); amended by ADR-0035 (fixed charges measured with `-prof gc` only, F-39; collectors charge per element)
 
 Facts marked "jq-ref" were observed on 1.8.2 by the adviser (issue #13 round 1); joni facts on
 joni 2.2.9.
@@ -112,3 +112,19 @@ the flag). The run ends with
 - **A catchable "halt is not allowed" error:** `try halt catch .` would differ by mode.
 - **The deadline from the host clock:** a fixed `InstantSource` disables it.
 - **jq's process `$ENV` embedded:** founding §11.
+
+## Amendment (spec 2 grilling round 1, Q2, owner 2026-11-12)
+
+Bytes built are charged, monotonically, as:
+
+- 8 B per array element and 16 B per object entry (key and value), the same for shape and growable
+  objects;
+- a built string's UTF-8 length;
+- a fixed charge per built container and per built string, its value measured (`-prof gc`; JOL is excluded, F-39)
+  in the ticket that wires the budget and recorded in `bench/RESULTS.md`;
+- a copy charges its slots, growth charges the capacity it adds (ADR-0022), and `detach()` charges
+  what it builds (ADR-0016); number boxes are never charged.
+
+The charge depends on the value built, not on its Java representation, so the two backends stop at
+the same place. G4 at 10⁴ builds about 5.0×10⁷ slots, about 400 MB at 8 B, 2.7× under the 1 GiB
+default.

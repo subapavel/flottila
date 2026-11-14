@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import io.github.subapavel.jqj.JqEngine;
 import io.github.subapavel.jqj.query.run.FilterException;
+import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.value.JqNull;
 import io.github.subapavel.jqj.value.JqObject;
 import io.github.subapavel.jqj.value.JqString;
@@ -34,7 +35,7 @@ class FieldTest {
     FilterException e =
         assertThatExceptionOfType(FilterException.class)
             .as(".%s on %s", name, json)
-            .isThrownBy(() -> new Field(name).apply(in))
+            .isThrownBy(() -> new Field(name).apply(new RunState(), in))
             .actual();
     assertThat(e.value()).as("the error value of .%s on %s", name, json).isInstanceOf(JqString.class);
     return ((JqString) e.value()).value();
@@ -44,12 +45,12 @@ class FieldTest {
   void lastValueWins() {
     // jq-ref 1.8.2, recorded (field/duplicate-field): .a on {"a":1,"b":2,"a":3} -> 3.
     JqValue object = root("{\"a\":1,\"b\":2,\"a\":3}");
-    assertThat(((JqValue) new Field("a").apply(object)).toJson()).as(".a on {\"a\":1,\"b\":2,\"a\":3}").isEqualTo("3");
-    assertThat(((JqValue) new Field("b").apply(object)).toJson()).as(".b on {\"a\":1,\"b\":2,\"a\":3}").isEqualTo("2");
+    assertThat(((JqValue) new Field("a").apply(new RunState(), object)).toJson()).as(".a on {\"a\":1,\"b\":2,\"a\":3}").isEqualTo("3");
+    assertThat(((JqValue) new Field("b").apply(new RunState(), object)).toJson()).as(".b on {\"a\":1,\"b\":2,\"a\":3}").isEqualTo("2");
 
     // A container value: the result is the view JqObject.get gives (ADR-0026), the last one.
     JqValue nested = root("{\"a\":{\"x\":1},\"a\":[3,{}]}");
-    Object a = new Field("a").apply(nested);
+    Object a = new Field("a").apply(new RunState(), nested);
     assertThat(((JqValue) a).toJson()).as(".a on {\"a\":{\"x\":1},\"a\":[3,{}]}").isEqualTo("[3,{}]");
     assertThat(a).as("the same view as get(\"a\")").isEqualTo(((JqObject) nested).get("a"));
   }
@@ -57,13 +58,13 @@ class FieldTest {
   @Test
   void missingKeyAndNullGiveJqNull() {
     // jq-ref 1.8.2, recorded: field/miss-key, field/miss-empty and field/null-input each print null (rc 0).
-    assertThat(new Field("a").apply(root("{\"b\":1}"))).as(".a on {\"b\":1}").isSameAs(JqNull.NULL);
-    assertThat(new Field("a").apply(root("{}"))).as(".a on {}").isSameAs(JqNull.NULL);
-    assertThat(new Field("a").apply(JqNull.NULL)).as(".a on null").isSameAs(JqNull.NULL);
+    assertThat(new Field("a").apply(new RunState(), root("{\"b\":1}"))).as(".a on {\"b\":1}").isSameAs(JqNull.NULL);
+    assertThat(new Field("a").apply(new RunState(), root("{}"))).as(".a on {}").isSameAs(JqNull.NULL);
+    assertThat(new Field("a").apply(new RunState(), JqNull.NULL)).as(".a on null").isSameAs(JqNull.NULL);
     // A key that is there with the value null gives that null too (field/hit-null).
-    assertThat(new Field("a").apply(root("{\"a\":null}"))).as(".a on {\"a\":null}").isSameAs(JqNull.NULL);
+    assertThat(new Field("a").apply(new RunState(), root("{\"a\":null}"))).as(".a on {\"a\":null}").isSameAs(JqNull.NULL);
     // Witness: a key that is there gives its value, not null.
-    assertThat(((JqValue) new Field("b").apply(root("{\"b\":1}"))).toJson()).as("witness: .b on {\"b\":1}").isEqualTo("1");
+    assertThat(((JqValue) new Field("b").apply(new RunState(), root("{\"b\":1}"))).toJson()).as("witness: .b on {\"b\":1}").isEqualTo("1");
   }
 
   @Test

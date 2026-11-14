@@ -1,0 +1,204 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case constant-key-fold/zero-plus-one
+def 864e35c14207
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(0+1):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/minus
+def edb979f17904
+rc 3
+stdout
+stderr jq: error: Cannot use number (0) as object key at <top-level>, line 1, column 3:\n    {(1-1):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/times
+def e8b537f89d4a
+rc 3
+stdout
+stderr jq: error: Cannot use number (6) as object key at <top-level>, line 1, column 3:\n    {(2*3):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/divide
+def cb3475e79082
+rc 3
+stdout
+stderr jq: error: Cannot use number (1.5) as object key at <top-level>, line 1, column 3:\n    {(6/4):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/mod
+def 126112d009b0
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(7%3):1}\n      ^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/null-plus-number
+def b4d88221c563
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(null+1):1}\n      ^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/literal-plus-null-keeps-literal
+def e9fbc0025bf2
+rc 3
+stdout
+stderr jq: error: Cannot use number (1.10) as object key at <top-level>, line 1, column 3:\n    {(1.10+null):1}\n      ^^^^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/computed-number
+def f7ac75dcdf0e
+rc 3
+stdout
+stderr jq: error: Cannot use number (0.30000000000000004) as object key at <top-level>, line 1, column 3:\n    {(0.1+0.2):1}\n      ^^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/chained
+def c497ec2cbcc9
+rc 3
+stdout
+stderr jq: error: Cannot use number (6) as object key at <top-level>, line 1, column 3:\n    {(1+2+3):1}\n      ^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/split
+def 07ee695d2712
+rc 3
+stdout
+stderr jq: error: Cannot use array (["a","b"]) as object key at <top-level>, line 1, column 3:\n    {("a,b"/","):1}\n      ^^^^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/array-concat
+def be36ec4bee71
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1,2]) as object key at <top-level>, line 1, column 3:\n    {([1]+[2]):1}\n      ^^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/array-difference
+def e73a0f660532
+rc 3
+stdout
+stderr jq: error: Cannot use array ([1]) as object key at <top-level>, line 1, column 3:\n    {([1,2]-[2]):1}\n      ^^^^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/object-plus
+def d79f0c97885a
+rc 3
+stdout
+stderr jq: error: Cannot use object ({"a":1}) as object key at <top-level>, line 1, column 3:\n    {({}+{a:1}):1}\n      ^^^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/object-merge
+def 06146b1e5240
+rc 3
+stdout
+stderr jq: error: Cannot use object ({"a":{"b":1,"c":2}}) as object key at <top-level>, line 1, column 3:\n    {({a:{b:1}}*{a:{c:2}}):1}\n      ^^^^^^^^^^^^^^^^^^^\njq: 1 compile error\n
+end
+
+case constant-key-fold/raising-fold-then-constant-key
+def 669f9003e98a
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 15:\n    {(1/0):1} | {(1):2}\n                  ^\njq: 1 compile error\n
+end
+
+case constant-key-fold/string-concat
+def af8a6ef0bb56
+rc 0
+stdout {"ab":1}\n
+stderr
+end
+
+case constant-key-fold/string-concat-chained
+def 0df7dbbbeab8
+rc 0
+stdout {"abc":1}\n
+stderr
+end
+
+case constant-key-fold/string-repeat-zero
+def 8695b8e24232
+rc 0
+stdout {"":1}\n
+stderr
+end
+
+case constant-key-fold/string-short
+def f5aa9af697be
+rc 0
+stdout {"xxxxxxxxxx":1}\n
+stderr
+end
+
+case constant-key-fold/string-past-the-cap
+def 9772d47b4c62
+rc 0
+stdout {"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx":1}\n
+stderr
+end
+
+case constant-key-fold/negation-not-folded
+def d9e544a7d085
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use number (-1) as object key\n
+end
+
+case constant-key-fold/repeat-negative-count-not-folded
+def 5829815cdb5d
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use null (null) as object key\n
+end
+
+case constant-key-fold/divide-by-zero
+def baaef6f4e9bd
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (0) cannot be divided because the divisor is zero\n
+end
+
+case constant-key-fold/mod-by-zero
+def 3b19aa8ad05c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): number (1) and number (0) cannot be divided (remainder) because the divisor is zero\n
+end
+
+case constant-key-fold/repeat-too-long
+def 1578c460582c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Repeat string result too long\n
+end
+
+case constant-key-fold/minus-type-error
+def 6f2216453989
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): null (null) and number (1) cannot be subtracted\n
+end
+
+case constant-key-fold/string-minus-string
+def c57187a74c32
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") and string ("a") cannot be subtracted\n
+end
+
+case constant-key-fold/negate-string
+def b44e6ac108cb
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): string ("a") cannot be negated\n
+end
+
+case constant-key-fold/input-plus-one
+def 7873509bf8bc
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot use number (1) as object key\n
+end

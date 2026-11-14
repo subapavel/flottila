@@ -3,8 +3,8 @@
 Open-source implementation of the jq language on Java 25: a jq filter is compiled once (to an IR,
 then to an interpreter tree or JVM bytecode) and run directly over JSON bytes, without building an
 object tree of the input. Speed and bounded memory are priorities. It is a standalone project that
-Flottila will consume through an adapter living in the Flottila repo; nothing here depends on
-Flottila code. Everything in the repo is in English.
+Rail8 (R8) will consume through an adapter living in the R8 repo; nothing here depends on
+R8 code. Everything in the repo is in English.
 
 This file is loaded into every context, so it holds only pointers and the rules nobody may break.
 

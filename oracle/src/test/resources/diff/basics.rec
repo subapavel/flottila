@@ -34,3 +34,10 @@ rc 0
 stdout {"b":2}\n
 stderr
 end
+
+case basics/recurse-of-array
+def f8749251fad7
+rc 0
+stdout [1]\n1\n
+stderr
+end

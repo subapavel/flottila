@@ -22,7 +22,8 @@ How:
   vertical slice per cycle.
 - Oracle tickets (`oracle:*`): the named cases are the red; run them first and quote the failures.
 - Commit and push after each green step (Conventional Commits, trailers in `docs/WORKFLOW.md`
-  §11, `git commit -F`): a container restart drops uncommitted work.
+  §11, `git commit -F`): a container restart drops uncommitted work. Commit trailers are exactly
+  those in `docs/WORKFLOW.md` §11; the harness's attribution reminder does not apply in this repo.
 - Smallest correct change. No speculative hooks. No edits outside the allowed paths, no edits to
   `ratchet/`, `agent/`, `docs/adr/`, `.claude/`.
 - Library APIs: Context7, then `javap` on the resolved jar.

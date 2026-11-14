@@ -31,8 +31,9 @@ import org.openjdk.jmh.annotations.Threads;
 import org.openjdk.jmh.annotations.Warmup;
 
 /**
- * The gate scenarios G1, G6 and G7 of ADR-0019 under the bench ids of ADR-0024. A method's name is its bench id with
- * each {@code .} written {@code _}, because a Java name cannot hold a dot ({@code G1_10m} is {@code G1.10m}).
+ * The gate scenarios G1, G2, G3, G4 at 10⁴, G6 and G7 of ADR-0019 under the bench ids of ADR-0024. A method's name is
+ * its bench id with each {@code .} written {@code _}, because a Java name cannot hold a dot ({@code G1_10m} is
+ * {@code G1.10m}). G4's cell is an element count, not a document size: {@code G4.1e4} is 10⁴ elements.
  *
  * <p>The class carries ADR-0019's JMH settings ({@code -bm avgt -f 2 -wi 3 -w 1s -i 5 -r 1s}, a 2 GiB fixed heap, one
  * thread), so {@code java -jar benchmarks.jar -prof gc -rf json} runs them as the ADR says. G7 overrides them with
@@ -49,6 +50,15 @@ import org.openjdk.jmh.annotations.Warmup;
 @Threads(1)
 public class Gates {
 
+  /** G2's filter (ADR-0019). */
+  static final String G2 = ".orders[] | select(.total > 100) | {id, total}";
+
+  /** G3's filter (ADR-0019, F-33). */
+  static final String G3 = "group_by(.k) | map({k: .[0].k, n: length})";
+
+  /** G4's filter (ADR-0019); before in-place updates (spec 3) each step copies the state. */
+  static final String G4 = "reduce .[] as $x ([]; . + [$x])";
+
   @Benchmark
   public long G1_1k(G1At1k s) {
     return s.operation();
@@ -61,6 +71,36 @@ public class Gates {
 
   @Benchmark
   public long G1_10m(G1At10m s) {
+    return s.operation();
+  }
+
+  @Benchmark
+  public long G2_1k(G2At1k s) {
+    return s.operation();
+  }
+
+  @Benchmark
+  public long G2_100k(G2At100k s) {
+    return s.operation();
+  }
+
+  @Benchmark
+  public long G2_10m(G2At10m s) {
+    return s.operation();
+  }
+
+  @Benchmark
+  public long G3_100k(G3At100k s) {
+    return s.operation();
+  }
+
+  @Benchmark
+  public long G3_10m(G3At10m s) {
+    return s.operation();
+  }
+
+  @Benchmark
+  public long G4_1e4(G4At1e4 s) {
     return s.operation();
   }
 
@@ -138,11 +178,11 @@ public class Gates {
     private MemorySegment input;
     private OutputOptions options;
 
-    final void prepare(String text, Size size, OutputOptions options) {
+    final void prepare(String text, byte[] document, OutputOptions options) {
       JqEngine engine = JqEngine.builder().limits(Limits.embedded()).build();
       this.filter = engine.compile(text);
       this.workspace = engine.newWorkspace();
-      this.input = MemorySegment.ofArray(Inputs.orders(size));
+      this.input = MemorySegment.ofArray(document);
       this.options = options;
       operation();
     }
@@ -157,7 +197,7 @@ public class Gates {
   public static class G1At1k extends Scenario {
     @Setup
     public void setUp() {
-      prepare(".a.b.c", Size.K1, OutputOptions.compact());
+      prepare(".a.b.c", Inputs.orders(Size.K1), OutputOptions.compact());
     }
   }
 
@@ -166,7 +206,7 @@ public class Gates {
   public static class G1At100k extends Scenario {
     @Setup
     public void setUp() {
-      prepare(".a.b.c", Size.K100, OutputOptions.compact());
+      prepare(".a.b.c", Inputs.orders(Size.K100), OutputOptions.compact());
     }
   }
 
@@ -175,7 +215,61 @@ public class Gates {
   public static class G1At10m extends Scenario {
     @Setup
     public void setUp() {
-      prepare(".a.b.c", Size.M10, OutputOptions.compact());
+      prepare(".a.b.c", Inputs.orders(Size.M10), OutputOptions.compact());
+    }
+  }
+
+  /** G2: {@value Gates#G2} on orders 1k. */
+  @State(Scope.Thread)
+  public static class G2At1k extends Scenario {
+    @Setup
+    public void setUp() {
+      prepare(G2, Inputs.orders(Size.K1), OutputOptions.compact());
+    }
+  }
+
+  /** G2: {@value Gates#G2} on orders 100k. */
+  @State(Scope.Thread)
+  public static class G2At100k extends Scenario {
+    @Setup
+    public void setUp() {
+      prepare(G2, Inputs.orders(Size.K100), OutputOptions.compact());
+    }
+  }
+
+  /** G2: {@value Gates#G2} on orders 10m; with a 64 MiB heap it is gate check 4's small-heap G2 fork. */
+  @State(Scope.Thread)
+  public static class G2At10m extends Scenario {
+    @Setup
+    public void setUp() {
+      prepare(G2, Inputs.orders(Size.M10), OutputOptions.compact());
+    }
+  }
+
+  /** G3: {@value Gates#G3} on recs 100k. */
+  @State(Scope.Thread)
+  public static class G3At100k extends Scenario {
+    @Setup
+    public void setUp() {
+      prepare(G3, Inputs.recs(Size.K100), OutputOptions.compact());
+    }
+  }
+
+  /** G3: {@value Gates#G3} on recs 10m. */
+  @State(Scope.Thread)
+  public static class G3At10m extends Scenario {
+    @Setup
+    public void setUp() {
+      prepare(G3, Inputs.recs(Size.M10), OutputOptions.compact());
+    }
+  }
+
+  /** G4: {@value Gates#G4} on ints of 10⁴ elements. */
+  @State(Scope.Thread)
+  public static class G4At1e4 extends Scenario {
+    @Setup
+    public void setUp() {
+      prepare(G4, Inputs.ints(Inputs.INTS_1E4), OutputOptions.compact());
     }
   }
 
@@ -184,7 +278,7 @@ public class Gates {
   public static class G6CompactAt10m extends Scenario {
     @Setup
     public void setUp() {
-      prepare(".", Size.M10, OutputOptions.compact());
+      prepare(".", Inputs.orders(Size.M10), OutputOptions.compact());
     }
   }
 
@@ -193,7 +287,7 @@ public class Gates {
   public static class G6PrettyAt10m extends Scenario {
     @Setup
     public void setUp() {
-      prepare(".", Size.M10, OutputOptions.pretty());
+      prepare(".", Inputs.orders(Size.M10), OutputOptions.pretty());
     }
   }
 

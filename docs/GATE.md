@@ -90,7 +90,7 @@ nightly PIT dispatched on the gate commit (`nightly.yml` has a manual trigger).
    ADR-0020, ADR-0021.)
 9. **Hand-over.** `HANDOVER.md` covers: building and running from a clean clone with only JDK 25
    installed; running a filter from the command line and from Java; how to run the ticket gate,
-   the spec gate and the benchmarks; what the Flottila adapter needs: the API of check 7, the host
+   the spec gate and the benchmarks; what the Rail8 (R8) adapter needs: the API of check 7, the host
    rule (a result is valid during its sink call, or while the host holds the document it views;
    otherwise `detach()`), owned against Workspace documents, `Limits.embedded()` and `Limits.cli()`
    with their values, the sandbox defaults, `needsWholeDocument` and host streaming, `byte[]`
@@ -122,7 +122,7 @@ is reported to the owner at that spec's end.
 
 ## Out of the gate
 
-The Flottila adapter, an XML front end, a native image of the command line, a Vector API scanner,
+The R8 adapter, an XML front end, a native image of the command line, a Vector API scanner,
 publishing to Maven Central; the bytecode backend and the backend oracle (milestone 2, ADR-0018);
 the chunked reader and skipped subtrees with tape tag 7 and touched fields (ADR-0015);
 `--stream-errors`; the options jq accepts outside `--help` (`-b`, `--run-tests`,

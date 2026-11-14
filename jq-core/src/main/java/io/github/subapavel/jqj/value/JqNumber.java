@@ -1,10 +1,12 @@
 package io.github.subapavel.jqj.value;
 
+import io.github.subapavel.jqj.internal.value.DoubleNumber;
+import io.github.subapavel.jqj.internal.value.LiteralNumber;
 import io.github.subapavel.jqj.internal.value.NumberView;
 import java.math.BigDecimal;
 
-/** A jq number (ADR-0016, ADR-0012). */
-public sealed interface JqNumber extends JqValue permits NumberView {
+/** A jq number (ADR-0016, ADR-0012, ADR-0003): a document's, a literal written in the filter, or a computed one. */
+public sealed interface JqNumber extends JqValue permits NumberView, LiteralNumber, DoubleNumber {
   /** The number as a double, by ADR-0012's 17-digit rule. */
   double doubleValue();
 

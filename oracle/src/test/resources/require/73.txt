@@ -1,0 +1,77 @@
+# The required cases of #73 "S2a.23 Sort and its kin" (ADR-0020, ADR-0029, ADR-0042): give this file to the ticket gate
+# as ORACLE_REQUIRE=<absolute path>, which becomes -Doracle.require=<file>. One id per line; # and blank lines skipped.
+
+# jqtest: every census case whose ticket column is S2a.23 (the ticket body's "census cases assigned to S2a.23"), the
+# four "Comparison too deep" regression cases among them.
+jq.test#09855b854ad2
+jq.test#228e918dff85
+jq.test#335f4d67b78d
+jq.test#3c7eaffb9aca
+jq.test#76320f9665f3
+jq.test#a7425029d548
+jq.test#a85f4e5c24fa
+jq.test#ac369a3e1d68
+jq.test#bf36da34ff87
+jq.test#f3285012fefb
+man.test#09855b854ad2
+man.test#2effe6815c5b
+man.test#4491211cc5bc
+man.test#8c4f56de95ee
+man.test#9185ea7d847a
+man.test#ae4a1bf1acc9
+man.test#b7d5c7e066e6
+man.test#e2285d04ed5a
+
+# jqtest: handed over from S2a.25, census cases whose ticket column is S2a.25 although their tickets column needs
+# nothing beyond S2a.23.
+jq.test#0dea8f727204
+jq.test#11af6b75d24b
+jq.test#1672b4ef1199
+jq.test#1ae9d9b70e85
+jq.test#c25920696c9d
+man.test#11af6b75d24b
+man.test#5bf81149996b
+
+# differential: every case of diff/sort.cases: stability with equal keys, mixed kinds, min and max of [], group_by on
+# objects, the errors, the depth limits and NaN's place.
+sort/kinds-mixed
+sort/kinds-mixed-built
+sort/unique-kinds
+sort/unique-built
+sort/min-max-equal-values
+sort/min-max-kinds
+sort/min-max-built
+sort/stable-equal-keys
+sort/stable-equal-keys-long
+sort/stable-equal-arrays
+sort/sort-by-several-keys
+sort/min-max-of-empty
+sort/empty-sorts
+sort/empty-built
+sort/group-by-object-keys
+sort/group-by-objects
+sort/group-by-an-object-input
+sort/by-forms-on-an-object-input
+sort/by-forms-on-null
+sort/errors-not-an-array
+sort/errors-built
+sort/impl-errors
+sort/impl-errors-input
+sort/impl-generator-argument
+sort/impl-argument-in-level
+sort/depth-10001-arrays-compare
+sort/depth-10002-arrays-too-deep
+sort/too-deep-after-an-unequal-pair
+sort/objects-too-deep
+sort/equality-too-deep
+sort/nan-order
+sort/nan-pairs-keep-their-order
+sort/nan-pairs-long
+
+# differential: DEVIATIONS.md "Order inside a comparison cycle", jqj's column filled in by this ticket, and the cycle
+# cases that match jq.
+sort/deviation-cycle-sort
+sort/deviation-cycle-unique
+sort/deviation-cycle-group-by
+sort/cycle-min-max
+sort/cycle-unique-one-run

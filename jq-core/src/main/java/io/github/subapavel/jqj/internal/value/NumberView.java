@@ -8,7 +8,7 @@ import java.math.BigDecimal;
  * A number of a document (ADR-0003, ADR-0012, ADR-0016): its document and tape index. Public only so the kind can
  * permit it.
  */
-public record NumberView(Document doc, int index) implements JqNumber {
+public record NumberView(Document doc, int index) implements JqNumber, Literal {
 
   /** jq's compact text (ADR-0012): a CANONICAL token's bytes, any other token's canonical form. */
   @Override
@@ -55,5 +55,28 @@ public record NumberView(Document doc, int index) implements JqNumber {
   public BigDecimal decimalValue() {
     long entry = doc.live()[index];
     return CanonicalForm.toDecimal(doc.bytes, Tape.off(entry), Tape.span(entry) & Tape.NUMBER_LENGTH);
+  }
+
+  /** The document's bytes; {@link #tokenOffset()} checks the document first. */
+  @Override
+  public byte[] tokenBytes() {
+    return doc.bytes;
+  }
+
+  @Override
+  public int tokenOffset() {
+    return Tape.off(doc.live()[index]);
+  }
+
+  @Override
+  public int tokenLength() {
+    return Tape.span(doc.live()[index]) & Tape.NUMBER_LENGTH;
+  }
+
+  /** ADR-0012: a CANONICAL token of at most 15 bytes. */
+  @Override
+  public boolean isShort() {
+    int span = Tape.span(doc.live()[index]);
+    return (span & Tape.CANONICAL) != 0 && (span & Tape.NUMBER_LENGTH) <= 15;
   }
 }

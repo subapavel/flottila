@@ -28,16 +28,36 @@ class CompileTest {
   void stubConstructThrowsCompileException() {
     JqEngine engine = JqEngine.builder().build();
     // jq-ref 1.8.2, observed 2026-11-11, each with printf '[1]' | jq-ref -c <text>:
-    //   1 -> 1 (rc 0); .[0] -> 1 (rc 0); .. -> [1] 1 (rc 0);
+    //   .[0] -> 1 (rc 0); .. -> [1] 1 (rc 0);
     //   '' and '   ' -> "Top-level program not given (try \".\")" (rc 3);
     //   FF or VT before the dot -> "syntax error, unexpected INVALID_CHARACTER" (rc 3): the filter's whitespace is
     //   SP, TAB, CR and LF only. Neither #33 nor #34 builds them, so each ends in the Stub. The .a entry ended with
-    //   its Stub in #34 (design C4) and moved to .[0], which stays a Stub until spec 2.
-    for (String text : List.of("1", ".[0]", "..", "", "   ", "\f.", "\u000b.")) {
+    //   its Stub in #34 (design C4) and moved to .[0], which stays a Stub until spec 2. #61 built the literal 1, so its
+    //   entry moved to 1, 2 (observed 2026-11-12: 1 2, rc 0), whose comma stays a Stub until #63.
+    // #62 built the syntax errors and the not-given message (ADR-0032), so '', '   ', FF and VT left the Stub list and
+    // are asserted as jq's errors below (diff/syntax.rec program-empty, program-only-spaces, form-feed-before-dot and
+    // vertical-tab-before-dot); none was dropped. #63 built 1, 2 and .[0] (NavigationBudgetTest and diff/comma.rec,
+    // index.rec run them), so their entries ended with their Stubs; .. and ..? stay Stubs until spec 2b (ResolverTest's
+    // GRAMMAR list: jq-ref runs both).
+    for (String text : List.of("..", "..?")) {
       assertThatExceptionOfType(JqCompileException.class)
           .as("compile of %s", quoted(text))
           .isThrownBy(() -> engine.compile(text))
           .withMessageStartingWith(MARK);
+    }
+    for (String text : List.of("", "   ")) {
+      assertThatExceptionOfType(JqCompileException.class)
+          .as("compile of %s", quoted(text))
+          .isThrownBy(() -> engine.compile(text))
+          .withMessage("jq: error: Top-level program not given (try \".\")\njq: 1 compile error");
+    }
+    for (String text : List.of("\f.", "\u000b.")) {
+      JqCompileException e =
+          assertThatExceptionOfType(JqCompileException.class).as("compile of %s", quoted(text)).isThrownBy(() -> engine.compile(text)).actual();
+      assertThat(e.blocks()).as("blocks of %s", quoted(text)).hasSize(1);
+      assertThat(e.blocks().getFirst()).as("block of %s", quoted(text)).startsWith("jq: error: syntax error, unexpected INVALID_CHARACTER");
+      assertThat(e.line()).as("line of %s", quoted(text)).isEqualTo(1);
+      assertThat(e.column()).as("column of %s", quoted(text)).isEqualTo(1);
     }
 
     // Witness: the built construct compiles and runs, so the Stubs above are not a Stub for every text.

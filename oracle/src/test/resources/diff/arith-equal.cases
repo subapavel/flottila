@@ -1,0 +1,104 @@
+# Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": jq's jv_equal, which #65 owns
+# (design approval K1) and reaches through array difference: [x] - [y] keeps x unless x equals y. The number pairs
+# follow the one three-way compare #65 builds for #66 (ADR-0037 decision O5, ADR-0012): -0 equals 0, 1 equals 1.0, two
+# literals past 17 digits compare as exact decimals, a literal and a computed number as doubles, NaN equals nothing,
+# two Infinity literals of one sign are equal (ADR-0028), while 1e1000 and 1e1001 are finite literals and differ. Read
+# objects with a repeated key compare by its last value. == itself is #66's. A filter that ignores its input runs on
+# stdin null. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# arith-equal.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+case arith-equal/zero-and-computed-negative-zero
+arg -c
+filter [[0] - [0*-1], [0*-1] - [0], [0E-7] - [0]]
+stdin null\n
+end
+
+case arith-equal/input-negative-zero-and-zero
+arg -c
+filter [.[0]] - [.[1]]
+stdin [-0,0]\n
+end
+
+case arith-equal/one-and-one-point-zero
+arg -c
+filter [1] - [1.0]
+stdin null\n
+end
+
+case arith-equal/input-one-and-one-point-zero
+arg -c
+filter [.[0]] - [.[1]]
+stdin [1,1.0]\n
+end
+
+case arith-equal/big-literals-past-17-digits
+arg -c
+filter [[100000000000000000001] - [100000000000000000002], [100000000000000000001] - [100000000000000000001.0], [1.000000000000000000001] - [1]]
+stdin null\n
+end
+
+case arith-equal/input-big-literals-past-17-digits
+arg -c
+filter [.[0]] - [.[1]]
+stdin [100000000000000000001,100000000000000000002]\n
+end
+
+case arith-equal/input-big-literal-and-computed
+arg -c
+filter [.[0]] - [.[1] + 0]
+stdin [100000000000000000001,100000000000000000002]\n
+end
+
+case arith-equal/above-two-pow-53-literal-and-computed
+arg -c
+filter [[9007199254740993] - [9007199254740992], [9007199254740993] - [9007199254740992 + 0]]
+stdin null\n
+end
+
+case arith-equal/nan-equals-nothing
+arg -c
+filter [1e1000 - 1e1000] - [1e1000 - 1e1000]
+stdin null\n
+end
+
+case arith-equal/infinity-literals
+arg -c
+filter [[1e1000000000] - [2e1000000000], [-1e1000000000] - [1e1000000000], [1e1000000000] - [1e1000 * 1]]
+stdin null\n
+end
+
+case arith-equal/finite-literals-past-double
+arg -c
+filter [[1e1000] - [1e1000], [1e1000] - [1e1001], [1E+400] - [1e1000], [1e1000 * 1] - [1e999 * 1]]
+stdin null\n
+end
+
+case arith-equal/kinds-differ
+arg -c
+filter [[1] - ["1"], [null] - [false], [[]] - [{}]]
+stdin null\n
+end
+
+case arith-equal/containers
+arg -c
+filter [[{"a":1,"b":2}] - [{"b":2,"a":1}], [{"a":1}] - [{"a":1,"b":null}], [[1,2]] - [[1,2,3]]]
+stdin null\n
+end
+
+case arith-equal/input-escaped-and-plain-string
+arg -c
+filter [.[0]] - [.[1]]
+stdin ["\\u00e9","é"]\n
+end
+
+case arith-equal/read-repeated-key-last-value
+arg -c
+filter [.] - [{"a":2}] | [.[] | 1]
+stdin {"a":1,"a":2}\n
+end
+
+case arith-equal/read-repeated-key-first-value
+arg -c
+filter [.] - [{"a":1}] | [.[] | 1]
+stdin {"a":1,"a":2}\n
+end

@@ -3,7 +3,8 @@
 What passes, per oracle and per module, in the format of ADR-0020's Ratchet section as amended by
 ADR-0023. `scripts/ratchet.java` reads and writes these files. Regenerated and committed only by the
 verifier, on an integration branch: the oracle pass lists after every merge, everything in the spec
-gate (`docs/WORKFLOW.md` §6). Never edited by hand. A drop fails the gate.
+gate (`docs/WORKFLOW.md` §6). Never edited by hand. A drop fails the gate; the one exception is a
+listed drop of `compile.txt` ids that the owner approved in a finding (`drop`, below).
 
 ## Files
 
@@ -19,6 +20,7 @@ All files are line-based, UTF-8, LF. Columns are separated by one tab.
 | `coverage.tsv` | module | `module`, `lines %`, `branches %` |
 | `mutation.tsv` | class-C module | `module`, `surviving mutants`, `generated mutants` |
 | `bench.tsv` | benchmark scenario and machine | `scenario`, `machine`, `score`, `unit`, `tolerance%` |
+| `drops/F-<n>.txt` | `compile.txt` id that an owner-approved drop removes | `id`, after one header line `# finding F-<n>` |
 
 - **Oracle pass lists** have no column-name line. Their entries are sorted. A pass list may start
   with header lines: `# source <path> sha256 <hex>` for each copied source file and
@@ -35,15 +37,27 @@ benchmark baseline moves only on a gain beyond its tolerance; lowering one takes
 
 ## Commands
 
-- `java scripts/ratchet.java check` (ticket gate): exit 1 if a listed case fails, is skipped or
-  is missing, or a percentage is below its line or its floor. A module the gate did not build
-  prints `NOT_RUN`.
+- `java scripts/ratchet.java check [--require-compile]` (ticket gate, CI build): exit 1 if a
+  listed case fails, is skipped or is missing, or a percentage is below its line or its floor. A
+  module the gate did not build prints `NOT_RUN`. The ticket gate passes `--require-compile`: its
+  step 1 runs `-Pcompile-oracle`, so a listed `compile.txt` id without a report row fails (F-46,
+  #89). CI's Ratchet step builds without that profile and does not pass it, so a missing compile
+  report prints `NOT_RUN compile`.
 - `java scripts/ratchet.java regen --oracles` (after every merge): the oracle pass lists only.
 - `java scripts/ratchet.java regen --all` (spec gate): requires every report, refuses any drop,
   writes the files, prints the diff.
 - `java scripts/ratchet.java floor-mutation <module>...`: checks only the PIT score of the modules
   against their floor. PIT left the ticket gate by F-27 and runs in the spec gate, whose
   `regen --all` checks the same floor.
+- `java scripts/ratchet.java drop compile ratchet/drops/F-<n>.txt` (verifier, integration branch):
+  removes the `compile.txt` entries of the listed ids and leaves every other line. It needs an owner
+  decision recorded in the finding `docs/findings/F-<n>.md` that the drop file's header
+  `# finding F-<n>` names; without that file it refuses. The drop file is generated from oracle
+  reports, never typed by hand. It refuses the whole drop, writing nothing, if any listed id is not
+  in `compile.txt` or if any of its entries' rows in the current compile report is not `FAIL` with
+  a `stub:` detail (a row missing from the report counts as not). The report comes from a verify
+  that does not stop on the oracle's own failures. It prints each dropped entry and the count. A
+  dropped case comes back through the normal `regen` once it passes.
 
 ## Inputs of `scripts/ratchet.java`
 

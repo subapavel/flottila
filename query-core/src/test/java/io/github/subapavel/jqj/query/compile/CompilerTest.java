@@ -6,16 +6,19 @@ import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
+import io.github.subapavel.jqj.query.ir.Node;
 import io.github.subapavel.jqj.query.ir.Operation;
 import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.run.FilterException;
+import io.github.subapavel.jqj.query.run.Fn0;
+import io.github.subapavel.jqj.query.run.RunState;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The compiled identity (#33 design, section 1): {@code Compiler.compile(Node)} gives an {@code Executable} whose push
+ * The compiled identity (#33 design, section 1): {@code compile(Node)} gives an {@code Executable} whose push
  * form emits its input (ADR-0008). The inputs are plain objects, because this module never looks inside a value
  * (founding architecture section 14); identity is checked by reference.
  */
@@ -23,7 +26,7 @@ class CompilerTest {
 
   /** The IR of the filter text {@code .}: one {@code Identity} over the characters [0, 1). */
   private static Executable identity() {
-    return Compiler.compile(new Identity(new Source(0, 1)));
+    return compile(new Identity(new Source(0, 1)));
   }
 
   @Test
@@ -35,6 +38,7 @@ class CompilerTest {
 
     boolean ranOut =
         executable.run(
+            new RunState(),
             first,
             v -> {
               emitted.add(v);
@@ -49,6 +53,7 @@ class CompilerTest {
     emitted.clear();
     boolean ranOutAgain =
         executable.run(
+            new RunState(),
             second,
             v -> {
               emitted.add(v);
@@ -67,6 +72,7 @@ class CompilerTest {
     boolean ranOut =
         identity()
             .run(
+                new RunState(),
                 input,
                 v -> {
                   emitted.add(v);
@@ -78,7 +84,12 @@ class CompilerTest {
   }
 
   // #34 design, sections 1 to 3: Pipe(Source, left, right), Intrinsic(Source, Operation) and Operation(name, Fn0);
-  // PipeOp.run(in, out) = left.run(in, v -> right.run(v, out)); IntrinsicOp.run = out.emit(fn.apply(in)).
+  // PipeOp.run(state, in, out) = left.run(state, in, v -> right.run(state, v, out)); IntrinsicOp.run =
+  // out.emit(fn.apply(state, in)), which ignores the run state for these functions (ADR-0030).
+
+  private static Executable compile(Node root) {
+    return Compiler.compile(root, CompileMode.OPTIMISED);
+  }
 
   private static final Source AT = new Source(0, 1);
 
@@ -88,16 +99,19 @@ class CompilerTest {
         AT,
         new Operation(
             name,
-            in -> {
-              assertThat(in).as("the input %s receives", name).isSameAs(from);
-              return to;
-            }));
+            (Fn0)
+                (state, in) -> {
+                  assertThat(in).as("the input %s receives", name).isSameAs(from);
+                  return to;
+                }),
+        List.of());
   }
 
   private static List<Object> results(Executable executable, Object in) {
     List<Object> emitted = new ArrayList<>();
     boolean ranOut =
         executable.run(
+            new RunState(),
             in,
             v -> {
               emitted.add(v);
@@ -111,7 +125,7 @@ class CompilerTest {
   void intrinsicEmitsItsFunctionsResult() {
     Object in = new Object();
     Object out = new Object();
-    Executable f = Compiler.compile(step("f", in, out));
+    Executable f = compile(step("f", in, out));
 
     assertThat(results(f, in)).as("results of f, which maps in to out").singleElement().isSameAs(out);
 
@@ -119,6 +133,7 @@ class CompilerTest {
     List<Object> emitted = new ArrayList<>();
     boolean ranOut =
         f.run(
+            new RunState(),
             in,
             v -> {
               emitted.add(v);
@@ -135,15 +150,15 @@ class CompilerTest {
     Object out = new Object();
 
     // f then g: g receives f's result (step asserts it), and the pipe emits g's.
-    Executable fThenG = Compiler.compile(new Pipe(AT, step("f", in, middle), step("g", middle, out)));
+    Executable fThenG = compile(new Pipe(AT, step("f", in, middle), step("g", middle, out)));
     assertThat(results(fThenG, in)).as("results of f | g").singleElement().isSameAs(out);
 
     // The identity on either side passes its input through.
-    assertThat(results(Compiler.compile(new Pipe(AT, new Identity(AT), step("f", in, out))), in))
+    assertThat(results(compile(new Pipe(AT, new Identity(AT), step("f", in, out))), in))
         .as("results of . | f")
         .singleElement()
         .isSameAs(out);
-    assertThat(results(Compiler.compile(new Pipe(AT, step("f", in, out), new Identity(AT))), in))
+    assertThat(results(compile(new Pipe(AT, step("f", in, out), new Identity(AT))), in))
         .as("results of f | .")
         .singleElement()
         .isSameAs(out);
@@ -152,8 +167,8 @@ class CompilerTest {
     Object last = new Object();
     Pipe left = new Pipe(AT, new Pipe(AT, step("f", in, middle), step("g", middle, out)), step("h", out, last));
     Pipe right = new Pipe(AT, step("f", in, middle), new Pipe(AT, step("g", middle, out), step("h", out, last)));
-    assertThat(results(Compiler.compile(left), in)).as("results of (f | g) | h").singleElement().isSameAs(last);
-    assertThat(results(Compiler.compile(right), in)).as("results of f | (g | h)").singleElement().isSameAs(last);
+    assertThat(results(compile(left), in)).as("results of (f | g) | h").singleElement().isSameAs(last);
+    assertThat(results(compile(right), in)).as("results of f | (g | h)").singleElement().isSameAs(last);
   }
 
   @Test
@@ -164,8 +179,9 @@ class CompilerTest {
     for (Pipe pipe : List.of(new Pipe(AT, new Identity(AT), step("f", in, out)), new Pipe(AT, new Identity(AT), new Pipe(AT, new Identity(AT), step("f", in, out))))) {
       List<Object> emitted = new ArrayList<>();
       boolean ranOut =
-          Compiler.compile(pipe)
+          compile(pipe)
               .run(
+                  new RunState(),
                   in,
                   v -> {
                     emitted.add(v);
@@ -187,9 +203,11 @@ class CompilerTest {
             AT,
             new Operation(
                 "fails",
-                v -> {
-                  throw thrown;
-                }));
+                (Fn0)
+                    (state, v) -> {
+                      throw thrown;
+                    }),
+            List.of());
     assertThat(thrown.value()).as("the error value").isSameAs(errorValue);
     assertThat(thrown.getStackTrace()).as("the stack trace of a FilterException").isEmpty();
 
@@ -198,18 +216,21 @@ class CompilerTest {
             AT,
             new Operation(
                 "never",
-                v -> {
-                  throw new AssertionError("the right side ran after the left side failed");
-                }));
+                (Fn0)
+                    (state, v) -> {
+                      throw new AssertionError("the right side ran after the left side failed");
+                    }),
+            List.of());
     Object out = new Object();
     for (Pipe pipe : List.of(new Pipe(AT, fails, never), new Pipe(AT, step("f", in, out), new Pipe(AT, new Identity(AT), fails)))) {
       List<Object> emitted = new ArrayList<>();
-      Executable executable = Compiler.compile(pipe);
+      Executable executable = compile(pipe);
       assertThatExceptionOfType(FilterException.class)
           .as("run of %s", pipe)
           .isThrownBy(
               () ->
                   executable.run(
+                      new RunState(),
                       in,
                       v -> {
                         emitted.add(v);
@@ -224,17 +245,17 @@ class CompilerTest {
   void verifierRejectsANodeUsedTwice() {
     // ADR-0005: "The IR must be a tree with no node object used twice."
     Identity dot = new Identity(AT);
-    assertThatIllegalStateException().as("compile of Pipe(dot, dot)").isThrownBy(() -> Compiler.compile(new Pipe(AT, dot, dot)));
+    assertThatIllegalStateException().as("compile of Pipe(dot, dot)").isThrownBy(() -> compile(new Pipe(AT, dot, dot)));
 
     Intrinsic f = step("f", new Object(), new Object());
     assertThatIllegalStateException()
         .as("compile of Pipe(f, Pipe(., f))")
-        .isThrownBy(() -> Compiler.compile(new Pipe(AT, f, new Pipe(AT, new Identity(AT), f))));
+        .isThrownBy(() -> compile(new Pipe(AT, f, new Pipe(AT, new Identity(AT), f))));
 
     Pipe inner = new Pipe(AT, new Identity(AT), new Identity(AT));
     assertThatIllegalStateException()
         .as("compile of Pipe(inner, Pipe(., inner))")
-        .isThrownBy(() -> Compiler.compile(new Pipe(AT, inner, new Pipe(AT, new Identity(AT), inner))));
+        .isThrownBy(() -> compile(new Pipe(AT, inner, new Pipe(AT, new Identity(AT), inner))));
   }
 
   @Test
@@ -244,14 +265,14 @@ class CompilerTest {
     Identity a = new Identity(AT);
     Identity b = new Identity(AT);
     assertThat(a).as("witness: the two nodes are equal records").isEqualTo(b).isNotSameAs(b);
-    assertThat(results(Compiler.compile(new Pipe(AT, a, new Pipe(AT, b, new Identity(AT)))), in))
+    assertThat(results(compile(new Pipe(AT, a, new Pipe(AT, b, new Identity(AT)))), in))
         .as("results of . | . | .")
         .singleElement()
         .isSameAs(in);
 
     // The same for two equal Intrinsics sharing one Operation.
-    Operation op = new Operation("same", v -> v);
-    assertThat(results(Compiler.compile(new Pipe(AT, new Intrinsic(AT, op), new Intrinsic(AT, op))), in))
+    Operation op = new Operation("same", (Fn0) (state, v) -> v);
+    assertThat(results(compile(new Pipe(AT, new Intrinsic(AT, op, List.of()), new Intrinsic(AT, op, List.of()))), in))
         .as("results of same | same")
         .singleElement()
         .isSameAs(in);

@@ -168,14 +168,42 @@ class CommandLineTest {
 
   @Test
   void aDashWithoutALetterIsTheFilter() {
-    // observed 2026-11-11: jq-ref -_ .a in.json -> rc 3, "_/0 is not defined"; jq-ref - . and jq-ref -é .a in.json
-    // -> rc 3, a syntax error; printf '{"a":1}\n' | jq-ref -c -1 -> -1. Each is the filter, which jqj does not compile
-    // yet: exit code 3, not 2.
-    for (List<String> args :
-        List.of(List.of("-_", "in.json"), List.of("-", "."), List.of("-é", "in.json"), List.of("-c", "-1"))) {
+    // observed 2026-11-11: jq-ref -_ .a in.json -> rc 3, "_/0 is not defined"; printf '{"a":1}\n' | jq-ref -c -1 -> -1.
+    // Each is the filter. Since #70 jqj binds the call (ADR-0040), and jq's message, a column-2 caret under the
+    // name after the minus, shows -_ was read as the filter. Observed 2026-11-13: jq-ref -_ in.json on {"a":1} -> rc 3,
+    // stdout empty and exactly this stderr.
+    List<String> call = List.of("-_", "in.json");
+    Outcome undefined = run(call, "{\"a\":1}\n");
+    assertThat(undefined.rc()).as("exit code of %s", call).isEqualTo(3);
+    assertThat(undefined.out()).as("stdout of %s", call).isEmpty();
+    assertThat(undefined.err())
+        .as("stderr of %s", call)
+        .isEqualTo("jq: error: _/0 is not defined at <top-level>, line 1, column 2:\n    -_\n     ^\njq: 1 compile error\n");
+    // #65 builds the negation. Observed 2026-11-13: printf '{"a":1}\n' | jq-ref -c -1 -> "-1" and an LF, rc 0.
+    List<String> negation = List.of("-c", "-1");
+    Outcome n = run(negation, "{\"a\":1}\n");
+    assertThat(n.rc()).as("exit code of %s", negation).isZero();
+    assertThat(n.out()).as("stdout of %s", negation).isEqualTo("-1\n");
+    assertThat(n.err()).as("stderr of %s", negation).isEmpty();
+    // observed 2026-11-12 (#62): jq-ref - . -> rc 3, "jq: error: syntax error, unexpected end of file at <top-level>,
+    // line 1, column 1:"; jq-ref -é in.json -> rc 3, "jq: error: syntax error, unexpected INVALID_CHARACTER at
+    // <top-level>, line 1, column 2:"; each then "jq: 1 compile error". The filter's syntax error, not "Unknown
+    // option" (rc 2): the dash was taken as the filter. Only the "unexpected" part is jq's text (DEVIATIONS
+    // "Syntax-error text"); the position, source line and caret are jq's block.
+    String[][] syntaxErrors = {
+      {"-", ".", "end of file", "line 1, column 1:\n    -\n    ^\n"},
+      {"-é", "in.json", "INVALID_CHARACTER", "line 1, column 2:\n    -é\n     ^\n"},
+    };
+    for (String[] c : syntaxErrors) {
+      List<String> args = List.of(c[0], c[1]);
       Outcome o = run(args, "{\"a\":1}\n");
       assertThat(o.rc()).as("exit code of %s", args).isEqualTo(3);
-      assertThat(o.err()).as("stderr of %s", args).startsWith(MARK);
+      assertThat(o.out()).as("stdout of %s", args).isEmpty();
+      assertThat(o.err())
+          .as("stderr of %s", args)
+          .startsWith("jq: error: syntax error, unexpected " + c[2])
+          .contains(" at <top-level>, " + c[3])
+          .endsWith("jq: 1 compile error\n");
     }
   }
 

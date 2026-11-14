@@ -45,6 +45,7 @@ Rules marked _(Phase 0)_ wait for the decision named and may change with it.
   - no boxing, no streams, no lambdas capturing per-result state, no `String` built from input
     bytes unless the filter needs text; JMH decides, not taste;
   - no collection between two pipeline stages; an array exists only where the filter asks for one;
+    a native's scratch of tape positions within one call, and the plan of a repeated-key object that `.[]` holds while it emits, are no such collection: they hold positions, never values (ADR-0044);
   - every loop back-edge checks the budget. This is not optional;
   - a value is updated in place only under the ownership rule _(Phase 0: ticket 8)_; when in
     doubt, copy;

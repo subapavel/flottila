@@ -43,6 +43,20 @@
           </execution>
         </executions>
       </plugin>
+      <!-- Every PIT minion start runs its test classes once before any mutant; these two still run in surefire
+           (F-84). -->
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <configuration>
+          <excludedTestClasses>
+            <!-- 116.4 s in surefire; first killer of 8 of 3 259 mutants (F-84). -->
+            <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
+            <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
+            <param>io.github.subapavel.jqj.OperatorChainTest</param>
+          </excludedTestClasses>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
 </project>

@@ -73,6 +73,70 @@ report compile-copy-only "x${T}FAIL${T}${T}d1\n"
 check "compile mode lines checked per mode" "$(run check)" 1
 has "failing mode named" 'copy-only'
 
+# --- the compile-mode oracle (ADR-0020 amendment for #60): a build without -Pcompile-oracle writes no report ---
+fresh
+printf 'x\td1\tconservative\n' > "$root/ratchet/oracle/compile.txt"
+check "check without a compile report passes" "$(run check)" 0
+has "check says the compile oracle did not run" 'NOT_RUN compile: no report'
+printf 'a#1\tinterp\n' > "$root/ratchet/oracle/jqtest.txt"
+check "another oracle without its report still fails" "$(run check)" 1
+has "its listed id is missing" 'jqtest: a#1 interp is missing from the report'
+# the ticket gate runs the profile and requires the compile report (F-46, #89)
+fresh
+printf 'x\td1\tconservative\n' > "$root/ratchet/oracle/compile.txt"
+check "check --require-compile without a compile report fails" "$(run check --require-compile)" 1
+has "its listed compile id is missing" 'compile: x conservative is missing from the report'
+report compile-conservative "x${T}PASS${T}${T}d1\n"
+check "check --require-compile with the report passes" "$(run check --require-compile)" 0
+check "check with an unknown option is usage" "$(run check --frobnicate)" 2
+fresh
+printf 'x\td1\tconservative\n' > "$root/ratchet/oracle/compile.txt"
+report compile-conservative "x${T}PASS${T}${T}d1\ny${T}FAIL${T}disagree: stdout differs at byte 0${T}d2\n"
+check "regen refuses a Disagreement (F-29)" "$(run regen --oracles)" 1
+has "the Disagreement named" 'compile: y conservative disagrees'
+check "refused regen leaves compile.txt" "$(printf 'x\td1\tconservative\n' | cmp - "$root/ratchet/oracle/compile.txt"; echo $?)" 0
+report compile-conservative "z${T}PASS${T}${T}d3\n"
+check "regen fails a listed id missing from an existing compile report" "$(run regen --oracles)" 1
+has "the missing id named" 'compile: x conservative is missing from the report'
+fresh
+# w is a row without a detail column: not a Disagreement, and not a pass
+report compile-conservative "w${T}FAIL\nx${T}PASS${T}${T}d1\ny${T}FAIL${T}left out: the conservative run ended with BUDGET STEPS${T}d2\njq.test#abc${T}FAIL${T}stub: the optimised run reached a Stub: s${T}abc\n"
+check "regen writes compile.txt" "$(run regen --oracles)" 0
+check "compile.txt holds the conservative line of every passing case" "$(printf 'x\td1\tconservative\n' | cmp - "$root/ratchet/oracle/compile.txt"; echo $?)" 0
+
+# --- drop compile <file> (F-46, #88): only listed ids leave, and only as FAIL stub: rows; else nothing is written ---
+fresh
+mkdir -p "$root/docs/findings"; echo finding > "$root/docs/findings/F-9.md"
+listed=$'# jq-ref 1.8.2 sha256 00\na\td1\tconservative\nb\td2\tconservative\nc\td3\tconservative\nd\td4\tconservative\n'
+listed+=$'e\td5\tconservative\nf\td6\tconservative\ng\td7\tconservative\nh\td8\tconservative\n'
+printf '%s' "$listed" > "$root/ratchet/oracle/compile.txt"
+report compile-conservative "a${T}FAIL${T}stub: the optimised run reached a Stub: s${T}d1\nb${T}FAIL${T}stub: the conservative run reached a Stub: s${T}d2\nc${T}FAIL${T}stub: s${T}d3\nd${T}PASS${T}${T}d4\ne${T}FAIL${T}left out: x${T}d5\nf${T}CRASH${T}stub: s${T}d6\ng${T}FAIL\n"
+unchanged() { check "$1 leaves compile.txt" "$(printf '%s' "$listed" | cmp - "$root/ratchet/oracle/compile.txt"; echo $?)" 0; }
+# refuse <name> <expected message> <drop file lines…>: a refused drop exits 1, names why, and writes nothing
+refuse() { local name=$1 why=$2; shift 2; printf '%s\n' "$@" > "$root/drop.txt"
+  check "drop refuses $name" "$(run drop compile drop.txt)" 1; has "$name named" "$why"; has "$name: nothing written" 'drop refused: nothing written'; unchanged "$name"; }
+refuse "an id not in compile.txt" 'FAIL compile: x is not in compile.txt' '# finding F-9 the owner allowed it' a x
+refuse "a PASS row" 'FAIL compile: d conservative is PASS, not FAIL stub:' '# finding F-9' a d
+refuse "a FAIL row that is no Stub" 'FAIL compile: e conservative is FAIL, not FAIL stub:' '# finding F-9' a e
+refuse "a stub: detail that is no FAIL" 'FAIL compile: f conservative is CRASH, not FAIL stub:' '# finding F-9' a f
+refuse "a FAIL row without a detail" 'FAIL compile: g conservative is FAIL, not FAIL stub:' '# finding F-9' a g
+refuse "an id missing from the report" 'FAIL compile: h conservative is missing from the report' '# finding F-9' a h
+refuse "a drop file without a finding header" 'the first line of drop.txt must be' a b
+refuse "a header that names no finding file" 'docs/findings/F-10.md does not exist' '# finding F-10' a
+: > "$root/drop.txt"
+check "drop refuses an empty drop file" "$(run drop compile drop.txt)" 1
+has "empty drop file named" 'the first line of drop.txt must be'
+unchanged "an empty drop file"
+printf '# finding F-9: the owner allowed it\na\nb\n' > "$root/drop.txt"
+check "drop of listed FAIL stub: ids" "$(run drop compile drop.txt)" 0
+has "drop prints a dropped id" 'dropped compile: a conservative'
+has "drop prints the other dropped id" 'dropped compile: b conservative'
+has "drop prints the count and the finding" 'drop compile: 2 dropped (F-9)'
+check "only the listed ids leave; an unlisted FAIL stub: id and the headers stay" \
+  "$(printf '# jq-ref 1.8.2 sha256 00\nc\td3\tconservative\nd\td4\tconservative\ne\td5\tconservative\nf\td6\tconservative\ng\td7\tconservative\nh\td8\tconservative\n' | cmp - "$root/ratchet/oracle/compile.txt"; echo $?)" 0
+check "drop names only compile" "$(run drop jqtest drop.txt)" 2
+check "drop needs a file" "$(run drop compile)" 2
+
 # --- coverage and floors ---
 fresh
 printf 'module\tlines %%\tbranches %%\nquery-core\t92\t85\n' > "$root/ratchet/coverage.tsv"
@@ -148,6 +212,22 @@ check "regen --all writes the combined count" "$(printf 'module\tsurviving mutan
 rm "$root/query-core/target/pit-reports/mutations.xml"
 check "oracle's report alone is no report of the module" "$(run floor-mutation query-core)" 0
 has "module without its own report is NOT_RUN" 'NOT_RUN mutation query-core'
+
+# --- mutation: jq-cli's crossModule report joins the same way as oracle's (ADR-0014, #47) ---
+fresh
+mkdir -p "$root/query-core/target/pit-reports" "$root/oracle/target/pit-reports" "$root/jq-cli/target/pit-reports"
+# line 7 is killed by jq-cli only, line 8 by oracle only, line 9 by neither, line 10 by its own report
+{ mut SURVIVED; mut SURVIVED line=8; mut SURVIVED line=9; mut KILLED line=10; } | xml query-core
+{ mut KILLED line=8; mut SURVIVED line=9; } | xml oracle
+{ mut KILLED; mut NO_COVERAGE line=9; mut KILLED class=p.Cli; } | xml jq-cli
+run floor-mutation query-core > /dev/null
+has "a mutant killed by jq-cli's or oracle's report is killed" 'query-core: 75 % (1 surviving of 4)'
+rm "$root/oracle/target/pit-reports/mutations.xml"
+run floor-mutation query-core > /dev/null
+has "jq-cli's report counts without oracle's" 'query-core: 50 % (2 surviving of 4)'
+rm "$root/query-core/target/pit-reports/mutations.xml"
+run floor-mutation query-core > /dev/null
+has "jq-cli's report alone is no report of the module" 'NOT_RUN mutation query-core'
 
 # --- bench: empty tolerance skipped ---
 fresh

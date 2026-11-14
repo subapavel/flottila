@@ -4,9 +4,9 @@
 #
 #   scripts/oracle-record.sh <family.cases>...          writes <family>.rec beside each case file
 #   scripts/oracle-record.sh --verify <family.rec>...   re-records in memory; exit 1 on any byte difference
-#   scripts/oracle-record.sh --generate values-v1 <from> <to>
-#                                                       writes oracle/src/test/resources/diff/gen/values-v1.cases
-#                                                       and .rec for the seeds [from, to) (ADR-0025)
+#   scripts/oracle-record.sh --generate values-v1|core-v1 <from> <to>
+#                                                       writes oracle/src/test/resources/diff/gen/<generator>.cases
+#                                                       and .rec for the seeds [from, to) (ADR-0025, #58)
 #
 # Each case runs twice in a fresh directory with its files and an environment of exactly HOME, TZ=UTC, LC_ALL=C
 # and its env, under a 10 s timeout; two runs that differ reject the case. A generated seed with rc 3 or a timeout
@@ -21,7 +21,7 @@ trap 'rm -rf "$classes"' EXIT
 javac -Xlint:all -Werror -d "$classes" \
   "$src"/diff/CaseFormat.java "$src"/diff/CaseDirectory.java "$src"/diff/DiffCase.java \
   "$src"/diff/Outcome.java "$src"/diff/Recording.java "$src"/gen/SplitMix64.java "$src"/gen/ValuesV1.java \
-  "$src"/record/Recorder.java 2> "$classes/javac.log" || {
+  "$src"/gen/CoreV1.java "$src"/record/Recorder.java 2> "$classes/javac.log" || {
   cat "$classes/javac.log" >&2
   exit 2
 }

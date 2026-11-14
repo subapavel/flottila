@@ -2,7 +2,7 @@
 
 Durable facts only (AGENTS.md, Memory). No ticket state. Under 120 lines.
 
-## Carried over from flottila-mapping (2026-11-10; observed there, re-verify on first use here)
+## Carried over from r8-mapping (2026-11-10; observed there, re-verify on first use here)
 
 - The main worktree holds the integration branch checked out: merge in a `--detach` worktree on
   `origin/spec/...` and push `HEAD:spec/...`; never check out or move the local branch.
@@ -15,3 +15,5 @@ Durable facts only (AGENTS.md, Memory). No ticket state. Under 120 lines.
 - (#36) A pass list can grow beyond the verifier's DifferentialOracleTest count: regen adds survey passes (e.g. new `gen/values-v1` seeds) that were neither ratcheted nor required.
 - (#35) A bare `cd` does not persist between calls: use `mvnw -f <worktree>/pom.xml` and `env -C <worktree> java scripts/ratchet.java …`.
 - (#39) The default reactor leaves out `bench/jmh`; a bench ticket's tests run only under `-Pbench` (the gate). `regen --all` (bench.tsv) needs every report and belongs to the spec gate, not the merger.
+- (#60) Without the Write tool, commit with `git commit -m <subject> -m $'Ticket: …\nCo-authored-by: …\nSigned-off-by: …'`.
+- (#60) Run `scripts/check-trailers.sh <range>..HEAD` from inside the merge worktree (`bash -c 'cd <wt> && …'`), else HEAD is the main checkout's.

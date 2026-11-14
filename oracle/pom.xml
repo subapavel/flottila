@@ -11,6 +11,12 @@
   <artifactId>oracle</artifactId>
   <name>oracle</name>
 
+  <!-- The compile-mode oracle's tests (JUnit tag compile-mode) run only under -Pcompile-oracle: after every merge, in
+       the spec gate, and in the ticket gate since #89 (F-29, F-46, ADR-0020 amendment for #60). -->
+  <properties>
+    <oracle.excludedGroups>compile-mode</oracle.excludedGroups>
+  </properties>
+
   <!-- Tests only: the oracle runs the code of every module (ADR-0014). -->
   <dependencies>
     <dependency>
@@ -44,6 +50,7 @@
       <plugin>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
+          <excludedGroups>${oracle.excludedGroups}</excludedGroups>
           <systemPropertyVariables>
             <oracle.reports>${project.build.directory}/oracle-reports</oracle.reports>
           </systemPropertyVariables>
@@ -67,20 +74,56 @@
       <plugin>
         <groupId>org.pitest</groupId>
         <artifactId>pitest-maven</artifactId>
+        <!-- OWN_SURVIVORS (F-84 round 2): the run mutates only the mutants whose status in query-core's or jq-core's
+             own report is not in ratchet.java's killed set (KILLED, TIMED_OUT, MEMORY_ERROR), the only ones whose
+             kill here can change ratchet.java's union. A missing own report fails the run, so the class-C modules'
+             PIT goes first in the same reactor (gate-spec.sh, nightly.yml). -->
+        <dependencies>
+          <dependency>
+            <groupId>io.github.subapavel.jqj</groupId>
+            <artifactId>pit-filter</artifactId>
+            <version>${project.version}</version>
+          </dependency>
+        </dependencies>
         <configuration>
           <crossModule>true</crossModule>
-          <!-- The Survey runs the cases nobody requires and fails only on CRASH (ADR-0020). -->
+          <features>
+            <feature>+OWN_SURVIVORS(report[${project.basedir}/../query-core/target/pit-reports/mutations.xml] report[${project.basedir}/../jq-core/target/pit-reports/mutations.xml])</feature>
+          </features>
+          <!-- The Survey runs the cases nobody requires and fails only on CRASH (ADR-0020). The compile-mode oracle
+               leaves PIT with the ticket gate (F-27, ADR-0020 amendment for #60). -->
           <excludedTestClasses>
+            <param>io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest</param>
+            <param>io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest</param>
             <param>io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest</param>
             <param>io.github.subapavel.jqj.oracle.json.JsonSurveyTest</param>
             <param>io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest</param>
+            <!-- 116.4 s in surefire; first killer of 8 of 3 259 mutants (F-84). -->
+            <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
+            <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
+            <param>io.github.subapavel.jqj.OperatorChainTest</param>
           </excludedTestClasses>
-          <additionalClasspathElements>
-            <additionalClasspathElement>${project.basedir}/../query-core/target/test-classes</additionalClasspathElement>
-            <additionalClasspathElement>${project.basedir}/../jq-core/target/test-classes</additionalClasspathElement>
-          </additionalClasspathElements>
+          <!-- Mutated here: query-core and jq-core, the class-C modules. Their tests still run. -->
+          <excludedClasses>
+            <!-- No ratchet line reads oracle's own mutants; its corpus loader is then never a mutant (F-84 (B)). -->
+            <param>io.github.subapavel.jqj.oracle.*</param>
+            <!-- No ratchet line reads jq-cli's mutants from this run (F-84 (B)). -->
+            <param>io.github.subapavel.jqj.cli.*</param>
+          </excludedClasses>
+          <!-- Only oracle's own tests run here: ratchet.java unions each module's own kills with these (F-84). -->
         </configuration>
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- ./mvnw -B -Pbench,compile-oracle verify: scripts/after-merge.sh, the spec gate's clean verify and, since #89,
+         the ticket gate's step 1 (F-46). -->
+    <profile>
+      <id>compile-oracle</id>
+      <properties>
+        <oracle.excludedGroups></oracle.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
 </project>

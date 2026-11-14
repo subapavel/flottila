@@ -17,6 +17,76 @@ licence text ships in the jq-core jar under META-INF/.
 - jq-core/src/main/java/io/github/subapavel/jqj/internal/json/JsonStrings.java, translated
   from jq 1.8.2's found_string (src/jv_parse.c), jvp_utf8_next and jvp_utf8_encode
   (src/jv_unicode.c), jv_string_sized and jvp_string_copy_replace_bad (src/jv.c) (#35)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/parse/Lexer.java, translated from
+  jq 1.8.2's token rules, start conditions and try_exit (src/lexer.l) (#61)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/parse/FilterText.java, translated
+  from jq 1.8.2's locfile_locate (src/locfile.c) (#61)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/parse/Parser.java, translated from
+  jq 1.8.2's grammar, its error productions and their FAIL messages (src/parser.y); its error
+  recovery is written from the Bison manual's description, with nothing taken from jq's generated
+  src/parser.c or from Bison's skeleton (#62)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/parse/BinOp.java, translated from
+  jq 1.8.2's precedence and associativity declarations (src/parser.y) (#62)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/parse/Token.java, translated from
+  jq 1.8.2's token names and their aliases (src/parser.y) (#62)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/json/ErrorDump.java, translated from
+  jq 1.8.2's jv_dump_string_trunc (src/jv_print.c) (#63)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Index.java, translated from
+  jq 1.8.2's jv_get (src/jv_aux.c) (#63) and jv_array_indexes (src/jv.c) (#72)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Slice.java, translated from
+  jq 1.8.2's parse_slice and the slice of jv_get (src/jv_aux.c) (#63)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/parse/ConstantKey.java, translated from
+  jq 1.8.2's check_object_key (src/parser.y) and the folds its block_is_const sees,
+  gen_const_array and gen_const_object (src/compile.c) (#64), and constant_fold (src/parser.y)
+  (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Arithmetic.java, translated from
+  jq 1.8.2's type_error and type_error2 (src/builtin.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Divide.java, translated from
+  jq 1.8.2's binop_divide (src/builtin.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Minus.java, translated from
+  jq 1.8.2's binop_minus (src/builtin.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Modulo.java, translated from
+  jq 1.8.2's binop_mod and its dtoi (src/builtin.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Multiply.java, translated from
+  jq 1.8.2's binop_multiply (src/builtin.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Plus.java, translated from
+  jq 1.8.2's binop_plus (src/builtin.c) and jv_array_concat (src/jv.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Strings.java, translated from
+  jq 1.8.2's jv_string_concat, jv_string_repeat and jv_string_split (src/jv.c) and the repeat
+  count of binop_multiply (src/builtin.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/value/Equality.java, translated from
+  jq 1.8.2's jvp_equal, jvp_array_equal and jvp_object_equal (src/jv.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/value/ObjectMerge.java, translated from
+  jq 1.8.2's jv_object_merge and jvp_object_merge_recursive (src/jv.c) (#65)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/value/Order.java, translated from
+  jq 1.8.2's jvp_cmp, string_cmp and jv_keys (src/jv_aux.c) (#66)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Comparison.java, translated from
+  jq 1.8.2's binop_equal, binop_notequal, order_cmp and the four binop_less, binop_greater,
+  binop_lesseq and binop_greatereq (src/builtin.c) (#66)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Range.java, translated from
+  jq 1.8.2's RANGE opcode (src/execute.c) and its range/2 (src/builtin.c) (#69)
+- jq-core/src/main/resources/io/github/subapavel/jqj/internal/parse/builtin.jq, copied byte for
+  byte from jq 1.8.2's src/builtin.jq (#62), the prelude since #71 (ADR-0042); its SHA-256 is in
+  jq-core/src/test/resources/jq/SOURCES.sha256
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/parse/NativeTable.java, translated from
+  jq 1.8.2's function_list, bind_bytecoded_builtins and gen_builtin_list (src/builtin.c), BINOPS
+  (src/builtin.h) and the function list of src/libm.h (#71)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Basics.java, translated from
+  jq 1.8.2's f_length, f_type, f_tostring, f_dump and f_tonumber (src/builtin.c) (#72)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Keys.java, translated from
+  jq 1.8.2's f_has, f_keys and f_keys_unsorted (src/builtin.c) and jv_has, jv_keys and
+  jv_keys_unsorted (src/jv_aux.c) (#72), and to_entries/0 (src/builtin.jq) (#85)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/NumberTests.java, translated from
+  jq 1.8.2's f_nan, f_infinite, f_isnan, f_isinfinite, f_isnormal and f_have_decnum
+  (src/builtin.c) (#72)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Flatten.java, translated from
+  jq 1.8.2's _flatten/1, flatten/1 and flatten/0 (src/builtin.jq) (#72)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Last.java, translated from
+  jq 1.8.2's gen_last_1 (src/builtin.c) (#72)
+- jq-core/src/main/java/io/github/subapavel/jqj/internal/op/Sort.java, translated from
+  jq 1.8.2's f_sort, f_sort_by_impl, f_group_by_impl, f_unique, f_unique_by_impl, minmax_by,
+  f_min, f_max, f_min_by_impl and f_max_by_impl (src/builtin.c) and sort_items, jv_sort,
+  jv_group and jv_unique (src/jv_aux.c) (#73)
 
 jq's man.test and manonig.test are generated from the examples of the jq manual
 (https://jqlang.org), Creative Commons Attribution 3.0 Unported

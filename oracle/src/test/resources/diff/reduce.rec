@@ -1,0 +1,561 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case reduce/range2-last
+def 0444958ae05d
+rc 0
+stdout 5\n
+stderr
+end
+
+case reduce/range2-single
+def c9a88be9412c
+rc 0
+stdout [0,3]\n
+stderr
+end
+
+case reduce/range2-pairs
+def b9b5ec8f47ea
+rc 0
+stdout [[[[],3],4],5]\n
+stderr
+end
+
+case reduce/range2-sum
+def 309e44eb35b7
+rc 0
+stdout 12\n
+stderr
+end
+
+case reduce/multi-update
+def ddf4340a818c
+rc 0
+stdout 30\n
+stderr
+end
+
+case reduce/multi-update-last-wins
+def 6750ee31aa82
+rc 0
+stdout [3]\n
+stderr
+end
+
+case reduce/multi-update-same-start
+def e1c52f6ae194
+rc 0
+stdout [2,[1,0]]\n
+stderr
+end
+
+case reduce/update-empty
+def 47ed15c8cf59
+rc 0
+stdout null\n
+stderr
+end
+
+case reduce/update-empty-then-next
+def 34b1ae44b765
+rc 0
+stdout [null,3]\n
+stderr
+end
+
+case reduce/empty-source
+def 323142da69e7
+rc 0
+stdout 5\n
+stderr
+end
+
+case reduce/empty-array-source
+def c02307b1a113
+rc 0
+stdout 5\n
+stderr
+end
+
+case reduce/null-init-sum
+def a266df7bef1c
+rc 0
+stdout 6\n
+stderr
+end
+
+case reduce/null-init-pairs
+def 0b4b9594237e
+rc 0
+stdout [[null,1],2]\n
+stderr
+end
+
+case reduce/init-generator
+def ddb95c493d76
+rc 0
+stdout [3,13]\n
+stderr
+end
+
+case reduce/init-generator-pairs
+def e961bc14ac42
+rc 0
+stdout [[[0,1],2],[[10,1],2]]\n
+stderr
+end
+
+case reduce/init-empty
+def 04d235ec39d9
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/input-is-the-sources-and-inits
+def 7a3051272de2
+rc 0
+stdout [2,1]\n
+stderr
+end
+
+case reduce/nested
+def 291c3d398eab
+rc 0
+stdout [[[[0,1,10],1,20],2,10],2,20]\n
+stderr
+end
+
+case reduce/pattern-array
+def 93f9e0358463
+rc 0
+stdout [[null,1,2],3,null]\n
+stderr
+end
+
+case reduce/pattern-object
+def d29fbddccb56
+rc 0
+stdout [[[],1],null]\n
+stderr
+end
+
+case reduce/source-error
+def 6738ccc096dd
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index array with string ("a")\n
+end
+
+case reduce/update-error
+def 8efe711aab29
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("a")\n
+end
+
+case reduce/range2-hundred-thousand
+def d075b75f0071
+rc 0
+stdout 99999\n
+stderr
+end
+
+case reduce/deep-million
+def 80962504de96
+rc 0
+stdout 1\n
+stderr
+end
+
+case reduce/foreach-multi-update
+def d93415d1e9f2
+rc 0
+stdout [1,10,11,20]\n
+stderr
+end
+
+case reduce/foreach-multi-update-pairs
+def d6eadba40dda
+rc 0
+stdout [[0,1],1,[1,2],2]\n
+stderr
+end
+
+case reduce/foreach-extract-two
+def 64354765ca91
+rc 0
+stdout [1,-1,3,-3]\n
+stderr
+end
+
+case reduce/foreach-pairs
+def ac834f273e50
+rc 0
+stdout [[0,1],[[0,1],2]]\n
+stderr
+end
+
+case reduce/foreach-extract-pairs
+def 3d6d002307d8
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case reduce/foreach-extract-empty
+def b2970abbcac2
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/foreach-update-empty
+def 3e7e825dd465
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/foreach-update-empty-then-next
+def f6cd7755d201
+rc 0
+stdout [[null,3]]\n
+stderr
+end
+
+case reduce/foreach-empty-source
+def dbc9aaa8e7ed
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/foreach-init-generator
+def e2a326714cfd
+rc 0
+stdout [1,2,1,2]\n
+stderr
+end
+
+case reduce/foreach-range2
+def e67cd802ea77
+rc 0
+stdout [[0,0],[1,1],[2,2],[3,3]]\n
+stderr
+end
+
+case reduce/foreach-extract-error
+def a1fab34ef391
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with string ("a")\n
+end
+
+case reduce/foreach-stop-downstream
+def 460c85bf9dd2
+rc 0
+stdout [2,3]\n
+stderr
+end
+
+case reduce/scope-init-unbound
+def f0309e834514
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 17:\n    reduce 1 as $x ($x; .)\n                    ^^\njq: 1 compile error\n
+end
+
+case reduce/scope-source-unbound
+def 2288b2d5a477
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 8:\n    reduce $x as $x (0; .)\n           ^^\njq: 1 compile error\n
+end
+
+case reduce/scope-after-unbound
+def c1b51ca1345f
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 25:\n    reduce 1 as $x (0; .) | $x\n                            ^^\njq: 1 compile error\n
+end
+
+case reduce/scope-foreach-init-unbound
+def 95e02485c1d8
+rc 3
+stdout
+stderr jq: error: $x is not defined at <top-level>, line 1, column 18:\n    foreach 1 as $x ($x; .)\n                     ^^\njq: 1 compile error\n
+end
+
+case reduce/scope-foreach-extract-sees-pattern
+def 4045f65cd2b7
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case reduce/scope-init-outer
+def ea5aec004009
+rc 0
+stdout 3\n
+stderr
+end
+
+case reduce/scope-init-outer-pairs
+def 66a5e89b31e6
+rc 0
+stdout [2,1]\n
+stderr
+end
+
+case reduce/scope-source-outer
+def c7f95c54bd33
+rc 0
+stdout [[[0,2],3]]\n
+stderr
+end
+
+case reduce/scope-outer-after
+def 69141c96e5d4
+rc 0
+stdout 2\n
+stderr
+end
+
+case reduce/altbind-no-rollback
+def 51b82f6d15d0
+rc 0
+stdout [2]\n
+stderr
+end
+
+case reduce/altbind-foreach-downstream
+def d2c929d82180
+rc 0
+stdout [[[1],2]]\n
+stderr
+end
+
+case reduce/altbind-match-error
+def 03eedbc8f5f3
+rc 0
+stdout [[0,1],2]\n
+stderr
+end
+
+case reduce/altbind-last-error
+def 2bbccd859357
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Cannot index number with number (0)\n
+end
+
+case reduce/break-in-update
+def 9cf3fef31a1e
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/break-in-init
+def eaef82ec4dfb
+rc 0
+stdout [4]\n
+stderr
+end
+
+case reduce/break-in-foreach
+def d449fdef3759
+rc 0
+stdout [1,3]\n
+stderr
+end
+
+case reduce/break-in-source
+def 26668bc2d652
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/wrap-depth
+def 406008a1eff5
+rc 0
+stdout "o"\n
+stderr
+end
+
+case reduce/wrap-depth-foreach
+def c96bc8079ba7
+rc 0
+stdout ["o"]\n
+stderr
+end
+
+case reduce/source-error-caught
+def 2985219bb17e
+rc 0
+stdout "s"\n
+stderr
+end
+
+case reduce/range2-ten
+def e189470d33b1
+rc 0
+stdout [0,1,2,3,4,5,6,7,8,9]\n
+stderr
+end
+
+case reduce/range2-fractional-start
+def 6bab81e4bf48
+rc 0
+stdout [0.5,1.5,2.5]\n
+stderr
+end
+
+case reduce/range2-fractional-end
+def f9e92db75e0a
+rc 0
+stdout [0,1,2]\n
+stderr
+end
+
+case reduce/range2-negative
+def 1b6b513eb16e
+rc 0
+stdout [-2.5,-1.5,-0.5]\n
+stderr
+end
+
+case reduce/range2-negative-both
+def 0e9f4f75fe16
+rc 0
+stdout [-3,-2]\n
+stderr
+end
+
+case reduce/range2-descending
+def 6b19622be292
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/range2-equal
+def 1394e9b879cf
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/range2-one
+def 082e26f8b1df
+rc 0
+stdout [1]\n
+stderr
+end
+
+case reduce/range2-generators
+def 6b2cd35dd51c
+rc 0
+stdout [0,1,2,0,1,2,3,1,2,1,2,3]\n
+stderr
+end
+
+case reduce/range2-bounds-from-input
+def 486511b74a47
+rc 0
+stdout [1,2,3]\n
+stderr
+end
+
+case reduce/range2-past-double
+def d6c1952f01b7
+rc 0
+stdout []\n
+stderr
+end
+
+case reduce/range2-end-string
+def 3c6317e1dead
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Range bounds must be numeric\n
+end
+
+case reduce/range2-start-null
+def bbaca334599c
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Range bounds must be numeric\n
+end
+
+case reduce/range2-both-strings
+def e1ae4f736701
+rc 5
+stdout
+stderr jq: error (at <stdin>:1): Range bounds must be numeric\n
+end
+
+case reduce/range2-error-before-results
+def 23b58f77f70a
+rc 5
+stdout [0,1,2]\n
+stderr jq: error (at <stdin>:1): Range bounds must be numeric\n
+end
+
+case reduce/range2-end-string-caught
+def e50dd67d411e
+rc 0
+stdout "Range bounds must be numeric"\n
+stderr
+end
+
+case reduce/range2-start-null-caught
+def 537f16d759fd
+rc 0
+stdout "Range bounds must be numeric"\n
+stderr
+end
+
+case reduce/range2-literal-start
+def dd1dea20aa86
+rc 0
+stdout [1.10,2.1]\n
+stderr
+end
+
+case reduce/range2-literal-one-point-zero
+def 4abeb27ac668
+rc 0
+stdout [1.0,2]\n
+stderr
+end
+
+case reduce/range2-literal-exponent
+def cb777fb305bd
+rc 0
+stdout [1,2]\n
+stderr
+end
+
+case reduce/range2-literal-from-input
+def e1121c2cbc87
+rc 0
+stdout [1.0,2]\n
+stderr
+end
+
+case reduce/range2-literal-from-input-direct
+def e446d68a6fec
+rc 0
+stdout [1.10,2.1]\n
+stderr
+end
+
+case reduce/range2-literal-end
+def 9d7ba137ac01
+rc 0
+stdout [0,1]\n
+stderr
+end

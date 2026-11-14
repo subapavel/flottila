@@ -1,6 +1,6 @@
 # Claude Code Cloud environment
 
-Where `/wayfinder`, `/run-spec` and `/gate` run. Adapted from flottila-mapping's environment (same
+Where `/wayfinder`, `/run-spec` and `/gate` run. Adapted from r8-mapping's environment (same
 VM: Ubuntu 24.04, 4 vCPU, 16 GB; JDK 21, Maven and Docker pre-installed).
 
 ## Environment (Claude desktop → Code → Cloud → new environment)
@@ -38,5 +38,5 @@ Not set: `CLAUDE_CODE_EFFORT_LEVEL` (overrides every per-call effort),
 2. `/model claude-opus-5-5`, then `/effort medium` (two messages).
 3. First message of a session: what to run (`/wayfinder …`, `/run-spec #<spec>`, `/gate`).
 
-Known limits (observed in Flottila and flottila-mapping, re-check here; `agent/NOTES.md`): tags cannot be pushed; `gh issue`/`gh pr`
+Known limits (observed in Rail8 (R8) and r8-mapping, re-check here; `agent/NOTES.md`): tags cannot be pushed; `gh issue`/`gh pr`
 may fail on GraphQL — use the REST forms in `docs/agents/issue-tracker.md`.

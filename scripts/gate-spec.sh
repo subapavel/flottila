@@ -4,11 +4,15 @@
 #
 #   scripts/gate-spec.sh <spec>
 #
-# Steps: 1 clean-verify   ./mvnw -B clean verify -Pbench
+# Steps: 1 clean-verify   ./mvnw -B clean verify -Pbench,compile-oracle (the compile-mode oracle runs here, after
+#                         every merge, and in the ticket gate since #89: F-46, ADR-0020 amendment for #60)
 #          record         scripts/oracle-record.sh --verify on every tracked oracle .rec file
-#        2 pit            PIT on the whole class-C modules of quality/floors.tsv and on oracle (crossModule)
-#        3 jmh            benchmarks.jar -prof gc -rf json (JMH_JAR overrides bench/jmh/target/benchmarks.jar)
+#        2 pit            PIT on the whole class-C modules of quality/floors.tsv, on oracle and on jq-cli (crossModule)
+#        3 jmh            benchmarks.jar -prof gc -rf json, the Gates class only: diagnostics stay out of bench.tsv
+#                         (ADR-0024, ADR-0019; JMH_JAR overrides bench/jmh/target/benchmarks.jar)
 #        4 regen          java scripts/ratchet.java regen --all (RATCHET_MACHINE labels the bench lines)
+#        5 census         java scripts/census.java gate <spec>: every jq-test case the census gives the spec is in
+#                         ratchet/oracle/jqtest.txt (#57)
 # Logs: .logs/spec<spec>-<step>.log. The timings it reads are .logs/<ticket>-steps.tsv of scripts/gate-ticket.sh.
 set -uo pipefail
 if [ $# -ne 1 ]; then
@@ -55,23 +59,21 @@ step() { # <name> <show> <command…>
   fi
 }
 
-# jq-cli's module-path and launcher tests, then oracle's Survey tests (oracle/pom.xml, ADR-0020).
-pit_cli_exclusions="-DexcludedTestClasses=io.github.subapavel.jqj.cli.LauncherTest,io.github.subapavel.jqj.cli.*ModulePathTest"
-pit_cli_exclusions+=",io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest,io.github.subapavel.jqj.oracle.json.JsonSurveyTest"
-pit_cli_exclusions+=",io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest"
 classc=$(awk -F'\t' 'NR > 1 && $2 == "C" { printf "%s%s", sep, $1; sep = "," }' quality/floors.tsv)
 
-step clean-verify 0 ./mvnw -B clean verify -Pbench
+step clean-verify 0 ./mvnw -B clean verify -Pbench,compile-oracle
 # Every recording, not only the changed ones of the ticket gate (ADR-0020, ADR-0014).
 recordings=()
 while IFS= read -r path; do recordings+=("$path"); done < <(git ls-files -- 'oracle/src/test/resources/**/*.rec')
 step record 0 scripts/oracle-record.sh --verify "${recordings[@]}"
-# oracle's crossModule run mutates the class-C classes under every oracle test; ratchet.java combines it (ADR-0014).
-# oracle pulls in jq-cli, whose module-path and launcher tests need surefire executions PIT does not run; they are
-# kept out of PIT here. The property replaces the list of every module's POM, oracle's too (observed with -X,
-# #45), so oracle's own exclusions are repeated in it.
-step pit 0 ./mvnw -B -pl "$classc,oracle" -am test org.pitest:pitest-maven:mutationCoverage "$pit_cli_exclusions"
-step jmh 0 java -jar "${JMH_JAR:-bench/jmh/target/benchmarks.jar}" -prof gc -rf json -rff ".logs/spec$spec-jmh.json"
+# The crossModule runs of oracle and of jq-cli (which -am pulls in) mutate the class-C classes under their tests;
+# ratchet.java combines both reports (ADR-0014, #47). Each module keeps its PIT test exclusions in its own POM: a
+# list passed here as a property would replace every module's list (observed with -X, #45).
+step pit 0 ./mvnw -B -pl "$classc,oracle" -am test org.pitest:pitest-maven:mutationCoverage
+# JMH finds the include regex anywhere in <package>.<class>.<method> (#102).
+step jmh 0 java -jar "${JMH_JAR:-bench/jmh/target/benchmarks.jar}" -prof gc -rf json -rff ".logs/spec$spec-jmh.json" '\.Gates\.'
 export RATCHET_JMH=".logs/spec$spec-jmh.json"
 step regen 1 java scripts/ratchet.java regen --all
+# After regen: the pass list as this gate wrote it holds the spec's census cases (#57).
+step census 1 java scripts/census.java gate "$spec"
 echo "gate-spec: $spec passed"

@@ -45,12 +45,19 @@ public final class JqTermination extends JqException {
    *     or none with {@link Cause#BUDGET}
    */
   public JqTermination(Cause cause, int exitCode, JqValue value, Budget budget) {
-    Objects.requireNonNull(cause, "cause");
+    this(cause, exitCode, value, budget, Objects.requireNonNull(cause, "cause").name());
+  }
+
+  /**
+   * As the public constructor, with {@code message} instead of the cause's name: the text a run's budget carries
+   * (ADR-0030).
+   */
+  JqTermination(Cause cause, int exitCode, JqValue value, Budget budget, String message) {
     Objects.requireNonNull(value, "value");
     if ((cause == Cause.BUDGET) != (budget != null)) {
       throw new IllegalArgumentException("a budget is given exactly with the cause BUDGET: cause " + cause + ", budget " + budget);
     }
-    super(cause.name());
+    super(message);
     this.cause = cause;
     this.exitCode = exitCode;
     this.value = value;

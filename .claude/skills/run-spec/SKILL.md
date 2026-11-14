@@ -57,7 +57,8 @@ Take hand-backs in the order they arrive; refill a freed slot from the frontier 
    obstacle, label `ready-for-human` if only the owner can clear it, release the slot.
 2. **Ticket gate** — verifier on the pushed ticket branch, in its own worktree
    (`git worktree add .claude/worktrees/verify-<ticket> t/<ticket>-<slug>`), the checks of
-   `docs/WORKFLOW.md` §6. Any `EXECUTED_FAIL`: a fix packet (file, line, evidence, the sentence)
+   `docs/WORKFLOW.md` §6. When `oracle/src/test/resources/require/<ticket>.txt` exists, the gate runs
+   with `ORACLE_REQUIRE=<absolute path of that file>` so the required cases are enforced (F-38). Any `EXECUTED_FAIL`: a fix packet (file, line, evidence, the sentence)
    to the same implementer.
 3. **Class C review** — `mkdir -p .logs && touch .logs/.batch-in-review`, then call the Skill tool with
    `code-review`, fixed point = the ticket branch's merge-base with the integration branch, the
@@ -67,8 +68,9 @@ Take hand-backs in the order they arrive; refill a freed slot from the frontier 
    restart the ticket.
 4. **Merge** — merger (one at a time; queue the rest) with the integration branch and the ticket
    branch. A semantic conflict goes back to the ticket's implementer: "merge the integration tip,
-   resolve, re-run the scoped checks". After a merge: verifier regenerates the oracle pass lists
-   (`regen --oracles`, ADR-0020) on the integration branch; a ratchet drop is a failure of this ticket.
+   resolve, re-run the scoped checks". After a merge: verifier runs `scripts/after-merge.sh <ticket>` on the integration branch (a
+   full verify with the compile-mode oracle, then `regen --oracles`; ADR-0020 and its #60 amendment); a
+   Disagreement or a ratchet drop is a failure of this ticket.
 5. **Record** — evidence comment (`docs/agents/issue-tracker.md`), close the ticket, update the
    spec's status comment and `agent/HANDOFF.md`, append every hand-back's `Worth recording:` lines
    to `.claude/agent-memory/<role>/MEMORY.md` (AGENTS.md, Memory), push, remove the verify worktree.
@@ -102,8 +104,8 @@ then stop with `IDLE_NO_FRONTIER`, see §5):
    the spec merge. Then call the Skill tool with `pr` for the body (summary, evidence lines, merge danger),
    `gh pr create --base main --head spec/<spec>-<slug>`, the body closing the spec. Wait for CI in
    the foreground (`gh pr checks --watch`, with a timeout). Red CI is a fix packet, not a retry.
-5. **Merge** — `rm -f .logs/.batch-in-review && gh pr merge --merge` (never squash, never
-   rebase, never force). Run `scripts/clean-worktrees.sh`: it removes every
+5. **Merge** — `rm -f .logs/.batch-in-review && scripts/merge-spec.sh <pr>` (prints the body and the command; `--execute` merges; in a cloud session, where GraphQL is refused, merge with the GitHub MCP `merge_pull_request` using the printed subject and body file;
+   never squash, never rebase, never force). Run `scripts/clean-worktrees.sh`: it removes every
    merged agent worktree, forces only one whose index and files are already in `origin/main`
    history, keeps the rest with a reason, then prunes.
 6. Suggest `/retro` to the owner in one line.

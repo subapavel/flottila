@@ -36,11 +36,149 @@ A behaviour where jqj differs from the reference jq on purpose, listed in `DEVIA
 its reason.
 _Avoid_: incompatibility, known issue
 
+**Interpolation**:
+The `\(f)` in a string literal: `f` runs on the input, and each result, printed as `tostring`
+prints it, is spliced into the string.
+_Avoid_: template
+
+**Escape run**:
+The longest run of escape sequences in a filter's string literal; jq checks it as one JSON string.
+Not an **Escape** of a built value.
+
+**Error block**:
+One compile error as jq prints it: message, line, column, the source line and carets (ADR-0031).
+
+**AST**:
+The parser's output: one record per construct of jq's grammar with its source span, sugar kept;
+only the resolver reads it (ADR-0032).
+_Avoid_: parse tree, syntax tree
+
+**Resolver**:
+The pass from AST to IR: binds names, loads the prelude, rewrites sugar; a construct it does not
+lower yet is a Stub.
+_Avoid_: lowering pass
+
+**Syntax error**:
+A compile error at the first token jq's grammar rejects, `syntax error, unexpected <token name>`,
+in jqj's own text (ADR-0020).
+
+**Recovery message**:
+A compile error jq adds after a syntax error at a known place, such as "May need parentheses around
+object key expression"; its text matches jq.
+
+**Slot**:
+The place a `Bind`, a `Binds` (one per value), an `AltBind`, a `Reduce` or `Foreach` (its state slot) or a parameter keeps a value while its scope runs; each has its own (ADR-0034, ADR-0038, ADR-0041, ADR-0043).
+
+**Downstream error**:
+An error raised by what runs on a Try's result after its body emitted it. That Try lets it through; an outer Try, or an AltBind inside the body, may still catch it (ADR-0039).
+
+**Wrap depth**:
+How many Try results an error is still inside on its way out; a Try catches only an error at depth zero (ADR-0039).
+_Avoid_: downstream flag.
+
+**Live definition**:
+A definition the main filter reaches through calls, closure arguments included; jq checks and compiles only these (ADR-0040).
+_Avoid_: used definition.
+
+**Compile level**:
+The main filter, a live definition's body, or a closure argument of a jq-defined function. Its binding errors are reported, and those of its inner levels only when it has none (ADR-0040).
+_Avoid_: scope (that is lexical).
+
+**Inline cap**:
+How many nodes one compile may lower from definition bodies and closures; past it, the filter is a Stub in spec 2a (ADR-0040).
+
+**Value parameter**:
+A `$name` parameter: it wraps the body in `name as $name | …` and binds per result, and `name` stays a filter parameter (ADR-0040).
+_Avoid_: variable parameter.
+
+**Loop state**:
+The value a `reduce` or `foreach` carries from one source binding to the next: an init result, then each update result in turn, or null after an update that gave none (ADR-0041).
+_Avoid_: accumulator (a kind of Hold), fold (that is parse-time).
+
+**State slot**:
+The slot a Reduce or Foreach keeps its loop state in. Its one Advance takes the value out, leaving null, and stores each update result back (ADR-0041).
+
+**Native table**:
+Every builtin signature jq writes in C or bytecode, plus jqj's replacing natives, each built or unbuilt; looked up after the user's definitions and before the prelude (ADR-0042).
+
+**Unbuilt native**:
+An entry of the native table that its spec has not built yet. A call binds, and lowering it is a Stub (ADR-0042).
+_Avoid_: missing builtin.
+
+**Replaced definition**:
+A prelude definition whose name and arity a native also has; the native wins (F-31, ADR-0042).
+
+**Pattern**:
+The left side of `as`, which takes a value apart into variables: `$name`, an array pattern or an object pattern. An absent part is null; a non-container part raises (ADR-0038).
+_Avoid_: matcher (jq's internal word).
+
+**Alternative**:
+One pattern of a `?//` chain. The next one runs when it, the body or anything downstream raises; the last one's error propagates (ADR-0038).
+
+**Group slot**:
+A slot an `AltBind` keeps for one name across all its alternatives, set at each match from that alternative's own slot, or null (ADR-0038).
+
+**Parameter slot**:
+A slot a host variable takes, set from the Bindings before the run and bound by no node (ADR-0038).
+_Avoid_: register, local (that is the JVM's).
+
+**Quiet variant**:
+The instance of a navigation step that `?` selects: where the step would raise its own error it
+gives no result, while errors from its target or key still propagate (ADR-0034).
+_Avoid_: safe variant, optional operation.
+
+**Key list**:
+The keys of an object construction in source order, with a repeated key keeping its first place and its last value, as jq builds it (ADR-0034, #64).
+_Avoid_: key set (it has an order).
+
+**Distinct-key object**:
+A read object whose key proof found no repeated key, so its walk needs no plan and takes each key entry once; there is no tag for it (ADR-0044, #85).
+_Avoid_: dedup flag, unique object, tag 10 (it stays reserved).
+
+**Key proof**:
+What every walk of a read object, and Equality's key index, does first: it finds which key entries repeat an earlier key, pairwise up to 8 keys, then in a reused table, and by a sort when the table's probe budget runs out (ADR-0044).
+_Avoid_: dedup, key check.
+
+**Key index**:
+Equality's view of a read right side for one object comparison: its key proof, looked up once per left key within that call, kept as the tape index of each key's last right value; it is no walk (ADR-0044 as amended, #95).
+_Avoid_: key map, lookup table (alone).
+
+**Object walk**:
+A read object's members as its key proof gives them, each key at its first place with its last value, valid for that one walk. Every walker takes a read object's members through the walk, except the Printer: it enters through `KeyProof.plan`, the proof's pairs without the walk, and no other walker may (ADR-0044 as amended).
+_Avoid_: object cursor, members view.
+
+**Repeated key**:
+A key equal, by its decoded bytes, to an earlier key of the same object; jq keeps the first place with the last value.
+_Avoid_: duplicate key (in new text).
+
+**Fold**:
+Computing an operator on constant operands while parsing, as jq's `constant_fold` does; one that raises folds to no constant, and its error comes at run time (ADR-0034, #65).
+_Avoid_: constant propagation.
+
+**Object merge**:
+`*` on two objects: each entry of the right one into the left, merged again where both values are objects; past 10 000 levels it raises "Object merge too deep" (ADR-0029).
+_Avoid_: deep add.
+
+**Value order**:
+jq's order of all values (`jv_cmp`): null, false, true, numbers, strings by UTF-8 bytes, arrays element by element, objects by sorted key list then values; not transitive across literal and computed numbers (ADR-0012, ADR-0037).
+_Avoid_: total order, natural order.
+
+**Truthy**:
+Neither false nor null; what If, Alt, `and` and `or` test (ADR-0037).
+
+**Comparison depth**:
+How many containers enclose a pair being compared; past 10 000 jq raises its too-deep error (ADR-0029).
+_Avoid_: nesting depth (that is the parse limit).
+
+**Constant key**:
+An object-construction key known at parse time: a computed key jq folds to a constant (a number, string or container); a non-string one is a parser-action error (ADR-0036).
+_Avoid_: static key, literal key (a folded key is not a literal).
+
 ## Values
 
 **Document**:
 One JSON value held as its UTF-8 bytes plus its tape.
-_Avoid_: message (Flottila's word), payload, tree
+_Avoid_: message (Rail8's word), payload, tree
 
 **Tape**:
 The flat index of a document: one entry per JSON value, object keys included, giving its type and
@@ -175,6 +313,20 @@ on unchanged, so the closure disappears.
 A call inside a recursive group with nothing left to do after it and at most one result in
 progress to its left; it runs as a jump.
 
+**Binds**:
+One IR node for a run of binds: `Binds(source, values, slots, body)`, n ≥ 2, means
+`Bind(v1, s1, … Bind(vn, sn, body))`, the first outermost. Slot k is in scope in the later values
+and in the body. It ticks and charges nothing of its own (ADR-0043).
+_Avoid_: n-ary Bind
+
+**Tail emitter**:
+A node that, by its kind alone, gives one result at most and never breaks out: Identity, Const,
+Var, an Intrinsic of a one-result call form, or a Pipe, If, Bind or Binds made of tail emitters. A
+Binds takes a tail value's result, and an If a tail condition's, before the rest runs, so the stack
+does not grow with them. It is a local fast path of the push form, not ADR-0008's value form
+(ADR-0043).
+_Avoid_: tail call (a call that runs as a jump), value form
+
 **Last read**:
 The only read of a variable's value in its binding, after which the value may be moved instead of
 copied.
@@ -188,6 +340,12 @@ A place that keeps a value while later steps run (a variable, an accumulator, an
 built, an error payload). A view of an input document is detached when it enters a hold that spans
 a later read.
 _Avoid_: pin, retain
+
+**Holder**:
+The sink a tail emitter runs into. It keeps the one result and answers it with a stop, so the tail
+run's false means a result came and its true means none (ADR-0043, F-85). It is no **Hold**: the
+result is taken as soon as the run returns.
+_Avoid_: buffer, box
 
 **Root use**:
 Whether a filter reads its input not at all, as the elements of one array one at a time, or whole.
@@ -250,6 +408,17 @@ _Avoid_: fatal error
 **Tick**:
 One count against the step budget: at a site the IR defines, or per element or KiB inside a native
 loop.
+
+**Run state**:
+The protocol state of one running evaluation in `query-core` (fuel, deadline, budget counts, and
+later labels and the break target), owned by its Workspace and passed first to every node and
+operation (ADR-0030).
+_Avoid_: run context, context
+
+**Refuel**:
+A tick's cold path when fuel runs out, every 4096 ticks: it charges the overdraft to the step
+budget, reads the clock against the deadline, checks the thread interrupt and grants the next
+ticks.
 
 **Stack units**:
 The Java stack a call is charged for. A call over the limit runs on the trampoline.
@@ -383,6 +552,17 @@ reference jq supplies their verdicts.
 **Case**:
 One oracle entry with a stable id: a filter, an input, flags and the expected outputs.
 _Avoid_: test (that is a JUnit method), example
+
+**Case census**:
+The assignment of every jq-test case to the spec that makes it pass, from the builtins and
+constructs its filter reaches in the reference jq. Each spec gate requires the cases the census
+gives it.
+_Avoid_: case budget, target count
+
+**Disagreement**:
+A compile-mode case whose optimised and conservative runs both end without a termination but
+differ in exit code, stdout or stderr. It stops the next merge (F-29, ADR-0020 amendment for #60).
+_Avoid_: mismatch
 
 **Differential oracle**:
 Running a case in jqj and in the reference jq binary and requiring the same exit code, stdout and

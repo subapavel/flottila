@@ -1,6 +1,6 @@
 # Oracles and ratchet: copied jq tests, recorded jq-ref expectations, required cases, per-merge pass lists
 
-Status: accepted (2026-11-11, owner, issue #15 "How do the oracles and the ratchet work?"); replaces `docs/WORKFLOW.md` §6's ratchet and floor text together with ADR-0014; amends ADR-0013 (the CLI entry), ADR-0014 (ticket gate and CI), ADR-0016 (compile error text) and ADR-0017 (CLI environment, locale); supersedes founding §1's "not goals: identical error message wording" (F-15); finding F-14; amended by ADR-0022 (issue #8: no in-place licence in the conservative compile, copy-only switch); amended by ADR-0023 (issue #17: deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); amended by F-19 (who measures the fallback targets); amended by ADR-0024 (the Stub verdict); amended by ADR-0025 (`values-v1`: forms, seeds, generated files, drops); amended by F-27 (PIT and the compile-mode oracle leave the ticket gate); amended by F-28 (the spec-gate PIT target)
+Status: accepted (2026-11-11, owner, issue #15 "How do the oracles and the ratchet work?"); replaces `docs/WORKFLOW.md` §6's ratchet and floor text together with ADR-0014; amends ADR-0013 (the CLI entry), ADR-0014 (ticket gate and CI), ADR-0016 (compile error text) and ADR-0017 (CLI environment, locale); supersedes founding §1's "not goals: identical error message wording" (F-15); finding F-14; amended by ADR-0022 (issue #8: no in-place licence in the conservative compile, copy-only switch); amended by ADR-0023 (issue #17: deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); amended by F-19 (who measures the fallback targets); amended by ADR-0024 (the Stub verdict); amended by ADR-0025 (`values-v1`: forms, seeds, generated files, drops); amended by F-27 (PIT and the compile-mode oracle leave the ticket gate); amended by F-28 (the spec-gate PIT target); amended by F-29 (the compile-mode oracle after every merge); amended by #60 (compile-mode oracle: switch by reflection, compile report, after-merge script); amended by ADR-0033 (`core-v1`: forms, break placement, freeze numbers); amended by F-46 (#89: the ticket gate runs the compile-mode oracle); amended by F-84 (two jq-core test classes leave PIT's test set)
 
 Facts marked "jq-ref" were observed on 1.8.2 by the adviser (issue #15 round 1). Every runner lives in
 `oracle` on the class path, in `…jqj.oracle.{jqtest,diff,compile,backend,json,gen,record}`.
@@ -136,7 +136,7 @@ errors`); such text is jqj's own. The jqtest runner reads the last block from a 
 
 - Each oracle is a `@TestFactory` of DynamicTests: one per required case and backend, sorted by id.
 - **A required case** is either in the ratchet or named by the ticket at its gate
-  (`-Doracle.require=<file>`, written by `gate-ticket.sh` from the ticket body).
+  (`-Doracle.require=<file>`, the `ORACLE_REQUIRE` file `gate-ticket.sh` is given; F-38, #84).
 - **The oracle report** `oracle/target/oracle-reports/<oracle>-<backend>.tsv` (`id`, PASS, FAIL,
   STALE or CRASH, detail) holds every case: required cases write their verdict when asserted.
 - **A Survey test** runs every case that is not required and adds it to the report. It fails only
@@ -230,3 +230,40 @@ survivor. A class that cannot reach a floor needs a finding.
 - **Pass lists once per spec:** an in-spec regression shows only at the spec gate.
 - **PIT over covered mutants only:** uncovered code would be guarded by the line floor alone.
 - **One ratchet line for all backends:** every line would drop when the second backend starts.
+
+## Amendment (F-29, spec 2)
+
+Beside the spec gate, the verifier runs the compile-mode oracle on the integration branch after
+every merge, with `regen --oracles`; a disagreement stops the next merge until it is fixed. The
+ticket gate stays as F-27 left it. (Superseded by F-46, #89: the ticket gate's step 1 now runs `-Pcompile-oracle`.)
+
+## Amendment (#60, compile-mode oracle)
+
+Accepted 2026-11-12, architect under `/run-spec` #56, on the designer's draft for #60.
+
+- **Reaching the switch:** the oracle reaches the engine-internal switch (ADR-0030) by reflection on
+  the package-private `JqEngine.Builder.compileMode(CompileMode)`, from one oracle test class and on
+  the class path only. A reflective failure is an `IllegalStateException`, never a silent second
+  optimised run. jq-cli's in-process entry gains `run(Invocation, UnaryOperator<JqEngine.Builder>)`
+  beside `run(Invocation)` (ADR-0013). No module-info and no exported signature changes. Renaming
+  the switch is a change to the oracle.
+- **What is compared:** every jqtest, differential and generated case runs in both modes. Both
+  runs use `Limits.embedded()` with no deadline and no regex match time, so a slower mode cannot
+  disagree by timing. Exit code, stdout and stderr are compared byte for byte. A `halt` or
+  `halt_error` is compared like any result. A run that ends as a budget, stack, cancel or
+  stale-view termination is left out: the case fails as `left out:` and is not ratcheted.
+- **Report and ratchet:** the report is `compile-<mode>.tsv`, and `compile.txt` holds the ids that
+  pass under `conservative`. Plain `ratchet.java check` (CI) prints `NOT_RUN compile: no report` when no
+  compile report exists; the ticket gate runs the oracle and passes `--require-compile`, so there a missing report fails (#89, F-46). `regen` refuses a
+  `disagree:` row; that is F-29's stop. The compile-mode tests carry the JUnit tag `compile-mode`
+  and run only under the Maven profile `compile-oracle`.
+- **After every merge:** `scripts/after-merge.sh <ticket>` runs `./mvnw -B -Pbench,compile-oracle
+  verify` and then `regen --oracles`. The spec gate's clean verify adds `-Pcompile-oracle`.
+- **Considered:**
+  - A qualified `exports … to` the oracle module. javac warns "module not found" (lint `module`),
+    which fails the build under `-Werror`. `exported-signatures.txt` would change. On the class
+    path the export has no effect.
+  - A system property switch: product code would read a test hook.
+  - A public builder method, against ADR-0018.
+  - A new verdict kind: `left out:` already keeps such a case out of the pass list.
+  - A Survey that fails on disagreement, against the glossary.

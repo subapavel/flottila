@@ -1,0 +1,135 @@
+# Differential cases (ADR-0020) of #66 "S2a.16 Comparison and sort order": the alternative a // b of jq 1.8.2 (ADR-0037
+# Alt; ADR-0008: it catches nothing). It emits each truthy result of a, and runs b only when a gave none; an error
+# from a propagates, before or after a truthy result. The #66 design approval (C1) asked for [error("x") // 1] and
+# "s" | .a // 1 to be recorded again: both end with rc 5 and the error, as ADR-0008:40 records. A run-time navigation
+# error (.a on a string, #63) stands in for error/1; the cases named *-error-builtin use error/1, which is #68's, and
+# are required there. Format: oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs
+# live in alternative.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+case alternative/truthy-left-results
+arg -c
+filter [(false, 1, null, 2) // 3]
+stdin null\n
+end
+
+case alternative/no-truthy-left-runs-the-right
+arg -c
+filter [(false, null) // (3, 4)]
+stdin null\n
+end
+
+case alternative/no-left-result-runs-the-right
+arg -c
+filter [.[] // 1]
+stdin []\n
+end
+
+case alternative/falsy-right-results
+arg -c
+filter [null // (false, null)]
+stdin null\n
+end
+
+case alternative/no-result-at-all
+arg -c
+filter [.[] // .[]]
+stdin []\n
+end
+
+case alternative/truthy-left-skips-the-right
+arg -c
+filter [1 // .a]
+stdin "s"\n
+end
+
+case alternative/falsy-left-runs-the-right
+arg -c
+filter [null // .a]
+stdin "s"\n
+end
+
+case alternative/left-error
+arg -c
+filter .a // 1
+stdin "s"\n
+end
+
+case alternative/left-error-collected
+arg -c
+filter [.a // 1]
+stdin "s"\n
+end
+
+case alternative/left-error-after-a-truthy-result
+arg -c
+filter [(.[0].x, .[1].x) // 3]
+stdin [{"x":1},"s"]\n
+end
+
+case alternative/left-error-after-a-falsy-result
+arg -c
+filter [(.[0].y, .[1].x) // 3]
+stdin [{"x":1},"s"]\n
+end
+
+case alternative/chain
+arg -c
+filter [null // false // (4, 5)]
+stdin null\n
+end
+
+case alternative/field-or-default
+arg -c
+filter [.[] | .a // "none"]
+stdin [{"a":1},{"a":null},{},{"a":false},{"a":0}]\n
+end
+
+case alternative/iterate-truthy-elements
+arg -c
+filter [.[] // 9]
+stdin [null,1,false,"",0]\n
+end
+
+case alternative/comparison-results
+arg -c
+filter [(1 < 0, 2 > 1) // 7]
+stdin null\n
+end
+
+# with error/1 (#68)
+
+case alternative/error-builtin
+arg -c
+filter [error("x") // 1]
+stdin null\n
+end
+
+case alternative/error-builtin-before-a-truthy-result
+arg -c
+filter [(error("x"), 2) // 1]
+stdin null\n
+end
+
+case alternative/error-builtin-after-a-truthy-result
+arg -c
+filter [(1, error("x")) // 3]
+stdin null\n
+end
+
+case alternative/error-builtin-after-a-falsy-result
+arg -c
+filter [(null, error("x")) // 3]
+stdin null\n
+end
+
+case alternative/error-builtin-on-the-right
+arg -c
+filter [null // error("run")]
+stdin null\n
+end
+
+case alternative/error-builtin-right-skipped
+arg -c
+filter [1 // error("not run")]
+stdin null\n
+end

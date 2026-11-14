@@ -1,0 +1,90 @@
+# Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": the order of an operator's results.
+# ADR-0034's #65 amendment lowers l op r with the right operand as the outer loop, as jq 1.8.2 runs a C function's
+# arguments last-first; these cases pin it, and the right operand's error comes first. jq's -n is not built in jqj's
+# command line yet, so a filter that ignores its input runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in arith-order.rec,
+# written by scripts/oracle-record.sh only. Ids are immutable.
+
+case arith-order/plus-right-operand-outer
+arg -c
+filter [(1,2)+(10,20)]
+stdin null\n
+end
+
+case arith-order/minus-right-operand-outer
+arg -c
+filter [(1,2)-(10,20)]
+stdin null\n
+end
+
+case arith-order/times-right-operand-outer
+arg -c
+filter [(1,2)*(10,20)]
+stdin null\n
+end
+
+case arith-order/divide-right-operand-outer
+arg -c
+filter [(10,20)/(1,2)]
+stdin null\n
+end
+
+case arith-order/mod-right-operand-outer
+arg -c
+filter [(10,20)%(3,7)]
+stdin null\n
+end
+
+case arith-order/strings-right-operand-outer
+arg -c
+filter [("a","b")+("c","d")]
+stdin null\n
+end
+
+case arith-order/input-operands-right-outer
+arg -c
+filter [.[] - .[]]
+stdin [1,2]\n
+end
+
+case arith-order/right-error-first-folded
+arg -c
+filter ("a" - 1) + (1 - "b")
+stdin null\n
+end
+
+case arith-order/right-error-first-input
+arg -c
+filter (.a - 1) + (.b - 1)
+stdin {"a":"x","b":"y"}\n
+end
+
+case arith-order/results-before-right-error
+arg -c
+filter (1,2) + (10, ("y" - 1))
+stdin null\n
+end
+
+case arith-order/left-error-inside-right-loop
+arg -c
+filter (1, ("x" - 1)) + (10, 20)
+stdin null\n
+end
+
+case arith-order/negate-generator
+arg -c
+filter [-(1,2)]
+stdin null\n
+end
+
+case arith-order/precedence-constants
+arg -c
+filter [1 + 2 * 3, (1 + 2) * 3, 10 - 4 - 3, 2 * 3 % 4, 12 / 2 / 3, -1 + 2, -2 * 3, 2 - -1]
+stdin null\n
+end
+
+case arith-order/precedence-input
+arg -c
+filter [.a + .b * .c, (.a + .b) * .c, .c - .b - .a]
+stdin {"a":1,"b":2,"c":3}\n
+end

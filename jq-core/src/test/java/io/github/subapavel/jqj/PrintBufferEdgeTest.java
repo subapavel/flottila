@@ -27,14 +27,14 @@ class PrintBufferEdgeTest {
     Workspace workspace = newWorkspace();
     JsonDoc doc = read(workspace, FULL_BEFORE_COMMA);
     // F-23: one step per started KiB read, 65 539 bytes.
-    assertThat(workspace.steps).as("steps after the read").isEqualTo(65L);
+    assertThat(workspace.steps()).as("steps after the read").isEqualTo(65L);
 
     RecordingTarget target = new RecordingTarget();
     assertThat(JsonWriter.sink(workspace, target, OutputOptions.compact()).emit(doc.root())).as("emit's answer").isTrue();
     assertThat(target.text()).as("the writer's output").isEqualTo(FULL_BEFORE_COMMA + "\n");
     assertThat(target.writes).as("drains: the full buffer, then the comma, 1, ] and LF").isEqualTo(2);
     // F-23: one step per started KiB of each drain, 65 536 bytes and then 4.
-    assertThat(workspace.steps).as("steps after the read and the print").isEqualTo(65L + 64L + 1L);
+    assertThat(workspace.steps()).as("steps after the read and the print").isEqualTo(65L + 64L + 1L);
 
     // The target reads another document during the drain of the full buffer: the comma is never written.
     RecordingTarget reading =

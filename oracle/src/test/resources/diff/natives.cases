@@ -1,0 +1,408 @@
+# Differential cases (ADR-0020) of #72 "S2a.22 Language natives": each native of the ticket on each JSON kind, its
+# error included, on a document's value (stdin) and on a built one (a constant of the filter); format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in natives.rec, written
+# by scripts/oracle-record.sh only. Ids are immutable. Every case uses -c.
+
+# length/0: null 0, an array its elements, an object its distinct keys, a string its code points, a number its absolute
+# value (a literal stays a literal), a boolean jq's error.
+
+case natives/length-kinds
+arg -c
+filter .[] | length
+stdin [null,[1,2],{"a":1,"b":2},"aé😀",-1.10,0,-0,1e1000,[],{},""]\n
+end
+
+case natives/length-built
+arg -c
+filter [1,2,3], {"a":1}, "aé😀", -1.10, null, (0 * -1), (-1.5 * 2), (1e1000 - 1e1000) | length
+stdin null\n
+end
+
+case natives/length-duplicate-keys
+arg -c
+filter length
+stdin {"a":1,"a":2,"b":3}\n
+end
+
+case natives/length-true
+arg -c
+filter length
+stdin true\n
+end
+
+case natives/length-false
+arg -c
+filter try length catch .
+stdin false\n
+end
+
+# type/0: jq's kind names.
+
+case natives/type-kinds
+arg -c
+filter [.[] | type]
+stdin [null,true,false,1,"a",[],{}]\n
+end
+
+case natives/type-built
+arg -c
+filter [null, true, 1, "a", [1], {"a":1}, nan, infinite | type]
+stdin null\n
+end
+
+# tostring/0 and tojson/0: a string as it is or quoted, any other value its compact text; NaN prints null.
+
+case natives/tostring-tojson-kinds
+arg -c
+filter .[] | [tostring, tojson]
+stdin [null,true,1.10,1e2,"a",[1,"x"],{"a":{"b":null}},"é\\u0000\\u001f\\""]\n
+end
+
+case natives/tostring-tojson-built
+arg -c
+filter [1, "a", [1, {"a": "é"}], {"a": [null]}, nan, infinite, -infinite, [nan] | [tostring, tojson]]
+stdin null\n
+end
+
+case natives/tostring-of-string-is-the-string
+arg -c
+filter [., tostring] | .[0] == .[1]
+stdin "abc"\n
+end
+
+# tonumber/0: a number as it is, a string by decNumber's grammar into a literal (ADR-0012), any other kind jq's error.
+
+case natives/tonumber-strings
+arg -c
+filter .[] | try tonumber catch .
+stdin ["1","+1",".5","1.","007","-007","-0","-0.0","1e2","1E+2","1.e2","+.5","-.5e1","1.10","0.000","00.10","1e-0000002","-0e5"," 4","4 ","0x10","","abc","1.2.3","+",".","1e","1e+","e5",".e2","--1","-+1","1_000"]\n
+end
+
+case natives/tonumber-nonfinite
+arg -c
+filter .[] | try (tonumber | [isnan, isinfinite, tojson]) catch .
+stdin ["nan","NaN","-nan","sNaN","snan","nan0","nan00","snan0","nan1","inf","Inf","INF","-inf","+inf","infinity","-Infinity","INFINITY","Infinit","infinityy","in","1e1000000000","1e999999999","1e-2000000000","5e-1147483647","1e99999999999999999999"]\n
+end
+
+case natives/tonumber-literal-order
+arg -c
+filter [("inf" | tonumber) > 1e999999999, ("-inf" | tonumber) < -1e999999999, ("-0" | tonumber) == 0, ("nan" | tonumber) < 1, ("12345678901234567890" | tonumber) == 12345678901234567890, ("1.5" | tonumber) + 1]
+stdin null\n
+end
+
+case natives/tonumber-numbers
+arg -c
+filter .[] | tonumber
+stdin [1,1.10,1e2,-0,100000000000000000001]\n
+end
+
+case natives/tonumber-built
+arg -c
+filter 1.10, -1.10, (1 / 3), "12" | tonumber
+stdin null\n
+end
+
+case natives/tonumber-kinds
+arg -c
+filter .[] | try tonumber catch .
+stdin [null,true,false,[],{"a":1}]\n
+end
+
+case natives/tonumber-error
+arg -c
+filter tonumber
+stdin "1 2"\n
+end
+
+case natives/tonumber-nul
+arg -c
+filter .[] | try tonumber catch .
+stdin ["123\\u0000456","\\u0000"]\n
+end
+
+# has/1: an object and a string key, an array and a number index (cut toward zero, never from the end, NaN false),
+# null and any key false, any other pair jq's error, which names the kinds only.
+
+case natives/has-object
+arg -c
+filter [has("a"), has("b"), has("")]
+stdin {"a":null}\n
+end
+
+case natives/has-object-duplicate-key
+arg -c
+filter [has("a"), has("b")]
+stdin {"a":1,"a":2}\n
+end
+
+case natives/has-array
+arg -c
+filter [has(0, 1, 2, -1, 1.9, -0.5, 1e10, -1e10)]
+stdin [1,2]\n
+end
+
+case natives/has-array-nonfinite
+arg -c
+filter [has(nan, infinite, -infinite)]
+stdin [1,2]\n
+end
+
+case natives/has-null
+arg -c
+filter [has("a"), has(0), has(null), has([]), has({})]
+stdin null\n
+end
+
+case natives/has-built
+arg -c
+filter [({"a":1} | has("a", "b")), ([1,2] | has(1, 2)), ([] | has(0)), ({} | has(""))]
+stdin null\n
+end
+
+case natives/has-errors
+arg -c
+filter .[] as [$t, $k] | try ($t | has($k)) catch .
+stdin [[[1],"a"],[{"a":1},1],[true,"a"],[false,0],[1,1],["abc",0],[[],null],[{},null],[{},{}],[[],[]],[[],true]]\n
+end
+
+case natives/has-error
+arg -c
+filter has("a")
+stdin [1]\n
+end
+
+case natives/has-generator-key
+arg -c
+filter [has("a", "b", "a")]
+stdin {"a":1}\n
+end
+
+case natives/has-computed-key
+arg -c
+filter [.[] as $k | {"x": 1} | has($k)], [has(.[0] | length), has(.[1] | length + 1)]
+stdin ["x","y"]\n
+end
+
+# keys/0 and keys_unsorted/0: an object's keys sorted by their bytes or in their order (a repeated key at its first
+# place), an array's indices; any other kind jq's error.
+
+case natives/keys-object
+arg -c
+filter keys, keys_unsorted
+stdin {"b":1,"a":2,"A":3,"aa":4,"":5,"é":6,"a":7,"Z":8}\n
+end
+
+case natives/keys-array
+arg -c
+filter keys, keys_unsorted
+stdin [5,6,7]\n
+end
+
+case natives/keys-built
+arg -c
+filter ({"b":1,"a":2}, [true], {}, [] | [keys, keys_unsorted]), ({(.[]): 1} | keys, keys_unsorted)
+stdin ["z","y","x","y"]\n
+end
+
+case natives/keys-errors
+arg -c
+filter .[] | (try keys catch .), (try keys_unsorted catch .)
+stdin [null,1,"a",true,false]\n
+end
+
+case natives/keys-error
+arg -c
+filter keys
+stdin "abc"\n
+end
+
+# flatten/0 and flatten/1, jqj's natives in place of builtin.jq's (F-31): .[] of the input, each array element spliced
+# while the depth, less one per level, is not 0; flatten/1 first raises for a depth below 0 in the value order.
+
+case natives/flatten
+arg -c
+filter flatten, flatten(0, 1, 2, 3)
+stdin [0,[1],[[2]],[[[3]]]]\n
+end
+
+case natives/flatten-object-input
+arg -c
+filter flatten, flatten(1)
+stdin {"a":[1,[2]],"b":3}\n
+end
+
+case natives/flatten-objects-stay
+arg -c
+filter flatten
+stdin [{"a":[1]},[{"b":[2]}]]\n
+end
+
+case natives/flatten-empty
+arg -c
+filter [[]] | flatten, ([] | flatten), ({} | flatten), ([[], [[]], 1] | flatten)
+stdin null\n
+end
+
+case natives/flatten-non-iterable
+arg -c
+filter .[] | try flatten catch .
+stdin [null,1,"a",true]\n
+end
+
+case natives/flatten-non-iterable-error
+arg -c
+filter flatten(1)
+stdin 5\n
+end
+
+case natives/flatten-negative
+arg -c
+filter try flatten(-1) catch .
+stdin [0,[1]]\n
+end
+
+case natives/flatten-depth-kinds
+arg -c
+filter .[] as $d | [0,[1,[2]]] | try flatten($d) catch .
+stdin [null,true,false,"a",[],{},1.5,-0.5,0.5,-0,0,1,2,1e-400]\n
+end
+
+case natives/flatten-depth-built
+arg -c
+filter (nan, infinite, -infinite, 1e-400, 0.5) as $d | [0,[1,[2]]] | try flatten($d) catch .
+stdin null\n
+end
+
+case natives/flatten-depth-no-nested-array
+arg -c
+filter ([0,1] | flatten("a")), ([0,[]] | try flatten("a") catch .)
+stdin null\n
+end
+
+case natives/flatten-deep
+arg -c
+filter reduce range(3000) as $_ (0; [.]) | flatten, (flatten(2998) | .[0][0])
+stdin null\n
+end
+
+case natives/flatten-error
+arg -c
+filter flatten(-1)
+stdin []\n
+end
+
+# nan/0, infinite/0, isnan/0, isinfinite/0 and isnormal/0: the tests are false on any kind but a number.
+
+case natives/nan-infinite
+arg -c
+filter [nan, infinite, -infinite], [nan | . < 1, . == ., . < .], [infinite > 1e308]
+stdin null\n
+end
+
+case natives/number-tests-built
+arg -c
+filter [nan, infinite, -infinite, 1, 0, -0, 1e-310, 2.2250738585072014e-308, null, "a", [], {}, true] | map([isnan, isinfinite, isnormal])
+stdin null\n
+end
+
+case natives/number-tests-input
+arg -c
+filter map([isnan, isinfinite, isnormal])
+stdin [1,0,-0,1e-310,1e400,-1e400,null,"a",false,[1],{"a":1},2.2250738585072014e-308]\n
+end
+
+case natives/have
+arg -c
+filter [have_decnum, have_literal_numbers]
+stdin null\n
+end
+
+# last/1: the last result of its argument, none for none; an error or break in the argument passes.
+
+case natives/last
+arg -c
+filter [last(range(5))], [last(empty)], [last(1, 2)], [last(.[])]
+stdin [1,[2]]\n
+end
+
+case natives/last-object-input
+arg -c
+filter last(.[])
+stdin {"a":1,"b":2}\n
+end
+
+case natives/last-each-input
+arg -c
+filter [.[] | last(., .)]
+stdin [1,2]\n
+end
+
+case natives/last-error
+arg -c
+filter (try last(1, error("x")) catch .), last(1, error("y"))
+stdin null\n
+end
+
+case natives/last-break
+arg -c
+filter [label $f | last(1, break $f, 3)], [label $f | last(1, 2), break $f]
+stdin null\n
+end
+
+# Compile levels (ADR-0040 "Errors", the #71 hand-over): the argument of a built C native, has/1, stays in the caller's
+# level, so both names are reported in source order; last/1 is bytecoded and flatten/1 replaces a jq definition, so
+# their arguments are inner levels, reported only when the caller has no error.
+
+case natives/has-argument-in-level
+arg -c
+filter zz1, has(zz2)
+stdin null\n
+end
+
+case natives/has-argument-in-level-first
+arg -c
+filter has(zz2), zz1
+stdin null\n
+end
+
+case natives/has-argument-operands-in-level
+arg -c
+filter zz1, has(1 | zz2 | zz3)
+stdin null\n
+end
+
+case natives/has-nested-argument-in-level
+arg -c
+filter zz1, has(has(zz2))
+stdin null\n
+end
+
+case natives/last-argument-inner-level
+arg -c
+filter zz1, last(zz2)
+stdin null\n
+end
+
+case natives/last-argument-alone
+arg -c
+filter last(zz2)
+stdin null\n
+end
+
+case natives/flatten-argument-inner-level
+arg -c
+filter zz1, flatten(zz2)
+stdin null\n
+end
+
+case natives/flatten-argument-alone
+arg -c
+filter flatten(zz2)
+stdin null\n
+end
+
+case natives/tonumber-minus-zero-arithmetic
+arg -c
+filter "-0" | tonumber | [. * 1, -., . - 0, . * 2]
+stdin null\n
+end

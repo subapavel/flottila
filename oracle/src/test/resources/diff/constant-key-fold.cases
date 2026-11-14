@@ -1,0 +1,188 @@
+# Differential cases (ADR-0020) of #65 "S2a.15 Arithmetic and computed numbers": jq 1.8.2 folds + - * / % on two
+# constants (parser.y constant_fold, GLOSSARY "Fold"), so a folded key that is not a string is a parse-time key error
+# (ADR-0036, rc 3), a folded string key is no error (rc 0), and a fold that raises folds to no constant: its error
+# comes at run time (rc 5), and so does a key jq does not fold (a negation, an input). ADR-0035's 4 KiB cap leaves a
+# longer fold to the run with the same output (constant-key-fold/string-past-the-cap). jq's -n is not built in jqj's
+# command line yet, so every case runs on stdin null. Format:
+# oracle/src/main/java/io/github/subapavel/jqj/oracle/diff/DiffCase.java. Expected outputs live in
+# constant-key-fold.rec, written by scripts/oracle-record.sh only. Ids are immutable.
+
+# rc 3: the fold is a constant non-string key
+
+case constant-key-fold/zero-plus-one
+arg -c
+filter {(0+1):1}
+stdin null\n
+end
+
+case constant-key-fold/minus
+arg -c
+filter {(1-1):1}
+stdin null\n
+end
+
+case constant-key-fold/times
+arg -c
+filter {(2*3):1}
+stdin null\n
+end
+
+case constant-key-fold/divide
+arg -c
+filter {(6/4):1}
+stdin null\n
+end
+
+case constant-key-fold/mod
+arg -c
+filter {(7%3):1}
+stdin null\n
+end
+
+case constant-key-fold/null-plus-number
+arg -c
+filter {(null+1):1}
+stdin null\n
+end
+
+case constant-key-fold/literal-plus-null-keeps-literal
+arg -c
+filter {(1.10+null):1}
+stdin null\n
+end
+
+case constant-key-fold/computed-number
+arg -c
+filter {(0.1+0.2):1}
+stdin null\n
+end
+
+case constant-key-fold/chained
+arg -c
+filter {(1+2+3):1}
+stdin null\n
+end
+
+case constant-key-fold/split
+arg -c
+filter {("a,b"/","):1}
+stdin null\n
+end
+
+case constant-key-fold/array-concat
+arg -c
+filter {([1]+[2]):1}
+stdin null\n
+end
+
+case constant-key-fold/array-difference
+arg -c
+filter {([1,2]-[2]):1}
+stdin null\n
+end
+
+case constant-key-fold/object-plus
+arg -c
+filter {({}+{a:1}):1}
+stdin null\n
+end
+
+case constant-key-fold/object-merge
+arg -c
+filter {({a:{b:1}}*{a:{c:2}}):1}
+stdin null\n
+end
+
+case constant-key-fold/raising-fold-then-constant-key
+arg -c
+filter {(1/0):1} | {(1):2}
+stdin null\n
+end
+
+# rc 0: the fold is a string key
+
+case constant-key-fold/string-concat
+arg -c
+filter {("a"+"b"):1}
+stdin null\n
+end
+
+case constant-key-fold/string-concat-chained
+arg -c
+filter {("a"+"b"+"c"):1}
+stdin null\n
+end
+
+case constant-key-fold/string-repeat-zero
+arg -c
+filter {("a"*0):1}
+stdin null\n
+end
+
+case constant-key-fold/string-short
+arg -c
+filter {("x"*10):1}
+stdin null\n
+end
+
+case constant-key-fold/string-past-the-cap
+arg -c
+filter {("x"*5000):1}
+stdin null\n
+end
+
+# rc 5: no constant, the error comes at run time
+
+case constant-key-fold/negation-not-folded
+arg -c
+filter {(-1):1}
+stdin null\n
+end
+
+case constant-key-fold/repeat-negative-count-not-folded
+arg -c
+filter {("a"*-1):1}
+stdin null\n
+end
+
+case constant-key-fold/divide-by-zero
+arg -c
+filter {(1/0):1}
+stdin null\n
+end
+
+case constant-key-fold/mod-by-zero
+arg -c
+filter {(1%0):1}
+stdin null\n
+end
+
+case constant-key-fold/repeat-too-long
+arg -c
+filter {("abc"*1e10):1}
+stdin null\n
+end
+
+case constant-key-fold/minus-type-error
+arg -c
+filter {(null-1):1}
+stdin null\n
+end
+
+case constant-key-fold/string-minus-string
+arg -c
+filter {("a"-"a"):1}
+stdin null\n
+end
+
+case constant-key-fold/negate-string
+arg -c
+filter {(-"a"):1}
+stdin null\n
+end
+
+case constant-key-fold/input-plus-one
+arg -c
+filter {(.+1):1}
+stdin null\n
+end

@@ -28,7 +28,7 @@ exists):
 - Push-style execution (`emit` returns "keep going"); two backends over one IR.
 - Ownership markers replace jq's reference count for in-place updates.
 - Explicit `Workspace`, hard budgets, automatic streaming, unloadable filters.
-- `query-core` (format-neutral) under `jq-core`; `jq-cli` on top; the Flottila adapter is not here.
+- `query-core` (format-neutral) under `jq-core`; `jq-cli` on top; the Rail8 (R8) adapter is not here.
 - Speed is a priority; the target is the same range as the original jq, not first place.
 - Owner's decisions already made (founding architecture §2): standalone project, working name
   `jqj`, Apache 2.0, joni for regex, `import` through a host resolver.
@@ -46,8 +46,8 @@ change, in a sentence.
 
 ### Not yet specified
 
-- The Flottila adapter (`flottila-step-jq`): step SPI, envelope variables, shared `JsonDoc` on the
-  envelope, monitoring hooks. It is built in the Flottila repo.
+- The R8 adapter (`r8-step-jq`): step SPI, envelope variables, shared `JsonDoc` on the
+  envelope, monitoring hooks. It is built in the R8 repo.
 - An XML front end (XPath / XQuery) on `query-core` (founding architecture §14).
 - A GraalVM native image of the CLI; the JDK ahead-of-time cache for start-up.
 - A Vector API scanner behind a flag.
@@ -146,7 +146,7 @@ and output modes. Blocked by: 5, 9.
 
 ### 12. Interpreter or bytecode first, and what speed must milestone 1 show? [grilling]
 
-Which backend milestone 1 ships (flottila-mapping chose interpreter first, bytecode after), the
+Which backend milestone 1 ships (r8-mapping chose interpreter first, bytecode after), the
 JMH scenarios, the machine label, and the numbers for gate checks 4 and 5: how close to the
 reference jq each scenario must be, and the memory targets. Blocked by: 4, 6, 7.
 
@@ -154,7 +154,7 @@ reference jq each scenario must be, and the memory targets. Blocked by: 4, 6, 7.
 
 `JqEngine`, `JqFilter`, `JsonDoc`, sinks, bindings, `Workspace` and limits; the host SPI (clock,
 environment, module loader for `import`, debug sink, extra inputs); the defaults for an embedding
-host against the CLI; thread-safety and unloading guarantees. Written so the Flottila adapter can
+host against the CLI; thread-safety and unloading guarantees. Written so the R8 adapter can
 be built from it without asking. Designer draft first. Blocked by: 7.
 
 ### 14. How is the repo laid out and built? [grilling]
@@ -162,7 +162,7 @@ be built from it without asking. Designer draft first. Blocked by: 7.
 Maven modules (`query-core`, `jq-core`, `jq-cli`, the oracle module, the benchmark module) and
 their dependency rules (JPMS, enforcer), JDK 25 on the cloud VM, CI jobs on GitHub Actions, the
 scoped commands the ticket gate runs in seconds, which gate scripts are ported from
-flottila-mapping. Blocked by: 6, 12.
+r8-mapping. Blocked by: 6, 12.
 
 ### 15. How do the oracles and the ratchet work? [grilling]
 

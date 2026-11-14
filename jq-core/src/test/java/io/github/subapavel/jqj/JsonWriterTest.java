@@ -233,15 +233,15 @@ class JsonWriterTest {
             new Ticks("a 70 002-byte string", letters(70_000), 69, 69, 70_003));
     for (Ticks c : cases) {
       Workspace workspace = newWorkspace();
-      assertThat(workspace.steps).as("%s: steps of a new Workspace", c.name()).isZero();
+      assertThat(workspace.steps()).as("%s: steps of a new Workspace", c.name()).isZero();
 
       JsonDoc doc = workspace.read(MemorySegment.ofArray(c.document().getBytes(UTF_8)));
-      assertThat(workspace.steps).as("%s: steps after reading %d bytes", c.name(), c.document().length()).isEqualTo(c.read());
+      assertThat(workspace.steps()).as("%s: steps after reading %d bytes", c.name(), c.document().length()).isEqualTo(c.read());
 
       RecordingTarget target = new RecordingTarget();
       JsonWriter.sink(workspace, target, OutputOptions.compact()).emit(doc.root());
       assertThat(target.bytes().length).as("%s: bytes printed", c.name()).isEqualTo(c.outputBytes());
-      assertThat(workspace.steps).as("%s: steps after printing %d bytes", c.name(), c.outputBytes()).isEqualTo(c.read() + c.printed());
+      assertThat(workspace.steps()).as("%s: steps after printing %d bytes", c.name(), c.outputBytes()).isEqualTo(c.read() + c.printed());
     }
   }
 

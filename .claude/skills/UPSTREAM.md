@@ -35,6 +35,6 @@ we replaced), `setup-matt-pocock-skills` (its output is already in `docs/agents/
 | `to-questionnaire` | `skills/productivity/to-questionnaire` |
 
 jqj took these folders, and the project skills `run-spec` and `gate`, from
-`subapavel/flottila-mapping` at `de8314e` on 2026-11-10. The upstream skills are byte-identical to
+`subapavel/r8-mapping` at `de8314e` on 2026-11-10. The upstream skills are byte-identical to
 that repo's copies; `run-spec` differs only in the module groups it names.
 `gate` differs only in the gate-reviewer model it names (Fable 5.2).

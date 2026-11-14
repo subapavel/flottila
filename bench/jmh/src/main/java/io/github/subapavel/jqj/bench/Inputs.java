@@ -5,14 +5,24 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Random;
+import java.util.function.Supplier;
 
 /**
- * The synthetic {@code orders} input of ADR-0019, the input of G1, G6 and G7:
- * {@code {"orders":[{id,total,k}…],"items":[{sku,price}…],"a":{"b":{"c":"x"}}}}. The bytes are a pure function of the
- * size, so JMH (which generates them in its setup) and {@code bench/jq-ref.sh} (which writes them with {@link #main})
- * time the same document.
+ * The synthetic inputs of ADR-0019: {@code orders}, the input of G1, G2, G6 and G7,
+ * {@code {"orders":[{id,total,k}…],"items":[{sku,price}…],"a":{"b":{"c":"x"}}}}; {@code recs}, the input of G3,
+ * {@code [{"k":"k0".."k63","v":n}…]}; and {@code ints}, the input of G4, {@code [0..n-1]}. The bytes are a pure function
+ * of the size (the {@code recs} draws come from a {@link Random} of the fixed seed {@link #RECS_SEED}, whose algorithm
+ * its Javadoc fixes), so JMH (which generates them in its setup) and {@code bench/jq-ref.sh} (which writes them with
+ * {@link #main}) time the same document.
  */
 public final class Inputs {
+
+  /** The seed of the {@code recs} draws. */
+  static final long RECS_SEED = 74;
+
+  /** The element count of {@code G4.1e4}, ADR-0019's G4 cell 10⁴. */
+  public static final int INTS_1E4 = 10_000;
 
   /**
    * The cell sizes of ADR-0019, as the lower-case labels of ADR-0024's bench ids. They are 1024-based: {@code 1k} is
@@ -72,6 +82,58 @@ public final class Inputs {
       items.append(item);
     }
     StringBuilder doc = new StringBuilder(bytes).append(HEAD).append(orders).append(MIDDLE).append(items).append(TAIL);
+    return padded(doc, bytes);
+  }
+
+  /**
+   * The {@code recs} document of {@code size}: as many records {@code {"k":"k<j>","v":<n>}} as fit in one array, then
+   * spaces and one LF up to exactly {@link Size#bytes()}. Record {@code i} takes the {@code i}-th pair of draws ({@code j}
+   * of 0 to 63, {@code n} of 0 to 999 999), so a smaller document is a prefix of a larger one's records.
+   */
+  public static byte[] recs(Size size) {
+    Random draws = new Random(RECS_SEED);
+    return array(size, () -> "{\"k\":\"k" + draws.nextInt(64) + "\",\"v\":" + draws.nextInt(1_000_000) + "}");
+  }
+
+  /**
+   * The {@code ints} document of {@code size}: {@code [0,1,…]} with as many integers as fit, then spaces and one LF up
+   * to exactly {@link Size#bytes()}.
+   */
+  public static byte[] ints(Size size) {
+    int[] next = {0};
+    return array(size, () -> Integer.toString(next[0]++));
+  }
+
+  /** The {@code ints} document of {@code n} elements: {@code [0,1,…,n-1]} and one LF, with no padding. */
+  public static byte[] ints(int n) {
+    StringBuilder doc = new StringBuilder().append('[');
+    for (int i = 0; i < n; i++) {
+      if (i > 0) {
+        doc.append(',');
+      }
+      doc.append(i);
+    }
+    return doc.append("]\n").toString().getBytes(US_ASCII);
+  }
+
+  /** One array of the elements {@code next} gives, as many as fit in {@code size} with its padding and LF. */
+  private static byte[] array(Size size, Supplier<String> next) {
+    int bytes = size.bytes();
+    StringBuilder doc = new StringBuilder(bytes).append('[');
+    String element = next.get();
+    // An element after the first needs its comma; "]" and the LF follow the last one.
+    while (doc.length() + (doc.length() > 1 ? 1 : 0) + element.length() + 2 <= bytes) {
+      if (doc.length() > 1) {
+        doc.append(',');
+      }
+      doc.append(element);
+      element = next.get();
+    }
+    return padded(doc.append(']'), bytes);
+  }
+
+  /** {@code doc}, then spaces and one LF up to exactly {@code bytes}, in ASCII. */
+  private static byte[] padded(StringBuilder doc, int bytes) {
     doc.repeat(' ', bytes - 1 - doc.length()).append('\n');
     return doc.toString().getBytes(US_ASCII);
   }
@@ -98,7 +160,9 @@ public final class Inputs {
   }
 
   /**
-   * Writes {@code orders-<label>.json} for every {@link Size} into the directory {@code args[0]}, which it creates.
+   * Writes {@code orders-<label>.json} and {@code recs-<label>.json} for every {@link Size}, and
+   * {@code ints-1e4.json} ({@link #ints(int)} of {@link #INTS_1E4}), into the directory {@code args[0]}, which it
+   * creates.
    *
    * @throws IOException if a file cannot be written
    */
@@ -106,6 +170,8 @@ public final class Inputs {
     Path dir = Files.createDirectories(Path.of(args[0]));
     for (Size size : Size.values()) {
       Files.write(dir.resolve("orders-" + size.label() + ".json"), orders(size));
+      Files.write(dir.resolve("recs-" + size.label() + ".json"), recs(size));
     }
+    Files.write(dir.resolve("ints-1e4.json"), ints(INTS_1E4));
   }
 }

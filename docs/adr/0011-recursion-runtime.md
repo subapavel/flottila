@@ -1,6 +1,6 @@
 # Recursion: weighted stack units, a resumable trampoline only in the interpreter
 
-Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); details the hybrid chosen on issue #3; amended by ADR-0017 (issue #13) and ADR-0018 (issue #12)
+Status: accepted (2026-11-10, owner, issue #7 "What is the execution protocol?"); details the hybrid chosen on issue #3; amended by ADR-0017 (issue #13) and ADR-0018 (issue #12); amended by F-30 (U calibrated in spec 2 without path-mode `..`)
 
 Tail calls are jumps. Other recursive calls run on the Java stack until the stack units reach a
 limit U, and beyond U they run on a CPS trampoline. A memory-bounded recursion-depth budget limits
@@ -75,3 +75,8 @@ levels are a `DEVIATIONS.md` row.
 
 Milestone 1 has the interpreter only. The calibration test runs on the interpreter in spec 2. The
 bytecode spec runs it again on both backends, and the release takes the smaller U.
+
+## Amendment (F-30, spec 2)
+
+Spec 2 calibrates U over every shape above except path-mode `..`, which spec 3's path-mode ticket
+adds before re-running the calibration; U may only fall.

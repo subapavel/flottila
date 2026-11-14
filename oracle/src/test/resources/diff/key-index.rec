@@ -1,0 +1,155 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case key-index/reordered-wide
+def b9940647bac0
+rc 0
+stdout true\ntrue\n
+stderr
+end
+
+case key-index/reordered-colliding
+def bdb3911e8d55
+rc 0
+stdout true\ntrue\n
+stderr
+end
+
+case key-index/reordered-pairwise
+def a631b577e15d
+rc 0
+stdout true\n
+stderr
+end
+
+case key-index/miss-last-key
+def 2b3aba6c7e09
+rc 0
+stdout false\nfalse\n
+stderr
+end
+
+case key-index/miss-last-key-colliding
+def 054cb55c447e
+rc 0
+stdout false\n
+stderr
+end
+
+case key-index/miss-pairwise
+def 00819ee48c66
+rc 0
+stdout false\n
+stderr
+end
+
+case key-index/fewer-right-keys
+def 60a4e956a528
+rc 0
+stdout false\nfalse\n
+stderr
+end
+
+case key-index/repeat-last-wins
+def 73ee7af2db50
+rc 0
+stdout true\nfalse\n
+stderr
+end
+
+case key-index/repeat-last-wins-wide
+def f06c2eda8134
+rc 0
+stdout true\ntrue\nfalse\n
+stderr
+end
+
+case key-index/repeat-last-wins-colliding
+def 67e6b4413702
+rc 0
+stdout true\nfalse\n
+stderr
+end
+
+case key-index/repeat-escaped
+def 46526b22244c
+rc 0
+stdout true\nfalse\n
+stderr
+end
+
+case key-index/nested-objects
+def e9b300771049
+rc 0
+stdout true\nfalse\n
+stderr
+end
+
+case key-index/built-left-read-right
+def 11265bf4581e
+rc 0
+stdout true\ntrue\nfalse\n
+stderr
+end
+
+case key-index/built-left-read-right-colliding
+def 34f4a929378b
+rc 0
+stdout true\nfalse\n
+stderr
+end
+
+case key-index/read-left-built-right
+def 3a572024cd1e
+rc 0
+stdout true\nfalse\n
+stderr
+end
+
+case key-index/not-equal
+def 92c9cc002498
+rc 0
+stdout false\ntrue\nfalse\ntrue\nfalse\n
+stderr
+end
+
+case key-index/not-equal-colliding
+def 866e5fb046a0
+rc 0
+stdout false\ntrue\n
+stderr
+end
+
+case key-index/unique-objects
+def dd34e03c8e31
+rc 0
+stdout [{"AaAaAaAa":0,"BBAaAaAa":1,"AaBBAaAa":2,"BBBBAaAa":3,"AaAaBBAa":4,"BBAaBBAa":5,"AaBBBBAa":6,"BBBBBBAa":7,"AaAaAaBB":8,"BBAaAaBB":9,"AaBBAaBB":10,"BBBBAaBB":11,"AaAaBBBB":12,"BBAaBBBB":13,"AaBBBBBB":14,"BBBBBBBB":15},{"k0":0,"k1":1,"k2":2,"k3":3,"k4":4,"k5":5,"k6":6,"k7":7,"k8":8,"k9":9,"k10":10,"k11":11,"k12":12,"k13":13,"k14":14,"k15":15,"k16":16,"k17":17,"k18":18,"k19":19},{"x19":19,"k18":18,"k17":17,"k16":16,"k15":15,"k14":14,"k13":13,"k12":12,"k11":11,"k10":10,"k9":9,"k8":8,"k7":7,"k6":6,"k5":5,"k4":4,"k3":3,"k2":2,"k1":1,"k0":0}]\n
+stderr
+end
+
+case key-index/group-by-object
+def f317b6f5d564
+rc 0
+stdout [2,3,1]\n
+stderr
+end
+
+case key-index/array-index-of-object
+def e2e27821d83f
+rc 0
+stdout [2,3,4]\n[2,3]\n[]\n
+stderr
+end
+
+case key-index/array-index-of-object-built
+def 78f579ef8f6d
+rc 0
+stdout [2]\n
+stderr
+end
+
+case key-index/empty-objects
+def 64dc6a8c42ec
+rc 0
+stdout true\nfalse\nfalse\ntrue\n
+stderr
+end

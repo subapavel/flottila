@@ -1,0 +1,484 @@
+# jq-1.8.2 sha256 b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f
+
+case syntax/compare-nonassoc
+def 5b0de660e6a2
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '<' at <top-level>, line 1, column 7:\n    1 < 2 < 3\n          ^\njq: 1 compile error\n
+end
+
+case syntax/compare-nonassoc-around-a-sum
+def 4f37aaf0cdf5
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '<' at <top-level>, line 1, column 11:\n    1 < 2 + 3 < 4\n              ^\njq: 1 compile error\n
+end
+
+case syntax/compare-nonassoc-line-3
+def fac2d015beca
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '<' at <top-level>, line 3, column 3:\n    3 < 4\n      ^\njq: 1 compile error\n
+end
+
+case syntax/equal-nonassoc
+def 6cbe5c29138c
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected == at <top-level>, line 1, column 8:\n    1 == 1 == true\n           ^^\njq: 1 compile error\n
+end
+
+case syntax/assign-nonassoc
+def 1543de796cc7
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '=' at <top-level>, line 1, column 9:\n    .a = .b = 1\n            ^\njq: 1 compile error\n
+end
+
+case syntax/update-nonassoc
+def 110fd34b8a39
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected |= at <top-level>, line 1, column 9:\n    .a |= 1 |= 2\n            ^^\njq: 1 compile error\n
+end
+
+case syntax/object-value-as
+def 8762bbc3144e
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected as, expecting '}' at <top-level>, line 1, column 7:\n    {a: 1 as $x | $x}\n          ^^\njq: 1 compile error\n
+end
+
+case syntax/def-after-an-operator
+def 1715570510dc
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected def at <top-level>, line 1, column 5:\n    1 + def f: 2; f\n        ^^^\njq: 1 compile error\n
+end
+
+case syntax/try-body-operator-in-array
+def b47155d75df6
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected catch, expecting '|' or ',' or ']' at <top-level>, line 1, column 21:\n    [try error("x") + 1 catch .]\n                        ^^^^^\njq: 1 compile error\n
+end
+
+case syntax/try-body-operator
+def 6cf7303d089d
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected catch, expecting end of file at <top-level>, line 1, column 20:\n    try error("x") + 1 catch .\n                       ^^^^^\njq: 1 compile error\n
+end
+
+case syntax/reduce-source-comma
+def c5fd0266a27a
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected ',' at <top-level>, line 1, column 9:\n    reduce 1, 2 as $x (0; . + $x)\n            ^\njq: 1 compile error\n
+end
+
+case syntax/object-key-expression
+def 523606731c08
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected LITERAL at <top-level>, line 1, column 2:\n    {1+2:3}\n     ^\njq: error: May need parentheses around object key expression at <top-level>, line 1, column 2:\n    {1+2:3}\n     ^^^\njq: 2 compile errors\n
+end
+
+case syntax/object-key-expression-twice
+def 235a7f8a90ba
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected LITERAL at <top-level>, line 1, column 2:\n    {1+2:3} | {4*5:6}\n     ^\njq: error: May need parentheses around object key expression at <top-level>, line 1, column 2:\n    {1+2:3} | {4*5:6}\n     ^^^\njq: error: syntax error, unexpected LITERAL at <top-level>, line 1, column 12:\n    {1+2:3} | {4*5:6}\n               ^\njq: error: May need parentheses around object key expression at <top-level>, line 1, column 12:\n    {1+2:3} | {4*5:6}\n               ^^^\njq: 4 compile errors\n
+end
+
+case syntax/dot-e-acute
+def 01e3ffa8c79c
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER at <top-level>, line 1, column 2:\n    .é\n     ^\njq: error: try .["field"] instead of .field for unusually named fields at <top-level>, line 1, column 1:\n    .é\n    ^^\njq: 2 compile errors\n
+end
+
+case syntax/dot-at
+def fb4be6cde298
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER at <top-level>, line 1, column 2:\n    .@\n     ^\njq: error: try .["field"] instead of .field for unusually named fields at <top-level>, line 1, column 1:\n    .@\n    ^^\njq: 2 compile errors\n
+end
+
+case syntax/dot-backtick
+def 2b0ec5aea984
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER at <top-level>, line 1, column 2:\n    .`\n     ^\njq: error: try .["field"] instead of .field for unusually named fields at <top-level>, line 1, column 1:\n    .`\n    ^^\njq: 2 compile errors\n
+end
+
+case syntax/dot-brace
+def 7b47f85741de
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '{' at <top-level>, line 1, column 2:\n    .{\n     ^\njq: error: try .["field"] instead of .field for unusually named fields at <top-level>, line 1, column 1:\n    .{\n    ^^\njq: 2 compile errors\n
+end
+
+case syntax/program-empty
+def 622441da31c4
+rc 3
+stdout
+stderr jq: error: Top-level program not given (try ".")\njq: 1 compile error\n
+end
+
+case syntax/program-only-definitions
+def de9d5b7ce564
+rc 3
+stdout
+stderr jq: error: Top-level program not given (try ".")\njq: 1 compile error\n
+end
+
+case syntax/program-only-two-definitions
+def 95a5c44dabba
+rc 3
+stdout
+stderr jq: error: Top-level program not given (try ".")\njq: 1 compile error\n
+end
+
+case syntax/program-only-comment
+def fa5972f9ef4a
+rc 3
+stdout
+stderr jq: error: Top-level program not given (try ".")\njq: 1 compile error\n
+end
+
+case syntax/program-only-spaces
+def 4a9878d0758c
+rc 3
+stdout
+stderr jq: error: Top-level program not given (try ".")\njq: 1 compile error\n
+end
+
+case syntax/program-only-lf
+def 3044d358586e
+rc 3
+stdout
+stderr jq: error: Top-level program not given (try ".")\njq: 1 compile error\n
+end
+
+case syntax/eof-after-spaces
+def a544de2461fb
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 5:\n    .a |   \n        ^^^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-lf
+def e4a9729863b0
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 5:\n    .a |\n        ^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-lines
+def f297c4503597
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 5:\n    .a |\n        ^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-cr
+def 534ad13ed5ab
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 5:\n    .a |\x0d\n        ^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-comment
+def cb0b0343dbc8
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 9:\n    .a | # cd\n            ^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-comment-lf
+def 2054e89562be
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 9:\n    .a | # c\n            ^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-comment-line
+def 5d8468e700c9
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 2, column 1:\n     \n    ^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-hash
+def 8a15ebf2ef9c
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 6:\n    .a | #\n         ^\njq: 1 compile error\n
+end
+
+case syntax/eof-after-continued-comment
+def 3fd126b77832
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 2, column 1:\n    d\n    ^\njq: 1 compile error\n
+end
+
+case syntax/eof-on-line-2
+def df9ec9b765f5
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 2, column 2:\n    |\n     ^\njq: 1 compile error\n
+end
+
+case syntax/after-an-index
+def 3c3060df65e3
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 6:\n    .[0] +\n         ^\njq: 1 compile error\n
+end
+
+case syntax/after-a-comma
+def 34dc5f31f8fa
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 8:\n    .a, .b |\n           ^\njq: 1 compile error\n
+end
+
+case syntax/after-an-index-a-closer
+def a2424ecd0f14
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER at <top-level>, line 1, column 8:\n    .[0] | )\n           ^\njq: 1 compile error\n
+end
+
+case syntax/after-an-interpolation
+def 485e44ac4db6
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 10:\n    "a\\(1)b" |\n             ^\njq: 1 compile error\n
+end
+
+case syntax/after-a-format-string
+def 6370fd48bfca
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 17:\n    @base64 "x\\(.)" +\n                    ^\njq: 1 compile error\n
+end
+
+case syntax/in-interpolation
+def 36636128deb3
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected QQSTRING_INTERP_END at <top-level>, line 1, column 7:\n    "\\(1 +)"\n          ^\njq: 1 compile error\n
+end
+
+case syntax/in-interpolation-wrong-closer
+def e8f040731cbc
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting QQSTRING_INTERP_END or '|' or ',' at <top-level>, line 1, column 5:\n    "\\(1]"\n        ^\njq: 1 compile error\n
+end
+
+case syntax/in-interpolation-nonassoc
+def d52d3fcfc02e
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '<' at <top-level>, line 1, column 11:\n    "a\\(1 < 2 < 3)"\n              ^\njq: 1 compile error\n
+end
+
+case syntax/paren-unclosed
+def 53587785715a
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file, expecting '|' or ',' or ')' at <top-level>, line 1, column 2:\n    (.a\n     ^^\njq: 1 compile error\n
+end
+
+case syntax/close-paren-alone
+def 1560652299bb
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file at <top-level>, line 1, column 1:\n    )\n    ^\njq: 1 compile error\n
+end
+
+case syntax/pipe-first
+def 009aa17304a6
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '|', expecting end of file at <top-level>, line 1, column 1:\n    |.a\n    ^\njq: 1 compile error\n
+end
+
+case syntax/paren-empty
+def 39878fc291f8
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected ')' at <top-level>, line 1, column 2:\n    ()\n     ^\njq: 1 compile error\n
+end
+
+case syntax/dot-space-dot
+def 1e72dd5bb506
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file, expecting FORMAT or QQSTRING_START or '[' at <top-level>, line 1, column 3:\n    . .\n      ^\njq: 1 compile error\n
+end
+
+case syntax/field-space-dot
+def dfeaff75bb80
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file, expecting FORMAT or QQSTRING_START or '[' at <top-level>, line 1, column 4:\n    .a .\n       ^\njq: 1 compile error\n
+end
+
+case syntax/close-paren-extra
+def b0caef59bc9e
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file at <top-level>, line 1, column 5:\n    (.a))\n        ^\njq: 1 compile error\n
+end
+
+case syntax/pipe-twice
+def b9d9c6d53a10
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '|' at <top-level>, line 1, column 6:\n    .a | | .b\n         ^\njq: 1 compile error\n
+end
+
+case syntax/and-alone
+def 42d489d585ae
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected and, expecting end of file at <top-level>, line 1, column 1:\n    and\n    ^^^\njq: 1 compile error\n
+end
+
+case syntax/comma-alone
+def 1e3e80e82259
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected ',', expecting end of file at <top-level>, line 1, column 1:\n    ,\n    ^\njq: 1 compile error\n
+end
+
+case syntax/field-dot-e-acute
+def 12f9dcd8cc76
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting FORMAT or QQSTRING_START or '[' at <top-level>, line 1, column 4:\n    .a.é\n       ^\njq: 1 compile error\n
+end
+
+case syntax/form-feed-before-dot
+def 2131c165b342
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file at <top-level>, line 1, column 1:\n    \x0c.\n    ^\njq: 1 compile error\n
+end
+
+case syntax/vertical-tab-before-dot
+def 4b7aef8239ec
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file at <top-level>, line 1, column 1:\n    \x0b.\n    ^\njq: 1 compile error\n
+end
+
+case syntax/rec-then-name
+def 8dc5cea6626d
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected IDENT, expecting end of file at <top-level>, line 1, column 3:\n    ..a\n      ^\njq: 1 compile error\n
+end
+
+case syntax/rec-then-name-in-parens
+def b95e3d6d8ccc
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected IDENT, expecting '|' or ',' or ')' at <top-level>, line 1, column 4:\n    (..a)\n       ^\njq: 1 compile error\n
+end
+
+case syntax/rec-then-name-after-pipe
+def c5719959ee33
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected IDENT, expecting end of file at <top-level>, line 1, column 7:\n    . | ..a\n          ^\njq: 1 compile error\n
+end
+
+case syntax/field-then-at
+def d4e12f9e5c2f
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file at <top-level>, line 1, column 3:\n    .a@\n      ^\njq: 1 compile error\n
+end
+
+case syntax/field-then-bracket
+def 3c62c2f7d24b
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 3:\n    .a[\n      ^\njq: 1 compile error\n
+end
+
+case syntax/dot-bracket
+def de4c74d2564f
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 2:\n    .[\n     ^\njq: 1 compile error\n
+end
+
+case syntax/field-then-backtick
+def a7939f24be92
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected INVALID_CHARACTER, expecting end of file at <top-level>, line 1, column 3:\n    .a`\n      ^\njq: 1 compile error\n
+end
+
+case syntax/field-then-brace
+def 214bf911cbd3
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected '{', expecting end of file at <top-level>, line 1, column 3:\n    .a{\n      ^\njq: 1 compile error\n
+end
+
+case syntax/field-then-slash
+def 4bc6038dd556
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 3:\n    .a/\n      ^\njq: 1 compile error\n
+end
+
+case syntax/dot-slash
+def 451cd8385c2d
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected end of file at <top-level>, line 1, column 2:\n    ./\n     ^\njq: 1 compile error\n
+end
+
+case syntax/field-then-colon
+def f994e730b4ab
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected ':', expecting end of file at <top-level>, line 1, column 3:\n    .a:\n      ^\njq: 1 compile error\n
+end
+
+case syntax/dot-colon
+def a79d0b682b87
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected ':', expecting end of file at <top-level>, line 1, column 2:\n    .:\n     ^\njq: 1 compile error\n
+end
+
+case syntax/object-key-number-literal
+def 5a38f76175fe
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected LITERAL at <top-level>, line 1, column 2:\n    {1:2}\n     ^\njq: error: May need parentheses around object key expression at <top-level>, line 1, column 2:\n    {1:2}\n     ^\njq: 2 compile errors\n
+end
+
+case syntax/object-key-error-then-syntax-error
+def 9e29082d7f4f
+rc 3
+stdout
+stderr jq: error: Cannot use number (1) as object key at <top-level>, line 1, column 3:\n    {(1): 2 3}\n      ^\njq: error: syntax error, unexpected LITERAL, expecting '}' at <top-level>, line 1, column 9:\n    {(1): 2 3}\n            ^\njq: 2 compile errors\n
+end
+
+case syntax/object-key-error-after-a-recovery
+def d2be78050655
+rc 3
+stdout
+stderr jq: error: syntax error, unexpected LITERAL at <top-level>, line 1, column 2:\n    {1+2:3} | {(1):2}\n     ^\njq: error: May need parentheses around object key expression at <top-level>, line 1, column 2:\n    {1+2:3} | {(1):2}\n     ^^^\njq: error: Cannot use number (1) as object key at <top-level>, line 1, column 13:\n    {1+2:3} | {(1):2}\n                ^\njq: 3 compile errors\n
+end

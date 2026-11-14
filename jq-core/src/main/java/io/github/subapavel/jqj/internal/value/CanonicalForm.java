@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.internal.value;
 
+import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
@@ -134,6 +135,76 @@ public final class CanonicalForm {
           }
         });
     return new BigDecimal(text.toString());
+  }
+
+  /** Whether the strict token {@code b[off, off + len)} is a zero, of either sign and any exponent. */
+  static boolean zero(byte[] b, int off, int len) {
+    return new Token(b, off, len).zero;
+  }
+
+  /**
+   * The order of two strict tokens' literals (ADR-0012 "Comparison"): their canonical forms' values, as
+   * {@code BigDecimal.compareTo} orders them, so a negative zero equals zero and a value below the quantum is rounded
+   * first; an Infinity literal lies past every finite literal of its sign, and two Infinity literals of one sign are
+   * equal. Returns -1, 0 or 1. It reads each digit once, where a BigDecimal of a long coefficient takes quadratic time.
+   */
+  static int compare(byte[] a, int aoff, int alen, byte[] b, int boff, int blen) {
+    Token x = rounded(a, aoff, alen);
+    Token y = rounded(b, boff, blen);
+    int rx = x.rank();
+    int ry = y.rank();
+    if (rx != ry || Math.abs(rx) != 1) {
+      return Integer.compare(rx, ry);
+    }
+    return rx * magnitude(x, y);
+  }
+
+  /**
+   * The token {@code b[off, off + len)}, or the token of its canonical form when its last digit lies below
+   * 1E-1147483646, where the form rounds it (to a zero, possibly).
+   */
+  private static Token rounded(byte[] b, int off, int len) {
+    Token t = new Token(b, off, len);
+    if (t.zero || t.e >= ETINY) {
+      return t;
+    }
+    Bytes text = new Bytes();
+    write(b, off, len, text);
+    return new Token(text.toByteArray(), 0, text.size());
+  }
+
+  /**
+   * The order of the magnitudes of two non-zero finite tokens: by adjusted exponent, then digit by digit, the shorter
+   * D followed by zeros.
+   */
+  private static int magnitude(Token x, Token y) {
+    int byExponent = Long.compare(x.adjusted(), y.adjusted());
+    if (byExponent != 0) {
+      return byExponent;
+    }
+    int nx = x.digitCount();
+    int ny = y.digitCount();
+    for (int i = 0; i < Math.max(nx, ny); i++) {
+      int dx = i < nx ? x.digit(i) : '0';
+      int dy = i < ny ? y.digit(i) : '0';
+      if (dx != dy) {
+        return Integer.compare(dx, dy);
+      }
+    }
+    return 0;
+  }
+
+  /** An {@link Out} that keeps the text's bytes. */
+  private static final class Bytes extends ByteArrayOutputStream implements Out {
+    @Override
+    public void put(byte[] src, int off, int len) {
+      write(src, off, len);
+    }
+
+    @Override
+    public void put(char c) {
+      write(c);
+    }
   }
 
   /**
@@ -313,6 +384,15 @@ public final class CanonicalForm {
 
     long adjusted() {
       return e + digitCount() - 1;
+    }
+
+    /** Where the value lies among the five ranks: an Infinity literal ±2, a finite non-zero value ±1, a zero 0. */
+    int rank() {
+      if (zero) {
+        return 0;
+      }
+      int rank = adjusted() > EMAX ? 2 : 1;
+      return negative ? -rank : rank;
     }
 
     /** D's digit {@code i}, an ASCII byte. */

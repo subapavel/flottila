@@ -28,7 +28,11 @@ public final class BuiltString implements JqString {
 
   /** The string of {@code text}'s UTF-8 bytes. */
   public static BuiltString of(String text) {
-    byte[] utf8 = text.getBytes(UTF_8);
+    return of(text.getBytes(UTF_8));
+  }
+
+  /** The string of {@code utf8}, well-formed UTF-8 that it keeps: the caller never writes the array again. */
+  public static BuiltString of(byte[] utf8) {
     return new BuiltString(utf8, utf8.length);
   }
 

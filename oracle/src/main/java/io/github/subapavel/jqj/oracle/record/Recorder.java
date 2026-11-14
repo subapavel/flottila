@@ -7,6 +7,7 @@ import io.github.subapavel.jqj.oracle.diff.CaseFormat;
 import io.github.subapavel.jqj.oracle.diff.DiffCase;
 import io.github.subapavel.jqj.oracle.diff.Outcome;
 import io.github.subapavel.jqj.oracle.diff.Recording;
+import io.github.subapavel.jqj.oracle.gen.CoreV1;
 import io.github.subapavel.jqj.oracle.gen.ValuesV1;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongFunction;
 
 /**
  * The record command of the differential oracle (ADR-0020), started by {@code scripts/oracle-record.sh}:
@@ -27,8 +29,8 @@ import java.util.concurrent.TimeUnit;
  * <pre>
  *   Recorder &lt;family.cases&gt;...          writes &lt;family&gt;.rec beside each case file
  *   Recorder --verify &lt;family.rec&gt;...    re-records in memory and fails on any byte difference
- *   Recorder --generate values-v1 &lt;from&gt; &lt;to&gt; &lt;diff-dir&gt;
- *                                        writes gen/values-v1.cases and .rec below diff-dir for the seeds [from, to)
+ *   Recorder --generate values-v1|core-v1 &lt;from&gt; &lt;to&gt; &lt;diff-dir&gt;
+ *                                        writes gen/&lt;generator&gt;.cases and .rec below diff-dir for the seeds [from, to)
  * </pre>
  *
  * Each case runs twice in a fresh directory with its files and an environment of exactly {@code HOME TZ LC_ALL} plus
@@ -64,16 +66,34 @@ public final class Recorder {
         }
       };
 
+  /** The text of a generated case file for the seeds [from, to) and its Dropped seeds. */
+  private interface CaseFile {
+    String text(long from, long to, Map<Long, String> dropped);
+  }
+
+  /** A Generator {@code --generate} records: its name, the case block of a seed, and its case file. */
+  private record Generator(String name, LongFunction<String> block, CaseFile file) {
+    String family() {
+      return "gen/" + name;
+    }
+  }
+
+  private static final List<Generator> GENERATORS =
+      List.of(
+          new Generator(ValuesV1.NAME, seed -> ValuesV1.generate(seed).block(), ValuesV1::file),
+          new Generator(CoreV1.NAME, seed -> CoreV1.generate(seed).block(), CoreV1::file));
+
   /**
-   * A generated family: the text of its case file and the recordings of the seeds that were not dropped.
+   * A generated family: its name, the text of its case file and the recordings of the seeds that were not dropped.
    *
+   * @param family {@code gen/<generator>}
    * @param cases the text of {@code gen/<generator>.cases}
    */
-  record Family(String cases, List<Recording> recordings) {
+  record Family(String family, String cases, List<Recording> recordings) {
 
-    /** Writes {@code gen/values-v1.cases} and {@code .rec} below {@code diff}. */
+    /** Writes {@code gen/<generator>.cases} and {@code .rec} below {@code diff}. */
     void write(Path diff, String header) throws IOException {
-      Path base = diff.resolve(ValuesV1.FAMILY);
+      Path base = diff.resolve(family);
       Files.createDirectories(base.getParent());
       Files.writeString(Path.of(base + ".cases"), cases, UTF_8);
       Files.write(Path.of(base + ".rec"), Recording.file(header, recordings));
@@ -135,27 +155,32 @@ public final class Recorder {
     }
   }
 
-  /** {@code --generate values-v1 <from> <to> <diff-dir>}, with {@code 0 <= from < to}. */
+  /** {@code --generate <generator> <from> <to> <diff-dir>}, with {@code 0 <= from < to}. */
   static int generate(List<String> args, Reference reference) throws IOException, InterruptedException {
     long[] range = range(args);
     if (range == null) {
-      System.err.println("usage: scripts/oracle-record.sh --generate " + ValuesV1.NAME + " <from> <to>, 0 <= from < to");
+      System.err.println("usage: scripts/oracle-record.sh --generate values-v1|core-v1 <from> <to>, 0 <= from < to");
       return 2;
     }
     long from = range[0];
     long to = range[1];
     String header = reference.header();
     // Two runs that differ throw out of main before anything is written, which exits 1.
-    Family family = generate(from, to, reference);
+    Family family = generate(args.get(0), from, to, reference);
     family.write(Path.of(args.get(3)), header);
     int dropped = (int) (to - from) - family.recordings().size();
-    System.out.println("recorded " + family.recordings().size() + " seeds of " + ValuesV1.NAME + ", dropped " + dropped);
+    System.out.println("recorded " + family.recordings().size() + " seeds of " + args.get(0) + ", dropped " + dropped);
     return 0;
   }
 
-  /** {@code {from, to}} of {@code values-v1 <from> <to> <diff-dir>} with {@code 0 <= from < to}; otherwise null. */
+  /** The Generator of that name, or null. */
+  private static Generator generator(String name) {
+    return GENERATORS.stream().filter(g -> g.name().equals(name)).findFirst().orElse(null);
+  }
+
+  /** {@code {from, to}} of {@code <generator> <from> <to> <diff-dir>} with {@code 0 <= from < to}; otherwise null. */
   private static long[] range(List<String> args) {
-    if (args.size() != 4 || !args.get(0).equals(ValuesV1.NAME)) return null;
+    if (args.size() != 4 || generator(args.get(0)) == null) return null;
     try {
       long from = Long.parseLong(args.get(1));
       long to = Long.parseLong(args.get(2));
@@ -166,17 +191,18 @@ public final class Recorder {
   }
 
   /**
-   * Records the seeds [{@code from}, {@code to}) of values-v1: each runs twice, a timeout of either run or an rc of 3
-   * drops the seed, and two runs that differ reject the range.
+   * Records the seeds [{@code from}, {@code to}) of the Generator {@code name}: each runs twice, a timeout of either
+   * run or an rc of 3 drops the seed, and two runs that differ reject the range.
    *
    * @throws IllegalArgumentException naming the seed whose two runs differ
    */
-  static Family generate(long from, long to, Reference reference) throws IOException, InterruptedException {
+  static Family generate(String name, long from, long to, Reference reference) throws IOException, InterruptedException {
+    Generator g = generator(name);
     Map<Long, String> dropped = new TreeMap<>();
     List<Recording> out = new ArrayList<>();
     for (long seed = from; seed < to; seed++) {
-      String where = ValuesV1.NAME + ".cases";
-      CaseFormat.Block block = CaseFormat.parse(where, ValuesV1.FAMILY, ValuesV1.generate(seed).block().getBytes(UTF_8)).getFirst();
+      String where = g.name() + ".cases";
+      CaseFormat.Block block = CaseFormat.parse(where, g.family(), g.block().apply(seed).getBytes(UTF_8)).getFirst();
       DiffCase c = DiffCase.of(where, block);
       Outcome first = reference.run(c);
       Outcome second = first == null ? null : reference.run(c);
@@ -191,7 +217,7 @@ public final class Recorder {
       }
       out.add(new Recording(c.id(), c.def(), first));
     }
-    return new Family(ValuesV1.file(from, to, dropped), out);
+    return new Family(g.family(), g.file().text(from, to, dropped), out);
   }
 
   private static List<Recording> record(Path cases) throws IOException, InterruptedException {

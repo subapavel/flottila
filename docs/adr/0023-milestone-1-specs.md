@@ -1,6 +1,6 @@
 # Milestone 1: the final gate and the specs in build order
 
-Status: accepted (2026-11-11, owner, issue #17 "Final gate and the milestone's specs"); makes `docs/GATE.md` final; amends ADR-0014 (when the fallbacks fire), ADR-0019 (when G4 enters the ratchet, the 1 KB differential cases) and ADR-0020 (deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); records F-17 and F-18; amends `docs/WORKFLOW.md` §2 (Phase 0 ends with the first spec ready for `/grill-with-docs`); amended by F-19 (spec 1 grilling: the API slice and the last ticket's measurements); amended by F-27 (both fallbacks fired at spec 1)
+Status: accepted (2026-11-11, owner, issue #17 "Final gate and the milestone's specs"); makes `docs/GATE.md` final; amends ADR-0014 (when the fallbacks fire), ADR-0019 (when G4 enters the ratchet, the 1 KB differential cases) and ADR-0020 (deviation seeds, generator minimums, `compile.txt` modes, `values-v1`); records F-17 and F-18; amends `docs/WORKFLOW.md` §2 (Phase 0 ends with the first spec ready for `/grill-with-docs`); amended by F-19 (spec 1 grilling: the API slice and the last ticket's measurements); amended by F-27 (both fallbacks fired at spec 1); amended by F-33 (G3 in spec 2a)
 
 Facts marked "jq-ref" were observed on 1.8.2 by the adviser (issue #17 round 1 and the ADR
 review). Each rule says whether it is the owner's answer or the architect's choice.
@@ -134,3 +134,7 @@ splitting in two at its own grilling without reopening `docs/GATE.md`, are the o
 - **The fallbacks measured only by the skeleton:** they would rest on a suite of a few cases.
 - **One `compile.txt` line that needs every run to agree:** the copy-only run's arrival would drop
   lines that terminate under it.
+
+## Amendment (F-33, spec 2)
+
+G3 enters `bench.tsv` in spec 2a, with `sort` and its kin, not in spec 4.

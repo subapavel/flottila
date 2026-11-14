@@ -4,6 +4,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.github.subapavel.jqj.JqTermination;
+import io.github.subapavel.jqj.Limits;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -13,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -104,6 +107,32 @@ class MainTest {
   }
 
   @Test
+  void filterErrorOfAnyValuePrintsJqsLineAndExitsFive() {
+    // jq-ref 1.8.2, recorded in diff/control.rec (#68, ADR-0039): a value that is no string after "(not a string): ",
+    // a view payload included, and a string cut at its first NUL, as jq's %s prints it.
+    //   control/error-array        error([1,"a",null]) on null    -> jq: error (at <stdin>:1) (not a string): [1,"a",null]
+    //   control/error-view-payload .a | error on {"a":{"b":1}}    -> jq: error (at <stdin>:1) (not a string): {"b":1}
+    //   control/error-nul-string   "a\\u0000b" | error on null   -> jq: error (at <stdin>:1): a
+    String nul = "\"a" + "\\" + "u0000b\" | error";
+    String[][] cases = {
+      {"error([1,\"a\",null])", "null\n", "jq: error (at <stdin>:1) (not a string): [1,\"a\",null]\n"},
+      {".a | error", "{\"a\":{\"b\":1}}\n", "jq: error (at <stdin>:1) (not a string): {\"b\":1}\n"},
+      {nul, "null\n", "jq: error (at <stdin>:1): a\n"},
+    };
+    for (String[] c : cases) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      ByteArrayOutputStream err = new ByteArrayOutputStream();
+      Invocation invocation = new Invocation(List.of("-c", c[0]), Map.of(), Path.of("."), new ByteArrayInputStream(c[1].getBytes(UTF_8)), out, err);
+
+      int rc = Main.run(invocation);
+
+      assertThat(err.toString(UTF_8)).as("stderr of -c %s", c[0]).isEqualTo(c[2]);
+      assertThat(rc).as("exit code of -c %s", c[0]).isEqualTo(5);
+      assertThat(out.toByteArray()).as("stdout of -c %s", c[0]).isEmpty();
+    }
+  }
+
+  @Test
   void fileArgumentNamesTheFileInTheErrorLine(@TempDir Path cwd) throws IOException {
     // jq-ref 1.8.2, recorded (field/error-file-argument) and observed 2026-11-11: the file argument as given.
     //   printf '[1]\n' > in.json; jq-ref -c .a in.json            -> jq: error (at in.json:1): Cannot index array with string ("a")
@@ -161,5 +190,28 @@ class MainTest {
             List.of(".", "missing.json"), Map.of(), cwd, new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), broken);
 
     assertThatThrownBy(() -> Main.run(invocation)).isInstanceOf(UncheckedIOException.class).hasMessageContaining("stderr closed");
+  }
+
+  @Test
+  void theBuilderHookShapesTheEngineOfTheRun() {
+    // The compile-mode oracle's entry (ADR-0020 amendment for #60): the hook gets the command line's builder last, so
+    // its limits replace Limits.cli(). With no steps, the read's one tick for "1" ends the run (StepBudgetTest).
+    Limits cli = Limits.cli();
+    Limits noSteps =
+        new Limits(0, cli.deadline(), cli.nestingDepth(), cli.recursionDepth(), cli.bytesBuilt(), cli.bytesWritten(), cli.regexMatchTime(), cli.stackBytes());
+
+    assertThatThrownBy(() -> Main.run(compactDotOnOne(new ByteArrayOutputStream()), b -> b.limits(noSteps)))
+        .as("the run with a hook that sets no steps")
+        .isInstanceOfSatisfying(JqTermination.class, t -> assertThat(t.budget()).as("budget").isEqualTo(JqTermination.Budget.STEPS));
+
+    // Witness: the identity hook runs as run(Invocation). jq-ref 1.8.2, observed 2026-11-12: printf '1\n' | jq-ref -c .
+    //   -> rc 0, stdout 1 and LF.
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    assertThat(Main.run(compactDotOnOne(out), UnaryOperator.identity())).as("exit code with the identity hook").isZero();
+    assertThat(out.toString(UTF_8)).as("stdout with the identity hook").isEqualTo("1\n");
+  }
+
+  private static Invocation compactDotOnOne(OutputStream out) {
+    return new Invocation(List.of("-c", "."), Map.of(), Path.of("."), new ByteArrayInputStream("1\n".getBytes(UTF_8)), out, new ByteArrayOutputStream());
   }
 }
