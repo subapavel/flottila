@@ -213,7 +213,9 @@ class NodeBenchMainIT {
         assertEquals(WARMUP, json.getInteger("warmup"), json.encode());
 
         assertEquals(3, json.getInteger("warmupFailed"), "the record counts the warm-up's three refused saves: " + json.encode());
-        // acceptance 2 (warmedUp = warmup - warmupFailed) is unobservable while warmedUp is a local: FIX-134's, not asserted here
+        // FIX-134 made warmedUp observable: this catches any understatement and an overstated record; an overstated :314 is caught only by
+        // the class @Timeout, because the warm-up settle that warmedUp drives runs before the record is written and waits for rows that never come
+        assertEquals(2, json.getInteger("warmedUp"), "the record's warmedUp is warmup - warmupFailed = " + WARMUP + " - " + REFUSED + ": " + json.encode());
         assertEquals(2 + MESSAGES, count(db, "select count(distinct id) from messages"),
                 "the node recorded the warm-up's two accepted messages and the window's forty, no refused one: " + json.encode());
         assertEquals(2 + MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"),

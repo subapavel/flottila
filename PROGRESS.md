@@ -1373,3 +1373,19 @@ agent's code; that asymmetry is the finding, not the pipes.
 VERIFIED_PASS — cell-shape audit of both files at HEAD e65f616: 11 rows deviated, and 10 of them LOSE TEXT on GitHub — BACKLOG 5
 (FIX-10 8 cells, FIX-15 7, FIX-54/56/57 7 each) and DECISIONS 5 (D-040 6, D-057 6, D-044/053/080 5 each). The 11th, FIX-71, was
 cosmetic: 6 cells and no closing pipe, which GFM renders correctly. After: 0 deviating. D-054: class A, rounds 4.
+
+## 2026-11-14 — FIX-134 `warmedUp` put in the bench record — done, review PASS r2
+One production line at `NodeBenchMain.java:316`. `warmedUp` was a local at `:314`, so the subtraction that decides the warm-up
+settle's wait could not be seen from a test and an understated mutant passed in silence. Red first (`expected: <2> but was:
+<null>`), then green: filtered case 12/0/0/0, whole module 27/0/0/0. `:314`, the settle at `:315` and `Harness` untouched;
+`bench/RESULTS.md` not touched, so no benchmark number is claimed.
+Four mutants, all killed by the assertion at `:218` in ~28 s each rather than by a timeout. Two were mine (`0`, and the `.put`
+removed). The reviewer's two were better and one corrected me: M3 overstates the RECORD only, leaving `:314` right, so the settle
+still works and the run reaches the assertion, where `<5>` dies; M4 is an off-by-one at `:314` and dies as `<1>`. My pair tested
+neither class. The FAIL was one false sentence of mine, and how far it travelled is the record: I wrote in the packet that the overstated
+mutant dies by assertion. It does not — `warmedUp` drives the settle that runs before the record is written, and that waits for
+rows which never come, so the 300 s class timeout fires first. The test-author copied the claim from my packet into a code comment;
+it was also in this row; I corrected the row but not the packet, so it survived there and re-entered the test. Then my correction
+was itself imprecise, because M3 shows an overstated RECORD is caught. One sentence, four places, two rounds.
+VERIFIED_PASS as above. NOT_RUN: coverage — every run here carries `-Djacoco.skip=true`, which a filtered `-Pit` run requires, so
+none of it is coverage evidence. D-054: class A, rounds 2.

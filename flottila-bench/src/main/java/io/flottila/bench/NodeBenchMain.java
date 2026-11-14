@@ -313,7 +313,7 @@ public final class NodeBenchMain {
             int warmupFailed = h.load(in, "/in", o.warmup()).failed();
             int warmedUp = o.warmup() - warmupFailed;
             h.settle(warmedUp, failuresAtStart, DRAIN, h.probe(admin));
-            measured = h.measure(warmedUp, admin).put("warmupFailed", warmupFailed)   // settled too: the node stops with nothing in flight
+            measured = h.measure(warmedUp, admin).put("warmupFailed", warmupFailed).put("warmedUp", warmedUp)   // settled too: the node stops with nothing in flight
                     .put("cpu", h.cpu(admin));
         } finally {
             node.close();   // flushes the message store: its rows are in before the record is written
