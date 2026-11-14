@@ -294,7 +294,7 @@ class RunStateTest {
     assertThat(state.label()).as("first token of the run").isEqualTo(1);
     long inner = state.label();
     assertThat(inner).as("second token of the run").isEqualTo(2);
-    assertThat(state.breakTo(1)).as("what a Break returns").isFalse();
+    state.breakTo(1);
     assertThat(state.caught(inner)).as("the inner Label of token 2 after a break to 1").isFalse();
     assertThat(state.caught(1)).as("the Label of token 1 after a break to 1").isTrue();
     assertThat(state.caught(1)).as("the same Label again, the mark taken back: a stop").isFalse();

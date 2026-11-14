@@ -243,12 +243,11 @@ public final class RunState {
   }
 
   /**
-   * A Break to the activation of {@code token} (ADR-0008, ADR-0039): marks it and returns false, which every node
-   * passes on until the Label of that token takes it back with {@link #caught}.
+   * A Break to the activation of {@code token} (ADR-0008, ADR-0039): marks it. The Break then returns false, which
+   * every node passes on until the Label of that token takes it back with {@link #caught}.
    */
-  public boolean breakTo(long token) {
+  public void breakTo(long token) {
     breakTo = token;
-    return false;
   }
 
   /**
