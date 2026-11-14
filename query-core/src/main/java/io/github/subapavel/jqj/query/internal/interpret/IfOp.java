@@ -34,10 +34,12 @@ public final class IfOp extends Op {
       return cond.run(state, slots, in, v -> branch(v).run(state, slots, in, out));
     }
     Holder holder = new Holder();
-    // The holder never stops and a tail emitter never breaks out, so this run's answer is always true.
-    cond.run(state, slots, in, holder);
-    Object v = holder.take();
-    return v == Holder.EMPTY || branch(v).run(state, slots, in, out);
+    // The holder answers its one result with a stop and a tail emitter never breaks out, so a true means no result:
+    // the If runs out. A false means the result came, and it runs its branch.
+    if (cond.run(state, slots, in, holder)) {
+      return true;
+    }
+    return branch(holder.take()).run(state, slots, in, out);
   }
 
   private Op branch(Object v) {

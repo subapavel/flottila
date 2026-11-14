@@ -51,13 +51,12 @@ public final class BindsOp extends Op {
               return from(next, state, slots, in, out, holder);
             });
       }
-      // The holder never stops and a tail emitter never breaks out, so this run's answer is always true.
-      values[k].run(state, slots, in, holder);
-      Object v = holder.take();
-      if (v == Holder.EMPTY) {
+      // The holder answers its one result with a stop and a tail emitter never breaks out, so a true means no result:
+      // the Binds runs out. A false means the result came, and it sets the slot.
+      if (values[k].run(state, slots, in, holder)) {
         return true;
       }
-      slots[slot] = v;
+      slots[slot] = holder.take();
     }
     return body.run(state, slots, in, out);
   }
