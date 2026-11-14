@@ -1226,3 +1226,38 @@ catches that text) but is the only pin on the whole line, kept deliberately; the
 but is pinned repo-wide by DeploymentsRollbackTest:817.
 D-054 data: class A (test-author x1, verifier x3, reviewer x1); review rounds 1.
 Next: CONSIDER-11 implementation rows, pending the owner's decision on a durable marker for a handled message.
+
+## 2026-11-14 — FIX-121 TrailTest warning counts stop reading the whole JVM — done, review PASS r1
+Test-only, flottila-core. Same leakage FIX-54 fixed at :386/:405, two sites further on.
+Change: `:648` filters by `bad.key().toString()`; `:630` needed an OR, because step 4 is the metadata-only row whose warning carries no
+`BlobKey` — a key-only filter finds 3 of 4 — so the second clause is the delimited row head `"message m-nw of flow f: "`, never an id substring.
+Counts 4 and 1 unchanged and re-derived from the fixtures by the reviewer, not taken on trust.
+Checks: VERIFIED_PASS exit 0, TrailTest 13/0 (agent/work/FIX-121-green.log). Mutant A (Trail.java:164 key -> "K") EXECUTED_FAIL 13/2, kills the
+`:648` count (FIX-121-mutA.log). Mutant B (Trail.java:177 wording) left all 13 green (FIX-121-mutB.log) — disclosed, not hidden: the persist
+sentence is unasserted anywhere, now FIX-123. Production byte-identical after both (`cmp`, `git diff` empty).
+Review: PASS r1. Confirmed the `BlobKey` record's `toString()` delimits the id (`[messageId=m-bad,`), so the `m-w`/`m-wait` trap cannot return,
+and that "m-nw" occurs nowhere else in the repo. Non-blocking: the `:631` count is near-duplicate of `:612` because clause 2 already matches all
+four rows, so clause 1 adds nothing there; kept, since it still fails on a stray or missing WARNING for this message.
+D-054 data: class A (test-author x1, reviewer x1); review rounds 1.
+Next: FIX-59/60.
+
+## 2026-11-14 — FIX-59 S3 prefix validated, FIX-60 archive fetch bounded — done, review PASS r2
+One commit for two class-A rows in flottila-runtime (deviation from one task / one commit, as for FIX-54/56/57: disjoint files, one green).
+Test first: NodeConfigTest prefix case EXECUTED_FAIL 102/1 (FIX-59-60-red-2.log); FIX-60's red was a compile failure, the constructors not yet
+existing (FIX-59-60-red-1.log) — accepted and recorded as such, not as an assertion red.
+Change: `NodeConfig` refuses a blank / leading-`/` / trailing-`/` `FLOTTILA_S3_PREFIX` in the house style of `leaseDuration` and `archiveStore`;
+both archive stores take `long maxBytes` at construction (constructors replaced, no overload, no default cap — a cap defaulted anywhere is the
+unlimited limit CLAUDE.md forbids) and refuse mid-copy in `copyBounded`, 64 KiB at a time, checking before the write and deleting the target in a
+`finally`. 20 test call sites gained an argument, no expectation changed; the three production sites pass `config.maxPackageBytes()`.
+Checks: VERIFIED_PASS exit 0, `clean verify -Pit` (precommit-2-verify.log); `S3ArchiveStoreIT` 12/0 against Testcontainers (FIX-59-60-fix-2.log).
+11 of the reviewer's 12 named mutants KILLED, mutant 7 confirming the S3 path is bounded (FIX-59-60-mut-7.log).
+NOT_RUN — the `out.close()` failure path of `DirArchiveStore.copyBounded:75` is not reachable from a test here (`Files.newOutputStream` is
+unbuffered, so the failure lands at `write`); accepted on a code read, adjacent paths covered by the mid-source-failure case and mutant 4. The
+same applies to the mid-stream refusal at :68-72, where named mutant 8 (write moved above the check) SURVIVED as predicted: the suite cannot see
+write ordering, so "refused while streaming, not after" rests on the read, not on an assertion. Neither is VERIFIED_PASS.
+Review: FAIL r1 — `done = true` sat inside the try-with-resources, so an `out.close()` failure skipped the delete and left a truncated file, the
+one case the whole fix exists for; fixed by nesting the try. PASS r2, which also ruled that calling the package-private `copyBounded` from a test
+is a legitimate seam (a failing *source* at an input boundary, asserting filesystem state) and that code-read justification is admissible if it is
+recorded in the evidence vocabulary rather than dressed as a measurement.
+D-054 data: class A (test-author x3, implementer x2, verifier x3, reviewer x2); review rounds 2.
+Next: FIX-71 (a)+(c) with D-104 as its policy.
