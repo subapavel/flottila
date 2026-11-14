@@ -1421,3 +1421,19 @@ The guard earned itself inside the hour: writing FIX-143's row I put a raw pipe 
 reported `BACKLOG.md:228: expected 6 cells, found 7` against my own text. That is the FIX-132 defect, by me, caught.
 VERIFIED_PASS: 19/19 OK, guard exit 0 on the real ledgers; integrated reactor `clean verify -Pit` exit 0 BUILD SUCCESS
 12:00, 17 modules, every `Tests run:` at 0 failures, coverage "no decrease". D-054: class A, rounds 2.
+
+## 2026-11-14 — FIX-140 Recorder's own recording can no longer replace the throwable it rethrows — done, review PASS r2
+The catch widened by FIX-133 recorded the FAILED row and only then rethrew, so a recording that threw REPLACED the
+original: an `Error` could leave as the `InterruptedException` a sneaky `Trail.add` await throws, and `Parking:49` would
+park it, against D-098. The `record` call is now in its own try; nothing in the catch can change what leaves. +10/-1.
+Review r1 FAILed on the thing that matters: narrowing the new `catch (Throwable)` back to `catch (RuntimeException)` left
+all four cases GREEN, because every one of them failed through an `IllegalStateException`. The widening that IS the fix
+was untested — FIX-133's own defect, reintroduced one method deeper. Cases 5 and 6 fix that with a `toString()` that
+sneaky-throws a checked `InterruptedException` and one that throws a `StackOverflowError`; the second is not redundant,
+because under `catch (Exception)` only it dies. r1 also caught missing acceptance evidence that MY instruction destroyed:
+I told the implementer to overwrite the green log, which erased the module run. Logs are appended now, not overwritten.
+`addSuppressed(self)` throws, so the attach is guarded by identity — and mutant M1, dropping that guard, is killed ONLY by
+the fixture whose `toString()` does `throw this`. Both the reviewer's prediction and mine said case 1 would kill it too;
+both were wrong, since every other case's recording failure is a different object. That one case is the whole guard.
+VERIFIED_PASS: 20/20 filtered, core 517/0/0/0, all 5 reviewer mutants killed by the verifier, `cmp` clean after each;
+integrated `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease. D-054: class B, rounds 2.

@@ -414,4 +414,132 @@ class RecorderTest {
         assertSame(thrown, escaped, "a step that records nothing still lets the Error go on unchanged: handling does not depend on recording");
         assertEquals(List.of(), store.timeline(in.id()).await(), "and records nothing: recording does not depend on handling");
     }
+
+    /** An {@link AssertionError} whose text cannot be built: recording its failure row throws {@code recordingFailure} (FIX-140 trigger a). */
+    static final class HostileError extends AssertionError {
+        final RuntimeException recordingFailure = new IllegalStateException("toString exploded");
+        HostileError() { super("hostile"); }
+        @Override public String toString() { throw recordingFailure; }
+    }
+
+    /** The same, for an {@link Exception}. */
+    static final class HostileException extends RuntimeException {
+        final RuntimeException recordingFailure = new IllegalStateException("toString exploded");
+        HostileException() { super("hostile"); }
+        @Override public String toString() { throw recordingFailure; }
+    }
+
+    @Test
+    void aRecordingThatThrowsStillLetsTheOriginalErrorEscapeUnchanged() {
+        HostileError thrown = new HostileError();
+        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
+        assertSame(thrown, escaped, "the Error that left the step is what leaves the recorder, not the failure of recording it (D-111): an Exception here would be parked as transient");
+        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(thrown.recordingFailure),
+                "the recording failure is not discarded: it is among the suppressed of the original: " + java.util.Arrays.toString(escaped.getSuppressed()));
+    }
+
+    /** This WARNING is also the only report a throwable built with suppression disabled gets: its {@code addSuppressed} is a no-op, so the suppressed-list assertions of the cases around this one do not cover that path. */
+    @Test
+    void aRecordingThatThrowsIsLoggedOnceWithTheMessageAndStep() {
+        java.util.logging.Logger core = java.util.logging.Logger.getLogger("io.flottila.core");   // a strong reference: JUL holds loggers weakly
+        List<java.util.logging.LogRecord> logged = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.logging.Handler capture = new java.util.logging.Handler() {
+            @Override public void publish(java.util.logging.LogRecord r) { logged.add(r); }
+            @Override public void flush() { }
+            @Override public void close() { }
+        };
+        core.addHandler(capture);
+        try {
+            List<StepFactory> all = new java.util.ArrayList<>(with("fine", Stage.of(e -> { throw new IllegalStateException("readable"); })));
+            all.add(factory("hostile", s -> Stage.of(e -> { throw new HostileError(); })));
+            Function<String, List<String>> recorderWarnings = id -> logged.stream()
+                    .filter(r -> r.getLevel() == java.util.logging.Level.WARNING && Recorder.class.getName().equals(r.getLoggerName()))
+                    .map(r -> r.getMessage() + (r.getThrown() == null ? "" : " / " + r.getThrown()))
+                    .filter(m -> m.contains(id)).toList();
+
+            Envelope witness = in();
+            assertThrows(IllegalStateException.class, () -> buildWith(all, Map.of("level", "all"), step("mark", "a"), step("fine", "readable-step")).apply(witness));
+            assertEquals(Snapshot.Outcome.FAILED, store.timeline(witness.id()).await().getLast().outcome(), "witness: this step's failure was recorded");
+            assertEquals(List.of(), recorderWarnings.apply(witness.id()), "witness: a failure that is recorded logs nothing from the recorder");
+
+            Envelope in = in();
+            assertThrows(Throwable.class, () -> buildWith(all, Map.of("level", "all"), step("mark", "a"), step("hostile", "crashy-step")).apply(in));
+            List<String> warned = recorderWarnings.apply(in.id());
+            assertEquals(1, warned.size(), "a FAILED row that could not be recorded is logged exactly once at WARNING, naming the message: " + warned);
+            assertTrue(warned.getFirst().contains("crashy-step"), "the WARNING names the step: " + warned);
+        } finally {
+            core.removeHandler(capture);
+        }
+    }
+
+    @Test
+    void aFailureWhoseToStringThrowsStillLeavesARowOrNoneButNeverADifferentThrowable() {
+        HostileException thrown = new HostileException();
+        CountingStore counting = new CountingStore(store);
+        List<StepFactory> all = with("odd", Stage.of(e -> { throw thrown; }));
+        all.add(factory("plain", s -> Stage.of(e -> { throw new IllegalStateException("plain failure"); })));
+        Function<Map<String, Object>, Pipeline> flowWith = x -> new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(counting, meter)
+                .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a"), x))), java.nio.file.Path.of(""));
+
+        Envelope witness = in();
+        assertThrows(IllegalStateException.class, () -> flowWith.apply(step("plain", "x")).apply(witness));
+        assertEquals(List.of(Snapshot.Outcome.FAILED), counting.handed(witness.id(), "x"), "witness: a failure whose text can be built is handed to the store as FAILED");
+
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> flowWith.apply(step("odd", "x")).apply(in));
+        assertSame(thrown, escaped, "the exception that left the step leaves the recorder, not the failure of building its text");
+        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(thrown.recordingFailure), "the failure of building the text is suppressed on it: " + java.util.Arrays.toString(escaped.getSuppressed()));
+        assertEquals(List.of(), counting.handed(in.id(), "x"), "no row for the step whose failure has no text: none is invented (no placeholder)");
+        assertEquals(List.of("ingress", "a"), names(store.timeline(in.id()).await()), "the rows before it stand, and the step's is absent");
+    }
+
+    /** Its text cannot be built, and the failure of building it is itself: the recording failure and the original are one object. */
+    static final class SelfThrowing extends AssertionError {
+        @Override public String toString() { throw this; }
+    }
+
+    @Test
+    void aFailureWhoseToStringThrowsItselfStillEscapesUnchanged() {
+        SelfThrowing thrown = new SelfThrowing();
+        Pipeline p = buildWith(with("self", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("self", "x"));
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
+        assertTrue(!(escaped instanceof IllegalArgumentException), "the recorder must not leave with the IllegalArgumentException of suppressing a throwable into itself, but with the original: " + escaped.getClass().getName());
+        assertTrue(escaped.getMessage() == null || !escaped.getMessage().contains("Self-suppression"), "no self-suppression failure replaces the original: " + escaped.getClass().getName());
+        assertSame(thrown, escaped, "the original escapes by identity: " + escaped.getClass().getName());
+        assertEquals(0, escaped.getSuppressed().length, "nothing is attached: the recording failure is the original itself, and attaching it to itself is what throws");
+    }
+
+    /** An {@link AssertionError} whose text cannot be built: {@code toString} throws {@code recordingFailure}, checked or not, as an interrupted {@code await} does (D-056). */
+    static final class UnprintableError extends AssertionError {
+        final Throwable recordingFailure;
+        UnprintableError(Throwable recordingFailure) { super("unprintable"); this.recordingFailure = recordingFailure; }
+        @Override public String toString() { throw sneaky(recordingFailure); }
+    }
+
+    @Test
+    void aRecordingInterruptedByACheckedExceptionStillLetsTheOriginalEscapeWithItSuppressed() {
+        InterruptedException interrupted = new InterruptedException("stop deadline");
+        UnprintableError thrown = new UnprintableError(interrupted);
+        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
+        assertSame(thrown, escaped, "the original leaves, not the checked InterruptedException thrown sneakily while recording: " + escaped.getClass().getName());
+        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(interrupted),
+                "the InterruptedException is among the suppressed of the original (a catch narrower than Throwable lets it through): " + java.util.Arrays.toString(escaped.getSuppressed()));
+    }
+
+    @Test
+    void aRecordingThatFailsWithAnErrorStillLetsTheOriginalEscapeWithItSuppressed() {
+        StackOverflowError overflow = new StackOverflowError("while recording");
+        UnprintableError thrown = new UnprintableError(overflow);
+        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
+        assertSame(thrown, escaped, "the original leaves, not the Error thrown while recording: " + escaped.getClass().getName());
+        assertTrue(java.util.Arrays.asList(escaped.getSuppressed()).contains(overflow),
+                "the Error is among the suppressed of the original (a catch of Exception only lets it through): " + java.util.Arrays.toString(escaped.getSuppressed()));
+    }
 }

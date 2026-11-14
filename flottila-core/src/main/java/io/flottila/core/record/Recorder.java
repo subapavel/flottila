@@ -28,6 +28,8 @@ import java.util.Optional;
  */
 public final class Recorder {
 
+    private static final System.Logger LOG = System.getLogger(Recorder.class.getName());
+
     /** The name of step 0: {@code start(policy, INGRESS)} records what arrived. */
     public static final String INGRESS = "ingress";
 
@@ -84,7 +86,17 @@ public final class Recorder {
                 });
             } catch (Throwable failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056); an Error too, recorded and rethrown unchanged (D-111)
                 if (!handedOn[0] && policy.records(step.index(), last, Snapshot.Outcome.FAILED)) {
-                    record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
+                    try {
+                        record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
+                    } catch (Throwable recordingFailure) {   // the original is what leaves, whatever recording did (D-111); a throwable cannot suppress itself
+                        if (recordingFailure != failure) failure.addSuppressed(recordingFailure);
+                        // The recording failure is deliberately NOT passed to the logger: a handler would have to format it (toString, stack), and
+                        // formatting is what threw in the first place; nothing in this catch may be able to replace the original. The cost: this
+                        // WARNING carries neither its message nor its stack, only its class, the message id and the step. A log handler that
+                        // throws is FIX-127's decision (contained node-wide at the logging setup), not guarded here.
+                        LOG.log(System.Logger.Level.WARNING, "Recorder: the FAILED row of message " + e.id() + " at step '" + step.name()
+                                + "' was not recorded (" + recordingFailure.getClass().getName() + "); the step's own failure goes on unchanged");
+                    }
                 }
                 throw failure;
             }
