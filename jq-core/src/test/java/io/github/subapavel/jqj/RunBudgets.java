@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import io.github.subapavel.jqj.JqTermination.Budget;
 import io.github.subapavel.jqj.JqTermination.Cause;
+import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.value.JqValue;
 import java.lang.foreign.MemorySegment;
 import java.time.Duration;
@@ -26,12 +27,13 @@ final class RunBudgets {
 
   /**
    * ADR-0030 and the design approval of #59: jq has no budgets, so the messages are jqj's own. Bytes built: ADR-0035
-   * and the design approval of #64.
+   * and the design approval of #64. Recursion depth: #107 ("Depth budget").
    */
   private static final Map<Budget, String> MESSAGES =
       Map.of(
           Budget.STEPS, "Step budget exceeded",
           Budget.DEADLINE, "Deadline exceeded",
+          Budget.RECURSION_DEPTH, "Recursion-depth budget exceeded",
           Budget.BYTES_BUILT, "Bytes-built budget exceeded",
           Budget.BYTES_WRITTEN, "Bytes-written budget exceeded");
 
@@ -70,6 +72,23 @@ final class RunBudgets {
     return engine(
         new Limits(
             Limits.UNLIMITED, Limits.UNLIMITED_TIME, cli.nestingDepth(), cli.recursionDepth(), bytesBuilt, Limits.UNLIMITED, cli.regexMatchTime(), cli.stackBytes()));
+  }
+
+  /**
+   * An engine whose only budget is {@code recursionDepth}, the live call activations a run may hold (ADR-0046), and
+   * which compiles in {@code mode}.
+   */
+  static JqEngine recursionDepth(int recursionDepth, CompileMode mode) {
+    Limits cli = Limits.cli();
+    return JqEngine.builder()
+        .limits(new Limits(Limits.UNLIMITED, Limits.UNLIMITED_TIME, cli.nestingDepth(), recursionDepth, Limits.UNLIMITED, Limits.UNLIMITED, cli.regexMatchTime(), cli.stackBytes()))
+        .compileMode(mode)
+        .build();
+  }
+
+  /** An engine whose only budget is {@code steps}, which compiles in {@code mode}. */
+  static JqEngine steps(long steps, CompileMode mode) {
+    return JqEngine.builder().limits(limits(steps, Limits.UNLIMITED_TIME, Limits.UNLIMITED)).compileMode(mode).build();
   }
 
   /** An engine whose steps, deadline and bytes written are unlimited. */
