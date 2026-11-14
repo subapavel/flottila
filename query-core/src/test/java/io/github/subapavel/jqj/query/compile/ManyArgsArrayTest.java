@@ -7,6 +7,7 @@ import io.github.subapavel.jqj.query.ir.Const;
 import io.github.subapavel.jqj.query.ir.Intrinsic;
 import io.github.subapavel.jqj.query.ir.Node;
 import io.github.subapavel.jqj.query.ir.Operation;
+import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.run.Many;
 import io.github.subapavel.jqj.query.run.RunState;
@@ -19,7 +20,8 @@ import org.junit.jupiter.params.provider.EnumSource;
  * The Many args contract (ADR-0041 as amended by F-43, ADR-0044): the call site gives each loop a new args array, of
  * its arguments and then its loop slots, and {@code first} may replace an element of it; a Const is never written. So
  * what one loop's {@code first} writes into its array, over an argument or into a loop slot, never reaches the next
- * loop, which starts from the argument's value and an empty loop slot.
+ * loop, which starts from the argument's value and an empty loop slot. Both loops are of one call site, run once per
+ * input, since the array is per loop, not per call site.
  */
 class ManyArgsArrayTest {
   private static final Source AT = new Source(0, 1);
@@ -63,10 +65,13 @@ class ManyArgsArrayTest {
     return new Intrinsic(AT, new Operation("replacing", many), args);
   }
 
-  /** Two loops of {@code many}, two calls of it with Const arguments of {@code constants}, one after the other in a run. */
+  /**
+   * Two loops of one call site of {@code many} with Const arguments of {@code constants}, one per input of {@code (1, 2) |
+   * call}, one after the other in a run: what one loop wrote is still in the op if the op kept it.
+   */
   private static void twoLoops(Many many, CompileMode mode, Object... constants) {
     List<Object> emitted = new ArrayList<>();
-    Compiler.compile(new Comma(AT, call(many, constants), call(many, constants)), mode)
+    Compiler.compile(new Pipe(AT, new Comma(AT, new Const(AT, 1), new Const(AT, 2)), call(many, constants)), mode)
         .run(
             new RunState(),
             new Object(),

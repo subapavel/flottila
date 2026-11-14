@@ -10,8 +10,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 /**
- * ADR-0015: only DEL and bytes that are not well-formed UTF-8 make a string tag 6, so a string of one well-formed
- * sequence at an edge of the Unicode standard's table 3-7 is tag 5: each lead's lowest and highest second byte and the
+ * ADR-0015: only an escape, DEL or a sequence that jq's {@code jvp_utf8_next} calls invalid makes a string tag 6, so a
+ * string of one well-formed sequence, with no escape, at an edge of the Unicode standard's table 3-7 is tag 5: each lead's lowest and highest second byte and the
  * lowest and highest later byte. jq-ref 1.8.2 reads every one of them as one code point (observed 2026-11-14:
  * {@code map(length)} gives 1 for each and {@code map(explode[0])} gives 128, 2047, 2048, 55295, 57344, 65535, 4096,
  * 8191, 65536, 1114111, 262144 and 1048575).

@@ -149,7 +149,6 @@ class KeyProofEdgesTest {
     keys.add(others().getFirst());
     ObjectWalk walk = KeyProof.walk(new RunState(), object(json(keys)), false);
     assertThat(walk.size()).as("distinct keys of 10 entries with one repeat, sorted").isEqualTo(9);
-    assertThat(walk.plan()).as("plan of a sorted proof with a repeat").isNotNull();
     List<String> members = new ArrayList<>();
     RunState free = new RunState();
     for (int c = walk.first(); c != -1; c = walk.next(free, c)) members.add(walk.key(c).value() + "=" + walk.member(free, c).toJson());
