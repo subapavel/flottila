@@ -25,6 +25,7 @@
 package io.github.subapavel.jqj.internal.op;
 
 import io.github.subapavel.jqj.internal.value.DoubleNumber;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.query.run.Fn2;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.value.JqArray;
@@ -86,8 +87,8 @@ final class Modulo implements Fn2 {
   }
 
   private static DoubleNumber remainder(RunState state, JqNumber a, JqNumber b) {
-    double x = a.doubleValue();
-    double y = b.doubleValue();
+    double x = Numbers.doubleValue(state, a);
+    double y = Numbers.doubleValue(state, b);
     if (Double.isNaN(x) || Double.isNaN(y)) {
       return new DoubleNumber(Double.NaN);
     }

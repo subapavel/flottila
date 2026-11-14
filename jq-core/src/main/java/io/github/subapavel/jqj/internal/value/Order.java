@@ -147,7 +147,8 @@ public final class Order {
   /**
    * Two numbers: a NaN side is read as null, so it lies below the other number, a NaN included; any other pair by
    * {@link Numbers#compare(RunState, JqNumber, JqNumber)}, which gives 1, as jq's null on the right does, when only the
-   * right side is NaN: that side is no literal, so the pair compares as doubles, uncharged. A literal is never NaN.
+   * right side is NaN: that side is no literal, so the pair compares as doubles, only a non-short view's read charged
+   * (#97). A literal is never NaN.
    */
   private static int numbers(RunState state, JqNumber n, JqNumber m) {
     if (n instanceof DoubleNumber d && Double.isNaN(d.doubleValue())) {

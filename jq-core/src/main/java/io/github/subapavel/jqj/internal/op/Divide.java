@@ -25,6 +25,7 @@
 package io.github.subapavel.jqj.internal.op;
 
 import io.github.subapavel.jqj.internal.value.DoubleNumber;
+import io.github.subapavel.jqj.internal.value.Numbers;
 import io.github.subapavel.jqj.query.run.Fn2;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.value.JqArray;
@@ -46,10 +47,11 @@ final class Divide implements Fn2 {
   public Object apply(RunState state, Object in, Object l, Object r) {
     return switch (new Operands(l, r)) {
       case Operands(JqNumber a, JqNumber b) -> {
-        if (b.doubleValue() == 0) {
+        double divisor = Numbers.doubleValue(state, b);
+        if (divisor == 0) {
           throw Arithmetic.cannot(state, a, b, "cannot be divided because the divisor is zero");
         }
-        yield new DoubleNumber(a.doubleValue() / b.doubleValue());
+        yield new DoubleNumber(Numbers.doubleValue(state, a) / divisor);
       }
       case Operands(JqString a, JqString b) -> Strings.split(state, a, b);
       case Operands(JqNull a, JqNull b) -> throw Arithmetic.cannot(state, a, b, ERROR);
