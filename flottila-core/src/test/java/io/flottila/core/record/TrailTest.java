@@ -26,6 +26,7 @@ import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.function.Executable;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -47,6 +48,7 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -356,9 +358,19 @@ class TrailTest {
         assertEquals(large.hash(), tooLarge.bodyHash(), "metadata-only keeps the hash");
         assertEquals(large.size(), tooLarge.bodySize(), "and the size");
         assertEquals(3, trail.metadataOnly(), "each row recorded metadata-only is counted");
-        List<String> warned = logged.stream().filter(r -> r.getLevel() == Level.WARNING).map(r -> r.getMessage() + " " + r.getThrown())
-                .filter(m -> m.contains("m-f")).toList();
-        assertFalse(warned.isEmpty(), "a WARNING names the message whose rows were recorded metadata-only");
+        List<String> all = logged.stream().filter(r -> r.getLevel() == Level.WARNING && Trail.class.getName().equals(r.getLoggerName()))
+                .map(LogRecord::getMessage).toList();   // the message text only: a cause that names the key (BodyTooLargeException does) must not satisfy the filter
+        List<Executable> perBody = new ArrayList<>();   // one executable per body, so a failure of one never hides the others
+        for (Body failed : List.of(down, large, thrown)) {
+            perBody.add(() -> {
+                List<String> warned = all.stream().filter(m -> m.contains(failed.key().toString())).toList();   // this body's key, never a bare id substring
+                assertEquals(1, warned.size(), "step " + failed.key().step() + ": each body that could not be made durable logs exactly one WARNING, naming its key: " + all);
+                assertTrue(warned.getFirst().startsWith("message m-f: the body " + failed.key() + " "),
+                        "step " + failed.key().step() + ": the key is in the text Trail wrote, ahead of the interpolated cause: " + warned);
+            });
+        }
+        assertAll(perBody);
+        assertEquals(List.of(), all.stream().filter(m -> m.contains(ok.key().toString())).toList(), "the body made durable logs no WARNING");
     }
 
     @Test
