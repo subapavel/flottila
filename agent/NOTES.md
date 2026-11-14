@@ -588,3 +588,20 @@ tree with the m1 module is dc85964.
   flag asserted CLEAR. A case that is green on arrival earns its place by the mutant it kills, and the
   mutant to try is the one that moves the code rather than deletes it — deletion mutants cannot see
   placement at all.
+- **Never pair two lists by their order. Pair them by a key that exists in both.** FIX-146's packet gave a table of six
+  task ids against six commit shas. The ids were copied from a file written newest-first; the shas were copied from
+  `git log` oldest-first. The table looked complete and was wrong in every row: every entry would have been attributed to
+  the wrong commit, and two to the wrong date. Nothing about the table's appearance showed it — both columns were correct
+  lists. The implementer rebuilt the pairing from each commit's `Task:` trailer, a key present on both sides, and the
+  architect confirmed it with `git log -1 --format=%B <sha> | grep '^Task:'` per sha. When a packet hands over a mapping,
+  it must either carry the key it was derived from or say how to re-derive it; a bare two-column table is an assertion the
+  reader cannot check. This is the same failure as citing a line number instead of a name, one step larger.
+- **The reviewer has Read, Grep and Glob and NO shell. It cannot run git, Maven, PIT or a script.** So anything whose only
+  proof is a command's output does not exist for a review unless it was written to disk FIRST. Two FAILs in one session
+  came from exactly this and neither was about the code: FIX-145 r1 ("the two kills are claims only" — no PIT report, no
+  mutant log) and FIX-146 r1 (`git diff --numstat`, a `^## ` count at HEAD, and six commit messages the entries quoted —
+  all unreadable without git). Both passed the content check; both failed the evidence check. Before dispatching a review,
+  put on disk: the diff via `git add -A && git diff --cached` (plain `git diff` omits staged and untracked files), the test
+  or build log, the scoped PIT report COPIED out of `target/` (a later `clean` deletes it), and the text of anything the
+  change quotes from outside itself — a commit message, a decision, a log line. A review that has to ask for a command to
+  be run costs a whole round, and the round is avoidable every single time.
