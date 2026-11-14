@@ -509,3 +509,56 @@ tree with the m1 module is dc85964.
   matches a pattern, while `diff` shows the change actually present and proves the file differs from the
   backup in exactly that way — and the same `diff` being empty after restore is the `cmp` check. Make
   `diff` the required form; keep `cmp` after restore.
+
+## What a test pins (read the control flow, not a grep)
+
+- **A grep for a symbol does not tell you which branch a case drives.** FIX-142's implementer added
+  `if (parkFailure instanceof InterruptedException) Thread.currentThread().interrupt();` beyond its packet,
+  and the test-author had said it could write no case for that clause. The architect grepped `ParkingTest`
+  for "interrupt", found three cases asserting the flag, and concluded the clause was pinned. Wrong about
+  one of the three: `:393` drives the OUTER catch at `Parking:52` — a step's own `InterruptedException`,
+  which never reaches the new catch at `:59` — so it says nothing about the new clause. The reviewer traced
+  which catch each case actually enters and found the clause pinned anyway, by `:414`/`:450` with `:472` as
+  the negative witness. The right answer for the wrong reason would have been recorded as evidence. Before
+  claiming a case pins a line, say which branch it enters and how it gets there; a test name that contains
+  the word is not that.
+- **A catch that turns a throwable into a failed future hides the position of the call it guards.** FIX-142's
+  review FAILed on exactly this: with `persist` catching `Throwable`, `park(...).await()` rethrows whether
+  the call sits inside the guarded `try` or above it, so every case passed either way and the move was
+  untested. What separates the two is the work `park` does BEFORE it returns a future — `Parked.of` reads
+  `failure.toString()` (`Parked.java:48-49`). A moved statement is pinned only by a case that makes the
+  statement itself throw.
+- **Before a site goes on a triage list, grep `docs/DECISIONS.md` for its file and line.** FIX-143's packet
+  listed `Parking.java:49` as an open question about catch width. D-111 had already settled it — "catches
+  `Exception` only and must keep doing so, because parking an `Error` would make it transient, which D-098
+  refused" — and had gone on to record that "the scout reading that line as a second instance of the same
+  gap was wrong". So the architect put back a site the ledger had already struck, and named the same wrong
+  reason a previous agent was corrected for. Repeating a recorded mistake is worse than making it: the
+  ledger exists so that each error is paid for once. The grep costs one command and the row costs a round.
+- **JUnit's assertion formatter lets an `Error` out of a value's `toString()` escape, and a literal message
+  does not save you.** FIX-142's new case needs a step failure whose `toString()` throws. With `assertSame`
+  first and a literal message, the run still died with that `Error` at the assertion line (`Errors: 1`, not
+  `Failures: 1`): opentest4j 1.3.0's `AssertionFailureBuilder` wraps expected and actual in a `ValueWrapper`
+  whose eager `toString` guard catches `Exception` only, so an `Error` goes straight through the formatter
+  and replaces the assertion failure. The test-author read that off `javap` on the resolved jars rather than
+  guessing it (CLAUDE.md's library rule, and the right call here). The fix is assertion ORDER: assert a
+  printable value — the suppressed throwable — before asserting the identity of the unprintable one. The
+  trap is not specific to this case: any value whose `toString()` can throw an `Error` turns every
+  assertion that mentions it into an `Errors: 1` with the real failure hidden.
+- **A timing measurement in one lane forbids Maven in the others, and the parallel mode makes that easy to
+  forget.** FIX-144's measurement exists to compare a flaky test's failure rate IDLE against LOADED. Eight
+  mutant runs were about to be dispatched into another lane while its idle phase was still running, which
+  would have destroyed the one number the measurement is for — and the result would have looked like data.
+  The rule the temporary lane mode needs: before dispatching anything that runs Maven, ask what the other
+  lanes are measuring. Throughput is the point of the lanes, but a contaminated baseline is worse than a
+  slot left idle for ten minutes, because nothing downstream can tell it apart from a real one.
+- **A quantised set of durations names its own unit — read it before asserting a timeout.** FIX-148 was opened
+  claiming "`patience()` is 10 s and exactly one case waits it out", from the 10.05 s a test took and the 10 s
+  default in its parent class. The per-method times were 12.05, 10.05, 8.04, 4.06, 2.03, 2.03 — all multiples
+  of two, which is a two-second unit announcing itself. `PollingConsumerContractSelfTest:319` overrides
+  `patience()` to 2 s; the 10 s belongs to the production default. Five two-second waits, not one ten-second
+  one. When durations come out as near-exact multiples, find the unit before explaining the total.
+- **A timing claim about a test class must come from the Surefire XML, not the console.** The console prints a
+  per-test time only for FAILURES, so a green run says nothing about where its seconds went — exactly the cost
+  under question. `target/surefire-reports/TEST-*.xml` has a `time` attribute per `testcase`. FIX-148's whole
+  finding, and its correction, came out of an XML file an earlier measurement had already copied: no new build.

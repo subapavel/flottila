@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -470,5 +471,170 @@ class ParkingTest {
         assertSame(boom, surfaced, "the step's original failure surfaces");
         assertEquals(List.of(down), List.of(surfaced.getSuppressed()), "the park's failure, suppressed");
         assertFalse(flagAfter, "a park that failed without an interrupt leaves the flag clear");
+    }
+
+    // --- FIX-142 (F-30): the recovery path must not replace the failure it was recovering from
+
+    /** A stage-0 envelope of flow {@code f} whose body lives in {@code bodies}, and step 2's input: what a park at {@link #STEP_X} persists. */
+    Envelope stepTwoInputIn(ThrowingPersistBlobStore bodies) {
+        return stepTwoInput(ingressIn(bodies), bodies);
+    }
+
+    ThrowingPersistBlobStore throwingBodies() {
+        return new ThrowingPersistBlobStore(new InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT));
+    }
+
+    List<Parked> rows(Dlq of) { return of.list(Optional.empty(), Page.MAX_LIMIT).await().items(); }
+
+    @Test
+    void anErrorThrownByThePersistLeavesTheStageAsTheStepsOwnFailureAndWritesNoRow() {
+        assertStepFailureSurvivesPersistThrowing(new Error("persist exploded"));
+    }
+
+    @Test
+    void aCheckedThrowableThrownSneakilyByThePersistLeavesTheStageAsTheStepsOwnFailureAndWritesNoRow() {
+        assertStepFailureSurvivesPersistThrowing(new java.io.IOException("persist socket reset"));
+    }
+
+    private void assertStepFailureSurvivesPersistThrowing(Throwable fromPersist) {
+        String name = fromPersist.getClass().getSimpleName();
+        ThrowingPersistBlobStore bodies = throwingBodies().throwOnPersist(fromPersist);
+        Envelope in = stepTwoInputIn(bodies);
+        IllegalStateException boom = new IllegalStateException("boom at x");
+        Stage failing = parking(dlq).wrap(Stage.of(e -> { throw boom; }), STEP_X);
+
+        Throwable thrown = assertThrows(Throwable.class, () -> failing.apply(in, out -> out), name);
+        boolean flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the step
+        assertEquals(IllegalStateException.class, thrown.getClass(), name + ": the step's failure leaves, not what the persist threw: " + thrown);
+        assertSame(boom, thrown, name + ": the step's own failure, by identity");
+        assertEquals(List.of(fromPersist), List.of(boom.getSuppressed()), name + ": what the persist threw, suppressed on it");
+        assertEquals(List.of(BlobKey.body(in.id(), 1)), bodies.persists(), name + ": fixture: the persist of step x's input was asked for");
+        assertEquals(List.of(), rows(dlq), name + ": no row");
+        assertFalse(flagAfter, name + ": no interrupt anywhere, the flag stays clear");
+    }
+
+    @Test
+    void anErrorThrownByThePersistFailsTheParkWithItAsCauseAndWritesNoRow() {
+        assertParkFailsWhenPersistThrows(new Error("persist exploded"));
+    }
+
+    @Test
+    void aCheckedThrowableThrownSneakilyByThePersistFailsTheParkWithItAsCauseAndWritesNoRow() {
+        assertParkFailsWhenPersistThrows(new java.io.IOException("persist socket reset"));
+    }
+
+    private void assertParkFailsWhenPersistThrows(Throwable fromPersist) {
+        ThrowingPersistBlobStore bodies = throwingBodies().throwOnPersist(fromPersist);
+        Envelope e = stepTwoInputIn(bodies);
+        WatchingDlq watching = new WatchingDlq(new HoldingBlobStore(new InMemoryBlobStore(rt.hasher(), FakeRuntime.DEFAULT_TREE_LIMIT)));
+
+        Future<Parked> park = assertDoesNotThrow(() -> parking(watching).park(e, STEP_X, new IllegalStateException("boom at x")),
+                "a persist that throws becomes a failed park, never a throw out of park");
+        assertEquals(List.of(BlobKey.body(e.id(), 1)), bodies.persists(), "the persist was asked for");
+        assertTrue(park.failed(), "a persist that throws fails the park: " + park);
+        assertSame(fromPersist, park.cause(), "with what the persist threw as its cause");
+        assertEquals(List.of(), watching.durableAtPark, "the DLQ was never asked to park");
+        assertEquals(List.of(), watching.all(), "no row");
+    }
+
+    @Test
+    void anErrorFromTheParksAwaitLeavesTheStageAsTheStepsOwnFailureWithTheErrorSuppressed() {
+        Error dlqExploded = new Error("dlq exploded");
+        FailingDlq failing = new FailingDlq(dlq).failParks(dlqExploded);
+        Envelope in = in();
+        IllegalStateException boom = new IllegalStateException("boom at x");
+        Stage stage = parking(failing).wrap(Stage.of(e -> { throw boom; }), STEP_X);
+
+        Throwable thrown = assertThrows(Throwable.class, () -> stage.apply(in, out -> out));
+        boolean flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the step
+        assertEquals(IllegalStateException.class, thrown.getClass(), "the step's failure leaves, not the Error out of the await: " + thrown);
+        assertSame(boom, thrown, "the step's own failure, by identity");
+        assertEquals(List.of(dlqExploded), List.of(boom.getSuppressed()), "the Error out of the await, suppressed on it");
+        assertEquals(List.of(), rows(dlq), "fixture: the failing DLQ stored nothing");
+        assertFalse(flagAfter, "no interrupt anywhere, the flag stays clear");
+    }
+
+    /**
+     * The identity guard (FIX-140's, here with a reachable witness): a DLQ whose park fails with the step's failure itself makes
+     * {@code await()} throw the very object being recovered, and {@code addSuppressed(self)} would throw an
+     * {@link IllegalArgumentException} in its place. The failure leaves unchanged, with nothing suppressed on it.
+     */
+    @Test
+    void aDlqFailingWithTheStepsOwnFailureLeavesThatFailureUnchangedAndSuppressesNothing() {
+        IllegalStateException boom = new IllegalStateException("boom at x");
+        FailingDlq failing = new FailingDlq(dlq).failParks(boom);
+        Envelope in = in();
+        Stage stage = parking(failing).wrap(Stage.of(e -> { throw boom; }), STEP_X);
+
+        Throwable thrown = assertThrows(Throwable.class, () -> stage.apply(in, out -> out));
+        assertEquals(IllegalStateException.class, thrown.getClass(), "not the IllegalArgumentException addSuppressed(self) throws: " + thrown);
+        assertSame(boom, thrown, "the step's own failure, by identity");
+        assertEquals(List.of(), List.of(boom.getSuppressed()), "a failure is not suppressed on itself");
+        assertEquals(List.of(), rows(dlq), "fixture: nothing was parked");
+    }
+
+    /**
+     * The regression guard for the widened catch (it widens, it does not shift): a checked failure of the park, rethrown as it is
+     * by {@code await()}, is still suppressed on the step's failure, which still leaves. Green before FIX-142: the catch of
+     * {@code Exception} already holds it, and no case pinned it — only an unchecked failure and an interrupt were.
+     */
+    @Test
+    void aCheckedParkFailureIsSuppressedOnTheStepsFailureWhichStillLeaves() {
+        java.io.IOException dlqReset = new java.io.IOException("dlq socket reset");
+        FailingDlq failing = new FailingDlq(dlq).failParks(dlqReset);
+        Envelope in = in();
+        IllegalStateException boom = new IllegalStateException("boom at x");
+        Stage stage = parking(failing).wrap(Stage.of(e -> { throw boom; }), STEP_X);
+
+        Throwable thrown = assertThrows(Throwable.class, () -> stage.apply(in, out -> out));
+        boolean flagAfter = Thread.interrupted();   // read and cleared on the thread that ran the step
+        assertEquals(IllegalStateException.class, thrown.getClass(), "not a ParkedException, not the park's failure: " + thrown);
+        assertSame(boom, thrown, "the step's own failure, by identity");
+        assertEquals(List.of(dlqReset), List.of(boom.getSuppressed()), "the park's checked failure, suppressed");
+        assertFalse(flagAfter, "a park that failed without an interrupt leaves the flag clear");
+    }
+
+    /**
+     * A step failure that cannot be printed: its {@code toString()} throws {@code fromToString} itself, every time. {@link Parked#of}
+     * reads {@code failure.toString()} for the row's error, so such a failure makes {@code park(...)} throw synchronously, before
+     * any future exists — the one park failure no {@link Future} ever carries.
+     */
+    static final class UnprintableFailure extends IllegalStateException {
+        private final Error fromToString;
+
+        UnprintableFailure(String message, Error fromToString) {
+            super(message);
+            this.fromToString = Objects.requireNonNull(fromToString, "fromToString");
+        }
+
+        @Override public String toString() { throw fromToString; }
+    }
+
+    /**
+     * The park call sits inside the {@code try} that recovers from it: a step failure whose own {@code toString()} throws makes
+     * {@code park(...)} itself throw — {@link Parked#of} reads it synchronously, before any future exists — and that throw is
+     * suppressed on the step's failure like any other park failure, the step's failure still leaves, nothing is persisted and no
+     * row is written.
+     * <p>Green with FIX-142's fix in place; its red is the mutant M1 — the {@code park(e, step, failure)} call moved back above
+     * the {@code try}, which then wraps the {@code await()} alone — where the throw escapes the stage and replaces the step's
+     * failure (FIX-140's shape). This case pins where that call sits; it is not evidence that the fix is present.
+     */
+    @Test
+    void aStepFailureWhoseToStringThrowsStillLeavesAsThatFailureWithTheErrorSuppressed() {
+        Error fromToString = new Error("the step failure's toString() exploded");
+        UnprintableFailure boom = new UnprintableFailure("boom at x", fromToString);
+        ThrowingPersistBlobStore bodies = throwingBodies();   // not armed: a park that got as far as the persist would show in persists()
+        Envelope in = stepTwoInputIn(bodies);
+        Stage stage = parking(dlq).wrap(Stage.of(e -> { throw boom; }), STEP_X);
+
+        Throwable thrown = assertThrows(Throwable.class, () -> stage.apply(in, out -> out));
+        // The suppressed throwable first, identity after: this failure cannot be printed, and a failing assertSame hands both
+        // values to an opentest4j ValueWrapper (1.3.0) whose toString guard catches Exception only — the Error out of toString()
+        // then escapes the assertion machinery in place of the mismatch (observed: "java.lang.Error: the step failure's
+        // toString() exploded" at the assertSame line). Both assertions carry literal messages, so neither prints this failure.
+        assertEquals(List.of(fromToString), List.of(boom.getSuppressed()), "what toString() threw, suppressed on the step's failure");
+        assertSame(boom, thrown, "the step's own failure leaves, by identity, not what toString() threw");
+        assertEquals(List.of(), bodies.persists(), "the park threw before it asked for a persist");
+        assertEquals(List.of(), rows(dlq), "no row reached the DLQ, which accepts parks in this case");
     }
 }

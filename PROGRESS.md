@@ -1500,3 +1500,19 @@ The hand-off diff was made with `git diff` and SILENTLY OMITTED the new test cla
 the fix with NO test, green because nothing tested it. Caught by `git status --porcelain` in the lane (NOTES, lanes).
 All 5 mutants killed. VERIFIED_PASS integrated on 0adcbed: 19/19, core 555/0/0/0, and the four classes the last four tasks
 touched run together 124/0/0/0. Residual split out as FIX-145 (the interrupt flag). D-054: class A, r1.
+
+## 2026-11-14 — FIX-142 a failing park no longer replaces the failure it was recovering from — done, review PASS r2
+`Parking.wrap` recovers a step failure by parking it. Two catches were too narrow, so a throwable out of the PARK itself —
+an `Error`, or a checked one thrown sneakily — escaped and REPLACED the step's own failure, unrecorded: FIX-140's shape one
+layer out. Both catch `Throwable` now, the park call sits inside the `try` that recovers from it, and the park's failure is
+suppressed on the step's failure, which still leaves. `Parking.java:49` is deliberately untouched — D-111 says it must keep
+catching `Exception`, because parking an `Error` would make it transient, which D-098 refused.
+Beyond the two catches, stated so it is not read as a silent extra: a self-suppression guard, because `addSuppressed(self)`
+throws `IllegalArgumentException` and would itself replace the failure, and an interrupt-flag restoration. Both pinned — the
+second by cases that already existed, though my grep was wrong about one of the three and the reviewer corrected it.
+Review r1 FAILed on MY blocker: the moved call was unpinned and the comment named two cases that cannot pin it, since with
+`persist` catching `Throwable` the await rethrows from either position. What separates the positions is `Parked.of` reading
+`failure.toString()` before any future exists. That case hit a trap worth the line: opentest4j guards its eager `toString`
+with `catch (Exception)`, so an `Error` from a value's `toString()` escapes the formatter and the run reports `Errors: 1`
+instead of `Failures: 1` — assertion ORDER is the fix, not a literal message.
+All ten mutants killed — B killed 3 where 2 were predicted, the extra being the new case. VERIFIED_PASS integrated: ParkingTest 22, core 563, reactor `clean verify -Pit` BUILD SUCCESS, coverage no decrease. D-054: class B, r2.
