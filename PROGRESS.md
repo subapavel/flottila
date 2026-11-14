@@ -1516,3 +1516,19 @@ Review r1 FAILed on MY blocker: the moved call was unpinned and the comment name
 with `catch (Exception)`, so an `Error` from a value's `toString()` escapes the formatter and the run reports `Errors: 1`
 instead of `Failures: 1` — assertion ORDER is the fix, not a literal message.
 All ten mutants killed — B killed 3 where 2 were predicted, the extra being the new case. VERIFIED_PASS integrated: ParkingTest 22, core 563, reactor `clean verify -Pit` BUILD SUCCESS, coverage no decrease. D-054: class B, r2.
+
+## 2026-11-14 — FIX-147 three text defects left by FIX-142's review rounds — done, review PASS r1
+Comments and javadoc only, in the two files FIX-142 touched. (a) `Parking.park`'s javadoc never said that `park` can
+throw SYNCHRONOUSLY, before it returns a future: its first statement is `Parked.of(...)`, which reads `failure.toString()`.
+That is the throw FIX-142 exists to contain, and a caller reading the javadoc would not have expected it. (b) The width
+comment cited D-104 where D-111 is the closer precedent; both are cited now, D-111 first — and the implementer found the
+identical citation in `persist`'s comment and fixed it too, rather than leaving the two to disagree. (c) The test comment
+named the wrong line for where the `Error` escaped the assertion machinery.
+(c) is the one worth the entry, because MY packet was wrong about it. I told the implementer to point the comment at the
+`assertSame`. It compiled a six-line probe against junit-jupiter-api 5.14.4 and opentest4j 1.3.0 and found that a
+`Throwable` fills its stack trace at CONSTRUCTION, so the topmost frame is the `new Error(...)` line and no frame names the
+`assertSame` at all. It corrected the packet instead of obeying it; the reviewer confirmed it from the recorded red log.
+The comment now anchors to a NAME, not a number, so an insert above it cannot rot the sentence.
+Reviewer's finding worth more than the task: the module `verify` I spent on this change tested nothing I bought it for —
+there is no `maven-javadoc-plugin` in any pom, so a broken `{@link}` cannot fail this build. ParkingTest 22/22 was the
+whole of the real evidence. A comment-only diff changes no bytecode, so no mutants are owed and none were invented.

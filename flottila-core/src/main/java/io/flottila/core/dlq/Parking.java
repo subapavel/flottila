@@ -60,8 +60,8 @@ public final class Parking {
                 } catch (Throwable parkFailure) {
                     // Two choices here (FIX-142, F-30), each with its own witness; neither implies the other.
                     // The width: Throwable, not Exception, because an Error out of the park or its await used to leave the
-                    // stage in place of the step's failure, unrecorded; and not RuntimeException | Error (D-104), because a
-                    // sneaky checked throwable is reachable (an interrupted await throws InterruptedException, flag cleared).
+                    // stage in place of the step's failure, unrecorded; and not RuntimeException | Error (D-111, D-104), because
+                    // a sneaky checked throwable is reachable (an interrupted await throws InterruptedException, flag cleared).
                     // Pinned by anErrorFromTheParksAwaitLeavesTheStageAsTheStepsOwnFailureWithTheErrorSuppressed,
                     // anErrorThrownByThePersistLeavesTheStageAsTheStepsOwnFailureAndWritesNoRow and
                     // aCheckedParkFailureIsSuppressedOnTheStepsFailureWhichStillLeaves.
@@ -88,6 +88,10 @@ public final class Parking {
      * (D-062) — and the row is written only after that completed: a DLQ row implies a durable body. A persist that fails, or
      * throws, fails the park with its cause and writes no row. A persist that succeeded tells the run's {@link Trail}, when one
      * is bound on the calling thread, that the key is durable: the trail does not persist it again (D-066).
+     * <p>Throws synchronously, before any future exists, when {@code failure.toString()} throws: {@link Parked#of}, this
+     * method's first statement, reads it for the row's error text. A direct caller has to guard the call itself and not only
+     * the future it returns — uncaught, that throw replaces the failure being parked, which is why {@link #wrap} calls this
+     * inside the try that suppresses a park failure (FIX-142).
      */
     public Future<Parked> park(Envelope e, StepConfig step, Throwable failure) {
         Parked parked = Parked.of(e, step, failure, clock.instant(), versions);
@@ -101,7 +105,7 @@ public final class Parking {
             return body.store().persist(body.key());
         } catch (Throwable thrown) {
             // Throwable, not RuntimeException (FIX-142, F-30): an Error, or a checked throwable thrown sneakily, fails the
-            // park with itself as cause as the javadocs above promise; no RuntimeException | Error (D-104), as a sneaky
+            // park with itself as cause as the javadocs above promise; no RuntimeException | Error (D-111, D-104), as a sneaky
             // checked one is reachable. Pinned by
             // anErrorThrownByThePersistFailsTheParkWithItAsCauseAndWritesNoRow and
             // aCheckedThrowableThrownSneakilyByThePersistFailsTheParkWithItAsCauseAndWritesNoRow

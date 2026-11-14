@@ -421,6 +421,12 @@ derived on the path segment, not at the string's end. This failsafe honours `-Di
 `heap-bounded-it` execution then selects nothing without failing; delete stale `failsafe-reports` first.
 The kept `@Order` (fresh database → misconfiguration → classpath) is the one that failed in P1-04.
 
+- **Nothing in this build checks a javadoc `{@link}`.** There is no `maven-javadoc-plugin` in the root pom or in any
+  module pom, and `-Xlint:all,-processing,-serial` (`pom.xml:256`) does not resolve references. FIX-147 spent a whole
+  reactor `verify` to protect a new `{@link}` that no goal could have rejected; the scoped test run was the entire real
+  evidence. Before buying a build to check something, name the plugin or the flag that would fail. If link checking is
+  ever wanted it needs `-Xdoclint:all` or a javadoc goal, and that is a row, not an assumption.
+
 ## Reference package, fixtures, tags
 
 packages/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
@@ -562,3 +568,23 @@ tree with the m1 module is dc85964.
   per-test time only for FAILURES, so a green run says nothing about where its seconds went — exactly the cost
   under question. `target/surefire-reports/TEST-*.xml` has a `time` attribute per `testcase`. FIX-148's whole
   finding, and its correction, came out of an XML file an earlier measurement had already copied: no new build.
+- **A stack trace names where a throwable was CONSTRUCTED, not where it escaped — so "it failed at line N"
+  in a comment is usually wrong.** FIX-147 corrected a comment claiming an `Error` escaping the assertion
+  machinery surfaced "at the assertSame line". It does not: the trace is filled in at construction, so the
+  topmost frame is the `new Error(...)` line and NO frame names the `assertSame` it escaped from. The
+  implementer did not take my word for the correction either — it compiled a probe against junit-jupiter-api
+  5.14.4 and opentest4j 1.3.0 and read the real output, which is the only reason we know the packet's own
+  framing was wrong too. Reach for a six-line probe before writing a sentence about where a failure appears.
+- **Anchor a comment's reference to a NAME, not a line number.** The same fix now points at "the line
+  `fromToString` is constructed on" rather than a number, so an insert above it cannot rot the sentence. Same
+  reason full method names beat truncated ones: what a reader can grep survives, what they must count does not.
+- **Two placements of the same guard can be behaviourally identical under every case you already have.**
+  FIX-145 put `if (thrown instanceof InterruptedException) Thread.currentThread().interrupt();` in the
+  synchronous catch rather than in the `recover` lambda, which is a real decision — the lambda also serves
+  producers whose future fails later, possibly on another thread. Two cases asserting the flag passed with
+  the guard in EITHER place, because `recover` on an already-failed future runs inline on the caller's
+  thread, so a misplaced guard still sets the flag on the thread that is asserting it. The discriminator is
+  not a second thread: it is a failure that arrives **through the future** instead of being thrown, with the
+  flag asserted CLEAR. A case that is green on arrival earns its place by the mutant it kills, and the
+  mutant to try is the one that moves the code rather than deletes it — deletion mutants cannot see
+  placement at all.

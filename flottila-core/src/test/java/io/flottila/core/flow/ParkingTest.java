@@ -631,7 +631,9 @@ class ParkingTest {
         // The suppressed throwable first, identity after: this failure cannot be printed, and a failing assertSame hands both
         // values to an opentest4j ValueWrapper (1.3.0) whose toString guard catches Exception only — the Error out of toString()
         // then escapes the assertion machinery in place of the mismatch (observed: "java.lang.Error: the step failure's
-        // toString() exploded" at the assertSame line). Both assertions carry literal messages, so neither prints this failure.
+        // toString() exploded", its topmost frame the line fromToString is constructed on, because a trace is filled in at
+        // construction and not where it is thrown: no frame names the assertSame it escapes from, so that report sends a reader
+        // to the wrong line). Both assertions carry literal messages, so neither prints this failure.
         assertEquals(List.of(fromToString), List.of(boom.getSuppressed()), "what toString() threw, suppressed on the step's failure");
         assertSame(boom, thrown, "the step's own failure leaves, by identity, not what toString() threw");
         assertEquals(List.of(), bodies.persists(), "the park threw before it asked for a persist");
