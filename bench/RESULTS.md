@@ -4,6 +4,26 @@ Every measured number with machine label, date, configuration and commit. A numb
 in this file does not exist (`AGENTS.md`, Evidence vocabulary). Written by the architect from
 verifier output; newest section first.
 
+## Spec 56 gate run at bba3de4 (F-84), 2026-11-13
+
+- Machine: `claude-cloud-4vcpu`. Command: `gate-spec.sh 56` on `spec/56-core-language-2a` @ `bba3de4`:
+  `gate-spec: 56 passed`, rc 0, 3 440 s. Logs `.logs/spec56-steps.tsv`, `.logs/spec56-gate.log`,
+  `.logs/spec56-pit.log`.
+- Step times (s): clean-verify 238.3, record 62.6, pit 2858.8, jmh 211.9, regen 1.2, census 1.1; every rc 0.
+- PIT `Completed in` per module (s): query-core 149 (307 mutants), jq-core 1945 (3439), jq-cli 212
+  (3868), oracle 319 (168). Sum of the four 2 625 s (43.75 min); the `pit` step 2 858.8 s (47.6 min);
+  F-84's target is 45 min.
+- Own-report statuses (TIMED_OUT / MEMORY_ERROR): query-core 1 / 0, jq-core 56 / 5, jq-cli 29 / 2,
+  oracle 0 / 0.
+- `ratchet/mutation.tsv` (surviving / generated): jq-core 63 / 3439 (was 17 / 1029), query-core 0 / 307
+  (was 0 / 20).
+- `ratchet/bench.tsv` (old -> new): G1.1k 2.654 -> 2.186 us/op; G1.100k 240.996 -> 194.822 us/op;
+  G1.10m 27 868.501 -> 19 146.306 us/op; G2.1k new 4.355 us/op; G2.100k new 427.370 us/op; G2.10m new
+  41 236.547 us/op; G3.100k new 2 915.774 us/op; G3.10m new 1 550 401.627 us/op; G4.1e4 new
+  236 819.173 us/op; G6.compact.10m 56 541.427 -> 40 057.006 us/op; G6.pretty.10m 65 583.134 ->
+  49 179.404 us/op; G7.engine.1k 20.847 -> 48.475 ms/op (up 2.3 times); G7.process.1k 140.424 ->
+  156.885 ms/op.
+
 ## #85: the walk-side key proof against 2fe9654 and jq-ref (ADR-0044, ADR-0019 bar 10 %), 2026-11-13
 
 - Machine: `claude-cloud-4vcpu` (4 × Intel Xeon Processor @ 2.10 GHz, Linux 6.18.44-fc-v445), JDK
