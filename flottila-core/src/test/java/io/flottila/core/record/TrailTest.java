@@ -383,9 +383,9 @@ class TrailTest {
         settled(trail.close());
         assertEquals(List.of(down.key()), failing.persists(), "fixture: the persist was asked for and refused");
         assertEquals(1, trail.metadataOnly(), "fixture: the row went metadata-only");
-        List<String> warned = trailWarnings();
+        List<String> warned = trailWarnings().stream().filter(m -> m.contains(down.key().toString())).toList();   // this case's message only
         assertEquals(1, warned.size(), "a persist that fails logs exactly one WARNING: " + warned);
-        assertTrue(warned.getFirst().contains("m-w"), "the WARNING names the message id: " + warned);
+        assertTrue(warned.getFirst().startsWith("message m-w: "), "the WARNING opens with the message id prefix: " + warned);
         assertTrue(warned.getFirst().contains(down.key().toString()), "and the key: " + warned);
     }
 
@@ -402,10 +402,11 @@ class TrailTest {
         assertEquals(List.of(ok.key()), bodies.persists(), "fixture: the persist was asked for");
         assertTrue(bodies.persisted(ok.key()), "fixture: and it succeeded");
         assertEquals(List.of(Optional.of(ok.key())), store.of("m-ok").stream().map(Snapshot::bodyKey).toList(), "fixture: its row keeps the key");
-        List<String> warned = trailWarnings();
-        assertEquals(List.of(), warned.stream().filter(m -> m.contains("m-ok")).toList(), "a persist that succeeds logs no WARNING");
+        List<String> all = trailWarnings();
+        assertEquals(List.of(), all.stream().filter(m -> m.contains(ok.key().toString())).toList(), "a persist that succeeds logs no WARNING");
+        List<String> warned = all.stream().filter(m -> m.contains(down.key().toString())).toList();   // this case's failing message only
         assertEquals(1, warned.size(), "the capture sees the failed persist's WARNING, and only it: " + warned);
-        assertTrue(warned.getFirst().contains("m-down"), warned.toString());
+        assertTrue(warned.getFirst().startsWith("message m-down: "), warned.toString());
     }
 
     @Test

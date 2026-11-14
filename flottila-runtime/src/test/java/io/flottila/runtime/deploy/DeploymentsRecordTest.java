@@ -326,6 +326,7 @@ class DeploymentsRecordTest {
         DeployRefusedException first = refused(zip1, "r1");
         assertEquals(Kind.FAILED, first.kind(), first.getMessage());
         assertTrue(first.getMessage().contains("connection reset by peer"), "the refusal names the cause: " + first.getMessage());
+        assertEquals("the deploy record was not written: connection reset by peer", first.error(), "a first deploy's refusal text");
         List<Doors.Door> built = doors.doors();
         assertEquals(Set.of("shop/a", "shop/b"), built.stream().map(Doors.Door::flow).collect(Collectors.toSet()), "fixture: one door per flow");
         for (Doors.Door door : built) assertTrue(door.started() && door.stopped(), door + " started, then the refused deploy stopped it: " + door.history());
@@ -352,6 +353,8 @@ class DeploymentsRecordTest {
 
         assertEquals(Kind.FAILED, second.kind(), second.getMessage());
         assertProblem(second, "the deploy record was not written: ", "connection reset by peer");
+        assertEquals("version 2.0.0 was not recorded; 1.0.0 runs again", second.error(), "the redeploy refusal sentence");
+        assertEquals(List.of("the deploy record was not written: connection reset by peer"), second.problems(), "the one problem line");
         List<Doors.Door> since = doors.doors().subList(doorsBefore, doors.doors().size());
         assertEquals(List.of("shop/a", "shop/a"), since.stream().map(Doors.Door::flow).toList(), "v2's a, then v1's a rebuilt: " + doors.events());
         assertTrue(since.get(0).started() && since.get(0).stopped(), "v2's a started, then the rollback stopped it: " + since.get(0).history());
