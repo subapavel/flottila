@@ -425,6 +425,14 @@ filter [label $l | (label $l | 1, break $l), 2]
 stdin null\n
 end
 
+# #194 (F-85): the false of a Break ends at its own Label, which then runs out, so the Comma after it runs its right
+# side.
+case control/label-break-then-comma
+arg -c
+filter [(label $l | 1, break $l), 2]
+stdin null\n
+end
+
 case control/label-break-outer
 arg -c
 filter [(label $a | label $b | 1, break $a, 2), 3]

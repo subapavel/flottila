@@ -476,6 +476,13 @@ stdout [1,2]\n
 stderr
 end
 
+case control/label-break-then-comma
+def 29db9a47264e
+rc 0
+stdout [1,2]\n
+stderr
+end
+
 case control/label-break-outer
 def e9355b265bd3
 rc 0
