@@ -27,6 +27,19 @@ public final class Corpus {
     }
   }
 
+  /**
+   * Every case of {@link #casesDir()}, sorted by id, read once per JVM: PIT reruns a factory for each of its dynamic
+   * tests (F-84 (C)). Sound because PIT mutates no oracle class, so the loader is never a mutant (F-84 (B)).
+   */
+  public static List<DiffCorpus.Entry> cases() {
+    return Cases.ALL;
+  }
+
+  /** The holder: its initializer reads the corpus on the first call of {@link #cases()}. */
+  private static final class Cases {
+    static final List<DiffCorpus.Entry> ALL = List.copyOf(DiffCorpus.load(casesDir()));
+  }
+
   /** The repository root: four levels above {@code oracle/target/test-classes/diff}. */
   public static Path root() {
     return casesDir().getParent().getParent().getParent().getParent();

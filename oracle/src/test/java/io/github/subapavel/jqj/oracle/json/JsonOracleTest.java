@@ -1,6 +1,7 @@
 package io.github.subapavel.jqj.oracle.json;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
@@ -43,7 +44,7 @@ class JsonOracleTest {
    */
   Stream<DynamicTest> requiredCases(Path scratch, String requireFile) {
     Set<String> required = JsonCorpus.required(requireFile);
-    List<DiffCorpus.Entry> cases = DiffCorpus.load(JsonCorpus.casesDir());
+    List<DiffCorpus.Entry> cases = JsonCorpus.cases();
     DiffReport.requireKnown(DiffReport.Oracle.JSON, required, cases.stream().map(e -> e.c().id()).toList());
     DiffRunner runner = JsonCorpus.runner(scratch);
     return cases.stream()
@@ -70,6 +71,12 @@ class JsonOracleTest {
     assertThatThrownBy(() -> requiredCases(dir, require.toString()))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageEndingWith(": [json/n_no_such_file, json/y_no_such_file]");
+  }
+
+  /** PIT reruns this factory for each of its dynamic tests; the corpus it takes is read once per JVM (F-84 (C)). */
+  @Test
+  void theCorpusIsReadOncePerJvm() {
+    assertThat(JsonCorpus.cases()).isSameAs(JsonCorpus.cases());
   }
 
   @AfterAll

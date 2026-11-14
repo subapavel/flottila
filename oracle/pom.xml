@@ -89,6 +89,13 @@
             <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
             <param>io.github.subapavel.jqj.OperatorChainTest</param>
           </excludedTestClasses>
+          <!-- Mutated here: query-core and jq-core, the class-C modules. Their tests still run. -->
+          <excludedClasses>
+            <!-- No ratchet line reads oracle's own mutants; its corpus loader is then never a mutant (F-84 (B)). -->
+            <param>io.github.subapavel.jqj.oracle.*</param>
+            <!-- No ratchet line reads jq-cli's mutants from this run (F-84 (B)). -->
+            <param>io.github.subapavel.jqj.cli.*</param>
+          </excludedClasses>
           <!-- Only oracle's own tests run here: ratchet.java unions each module's own kills with these (F-84). -->
         </configuration>
       </plugin>
