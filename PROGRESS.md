@@ -1325,3 +1325,19 @@ checked by me rather than taken from the author.
 The review round was spent on a trap worth keeping: case 2 pins FIX-133 too and its javadoc named only CONSIDER-12 as a reason to invert, so a FIX-133
 implementer would have met red tests it may not change. Spun off FIX-133 and FIX-132.
 D-054: class B in effect (test-author x1 resumed twice, scout x1, reviewer x2); review rounds 2. No Maven in the main tree.
+
+## 2026-11-14 — FIX-128 a warm-up with refusals reports its count — done, review PASS r2
+Test-only in flottila-bench (lane5), no production change. FIX-63's residual: `NodeBenchMainIT:72` asserted `warmupFailed` was 0 and nothing drove it
+non-zero, so the field could have been hard-wired and the suite would not have noticed. The new case refuses the first 3 of a 5-message warm-up and
+asserts the record says exactly 3 — a literal, not "greater than zero".
+The refusal is fault injection at the store boundary, the pattern `PgIntakeIT:306-315` already uses: a sequence plus a plpgsql BEFORE INSERT trigger on
+`work`, which the intake's last statement hits. PREPARE truncates without dropping, so exactly the first 3 saves fail — and if that ever changed, the
+case fails loudly (`last_value` would read 1, not 45) rather than vacuously. A guard, not a red, since FIX-63's production half already counts right,
+and the hand-back says so instead of describing a red that did not happen.
+VERIFIED_PASS — the whole class, 12/0, BUILD SUCCESS (FIX-128-class.log). Mutant `.put("warmupFailed", 0)` at `NodeBenchMain.java:316` dies by assertion
+at :215, "expected <3> but was <0>" (FIX-128-mutant-record0.log); both mutants ran in a scratch copy, so no production file was edited.
+The one review FAIL was a dead assertion: `assertEquals(2, warmup - warmupFailed)` recomputed production's own formula from two values pinned to literals
+two lines above, so it could not fail while reading as coverage. Deleted, with a comment saying why. My own FIX-134 row then had the mutant backwards and
+the reviewer caught that too: an OVERSTATED `warmedUp` hangs and the 300 s class timeout catches it; the survivor is an UNDERSTATED one. Fixed as mine.
+Coverage NOT claimed here: a filtered `-Pit` run passes `-Djacoco.skip=true` and is no evidence about coverage (NOTES, Build and VM); a test-only
+addition cannot lower it, and the integrated tree's full run is the evidence. D-054: class A (test-author x1 resumed once, reviewer x2); rounds 2.

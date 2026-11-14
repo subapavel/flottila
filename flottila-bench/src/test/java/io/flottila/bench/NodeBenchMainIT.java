@@ -1,5 +1,6 @@
 package io.flottila.bench;
 
+import io.flottila.runtime.db.Migrations;
 import io.vertx.core.json.JsonObject;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -182,6 +183,46 @@ class NodeBenchMainIT {
         assertEquals(MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"),
                 "each 202 is a durable save including the bodies insert (D-061)");
     }
+
+    /**
+     * FIX-128: the warm-up's refusals reach the record. The run's database refuses its first {@value #REFUSED} saves — a BEFORE
+     * INSERT trigger on {@code work} (the intake's last statement, D-082) fails while a sequence, which no rollback undoes, is at
+     * most {@value #REFUSED}; the failed save is a retryable Nack, a 503 — so a warm-up of {@value #WARMUP} has exactly
+     * {@value #REFUSED} refused and the window none. The record says {@value #REFUSED}, and {@code warmup - warmupFailed} is the
+     * warm-up messages the node recorded; a run that waited for all {@value #WARMUP} would never settle.
+     */
+    @Test
+    void aWarmupWhoseFirstSavesAreRefusedRecordsThatCountAndWaitsOnlyForTheRest() throws Exception {
+        String db = database();
+        Migrations.migrate("jdbc:postgresql://" + pg.getHost() + ":" + pg.getMappedPort(5432) + "/" + db, pg.getUsername(), pg.getPassword());
+        // a sequence survives the run's truncate (it is no table) and the rolled-back saves (nextval is not transactional)
+        sql(db, "create sequence it_saves");
+        sql(db, "create function it_refuse_first_saves() returns trigger language plpgsql as $f$ begin"
+                + " if nextval('it_saves') <= " + REFUSED + " then raise exception 'refused by NodeBenchMainIT (FIX-128)'; end if;"
+                + " return new; end $f$");
+        sql(db, "create trigger it_refuse_first_saves before insert on work for each row execute function it_refuse_first_saves()");
+
+        Path out = dir.resolve("ack-refused-warmup.json");
+        assertEquals(0, NodeBenchMain.run(args(db, "ack", "keep", 4, out, "--warmup", String.valueOf(WARMUP))),
+                "the window itself had no failure: the run exits 0");
+        JsonObject json = new JsonObject(Files.readString(out));
+
+        // the fixture did what it says: every save reached the trigger once, the first three were refused and left no message
+        assertEquals(WARMUP + MESSAGES, count(db, "select last_value from it_saves"), "one save per request, none retried: " + json.encode());
+        assertEquals(0, json.getInteger("failed"), "the refusals all fell in the warm-up, the window has none: " + json.encode());
+        assertEquals(WARMUP, json.getInteger("warmup"), json.encode());
+
+        assertEquals(3, json.getInteger("warmupFailed"), "the record counts the warm-up's three refused saves: " + json.encode());
+        // acceptance 2 (warmedUp = warmup - warmupFailed) is unobservable while warmedUp is a local: FIX-134's, not asserted here
+        assertEquals(2 + MESSAGES, count(db, "select count(distinct id) from messages"),
+                "the node recorded the warm-up's two accepted messages and the window's forty, no refused one: " + json.encode());
+        assertEquals(2 + MESSAGES, count(db, "select count(distinct message_id) from bodies where step = 0"),
+                "each accepted message's ingress body is durable, a refused one's rolled back with its save");
+    }
+
+    /** The warm-up of the refusing case and how many of its first saves the database refuses. */
+    static final int WARMUP = 5;
+    static final int REFUSED = 3;
 
     /**
      * P2-08b, the twin of {@code NodeBenchAckCommitsIT}'s settings case on Testcontainers' defaults (fsync off): the record carries

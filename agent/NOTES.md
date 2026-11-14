@@ -311,6 +311,19 @@ and read the job log via the MCP tool — the artifact's blob store is unreachab
 
 ## Build and VM
 
+A filtered `-Pit` run of ONE class needs four extra flags (implementer MEMORY): `-Dit.test=<Class>`,
+`-Dtest=NoSuchTest` so Surefire does not run every upstream module's unit tests under `-am`,
+`-Dsurefire.failIfNoSpecifiedTests=false` and `-Dfailsafe.failIfNoSpecifiedTests=false` (without the
+second, `-Dit.test` with `-am` fails upstream modules with "No tests matching pattern"), and
+`-Djacoco.skip=true` because a filtered run cannot meet the coverage floors. The trap is that last
+flag: such a run is evidence about the tests it named and NOTHING about coverage. Coverage evidence
+needs a full `clean verify -Pit` plus `python3 ci/coverage_check.py`, so a batch of filtered runs
+does not add up to one.
+
+44 `SEVERE` lines in a passing `verify -Pit` are expected, not noise: `Deployments.java:649` logs an
+ERROR for every package a test deliberately makes unrestorable ("the archive is refused", "package
+'shop' is invalid"), and FIX-62 pinned that text. Checked 2026-11-14; do not spend time on them again.
+
 - Do NOT message a subagent while a long measurement of its own is running: the send moves its in-flight Bash call to the
   background, the agent stops waiting for it and may abandon and restart the run. That cost the FIX-71 PIT run about an
   hour on 2026-11-14 (`agent/work/FIX-71-pit-run1-interrupted.log`). Put everything the agent needs in its first prompt,
