@@ -464,6 +464,55 @@ class DeploymentsRestoreTest {
         assertInstanceOf(Ack.Reply.class, second.send("store/c"), "c serves");
     }
 
+    /**
+     * FIX-62 (acceptance 1, a guard that passes today): a flow that does not start on restore is stopped once, never twice. The count
+     * is the door's own history: a second discard would add a second "stop". The restore cannot be made to throw after
+     * {@code unstarted} through any honest input (a restore has no running package, and every flow it lists was built from the one
+     * archive), so the catch's second discard is not reachable from a test; this pins the single discard the path does make. Flow
+     * ids {@code b} and {@code bb} fail together: neither's count may be read off the other's.
+     */
+    @Test
+    void aFlowThatDoesNotStartOnRestoreIsStoppedOnceAndTheOthersNotAtAll() throws Exception {
+        Peer first = first();
+        first.deploy("shop", pkg("shop", "a", "b", "bb").zip(), Optional.of("r1"));
+        first.close();
+
+        Peer second = new Peer("node-2", "dev", records, fetches());
+        second.doors.failStartOf("shop/b", "address in use");
+        second.doors.failStartOf("shop/bb", "address in use too");
+        second.restore();
+
+        assertEquals(List.of("start", "start failed", "stop", "stopped"), second.doors.door("shop/b").history(), "b is stopped once: " + second.doors.events());
+        assertEquals(List.of("start", "start failed", "stop", "stopped"), second.doors.door("shop/bb").history(), "bb is stopped once: " + second.doors.events());
+        assertEquals(List.of("start", "started"), second.doors.door("shop/a").history(), "a runs and is not stopped: " + second.doors.events());
+        assertEquals(1, second.doors.events().stream().filter("stop shop/b"::equals).count(), "one stop event of b: " + second.doors.events());
+        assertEquals(1, second.doors.events().stream().filter("stop shop/bb"::equals).count(), "one stop event of bb: " + second.doors.events());
+    }
+
+    /**
+     * FIX-62 (acceptance 2): the ERROR log of a flow that does not start on restore, text and all. Two flows fail, {@code b} and
+     * {@code bb}, so a bare {@code contains("shop/b")} would match both: each is picked by the whole message, whose flow id is
+     * quoted, and each has exactly one.
+     */
+    @Test
+    void aFlowThatDoesNotStartOnRestoreLogsOneErrorNamingItAndItsCause() throws Exception {
+        Peer first = first();
+        first.deploy("shop", pkg("shop", "a", "b", "bb").zip(), Optional.of("r1"));
+        first.close();
+
+        Peer second = new Peer("node-2", "dev", records, fetches());
+        second.doors.failStartOf("shop/b", "address in use");
+        second.doors.failStartOf("shop/bb", "address in use too");
+        second.restore();
+
+        String tail = "; it is listed FAILED until a deploy of the package starts it";
+        List<String> errors = logged.stream().filter(r -> r.getLevel() == Level.SEVERE && Deployments.class.getName().equals(r.getLoggerName()))
+                .map(LogRecord::getMessage).filter(m -> m.startsWith("package 'shop' is restored, but ")).toList();
+        assertEquals(List.of("package 'shop' is restored, but flow 'shop/b' did not start: address in use" + tail,
+                        "package 'shop' is restored, but flow 'shop/bb' did not start: address in use too" + tail),
+                errors.stream().sorted().toList(), "one ERROR per flow that did not start, none for a: " + errors);
+    }
+
     // --- a package refused whole is FAILED, the others run
 
     /**

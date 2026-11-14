@@ -803,7 +803,7 @@ public final class Deployments {
             if (!failed.isEmpty()) {
                 if (restoring == null && running == null) throw refused(Kind.FAILED, problem(failed.getFirst(), "did not start"));   // a first deploy: the cleanup stops them all
                 if (restoring == null) throw rollBack(version, "did not start", List.of(), running, retiring, started, packageDir, built, again);
-                unstarted(name, failed, now);   // a restore: those are listed FAILED, the others run
+                unstarted(name, failed, now, built);   // a restore: those are listed FAILED, the others run
             }
             if (restoring == null) {   // a restore writes no record: it installs the one it read
                 // the commit point (D-070): the package's record, written once every flow started; the listing and the pruning follow it
@@ -846,14 +846,16 @@ public final class Deployments {
      * The flows of a restore that did not start ({@code failed}): each is stopped at once and closed ({@link #discard}) and replaced
      * in {@code now} by itself {@link DeployedFlow.State#FAILED} ({@link Flow#failed}: nothing of it runs), with an ERROR log naming it.
      */
-    private void unstarted(String name, List<Start> failed, List<Flow> now) {
+    private void unstarted(String name, List<Start> failed, List<Flow> now, List<Flow> built) {
         Set<String> ids = new HashSet<>();
         for (Start s : failed) {
             ids.add(s.flow().id());
             LOG.log(System.Logger.Level.ERROR, "package '" + name + "' is restored, but " + problem(s, "did not start") + "; it is listed FAILED until a "
                     + "deploy of the package starts it");
         }
-        discard(List.of(), failed.stream().map(Start::flow).toList());   // never throws; a flow that does not stop cleanly is a WARNING
+        List<Flow> stopped = failed.stream().map(Start::flow).toList();
+        discard(List.of(), stopped);   // never throws; a flow that does not stop cleanly is a WARNING
+        built.removeAll(stopped);   // stopped: the catch of the deploy must not discard them again
         now.replaceAll(f -> ids.contains(f.id()) ? f.failed() : f);
     }
 
