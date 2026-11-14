@@ -74,8 +74,22 @@
       <plugin>
         <groupId>org.pitest</groupId>
         <artifactId>pitest-maven</artifactId>
+        <!-- OWN_SURVIVORS (F-84 round 2): the run mutates only the mutants whose status in query-core's or jq-core's
+             own report is not in ratchet.java's killed set (KILLED, TIMED_OUT, MEMORY_ERROR), the only ones whose
+             kill here can change ratchet.java's union. A missing own report fails the run, so the class-C modules'
+             PIT goes first in the same reactor (gate-spec.sh, nightly.yml). -->
+        <dependencies>
+          <dependency>
+            <groupId>io.github.subapavel.jqj</groupId>
+            <artifactId>pit-filter</artifactId>
+            <version>${project.version}</version>
+          </dependency>
+        </dependencies>
         <configuration>
           <crossModule>true</crossModule>
+          <features>
+            <feature>+OWN_SURVIVORS(report[${project.basedir}/../query-core/target/pit-reports/mutations.xml] report[${project.basedir}/../jq-core/target/pit-reports/mutations.xml])</feature>
+          </features>
           <!-- The Survey runs the cases nobody requires and fails only on CRASH (ADR-0020). The compile-mode oracle
                leaves PIT with the ticket gate (F-27, ADR-0020 amendment for #60). -->
           <excludedTestClasses>
