@@ -173,7 +173,12 @@ public final class BatchingWriter<T> implements AutoCloseable {
     /**
      * Commits what is queued now without waiting for the window (a free commit slot permitting; the rest follows as slots
      * free) and completes when every item waiting, queued or in flight at this moment is committed or failed.
-     * Never throws: a dropped window whose {@code cancel()} throws is tolerated (logged once).
+     * Never throws: a dropped window whose {@code cancel()} throws is tolerated (logged once). Such a window stays
+     * scheduled, so it may fire later and hand a newer partial batch to the sink before that batch's own window elapses:
+     * a loss of batching, never of data and never of queue order — items are taken from the queue in the
+     * order they were queued, each batch an in-order slice of it, while the order in which batches reach
+     * the sink is unconstrained either way ({@link #drainLocked}) (D-104; pinned by
+     * {@code BatchingWriterErrorTest.aWindowThatFlushDroppedWhoseCancelThrewFiresEarlyButLosesNeitherDataNorOrder}).
      */
     public Future<Void> flush() {
         Drained<T> drained;

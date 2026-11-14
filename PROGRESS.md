@@ -1437,3 +1437,19 @@ the fixture whose `toString()` does `throw this`. Both the reviewer's prediction
 both were wrong, since every other case's recording failure is a different object. That one case is the whole guard.
 VERIFIED_PASS: 20/20 filtered, core 517/0/0/0, all 5 reviewer mutants killed by the verifier, `cmp` clean after each;
 integrated `clean verify -Pit` exit 0 BUILD SUCCESS 12:00 17 modules all zero, coverage no decrease. D-054: class B, rounds 2.
+
+## 2026-11-14 — FIX-138 the orphaned batching window that fires early is now pinned by a test — done, review PASS r3
+D-104 accepts that a `flush()` whose `cancel()` throws leaves the dropped window SCHEDULED, so it can fire later and
+hand a newer partial batch to the sink before that batch's own window elapses. Nothing asserted it, so the opposite
+could become true in silence. One case of 53 lines plus five comment lines; no production code changed. The twin that
+already existed (clean cancel, the window never fires) now differs from it in exactly one thing.
+Green on arrival by design, so the red came from the only honest place: disabling the throwing `cancel()`. The
+test-author went past its brief and was right to — runs 1 and 2 failed on FIXTURE checks, not on behaviour, so it
+stripped those in a temporary copy until the behavioural line itself failed (`expected: <[[a],[b],[c],[d]]> but was:
+`<[[a],[b],[c]]>`), then restored the file byte-for-byte; the reviewer confirmed from the diff that none of it survived.
+Review FAILed twice and BOTH times on MY text, not the agents'. r1: "never of order" unqualified, while `:209-212` of
+the same class says no caller may rely on the order batches reach the sink. r2: my replacement contradicted itself —
+if whole batches may arrive in any order, items from different batches do too. What the code gives is the order items
+are TAKEN from the queue. r3 took the reviewer's own wording verbatim; it then traced it to `ArrayDeque` head/tail.
+The case's real job, per the reviewer: it catches a generation or identity guard added to `onWindow`/`flush` that would
+make the orphan harmless — the twin stays green for that. VERIFIED_PASS: 11/11 filtered, core 518/0/0/0. A, r3.

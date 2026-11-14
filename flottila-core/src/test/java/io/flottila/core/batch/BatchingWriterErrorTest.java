@@ -319,6 +319,59 @@ class BatchingWriterErrorTest {
         assertEquals(0, timer.pending(), "no window is left scheduled");
     }
 
+    /**
+     * The throwing twin of the case above (FIX-138, D-104): when flush's {@code cancel()} of the armed window throws, the
+     * window is dropped from the writer but stays scheduled, so it fires later and hands a newer partial batch to the sink
+     * before that batch's own window: a loss of batching, never of data and never of queue order. Worked example, window 50 ms,
+     * batch 2, two commits in flight: at t0 a goes, b arms W1 (due t50), flush's cancel of W1 throws and is swallowed
+     * (logged once), b goes on the second slot; at t10 c goes, d arms W2 (due t60). At t50 the orphaned W1 fires: it nulls
+     * W2's handle and drains with the window elapsed, so [d] reaches the sink at t50, ten milliseconds early. At t60 W2,
+     * still live in the timer, fires into an empty queue: it takes nothing and fails nothing. The sink sees a, b, c, d
+     * once each in arrival order; no commit slot and no timer handle is left.
+     */
+    @Test
+    void aWindowThatFlushDroppedWhoseCancelThrewFiresEarlyButLosesNeitherDataNorOrder() {
+        CancelThrowingTimer timer = new CancelThrowingTimer(new FakeTimer(clock));
+        FakeSink sink = new FakeSink();
+        sink.manual = true;
+        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(2, WINDOW, 2, 10, MAX_WAIT));
+        Future<Void> a = w.save("a");                           // t0: idle, a goes alone
+        Future<Void> b = w.save("b");                           // a in flight: b waits, W1 armed for t50
+        assertEquals(1, timer.inner.pending(), "fixture: W1 is armed for b");
+        assertEquals(0, batchWarnings(), "fixture: nothing logged before the cancel throws");
+        timer.cancelThrows = new IllegalStateException("cancel refused");
+        Future<Void> flush = w.flush();                         // W1's cancel throws and is swallowed; b goes on the second slot
+        timer.cancelThrows = null;                              // the throwing cancel above is the only one in this case
+        assertEquals(List.of(List.of("a"), List.of("b")), sink.batches, "fixture: flush handed b to the sink");
+        assertEquals(1, timer.inner.pending(), "fixture: W1 stays scheduled although flush dropped it");
+        assertEquals(1, batchWarnings(), "the throwing cancel is logged once");
+        sink.gate().complete();
+        sink.gate().complete();
+        assertTrue(a.succeeded() && b.succeeded() && flush.succeeded(), "fixture: a, b and the flush completed: " + flush);
+
+        clock.advance(Duration.ofMillis(10));                   // t10
+        Future<Void> c = w.save("c");                           // idle again: c goes alone
+        Future<Void> d = w.save("d");                           // c in flight: d waits, W2 armed for t60
+        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c")), sink.batches, "fixture: d waits for its window");
+        assertEquals(2, timer.inner.pending(), "fixture: the orphaned W1 and W2 are both scheduled");
+
+        clock.advance(Duration.ofMillis(40));                   // t50: the orphaned W1 fires
+        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c"), List.of("d")), sink.batches,
+                "at t50 the dropped-but-live W1 hands [d] to the sink ten milliseconds before d's own window");
+
+        clock.advance(Duration.ofMillis(10));                   // t60: W2 is still live and fires into an empty queue
+        assertEquals(List.of(List.of("a"), List.of("b"), List.of("c"), List.of("d")), sink.batches,
+                "W2 firing into an empty queue hands nothing more to the sink");
+        sink.gate().complete();
+        sink.gate().complete();
+        assertEquals(List.of("a", "b", "c", "d"), sink.batches.stream().flatMap(List::stream).toList(),
+                "every item reaches the sink exactly once, in arrival order");
+        for (Future<Void> f : List.of(a, b, c, d, flush)) assertTrue(f.succeeded(), "nothing fails: " + f);
+        assertEquals(0, w.inFlight(), "no commit slot is leaked");
+        assertEquals(0, timer.inner.pending(), "no window handle is left scheduled");
+        assertEquals(1, batchWarnings(), "still exactly one WARNING at the end: not twice, not none");
+    }
+
     // --- a throwing cancel() is logged once per writer, never per throw (no flood, no silence)
 
     final List<LogRecord> logged = new CopyOnWriteArrayList<>();
