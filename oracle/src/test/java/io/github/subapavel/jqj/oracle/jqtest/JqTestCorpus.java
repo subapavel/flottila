@@ -47,12 +47,25 @@ public final class JqTestCorpus {
     }
   }
 
-  /** Every case of every file, sorted by id. A file that is not UTF-8 fails to read. */
+  /**
+   * Every case of every file, sorted by id, read once per JVM: PIT reruns a factory for each of its dynamic tests (F-84
+   * (C)). Sound because PIT mutates no oracle class, so the loader is never a mutant (F-84 (B)). A file that is not
+   * UTF-8 fails to read.
+   */
   public static List<JqTestCase> cases() {
-    List<JqTestCase> all = new ArrayList<>();
-    for (Path f : files()) all.addAll(parse(f));
-    all.sort(Comparator.comparing(JqTestCase::id));
-    return all;
+    return Cases.ALL;
+  }
+
+  /** The holder: its initializer reads the files on the first call of {@link #cases()}. */
+  private static final class Cases {
+    static final List<JqTestCase> ALL = read();
+
+    private static List<JqTestCase> read() {
+      List<JqTestCase> all = new ArrayList<>();
+      for (Path f : files()) all.addAll(parse(f));
+      all.sort(Comparator.comparing(JqTestCase::id));
+      return List.copyOf(all);
+    }
   }
 
   /** The repository root: five levels above {@code oracle/target/test-classes/jq/tests}. */

@@ -52,7 +52,7 @@ final class CompileCorpus {
       int hash = c.id().indexOf('#') + 1;
       all.add(new Case(c.id(), c.id().substring(hash, hash + 12), m -> CompileModes.api(c, CompileModes.hook(m))));
     }
-    for (DiffCorpus.Entry e : DiffCorpus.load(Corpus.casesDir())) {
+    for (DiffCorpus.Entry e : Corpus.cases()) {
       DiffCase c = e.c();
       all.add(new Case(c.id(), c.def(), m -> CompileModes.cli(c, scratch, CompileModes.hook(m))));
     }

@@ -3,7 +3,6 @@ package io.github.subapavel.jqj.oracle.json;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import io.github.subapavel.jqj.oracle.diff.DiffCorpus;
 import io.github.subapavel.jqj.oracle.diff.DiffReport;
 import io.github.subapavel.jqj.oracle.diff.DiffRunner;
 import io.github.subapavel.jqj.oracle.diff.Verdict;
@@ -31,7 +30,7 @@ class JsonSurveyTest {
   Stream<DynamicTest> survey(@TempDir Path scratch) {
     Set<String> required = JsonCorpus.required();
     DiffRunner runner = JsonCorpus.runner(scratch);
-    return DiffCorpus.load(JsonCorpus.casesDir()).stream()
+    return JsonCorpus.cases().stream()
         .filter(e -> !required.contains(e.c().id()))
         .map(
             e ->

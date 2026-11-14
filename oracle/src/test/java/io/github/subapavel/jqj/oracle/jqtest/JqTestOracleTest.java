@@ -1,6 +1,7 @@
 package io.github.subapavel.jqj.oracle.jqtest;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
@@ -68,6 +69,12 @@ class JqTestOracleTest {
     assertThatThrownBy(() -> requiredCases(require.toString()))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageEndingWith(": [jq.test#000000000000, man.test#ffffffffffff]");
+  }
+
+  /** PIT reruns this factory for each of its dynamic tests; the corpus it takes is read once per JVM (F-84 (C)). */
+  @Test
+  void theCorpusIsReadOncePerJvm() {
+    assertThat(JqTestCorpus.cases()).isSameAs(JqTestCorpus.cases());
   }
 
   @AfterAll

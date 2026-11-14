@@ -1,6 +1,7 @@
 package io.github.subapavel.jqj.oracle.diff;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
@@ -40,7 +41,7 @@ class DifferentialOracleTest {
    */
   Stream<DynamicTest> requiredCases(Path scratch, String requireFile) {
     Set<String> required = Corpus.required(requireFile);
-    List<DiffCorpus.Entry> cases = DiffCorpus.load(Corpus.casesDir());
+    List<DiffCorpus.Entry> cases = Corpus.cases();
     DiffReport.requireKnown(DiffReport.Oracle.DIFFERENTIAL, required, cases.stream().map(e -> e.c().id()).toList());
     DiffRunner runner = new DiffRunner(Main::run, scratch, Corpus.deviations());
     return cases.stream()
@@ -67,6 +68,12 @@ class DifferentialOracleTest {
     assertThatThrownBy(() -> requiredCases(dir, require.toString()))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageEndingWith(": [dot/no-such-case, jq.test:58]");
+  }
+
+  /** PIT reruns this factory for each of its dynamic tests; the corpus it takes is read once per JVM (F-84 (C)). */
+  @Test
+  void theCorpusIsReadOncePerJvm() {
+    assertThat(Corpus.cases()).isSameAs(Corpus.cases());
   }
 
   @AfterAll
