@@ -1,5 +1,6 @@
 package io.flottila.core.batch;
 
+import io.flottila.api.Timer;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
 import io.vertx.core.Future;
@@ -231,5 +232,97 @@ class BatchingWriterPropertyTest {
                 assertTrue(waited.compareTo(Duration.ofMillis(maxWaitMs)) >= 0, item + " failed after " + waited + " < maxWait " + maxWaitMs + " ms");
             }
         }
+    }
+
+    // --- FIX-71 (D-104): a window timer that refuses commits, it never fails
+
+    enum Step { SAVE, SAVE_WAITING, COMPLETE_OK, TICK }
+
+    @Provide
+    Arbitrary<List<Step>> steps() {
+        return Arbitraries.of(Step.class).list().ofMinSize(1).ofMaxSize(80);
+    }
+
+    /** A FakeTimer that, while {@code refuse} is set, throws on every schedule of the window delay: a RuntimeException or an Error. */
+    private static final class MaybeRefusingTimer implements Timer {
+        final FakeTimer inner;
+        final Duration window;
+        final boolean refuse;
+        final boolean asError;
+
+        MaybeRefusingTimer(FakeTimer inner, Duration window, boolean refuse, boolean asError) {
+            this.inner = inner;
+            this.window = window;
+            this.refuse = refuse;
+            this.asError = asError;
+        }
+
+        @Override public Cancellable schedule(Duration delay, Runnable task) {
+            if (refuse && delay.equals(window)) {
+                if (asError) throw new InternalError("window refused");
+                throw new IllegalStateException("window refused");
+            }
+            return inner.schedule(delay, task);
+        }
+    }
+
+    /**
+     * Any mix of save, saveWaiting, commit completion and clock ticks, with the window timer refusing every schedule or none
+     * (a RuntimeException or an Error): every item the writer accepted reaches the sink exactly once, the concatenation of the
+     * batches is the arrival order, each batch is at most batchSize, and every accepted item succeeds — a refusal fails no
+     * one. The writer drains: nothing is queued, waiting or in flight once the commits are completed, with no clock tick.
+     */
+    @Property(tries = 300)
+    void everyItemReachesTheSinkOnceAndTheirConcatenationIsArrivalOrder(@ForAll("steps") List<Step> steps,
+                                                                       @ForAll boolean refuses,
+                                                                       @ForAll boolean asError,
+                                                                       @ForAll @IntRange(min = 1, max = 4) int batchSize,
+                                                                       @ForAll @IntRange(min = 1, max = 3) int concurrency,
+                                                                       @ForAll @IntRange(min = 1, max = 3) int backlogBatches,
+                                                                       @ForAll @IntRange(min = 1, max = 5) int windowMs) {
+        FakeClock clock = FakeClock.at(Instant.EPOCH);
+        Duration window = Duration.ofMillis(windowMs);
+        Duration maxWait = Duration.ofHours(1);   // no tick below reaches it: no waiter fails at its deadline
+        MaybeRefusingTimer timer = new MaybeRefusingTimer(new FakeTimer(clock), window, refuses, asError);
+        FakeSink sink = new FakeSink();
+        sink.manual = true;
+        int maxBacklog = batchSize * backlogBatches;
+        BatchingWriter<String> w = new BatchingWriter<>(sink, timer, new BatchingWriter.Options(batchSize, window, concurrency, maxBacklog, maxWait));
+
+        Map<String, Future<Void>> accepted = new HashMap<>();
+        List<String> arrival = new ArrayList<>();
+        int n = 0;
+        for (Step s : steps) {
+            switch (s) {
+                case SAVE -> {
+                    String item = "s" + (n++);
+                    Future<Void> f = w.save(item);
+                    if (f.failed()) assertInstanceOf(OverloadedException.class, f.cause(), item + ": only a full backlog refuses a save: " + f.cause());
+                    else { accepted.put(item, f); arrival.add(item); }
+                }
+                case SAVE_WAITING -> {
+                    String item = "w" + (n++);
+                    Future<Void> f = w.saveWaiting(item);
+                    assertFalse(f.failed(), item + ": a waiting save is never refused before maxWait: " + f.cause());
+                    accepted.put(item, f);
+                    arrival.add(item);
+                }
+                case COMPLETE_OK -> { if (sink.open() > 0) sink.gate().complete(); }
+                case TICK -> clock.advance(window);
+            }
+            assertTrue(w.inFlight() <= concurrency, "in flight " + w.inFlight() + " > " + concurrency);
+            assertTrue(w.backlog() <= maxBacklog, "backlog " + w.backlog() + " > " + maxBacklog);
+        }
+        for (int guard = 0; guard < 10_000 && sink.open() > 0; guard++) sink.gate().complete();   // commits only: no tick, no window
+        if (!refuses) clock.advance(window);                                                       // a working window may still hold a partial batch
+        for (int guard = 0; guard < 10_000 && sink.open() > 0; guard++) sink.gate().complete();
+
+        assertEquals(0, w.backlog(), "nothing stays queued with no commit in flight and no window");
+        assertEquals(0, w.waiting(), "nobody is left waiting");
+        assertEquals(0, w.inFlight());
+        List<String> flushed = sink.batches.stream().flatMap(List::stream).toList();
+        assertEquals(arrival, flushed, "every accepted item reaches the sink once, in arrival order");
+        for (List<String> b : sink.batches) assertTrue(b.size() <= batchSize, "batch of " + b.size() + " > " + batchSize);
+        accepted.forEach((item, f) -> assertTrue(f.succeeded(), item + " succeeds, a refused window fails no one: " + f));
     }
 }

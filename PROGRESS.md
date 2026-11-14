@@ -1341,3 +1341,19 @@ two lines above, so it could not fail while reading as coverage. Deleted, with a
 the reviewer caught that too: an OVERSTATED `warmedUp` hangs and the 300 s class timeout catches it; the survivor is an UNDERSTATED one. Fixed as mine.
 Coverage NOT claimed here: a filtered `-Pit` run passes `-Djacoco.skip=true` and is no evidence about coverage (NOTES, Build and VM); a test-only
 addition cannot lower it, and the integrated tree's full run is the evidence. D-054: class A (test-author x1 resumed once, reviewer x2); rounds 2.
+
+## 2026-11-14 — FIX-71 BatchingWriter widened to Error, a refused window committed (D-104) — done, review PASS r5
+Five rounds, and the last two earned their keep. D-104 implemented as decided: the catches at `:156` and `:298` widened to
+`RuntimeException | Error`, one take and one arm attempt per drain, a refused window's batches COMMITTED instead of failed, the
+`windowsRefused` counter and its episode WARNINGs, `Refused` removed.
+Two changes the commit names because D-104 did not: `assertEverySettled` went from "not sunk implies failed with refusal" to "every item
+sunk and succeeded", which is strictly stronger; and packet case 7 could not be written at all, replaced by ErrorTest:158 — see below.
+The r4 review overturned my own judgement and that is the entry's point. I had called the `:185` survivor an equivalent mutant. It is not:
+drop `cancelQuietly(armed)` and the window flush dropped stays scheduled, later nulls a NEWER window's `armed` and hands a partial batch
+over early. The reviewer gave the timing scenario; it is now a test and kills the mutant at :308. It also named the wrong model behind my
+call — "no item outcome differs" is not "unobservable" — which is the same model that made my prediction for mutant 7 miss.
+`:272` `.reversed()` IS equivalent, proved by an invariant (at rest the queue is short or inFlight is at the limit, so a drain takes at most
+one batch). That proof exposed dead generality: a `while` that runs once, a `.reversed()` that cannot reverse, and a javadoc describing an
+unreachable case — FIX-137. Also spun off: FIX-135 (PIT counts a timeout as a kill), FIX-138 (a throwing cancel leaves a window live, which
+D-104 now accepts as losing batching not data), and FIX-127 extended with `cancelQuietly` logging under the writer lock.
+VERIFIED_PASS — verify -Pit exit 0, 16 modules, 11:53; coverage no decrease (core 99.6/99.5); PIT api 179/180, core 1019/1029, 99 % vs the 80 % floor; scoped 47/0. D-054: class B, rounds 5.
