@@ -151,22 +151,21 @@ class RedeliveredTimelineTest {
 
     /**
      * FIX-131, F-29, the worst shape: run 1 dies at step 3 with an {@link Error} (the {@code crashFirst} harness; a node dying
-     * mid-run). Today {@code Recorder.wrap} catches {@code Exception} only, so run 1 leaves OK rows at steps 1-2 and no row at
-     * all at step 3 — a second defect, FIX-133, not intended behaviour; run 2 (attempt 2, after one lease) goes through, its
-     * rows at steps 1-2 are dropped on {@code (id, step)} and its rows 3-7 kept. This case produces a timeline that reads as a
-     * single successful run, which is worse than case 1 because case 1's FAILED-then-OK sequence at least looks wrong to an
-     * operator, while this one carries no failure anywhere and only the attempt prop on steps 3-7 betrays the seam.
+     * mid-run). Since FIX-133 {@code Recorder.wrap} catches {@code Throwable} (D-111), so run 1 leaves OK rows at steps 1-2 and
+     * a FAILED row at step 3 naming the Error; run 2 (attempt 2, after one lease) goes through, its rows at steps 1-3 are
+     * dropped on {@code (id, step)} and its rows 4-7 kept. The crash is visible: the timeline reads as case 1's, a FAILED
+     * step 3 with OK steps past it, and only the attempt prop on steps 4-7 betrays the seam.
      *
      * <p>Two separate triggers change this case, and either may land first. <b>FIX-133</b> (record a FAILED row on an
      * {@code Error}, then rethrow; it does not wait for CONSIDER-12) flips the step-3 expectations, all of them deliberately:
      * run 1's interim timeline gains {@code "3 check FAILED run=1 attempt=none"}; {@code recorded("check")} becomes 1 after run 1
      * and 2 after run 2; the final list's step-3 row becomes run 1's FAILED row ({@code run=1 attempt=none}); the "no row is
      * FAILED" assertion, the step-3 {@code x-run} assertion and the step-3 entry of the ATTEMPT list flip with it — case 2 then
-     * reads as case 1. Under FIX-133 those are wrong expectations to fix, with the reason in the commit; the rest stands.
+     * reads as case 1. FIX-133 has landed and those expectations are flipped below; the rest stands.
      * <b>CONSIDER-12</b> (the row key gains {@code attempt}) inverts the whole case together with case 1.
      */
     @Test
-    void aMessageWhoseFirstRunCrashedReadsAsOneCleanRunStitchedFromTwoWithNoFailureAnywhere() throws Exception {
+    void aMessageWhoseFirstRunCrashedShowsTheCrashAsAFailedRowStitchedBeforeTheRedeliveredRun() throws Exception {
         FlowDefinition def = FlowDefinition.from(flow(4, List.of(
                 step("mark-run", "mark"), step("pass", "enrich"), step("crash-first", "check"),
                 step("pass", "map"), step("pass", "route"), step("pass", "audit"), TO_PARTNER)));
@@ -187,10 +186,11 @@ class RedeliveredTimelineTest {
         List<String> warnings = logs.at(Level.WARNING, leftToLease);
         assertEquals(1, warnings.size(), "fixture: run 1 left to its lease: " + logs.all());
         assertTrue(warnings.get(0).contains("crashed at check on the first run"), "fixture: by the Error at check: " + warnings.get(0));
-        assertEquals(List.of("0 ingress OK run=none attempt=none", "1 mark OK run=1 attempt=none", "2 enrich OK run=1 attempt=none"),
+        assertEquals(List.of("0 ingress OK run=none attempt=none", "1 mark OK run=1 attempt=none", "2 enrich OK run=1 attempt=none",
+                        "3 check FAILED run=1 attempt=none"),
                 w.store.timeline(in.id()).await().stream().map(RedeliveredTimelineTest::row).toList(),
-                "run 1's trail kept its rows up to the crash and wrote nothing at step 3");
-        assertEquals(0, w.store.recorded("check"), "the Error left no row at step 3: run 1 never handed the store one");
+                "run 1's trail kept its rows up to the crash and a FAILED row at step 3 (D-111)");
+        assertEquals(1, w.store.recorded("check"), "the Error left its row at step 3: run 1 handed the store one (D-111)");
 
         // run 2: one lease later, the same id claimed again as attempt 2, goes through to step 7 (partner)
         w.rt.clock().advance(LEASE);
@@ -200,10 +200,10 @@ class RedeliveredTimelineTest {
         assertEquals(2, runs.get(), "fixture: the pipeline ran twice");
         assertEquals(List.of(in.id()), w.sentIds(), "fixture: run 2 reached the partner, under the same id");
         assertEquals(0, w.rows.size(), "fixture: run 2 completed the item");
-        for (String name : List.of("mark", "enrich")) {
+        for (String name : List.of("mark", "enrich", "check")) {
             assertEquals(2, w.store.recorded(name), "both runs handed the store a row for " + name + ": the second one collides on (id, step)");
         }
-        for (String name : List.of("check", "map", "route", "audit", "partner")) {
+        for (String name : List.of("map", "route", "audit", "partner")) {
             assertEquals(1, w.store.recorded(name), "only run 2 handed the store a row for " + name);
         }
 
@@ -213,23 +213,24 @@ class RedeliveredTimelineTest {
                         "0 ingress OK run=none attempt=none",   // the delivery's save
                         "1 mark OK run=1 attempt=none",          // run 1's; run 2's dropped
                         "2 enrich OK run=1 attempt=none",        // run 1's; run 2's dropped
-                        "3 check OK run=2 attempt=2",            // run 2's: run 1 crashed here and left nothing
+                        "3 check FAILED run=1 attempt=none",     // run 1's crash (D-111); run 2 passed this step, its OK row dropped
                         "4 map OK run=2 attempt=2",
                         "5 route OK run=2 attempt=2",
                         "6 audit OK run=2 attempt=2",
                         "7 partner OK run=2 attempt=2"),
                 timeline.stream().map(RedeliveredTimelineTest::row).toList(),
-                "the timeline of one id is stitched: steps 1-2 from run 1, steps 3-7 from run 2, every row OK");
+                "the timeline of one id is stitched: steps 1-3 from run 1, steps 4-7 from run 2");
 
-        // no failure anywhere: the crash at step 3 is invisible
-        assertEquals(List.of(), timeline.stream().filter(s -> s.outcome() != Snapshot.Outcome.OK || s.error().isPresent()).toList(),
-                "no row is FAILED or carries an error");
+        // the crash at step 3 is visible: its row is the only one FAILED or carrying an error, and it names the Error
+        assertEquals(List.of(3), timeline.stream().filter(s -> s.outcome() != Snapshot.Outcome.OK || s.error().isPresent()).map(Snapshot::step).toList(),
+                "step 3 is the one row FAILED or carrying an error");
         Snapshot check = timeline.get(3);
         assertEquals(3, check.step());
-        assertEquals(Optional.of(2), check.props().get(RUN), "the step-3 row is run 2's, not a record of run 1's crash");
+        assertEquals(Optional.of(1), check.props().get(RUN), "the step-3 row is run 1's record of its crash, not run 2's pass");
+        assertTrue(check.error().orElse("").contains("crashed at check on the first run"), "and it names the Error: " + check.error());
 
-        // the only mark of two runs: ATTEMPT on the rows run 2 wrote (3-7), absent from the delivery's and run 1's (0-2)
-        assertEquals(List.of(Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2)),
+        // the only mark of two runs: ATTEMPT on the rows run 2 wrote (4-7), absent from the delivery's and run 1's (0-3)
+        assertEquals(List.of(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(2), Optional.of(2), Optional.of(2), Optional.of(2)),
                 timeline.stream().map(s -> s.props().get(Envelope.ATTEMPT)).toList(), "attempt 2 on run 2's rows only");
     }
 }

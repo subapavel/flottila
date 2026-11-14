@@ -17,6 +17,9 @@ import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -25,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -275,5 +279,139 @@ class RecorderTest {
             assertTrue(error.contains(c.getValue().getClass().getSimpleName()) && error.contains(c.getValue().getMessage()), c.getKey() + ": the row says what failed: " + error);
             assertEquals("yes", t.get(2).headers().get("seen-a"), c.getKey() + ": the failed step's snapshot shows what it was given");
         }
+    }
+
+    /** The errors a step may throw (D-111): one carrying a message, and one that carries none, so only its class can be named. */
+    static Stream<Arguments> errors() {
+        return Stream.of(
+                Arguments.of(new AssertionError("invariant broken at x"), "java.lang.AssertionError", "invariant broken at x"),
+                Arguments.of(new StackOverflowError(), "java.lang.StackOverflowError", null));
+    }
+
+    /** {@code factories} plus one step type, {@code type}, whose stage is {@code stage}. */
+    List<StepFactory> with(String type, Stage stage) {
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory(type, s -> stage));
+        return all;
+    }
+
+    Pipeline buildWith(List<StepFactory> all, Map<String, Object> recording, Map<String, Object>... steps) {
+        return new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(store, meter)
+                .build(FlowDefinition.from(flow(recording, List.of(steps))), java.nio.file.Path.of(""));
+    }
+
+    @ParameterizedTest
+    @MethodSource("errors")
+    void aStepThatThrowsAnErrorRecordsItsFailureSnapshot(Error thrown, String className, String message) {
+        Pipeline p = buildWith(with("crash", Stage.of(e -> { throw thrown; })), Map.of("level", "all"), step("mark", "a"), step("crash", "x"));
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
+        assertSame(thrown, escaped, className + ": the error goes on unchanged, not wrapped");
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of("ingress", "a", "x"), names(t), className + ": the step that threw an Error has its row (D-111)");
+        assertEquals(Snapshot.Outcome.FAILED, t.get(2).outcome(), className);
+        String error = t.get(2).error().orElse("");
+        assertTrue(error.contains(className), className + ": the row names what failed: " + error);
+        if (message != null) assertTrue(error.contains(message), className + ": and its message: " + error);
+        assertEquals("yes", t.get(2).headers().get("seen-a"), className + ": the failed step's snapshot shows what it was given");
+        assertEquals(List.of(Snapshot.Outcome.OK, Snapshot.Outcome.OK), List.of(t.get(0).outcome(), t.get(1).outcome()), className + ": the rows before it are untouched");
+        assertTrue(t.get(0).error().isEmpty() && t.get(1).error().isEmpty(), className + ": and carry no error");
+    }
+
+    /** Neither an {@link Exception} nor an {@link Error}: what only a {@code Throwable} catch records (D-111 AMENDED). */
+    static final class DirectThrowable extends Throwable {
+        DirectThrowable(String message) { super(message); }
+    }
+
+    @Test
+    void aStepThatThrowsADirectThrowableSubclassIsRecordedToo() {
+        DirectThrowable thrown = new DirectThrowable("neither exception nor error");
+        Pipeline p = buildWith(with("odd", Stage.of(e -> { throw sneaky(thrown); })), Map.of("level", "all"), step("mark", "a"), step("odd", "x"));
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> p.apply(in));
+        assertSame(thrown, escaped, "the throwable goes on unchanged, not wrapped");
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of("ingress", "a", "x"), names(t), "a direct Throwable subclass leaves the step's row too: the catch is Throwable, not Exception | Error");
+        assertEquals(Snapshot.Outcome.FAILED, t.get(2).outcome());
+        String error = t.get(2).error().orElse("");
+        assertTrue(error.contains("DirectThrowable") && error.contains("neither exception nor error"), "the row says what failed: " + error);
+        assertEquals("yes", t.get(2).headers().get("seen-a"), "the failed step's snapshot shows what it was given");
+    }
+
+    /**
+     * A {@link MessageStore} decorator that logs every {@code record} call before passing it on — what reaches the store,
+     * not what survives in it. The delegate keeps only the first row per {@code (id, step)} (F-29), so a second row for a step
+     * is invisible to {@code timeline()}; only a count of the calls can see it. The approach of {@code HoldingMessageStore#recorded}
+     * (RedeliveredTimelineTest), which is package-private in {@code core.flow}.
+     */
+    static final class CountingStore implements MessageStore {
+        private final MessageStore delegate;
+        private final List<Snapshot> handed = new java.util.ArrayList<>();   // guarded by this
+
+        CountingStore(MessageStore delegate) { this.delegate = delegate; }
+
+        /** The outcomes of every row handed to the store for {@code messageId} at {@code stepName}, in call order. */
+        synchronized List<Snapshot.Outcome> handed(String messageId, String stepName) {
+            return handed.stream().filter(s -> s.messageId().equals(messageId) && s.stepName().equals(stepName)).map(Snapshot::outcome).toList();
+        }
+
+        @Override public Future<Void> record(Snapshot s) {
+            synchronized (this) { handed.add(s); }
+            return delegate.record(s);
+        }
+        @Override public Future<List<Snapshot>> timeline(String messageId) { return delegate.timeline(messageId); }
+        @Override public Future<Page<String>> findByKey(String name, String value, Optional<String> after, int limit) { return delegate.findByKey(name, value, after, limit); }
+    }
+
+    @Test
+    void anErrorAfterTheStepHandedOnLeavesNoSecondRow() {
+        AssertionError after = new AssertionError("after handing on");
+        AssertionError before = new AssertionError("before handing on");
+        List<StepFactory> all = new java.util.ArrayList<>(factories);
+        all.add(factory("late", s -> (e, rest) -> { rest.apply(e.withHeader("handed", "yes")); throw after; }));
+        all.add(factory("early", s -> (e, rest) -> { throw before; }));
+        CountingStore counting = new CountingStore(store);
+        Function<Map<String, Object>, Pipeline> flowWith = x -> new FlowBuilder(rt.runtime(), all, List.of(), Map.<String, EndpointConfig>of()).recording(counting, meter)
+                .build(FlowDefinition.from(flow(Map.of("level", "all"), List.of(step("mark", "a"), x, step("mark", "b")))), java.nio.file.Path.of(""));
+
+        Envelope witness = in();
+        Throwable early = assertThrows(Throwable.class, () -> flowWith.apply(step("early", "x")).apply(witness));
+        assertSame(before, early);
+        List<Snapshot> w = store.timeline(witness.id()).await();
+        assertEquals(List.of("ingress", "a", "x"), names(w), "witness: the same Error before any hand-on does leave a row, so the absence below is the guard's");
+        assertEquals(Snapshot.Outcome.FAILED, w.get(2).outcome());
+        assertEquals(List.of(Snapshot.Outcome.FAILED), counting.handed(witness.id(), "x"), "witness: the counter sees the FAILED row the Error before any hand-on writes");
+
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> flowWith.apply(step("late", "x")).apply(in));
+        assertSame(after, escaped, "the error goes on unchanged");
+        assertEquals(List.of(Snapshot.Outcome.OK), counting.handed(in.id(), "x"),
+                "step x handed the store exactly one row, the OK one its hand-on wrote: a second row was written for step x if FAILED follows it"
+                        + " (the store keeps the first per (id, step), so timeline() alone cannot show it, F-29)");
+        assertEquals(List.of(Snapshot.Outcome.OK), counting.handed(in.id(), "b"), "the step x handed on to recorded itself once");
+        List<Snapshot> t = store.timeline(in.id()).await();
+        assertEquals(List.of("ingress", "a", "x", "b"), names(t), "one row for step x, the OK one its hand-on wrote");
+        assertEquals(Snapshot.Outcome.OK, t.get(2).outcome());
+        assertEquals("yes", t.get(2).headers().get("handed"), "x's row shows what it handed on");
+        assertTrue(t.stream().allMatch(s -> s.outcome() == Snapshot.Outcome.OK && s.error().isEmpty()), "no row of this run carries the error");
+    }
+
+    @Test
+    void aPolicyThatDoesNotRecordFailuresStillLetsAnErrorEscape() {
+        AssertionError thrown = new AssertionError("not recorded, still thrown");
+        List<StepFactory> all = with("crash", Stage.of(e -> { throw thrown; }));
+
+        Envelope recorded = in();
+        Throwable control = assertThrows(Throwable.class, () -> buildWith(all, Map.of("level", "errors"), step("mark", "a"), step("crash", "x")).apply(recorded));
+        assertSame(thrown, control);
+        List<Snapshot> r = store.timeline(recorded.id()).await();
+        assertEquals(List.of(2), r.stream().map(Snapshot::step).toList(), "control: under errors the same Error leaves exactly the failed step's row");
+        assertEquals(Snapshot.Outcome.FAILED, r.get(0).outcome());
+
+        Envelope in = in();
+        Throwable escaped = assertThrows(Throwable.class, () -> buildWith(all, Map.of("level", "errors"), step("mark", "a"),
+                Map.of("type", "crash", "name", "x", "recording", Map.of("level", "off"))).apply(in));
+        assertSame(thrown, escaped, "a step that records nothing still lets the Error go on unchanged: handling does not depend on recording");
+        assertEquals(List.of(), store.timeline(in.id()).await(), "and records nothing: recording does not depend on handling");
     }
 }

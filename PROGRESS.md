@@ -1389,3 +1389,19 @@ it was also in this row; I corrected the row but not the packet, so it survived 
 was itself imprecise, because M3 shows an overstated RECORD is caught. One sentence, four places, two rounds.
 VERIFIED_PASS as above. NOT_RUN: coverage — every run here carries `-Djacoco.skip=true`, which a filtered `-Pit` run requires, so
 none of it is coverage evidence. D-054: class A, rounds 2.
+
+## 2026-11-14 — FIX-133 Recorder catches Throwable, so a crashed step leaves a row — done, review PASS r1
+One production line (`Recorder.java:85`, `Exception` -> `Throwable`, D-111 as amended), no control flow moved. A step that threw an
+`Error` used to leave NO row, so the timeline showed it as a step that never ran. Four new `RecorderTest` cases, red first, green
+14/0; `aCancelledStepRecordsItsFailureSnapshot` untouched and green, which is the guard that the catch widened and did not narrow.
+Six mutants killed, `cmp` clean after each. Final tree: core 511/0/0/0 `clean verify` exit 0, coverage "no decrease" 99.6/99.5 — that
+run carries no `-Pit`, so it is NOT a full reactor run and the commit does not claim one.
+Case 3 had to be written three times and that is the entry's point. As I specified it, it was green. The test-author added a witness so
+it could fail. Then the implementer found the witness was carrying it: the guard half could not fail under ANY mutant, because
+`InMemoryMessageStore:39` drops the second row per `(id, step)`, so `timeline()` could never see the row the mutant writes — a test named
+"leaves no second row" that cannot observe a second row. It now counts what reaches the store. This is a CLASS of vacuity, not one bug:
+the same drop F-29 is about, and NOTES now carries the question to ask before asserting any absence — which layer swallows it?
+Two more of my citations were wrong: `FlowWorkerTest:90` is a fixture javadoc, not an assertion, and NOTES said `:84` for a catch at
+`:85`. F-29's addendum now closes the half this fixes and says what it does not: still stitched, still first-writer-wins, CONSIDER-12's.
+VERIFIED_PASS as above. Raised from the review: FIX-140, and D-111 qualified — `record` runs before the rethrow and can throw, so
+"rethrown unchanged" holds only when recording succeeds. D-054: class B, rounds 1.

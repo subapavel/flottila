@@ -82,7 +82,7 @@ public final class Recorder {
                     }
                     return rest.apply(out);
                 });
-            } catch (Exception failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056)
+            } catch (Throwable failure) {   // a checked one too: an interrupted await throws InterruptedException sneakily (D-056); an Error too, recorded and rethrown unchanged (D-111)
                 if (!handedOn[0] && policy.records(step.index(), last, Snapshot.Outcome.FAILED)) {
                     record(e, step, Snapshot.Outcome.FAILED, failure.toString(), started, cpu0, policy);
                 }

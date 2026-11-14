@@ -237,11 +237,12 @@ sequence when paging comes); `InMemoryMessageStore` is unbounded (tests/bench/dr
 consider `Meter` on `Runtime`.
 
 FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
-- `Recorder.wrap` catches `Exception` only (`Recorder.java:84`; the comment there explains the
-  checked case, D-056). A step that throws an `Error` therefore leaves NO row, not even `FAILED`.
-  That is FIX-133, not a feature. To get a `FAILED` row at step N in a test, throw a
-  `RuntimeException` AND make the park fail; with a working DLQ the message parks and the item
-  completes, so there is no second run to observe.
+- HISTORICAL since FIX-133 (2026-11-14): `Recorder.wrap` caught `Exception` only (`:85`, not the `:84`
+  this note first said), so a step throwing an `Error` left NO row, not even `FAILED`. It now catches
+  `Throwable` (D-111 as amended), so an `Error` DOES leave a `FAILED` row and the trick below is no
+  longer needed for an `Error`. What still holds: to observe a second RUN you must stop the message
+  parking, because with a working DLQ it parks and the item completes. Throwing an `Error` no longer
+  achieves that on its own — make the park fail, as the FIX-131 test does.
 - A run that dies on an `Error` still gets its completed steps recorded: the trail closes in a
   `finally` (`FlowWorker.java` around `:344`).
 - A repeated `(id, step)` is dropped by BOTH stores — `on conflict (id, step) do nothing`
@@ -254,6 +255,21 @@ FIX-131 (2026-11-14), four facts a test needs and two of them cost a round:
 - Run 2 keeps the id: `FlowWorker.java:337` rebuilds ingress from the stored row via
   `Replay.rebuild(..., id, ...)` and adds `Envelope.ATTEMPT` at `:338`. It runs without stage 0, so
   it writes no second ingress row.
+
+- `Recorder.wrap`'s `policy.records(..., FAILED)` guard at `:86` is UNREACHABLE-FALSE, and deleting it is an equivalent mutant.
+  Proof, read in the code 2026-11-14, not inferred: for a FAILED outcome `RecordingPolicy.records` (`:55-61`) returns true under ALL,
+  under ERRORS, and under ENDS too, because ENDS is `step == 0 || last || outcome != OK` and FAILED is not OK. The one level that
+  answers false is OFF, and `wrap` returns the bare stage for OFF at `:71`, before the catch is installed. The guard stays in the code
+  on purpose: it states the policy correctly and goes live the moment a level is added that declines FAILED, so removing it would be a
+  trap rather than a FIX-137-shaped cleanup. Do not spend a review round trying to kill it; the OK and FILTERED guards beside it ARE
+  killable, because ENDS declines a middle step's OK. CORROBORATED independently by JaCoCo on the FIX-133 run: the only missed
+  branch in `Recorder` is L86, "1 of 4 branches missed" — the false arm of exactly that guard, and the widened catch adds none.
+- `InMemoryMessageStore`'s first-row-wins drop (`:39`, `putIfAbsent`) is not only F-29's subject: it makes a whole CLASS of assertion
+  vacuous. Any test asserting that a SECOND row is absent for one `(id, step)` cannot fail, because the store drops the second row
+  whether the production guard is there or not. FIX-133's case 3 was written that way and had to be rewritten to count what reaches
+  the store. Before asserting an absence, ask which layer swallows it.
+- An `Error` leaving the item to its lease is already pinned by `FlowWorkerTest:90` and `:1030`. A row asking for a new assertion there
+  is asking for a duplicate (the FIX-133 Done-when did, and was corrected).
 
 ## Pipeline (P1-03, D-043)
 
