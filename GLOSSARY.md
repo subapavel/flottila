@@ -341,6 +341,12 @@ built, an error payload). A view of an input document is detached when it enters
 a later read.
 _Avoid_: pin, retain
 
+**Holder**:
+The sink a tail emitter runs into. It keeps the one result and answers it with a stop, so the tail
+run's false means a result came and its true means none (ADR-0043, F-85). It is no **Hold**: the
+result is taken as soon as the run returns.
+_Avoid_: buffer, box
+
 **Root use**:
 Whether a filter reads its input not at all, as the elements of one array one at a time, or whole.
 

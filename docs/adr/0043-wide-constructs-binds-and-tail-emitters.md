@@ -1,6 +1,6 @@
 # Wide constructs bind through one Binds node; and/or runs are balanced; a tail emitter's result is taken first
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #87; designer draft); records F-45; amends ADR-0005 (22 node kinds), ADR-0034 (slot rule; operator and object lowering), ADR-0037 (and/or runs; If), ADR-0038 (patterns, interpolation) and ADR-0040 (value parameters)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #87; designer draft); records F-45; amends ADR-0005 (22 node kinds), ADR-0034 (slot rule; operator and object lowering), ADR-0037 (and/or runs; If), ADR-0038 (patterns, interpolation) and ADR-0040 (value parameters); amended by F-85 (#194: a holder answers a stop)
 
 A construct with n parts lowers to n nested Binds (objects, interpolation, patterns, value
 parameters) or to Binds nested in value position (left-associative operators), and `and`/`or` nest
@@ -57,3 +57,15 @@ result before the rest runs.
 - **And/Or nodes**: ADR-0037 rejected them.
 - **Binds for every construct of two or more Binds**: one path, but it moves every pin for no depth
   gain under `BIND_RUN`.
+
+## Amendment (F-85, #194, mutation equivalents)
+
+- A holder answers its one result with a stop.
+- A tail emitter emits last and returns its sink's answer unchanged:
+  - run into a holder, its run answers false exactly when its result came;
+  - run into any other sink, it answers that sink's answer.
+- The If or Binds that owns the holder takes that result and does not pass this false on (ADR-0039).
+- A kind added to the tail set must keep this.
+- No tick or charge changes.
+- Proposed by the designer and approved by the grilling-adviser for the owner under the delegation of
+  2026-11-14.

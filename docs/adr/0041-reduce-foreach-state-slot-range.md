@@ -1,6 +1,6 @@
 # Reduce and Foreach bind a state slot that one Advance takes and refills; range is a Many
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #69; designer draft); amends ADR-0005 (Reduce, Foreach, Advance), ADR-0008 (none of the three ticks), ADR-0034 and ADR-0038 (slot rule); amended by F-43 (#69: the `_state` read, atomic range bounds, the Many args contract)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #69; designer draft); amends ADR-0005 (Reduce, Foreach, Advance), ADR-0008 (none of the three ticks), ADR-0034 and ADR-0038 (slot rule); amended by F-43 (#69: the `_state` read, atomic range bounds, the Many args contract); amended by F-85 (#194: the shared empty args array, wording)
 
 jq 1.8.2's `gen_reduce` and `gen_foreach` keep the loop state in a fresh variable. The pattern's matchers wrap `LOADVN state; update; STOREV state` (LOADVN loads the value and then nulls the variable). Patterns lower to Binds around a body (ADR-0038), so the update must be a node beneath them. The jq facts were read from jq-1.8.2 source; #69's red records them on jq-ref, and jq-ref wins.
 
@@ -41,7 +41,7 @@ jq 1.8.2's `gen_reduce` and `gen_foreach` keep the loop state in a fresh variabl
   - query-core's null stays no jq value (§14).
 - **Bounds**: a range bound that is already atomic (Identity, Const or Var) is passed as an argument with no Bind, following ADR-0034's convention. The order is unchanged: start outer (recorded: `reduce/range2-generators`, where `[range(0,1;3,4)]` gives `[0,1,2,0,1,2,3,1,2,1,2,3]`).
 - **The Many args contract**:
-  - The call site allocates a new args array for each loop. IntrinsicManyOp does so on every run, except for a call with no arguments, which shares one empty array that has nothing to replace. A future bytecode backend or trampoline (ADR-0011) must do the same.
+  - The call site allocates a new args array for each loop. IntrinsicManyOp does so on every run, except for a call with no arguments and no loop slots (ADR-0044; tested as `width != 0`, F-85), which shares one empty array that has nothing to replace. A future bytecode backend or trampoline (ADR-0011) must do the same.
   - `first` may replace an argument in that array with a form the later calls read more cheaply. Range stores its end's double once, because a NumberView recomputes it on every read (ADR-0012).
   - A Const is never written: only the array's element is replaced.
 - **The verifier**: it accepts at most one Advance per loop node. The jq lowering always places exactly one; a hand-built IR loop with none is valid.

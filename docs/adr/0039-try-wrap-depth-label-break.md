@@ -1,6 +1,6 @@
 # Try marks downstream errors by a wrap depth; Label and Break are slot tokens
 
-Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #68; designer draft); amends ADR-0005 (Try, Label and Break fields), ADR-0008 (catch set, run state), ADR-0037 (Alt and Collect after a break) and ADR-0038 (AltBind rethrow); the internal Detach versus the public `detach()` corrected at the spec 2a review (#100)
+Status: accepted (2026-11-13, architect under `/run-spec` #56, ticket #68; designer draft); amends ADR-0005 (Try, Label and Break fields), ADR-0008 (catch set, run state), ADR-0037 (Alt and Collect after a break) and ADR-0038 (AltBind rethrow); the internal Detach versus the public `detach()` corrected at the spec 2a review (#100); amended by F-85 (#194: a false a node's own Holder gave ends at that node)
 
 jq 1.8.2 implements `try` as `TRY_BEGIN`, body, `TRY_END`. An error that leaves the body's output (a downstream error) is wrapped on its way back, and `TRY_BEGIN` unwraps and re-raises a wrapped error instead of running the handler. jq 1.8.2 has neither FORK_OPT nor gen_try_handler. The jq facts here were read from jq-1.8.2 source; #68's red records them on jq-ref, and jq-ref wins.
 
@@ -23,7 +23,8 @@ jq 1.8.2 implements `try` as `TRY_BEGIN`, body, `TRY_END`. An error that leaves 
 - **`Label(source, slot, body)` and `Break(source, slot)`**:
   - Labels have their own scope, apart from variables.
   - `RunState.label()` numbers activations from 1 in each run.
-  - A Break marks its token and returns false. Every node passes a false on at once.
+  - A Break marks its token and returns false. Every node passes on at once a false from its `out` or
+    from a Break. A false that only a node's own Holder gave (ADR-0043, F-85) ends at that node.
   - `Collect` emits nothing after a false, and `Alt` does not run its right side after one.
   - An unknown label is jq's compile error `$*label-l is not defined`, collected with ADR-0038's unbound-variable errors.
 - **Cost**: If, Try (the handler entry included), Label, Break and `error` neither tick nor charge. Each runs at most once per activation (F-32's criterion).
