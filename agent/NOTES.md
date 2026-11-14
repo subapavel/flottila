@@ -451,3 +451,41 @@ tree with the m1 module is dc85964.
   equivalent, or the named test is weaker than it reads. Both are worth more than a clean sweep, so
   report the mismatch rather than the verdict. Reviewers' predictions about WHICH case kills a mutant
   have been wrong twice this session while the kill itself held.
+
+- **Designate a mutant only after checking the assertion can be REACHED under it.** FIX-136: I named a
+  mutant (let the `Error` fall through to the pending save timeout) and claimed one `assertFalse` would
+  be its only killer. The reviewer showed the assertion was unreachable: the case never advances the fake
+  clock, `FakeTimer` fires only on `advance`, so under that mutant the answer stays pending for ever and
+  the earlier `settled(...)` fails first — after a real-time wait. The cure was one line,
+  `clock().advance(saveTimeout)` before `settled`, which is a no-op under a correct fix and the whole
+  point under the mutant. **Before naming a mutant, trace the case line by line as it would run under
+  it**, not as it runs under the fix. An assertion that cannot be reached is worse than no assertion: it
+  reads like coverage and is not.
+- **A fake clock means nothing fires unless a test advances it.** A pending timer is not a timer that
+  will go off. Any assertion whose subject is "what the timeout does" needs an explicit advance, and any
+  claim about a *timeout* path in a test that never advances the clock is about a path that never ran.
+- **One fixture kind for every case of a family is the FIX-140 trap, and it recurs.** FIX-136 again: all
+  13 cases threw a `LinkageError`, so narrowing a widened `catch (Throwable)` back to
+  `RuntimeException | Error` left every one of them green, and the production comment's claim about
+  sneaky checked throwables had nothing behind it. When a catch is widened for *two* reasons, there must
+  be a case per reason — `Error` and sneaky-checked are different fixtures, not one.
+- **A reviewer's "this comment gives a false reason" is a real defect, not a nit.** FIX-136's comments at
+  `SequentialIntake:41`/`:47` said the widening stopped a throwable escaping `Delivery`'s catch, which
+  stops being true the moment `Delivery`'s own catch is widened in the same commit. A comment that
+  justifies code with a reason that does not hold invites the next reader to undo it.
+- **Never sneak a checked throwable through a `java.lang.reflect.Proxy`.** The proxy wraps an undeclared
+  checked exception in `UndeclaredThrowableException`, which is a `RuntimeException` — so a case meant to
+  prove that a catch takes *sneaky checked* throwables would pass under `catch (RuntimeException ...)`
+  too, for the wrong reason, and the mutant it exists to kill would survive. FIX-136's test-author caught
+  this before writing the cases and hand-wrote two small delegate records instead of extending the
+  module's proxy-based `erroringOn` helper. Where a test must deliver a sneaky checked throwable, give it
+  a hand-written delegate and `sneaky(...)`, never a proxy.
+- **An assertion placed after one that subsumes it can never be the killer.** FIX-136, measured: M9 made
+  the NACK read "durable save timed out after PT2S", and the case failed on
+  `assertTrue(reason.contains(LINKAGE))` one line ABOVE the `assertFalse(reason.contains("durable save
+  timed out"))` that was written for exactly that mutant. For that fixture the reason is either the
+  cause's message or the timeout text and never both, so the earlier line always fires first. When
+  judging whether an assertion is load-bearing, ask which assertion fires FIRST under the mutant — not
+  merely whether the case fails. And read a verifier's quoted failure message rather than its narration:
+  this one reported the failure as being on the `assertFalse` while the message it pasted (`names the
+  cause: ... expected: <true> but was: <false>`, an `assertTrue` shape) showed otherwise.

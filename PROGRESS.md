@@ -1468,3 +1468,19 @@ missing its only interesting entry, `afterCommit`, the one path where waiters do
 the javadoc says `<`; r2 checked they now agree — entry can reach exactly `batchSize`, at rest it cannot, two claims.
 VERIFIED_PASS: 32/32 filtered, core 518/0/0/0 BUILD SUCCESS. A flake surfaced in the first full run and is now FIX-144.
 D-054: class A, rounds 2.
+
+## 2026-11-14 — FIX-136 an Error can no longer escape Delivery.apply() at five catch sites — done, review PASS r2
+D-049 (d) promises "never an escaped exception" from a save that throws; `Delivery:319` caught `RuntimeException`, so an
+`Error` left `apply` as a thrown throwable where the caller expected a `Future<Ack>`. F-30 settled that "exception" there
+means EVERY throwable and D-049 needs no amendment — the proof is inside the method, at `:296`/`:312`. Five catches went
+to `Throwable` (the ingress save, `SequentialIntake:41`/`:47`, the sync and at-most-once pipeline runs) plus `landAfter`'s
+parameter, which would not otherwise compile. A multicatch was REFUSED at the last two: it would drop the sneaky
+`InterruptedException` D-056 added, and D-056's row carries that amendment rather than taking it silently.
+All nine mutants killed, `cmp` clean after each. The three that matter: narrowing the ingress save to a multicatch is
+killed by ONE case, the sneaky-checked one, and likewise at both `SequentialIntake` sites — so each of the three cases the
+reviewer forced is the unique killer of one mutant. Without them the widening was untested, because all 13 original cases
+threw a `LinkageError`: FIX-140's trap one task later. The reviewer had predicted that mutant would survive and recorded
+plainly that the measurement proved it wrong.
+Review r1 FAILed on three things, all MY text: an assertion that was UNREACHABLE (no clock advance, and `FakeTimer` fires
+only on `advance`), now documenting rather than acceptance; an untested narrowing; and comments giving a false reason,
+which took my "one frame deeper" premise with it — F-30 corrected a 3rd and 4th time. VERIFIED_PASS: 99/0/0/0 filtered, core 535/0/0/0. D-054: class B, r2.

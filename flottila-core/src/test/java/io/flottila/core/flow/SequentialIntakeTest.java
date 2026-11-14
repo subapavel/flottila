@@ -1,12 +1,14 @@
 package io.flottila.core.flow;
 
 import io.flottila.api.BlobKey;
+import io.flottila.api.BlobStore;
 import io.flottila.api.Body;
 import io.flottila.api.Envelope;
 import io.flottila.api.Headers;
 import io.flottila.core.queue.InMemoryWorkQueue;
 import io.flottila.core.queue.WorkQueue;
 import io.flottila.core.record.InMemoryMessageStore;
+import io.flottila.core.record.MessageStore;
 import io.flottila.core.record.Meter;
 import io.flottila.core.record.Recorder;
 import io.flottila.core.record.RecordingPolicy;
@@ -21,10 +23,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -32,6 +36,7 @@ import java.util.function.BooleanSupplier;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -214,5 +219,123 @@ class SequentialIntakeTest {
         assertTrue(unkeyed.succeeded(), "the same arrival without a key saves: the refusal left nothing in its way: " + unkeyed.cause());
         assertEquals(in.id(), unkeyed.result());
         assertEquals(1, items.size());
+    }
+
+    /**
+     * FIX-136 (F-30): an {@link Error} from the body's persist is the same failed save as a {@link RuntimeException} from it
+     * ({@code SequentialIntake:41}): the future fails with it, nothing is queued, nothing escapes {@code save}.
+     */
+    @Test
+    void anErrorFromTheBodyPersistIsAFailedSaveNotAnEscape() {
+        LinkageError error = new LinkageError("persist linkage broken by the test");
+        List<Integer> asked = new CopyOnWriteArrayList<>();
+        BlobStore erroring = DeliveryTest.erroringOn(BlobStore.class, own, "persist", error, () -> asked.add(1));
+        Envelope plain = arrived();
+        Envelope in = Envelope.ingress(plain.id(), "orders", plain.headers(), Body.of(erroring, plain.body().key(), plain.body().hash(), plain.body().size()));
+        SequentialIntake intake = new SequentialIntake(store, items);
+        Asked abandoned = Asked.answering(false, items);
+
+        AtomicReference<Future<String>> returned = new AtomicReference<>();
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
+                "an Error from the persist is a failed save, not an exception escaping save");
+        assertEquals(List.of(1), asked, "witness: the persist was asked, and threw");
+        Future<String> saved = done(returned.get());
+        assertTrue(saved.failed(), "the save fails: " + saved);
+        assertSame(error, saved.cause(), "with the Error itself");
+        assertEquals(List.of(), items.snapshot(), "nothing queued");
+        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
+    }
+
+    /**
+     * FIX-136 (F-30): an {@link Error} from the ingress record is the same failed save ({@code SequentialIntake:47}); the body's
+     * persist is asked before it and succeeds, so only the record's catch decides this case.
+     */
+    @Test
+    void anErrorFromTheIngressRecordIsAFailedSaveNotAnEscape() {
+        LinkageError error = new LinkageError("record linkage broken by the test");
+        List<Integer> asked = new CopyOnWriteArrayList<>();
+        MessageStore erroring = DeliveryTest.erroringOn(MessageStore.class, store, "record", error, () -> asked.add(1));
+        SequentialIntake intake = new SequentialIntake(erroring, items);
+        Envelope in = arrived();
+        Asked abandoned = Asked.answering(false, items);
+
+        AtomicReference<Future<String>> returned = new AtomicReference<>();
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
+                "an Error from the record is a failed save, not an exception escaping save");
+        assertEquals(List.of(1), asked, "witness: the record was asked, and threw");
+        assertEquals(List.of(in.body().key()), own.persists(), "witness: the persist before it was asked and did not throw");
+        Future<String> saved = done(returned.get());
+        assertTrue(saved.failed(), "the save fails: " + saved);
+        assertSame(error, saved.cause(), "with the Error itself");
+        assertEquals(List.of(), items.snapshot(), "nothing queued");
+        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
+    }
+
+    // --- the sneaky checked half of FIX-136's widened catches. A java.lang.reflect.Proxy wraps an undeclared checked throwable in an
+    // UndeclaredThrowableException (a RuntimeException), which would make these cases pass for the wrong reason, so the stores
+    // below are written out: each throws the IOException from a method that declares none, the way Future.await() does.
+
+    /** {@code delegate}, except that {@code persist} throws {@code checked} sneakily. */
+    record SneakingPersist(BlobStore delegate, Throwable checked) implements BlobStore {
+        @Override public long treeLimit() { return delegate.treeLimit(); }
+        @Override public Future<Body> write(BlobKey key, Buffer whole, long maxSize) { return delegate.write(key, whole, maxSize); }
+        @Override public Future<Body> write(BlobKey key, io.vertx.core.streams.ReadStream<Buffer> in, long maxSize) { return delegate.write(key, in, maxSize); }
+        @Override public io.vertx.core.streams.ReadStream<Buffer> open(BlobKey key) { return delegate.open(key); }
+        @Override public Future<Buffer> read(BlobKey key) { return delegate.read(key); }
+        @Override public Future<Void> persist(BlobKey key) { throw HeldPipeline.sneaky(checked); }
+    }
+
+    /** {@code delegate}, except that {@code record} throws {@code checked} sneakily. */
+    record SneakingRecord(MessageStore delegate, Throwable checked) implements MessageStore {
+        @Override public Future<Void> record(Snapshot snapshot) { throw HeldPipeline.sneaky(checked); }
+        @Override public Future<List<Snapshot>> timeline(String messageId) { return delegate.timeline(messageId); }
+        @Override public Future<io.flottila.core.record.Page<String>> findByKey(String name, String value, Optional<String> after, int limit) { return delegate.findByKey(name, value, after, limit); }
+    }
+
+    /**
+     * FIX-136: a sneaky checked throwable from the body's persist is the same failed save as an {@link Error} from it
+     * ({@code SequentialIntake:41}, a {@code Throwable} catch): the future fails with it, nothing is queued, nothing escapes
+     * {@code save}. Narrowing that catch to {@code RuntimeException | Error} lets the {@link IOException} escape.
+     */
+    @Test
+    void aSneakyCheckedThrowableFromTheBodyPersistIsAFailedSaveNotAnEscape() {
+        IOException checked = new IOException("persist socket closed under the save");
+        Envelope plain = arrived();
+        Envelope in = Envelope.ingress(plain.id(), "orders", plain.headers(),
+                Body.of(new SneakingPersist(own, checked), plain.body().key(), plain.body().hash(), plain.body().size()));
+        SequentialIntake intake = new SequentialIntake(store, items);
+        Asked abandoned = Asked.answering(false, items);
+
+        AtomicReference<Future<String>> returned = new AtomicReference<>();
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
+                "a sneaky checked throwable from the persist is a failed save, not an exception escaping save");
+        Future<String> saved = done(returned.get());
+        assertTrue(saved.failed(), "the save fails: " + saved);
+        assertSame(checked, saved.cause(), "with the throwable itself");
+        assertEquals(List.of(), items.snapshot(), "nothing queued");
+        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
+    }
+
+    /**
+     * FIX-136: a sneaky checked throwable from the ingress record is the same failed save ({@code SequentialIntake:47}); the body's
+     * persist is asked before it and succeeds, so only the record's catch decides this case. Narrowing that catch to
+     * {@code RuntimeException | Error} lets the {@link IOException} escape.
+     */
+    @Test
+    void aSneakyCheckedThrowableFromTheIngressRecordIsAFailedSaveNotAnEscape() {
+        IOException checked = new IOException("record socket closed under the save");
+        SequentialIntake intake = new SequentialIntake(new SneakingRecord(store, checked), items);
+        Envelope in = arrived();
+        Asked abandoned = Asked.answering(false, items);
+
+        AtomicReference<Future<String>> returned = new AtomicReference<>();
+        assertDoesNotThrow(() -> returned.set(intake.save(in, ingress(in), "orders", "K-7", null, abandoned.supplier())),
+                "a sneaky checked throwable from the record is a failed save, not an exception escaping save");
+        assertEquals(List.of(in.body().key()), own.persists(), "witness: the persist before it was asked and did not throw");
+        Future<String> saved = done(returned.get());
+        assertTrue(saved.failed(), "the save fails: " + saved);
+        assertSame(checked, saved.cause(), "with the throwable itself");
+        assertEquals(List.of(), items.snapshot(), "nothing queued");
+        assertEquals(0, abandoned.times(), "a save that failed never reaches the ask just before the enqueue");
     }
 }

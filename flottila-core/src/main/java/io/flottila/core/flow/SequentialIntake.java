@@ -38,13 +38,19 @@ public final class SequentialIntake implements Intake {
         Future<Void> persist;
         try {
             persist = arrived.body().store().persist(arrived.body().key());
-        } catch (RuntimeException failure) {   // a blob store that throws instead of failing its future: the same failed save
+        } catch (Throwable failure) {
+            // this class's javadoc: "a store that throws instead of failing its future is the same
+            // failed save"; it holds with no Delivery above it, so an Error and a sneaky checked throwable are taken too; pinned by
+            // SequentialIntakeTest.aSneakyCheckedThrowableFromTheBodyPersistIsAFailedSaveNotAnEscape
             persist = Future.failedFuture(failure);
         }
         Future<Void> record;
         try {
             record = store.record(ingress);
-        } catch (RuntimeException failure) {   // a store that throws instead of failing its future: the same failed save
+        } catch (Throwable failure) {
+            // this class's javadoc: "a store that throws instead of failing its future is the same
+            // failed save"; it holds with no Delivery above it, so an Error and a sneaky checked throwable are taken too; pinned by
+            // SequentialIntakeTest.aSneakyCheckedThrowableFromTheIngressRecordIsAFailedSaveNotAnEscape
             record = Future.failedFuture(failure);
         }
         // the first failure decides at once, without waiting for the other save

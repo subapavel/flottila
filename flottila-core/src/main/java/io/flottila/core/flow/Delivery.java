@@ -169,11 +169,14 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             public Future<Ack> deliver(Envelope e, Flight flight) {
                 Trail trail = new Trail(List.of());
                 Envelope reply = null;
-                Exception failure = null;
+                Throwable failure = null;
                 Ack.Nack cancel;
                 try {
                     reply = trail.apply(pipeline, e);
-                } catch (Exception thrown) {   // an interrupted await throws InterruptedException, sneakily
+                } catch (Throwable thrown) {
+                    // an interrupted await throws InterruptedException, sneakily (D-056); an Error too, widened again by F-30: a failed
+                    // future, never a throw out of apply (D-049 d); the finally below still runs; D-111 rethrow discipline does not
+                    // apply, the caller is a future
                     failure = thrown;
                 } finally {
                     cancel = flight.leave();
@@ -212,10 +215,10 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
 
             private void run(Envelope e, Flight flight) {
                 Trail trail = new Trail(List.of());
-                Exception dropped = null;
+                Throwable dropped = null;
                 try {
                     trail.apply(pipeline, e);
-                } catch (Exception failure) {   // an interrupted await throws InterruptedException, sneakily
+                } catch (Throwable failure) {   // an interrupted await throws InterruptedException, sneakily (D-056); an Error too, widened again by F-30: logged and dropped (D-049 b), not uncaught on the message's thread
                     dropped = failure;
                 } finally {
                     flight.leave();
@@ -224,7 +227,7 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
             }
 
             /** The run is over once its trail closed: the permit is back before anything is logged. */
-            private void landAfter(Future<Void> closed, Flight flight, Envelope e, Exception dropped) {
+            private void landAfter(Future<Void> closed, Flight flight, Envelope e, Throwable dropped) {
                 closed.onComplete(done -> {
                     flight.land();
                     if (dropped != null) {
@@ -317,7 +320,10 @@ public final class Delivery implements Function<Envelope, Future<Ack>> {
                 Future<String> saved;
                 try {
                     saved = intake.save(e, ingress.apply(e), flow, key, dedupe, () -> answer.future().isComplete());
-                } catch (RuntimeException failure) {   // an intake that throws instead of failing its future: the same failed save
+                } catch (Throwable failure) {
+                    // an intake that throws instead of failing its future, an Error or a sneaky checked throwable too (F-30, D-049 d): the
+                    // same failed save, never a throw out of apply; a translation to a future, so D-111's rethrow does not apply; the
+                    // sneaky checked throwable is pinned by DeliveryTest.aSneakyCheckedThrowableFromTheIntakeIsARetryableNackNotAnExceptionOutOfApply
                     saved = Future.failedFuture(failure);
                 }
                 saved.onComplete(done -> {
