@@ -20,11 +20,14 @@ done
 # jq-cli: the module-path tests and the launcher test need surefire executions PIT does not run (jq-cli/pom.xml, #38).
 # oracle: the Survey tests fail only on CRASH and stay out of PIT (ADR-0020); so does the compile-mode oracle, which
 # runs in the ticket gate since #89 but never under PIT (F-46, ADR-0020 amendment for #60).
+# jq-core and oracle: OperatorChainTest and WideConstructStepsTest are slow at each minion start and stay out of PIT
+# (F-84 (a), #190); they still run in step 1. Any further exclusion needs a finding.
 expected() {
   case $1 in
-    query-core | jq-core) echo "" ;;
+    query-core) echo "" ;;
+    jq-core) echo "io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.WideConstructStepsTest" ;;
     jq-cli) echo "io.github.subapavel.jqj.cli.*ModulePathTest,io.github.subapavel.jqj.cli.LauncherTest" ;;
-    oracle) echo "io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest,io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest,io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest,io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest,io.github.subapavel.jqj.oracle.json.JsonSurveyTest" ;;
+    oracle) echo "io.github.subapavel.jqj.OperatorChainTest,io.github.subapavel.jqj.WideConstructStepsTest,io.github.subapavel.jqj.oracle.compile.CompileModeOracleTest,io.github.subapavel.jqj.oracle.compile.CompileModeSurveyTest,io.github.subapavel.jqj.oracle.diff.DifferentialSurveyTest,io.github.subapavel.jqj.oracle.jqtest.JqTestSurveyTest,io.github.subapavel.jqj.oracle.json.JsonSurveyTest" ;;
   esac
 }
 modules="query-core jq-core jq-cli oracle"
