@@ -321,10 +321,12 @@ class NavigationBudgetTest {
   @Test
   void anOrderChargesBothProofsAndItsKeyLists() {
     // .[0] steps no entry and .[1] one (ArrayView.get). Order (ADR-0037) collects each side's key list through its proof:
-    // 20 proof and 20 collect ticks per side, then 20 key pairs of one started KiB each, then 20 member pairs; the member
-    // after a proved key is the next entry, which costs no scan. 1 + 1 + 80 + 20 + 20 = 122 (880 on 25ef36c). jq-ref
-    // 1.8.2, observed 2026-11-13: [o,o] | .[0] < .[1] gives false.
-    assertExactSteps(".[0] < .[1]", TWO_OBJECTS, 122, "false");
+    // 20 proof and 20 collect ticks per side; F-53: each side's list is sorted as keys sorts it, the 56 compares of jqj's
+    // merge sort on these 20 keys (keysChargesItsProofEachKeyAndItsSort), one started KiB each; then 20 key pairs of one started
+    // KiB each, then 20 member pairs; the member after a proved key is the next entry, which costs no scan.
+    // 1 + 1 + 80 + 2 x 56 + 20 + 20 = 234 (122 before F-53, 880 on 25ef36c). jq-ref 1.8.2, observed 2026-11-13 and
+    // 2026-11-14 (.logs/104-jqref.log): [o,o] | .[0] < .[1] gives false.
+    assertExactSteps(".[0] < .[1]", TWO_OBJECTS, 234, "false");
   }
 
   @Test
