@@ -1532,3 +1532,19 @@ The comment now anchors to a NAME, not a number, so an insert above it cannot ro
 Reviewer's finding worth more than the task: the module `verify` I spent on this change tested nothing I bought it for —
 there is no `maven-javadoc-plugin` in any pom, so a broken `{@link}` cannot fail this build. ParkingTest 22/22 was the
 whole of the real evidence. A comment-only diff changes no bytecode, so no mutants are owed and none were invented.
+
+## 2026-11-14 — FIX-145 a swallowed interrupt out of a producer's close is given back to the caller — done, review PASS r3
+`Producers.closeAll` turns whatever a producer's `close()` throws into a failed future, so the loop finishes and strands no
+producer (FIX-141). When that throw is a sneaky `InterruptedException`, swallowing it left the caller's next blocking call
+unaware its thread had been cancelled. Three lines restore the flag, D-098 (1).
+The decision is the PLACEMENT, not the guard: it sits in the synchronous catch, not in the `recover` lambda, which also
+serves producers whose future fails later - there the failure is seen on whichever thread completed it, and setting the flag
+would invent an interrupt nobody raised (D-098 (2)). Three cases, each killing a different mutant; only the third separates
+the two placements: a `recover` body on an already-failed future runs inline on the caller's thread, so a misplaced guard still sets the flag on the very thread doing the asserting.
+Review FAILed twice, both mine. r1: the mutation kills were claims with no log on disk, and the placement was pinned by
+nothing. r2: the comment said D-056 widened this catch. It did not - it widened `Delivery.java:176` and `:218`; FIX-141 and
+F-30 widened this one, which the comment one line above already said. I commissioned it and accepted it unchecked, with the
+fact sitting in a packet I wrote. D-056 is now cited nowhere in the file.
+Scoped PIT on `Producers`: 0 survivors, 0 without coverage - honestly 6 killed by named tests and 1 TIMED_OUT unattributed,
+on an untouched line, now FIX-154. Counts reconcile: 563 after FIX-142 plus three cases is 566, the class 19 to 22. Module
+`verify -Pit` green, coverage no decrease, the FIX-144 flake did not fire. Residual FIX-153. D-054: class A, r3.
