@@ -21,7 +21,7 @@ public final class OwnSurvivorsFactory implements MutationInterceptorFactory {
 
   @Override
   public String description() {
-    return "Keeps only the mutants a module's own PIT run left SURVIVED or NO_COVERAGE";
+    return "Keeps only the mutants a module's own PIT run did not kill (not KILLED, TIMED_OUT or MEMORY_ERROR)";
   }
 
   @Override

@@ -61,9 +61,11 @@ class OwnSurvivorsFactoryTest {
     final MutationDetails memoryError = mutant("example.fixture.Sample", "run", "(I)V", 14, MATH, List.of(25));
     final MutationDetails survivedInit =
         mutant("example.fixture.Sample$Inner", "<init>", "(Lexample/fixture/Sample;)V", 5, BOUNDARY, List.of(3, 7));
+    final MutationDetails runError = mutant("example.fixture.Sample", "run", "(I)V", 15, NEGATE, List.of(30));
+    final MutationDetails nonViable = mutant("example.fixture.Sample", "run", "(I)V", 16, MATH, List.of(35));
 
     List<MutationDetails> all() {
-      return List.of(killed, survived, noCoverage, timedOut, memoryError, survivedInit);
+      return List.of(killed, survived, noCoverage, timedOut, memoryError, survivedInit, runError, nonViable);
     }
   }
 
@@ -81,12 +83,54 @@ class OwnSurvivorsFactoryTest {
   }
 
   @Test
-  void keepsOnlyTheMutantsTheOwnRunLeftSurvivedOrNoCoverage() throws Exception {
+  void keepsEveryMutantTheOwnRunDidNotKill() throws Exception {
     OwnRun own = new OwnRun();
 
     List<MutationDetails> kept = keep(filter(fixture("own-run")), own.all());
 
-    assertThat(kept).containsExactly(own.survived, own.noCoverage, own.survivedInit);
+    assertThat(kept).containsExactly(own.survived, own.noCoverage, own.survivedInit, own.runError, own.nonViable);
+  }
+
+  private static final String WHOLE_ROW = "<mutation detected='false' status='SURVIVED' numberOfTestsRun='1'>"
+      + "<sourceFile>Sample.java</sourceFile><mutatedClass>example.fixture.Sample</mutatedClass>"
+      + "<mutatedMethod>run</mutatedMethod><methodDescription>(I)V</methodDescription><lineNumber>40</lineNumber>"
+      + "<mutator>" + NEGATE + "</mutator><indexes><index>50</index></indexes><blocks><block>8</block></blocks>"
+      + "<killingTest/><description>negated conditional</description></mutation>";
+
+  static Stream<Arguments> malformedRows() {
+    return Stream.of(
+        Arguments.argumentSet("self-closing", "<mutation detected='true' status='KILLED' numberOfTestsRun='1'/>"),
+        Arguments.argumentSet("no status", WHOLE_ROW.replace(" status='SURVIVED'", "")),
+        Arguments.argumentSet("no mutatedClass", WHOLE_ROW.replaceAll("<mutatedClass>.*</mutatedClass>", "")),
+        Arguments.argumentSet("no mutatedMethod", WHOLE_ROW.replaceAll("<mutatedMethod>.*</mutatedMethod>", "")),
+        Arguments.argumentSet("no methodDescription",
+            WHOLE_ROW.replaceAll("<methodDescription>.*</methodDescription>", "")),
+        Arguments.argumentSet("no lineNumber", WHOLE_ROW.replaceAll("<lineNumber>.*</lineNumber>", "")),
+        Arguments.argumentSet("no mutator", WHOLE_ROW.replaceAll("<mutator>.*</mutator>", "")),
+        Arguments.argumentSet("no index", WHOLE_ROW.replace("<index>50</index>", "")),
+        Arguments.argumentSet("lineNumber not a number", WHOLE_ROW.replace("<lineNumber>40<", "<lineNumber>x<")),
+        Arguments.argumentSet("index not a number", WHOLE_ROW.replace("<index>50<", "<index>x<")));
+  }
+
+  @ParameterizedTest(name = "{argumentSetName}")
+  @MethodSource("malformedRows")
+  void failsOnAMutationRowWithoutItsWholeKey(String row, @TempDir Path dir) throws Exception {
+    Path report = dir.resolve("mutations.xml");
+    Files.writeString(report, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<mutations partial=\"true\">\n" + WHOLE_ROW
+        + "\n" + row + "\n</mutations>\n");
+
+    assertThatThrownBy(() -> filter(report))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining(report.toString());
+  }
+
+  @Test
+  void readsTheWholeRowTheMalformedCasesStartFrom(@TempDir Path dir) throws Exception {
+    Path report = dir.resolve("mutations.xml");
+    Files.writeString(report, "<mutations>" + WHOLE_ROW + "</mutations>");
+    MutationDetails whole = mutant("example.fixture.Sample", "run", "(I)V", 40, NEGATE, List.of(50));
+
+    assertThat(keep(filter(report), List.of(whole))).containsExactly(whole);
   }
 
   @Test

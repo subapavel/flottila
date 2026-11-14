@@ -10,7 +10,10 @@ import org.pitest.mutationtest.build.MutationInterceptor;
 import org.pitest.mutationtest.engine.MutationDetails;
 import org.pitest.mutationtest.engine.Mutater;
 
-/** Keeps a mutant only if an own report left it SURVIVED or NO_COVERAGE; every other mutant is dropped. */
+/**
+ * Keeps a mutant only if an own report names it with a status outside {@link OwnReport#KILLED}; every other mutant,
+ * killed there or named by no own report, is dropped.
+ */
 final class OwnSurvivorsFilter implements MutationInterceptor {
 
   private final Set<MutantKey> survivors;
