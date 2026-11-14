@@ -594,7 +594,7 @@ public final class AdminServer {
             return refusal(refused);
         } catch (RowNotRemovedException kept) {
             return Json.of(500, error(kept.getMessage()));
-        } catch (Exception failed) {
+        } catch (Exception failed) {   // POLICY (D-113): narrow on purpose, as ran's javadoc says - "An Error is the caller's (500)", which the route runner run(Route, RoutingContext)'s Throwable clause answers
             String outcome = failed instanceof ParkedException ? "PARKED" : "FAILED";
             return Json.of(502, answer.put("outcome", outcome).put("error", Objects.toString(failed.getMessage(), failed.toString())));
         }

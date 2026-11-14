@@ -42,6 +42,7 @@ public final class Retry {
                 try {
                     return step.apply(e);
                 } catch (Exception failure) {   // a checked one too: await() rethrows a failed future's checked cause as is
+                    // narrow by POLICY (D-113): the class javadoc, "An Error is not a transient failure and is never caught"
                     if (failure instanceof InterruptedException) {   // a cancelled run, not the step's failure: never retried
                         Thread.currentThread().interrupt();
                         earlier.forEach(failure::addSuppressed);

@@ -946,7 +946,7 @@ public final class Deployments {
         try {
             return flow(builder(f.pkg(), f.packageVersion(), f.revision(), ran.recipe().endpoints()), f.pkg(), f.packageVersion(), f.revision(), ran.archive(),
                     ran.recipe(), dir);
-        } catch (IOException | RuntimeException refused) {
+        } catch (IOException | RuntimeException refused) {   // POLICY (D-113): an Error is not a flow that does not build again; rollBack's RuntimeException|Error clause, its only caller, contains one
             problems.add("flow '" + local(f) + "' does not build again: " + fromRoot(reason(refused), dir, ran.recipe().dependencies()));
             return null;
         }
@@ -1052,7 +1052,7 @@ public final class Deployments {
             FlowDefinition def;
             try {
                 def = FlowDefinition.from(map(flow.put("id", name + "/" + id)));
-            } catch (RuntimeException refused) {
+            } catch (RuntimeException refused) {   // POLICY (D-113): a problem line for an Error would lie about the flow; install's Throwable clause contains one, a validate abandons
                 problems.add("flow '" + id + "': " + reason(refused));
                 return;
             }
@@ -1275,7 +1275,7 @@ public final class Deployments {
             Optional<InetSocketAddress> answer;
             try {
                 answer = Objects.requireNonNull(components.get(endpoint.scheme()).listensOn(endpoint), "listensOn answered null");
-            } catch (RuntimeException thrown) {
+            } catch (RuntimeException thrown) {   // POLICY (D-113): an Error is not a component that cannot say where it listens; install's Throwable clause contains one, a validate abandons
                 problems.add("endpoint '" + endpoint.name() + "' (scheme '" + endpoint.scheme() + "'): its component cannot say where its consumer listens: "
                         + reason(thrown));
                 continue;
@@ -1318,7 +1318,7 @@ public final class Deployments {
                 for (Schemas.Problem p : Schemas.check(factory.get().configSchema(), options).problems()) {
                     problems.add(at + " option at '" + p.path() + "': " + p.message());
                 }
-            } catch (RuntimeException unusable) {
+            } catch (RuntimeException unusable) {   // POLICY (D-113): an Error is not an unusable configSchema(); install's Throwable clause contains one, a validate abandons
                 problems.add(at + ": the configSchema() of its step factory is not a usable JSON Schema: " + reason(unusable));
             }
         }
@@ -1389,7 +1389,7 @@ public final class Deployments {
                 flows.add(flow(builder, name, version, revision, archive,
                         new Recipe(each.getValue(), pkg.flowFile(id), Map.copyOf(endpoints), Map.copyOf(written),
                                 Optional.ofNullable(checked.listening().get(id)), checked.dependencies().visible()), dir));
-            } catch (RuntimeException refused) {
+            } catch (RuntimeException refused) {   // POLICY (D-113): an Error is not a flow that does not build; install's Throwable clause contains one, a validate abandons
                 problems.add("flow '" + id + "' does not build: " + fromRoot(reason(refused), dir, checked.dependencies().visible()));
             }
         }
@@ -1479,7 +1479,7 @@ public final class Deployments {
                 boolean polls = component.polls(from);
                 Consumer consumer = component.consumer(from, handler);
                 with.add(f.with(polls ? leased(f.id() + "/" + from.uri(), consumer, () -> component.consumer(from, handler)) : consumer));
-            } catch (RuntimeException refused) {
+            } catch (RuntimeException refused) {   // POLICY (D-113): an Error is not a flow that does not build; both callers contain it - install's Throwable clause, rollBack's RuntimeException|Error one
                 problems.add("flow '" + local(f.flow()) + "' does not build: " + reason(refused));
             }
         }

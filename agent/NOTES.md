@@ -605,3 +605,20 @@ tree with the m1 module is dc85964.
   or build log, the scoped PIT report COPIED out of `target/` (a later `clean` deletes it), and the text of anything the
   change quotes from outside itself — a commit message, a decision, a log line. A review that has to ask for a command to
   be run costs a whole round, and the round is avoidable every single time.
+- **Settle a "contained one frame out" claim by grepping the method's CALLERS, never by line proximity.** A catch clause can
+  sit textually between two wider clauses and belong to neither, because what contains it is the call chain, not the file
+  layout. FIX-143's eight comments all rest on such claims and every one was settled the same way: `grep '\bmethod\s*\('`
+  over the whole source tree, then check each call site's enclosing `try`. That is what showed `rebuild` has exactly ONE
+  caller (inside `rollBack`'s try, so `:927` owns it and `install`'s `:826` never sees it) and `consumers` exactly two, on
+  paths with different clauses. The method being private is part of the evidence, because it bounds where callers can be.
+  A claim of the form "X is contained by Y" is false the moment a third caller exists on a path with no wider catch, so the
+  grep must be exhaustive rather than illustrative — and the comment should say "its only caller" only when that was checked.
+- **A lane's DIRECTORY name is not its BRANCH name.** `git worktree list` says `/home/user/flottila-lane2` is on branch
+  `lane5`, `/home/user/flottila-lane3` on `lane3`; branches `lane2` and `lane4` exist and are checked out NOWHERE. Every
+  packet this session said "in `/home/user/flottila-lane2` (branch `lane2`)", which is wrong in the second half, and the
+  FIX-143 implementer was the one that noticed and said so before committing. It was harmless only because `lane5` is a
+  scratch branch whose reflog is nothing but `reset: moving to <each successive branch tip>` — but a `reset --hard` aimed at
+  a branch NAME on that assumption could discard real work. Checked after the fact: `lane2`'s one commit `f318124` has the
+  same patch-id (`fe383b7e…`) as its integrated twin `4cbc121` on the main branch, and `lane4` is fully contained, so both
+  orphans carry nothing unique. Rule: a packet names the PATH and, if it names a branch at all, one taken from
+  `git -C <path> rev-parse --abbrev-ref HEAD` rather than from the directory name. Reset by path, never by assumed branch.

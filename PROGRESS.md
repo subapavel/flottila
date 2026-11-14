@@ -1656,3 +1656,19 @@ pairing from each commit's `Task:` trailer, a key on both sides; I confirmed all
 Also mine: a done-when demanding `grep docs/PROGRESS` give 0 hits, unachievable since the packet and the row name the path
 - recorded as hits, all intentional. r1 FAILed because the reviewer has no shell and I had left the proof off disk. Residual:
 FIX-155 the guard that would have caught this on day 1, FIX-156 the §2 format divergence. D-054: class A, r2.
+
+## 2026-11-14 — FIX-143 the eight catch clauses F-30 could not settle by reading are now documented — done, review PASS r1
+F-30's sweep measured all 165 `catch (` clauses in `src/main` and left ten it could not judge without answering one question
+each. The triage decided them earlier today, verdicts in D-113: eight RIGHT, two WRONG, the WRONG split out as FIX-149 and
+FIX-150. This closes the row - one comment per RIGHT clause, so the next sweep reads the reason instead of re-deriving it.
+Comments only, no executable line changed: 8 insertions, 7 deletions (the lines that had text appended), across `Deployments.java` six, `AdminServer.java` one, `Retry.java` one.
+The eight fall in three groups. Two are contained one frame out by a deliberately wider clause - and that claim was settled
+by grepping each method's callers, not by proximity in the file: `rebuild` has exactly one caller, inside `rollBack`'s try,
+so the `RuntimeException | Error` clause owns it and `install`'s `Throwable` clause never sees it; `consumers` has exactly
+two, on paths with different clauses. Four are policy, where a problem line for an `Error` would lie about the flow, and
+each comment states BOTH halves, because the deploy path contains an `Error` and the validate path lets it leave. Two are
+narrow on purpose with the javadoc already saying so, and there the comment's job is to point at the existing sentence.
+The reviewer verified every claim independently, checked D-113 actually contains what the comments lean on it for - the
+F-27 failure mode that cost FIX-145 three rounds - and found no comment attributing a rule to a decision that lacks it.
+Its one fix before the commit was earned: `AdminServer`'s comment said "run()'s Throwable clause", but inside that method `run` is a `Supplier<Envelope>` parameter, so the reference resolved to the wrong thing in the one place it must not. No
+mutants or coverage are owed - the diff changes no bytecode, and inventing a PIT run would have been noise.
