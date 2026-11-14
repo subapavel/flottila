@@ -206,10 +206,14 @@ public final class BatchingWriter<T> implements AutoCloseable {
      * ({@code afterCommit} drains again), so nothing stays queued with no commit in flight and no window. When nothing
      * was taken the queue is non-empty, so a commit is already in flight and its completion drains.
      *
-     * <p>The batches are returned oldest first, in the order taken, and {@link #dispatch} hands them to the sink in that
-     * order. This is <b>not</b> a global sink order: a sink that completes inline re-enters {@code afterCommit}, then
-     * {@code drainLocked} and {@code dispatch}, from inside the dispatch loop, so a younger batch can reach the sink
-     * before the outer loop's next one. No caller may rely on the order in which batches reach the sink.
+     * <p>A drain takes at most one batch today (see {@link #takeLocked} for the invariant that makes it so), so the list
+     * returned holds at most one and {@link #dispatch}'s loop has nothing to put out of order within a single drain; the
+     * rule that the batches are returned oldest first, in the order taken, is the shape the code keeps should that change.
+     * It is <b>not</b> a global sink order: a sink that completes inline re-enters {@code afterCommit}, then
+     * {@code drainLocked} and {@code dispatch}, from inside the dispatch call (nesting, not reordering, unless the
+     * invariant breaks), and drains on other threads run unordered with each other, so across drains the order in which
+     * batches reach the sink is whatever the completions and the scheduler make it. No caller may rely on the order in
+     * which batches reach the sink.
      */
     private Drained<T> drainLocked(boolean windowElapsed) {
         List<List<Pending<T>>> batches = takeLocked(windowElapsed);
@@ -243,7 +247,24 @@ public final class BatchingWriter<T> implements AutoCloseable {
         }
     }
 
-    /** Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees. */
+    /**
+     * Under the lock: takes every batch that may go now, moving the oldest waiters into each slot a batch frees.
+     *
+     * <p>A second pass of the loop is unreachable today, and here is the invariant that makes it so: at rest, either
+     * {@code queue.size() < batchSize} or {@code inFlight == commitConcurrency}, and waiters exist only when the queue is
+     * full, which implies {@code inFlight == commitConcurrency}. Entered with every commit slot taken, the loop condition
+     * is false at once. Entered with at most {@code batchSize} queued, the first pass takes the whole queue and the
+     * waiters, being none, refill nothing, so the loop ends. Entered from {@code afterCommit} with a slot just freed, the
+     * one batch retakes that slot, so the condition is false whatever the waiters refilled. A drain therefore takes at
+     * most one batch and the outer {@code while} runs at most once; {@code dispatch} gets a list of at most one batch.
+     * FIX-69's {@code continue} is the one change that ever produced several batches per drain.
+     *
+     * <p>A {@code while} takes every batch that may go at once; an {@code if} would also be correct, because the batch
+     * taken leaves a commit in flight whose completion drains the rest, but leftovers would wait for the next completion
+     * or window. The {@code while} is kept to avoid that latency should the invariant break (D-112). The cost is one
+     * surviving equivalent mutant (the loop's repeat), unmeasured: PIT has no while-to-if mutator, so it may not be a PIT
+     * mutant at all, and no PIT report has been run on this class.
+     */
     private List<List<Pending<T>>> takeLocked(boolean windowElapsed) {
         List<List<Pending<T>>> batches = new ArrayList<>();
         while (!queue.isEmpty() && inFlight < options.commitConcurrency()

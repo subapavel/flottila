@@ -1453,3 +1453,18 @@ if whole batches may arrive in any order, items from different batches do too. W
 are TAKEN from the queue. r3 took the reviewer's own wording verbatim; it then traced it to `ArrayDeque` head/tail.
 The case's real job, per the reviewer: it catches a generation or identity guard added to `onWindow`/`flush` that would
 make the orphan harmless — the twin stays green for that. VERIFIED_PASS: 11/11 filtered, core 518/0/0/0. A, r3.
+
+## 2026-11-14 — FIX-137 takeLocked's loop now carries the invariant that makes it a loop — done, review PASS r2
+The outer `while` can only ever run once, and the invariant that makes it so was written nowhere — so a reader saw a loop
+that looked capable of several batches per drain, and `drainLocked`'s javadoc described an ordering worry that follows
+from a multi-batch drain that cannot happen. Doc-only, 26 comment lines, no statement touched; D-112 records the decision
+to keep the loop. No test is possible and the packet says why (FIX-129 precedent); the reviewer looked and found none.
+Review r1 FAILed on the rationale I wrote into D-112: that an `if` would leave items queued with no commit in flight and
+no window armed, "a silent stall". It is false. A take always does `inFlight++`, that commit's completion re-enters
+`afterCommit` and drains the rest, and `drainLocked`'s own javadoc FOUR LINES ABOVE already said "nothing stays queued
+with no commit in flight and no window". I asserted a failure mode contradicted by a sentence in the same file, and had
+not read it. An `if` costs latency, not correctness; the `while` is kept for the latency. r1 also found the case analysis
+missing its only interesting entry, `afterCommit`, the one path where waiters do refill. Then I put `<=` into D-112 where
+the javadoc says `<`; r2 checked they now agree — entry can reach exactly `batchSize`, at rest it cannot, two claims.
+VERIFIED_PASS: 32/32 filtered, core 518/0/0/0 BUILD SUCCESS. A flake surfaced in the first full run and is now FIX-144.
+D-054: class A, rounds 2.
