@@ -1,6 +1,6 @@
 # Comma, slots and atomic arguments in the IR; call forms as a sealed CallForm
 
-Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85); a frame per call activation by ADR-0045 (spec 2b); spec 4's tick table (spec 4 grilling round 1, question 12 and M1); `delpaths` ticks by spec 3 grilling round 1 (question 10)
+Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; designer draft); completes ADR-0005 and ADR-0009; amends ADR-0008 (`run` takes the slots); amended for #64 (`FnN`, `Collect`), see the end; slot rule amended by ADR-0038 (group and parameter slots, #67); state slots by ADR-0041 (#69); Many loop slots and the `to_entries` rate by ADR-0044 (#85); a frame per call activation by ADR-0045 (spec 2b); spec 4's tick table (spec 4 grilling round 1, question 12 and M1); `delpaths` ticks by spec 3 grilling round 1 (question 10); scalar reads amended by #97 (F-50)
 
 #63 is the first ticket to lower constructs that #62's parser builds: comma, indexing, slicing and iteration. They need a sequencing node, a way to hold a computed key while its target runs, and the call forms ADR-0009 names. This ADR fixes those IR and protocol shapes; later tickets extend them with their first user.
 
@@ -32,12 +32,12 @@ Status: accepted (2026-11-12, architect under `/run-spec` #56, ticket #63; desig
 ## Amendment (2026-11-13, ticket #65)
 
 - **A binary arithmetic operator** `l op r` (`+ - * / %`) lowers to `Bind(r, s_r, Bind(l, s_l, Intrinsic(op, [Var s_l, Var s_r])))`: the right operand is the outer loop, as jq 1.8.2 runs a C function's arguments last-first (`expand_call_arglist`). An Identity or Const operand is passed as an argument without a Bind. `-t` lowers to `Pipe(t, Intrinsic(NEGATE, []))`. The order is pinned by a differential case (`[(1,2)+(10,20)]`) recorded on jq-ref.
-- **Ticks (ADR-0008)**: an operator on two scalars ticks nothing. A string concatenation ticks once per started KiB of its result; array difference once per pair compared, stopping at the first match; `split` once per piece; object `+` once per right-hand entry; object merge `*` once per right-hand entry at every level. Also (#65 standards review), each a loop whose length depends on the data (ADR-0008):
+- **Ticks (ADR-0008)**: an operator on two scalars ticks nothing, beyond a non-short document number's read (#97, F-50: once per started KiB of each such token read, in arithmetic, `range`'s bounds, index and slice bounds, `has`, the number tests, `-x` and `length`). A string concatenation ticks once per started KiB of its result; array difference once per pair compared, stopping at the first match; `split` once per piece; object `+` once per right-hand entry; object merge `*` once per right-hand entry at every level. Also (#65 standards review), each a loop whose length depends on the data (ADR-0008):
   - array `+` ticks once per element it copies;
   - array difference ticks once per left element even against `[]`;
   - `split` ticks once per started KiB of the input times the started KiB of the separator (at least one), as well as once per piece;
   - object merge `*` and object `+` tick once per left entry they copy;
-  - Equality ticks once per key it counts when it compares object sizes, once per member pair, and once per started KiB of the shorter string when it compares two strings (as ADR-0037's Order);
+  - Equality ticks once per key it counts when it compares object sizes, once per member pair, and once per started KiB of the shorter string when it compares two strings, and once per started KiB of each literal on the exact path (as ADR-0037's Order, #97);
   - string repeat ticks once per started KiB of its result;
   - (#72, F-48) `keys` ticks once per member and once per compare of its key sort (at least 1, one
     per started KiB of the shorter key); `tostring` and `tojson` once per started KiB of output
@@ -68,7 +68,7 @@ rate is pinned by two adjacent counts.
 - Regex (ADR-0053): one per search call, one per started KiB from the search start to the match end
   (or to the input's end when nothing matches, the range `f_match` passes), one per started KiB of
   the pattern at each lookup, compiled or cached (so a run's steps never depend on the cache).
-- Scalar math: none, except `jn` and `yn`, once per 1 024 steps of any loop that grows with the
+- Scalar math: none beyond #97's read, except `jn` and `yn`, once per 1 024 steps of any loop that grows with the
   order (ADR-0051, F-69).
 
 ## Amendment (spec 3 grilling round 1, question 10)

@@ -1,6 +1,6 @@
 # Recursive and over-cap calls survive as a Program; specialisation is a query-core pass with its own cap; each activation has its own slot cells
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); amends ADR-0005 (`Call`, `ParamCall`, `Program`; 20 kinds built), ADR-0006 (lifting, passes, the specialisation cap), ADR-0007 (fact keys) and ADR-0040 (recursion; query-core's first user); over-cap calls are F-54's
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); amends ADR-0005 (`Call`, `ParamCall`, `Program`; 20 kinds built), ADR-0006 (lifting, passes, the specialisation cap), ADR-0007 (fact keys) and ADR-0040 (recursion; query-core's first user); over-cap calls are F-54's; parameters, captures and frames amended for #107; label captures by the grilling-adviser for the owner (2026-11-14)
 
 Spec 2a inlined every call in the Resolver and made a call into a recursive group a Stub (ADR-0040).
 So no `Call` reached query-core, and ADR-0006's pass order was left for 2b to re-check. 2b runs
@@ -58,3 +58,35 @@ node keys that value-equal records cannot give, and a recursive body needs slots
 - **Fact fields in the nodes**: ADR-0007 rejected them.
 - **One slot array per run, as in 2a**: nested invocations of one closure, as in the required case,
   would share its cells.
+
+## Amendment (ticket #107)
+
+Approved 2026-11-14 by the architect under `/run-spec` #106 from the designer's draft. The label
+capture (C4) was proposed by the grilling-adviser for the owner under the delegation of 2026-11-14.
+
+- **Parameters**: in `Function(source, closures, values, body)`, slots 0..values−1 are its value
+  parameters, bound by no node (ADR-0038), and `ParamCall(source, j)` runs closure parameter j.
+  - Its own parameters come first: a filter parameter as a closure, and a `$name` parameter as a
+    value, plus a closure only where the body calls `name`.
+  - Its captures follow, in Binder order: the declarations outside it that its text or its callees
+    reach. A variable is a value, a filter parameter is a closure, and a label is a value, its token
+    (ADR-0005: "captured like a variable"). A Break in the body names the token's parameter slot.
+  - The caller binds `$name` arguments around the Call, the first outermost (ADR-0040), and passes a
+    ParamCall argument on without wrapping it. The kind of a Call (PLAIN, RECURSIVE) is not in the IR.
+- **Frames**: a call activation's frame is its slots followed by its closure cells, under one count.
+  - A closure argument that binds slots runs in a frame of those slots plus a link in cell 0 to the
+    frame it was written in. One that binds no slot runs in that frame.
+  - Each Call and each real-closure ParamCall ticks, enters the recursion-depth count and leaves it
+    however it ends.
+  - `RunState.begin` takes the recursion depth (amends ADR-0030). Only `Executable.run` turns a
+    `StackOverflowError` into `Termination(STACK)`. That is a backstop until S2b.4 and S2b.5.
+- **Numbering** of each function's nodes moves to the first ticket that reads it (S2b.9, S2b.14).
+- **Considered**:
+  - a frame copy per closure call (O(frame));
+  - restoring a closure's cells after each call (LIFO only);
+  - capturing the whole scope (a copy per call);
+  - `$name` bound in the callee (a closure call per value);
+  - a label passed as a Break closure (a `break` would tick by whether its function was lifted,
+    against ADR-0039's cost);
+  - an untick rule for a Break closure (a type test on every ParamCall).
+

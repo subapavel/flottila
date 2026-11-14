@@ -373,6 +373,22 @@ document is detached when it enters a hold that spans a later read. A generator 
 consumer read holds its `.`, and a Path holds its keys.
 _Avoid_: pin, retain
 
+**Capture**:
+A declaration outside a lifted function that its text or its callees reach, passed by every call as
+a trailing parameter: a variable or a label's token as a value, a filter parameter as a closure
+(ADR-0045).
+_Avoid_: free variable, upvalue
+
+**Defining frame**:
+The frame a closure argument was written in. An invocation of it that binds slots links it from
+cell 0 (ADR-0045).
+_Avoid_: environment, parent scope
+
+**Lifted function**:
+A definition of a recursive group, lowered once into the Program's function list and run by a Call
+(ADR-0045).
+_Avoid_: compiled def
+
 **Holder**:
 The sink a tail emitter runs into. It keeps the one result and answers it with a stop, so the tail
 run's false means a result came and its true means none (ADR-0043, F-85). It is no **Hold**: the
@@ -460,6 +476,11 @@ _Avoid_: tail emitter.
 **Emit**:
 To hand one result to the next stage. The answer says whether to keep going.
 _Avoid_: yield, return, push (as a noun for the call)
+
+**Short literal**:
+A literal number whose token is canonical, has no exponent and is at most 15 bytes (ADR-0012). Its
+double orders it as its decimal does, and reading it ticks nothing (#97).
+_Avoid_: small number
 
 **Sink**:
 What receives emitted results.
