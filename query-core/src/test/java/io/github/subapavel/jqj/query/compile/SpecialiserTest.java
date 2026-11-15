@@ -244,8 +244,8 @@ class SpecialiserTest {
   }
 
   /**
-   * The jq filter {@code def r(f): if . < 2 then ., (f | r(f)) else empty end; [0|r(.+1)],[0|r(.+1)]}, each literal 1
-   * its own constant ({@code [limit(2;0|recurse(.+1))]} bounded by r itself). Reference jq 1.8.2 gives {@code [0,1]}
+   * The filter {@code def r(f): if . < 2 then ., (f | r(f)) else empty end; [0|r(.+1)],[0|r(.+1)]}, each literal 1
+   * its own constant ({@code [limit(2;0|recurse(.+1))]} bounded by r itself). The reference binary (1.8.2) gives {@code [0,1]}
    * twice (.logs/117-jqref.log; specialise/literal-arguments is the unbounded filter's recording).
    */
   private static Program literals(N one, N other) {
@@ -285,7 +285,7 @@ class SpecialiserTest {
     List<Object> pair = List.of(new N(0), new N(1));
     for (CompileMode mode : CompileMode.values()) {
       Outcome o = run(Compiler.compile(literals(new N(1), new N(1)), 0, mode), IN);
-      assertThat(o.results()).as("%s: the results, reference jq's [0,1] twice", mode).containsExactly(pair, pair);
+      assertThat(o.results()).as("%s: the results, the reference binary's [0,1] twice", mode).containsExactly(pair, pair);
     }
 
     // Witness: one constant object in both calls is one shape, and one copy.

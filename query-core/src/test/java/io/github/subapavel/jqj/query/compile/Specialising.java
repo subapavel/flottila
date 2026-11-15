@@ -40,10 +40,10 @@ import java.util.List;
 final class Specialising {
   private Specialising() {}
 
-  /** A toy number: equal by value, and each {@code new} one an identity of its own, as two literals of jq are (S3). */
+  /** A toy number: equal by value, and each {@code new} one an identity of its own, as two literals of the source language are (S3). */
   record N(long v) {}
 
-  /** A number is true when above zero, so a countdown's If stops at 0; any other value as jq's truth. */
+  /** A number is true when above zero, so a countdown's If stops at 0; any other value as the source language's truth. */
   static final Truth TRUTH = v -> v instanceof N n ? n.v() > 0 : v != null && v != Boolean.FALSE;
 
   /** {@code a + b}. */
