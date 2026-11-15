@@ -1,4 +1,19 @@
 
+## 2026-11-15 — The owner's answers: no replay, a handled failure is a success — recorded
+
+- Context compacted before this entry. Documents only; no code changed. The owner answered in the session.
+- D-156: replay leaves the architecture ("Replay nechci ... za 20 let praxe ani nebyl"). One id for the life of a message; retry and
+  cancel are the only operations. It supersedes the replay half of D-136. ARCHITECTURE and the code still carry replay: FIX-262 [C].
+- D-157: a failure the flow's handler handled is a successful run and shows in the message's log only; option C of CONSIDER-15's
+  section 5 is not taken. The architect's reading - no `handled` number either - was said back and is marked for hand-over.
+- CONSIDER-24 is ready ("zjisti příčinu"): the cause of the re-run window at a node's death is shown first, then measured.
+- CONSIDER-25 is answered. Still open in it: the branch's D-110, the architect's, which stays the default.
+- ISSUE-9: the owner will change licences where needed; the differences were given; two yes/no asked back, not answered yet.
+  ISSUE-8: the owner reads it. `rail8.dev` is registered (ISSUE-7: nothing open).
+- The owner's actions, a step-by-step guide given in the session: apply the OPS-1 patch now, the BRAND-3 patch after the licence
+  answer; rename the repository after the two fixes in flight are pushed. Advice: no required checks for the mapping jobs for now.
+- In flight, not in this commit: FIX-235 (review round 1 FAIL on two document claims, fix round), FIX-260 (with its reviewer).
+
 ## 2026-11-15 — MAIN-1 `main` is green — done, review PASS [B]
 
 - Context compacted before this entry. Each of the row's four conditions with what was observed:

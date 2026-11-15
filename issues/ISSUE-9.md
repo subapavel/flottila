@@ -107,3 +107,14 @@ platform's list is unchanged; nothing outside `mapping/` depends on it and nothi
 published; the patch stays unapplied.
 
 ## Owner's answer
+2026-11-15, in the session, on A: "pokud je potřeba upravit licence, tak je upravíme, v čem se pravidla
+liší?" - if the licences need changing they will be changed; how do the rules differ? The differences
+were given in the session, items 1 to 4 above in plain words. Asked back, two yes/no, not answered yet:
+(a) the four licences of item 1 for the whole repository, not for `mapping/` only; (b) GPL-2.0 with the
+Classpath Exception, CDDL and UPL at test scope and in the benchmark module only, never in shipped
+code. The architect recommended yes to both. Until both are answered the defaults above hold.
+If (a) is yes the patch of D is written again - its sentence says "for `mapping/` only" - so the owner
+was told to apply `agent/patches/OPS-1-steering.patch` now and this one after the answer.
+The architect's advice on the required checks for the `mapping · …` jobs, given the same day: not
+while work is pushed directly to `main`. The workflow runs only on changes under `mapping/`, so as
+required checks its jobs would never report on any other push.

@@ -41,3 +41,5 @@ session registers a domain or publishes anything.
 2026-11-15, BRAND-5: the groupId, the package root and the mapping's module names are `dev.rail8`; the
 guard (`ci/name_guard.py`) refuses the old namespace outside history. Open, and the owner's only:
 registering the domain `rail8.dev` before the first public artifact.
+2026-11-15, later the same day: the owner registered `rail8.dev` (shown in the session: the registrar's
+"Your domain is ready" page for `rail8.dev`). Nothing is open here.
