@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 import io.github.subapavel.jqj.JqEngine;
+import io.github.subapavel.jqj.Limits;
 import io.github.subapavel.jqj.oracle.StackProbe;
 import io.github.subapavel.jqj.oracle.diff.DiffCase;
 import io.github.subapavel.jqj.oracle.diff.Outcome;
@@ -87,21 +88,27 @@ class CompileCorpusTest {
   }
 
   /**
-   * One optimised run, then one run per mode through that mode's hook: F on 9999 on a 256 KiB thread ends with STACK in
-   * push form, under the optimised and the conservative compile, and completes only in the trampoline run, so only
+   * One optimised run, then one run per mode through that mode's hook: F on 9999 on a 256 KiB thread, declaring 1 GiB,
+   * ends with STACK in push form under the optimised and the conservative compile (the backstop witness of ADR-0046
+   * "Where the stack is tested"), and completes only in the trampoline run, so only
    * that mode disagrees, and its verdict names it. Each run's end is its stdout here, so a termination is compared.
    */
   @Test
   void eachModeRunsThroughItsOwnHookAgainstOneOptimisedRun(@TempDir Path scratch) {
     DiffCase deep = new DiffCase("t/f-on-9999", List.of("-c", F), "9999\n".getBytes(UTF_8), Map.of(), Map.of(), null, DiffCase.JqjColumn.NONE, "d");
     AtomicInteger runs = new AtomicInteger();
+    Limits l = CompileModes.limits();
+    Limits gib = new Limits(l.steps(), l.deadline(), l.nestingDepth(), l.recursionDepth(), l.bytesBuilt(), l.bytesWritten(), l.regexMatchTime(), 1L << 30);
     CompileCorpus.Case c =
         new CompileCorpus.Case(
             deep.id(),
             deep.def(),
             hook -> {
-              runs.incrementAndGet();
-              return endAsStdout(onSmallStack(() -> CompileModes.cli(deep, scratch, hook)));
+              // S2b.5 (#111): a push run declaring the oracle's 512 KiB starts the trampoline at U_f, so the optimised
+              // and the conservative runs, the first two, declare 1 GiB, which keeps every level on the Java stack; the
+              // trampoline run, the third, keeps its stackBytes 0.
+              UnaryOperator<JqEngine.Builder> declared = runs.incrementAndGet() < 3 ? b -> hook.apply(b).limits(gib) : hook;
+              return endAsStdout(onSmallStack(() -> CompileModes.cli(deep, scratch, declared)));
             });
 
     Map<String, Verdict> verdicts = CompileCorpus.judge(c, CompileCorpus.MODES);
