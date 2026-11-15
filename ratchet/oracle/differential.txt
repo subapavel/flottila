@@ -4735,6 +4735,17 @@ sort/stable-equal-keys-long	acd4e2fc4f36	interpreter
 sort/too-deep-after-an-unequal-pair	d5edbafeaa76	interpreter
 sort/unique-built	565da232ac0c	interpreter
 sort/unique-kinds	e2b998250888	interpreter
+specialise/free-break	717518520e3c	interpreter
+specialise/literal-arguments	0d7dc6848647	interpreter
+specialise/order-param-chain-then-recurse	c1a3fa9d8fab	interpreter
+specialise/over-inline-cap-comma-recurse	a8d311b715da	interpreter
+specialise/over-inline-cap-recurse	e0e4a063114a	interpreter
+specialise/range-3-free-slots-30000	e88bb91dae00	interpreter
+specialise/recurse-closed	37a6bfe270c6	interpreter
+specialise/repeat-closed	5012a1e8ced7	interpreter
+specialise/until-closed	bb01359336bc	interpreter
+specialise/until-free-slot-30000	02ee8770a2c3	interpreter
+specialise/while-closed	c9a46ca31f6c	interpreter
 string/all-escapes	065134a275be	interpreter
 string/bad-then-escape	e5a856ba858f	interpreter
 string/bom-document	fbf90087160e	interpreter
