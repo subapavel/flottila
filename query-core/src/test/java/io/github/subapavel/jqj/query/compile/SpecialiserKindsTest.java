@@ -181,4 +181,52 @@ class SpecialiserKindsTest {
     assertThat(none.program()).as("the program whose callee has no invariant parameter").isSameAs(changing);
     assertThat(none.refused()).as("keys refused where the callee has no invariant parameter").isZero();
   }
+
+  /**
+   * A class is invariant only when each member has exactly one parameter in it, passed on bare: {@code r(f; g)} calling
+   * {@code r(g; f)} puts both of r's parameters in one class, and in a group whose second member passes {@code g | tag}
+   * back the first member's parameter is changed. Neither builds a copy, and each runs as under CONSERVATIVE.
+   */
+  @Test
+  void aSwappedOrChangedClassBuildsNoCopy() {
+    Node again = new Pipe(at(0), new Intrinsic(at(0), DEC, List.of()), new Call(at(0), 0, List.of(new ParamCall(at(0), 1), new ParamCall(at(0), 0)), List.of()));
+    Node swap = new If(at(0), new Identity(at(0)), new Comma(at(0), new ParamCall(at(0), 0), again), new Identity(at(0)), TRUTH);
+    Program swapped = new Program(new Call(at(1), 0, List.of(new Const(at(2), new N(10)), new Const(at(3), new N(20))), List.of()), List.of(new Function(at(0), 2, 0, swap)));
+    assertNoCopy(swapped, List.of(new N(10), new N(20), new N(0)));
+
+    // fn0(f) calls fn1(f), fn1(g) calls fn0(g | tag): one class, fn1's g passed on bare and fn0's f changed.
+    Node toSecond = new Pipe(at(0), new Intrinsic(at(0), DEC, List.of()), new Call(at(0), 1, List.of(new ParamCall(at(0), 0)), List.of()));
+    Node first = new If(at(0), new Identity(at(0)), new Comma(at(0), new ParamCall(at(0), 0), toSecond), new Identity(at(0)), TRUTH);
+    Node second = new Call(at(4), 0, List.of(new Pipe(at(4), new ParamCall(at(4), 0), new Intrinsic(at(4), TAG, List.of(new Identity(at(4)))))), List.of());
+    Program changed = new Program(new Call(at(1), 0, List.of(new Const(at(2), new N(10))), List.of()), List.of(new Function(at(0), 1, 0, first), new Function(at(4), 1, 0, second)));
+    assertNoCopy(changed, List.of(new N(10), new N(10), new N(0)));
+  }
+
+  private static void assertNoCopy(Program program, List<Object> expected) {
+    Frozen frozen = Compiler.compile(program, 0, CompileMode.OPTIMISED).frozen();
+    assertThat(frozen.program()).as("the program, no copy built").isSameAs(program);
+    assertThat(frozen.refused()).as("keys refused").isZero();
+    assertThat(run(Compiler.compile(program, 0, CompileMode.OPTIMISED), IN).results()).as("the optimised results").isEqualTo(expected);
+    assertThat(run(Compiler.compile(program, 0, CompileMode.CONSERVATIVE), IN).results()).as("the results under CONSERVATIVE").isEqualTo(expected);
+  }
+
+  /**
+   * A Call inside the group passes no argument of an invariant class, so the copy inlines its argument only where its
+   * ParamCalls were: {@code def k(f): if . then (dec | k(f)), f else . end; k(. as $a | $a)}, the recursive call walked
+   * before the ParamCall, gives a copy whose frame holds the one slot the inlined {@code $a} binds.
+   */
+  @Test
+  void aCallInsideTheGroupInlinesNoArgument() {
+    Node again = new Pipe(at(0), new Intrinsic(at(0), DEC, List.of()), new Call(at(0), 0, List.of(new ParamCall(at(0), 0)), List.of()));
+    Node body = new If(at(0), new Identity(at(0)), new Comma(at(0), again, new ParamCall(at(0), 0)), new Identity(at(0)), TRUTH);
+    Node argument = new Bind(at(2), new Identity(at(2)), 0, new Var(at(3), 0));
+    Program program = new Program(new Call(at(1), 0, List.of(argument), List.of()), List.of(new Function(at(0), 1, 0, body)));
+    Frozen frozen = Compiler.compile(program, 0, CompileMode.OPTIMISED).frozen();
+    assertThat(frozen.program().functions()).as("k and its copy").hasSize(2);
+    assertThat(IrVerifier.verify(frozen.program(), 0).slots()[2]).as("the copy's frame: the slot of the one inlined $a").isEqualTo(1);
+    Outcome o = run(Compiler.compile(program, 0, CompileMode.OPTIMISED), IN);
+    Outcome c = run(Compiler.compile(program, 0, CompileMode.CONSERVATIVE), IN);
+    assertThat(c.results()).as("premise: the original has results").isNotEmpty();
+    assertThat(o.results()).as("the optimised results against CONSERVATIVE").isEqualTo(c.results());
+  }
 }
