@@ -434,6 +434,7 @@ basics/compact-object	99d450161998	conservative
 basics/field-of-array	2809090efd75	conservative
 basics/file-argument	6c7392b8e989	conservative
 basics/index-of-array	c0c5e781ca9d	conservative
+basics/recurse-of-array	f8749251fad7	conservative
 basics/syntax-error-eof	7a1939e8b8cf	conservative
 bench/G1.1k	cf34a15087e3	conservative
 bench/G2.1k	c0b79b927e3a	conservative
@@ -4068,6 +4069,7 @@ jq.test#0806a3fc361f	0806a3fc361f	conservative
 jq.test#09855b854ad2	09855b854ad2	conservative
 jq.test#0a5c4a723e20	0a5c4a723e20	conservative
 jq.test#0a789e1d5ab4	0a789e1d5ab4	conservative
+jq.test#0bb32124e748	0bb32124e748	conservative
 jq.test#0bd63f9b6440	0bd63f9b6440	conservative
 jq.test#0c7b59e55096	0c7b59e55096	conservative
 jq.test#0ccc787d356d	0ccc787d356d	conservative
@@ -4125,6 +4127,7 @@ jq.test#3a02318c5a87	3a02318c5a87	conservative
 jq.test#3a94f773efd4	3a94f773efd4	conservative
 jq.test#3b4bc53ebf35	3b4bc53ebf35	conservative
 jq.test#3b9948d25fe1	3b9948d25fe1	conservative
+jq.test#3c0d9891d22c	3c0d9891d22c	conservative
 jq.test#3c39874a7395	3c39874a7395	conservative
 jq.test#3c7eaffb9aca	3c7eaffb9aca	conservative
 jq.test#3d3a7eb53022	3d3a7eb53022	conservative
@@ -4143,6 +4146,7 @@ jq.test#4828f53331c1	4828f53331c1	conservative
 jq.test#4b6e5881d306	4b6e5881d306	conservative
 jq.test#4b72f080b94b	4b72f080b94b	conservative
 jq.test#4d4e9fd7bad4	4d4e9fd7bad4	conservative
+jq.test#4dbbd1dfe7cb	4dbbd1dfe7cb	conservative
 jq.test#4dc145ab0b77	4dc145ab0b77	conservative
 jq.test#4dcdca700612	4dcdca700612	conservative
 jq.test#4dd9b0b64b47	4dd9b0b64b47	conservative
@@ -4152,6 +4156,7 @@ jq.test#4fc10dca2848	4fc10dca2848	conservative
 jq.test#504b626851af	504b626851af	conservative
 jq.test#50a8dd7ee578	50a8dd7ee578	conservative
 jq.test#51dd8fe1848d	51dd8fe1848d	conservative
+jq.test#529480120c42	529480120c42	conservative
 jq.test#5391099daec9	5391099daec9	conservative
 jq.test#5482bd8f2a67	5482bd8f2a67	conservative
 jq.test#54dc19661fcb	54dc19661fcb	conservative
@@ -4160,6 +4165,7 @@ jq.test#575b2c608904	575b2c608904	conservative
 jq.test#580ed5a815e2	580ed5a815e2	conservative
 jq.test#58b2cad1b484	58b2cad1b484	conservative
 jq.test#594b4c8163d6	594b4c8163d6	conservative
+jq.test#5b9f5544fa88	5b9f5544fa88	conservative
 jq.test#5c3ab1d41394	5c3ab1d41394	conservative
 jq.test#5d4c68b18082	5d4c68b18082	conservative
 jq.test#5e648b631870	5e648b631870	conservative
@@ -4257,6 +4263,7 @@ jq.test#a1121bdecdc5	a1121bdecdc5	conservative
 jq.test#a1992d239479	a1992d239479	conservative
 jq.test#a1d9d09afbdc	a1d9d09afbdc	conservative
 jq.test#a1e1f0a4fe13	a1e1f0a4fe13	conservative
+jq.test#a26fd564e7de	a26fd564e7de	conservative
 jq.test#a271da33fe01	a271da33fe01	conservative
 jq.test#a33f53dfa710	a33f53dfa710	conservative
 jq.test#a3fde6bda96a	a3fde6bda96a	conservative
@@ -4297,6 +4304,7 @@ jq.test#b99a5b261547	b99a5b261547	conservative
 jq.test#b99f9c43f5d6	b99f9c43f5d6	conservative
 jq.test#b9cbb578cf37	b9cbb578cf37	conservative
 jq.test#b9d51fb64b51	b9d51fb64b51	conservative
+jq.test#b9dde8dddfea	b9dde8dddfea	conservative
 jq.test#ba8f650a5ecb	ba8f650a5ecb	conservative
 jq.test#bbfa99fa0166	bbfa99fa0166	conservative
 jq.test#bc202bd96a6b	bc202bd96a6b	conservative
@@ -4304,6 +4312,7 @@ jq.test#bd1c15c53252	bd1c15c53252	conservative
 jq.test#bd35acef99a3	bd35acef99a3	conservative
 jq.test#bd52d188df04	bd52d188df04	conservative
 jq.test#bd674648c08f	bd674648c08f	conservative
+jq.test#bec2a40c5e77	bec2a40c5e77	conservative
 jq.test#bf2c165a43b3	bf2c165a43b3	conservative
 jq.test#bf36da34ff87	bf36da34ff87	conservative
 jq.test#bfbd4ab97f65	bfbd4ab97f65	conservative
@@ -4333,6 +4342,7 @@ jq.test#d08d36100c63	d08d36100c63	conservative
 jq.test#d0a100bb7aad	d0a100bb7aad	conservative
 jq.test#d0c8f503ef76	d0c8f503ef76	conservative
 jq.test#d2f27494d27c	d2f27494d27c	conservative
+jq.test#d4e968bdaff6	d4e968bdaff6	conservative
 jq.test#d6286052d26b	d6286052d26b	conservative
 jq.test#d6a660e5da12	d6a660e5da12	conservative
 jq.test#d7164ac49b54	d7164ac49b54	conservative
@@ -4357,6 +4367,7 @@ jq.test#e1de014beb31	e1de014beb31	conservative
 jq.test#e25e7a33370c	e25e7a33370c	conservative
 jq.test#e30d7814d724	e30d7814d724	conservative
 jq.test#e381aeee8436	e381aeee8436	conservative
+jq.test#e3be7cd91456	e3be7cd91456	conservative
 jq.test#e3ce03da0501	e3ce03da0501	conservative
 jq.test#e3d73b9ff1ab	e3d73b9ff1ab	conservative
 jq.test#e3fec0b48f1b	e3fec0b48f1b	conservative
@@ -4384,6 +4395,7 @@ jq.test#f5d06d36099d	f5d06d36099d	conservative
 jq.test#f9556af5283e	f9556af5283e	conservative
 jq.test#f9a2df08b3db	f9a2df08b3db	conservative
 jq.test#fac015c9b4bf	fac015c9b4bf	conservative
+jq.test#fe61ae38e899	fe61ae38e899	conservative
 jq.test#fe9447adfaef	fe9447adfaef	conservative
 jq.test#ff68e06c3c7b	ff68e06c3c7b	conservative
 key-index/array-index-of-object	e2e27821d83f	conservative
@@ -4507,6 +4519,7 @@ man.test#09855b854ad2	09855b854ad2	conservative
 man.test#0ade8296aa15	0ade8296aa15	conservative
 man.test#0ba9f00a93da	0ba9f00a93da	conservative
 man.test#0c484123fbfc	0c484123fbfc	conservative
+man.test#0cb4429f73f3	0cb4429f73f3	conservative
 man.test#0cfa14d26395	0cfa14d26395	conservative
 man.test#11af6b75d24b	11af6b75d24b	conservative
 man.test#140eaa8e554d	140eaa8e554d	conservative
@@ -4528,7 +4541,12 @@ man.test#34c76715696c	34c76715696c	conservative
 man.test#3793b964d73e	3793b964d73e	conservative
 man.test#37e59e76d0fc	37e59e76d0fc	conservative
 man.test#3963afd2f8af	3963afd2f8af	conservative
+man.test#3a256787eb78	3a256787eb78	conservative
+man.test#3c0d9891d22c	3c0d9891d22c	conservative
 man.test#42865e81b74e	42865e81b74e	conservative
+man.test#42e9e6126d1e	42e9e6126d1e	conservative
+man.test#44201492dec7	44201492dec7	conservative
+man.test#443a8da18aed	443a8da18aed	conservative
 man.test#44691d3b8fbd	44691d3b8fbd	conservative
 man.test#4491211cc5bc	4491211cc5bc	conservative
 man.test#470a4bbfba48	470a4bbfba48	conservative
@@ -4558,6 +4576,7 @@ man.test#63fa3b756a2e	63fa3b756a2e	conservative
 man.test#65086de6f514	65086de6f514	conservative
 man.test#653df95494b7	653df95494b7	conservative
 man.test#6a74f4c8f08b	6a74f4c8f08b	conservative
+man.test#6a87b42232d2	6a87b42232d2	conservative
 man.test#6aab4c799b56	6aab4c799b56	conservative
 man.test#6c815331a494	6c815331a494	conservative
 man.test#6e384b17c186	6e384b17c186	conservative
@@ -4580,6 +4599,8 @@ man.test#81e570f3a96b	81e570f3a96b	conservative
 man.test#8276eaad760e	8276eaad760e	conservative
 man.test#854c4f13ddfe	854c4f13ddfe	conservative
 man.test#880cd80ca7da	880cd80ca7da	conservative
+man.test#8884598c4b40	8884598c4b40	conservative
+man.test#8a997f771965	8a997f771965	conservative
 man.test#8c4f56de95ee	8c4f56de95ee	conservative
 man.test#8e68b00c42c8	8e68b00c42c8	conservative
 man.test#912fff0227a2	912fff0227a2	conservative
@@ -4589,6 +4610,7 @@ man.test#99f352c7bbf8	99f352c7bbf8	conservative
 man.test#9ab267182966	9ab267182966	conservative
 man.test#9bcd89b58e83	9bcd89b58e83	conservative
 man.test#9fa76fabe793	9fa76fabe793	conservative
+man.test#a2c2194e6937	a2c2194e6937	conservative
 man.test#a4c781accd63	a4c781accd63	conservative
 man.test#a5504f7a733e	a5504f7a733e	conservative
 man.test#a6f9b7d20aa6	a6f9b7d20aa6	conservative
@@ -4600,6 +4622,7 @@ man.test#af84b775de92	af84b775de92	conservative
 man.test#afedb78014d6	afedb78014d6	conservative
 man.test#b16c3bcae96a	b16c3bcae96a	conservative
 man.test#b36768b23462	b36768b23462	conservative
+man.test#b591eda20a41	b591eda20a41	conservative
 man.test#b64d1b1fb68c	b64d1b1fb68c	conservative
 man.test#b6b00326b15a	b6b00326b15a	conservative
 man.test#b7d5c7e066e6	b7d5c7e066e6	conservative
@@ -4615,6 +4638,7 @@ man.test#c6d4b944d23a	c6d4b944d23a	conservative
 man.test#c767d03f401e	c767d03f401e	conservative
 man.test#c7f47a0eac75	c7f47a0eac75	conservative
 man.test#c801ba41e4d2	c801ba41e4d2	conservative
+man.test#c94e6bedb2a6	c94e6bedb2a6	conservative
 man.test#cb71a15b95ff	cb71a15b95ff	conservative
 man.test#cf1b0ae15f45	cf1b0ae15f45	conservative
 man.test#d0c67c7f2943	d0c67c7f2943	conservative
@@ -4813,6 +4837,47 @@ pretty/object-array-object	101555c33fc1	conservative
 pretty/string	246272c72214	conservative
 pretty/true	137532b06ca9	conservative
 pretty/whitespace-stdin	525bee30ab06	conservative
+rec-prelude/combinations-2	2221a47aad3a	conservative
+rec-prelude/combinations-of-an-object	90f36b1b138d	conservative
+rec-prelude/combinations-of-empty	103b89363c58	conservative
+rec-prelude/combinations-of-rows	4a4632b356ad	conservative
+rec-prelude/combinations-with-an-empty-row	f48121351ecf	conservative
+rec-prelude/dot-dot	3c87ae579029	conservative
+rec-prelude/dot-dot-100-deep	21f5e1155068	conservative
+rec-prelude/dot-dot-100-deep-built	b37005bd0950	conservative
+rec-prelude/dot-dot-empty-containers	9adfeb935423	conservative
+rec-prelude/dot-dot-escapes-and-big-number	a799536260e9	conservative
+rec-prelude/dot-dot-numbers	e2002c575191	conservative
+rec-prelude/dot-dot-optional	bf50c95da838	conservative
+rec-prelude/dot-dot-repeated-key	09e7b4b86c62	conservative
+rec-prelude/dot-dot-scalar	288a80b3965b	conservative
+rec-prelude/first-of-dot-dot	cca00b30f4cb	conservative
+rec-prelude/first-of-repeat	26f75d0eb7a6	conservative
+rec-prelude/flatten-impl-depth-0	28ce73ab5cd7	conservative
+rec-prelude/flatten-impl-depth-1	95e577996704	conservative
+rec-prelude/flatten-impl-depth-minus-1	304f964fe64f	conservative
+rec-prelude/flatten-impl-on-a-string	a7ba23fe6f47	conservative
+rec-prelude/limit-of-dot-dot	c52a9449e117	conservative
+rec-prelude/limit-of-endless-recurse	82724085b0ab	conservative
+rec-prelude/limit-of-repeat	aab61e2d0726	conservative
+rec-prelude/range-3-generators	512f2eb4cd52	conservative
+rec-prelude/range-3-negative-step	0d718f4c641d	conservative
+rec-prelude/range-3-positive-step	a3c785593d1e	conservative
+rec-prelude/range-3-positive-step-past-upto	31a47fe79bea	conservative
+rec-prelude/range-3-zero-step	cfcdf4d50474	conservative
+rec-prelude/recurse-error-caught	509f8b95391b	conservative
+rec-prelude/recurse-field-until-its-error	0f09af30967f	conservative
+rec-prelude/recurse-twice-in-one-filter	49202367ecff	conservative
+rec-prelude/recurse-with-condition	da7d0bb3229e	conservative
+rec-prelude/recurse-with-false-condition	d47722a2edd0	conservative
+rec-prelude/reduce-over-dot-dot	011a19cdc626	conservative
+rec-prelude/shadow-recurse-1-dot-dot	b6fd30a6a0e3	conservative
+rec-prelude/shadow-recurse-1-recurse-0	bfb17820d1fc	conservative
+rec-prelude/shadow-while-range-3	a4a002b91d5e	conservative
+rec-prelude/until-error-in-next	ccc0466d2102	conservative
+rec-prelude/until-true-never-runs-next	c0470880d567	conservative
+rec-prelude/while-empty-update	732f9326b817	conservative
+rec-prelude/while-error-after-results	004ab759f48b	conservative
 reduce/altbind-foreach-downstream	d2c929d82180	conservative
 reduce/altbind-last-error	2bbccd859357	conservative
 reduce/altbind-match-error	03eedbc8f5f3	conservative
