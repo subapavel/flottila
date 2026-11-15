@@ -132,6 +132,37 @@ class ExplainTest {
   }
 
   /**
+   * a calls b, then c, which calls b too: c's call meets b's group already found, which joins neither a's group nor
+   * c's, so a's call of c stays PLAIN.
+   */
+  @Test
+  void aCallIntoAnEarlierGroupJoinsNoGroup() {
+    String filter =
+        "def b: if . > 9 then . else . + 1 | b end; def c: if . > 5 then b else . + 1 | c end;"
+            + " def a: if . > 0 then . - 1 | a else (b, c) end; a";
+    List<Line> lines = lines(filter);
+    String a = function(lines, "a/0");
+    String c = function(lines, "c/0");
+
+    assertThat(node(lines, a, "Call", at(filter, "(b, c)", 4))).as("c in a").containsEntry("call", "PLAIN").containsEntry("callee", c);
+    assertThat(node(lines, c, "Call", at(filter, "| c end", 2))).as("c in c").containsEntry("call", "RECURSIVE").containsEntry("callee", c);
+  }
+
+  /** a calls b, b calls c and c calls a: one group of three, though no call goes straight back to a's caller. */
+  @Test
+  void aCycleOfThreeIsOneGroup() {
+    String filter = "def a: def b: def c: a; c; if . > 0 then . - 1 | b else . end; a";
+    List<Line> lines = lines(filter);
+    String a = function(lines, "a/0");
+    String b = function(lines, "b/0");
+    String c = function(lines, "c/0");
+
+    assertThat(node(lines, a, "Call", at(filter, "| b else", 2))).as("b in a").containsEntry("call", "RECURSIVE").containsEntry("callee", b);
+    assertThat(node(lines, b, "Call", at(filter, "a; c;", 3))).as("c in b").containsEntry("call", "RECURSIVE").containsEntry("callee", c);
+    assertThat(node(lines, c, "Call", at(filter, "c: a;", 3))).as("a in c").containsEntry("call", "RECURSIVE").containsEntry("callee", a);
+  }
+
+  /**
    * A ParamCall shows its parameter, both where the body runs it and where the recursive call passes it on; the
    * function line shows the closure and value parameters.
    */
