@@ -261,7 +261,7 @@ class SpecialiseCensusTest {
   }
 
   /** {@code text} parsed and resolved as {@code JqEngine.compile(text)} does: no declared variables. */
-  private static Program resolve(String text) {
+  static Program resolve(String text) {
     return Resolver.resolved(Parser.parse(text), List.of()).program();
   }
 
@@ -284,9 +284,10 @@ class SpecialiseCensusTest {
 
   /**
    * Each differential case's filter, its one {@code filter} key, read from the same files DiffCorpus.load walks; a
-   * case with no {@code filter} key or with more than one is counted in {@code left} and has none.
+   * case with no {@code filter} key or with more than one is counted in {@code left} and has none. ValueEntryCensusTest
+   * (#118) reads the census through it.
    */
-  private static List<Filter> differential(Map<String, Integer> left) {
+  static List<Filter> differential(Map<String, Integer> left) {
     Path dir = Corpus.casesDir();
     List<Filter> out = new ArrayList<>();
     try (Stream<Path> files = Files.walk(dir)) {
@@ -309,9 +310,10 @@ class SpecialiseCensusTest {
 
   /**
    * Each top-level definition of the builtin.jq jq-core ships beside its Parser (ADR-0042), called with {@code .} for
-   * every argument: {@code until(.; .)}, {@code recurse(.)}, {@code add}.
+   * every argument: {@code until(.; .)}, {@code recurse(.)}, {@code add}. ValueEntryCensusTest (#118) reads the census
+   * through it.
    */
-  private static List<Filter> prelude() {
+  static List<Filter> prelude() {
     String text;
     try (InputStream in = Parser.class.getResourceAsStream("builtin.jq")) {
       assertThat(in).as("premise: jq-core's builtin.jq resource").isNotNull();
