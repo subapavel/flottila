@@ -41,7 +41,11 @@ import java.util.concurrent.atomic.AtomicReference;
  *       {@code U_f(S)}), then the control if asked: {@code probe <mode> <id> <D_f> <T> <b> <reserve> <U> <end>
  *       <control|->}; the parent's bisection over such children gives the cold edge;
  *   <li>{@code linked <id> [seed]}: two linking runs at {@code U_f} 64, then {@code search} in the child: the linked
- *       edge, as a {@code cell} row; {@code search <id> warm [seed]} warms up first (JIT cells);
+ *       edge, as a {@code cell} row; {@code search <id> warm [seed]} warms up first (C1 cells);
+ *   <li>{@code warm <id> <runs>}: the warm check of K1, one shape in one mode: from the child's first run of the shape,
+ *       {@code <runs>} consecutive runs with the thread's own size declared as {@code stackBytes}, each printed as
+ *       {@code warm <mode> <id> <D_f> <T> <b> <reserve> <U_f> <run> <end>} ({@code <run>} 1 to {@code <runs>}), then
+ *       the control, which declares 1 GiB, as the same row with {@code control} for {@code <run>};
  *   <li>{@code edge}: the ends at {@code U* - 1}, {@code U*} and {@code U* + 1}: {@code edge <mode> <id> <U*> <end>
  *       <end> <end>};
  *   <li>{@code native}: each of {@link #NATIVES} at the thread's size: {@code native <mode> <id> <end>};
@@ -122,7 +126,7 @@ final class CalibrationCell {
           new Shape("sort", "[.,.]|sort|length", DeepStackFreshJvmTest.DEEP, "2"),
           new Shape("sort-at-depth", "def d: [.[]?|d]|sort; d|tojson|length", DeepStackFreshJvmTest.DEEP, "19998"));
 
-  /** The warm-up runs of a JIT child before it measures, as #111's measure-b.sh. */
+  /** The warm-up runs of a C1 child before it measures, as #111's measure-b.sh. */
   private static final int WARM_UPS = 30;
 
   /** The largest {@code U_f} a search tries; far past any thread of 1 MiB. */
@@ -269,6 +273,17 @@ final class CalibrationCell {
       }
       case "proof" -> {
         // The proof line only.
+      }
+      case "warm" -> {
+        // K1: warm proves the constants, it does not measure them. No warm-up: run 1 is the child's first run of the
+        // shape, every run declares the thread's own size, and the control comes after the last.
+        Shape shape = shapes(SHAPES, ids).getFirst();
+        Units u = units(shape.filter(), mode);
+        int runs = Integer.parseInt(extra);
+        for (int run = 1; run <= runs; run++) {
+          row("warm", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), u.unitLimitAt(thread), run, ended(shape, thread, mode));
+        }
+        row("warm", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), u.unitLimitAt(thread), "control", ended(shape, GIB, mode));
       }
       case "check" -> {
         for (Shape shape : shapes(SHAPES, ids)) {

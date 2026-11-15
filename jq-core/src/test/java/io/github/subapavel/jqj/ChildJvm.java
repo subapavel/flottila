@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
  * {@code JDK_JAVA_OPTIONS} and {@code _JAVA_OPTIONS} are removed from its environment, so no agent and no {@code -Xmx}
  * reaches it; it is not started under a ulimit. A child ends within its time with exit code 0, or the test fails with
  * what it printed. The time is a wall-clock guard against a hung child, not an assertion: {@value #SECONDS} s, and
- * {@value #MATRIX_SECONDS} s for the linked and search children of {@code CalibrationTest}'s matrix, whose first
+ * {@value #MATRIX_SECONDS} s for the linked, search and warm children of {@code CalibrationTest}'s matrix, whose first
  * unseeded {@code -Xint} linked child of the nested-driver shape needed 271 s on an idle 4-CPU box (#113): ×3.3
  * headroom.
  *
@@ -28,7 +28,7 @@ final class ChildJvm {
   /** The time a child has (the #113 design). */
   static final long SECONDS = 300;
 
-  /** The time a linked or search child of the calibration matrix has: 271 s measured idle (#113), ×3.3 headroom. */
+  /** The time a linked, search or warm child of the calibration matrix has: 271 s measured idle (#113), ×3.3 headroom. */
   static final long MATRIX_SECONDS = 900;
 
   private ChildJvm() {}
