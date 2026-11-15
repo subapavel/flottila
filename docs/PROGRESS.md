@@ -1,4 +1,17 @@
 
+## 2026-11-15 — FIX-222 the other replica start test waits for the pre-open — done, review PASS
+
+- Fault (not seen failing): `ReplicaStartTest…:145` compared `bytes()` with the disk right after the start; the journal counts the
+  pre-opened segment's 49-byte header before its file exists — the race FIX-213 removed from the sibling case.
+- Change (test-author, test only, +13/-5): the case starts through `PreopenSeen` and waits on its latch; the equality stays exact.
+  The latch is tied to the pre-open by identity (the second segment file created, then its directory opened for the force).
+- Red made by a temporary `Thread.sleep(500)` before the pre-open's `createFile` (production, never committed, FIX-222-demo.diff):
+  the old comparison fails "expected: <8049> but was: <8098>" (49 apart); the new case passes under the same delay.
+- Evidence: VERIFIED_PASS the clean tree three times (author) and once more with FIX-218's change beside it (verifier):
+  ReplicaStartTest 2, the module without a failure. Review PASS (class A); the identity rule itself is not pinned by a case.
+- The same delay failed `JournalSpillBoundTest` (two cases) and `LargeBodyCrashTest:166` — the same race, never seen without the
+  delay: new row FIX-225.
+
 ## 2026-11-15 — FIX-221 a contract case tells two deliveries by their bodies, not their order — done, review PASS; closes FIX-170
 
 - Fault: testkit `ComponentContractSelfTest.eachBrokenPropertyFailsExactlyItsCases:337` — the variant "acknowledged before the

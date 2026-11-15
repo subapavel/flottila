@@ -19,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -121,7 +122,8 @@ class ReplicaStartTest {
         Files.write(replicas.resolve("4.part"), sealed[4]);
         Files.write(replicas.resolve("5.seg"), sealed[5]);
 
-        Journal a = holder(JournalFiles.real(), JournalConfig.MAX_BYTES);
+        PreopenSeen seen = new PreopenSeen(JournalFiles.real());
+        Journal a = holder(seen, JournalConfig.MAX_BYTES);
 
         JournalRef first = refs[1][0];
         assertArrayEquals(Arrays.copyOf(sealed[1], (int) (first.position() + first.length())), Files.readAllBytes(replicas.resolve("1.part")),
@@ -142,6 +144,8 @@ class ReplicaStartTest {
         assertFalse(Files.exists(replicas.resolve("4.part")));
         assertArrayEquals(sealed[5], Files.readAllBytes(replicas.resolve("5.seg")), "a .seg is found as it is");
 
+        // FIX-222: the header of the next segment is counted from the pre-open's start, before its file exists; wait for the file
+        assertTrue(seen.created.await(30, TimeUnit.SECONDS), "the pre-open's file was created");
         assertEquals(ReplicaWorld.sizeOf(holderDir.resolve("segments")) + ReplicaWorld.sizeOf(holderDir.resolve("replicas")), a.bytes(),
                 "the journal's bytes count its segments and every replica file on disk");
     }
@@ -173,13 +177,16 @@ class ReplicaStartTest {
     }
 
     /**
-     * Delegates to {@code files}; {@link #created} opens when the second segment file of the start (the pre-open's) has its header
-     * written and the journal forces the segments directory for it (the directory is opened after the header's write).
+     * Delegates to {@code files}; {@link #created} opens when the journal forces the directory of the second segment file of the
+     * start (the pre-open's) after that file was created: the wrapper remembers the path of the second {@code CREATE_NEW} segment
+     * file it saw created and counts down at the next read-open of that file's parent directory, not at any directory opened
+     * after two segment files.
      */
     static final class PreopenSeen implements JournalFiles {
         final CountDownLatch created = new CountDownLatch(1);
         private final JournalFiles delegate;
         private final AtomicInteger segmentFiles = new AtomicInteger();
+        private final AtomicReference<Path> second = new AtomicReference<>();
 
         PreopenSeen(JournalFiles delegate) {
             this.delegate = delegate;
@@ -187,9 +194,10 @@ class ReplicaStartTest {
 
         @Override public FileChannel open(Path file, Set<? extends OpenOption> options) throws IOException {
             boolean segment = options.contains(StandardOpenOption.CREATE_NEW) && file.getFileName().toString().endsWith(".seg");
-            if (segment) segmentFiles.incrementAndGet();
             FileChannel ch = delegate.open(file, options);
-            if (options.equals(Set.of(StandardOpenOption.READ)) && Files.isDirectory(file) && segmentFiles.get() == 2) created.countDown();
+            if (segment && segmentFiles.incrementAndGet() == 2) second.set(file);
+            Path created2 = second.get();
+            if (created2 != null && options.equals(Set.of(StandardOpenOption.READ)) && file.equals(created2.getParent())) created.countDown();
             return ch;
         }
 

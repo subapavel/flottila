@@ -1,0 +1,26 @@
+FIX-222 — evidence (2026-11-15)
+
+The fault: ReplicaStartTest.aStartCountsTheReplicasAndChecksEachPartAgainstItsHeader:145 compared the journal's bytes() with the
+files on disk before the pre-opened segment's file existed. Never seen failing by chance.
+
+The demonstration: a temporary Thread.sleep(500) before createFile in Journal.attempt() (the pre-open's virtual thread;
+agent/work/FIX-222-demo.diff; production code, reverted, never committed):
+EXECUTED_FAIL  agent/work/FIX-222-demo-old.log  the test as it was + the delay: ReplicaStartTest…:145 "the journal's bytes count
+               its segments and every replica file on disk ==> expected: <8049> but was: <8098>" — 49 apart, the header
+VERIFIED_PASS  agent/work/FIX-222-demo-new.log  the new test + the same delay: ReplicaStartTest Tests run: 2, Failures: 0
+               (the module's other failures in both runs are the delay's: JournalSpillBoundTest.fillTo:103, two cases, 49 apart,
+               and LargeBodyCrashTest…:166 — row FIX-225)
+
+The clean tree (runtime module with its upstream modules):
+VERIFIED_PASS  agent/work/FIX-222-run-1.log     author: ReplicaStartTest 2, runtime 1576, 0 failures, exit 0
+VERIFIED_PASS  agent/work/FIX-222-run-2.log     author: the same
+VERIFIED_PASS  agent/work/FIX-222-run-3.log     author: the same
+VERIFIED_PASS  agent/work/FIX-222-218-verify-unit.log   verifier, with FIX-218's test files beside it: ReplicaStartTest 2,
+               runtime 1578 (FIX-218's two cases) and 3, 0 failures, exit 0
+
+review: PASS   class A. createFile opens CREATE_NEW, writes the header, forces the file, then forces the directory; the wrapper
+               records the second segment file only after its open returned, and the first segment is made before the pre-open
+               starts, so the latch cannot fire for the first segment's force. If the second file is never created the wait
+               fails loudly after 30 s. Not pinned: the identity rule against the old "any directory" rule (the segments
+               directory is the only one opened read-only at start).
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-222.diff.
