@@ -351,8 +351,17 @@ replaces it (ADR-0045 #117).
 _Avoid_: unchanged closure.
 
 **Tail call**:
-A call inside a recursive group with nothing left to do after it and at most one result in
-progress to its left; it runs as a jump.
+A call in a tail position of a function body, into the caller's recursive group. Every left context
+on the way to it has at most one result (F-56). Each closure argument is either a closure parameter
+passed on bare, or holds no free slot, free Break or ParamCall. It runs as a pending jump. A call
+from main, or from inside a closure argument's body, never is one (ADR-0006, ADR-0047 #118).
+_Avoid_: tail position (the place, not the call).
+
+**Call kind**:
+A Call's fact: PLAIN, RECURSIVE, TAIL_SELF (a tail call of the caller itself) or TAIL_GROUP (a tail
+call of another function in its group). The conservative compile stores no tail kind. `explain()`
+prints it as `call=` (ADR-0047 #118).
+_Avoid_: call type.
 
 **Binds**:
 One IR node for a run of binds: `Binds(source, values, slots, body)`, n ≥ 2, means
