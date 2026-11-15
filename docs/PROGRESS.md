@@ -1,4 +1,20 @@
 
+## 2026-11-15 — FIX-260 the pool-wait fixture starts its node again when the start is refused — done, review PASS [B]
+
+- `ci` run 229 (efb9d4ae, Postgres 18.6) failed once: NodePoolWaitIT, `VertxException: Timeout waiting for connection`. The class
+  starts nodes under RAIL8_PG_POOL_WAIT PT0.2S, the wait covers the opening of a connection, and one start's first pooled statement
+  was refused: the failing window holds 11 started nodes where a green run holds 12. Why the connect was slow there is not shown.
+- Staged at node level: a start whose first connect is held is refused after 219 ms with the sighting's exception, and it does not
+  return while the connect is pending (`closeStores` waits for it). That is the product's fault and row FIX-261; the case goes there.
+- The fix is the fixture's alone: `startNode` starts again while the start is refused by the pool's elapsed wait, within the class's
+  bound; any other failure at once, as itself. Five new cases, no node, no sleep. Nothing under `src/main`.
+- Evidence (agent/work/FIX-260-evidence.txt): red, compile, EXECUTED_FAIL; the class 17 green three times, VERIFIED_PASS; six hand
+  mutants of the fixture, five killed, the survivor (the wiring of the bound's failure) stated.
+- Whole reactor, one run over this change and FIX-235's together: VERIFIED_PASS, all modules 0 failures (runtime 1583 + 716 ITs), no coverage decrease.
+- Not shown: that the retry would have turned run 229 green - it has not met a real refusal; a second start is read sound, not seen.
+- Review PASS [B]. Its remarks go to FIX-261: a retried refusal leaves no trace; a failed start does not stop the admin server.
+- Rows opened with this commit: FIX-261, BRAND-6 (the website, in flight), BRAND-7 (the repository's address in tracked files). Context compacted.
+
 ## 2026-11-15 — The owner's answers: one licence list, the mapping joins the platform — recorded
 
 - Documents only; no code changed. The owner answered in the session, after the entry below.

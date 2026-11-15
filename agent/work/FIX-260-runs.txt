@@ -1,0 +1,61 @@
+FIX-260 - extracts of the test-author's runs in the worktree (efb9d4ae + the change), 2026-11-15
+
+== red2 (compile): first lines of FIX-260-red2.log and its errors
+efb9d4ae39d68a753e46a13e479187a671db112f
+ M platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+?? agent/packets/FIX-260.md
+372:[ERROR] <worktree>/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java:[846,20] cannot find symbol
+373:  symbol:   method refusedThePoolsWait(io.vertx.core.VertxException)
+375:[ERROR] <worktree>/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java:[847,20] cannot find symbol
+376:  symbol:   method refusedThePoolsWait(io.vertx.core.VertxException)
+378:[ERROR] <worktree>/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java:[848,21] cannot find symbol
+379:  symbol:   method refusedThePoolsWait(io.vertx.core.VertxException)
+381:[ERROR] <worktree>/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java:[849,21] cannot find symbol
+382:  symbol:   method refusedThePoolsWait(io.vertx.core.VertxException)
+384:[ERROR] <worktree>/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java:[850,21] cannot find symbol
+385:  symbol:   method refusedThePoolsWait(java.lang.IllegalStateException)
+387:[ERROR] <worktree>/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java:[851,21] cannot find symbol
+388:  symbol:   method refusedThePoolsWait(io.vertx.core.VertxException)
+
+-- every distinct missing symbol in FIX-260-red2.log (9):
+symbol:   method refusedThePoolsWait(io.vertx.core.VertxException)
+symbol:   method refusedThePoolsWait(java.lang.IllegalStateException)
+symbol:   method refusedThePoolsWait(java.lang.RuntimeException)
+symbol:   method startedPastThePoolsWait(()->OnVirt[...]d; }))
+symbol:   method startedPastThePoolsWait(()->{ call[...]le; })
+symbol:   method startedPastThePoolsWait(()->{ erro[...]ng; })
+symbol:   method startedPastThePoolsWait(()->{ if ([...]er; })
+symbol:   method startedPastThePoolsWait(java.util.concurrent.Callable<java.lang.String>)
+symbol:   method stillRefusedWhenTheBoundPassed(int,io.vertx.core.VertxException,java.lang.AssertionError)
+
+== green-1: first lines, the class's totals, the module's failsafe totals
+efb9d4ae39d68a753e46a13e479187a671db112f
+ M platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+?? agent/packets/FIX-260.md
+1259:[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 17.63 s -- in dev.rail8.runtime.NodePoolWaitIT
+1263:[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0
+1295:[INFO] BUILD FAILURE
+1300:[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.15:check (check-floors) on project rail8-runtime: Coverage checks have not been met. See log for details. -> [Help 1]
+
+== green-2: first lines, the class's totals, the module's failsafe totals
+efb9d4ae39d68a753e46a13e479187a671db112f
+ M platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+?? agent/packets/FIX-260.md
+1151:[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 18.75 s -- in dev.rail8.runtime.NodePoolWaitIT
+1155:[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0
+1187:[INFO] BUILD FAILURE
+1192:[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.15:check (check-floors) on project rail8-runtime: Coverage checks have not been met. See log for details. -> [Help 1]
+
+== green-3: first lines, the class's totals, the module's failsafe totals
+efb9d4ae39d68a753e46a13e479187a671db112f
+ M platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+?? agent/packets/FIX-260.md
+1119:[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 20.57 s -- in dev.rail8.runtime.NodePoolWaitIT
+1123:[INFO] Tests run: 17, Failures: 0, Errors: 0, Skipped: 0
+1155:[INFO] BUILD FAILURE
+1160:[ERROR] Failed to execute goal org.jacoco:jacoco-maven-plugin:0.8.15:check (check-floors) on project rail8-runtime: Coverage checks have not been met. See log for details. -> [Help 1]
+
+== first attempt: FIX-260-diag.log lines 700-701, FIX-260-red.log line 1720 (cut)
+DIAG in failure path: true after 219 ms
+DIAG start threw: io.vertx.core.VertxException: Timeout waiting for connection cause=null
+[ERROR]   NodePoolWaitIT.aStartWhoseFirstConnectOutlastsTheWaitStillStartsItsNode:848->startNode:190 still running after PT1M, at [java.base/java.lang.VirtualThread.park(VirtualThread.java:742), java.base/java.lang.System$1.parkVirtualThread(System.java:2285), java.base/java.util.concurrent.locks.LockSupport.park(LockSupport.java:221), java.base/java.util.concurrent.locks.AbstractQueuedSynchronizer.acquire(AbstractQueuedSynchronizer.java:790), java.base/java.util.concurrent.locks.AbstractQueuedSynchronizer.acquireSharedInterruptibly(AbstractQueuedSynchronizer.java:1139), java.base/java.util.co

@@ -1,0 +1,34 @@
+1c57bfaf8364ca86c9a192276d372f0a9f118ba1
+ M .claude/agent-memory/implementer/MEMORY.md
+ M .claude/agent-memory/test-author/MEMORY.md
+ M agent/work/MAIN-1-ci.md
+ M platform/core/src/main/java/dev/rail8/core/batch/BatchSink.java
+ M platform/core/src/main/java/dev/rail8/core/batch/BatchingWriter.java
+ M platform/core/src/test/java/dev/rail8/core/batch/BatchingWriterErrorContainmentTest.java
+ M platform/core/src/test/java/dev/rail8/core/batch/BatchingWriterPropertyTest.java
+ M platform/core/src/test/java/dev/rail8/core/batch/BatchingWriterWeightTest.java
+ M platform/core/src/test/java/dev/rail8/core/batch/BatchingWriterWindowRefusalTest.java
+ M platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+?? agent/packets/FIX-235.md
+START 2026-11-15T22:04:57Z
+END 2026-11-15T22:31:13Z
+MVN_EXIT=0
+COVERAGE_EXIT=0
+module kind tests fail err skip files
+platform/api unit 107 0 0 0 22
+platform/archtest unit 48 0 0 0 3
+platform/cli IT 7 0 0 0 3
+platform/cli unit 208 0 0 0 13
+platform/components/http unit 52 0 0 0 7
+platform/components/mock unit 67 0 0 0 9
+platform/components/sftp unit 69 0 0 0 5
+platform/core unit 784 0 0 0 97
+platform/runtime IT 716 0 0 0 103
+platform/runtime unit 1583 0 0 0 172
+platform/schemas unit 304 0 0 0 9
+platform/sim unit 61 0 0 0 9
+platform/steps/validate unit 33 0 0 0 5
+platform/steps/xslt unit 56 0 0 0 7
+platform/testkit unit 300 0 0 0 28
+bench(/bench) unit 239 0 0 0 47
+bench(/bench) IT 42 0 0 0 17

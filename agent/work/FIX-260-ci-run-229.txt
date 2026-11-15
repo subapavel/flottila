@@ -1,0 +1,139 @@
+CI run 229, job id 132954237299 (build / Postgres main 18.6), head efb9d4ae; NodePoolWaitIT failure extracted from the job log on 2026-11-15 (full log: 72839 lines, line numbers below refer to it).
+
+== 1. failsafe report (full.log lines 60226-60228; the log carries no frames under the exception line) ==
+[ERROR] Tests run: 12, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 7.519 s <<< FAILURE! -- in dev.rail8.runtime.NodePoolWaitIT
+[ERROR] dev.rail8.runtime.NodePoolWaitIT.aClaimRefusedByTheWorkPoolLeavesTheWorkerRunningAndItClaimsTheQueuedItemAfterTheRelease -- Time elapsed: 0.530 s <<< ERROR!
+io.vertx.core.VertxException: Timeout waiting for connection
+
+== 2. non-INFO-Running lines of the class (full.log lines 59611-60225), flyway/tc.postgres INFO lines (319) and blank lines left out; 296 lines kept in the filter, first 60 and last 60 shown, 176 dropped ==
+Nov 15, 2026 8:58:54 PM dev.rail8.runtime.node.Node notices
+WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+Nov 15, 2026 8:58:54 PM dev.rail8.runtime.node.Node notices
+WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+Nov 15, 2026 8:58:54 PM dev.rail8.runtime.node.Node notices
+WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+Nov 15, 2026 8:58:54 PM dev.rail8.runtime.node.Node start
+WARNING: RAIL8_VALKEY_URI is not set: this node holds its poller leases in its own memory. Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of nodes one Valkey (D-083)
+Nov 15, 2026 8:58:54 PM dev.rail8.runtime.store.Retention once
+INFO: retention run SKIPPED (cutoff 2026-11-08T20:58:54.606378239Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 1 batches
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node start
+WARNING: RAIL8_VALKEY_URI is not set: this node holds its poller leases in its own memory. Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of nodes one Valkey (D-083)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.store.Retention once
+INFO: retention run DONE (cutoff 2026-11-08T20:58:55.107377520Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node start
+WARNING: RAIL8_VALKEY_URI is not set: this node holds its poller leases in its own memory. Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of nodes one Valkey (D-083)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.store.Retention once
+INFO: retention run DONE (cutoff 2026-11-08T20:58:55.549263217Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node notices
+WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.node.Node start
+WARNING: RAIL8_VALKEY_URI is not set: this node holds its poller leases in its own memory. Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of nodes one Valkey (D-083)
+Nov 15, 2026 8:58:55 PM dev.rail8.runtime.store.Retention once
+INFO: retention run DONE (cutoff 2026-11-08T20:58:55.791666161Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+... [176 lines dropped here] ...
+	at io.netty.util.concurrent.AbstractEventExecutor.safeExecute(AbstractEventExecutor.java:141)
+	at io.netty.util.concurrent.SingleThreadEventExecutor.runAllTasks(SingleThreadEventExecutor.java:535)
+	at io.netty.channel.SingleThreadIoEventLoop.run(SingleThreadIoEventLoop.java:228)
+	at io.netty.util.concurrent.SingleThreadEventExecutor$5.run(SingleThreadEventExecutor.java:1214)
+	at io.netty.util.internal.ThreadExecutorMap$2.run(ThreadExecutorMap.java:74)
+	at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+
+Nov 15, 2026 8:58:57 PM dev.rail8.runtime.store.Retention once
+INFO: retention run DONE (cutoff 2026-11-08T20:58:57.462112639Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+Nov 15, 2026 8:58:57 PM dev.rail8.runtime.node.Node notices
+WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+Nov 15, 2026 8:58:57 PM dev.rail8.runtime.node.Node notices
+WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+Nov 15, 2026 8:58:57 PM dev.rail8.runtime.node.Node notices
+WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+Nov 15, 2026 8:58:57 PM dev.rail8.runtime.node.Node start
+WARNING: RAIL8_VALKEY_URI is not set: this node holds its poller leases in its own memory. Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of nodes one Valkey (D-083)
+Nov 15, 2026 8:58:57 PM dev.rail8.runtime.store.Retention once
+INFO: retention run DONE (cutoff 2026-11-08T20:58:57.726570961Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node notices
+WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node notices
+WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node notices
+WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node start
+WARNING: RAIL8_VALKEY_URI is not set: this node holds its poller leases in its own memory. Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of nodes one Valkey (D-083)
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.store.Retention once
+INFO: retention run DONE (cutoff 2026-11-08T20:58:58.209820380Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node notices
+WARNING: RAIL8_PG_DURABILITY=local: an accepted message survives a Postgres crash, not a promotion or the loss of its host (D-127)
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node notices
+WARNING: one journal copy: this node's at-least-once items wait for it while it is down (D-101 (5))
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node notices
+WARNING: no other live member at this node's start: no other node takes its at-least-once items over while it is down (D-101)
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.node.Node start
+WARNING: RAIL8_VALKEY_URI is not set: this node holds its poller leases in its own memory. Alone that is enough; two such nodes on one polling endpoint both poll it (duplicates, never a loss): give a pool of nodes one Valkey (D-083)
+Nov 15, 2026 8:58:58 PM dev.rail8.runtime.store.Retention once
+INFO: retention run DONE (cutoff 2026-11-08T20:58:58.653264425Z): deleted 0 messages rows, 0 key rows, 0 bodies of 0 bytes, 0 processed ids; kept 0 messages rows; 3 batches
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+Error on line 1 column 1 
+  SXXP0003   Error reported by XML parser: Content is not allowed in prolog.
+
+== 3. timestamps ==
+class start: 2026-11-15T20:58:53.3049235Z  ([INFO] Running dev.rail8.runtime.NodePoolWaitIT)
+error line : 2026-11-15T20:59:00.8260208Z  (<<< ERROR!, test time elapsed 0.530 s)
+class end  : 2026-11-15T20:59:00.8258963Z  (Tests run: 12, Errors: 1, Time elapsed: 7.519 s)
+
+== 4. the three classes before it ==
+2026-11-15T20:58:43.7496210Z [INFO] Tests run: 26, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 10.64 s -- in dev.rail8.runtime.store.PgIntakeIT
+2026-11-15T20:58:45.4792024Z [INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.732 s -- in dev.rail8.runtime.store.InvoiceSyncRecordingIT
+2026-11-15T20:58:53.3048562Z [INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 7.824 s -- in dev.rail8.runtime.NodeShutdownWaitsForWorkerSettlementIT

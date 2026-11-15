@@ -1,0 +1,219 @@
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+index cc14e6cf..377ce180 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+@@ -12,6 +12,7 @@ import dev.rail8.steps.validate.XsdValidate;
+ import dev.rail8.steps.xslt.SaxonXml;
+ import dev.rail8.testkit.PostgresImage;
+ import io.vertx.core.Vertx;
++import io.vertx.core.VertxException;
+ import io.vertx.core.http.HttpServer;
+ import io.vertx.core.json.DecodeException;
+ import io.vertx.core.json.JsonArray;
+@@ -54,6 +55,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.concurrent.CompletableFuture;
+ import java.util.concurrent.CopyOnWriteArrayList;
++import java.util.concurrent.Callable;
+ import java.util.concurrent.CountDownLatch;
+ import java.util.concurrent.TimeUnit;
+ import java.util.concurrent.TimeoutException;
+@@ -67,6 +69,7 @@ import java.util.stream.Stream;
+ 
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
++import static org.junit.jupiter.api.Assertions.assertSame;
+ import static org.junit.jupiter.api.Assertions.assertThrows;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ import static org.junit.jupiter.api.Assertions.fail;
+@@ -182,12 +185,15 @@ class NodePoolWaitIT {
+         return node;
+     }
+ 
+-    /** A node over {@code env}, nothing deployed; its partner (the first of {@link #servers}) a server no unparsable body reaches. */
++    /**
++     * A node over {@code env}, nothing deployed; its partner (the first of {@link #servers}) a server no unparsable body reaches.
++     * Started again while the start is refused by the pool's elapsed wait ({@link #startedPastThePoolsWait}).
++     */
+     Node startNode(Map<String, String> env) throws Exception {
+         SaxonXml xml = new SaxonXml();
+         NodeConfig config = NodeConfig.from(env);
+-        Node node = OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
+-                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages()));
++        Node node = startedPastThePoolsWait(() -> OnVirtualThread.call(() -> Node.start(config, vertx, ctx -> List.of(new HttpComponent(ctx.vertx(), ctx.blobs(), ctx.ids())),
++                Stream.concat(xml.steps().stream(), new XsdValidate().steps().stream()).toList(), xml.languages())));
+         nodes.add(node);
+         HttpServer partner = vertx.createHttpServer().requestHandler(req -> req.response().setStatusCode(500).end("not expected")).listen(0, "127.0.0.1").await();
+         servers.add(partner);
+@@ -199,6 +205,65 @@ class NodePoolWaitIT {
+         return NodeIT.zip(InvoiceAsyncIT.asyncFiles(inPort, "http://127.0.0.1:" + servers.getFirst().actualPort()));
+     }
+ 
++    /** The failure text of a pool's wait for a connection that elapsed, a connect included (vertx-sql-client 5.1.10 SqlConnectionPool). */
++    static final String WAIT_ELAPSED = "Timeout waiting for connection";
++
++    /**
++     * FIX-260: a start's failure that is the pool's elapsed wait — a {@code VertxException} with exactly that text, thrown as
++     * itself by {@code Node.start} (the CI sighting: the first connect of a node outlasted the PT0.2S its case starts under).
++     * Starting again is sound: a start refused at its first pooled statement (the durability check) has touched no data
++     * directory, bound no port and started no component, and its failure path closes both pools before it throws; a start
++     * refused at a later pooled statement closes what it opened, and a start again on that data directory is an ordinary restart.
++     */
++    static boolean refusedThePoolsWait(Throwable failure) {
++        return failure instanceof VertxException && WAIT_ELAPSED.equals(failure.getMessage());
++    }
++
++    /**
++     * FIX-260: what {@code start} returns, called again while its failure is the pool's elapsed wait ({@link #refusedThePoolsWait})
++     * within {@link NodeIT#until}'s bound. Any other failure is thrown at once as itself (a checked one too, as
++     * {@link OnVirtualThread#call} hands it on); the bound fails with {@link #stillRefusedWhenTheBoundPassed}.
++     */
++    static <T> T startedPastThePoolsWait(Callable<T> start) throws Exception {
++        AtomicInteger starts = new AtomicInteger();
++        List<Throwable> refusals = new ArrayList<>();
++        List<T> served = new ArrayList<>(1);
++        List<Throwable> failed = new ArrayList<>(1);
++        try {
++            NodeIT.until(() -> {
++                starts.incrementAndGet();
++                try {
++                    served.add(start.call());
++                    return true;
++                } catch (Throwable failure) {
++                    if (refusedThePoolsWait(failure)) {
++                        refusals.add(failure);
++                        return false;
++                    }
++                    failed.add(failure);
++                    return true;
++                }
++            }, "fixture: the node starts once the pool's wait takes its first connect");
++        } catch (AssertionError bound) {
++            throw stillRefusedWhenTheBoundPassed(starts.get(), refusals.getLast(), bound);
++        }
++        if (!failed.isEmpty()) {
++            Throwable failure = failed.getFirst();
++            if (failure instanceof Exception e) throw e;
++            if (failure instanceof Error e) throw e;
++            throw new AssertionError("fixture: the start failed", failure);   // a Throwable neither: none is thrown here
++        }
++        return served.getFirst();
++    }
++
++    /** The failure of {@link #startedPastThePoolsWait} when the bound passed: the count of starts, the last refusal as its cause. */
++    static AssertionError stillRefusedWhenTheBoundPassed(int starts, Throwable last, AssertionError bound) {
++        AssertionError failure = new AssertionError("fixture: the node starts: still refused by the pool's elapsed wait when the bound passed, "
++                + starts + " starts; the last: " + last, last);
++        failure.addSuppressed(bound);
++        return failure;
++    }
++
+     /** The text of a deploy whose record the pool refused (Deployments, FIX-172b: kind BUSY, 503). */
+     static final String UNRECORDED = "the deploy record was not written: ";
+ 
+@@ -829,4 +894,105 @@ class NodePoolWaitIT {
+         assertFalse(refusedByThePool(new Answer(503, "the deploy record was not written: busy")), "a 503 whose body is no JSON is not");
+         assertFalse(refusedByThePool(new Answer(200, "{\"name\":\"demo\",\"flows\":[\"demo/invoice-async\"]}")), "a 200 is not");
+     }
++
++    // ---- FIX-260: the fixture's start meets a first connect longer than the wait --------------------------------------------
++
++    /**
++     * FIX-260 (no node): a start's failure is the pool's elapsed wait only as a {@code VertxException} whose message is exactly
++     * "Timeout waiting for connection" (vertx-sql-client 5.1.10 {@code SqlConnectionPool}, the CI sighting's text, thrown as
++     * itself by {@code Node.start}). Another {@code VertxException}, the same text in another exception type, a null message and
++     * the refusal reached only through a cause are not it: the fixture hands them on at once.
++     */
++    @Test
++    void onlyAVertxExceptionNamingThePoolsElapsedWaitIsAStartRefusedByThePool() {
++        assertTrue(refusedThePoolsWait(new VertxException("Timeout waiting for connection")), "the sighting's failure is the pool's elapsed wait");
++        assertTrue(refusedThePoolsWait(new VertxException("Timeout waiting for connection", true)), "without a stack trace too (the sighting had none)");
++        assertFalse(refusedThePoolsWait(new VertxException("Timeout")), "another VertxException (an acquire's queued wait) is not");
++        assertFalse(refusedThePoolsWait(new VertxException("Connection refused")), "a VertxException of another failure is not");
++        assertFalse(refusedThePoolsWait(new IllegalStateException("Timeout waiting for connection")), "the same text in another exception type is not");
++        assertFalse(refusedThePoolsWait(new VertxException((String) null)), "a VertxException without a message is not");
++        assertFalse(refusedThePoolsWait(new RuntimeException("the start failed", new VertxException("Timeout waiting for connection"))),
++                "the refusal as the cause of another failure is not");
++        assertFalse(refusedThePoolsWait(new VertxException("the start failed", new VertxException("Timeout waiting for connection"))),
++                "nor as the cause of a VertxException of another text");
++    }
++
++    /** A start the fixture's helper calls: refused while {@code refusals} lasts, then answering {@code served}; every call counted. */
++    static Callable<String> refusedThen(int refusals, String served, AtomicInteger calls) {
++        return () -> calls.incrementAndGet() <= refusals ? throwIt(new VertxException("Timeout waiting for connection", true)) : served;
++    }
++
++    static <T> T throwIt(RuntimeException failure) {
++        throw failure;
++    }
++
++    /** FIX-260 (no node): a start refused twice by the pool's elapsed wait is called again; the helper returns the third call's answer. */
++    @Test
++    void aStartRefusedTwiceByThePoolsWaitIsCalledAgainAndTheThirdAnswerIsReturned() throws Exception {
++        AtomicInteger calls = new AtomicInteger();
++        assertEquals("node-3", startedPastThePoolsWait(refusedThen(2, "node-3", calls)), "the helper returns what the start served");
++        assertEquals(3, calls.get(), "two refused starts, then the one that served: three calls");
++    }
++
++    /**
++     * FIX-260 (no node): any other failure of the start is thrown at once as itself — after one call when it is the first, after
++     * the refusals before it otherwise — never called again.
++     */
++    @Test
++    void aStartFailingOtherwiseIsThrownAsItselfWithoutAnotherCall() {
++        AtomicInteger calls = new AtomicInteger();
++        IllegalStateException refusedByTheProfile = new IllegalStateException("synchronous_commit is off");
++        IllegalStateException thrown = assertThrows(IllegalStateException.class,
++                () -> startedPastThePoolsWait(() -> { calls.incrementAndGet(); throw refusedByTheProfile; }));
++        assertSame(refusedByTheProfile, thrown, "thrown as itself, not wrapped: " + thrown);
++        assertEquals(1, calls.get(), "after one call");
++
++        AtomicInteger again = new AtomicInteger();
++        VertxException other = new VertxException("Timeout");
++        VertxException after = assertThrows(VertxException.class, () -> startedPastThePoolsWait(() -> {
++            if (again.incrementAndGet() == 1) throw new VertxException("Timeout waiting for connection", true);
++            throw other;
++        }));
++        assertSame(other, after, "the failure after a refusal is thrown as itself: " + after);
++        assertEquals(2, again.get(), "one refused call, then the failing one: no third");
++
++        AtomicInteger errors = new AtomicInteger();
++        AssertionError stillRunning = new AssertionError("still running after PT1M");
++        AssertionError error = assertThrows(AssertionError.class, () -> startedPastThePoolsWait(() -> { errors.incrementAndGet(); throw stillRunning; }));
++        assertSame(stillRunning, error, "an Error of the start (OnVirtualThread's bound) is thrown as itself, never taken for the helper's bound: " + error);
++        assertEquals(1, errors.get(), "after one call");
++    }
++
++    /**
++     * FIX-260 (no node): a checked failure of the start ({@code Node.start} throws {@code IOException}) reaches the caller as
++     * {@link OnVirtualThread#call} hands it on today: the same exception, unwrapped.
++     */
++    @Test
++    void aCheckedFailureOfTheStartReachesTheCallerAsOnVirtualThreadHandsItOn() {
++        IOException unopened = new IOException("the journal cannot be opened");
++        IOException direct = assertThrows(IOException.class, () -> OnVirtualThread.call(() -> { throw unopened; }));
++        assertSame(unopened, direct, "witness: OnVirtualThread.call hands the checked failure on unwrapped: " + direct);
++        AtomicInteger calls = new AtomicInteger();
++        IOException thrown = assertThrows(IOException.class, () -> startedPastThePoolsWait(() -> OnVirtualThread.call(() -> {
++            calls.incrementAndGet();
++            throw unopened;
++        })));
++        assertSame(unopened, thrown, "through the helper alike: " + thrown);
++        assertEquals(1, calls.get(), "after one call");
++    }
++
++    /**
++     * FIX-260 (no node, no 20 s wait): the failure the helper throws when the class's bound passes with every start refused names
++     * the count of starts and the last refusal, carries that refusal as its cause and keeps the bound's own failure as suppressed.
++     */
++    @Test
++    void theBoundsFailureNamesTheCountOfStartsAndCarriesTheLastRefusal() {
++        VertxException last = new VertxException("Timeout waiting for connection", true);
++        AssertionError bound = new AssertionError("not within 20 s: fixture: the node starts once the pool's wait takes its first connect");
++        AssertionError failure = stillRefusedWhenTheBoundPassed(7, last, bound);
++        assertEquals("fixture: the node starts: still refused by the pool's elapsed wait when the bound passed, 7 starts; the last: "
++                + "io.vertx.core.VertxException: Timeout waiting for connection", failure.getMessage());
++        assertSame(last, failure.getCause(), "it carries the last refusal: " + failure.getCause());
++        assertEquals(List.of(bound), List.of(failure.getSuppressed()), "and the bound's own failure");
++    }
+ }

@@ -170,6 +170,13 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   Count of green `ci` runs in a row: 4 (225-228). `mapping-ci` last ran on 627afa86 (run 2): success.
   Read again at 20:50Z (the first reading was one minute after the run's end): `completed`, `success`, last update
   20:46:02Z; the stack job ran 20:44:32Z-20:46:02Z, `success`.
+- `ci` run 229 (id 43760576677, efb9d4ae, MAIN-1's close - documents only, the code of run 228): **failure**, read 21:22Z
+  job by job. DCO green; build job 17.11 green (Verify 20:53Z-21:13Z); build job 18.6 (132954237299) failed in Verify, in
+  `Rail8 :: runtime`, failsafe: 711 integration tests, 1 error -
+  `NodePoolWaitIT.aClaimRefusedByTheWorkPoolLeavesTheWorkerRunningAndItClaimsTheQueuedItemAfterTheRelease`, 0.530 s,
+  `io.vertx.core.VertxException: Timeout waiting for connection`, no stack trace in the log. stack, mutation and bench
+  skipped. The count of green runs in a row ends at 4 (225-228). Extract of the job log: `agent/work/FIX-260-ci-run-229.txt`.
+  Row FIX-260. MAIN-1 was closed on runs 225-228 before this run ended; the close is not undone, the new sighting has its row.
 
 ## Whole-reactor runs on this machine (MAIN-1's first condition)
 

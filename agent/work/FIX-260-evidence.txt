@@ -1,0 +1,119 @@
+FIX-260 - the pool-wait fixture starts its node whatever the first connect takes
+Evidence, 2026-11-15. Packet: agent/packets/FIX-260.md. Tree: efb9d4ae plus this change.
+
+1. The sighting (observed: the job log of `ci` run 229, job 132954237299, Postgres 18.6; extract in
+   agent/work/FIX-260-ci-run-229.txt)
+
+   NodePoolWaitIT.aClaimRefusedByTheWorkPoolLeavesTheWorkerRunningAndItClaimsTheQueuedItemAfterTheRelease
+   -- Time elapsed: 0.530 s <<< ERROR! / io.vertx.core.VertxException: Timeout waiting for connection
+   No frame under the exception line. Tests run: 12, Failures: 0, Errors: 1 in the class; 711 ITs, 1 error in the module.
+   The same commit: green on the Postgres 17.11 job of that run. The same code: green on both jobs of run 228 and in
+   three whole-reactor runs on this machine (agent/work/MAIN-1-evidence.txt).
+
+2. Where the exception comes from (read, not run)
+
+   - The text is the Vert.x SQL pool's: io.vertx.sqlclient.impl.pool.SqlConnectionPool, vertx-sql-client 5.1.10
+     (javap on the resolved jar). No source of the tree holds the text.
+   - RAIL8_PG_POOL_WAIT becomes PoolOptions.setConnectionTimeout on the node's two pools (Node.java:233-234, :419-422).
+     The wait covers the opening of a connection; a pool connects on its first statement.
+   - The first pooled statement of a start is the durability check on the intake pool (Node.java:263), before the
+     migration (:264) and before the start's notices.
+   - The case starts its node under PT0.2S (NodePoolWaitIT.java:388); `startNode` hands the failure of `Node.start`
+     to the test thread as itself. Every other call of the case answers through HTTP or an assertion.
+
+3. The two logs side by side (observed; the class's window in each log)
+
+                                   run 229, Postgres 18.6     whole-reactor run 3 here (green)
+   Flyway runs ("Database:" x2)           12                          13
+   node starts that printed notices       11                          12
+   Tests run / errors                     12 / 1                      12 / 0
+
+   One Flyway run in each window is a test's own, on thread `main`. The failing window lacks one whole node start:
+   no migration, no notice. That start failed at or before the durability check.
+   How counted: grep -c on the class's window of each full log - 'Database: jdbc' (two lines per Flyway run: 24 and
+   26) and 'RAIL8_PG_DURABILITY=local' (one notice per started node: 11 and 12). The full logs are not committed (the
+   job log has 72 839 lines); the committed extract leaves the Flyway lines out, so it cannot show the first count.
+
+4. The mechanism, staged (observed; the test-author's first attempt, worktree at efb9d4ae; the case is not kept)
+
+   A case held the node's first connect in a `PgWire` relay and started the node under PT0.2S.
+   - agent/work/FIX-260/first-attempt.diff: the case as it ran.
+   - Diagnostic run: "DIAG in failure path: true after 219 ms", then, once the held connect was let go,
+     "DIAG start threw: io.vertx.core.VertxException: Timeout waiting for connection cause=null" - the sighting's
+     exception, type and text.
+   - The case as the packet first asked for it: "still running after PT1M", parked in `Node.closeStores`
+     (Node.java:599, `intake.close().await()`): a refused start does not return while its connect is pending.
+     EXECUTED_FAIL - of the staging, not of the fixture. Row FIX-261 takes it: the fault is the product's.
+
+   Not shown: why a connect took more than 0.2 s on the runner. The 17.11 job of the same run and every run here
+   stayed under it; `warmUp` (:132-136) records 140 to 380 ms for the first pooled statement of a JVM.
+
+5. What a refused start leaves (read: Node.java:252-263, :351-382, :594-603; MasterKeySource.java:92-123)
+
+   Before the durability check (Node.java:252-263) the components are built, not started; no port is bound; the
+   master key is loaded. The class gives its key by value (`TestJournalKey.with`, NodePoolWaitIT.java:177), so the
+   load writes nothing; a generated key (the dev opt-in) would create its file on the first load and the second
+   start reads it back (MasterKeySource.java:92-123). No statement has reached Postgres. The failure path closes
+   the deployments, the lease, the sampler, the work queue, the signals, the peers and both pools. A second start
+   of the same configuration meets nothing of the first that changes what it does.
+
+6. The fixture change (test-author; agent/work/FIX-260.diff: NodePoolWaitIT.java only, +169 -3)
+
+   - `refusedThePoolsWait(Throwable)`: a VertxException whose message is exactly "Timeout waiting for connection".
+   - `startedPastThePoolsWait(Callable)`: calls the start again while its failure is that refusal, within
+     `NodeIT.until`'s bound; any other failure is thrown at once as itself. `startNode` goes through it.
+   - `stillRefusedWhenTheBoundPassed(int, Throwable, AssertionError)`: the bound's failure - the count of starts, the
+     last refusal as text and as cause, `until`'s own failure as suppressed.
+   Five new cases, none starts a node, none sleeps: the predicate's table; refused twice then served (three calls);
+   another failure thrown as itself (first call, after a refusal, an Error); a checked failure as
+   `OnVirtualThread.call` hands it on; the bound's failure text as a literal. The twelve cases of the class unchanged.
+
+7. Red and green (observed by the test-author in the worktree; extracts in agent/work/FIX-260-runs.txt)
+
+   - Red, compile: the cases written first do not compile - `NodePoolWaitIT.java:[846,20] cannot find symbol`,
+     `method refusedThePoolsWait(io.vertx.core.VertxException)`. EXECUTED_FAIL.
+   - Green: the class alone, three separate runs, each `Tests run: 17, Failures: 0, Errors: 0, Skipped: 0`
+     (17.63 s, 18.75 s, 20.57 s). VERIFIED_PASS. Each of those builds ends in BUILD FAILURE at the coverage floors of
+     the runtime module, as every run of a single IT class does; the class's totals are what is read.
+   - The behaviour-level red is section 4: the sighting's exception out of a start whose connect was held.
+
+8. Hand mutants of the fixture (verifier, in the worktree; one run of the class per mutant; baseline 17 green)
+
+   1. the predicate without its text check                  KILLED   2 failures (the table; "thrown as itself")
+   2. the predicate without its type check                  KILLED   1 failure  (the table)
+   3. a refusal handed on instead of started again          KILLED   1 failure, 1 error (two cases)
+   4. every failure started again                           KILLED   2 failures (checked failure; "as itself")
+   5. the bound's failure thrown as `until`'s own           SURVIVED 17 green
+   6. the bound's failure without `until`'s as suppressed   KILLED   1 failure  (the text case)
+   The survivor: no case waits out the 20 s bound, so only the text function is pinned, not its wiring into the
+   helper's catch. If the wiring were lost, a start refused for 20 s would still fail the case - with `until`'s
+   plain "not within 20 s" instead of the count of starts and the last refusal. Left so: stated, not hidden.
+   After the last mutant the worktree's diff equals agent/work/FIX-260.diff (cmp), and the same diff is what this
+   tree holds.
+
+9. Not shown by this change
+
+   - The retry has never run against a real `Node.start`: no run here met the refusal. That a second start is sound
+     is read from the code (section 5), not observed.
+
+   - That the fixture's retry would have turned run 229 green: the sighting cannot be staged at node level before
+     the product reports a refused start (section 4, row FIX-261).
+   - Other first uses of a connection under the 0.2 s wait - a deploy (FIX-234's retry covers the 503), a POST -
+     can meet the same refusal on a slow runner; none has been seen.
+   - The whole reactor with this change: see the commit's PROGRESS entry.
+
+10. Review (class B, opus high): PASS, 2026-11-15
+
+   Checked by the reviewer against the code: only `Node.start` hands the exception to the test thread; the durability
+   check is the intake pool's first statement and nothing before it reaches Postgres; a start refused at a later
+   pooled statement (the work pool's first connect is `JournalKeys.load`, Node.java:265, a second exposure under the
+   0.2 s) leaves what a normal close leaves - the `nodes` row stays and the second join is an upsert with the next
+   epoch; journal, peer server, LISTEN connection, membership connection and both pools are closed and awaited before
+   the throw. No existing case expects `startNode` to be refused. `until` spins, no sleep.
+   Its remarks, not blocking:
+   - a retried refusal leaves no trace when a later start succeeds, so how often the sighting recurs stays invisible
+     in CI logs; and the bound's path (mutant 5, and a dropped `refusals.add`) is unpinned - passing the bound as an
+     argument would pin both. Both go to row FIX-261, which reworks this fixture's retry.
+   - the failure path of `Node.start` never stops the admin server (started at Node.java:342); nothing pooled is
+     awaited after it, so it does not matter here. A product observation: row FIX-261's notes.
+   - section 9's first line and the count's method above were added on its remarks; imports out of order (cosmetic).

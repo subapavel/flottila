@@ -1,0 +1,56 @@
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+index cc14e6cf..0caa674d 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/NodePoolWaitIT.java
+@@ -4,6 +4,7 @@ import dev.rail8.components.http.HttpComponent;
+ import dev.rail8.core.flow.FlowWorker;
+ import dev.rail8.runtime.admin.AdminServer;
+ import dev.rail8.runtime.db.Migrations;
++import dev.rail8.runtime.journal.PgWire;
+ import dev.rail8.runtime.node.Node;
+ import dev.rail8.runtime.node.NodeConfig;
+ import dev.rail8.runtime.node.OnVirtualThread;
+@@ -829,4 +830,30 @@ class NodePoolWaitIT {
+         assertFalse(refusedByThePool(new Answer(503, "the deploy record was not written: busy")), "a 503 whose body is no JSON is not");
+         assertFalse(refusedByThePool(new Answer(200, "{\"name\":\"demo\",\"flows\":[\"demo/invoice-async\"]}")), "a 200 is not");
+     }
++
++    // ---- FIX-260: a start whose first pooled statement waits on a connect longer than the wait ---------------------------------
++
++    /**
++     * FIX-260 (the CI sighting of {@link #aClaimRefusedByTheWorkPoolLeavesTheWorkerRunningAndItClaimsTheQueuedItemAfterTheRelease},
++     * staged): the node's Postgres is a {@link PgWire} relay in front of the class's server, holding the next connection it accepts
++     * before its startup message reaches the server — the intake pool's connect for the start's first pooled statement (the
++     * durability check) is in progress until the hold ends, longer than the {@code RAIL8_PG_POOL_WAIT} PT0.2S the node starts
++     * under. The fixture's start still starts the node, and the node answers on its admin port.
++     */
++    @Test
++    void aStartWhoseFirstConnectOutlastsTheWaitStillStartsItsNode() throws Exception {
++        try (PgWire wire = new PgWire(pg.getHost(), pg.getMappedPort(5432)); HttpClient client = NodeIT.http()) {
++            PgWire.Held connect = wire.holdNextConnection();   // one connection only: every later one goes through at once
++            try {
++                Node node = startNode(env("RAIL8_PG_HOST", "127.0.0.1", "RAIL8_PG_PORT", String.valueOf(wire.port()), "RAIL8_PG_POOL_WAIT", "PT0.2S"));
++                connect.awaitReached();   // witness: the relay did hold a connection of this start
++                HttpResponse<String> health = client.send(get(node.adminPort(), "/health"), HttpResponse.BodyHandlers.ofString());
++                assertEquals(200, health.statusCode(), "the node started through the relay answers on its admin port: " + health.body());
++            } finally {
++                connect.releaseQuietly();
++                for (Node n : nodes) OnVirtualThread.call(() -> { n.close(); return null; });   // FIX-231: closed while the relay is up
++                nodes.clear();
++            }
++        }
++    }
+ }
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/journal/PgWire.java b/platform/runtime/src/test/java/dev/rail8/runtime/journal/PgWire.java
+index d0510831..22684ab8 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/journal/PgWire.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/journal/PgWire.java
+@@ -326,7 +326,7 @@ public final class PgWire implements AutoCloseable {
+      * connection and waits for the server's answer, so a pool's connect is in progress until {@link Held#release()}; reached once
+      * the relay has accepted the connection.
+      */
+-    Held holdNextConnection() {
++    public Held holdNextConnection() {
+         Held h = new Held(s -> false);
+         everyHold.add(h);
+         connectHolds.add(h);
