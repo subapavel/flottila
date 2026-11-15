@@ -44,6 +44,12 @@ public abstract sealed class Op
    */
   final boolean valueForm;
 
+  /**
+   * A sink that drops each result and goes on: a Reduce's {@code each} runs into it, and so does what follows a push
+   * part of a value-form op where the facts promise that it gives no result (ADR-0007 #112).
+   */
+  static final Sink DROP = v -> true;
+
   Op(boolean valueForm) {
     this.valueForm = valueForm;
   }

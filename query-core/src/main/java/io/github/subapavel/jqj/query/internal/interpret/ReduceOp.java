@@ -11,10 +11,7 @@ import io.github.subapavel.jqj.query.run.Sink;
  * (ADR-0039). No step of its own.
  */
 public final class ReduceOp extends Op {
-  /** The sink of {@code each}: the Advance has stored each result already, so the Reduce keeps none. */
-  private static final Sink DROP = v -> true;
-
-  /** The heap form of {@link #DROP}: each result of {@code each} is answered to go on. */
+  /** The heap form of {@link Op#DROP}, the sink of {@code each}: each result is answered to go on. */
   private static final HeapSink HEAP_DROP = (t, producer, v) -> t.answer(producer, true);
 
   private final Op init;
@@ -28,24 +25,10 @@ public final class ReduceOp extends Op {
     this.each = each;
   }
 
-  /**
-   * Each part in its run form: a value-form init's value runs the step after it returned, and a value-form
-   * {@code each} returns its result, dropped as {@link #DROP} drops it, with no break.
-   */
+  /** Each part in its run form: a value-form init's value runs the step after it returned. */
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
-    Sink step =
-        r -> {
-          slots[slot] = r;
-          if (each.valueForm) {
-            each.eval(state, slots, in);
-          } else if (!each.run(state, slots, in, DROP)) {
-            return false;
-          }
-          Object last = slots[slot];
-          slots[slot] = null;
-          return out.emit(last);
-        };
+    Sink step = step(state, slots, in, out);
     if (!init.valueForm) {
       return init.run(state, slots, in, step);
     }
@@ -54,26 +37,33 @@ public final class ReduceOp extends Op {
   }
 
   /**
+   * The sink of the init's results: each sets the slot and runs {@code each}, its results dropped as {@link Op#DROP}
+   * drops them; a value-form {@code each} returns its result instead, with no break. Then the slot's value goes to
+   * {@code out}, the slot nulled first.
+   */
+  private Sink step(RunState state, Object[] slots, Object in, Sink out) {
+    return r -> {
+      slots[slot] = r;
+      if (each.valueForm) {
+        each.eval(state, slots, in);
+      } else if (!each.run(state, slots, in, DROP)) {
+        return false;
+      }
+      Object last = slots[slot];
+      slots[slot] = null;
+      return out.emit(last);
+    };
+  }
+
+  /**
    * The slot's value after {@code each} ran on the init's value. A push init of a value-form Reduce is many, so
-   * {@code each} ends no run normally (ADR-0007 #112): each result of the init runs it, for its ticks and writes, and
-   * the Reduce gives none. A push {@code each} breaks only inside itself, so its run's answer is true.
+   * {@code each} ends no run normally (ADR-0007 #112): each result of the init runs the step, and the Reduce gives none.
+   * A push {@code each} breaks only inside itself, so its run's answer is true.
    */
   @Override
   public Object eval(RunState state, Object[] slots, Object in) {
     if (!init.valueForm) {
-      init.run(
-          state,
-          slots,
-          in,
-          r -> {
-            slots[slot] = r;
-            if (each.valueForm) {
-              each.eval(state, slots, in);
-            } else {
-              each.run(state, slots, in, DROP);
-            }
-            return true;
-          });
+      init.run(state, slots, in, step(state, slots, in, DROP));
       return CallForm.NONE;
     }
     Object r = init.eval(state, slots, in);

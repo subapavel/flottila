@@ -14,6 +14,9 @@ import io.github.subapavel.jqj.query.internal.interpret.Op;
 import io.github.subapavel.jqj.query.internal.interpret.ParamCallOp;
 import io.github.subapavel.jqj.query.compile.RandomParts.Outcome;
 import io.github.subapavel.jqj.query.compile.RandomParts.Part;
+import io.github.subapavel.jqj.query.ir.Advance;
+import io.github.subapavel.jqj.query.ir.AltBind;
+import io.github.subapavel.jqj.query.ir.Alternative;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Binds;
 import io.github.subapavel.jqj.query.ir.Break;
@@ -21,6 +24,7 @@ import io.github.subapavel.jqj.query.ir.Call;
 import io.github.subapavel.jqj.query.ir.Collect;
 import io.github.subapavel.jqj.query.ir.Comma;
 import io.github.subapavel.jqj.query.ir.Const;
+import io.github.subapavel.jqj.query.ir.Foreach;
 import io.github.subapavel.jqj.query.ir.Function;
 import io.github.subapavel.jqj.query.ir.Identity;
 import io.github.subapavel.jqj.query.ir.If;
@@ -28,15 +32,20 @@ import io.github.subapavel.jqj.query.ir.Intrinsic;
 import io.github.subapavel.jqj.query.ir.Label;
 import io.github.subapavel.jqj.query.ir.Node;
 import io.github.subapavel.jqj.query.ir.Operation;
+import io.github.subapavel.jqj.query.ir.ParamCall;
 import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Program;
+import io.github.subapavel.jqj.query.ir.Reduce;
 import io.github.subapavel.jqj.query.ir.Source;
+import io.github.subapavel.jqj.query.ir.Try;
 import io.github.subapavel.jqj.query.ir.Var;
 import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.Collector;
 import io.github.subapavel.jqj.query.run.FilterException;
 import io.github.subapavel.jqj.query.run.Fn0;
 import io.github.subapavel.jqj.query.run.Fn1;
+import io.github.subapavel.jqj.query.run.Fn2;
+import io.github.subapavel.jqj.query.run.FnN;
 import io.github.subapavel.jqj.query.run.Many;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Truth;
@@ -564,6 +573,252 @@ class ValueFormTest {
       depths[k] = probe.max();
     }
     assertThat(depths[1]).as("frames below the base's probe at 3000 levels, at 30 levels %d", depths[0]).isEqualTo(depths[0]);
+  }
+
+  /** {@code label $l | break $l}: no result, at most one and no break out, so value form (cardinality NONE). */
+  private static Label none(int l) {
+    return new Label(AT, l, new Break(AT, l));
+  }
+
+  private static Intrinsic nothing() {
+    return call("nothing", (state, in) -> CallForm.NONE);
+  }
+
+  private static Intrinsic raise() {
+    return call(
+        "raise",
+        (state, in) -> {
+          throw new FilterException("x");
+        });
+  }
+
+  private static Program main(Node root, Function... functions) {
+    return new Program(root, List.of(functions));
+  }
+
+  /** A shape: its name, its program, a node and its expected run form, a part of it and its form, and its results. */
+  private static Arguments shape(String name, Supplier<Program> program, int body, int id, RunForm form, int partBody, int part, RunForm partForm, String results) {
+    return Arguments.argumentSet(name, program, body, id, form, partBody, part, partForm, results);
+  }
+
+  /**
+   * The shapes where a node and one of its parts run in different forms, each pinned by freeze id: a value-form node
+   * over a push part that gives many results, which the facts let through only where what follows gives none, and a
+   * push node over a value-form part, whose value or no result it takes.
+   */
+  static Stream<Arguments> shapes() {
+    return Stream.of(
+        shape("a value-form If on a condition of many results", () -> main(new Collect(AT, new If(AT, new Comma(AT, c(YES), c(NO)), none(0), none(1), TRUTH), LIST)), -1, 1, RunForm.VALUE, -1, 2, RunForm.PUSH, "[[]]"),
+        shape(
+            "a value-form Binds on a value of many results",
+            () -> main(new Collect(AT, new Binds(AT, List.of(new Comma(AT, c(1), c(2)), c(3)), List.of(0, 1), none(2)), LIST)),
+            -1,
+            1,
+            RunForm.VALUE,
+            -1,
+            2,
+            RunForm.PUSH,
+            "[[]]"),
+        shape("a value-form Foreach on an init of many results", () -> main(new Collect(AT, new Foreach(AT, new Comma(AT, c(1), c(2)), 0, none(1)), LIST)), -1, 1, RunForm.VALUE, -1, 2, RunForm.PUSH, "[[]]"),
+        shape(
+            "a value-form Reduce on a Many init of no result, its each only recursing",
+            () -> main(new Reduce(AT, new Intrinsic(AT, new Operation("empty", EMPTY), List.of()), 0, f(0)), new Function(AT, 0, 0, f(0))),
+            -1,
+            0,
+            RunForm.VALUE,
+            -1,
+            1,
+            RunForm.PUSH,
+            "[]"),
+        shape("a push Try on a value-form body of no result", () -> main(new Try(AT, nothing(), new Comma(AT, c(1), c(2)))), -1, 0, RunForm.PUSH, -1, 1, RunForm.VALUE, "[]"),
+        shape("a push Try on a value-form body", () -> main(new Try(AT, c(1), new Comma(AT, c(2), c(3)))), -1, 0, RunForm.PUSH, -1, 1, RunForm.VALUE, "[1]"),
+        shape("a push Try on a value-form handler of no result", () -> main(new Try(AT, new Comma(AT, c(1), raise()), nothing())), -1, 0, RunForm.PUSH, -1, 4, RunForm.VALUE, "[1]"),
+        shape("a push Try on a value-form handler", () -> main(new Try(AT, new Comma(AT, raise(), c(5)), c(2))), -1, 0, RunForm.PUSH, -1, 4, RunForm.VALUE, "[2]"),
+        shape(
+            "a push Call, its closure breaking out, on a value-form body",
+            () -> main(new Label(AT, 0, new Comma(AT, new Call(AT, 0, List.of(new Break(AT, 0)), List.of()), c(7))), new Function(AT, 1, 0, c(5))),
+            -1,
+            2,
+            RunForm.PUSH,
+            0,
+            0,
+            RunForm.VALUE,
+            "[5, 7]"),
+        shape(
+            "a push Call, its closure breaking out, on a value-form body of no result",
+            () -> main(new Label(AT, 0, new Comma(AT, new Call(AT, 0, List.of(new Break(AT, 0)), List.of()), c(7))), new Function(AT, 1, 0, nothing())),
+            -1,
+            2,
+            RunForm.PUSH,
+            0,
+            0,
+            RunForm.VALUE,
+            "[7]"),
+        shape(
+            "an AltBind on a value-form match of no result",
+            () -> main(new AltBind(AT, c(1), 0, List.of(new Alternative(new Bind(AT, nothing(), 1, new Identity(AT)), List.of(1))), List.of(2), new Var(AT, 2))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            2,
+            RunForm.VALUE,
+            "[]"),
+        shape("a value-form Label on a push body that runs out", () -> main(new Label(AT, 0, new If(AT, c(NO), new Break(AT, 0), nothing(), TRUTH))), -1, 0, RunForm.VALUE, -1, 1, RunForm.PUSH, "[]"),
+        shape("a push Foreach on a value-form each of no result", () -> main(new Foreach(AT, new Comma(AT, c(1), c(2)), 0, nothing())), -1, 0, RunForm.PUSH, -1, 4, RunForm.VALUE, "[]"),
+        shape(
+            "a push Foreach on a value-form each",
+            () -> main(new Foreach(AT, new Comma(AT, c(1), c(2)), 0, new Advance(AT, 0, new Identity(AT)))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            4,
+            RunForm.VALUE,
+            "[1, 2]"),
+        shape(
+            "a push Comma on a value-form FnN of no result",
+            () -> main(new Comma(AT, new Intrinsic(AT, new Operation("nothingN", (FnN) (state, in, args) -> CallForm.NONE), List.of()), c(1))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[1]"),
+        shape("a value-form Pipe on a left side of many results", () -> main(new Collect(AT, new Pipe(AT, new Comma(AT, c(1), c(2)), none(0)), LIST)), -1, 1, RunForm.VALUE, -1, 2, RunForm.PUSH, "[[]]"),
+        shape("a value-form Bind on a value of many results", () -> main(new Collect(AT, new Bind(AT, new Comma(AT, c(1), c(2)), 0, none(1)), LIST)), -1, 1, RunForm.VALUE, -1, 2, RunForm.PUSH, "[[]]"),
+        shape(
+            "an AltBind on a value-form value of no result",
+            () -> main(new AltBind(AT, nothing(), 0, List.of(new Alternative(new Bind(AT, new Var(AT, 0), 1, new Identity(AT)), List.of(1))), List.of(2), new Var(AT, 2))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[]"),
+        shape(
+            "a push Foreach on a value-form init",
+            () -> main(new Foreach(AT, c(1), 0, new Comma(AT, new Advance(AT, 0, new Identity(AT)), c(9)))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[1, 9]"),
+        shape(
+            "a push Foreach on a value-form init of no result",
+            () -> main(new Foreach(AT, nothing(), 0, new Comma(AT, new Advance(AT, 0, new Identity(AT)), c(9)))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[]"),
+        shape(
+            "a push Reduce, its each breaking out, on a value-form init of no result",
+            () -> main(new Label(AT, 1, new Reduce(AT, nothing(), 0, new Comma(AT, new Advance(AT, 0, new Identity(AT)), new Break(AT, 1))))),
+            -1,
+            1,
+            RunForm.PUSH,
+            -1,
+            2,
+            RunForm.VALUE,
+            "[]"),
+        shape(
+            "a push Reduce on an init of many results and a value-form each",
+            () -> main(new Reduce(AT, new Comma(AT, c(1), c(2)), 0, new Advance(AT, 0, new Identity(AT)))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            4,
+            RunForm.VALUE,
+            "[1, 2]"),
+        shape(
+            "an AltBind on a value-form body of no result",
+            () -> main(new AltBind(AT, c(1), 0, List.of(new Alternative(new Bind(AT, new Var(AT, 0), 1, new Identity(AT)), List.of(1))), List.of(2), nothing())),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            5,
+            RunForm.VALUE,
+            "[]"),
+        shape("a value-form Foreach on an init of no result",() -> main(new Foreach(AT, nothing(), 0, new Advance(AT, 0, new Identity(AT)))), -1, 0, RunForm.VALUE, -1, 1, RunForm.VALUE, "[]"),
+        shape(
+            "a push Reduce, its each breaking out, on a value-form init",
+            () -> main(new Label(AT, 1, new Reduce(AT, c(1), 0, new Comma(AT, new Advance(AT, 0, new Identity(AT)), new Break(AT, 1))))),
+            -1,
+            1,
+            RunForm.PUSH,
+            -1,
+            2,
+            RunForm.VALUE,
+            "[]"),
+        shape(
+            "a ParamCall on a value-form closure",
+            () -> main(new Call(AT, 0, List.of(c(5)), List.of()), new Function(AT, 1, 0, new ParamCall(AT, 0))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[5]"),
+        shape(
+            "a ParamCall on a value-form closure of no result",
+            () -> main(new Call(AT, 0, List.of(nothing()), List.of()), new Function(AT, 1, 0, new ParamCall(AT, 0))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[]"),
+        shape(
+            "a push Comma on a value-form Fn2",
+            () -> main(new Comma(AT, new Intrinsic(AT, new Operation("first", (Fn2) (state, in, a, b) -> a), List.of(c(1), c(2))), c(3))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[1, 3]"),
+        shape(
+            "a push Comma on a value-form Fn2 of no result",
+            () -> main(new Comma(AT, new Intrinsic(AT, new Operation("nothing2", (Fn2) (state, in, a, b) -> CallForm.NONE), List.of(c(1), c(2))), c(3))),
+            -1,
+            0,
+            RunForm.PUSH,
+            -1,
+            1,
+            RunForm.VALUE,
+            "[3]"));
+  }
+
+  /**
+   * Each shape runs in the optimised compile as in the conservative one (ADR-0047 #116, the eval contract): the same
+   * results, answer, error, steps and bytes built, run to its end and with its sink stopping at the first result. The
+   * pins first check that the node and its part run in the forms the shape names.
+   */
+  @ParameterizedTest(name = "{argumentSetName}")
+  @MethodSource("shapes")
+  void eachShapeRunsAsItsPushForm(Supplier<Program> program, int body, int id, RunForm form, int partBody, int part, RunForm partForm, String results) {
+    Executable optimised = Compiler.compile(program.get(), 0, CompileMode.OPTIMISED);
+    assertThat(optimised.form(body, id)).as("the run form of node %d of body %d", id, body).isEqualTo(form);
+    assertThat(optimised.form(partBody, part)).as("the run form of its part, node %d of body %d", part, partBody).isEqualTo(partForm);
+
+    Outcome push = outcome(program.get(), CompileMode.CONSERVATIVE, UNLIMITED, NEVER_STOPS, UNLIMITED, UNLIMITED);
+    assertThat(push.results()).as("results under CONSERVATIVE (%s)", push).hasToString(results);
+    assertThat(outcome(program.get(), CompileMode.OPTIMISED, UNLIMITED, NEVER_STOPS, UNLIMITED, UNLIMITED)).as("the optimised run to its end").isEqualTo(push);
+    assertThat(outcome(program.get(), CompileMode.OPTIMISED, UNLIMITED, 1, UNLIMITED, UNLIMITED))
+        .as("the optimised run stopping at its first result")
+        .isEqualTo(outcome(program.get(), CompileMode.CONSERVATIVE, UNLIMITED, 1, UNLIMITED, UNLIMITED));
   }
 
   /** A Many of no result: the call form of an IntrinsicManyOp. */
