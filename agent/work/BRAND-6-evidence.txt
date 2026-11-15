@@ -1,0 +1,76 @@
+BRAND-6 - the website at rail8.dev: the evidence (2026-11-15)
+
+Tree: 167c72de plus this task's change, in a worktree; applied unchanged onto the commit's parent. The change:
+agent/work/BRAND-6.diff (1291 lines, the test file included). Packet: agent/packets/BRAND-6.md.
+No Maven in this task: a static page, two Python scripts, a workflow.
+
+1. Red (test-author): EXECUTED_FAIL, agent/work/BRAND-6-red.log
+   `python3 -m unittest ci.test_site`: Ran 59 tests, FAILED (failures=59) - 50 on "ci/site_check.py does not exist",
+   9 on "ci/site_build.py does not exist"; no import error.
+   That each case fails for its rule and not only for the missing file was shown outside the tree: a throwaway
+   checker, builder and site passed every case; 16 broken variants of the checker and 2 of the builder or the site
+   each failed the cases meant for them. That is the test-author's word - no log was kept. The observed measure on
+   the real script is section 4.
+
+2. Green (implementer): VERIFIED_PASS
+   - agent/work/BRAND-6-unittest.log: Ran 66 tests, OK (59 at first, 66 after the review's first round).
+   - agent/work/BRAND-6-build-check.log: `python3 ci/site_build.py _site`, then `python3 ci/site_check.py _site` -
+     no output, exit=0. The built site: 3 pages and 7 brand files (apple-touch-icon.png, favicon.ico, favicon.svg,
+     rail8-logo.svg, rail8-logo-dark.svg, rail8-mark.svg, rail8-mark-dark.svg), taken from docs/brand/ at build.
+   - The name guard: clean. Its self-test: Ran 32 tests, OK. Both workflow files parse (PyYAML).
+   - Screenshots, Chromium at twice the scale, looked at by the implementer and by the architect: index at 1280 px
+     light and 390 px dark are committed (agent/work/BRAND-6/, re-encoded with a palette to keep them small); 1280
+     dark, 390 light, 320 light and the 404 page were taken and looked at, not committed. Page width equal to the
+     viewport in every shot; no failed request.
+   - Contrast, computed by the implementer: body text 18.26 (light) and 16.31 (dark); links and buttons 5.57 and
+     10.07; the lowest pair 5.13 (a hovered button, light). The reviewer recomputed three pairs, not the lowest.
+
+3. The actions' versions: agent/work/BRAND-6-action-tags.txt
+   `git ls-remote --tags` of the three repositories on 2026-11-15. Pinned: actions/configure-pages@v6,
+   actions/upload-pages-artifact@v5, actions/deploy-pages@v5 - the newest major tag of each; the READMEs on their
+   main branches name older ones. `pages: read` in the build job: configure-pages v6 calls
+   `GET /repos/{owner}/{repo}/pages` (read in its source at the tag); a run with `contents: read` alone was not tried.
+
+4. Hand mutants of ci/site_check.py (verifier): 9 of 9 killed; agent/work/BRAND-6-M<n>.diff, one run of the 66 each
+   M1 :58  a root-relative reference resolved against the referrer      KILLED  1 failure (the subdirectory case)
+   M2 :42  a protocol-relative URL no longer another origin             KILLED  5 failures
+   M3 :92  the canonical link no longer exempt                          KILLED  52 failures
+   M4 :96  an empty alt counted as missing                              KILLED  2 failures
+   M5 :163 canonical and description asked of every page                KILLED  55 failures
+   M6 :187 the forbidden word matched in one letter case only           KILLED  2 failures
+   M7 :50  a srcset read as one candidate                               KILLED  1 failure
+   M8 :127 an inline <style> element's text not read                    KILLED  2 failures
+   M9 :131 CSS comments not stripped before url() is read               KILLED  1 failure
+   Baseline and final run: Ran 66 tests, OK. The file identical to its pristine copy after each mutant (cmp).
+   M1 survived the first 59 cases - the review's first finding; the case that kills it was added for it.
+   Not mutated: ci/site_build.py.
+
+5. Review (class B, opus high)
+   Round 1: FAIL, on two cases of ci/test_site.py that passed for the wrong reason - the root-relative reference was
+   tested only from a page at the site's root (mutant M1 survived), and the description was pinned by four phrases,
+   not as the owner's whole line. Its remarks taken with the fix: cases for inline styles and CSS comments; two
+   sentences of the copy narrowed to the design (a large body is streamed; payloads recorded up to a limit, D-110);
+   `/_site/` ignored; the workflow in two jobs; the name of the `ci` step. Disposition of every remark: the packet,
+   "Review round 1".
+   Round 2: PASS. Checked by the reviewer from the files: both findings closed (M1's log read), the copy against
+   the design, the split workflow (deploy is skipped when build fails; only deploy-pages runs with the deployment's
+   token), the pins against the recorded tags. Not checkable before the first run: whether deploy-pages@v5 needs
+   more than `pages: write` and `id-token: write`, and that the v5 upload and deploy actions work together.
+
+   After the review the change was applied onto 616ee25b, the commit's parent, and run there by the architect:
+   `python3 -m unittest ci.test_site` Ran 66 tests, OK; build and check, no output, exit 0; the nine files identical
+   to the worktree's (cmp); `_site/` ignored (git check-ignore).
+   Committed logs: paths of the session's scratch directory are replaced by `<worktree>` in BRAND-6-red.log and
+   BRAND-6-M1.log (the name guard: the directory's name holds the old product name). The logs of mutants M2 to M9
+   are not committed (M3 and M5 are 60 kB of tracebacks each); their diffs are, and their totals are section 4.
+
+6. Not shown
+   - The page as GitHub Pages serves it: nothing is deployed, Pages is not switched on (the owner's steps, in the
+     packet). The `site` workflow has never run; its first run fails at configure-pages until Pages is on.
+   - The 404 page's root-relative references do not resolve under `subapavel.github.io/rail8/`; they do once the
+     custom domain is set.
+   - ci/site_build.py's refusals (a non-empty out-dir, a site/brand/ directory, a CNAME, a missing brand file) have
+     no case.
+   - The DNS values in the owner's steps are GitHub's documented ones written from knowledge: neither
+     docs.github.com nor DNS is reachable from the session.
+   - What the checker would miss if the page grew: row BRAND-8.

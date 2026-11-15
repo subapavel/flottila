@@ -81,12 +81,13 @@ jobs:
       - name: Coverage gate self-test
         if: matrix.image-args == ''
         run: python3 -m unittest ci.test_coverage_check
-      - name: The old product name does not come back (BRAND-4, D-148/D-149; guard self-test, then the guard)
+      - name: The old product name does not come back (BRAND-4, D-148/D-149; guard self-test, the guard), the site checks' self-test (BRAND-6)
         if: matrix.image-args == ''
         run: |
           set -euo pipefail
           python3 -m unittest ci.test_name_guard
           python3 ci/name_guard.py
+          python3 -m unittest ci.test_site
       - name: Coverage no-decrease against the previous main commit
         if: matrix.image-args == ''
         env:

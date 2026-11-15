@@ -1,0 +1,4 @@
+58c58
+<     base = root if path.startswith("/") else referrer.parent
+---
+>     base = referrer.parent if path.startswith("/") else referrer.parent

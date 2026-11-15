@@ -1,0 +1,59 @@
+# The website at rail8.dev (BRAND-6): checks the page, builds it (site/ plus the brand files it uses from
+# docs/brand/) and deploys it with GitHub Pages. The owner switches Pages on (Settings, Pages, Source "GitHub
+# Actions") and sets the custom domain there; no CNAME file is committed.
+# Two jobs, as GitHub's Pages starter workflows have them: the checks and the build never run with the deployment's
+# token; only `deploy` may write Pages and mint the OIDC token.
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'docs/brand/**'
+      - 'ci/site_*.py'
+      - 'ci/test_site.py'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: check and build rail8.dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # actions/configure-pages reads the repository's Pages site (GET /repos/{owner}/{repo}/pages)
+      pages: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: The site checks' self-test
+        run: python3 -m unittest ci.test_site
+      - name: Build the site into _site
+        run: python3 ci/site_build.py _site
+      - name: Check the built site
+        run: python3 ci/site_check.py _site
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: deploy rail8.dev
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

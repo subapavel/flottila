@@ -1,0 +1,2 @@
+site.yml jobs {'build': ({'contents': 'read', 'pages': 'read'}, None), 'deploy': ({'pages': 'write', 'id-token': 'write'}, 'build')} top {'contents': 'read'}
+ci.yml parses

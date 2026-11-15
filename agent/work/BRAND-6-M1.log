@@ -1,0 +1,33 @@
+...................F..............................................
+======================================================================
+FAIL: test_rule2_a_root_relative_reference_from_a_subdirectory_resolves_against_the_site_not_the_referrer (ci.test_site.SiteCheckTest.test_rule2_a_root_relative_reference_from_a_subdirectory_resolves_against_the_site_not_the_referrer)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 241, in test_rule2_a_root_relative_reference_from_a_subdirectory_resolves_against_the_site_not_the_referrer
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 155, in assertClean
+    self.assertEqual([], self.problems())
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [] != ['docs/page.html: <link href> reference /b[417 chars]ite']
+
+Second list contains 5 additional elements.
+First extra element 0:
+'docs/page.html: <link href> reference /brand/favicon.png does not resolve to a file of the site'
+
+- []
++ ['docs/page.html: <link href> reference /brand/favicon.png does not resolve to '
++  'a file of the site',
++  'docs/page.html: <link href> reference /style.css does not resolve to a file '
++  'of the site',
++  'docs/page.html: <link href> reference /style.css does not resolve to a file '
++  'of the site',
++  'docs/page.html: <img src> reference /brand/logo.svg does not resolve to a '
++  'file of the site',
++  'docs/page.html: <a href> reference /index.html does not resolve to a file of '
++  'the site']
+
+----------------------------------------------------------------------
+Ran 66 tests in 0.622s
+
+FAILED (failures=1)

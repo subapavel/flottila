@@ -1,0 +1,4 @@
+163c163
+<     if rel == "index.html":
+---
+>     if True:

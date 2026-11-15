@@ -1,0 +1,881 @@
+FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+======================================================================
+FAIL: test_every_page_has_headings_starting_at_h1_that_never_skip_a_level (ci.test_site.RealSiteTest.test_every_page_has_headings_starting_at_h1_that_never_skip_a_level)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_index_carries_the_line_the_stack_the_licence_and_the_three_links (ci.test_site.RealSiteTest.test_index_carries_the_line_the_stack_the_licence_and_the_three_links)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_index_links_a_favicon_and_the_touch_icon_from_brand (ci.test_site.RealSiteTest.test_index_links_a_favicon_and_the_touch_icon_from_brand)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_no_file_of_the_built_site_holds_the_refused_line (ci.test_site.RealSiteTest.test_no_file_of_the_built_site_holds_the_refused_line)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_site_holds_no_copy_of_a_brand_file_and_no_cname (ci.test_site.RealSiteTest.test_site_holds_no_copy_of_a_brand_file_and_no_cname)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_the_build_copies_site_and_only_the_brand_files_the_pages_use_byte_for_byte (ci.test_site.RealSiteTest.test_the_build_copies_site_and_only_the_brand_files_the_pages_use_byte_for_byte)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_the_built_site_holds_index_and_brand_files_and_site_check_reports_nothing (ci.test_site.RealSiteTest.test_the_built_site_holds_index_and_brand_files_and_site_check_reports_nothing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_the_description_meta_of_index_holds_the_whole_line (ci.test_site.RealSiteTest.test_the_description_meta_of_index_holds_the_whole_line)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_the_style_sheet_has_a_dark_colour_scheme (ci.test_site.RealSiteTest.test_the_style_sheet_has_a_dark_colour_scheme)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 461, in setUp
+    self.assertTrue(BUILD.is_file(), f"{BUILD} does not exist")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true : <worktree>/ci/site_build.py does not exist
+
+======================================================================
+FAIL: test_rule1_a_site_without_index_html_is_a_problem_naming_index_html (ci.test_site.SiteCheckTest.test_rule1_a_site_without_index_html_is_a_problem_naming_index_html)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 163, in test_rule1_a_site_without_index_html_is_a_problem_naming_index_html
+    self.assertOnly("index.html", "missing")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule1_index_html_in_a_subdirectory_only_does_not_count (ci.test_site.SiteCheckTest.test_rule1_index_html_in_a_subdirectory_only_does_not_count)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 167, in test_rule1_index_html_in_a_subdirectory_only_does_not_count
+    self.assertReported("index.html", "missing")
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 147, in assertReported
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_css_url_in_a_subdirectory_resolves_against_the_css_files_directory (ci.test_site.SiteCheckTest.test_rule2_a_css_url_in_a_subdirectory_resolves_against_the_css_files_directory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 192, in test_rule2_a_css_url_in_a_subdirectory_resolves_against_the_css_files_directory
+    self.assertOnly("css/extra.css", "logo.svg")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_css_url_to_a_missing_local_file_is_a_problem_naming_the_css_file_and_reference (ci.test_site.SiteCheckTest.test_rule2_a_css_url_to_a_missing_local_file_is_a_problem_naming_the_css_file_and_reference)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 186, in test_rule2_a_css_url_to_a_missing_local_file_is_a_problem_naming_the_css_file_and_reference
+    self.assertOnly("style.css", "img/bg.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_path_ending_in_slash_names_the_index_html_of_that_directory (ci.test_site.SiteCheckTest.test_rule2_a_path_ending_in_slash_names_the_index_html_of_that_directory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 206, in test_rule2_a_path_ending_in_slash_names_the_index_html_of_that_directory
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_reference_leaving_the_site_directory_is_a_problem_even_when_the_file_exists (ci.test_site.SiteCheckTest.test_rule2_a_reference_leaving_the_site_directory_is_a_problem_even_when_the_file_exists)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 198, in test_rule2_a_reference_leaving_the_site_directory_is_a_problem_even_when_the_file_exists
+    self.assertOnly("index.html", "../outside.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_reference_to_a_directory_is_not_a_file (ci.test_site.SiteCheckTest.test_rule2_a_reference_to_a_directory_is_not_a_file)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 202, in test_rule2_a_reference_to_a_directory_is_not_a_file
+    self.assertOnly("index.html", "brand")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_root_relative_reference_resolves_against_the_site_directory (ci.test_site.SiteCheckTest.test_rule2_a_root_relative_reference_resolves_against_the_site_directory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 227, in test_rule2_a_root_relative_reference_resolves_against_the_site_directory
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_src_to_a_missing_local_file_is_a_problem_naming_file_and_reference (ci.test_site.SiteCheckTest.test_rule2_a_src_to_a_missing_local_file_is_a_problem_naming_file_and_reference)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 177, in test_rule2_a_src_to_a_missing_local_file_is_a_problem_naming_file_and_reference
+    self.assertOnly("404.html", "img/none.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_a_srcset_candidate_to_a_missing_local_file_is_a_problem_naming_that_candidate (ci.test_site.SiteCheckTest.test_rule2_a_srcset_candidate_to_a_missing_local_file_is_a_problem_naming_that_candidate)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 182, in test_rule2_a_srcset_candidate_to_a_missing_local_file_is_a_problem_naming_that_candidate
+    self.assertOnly("index.html", "brand/logo-2x.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_an_href_to_a_missing_local_file_is_a_problem_naming_file_and_reference (ci.test_site.SiteCheckTest.test_rule2_an_href_to_a_missing_local_file_is_a_problem_naming_file_and_reference)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 173, in test_rule2_an_href_to_a_missing_local_file_is_a_problem_naming_file_and_reference
+    self.assertOnly("index.html", "docs/missing.html")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_existing_href_src_srcset_and_css_url_references_resolve (ci.test_site.SiteCheckTest.test_rule2_existing_href_src_srcset_and_css_url_references_resolve)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 222, in test_rule2_existing_href_src_srcset_and_css_url_references_resolve
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_fragments_mailto_and_links_to_another_origin_are_not_files (ci.test_site.SiteCheckTest.test_rule2_fragments_mailto_and_links_to_another_origin_are_not_files)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 241, in test_rule2_fragments_mailto_and_links_to_another_origin_are_not_files
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule2_query_and_fragment_of_a_local_reference_are_not_part_of_its_path (ci.test_site.SiteCheckTest.test_rule2_query_and_fragment_of_a_local_reference_are_not_part_of_its_path)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 233, in test_rule2_query_and_fragment_of_a_local_reference_are_not_part_of_its_path
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_css_import_of_a_string_from_another_origin_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_a_css_import_of_a_string_from_another_origin_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 292, in test_rule3_a_css_import_of_a_string_from_another_origin_is_a_problem
+    self.assertOnly("style.css", "https://fonts.example/h.css")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_css_import_of_a_url_from_another_origin_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_a_css_import_of_a_url_from_another_origin_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 296, in test_rule3_a_css_import_of_a_url_from_another_origin_is_a_problem
+    self.assertReported("style.css", "http://fonts.example/i.css")
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 147, in assertReported
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_css_url_from_another_origin_is_a_problem_naming_the_css_file (ci.test_site.SiteCheckTest.test_rule3_a_css_url_from_another_origin_is_a_problem_naming_the_css_file)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 284, in test_rule3_a_css_url_from_another_origin_is_a_problem_naming_the_css_file
+    self.assertOnly("style.css", "https://fonts.example/x.woff2")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_protocol_relative_css_url_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_a_protocol_relative_css_url_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 288, in test_rule3_a_protocol_relative_css_url_is_a_problem
+    self.assertOnly("style.css", "//cdn.example/g.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_script_src_from_another_origin_is_a_problem_naming_the_url (ci.test_site.SiteCheckTest.test_rule3_a_script_src_from_another_origin_is_a_problem_naming_the_url)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 247, in test_rule3_a_script_src_from_another_origin_is_a_problem_naming_the_url
+    self.assertReported("index.html", "https://cdn.example/x.js")
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 147, in assertReported
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_source_src_from_another_origin_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_a_source_src_from_another_origin_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 276, in test_rule3_a_source_src_from_another_origin_is_a_problem
+    self.assertOnly("index.html", "//media.example/e.mp4")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_source_srcset_from_another_origin_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_a_source_srcset_from_another_origin_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 272, in test_rule3_a_source_srcset_from_another_origin_is_a_problem
+    self.assertOnly("index.html", "https://cdn.example/d.webp")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_a_stylesheet_link_from_another_origin_is_a_problem_naming_the_url (ci.test_site.SiteCheckTest.test_rule3_a_stylesheet_link_from_another_origin_is_a_problem_naming_the_url)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 251, in test_rule3_a_stylesheet_link_from_another_origin_is_a_problem_naming_the_url
+    self.assertOnly("index.html", "https://fonts.example/css?family=X")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_an_icon_link_from_a_protocol_relative_url_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_an_icon_link_from_a_protocol_relative_url_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 255, in test_rule3_an_icon_link_from_a_protocol_relative_url_is_a_problem
+    self.assertOnly("index.html", "//cdn.example/favicon.ico")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_an_iframe_from_another_origin_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_an_iframe_from_another_origin_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 280, in test_rule3_an_iframe_from_another_origin_is_a_problem
+    self.assertOnly("index.html", "https://www.example.com/embed/f")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_an_img_src_from_a_protocol_relative_url_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_an_img_src_from_a_protocol_relative_url_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 263, in test_rule3_an_img_src_from_a_protocol_relative_url_is_a_problem
+    self.assertOnly("index.html", "//cdn.example/b.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_an_img_src_over_http_is_a_problem_naming_the_url (ci.test_site.SiteCheckTest.test_rule3_an_img_src_over_http_is_a_problem_naming_the_url)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 259, in test_rule3_an_img_src_over_http_is_a_problem_naming_the_url
+    self.assertOnly("404.html", "http://images.example/a.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_an_img_srcset_candidate_from_another_origin_is_a_problem (ci.test_site.SiteCheckTest.test_rule3_an_img_srcset_candidate_from_another_origin_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 267, in test_rule3_an_img_srcset_candidate_from_another_origin_is_a_problem
+    self.assertOnly("index.html", "https://cdn.example/c.png")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule3_the_canonical_link_and_anchors_to_another_origin_are_allowed (ci.test_site.SiteCheckTest.test_rule3_the_canonical_link_and_anchors_to_another_origin_are_allowed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 301, in test_rule3_the_canonical_link_and_anchors_to_another_origin_are_allowed
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule4_a_local_script_src_is_a_problem_although_the_file_exists (ci.test_site.SiteCheckTest.test_rule4_a_local_script_src_is_a_problem_although_the_file_exists)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 312, in test_rule4_a_local_script_src_is_a_problem_although_the_file_exists
+    self.assertOnly("index.html", "script")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule4_an_inline_script_element_is_a_problem (ci.test_site.SiteCheckTest.test_rule4_an_inline_script_element_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 307, in test_rule4_an_inline_script_element_is_a_problem
+    self.assertOnly("404.html", "script")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule4_the_word_script_in_text_and_a_noscript_free_page_are_not_a_problem (ci.test_site.SiteCheckTest.test_rule4_the_word_script_in_text_and_a_noscript_free_page_are_not_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 316, in test_rule4_the_word_script_in_text_and_a_noscript_free_page_are_not_a_problem
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_a_blank_title_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_a_blank_title_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 330, in test_rule5_a_blank_title_is_a_problem
+    self.assertOnly("index.html", "title")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_a_page_in_a_subdirectory_is_checked_too (ci.test_site.SiteCheckTest.test_rule5_a_page_in_a_subdirectory_is_checked_too)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 369, in test_rule5_a_page_in_a_subdirectory_is_checked_too
+    self.assertOnly("docs/more.html", "title")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_a_page_without_title_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_a_page_without_title_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 326, in test_rule5_a_page_without_title_is_a_problem
+    self.assertOnly("404.html", "title")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_a_page_without_viewport_meta_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_a_page_without_viewport_meta_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 334, in test_rule5_a_page_without_viewport_meta_is_a_problem
+    self.assertOnly("404.html", "viewport")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_an_empty_alt_counts_and_other_pages_need_no_canonical_or_description (ci.test_site.SiteCheckTest.test_rule5_an_empty_alt_counts_and_other_pages_need_no_canonical_or_description)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 362, in test_rule5_an_empty_alt_counts_and_other_pages_need_no_canonical_or_description
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_an_html_element_without_lang_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_an_html_element_without_lang_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 322, in test_rule5_an_html_element_without_lang_is_a_problem
+    self.assertOnly("404.html", "lang")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_an_img_without_alt_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_an_img_without_alt_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 354, in test_rule5_an_img_without_alt_is_a_problem
+    self.assertOnly("404.html", "alt")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_index_with_a_canonical_link_to_another_url_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_index_with_a_canonical_link_to_another_url_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 342, in test_rule5_index_with_a_canonical_link_to_another_url_is_a_problem
+    self.assertOnly("index.html", "canonical")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_index_with_an_empty_description_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_index_with_an_empty_description_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 350, in test_rule5_index_with_an_empty_description_is_a_problem
+    self.assertOnly("index.html", "description")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_index_without_canonical_link_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_index_without_canonical_link_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 338, in test_rule5_index_without_canonical_link_is_a_problem
+    self.assertOnly("index.html", "canonical")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule5_index_without_description_meta_is_a_problem (ci.test_site.SiteCheckTest.test_rule5_index_without_description_meta_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 346, in test_rule5_index_without_description_meta_is_a_problem
+    self.assertOnly("index.html", "description")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule6_relay_play_and_re_play_are_not_the_word (ci.test_site.SiteCheckTest.test_rule6_relay_play_and_re_play_are_not_the_word)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 387, in test_rule6_relay_play_and_re_play_are_not_the_word
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule6_the_word_in_an_html_page_is_a_problem (ci.test_site.SiteCheckTest.test_rule6_the_word_in_an_html_page_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 375, in test_rule6_the_word_in_an_html_page_is_a_problem
+    self.assertOnly("index.html", "replay")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule6_the_word_in_any_other_file_at_any_depth_is_a_problem (ci.test_site.SiteCheckTest.test_rule6_the_word_in_any_other_file_at_any_depth_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 383, in test_rule6_the_word_in_any_other_file_at_any_depth_is_a_problem
+    self.assertOnly("brand/note.svg", "replay")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_rule6_the_word_in_upper_case_in_a_css_comment_is_a_problem (ci.test_site.SiteCheckTest.test_rule6_the_word_in_upper_case_in_a_css_comment_is_a_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 379, in test_rule6_the_word_in_upper_case_in_a_css_comment_is_a_problem
+    self.assertOnly("style.css", "replay")
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 139, in assertOnly
+    found = self.problems()
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_the_base_site_with_a_binary_file_and_an_svg_namespace_has_no_problem (ci.test_site.SiteCheckTest.test_the_base_site_with_a_binary_file_and_an_svg_namespace_has_no_problem)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 157, in test_the_base_site_with_a_binary_file_and_an_svg_namespace_has_no_problem
+    self.assertClean()
+    ~~~~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 152, in assertClean
+    self.assertEqual([], self.problems())
+                         ~~~~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 133, in problems
+    found = site_check().problems(self.root)
+            ~~~~~~~~~~^^
+  File "<worktree>/ci/test_site.py", line 92, in site_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_the_command_line_exits_0_and_prints_nothing_on_a_clean_site (ci.test_site.SiteCheckTest.test_the_command_line_exits_0_and_prints_nothing_on_a_clean_site)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 392, in test_the_command_line_exits_0_and_prints_nothing_on_a_clean_site
+    code, lines, out = run_check(self.root)
+                       ~~~~~~~~~^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 103, in run_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_the_command_line_exits_1_on_a_missing_index (ci.test_site.SiteCheckTest.test_the_command_line_exits_1_on_a_missing_index)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 409, in test_the_command_line_exits_1_on_a_missing_index
+    code, lines, out = run_check(self.root)
+                       ~~~~~~~~~^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 103, in run_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+======================================================================
+FAIL: test_the_command_line_prints_one_line_per_problem_and_exits_1 (ci.test_site.SiteCheckTest.test_the_command_line_prints_one_line_per_problem_and_exits_1)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "<worktree>/ci/test_site.py", line 399, in test_the_command_line_prints_one_line_per_problem_and_exits_1
+    code, lines, out = run_check(self.root)
+                       ~~~~~~~~~^^^^^^^^^^^
+  File "<worktree>/ci/test_site.py", line 103, in run_check
+    raise AssertionError(f"{CHECK} does not exist")
+AssertionError: <worktree>/ci/site_check.py does not exist
+
+----------------------------------------------------------------------
+Ran 59 tests in 0.078s
+
+FAILED (failures=59)

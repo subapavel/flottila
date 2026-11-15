@@ -1,0 +1,4 @@
+++ python3 ci/site_build.py _site
+++ python3 ci/site_check.py _site
+++ echo exit=0
+exit=0

@@ -15,3 +15,6 @@ agent/work/*
 # jqwik failure database (local test cache)
 .jqwik-database
 **/.jqwik-database
+
+# the website built locally by ci/site_build.py (BRAND-6)
+/_site/

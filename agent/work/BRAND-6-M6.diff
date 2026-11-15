@@ -1,0 +1,4 @@
+187c187
+<         if FORBIDDEN in data.lower():
+---
+>         if FORBIDDEN in data:

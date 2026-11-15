@@ -1,0 +1,4 @@
+96c96
+<         elif tag == "img" and not any(name == "alt" for name, _ in attrs):
+---
+>         elif tag == "img" and not a.get("alt"):

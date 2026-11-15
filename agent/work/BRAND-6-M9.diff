@@ -1,0 +1,4 @@
+131c131
+<     css = CSS_COMMENT.sub("", css)
+---
+>     pass

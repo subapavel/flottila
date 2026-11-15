@@ -1,11 +1,11 @@
 # Handoff
 
 state: D-148's plan is complete. The owner's answers of 2026-11-15 are on main (D-156 to D-159). The repository is renamed
-  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: FIX-235.
-WIP: BRAND-6 [B] (the website, agent/packets/BRAND-6.md): red tests approved, implementer in worktree scratchpad/wsite; then the
-  reviewer, the commit, and the owner's steps (Pages on, DNS, the custom domain). FIX-235 and FIX-260 are committed; D-146's
-  amendment is `draft - review at hand-over`. `ci` of FIX-235's head: to be read (run 229 was red on what FIX-260 answers).
-next exact action: read `ci`; BRAND-6 to its commit. Then FIX-262 [C] (replay out, D-156), CONSIDER-24 (the re-run window's
+  `subapavel/rail8` (the remote here names the old one; GitHub redirects); `rail8.dev` is registered. last commit: BRAND-6.
+WIP: FIX-262 [C] (replay out, D-156): the scout's list is agent/work/FIX-262-scout.md; the designer's draft, then the advisor,
+  the finding F-55 and the removal rows. BRAND-6 is committed: the `site` workflow is red until the owner switches Pages on
+  (steps in agent/packets/BRAND-6.md). `ci` of FIX-235's head: run 233 in progress at this commit, to be read.
+next exact action: FIX-262's design to its finding and rows. Then CONSIDER-24 (the re-run window's
   cause), MAP-9 [C] (test rules: measure, propose), MAP-1 first step, BRAND-7 [A], FIX-236, 237, 228, 230, 232, 233, 223 (list), 205,
   196, 255, 256, 257-259, 261, then the audit's rows FIX-238 to 253. Whole reactor green before each commit (26 min).
 MAPPING: D-153 stands until MAP-1's design is accepted - root Design rules do not bind mapping/; Tests, Working rules, Context
@@ -17,4 +17,4 @@ OWNER: applies agent/patches/BRAND-3-steering.patch (OPS-1's is applied, 25484e4
 OWNER ACTIONS, never a session's: GitHub's About text (the line chosen 2026-11-15, in BRAND-6's packet); Pages on and DNS for
   `rail8.dev` (after BRAND-6); archive `subapavel/flottila-mapping` (after MAP-3). TRAPS: `-Dtest=` on runtime OOMs; one Maven at a
   time (`flock /tmp/rail8-maven.lock`); a container restart kills dockerd, Postgres, agents. The owner may push to `main`: fetch first.
-  open issues: ISSUE-1, 6, 8, 9. next free ids: D-160, FIX-263, BRAND-8, OPS-13, CONSIDER-27, ISSUE-10, F-55, MAP-10.
+  open issues: ISSUE-1, 6, 8, 9. next free ids: D-160, FIX-263, BRAND-9, OPS-13, CONSIDER-27, ISSUE-10, F-55, MAP-10.

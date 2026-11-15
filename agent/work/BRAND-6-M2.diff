@@ -1,0 +1,4 @@
+42c42
+<     return not (ref.startswith("#") or ref.startswith("//") or SCHEME.match(ref))
+---
+>     return not (ref.startswith("#") or SCHEME.match(ref))

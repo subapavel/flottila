@@ -1,0 +1,24 @@
+$ git ls-remote --tags https://github.com/actions/configure-pages.git | grep -E 'refs/tags/v[0-9]+$' | sort -V -k2
+5983edfe76a1b59a942c25df61668f0af686facf	refs/tags/v0
+9a141972ca62e4def3a31137a5a086ba5c58572a	refs/tags/v1
+c5a3e1159e0cbdf0845eb8811bd39e39fc3099c2	refs/tags/v2
+b8130d9ab958b325bbde9786d62f2c97a9885a0e	refs/tags/v3
+1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d	refs/tags/v4
+983d7736d9b0ae728b81ab479565c72886d7745b	refs/tags/v5
+45bfe0192ca1faeb007ade9deae92b16b8254a0d	refs/tags/v6
+
+$ git ls-remote --tags https://github.com/actions/upload-pages-artifact.git | grep -E 'refs/tags/v[0-9]+$' | sort -V -k2
+5abd6d2e035406f412d089536ee922a104d12f2b	refs/tags/v0
+84bb4cd4b733d5c320c9c9cfbc354937524f4d64	refs/tags/v1
+a753861a5debcf57bf8b404356158c8e1e33150c	refs/tags/v2
+56afc609e74202658d3ffba0e8f6dda462b719fa	refs/tags/v3
+7b1f4a764d45c48632c6b24a0339c27f5614fb0b	refs/tags/v4
+fc324d3547104276b827a68afc52ff2a11cc49c9	refs/tags/v5
+
+$ git ls-remote --tags https://github.com/actions/deploy-pages.git | grep -E 'refs/tags/v[0-9]+$' | sort -V -k2
+f27bcc15848fdcdcc02f01754eb838e44bcf389b	refs/tags/v1
+de14547edc9944350dc0481aa5b7afb08e75f254	refs/tags/v2
+13b55b33dd8996121833dbc1db458c793a334630	refs/tags/v3
+d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e	refs/tags/v4
+368f82528645a54fb793d4d04e342629a3f51346	refs/tags/v5
+

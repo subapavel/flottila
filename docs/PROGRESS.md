@@ -1,4 +1,19 @@
 
+## 2026-11-15 — BRAND-6 the website at rail8.dev — done, review PASS [B]; the owner switches it on
+
+- The owner asked for a website for `rail8.dev` on GitHub Pages and chose its headline (the same text as the repository's
+  description): "a modern open-source alternative to legacy integration middleware ... fast by design, every message traceable".
+- `site/`: one static page and a 404 page - no script, nothing from another origin, light and dark, readable from 320 px. Brand
+  files are taken from `docs/brand/` at build (`ci/site_build.py`), never copied into `site/`.
+- `ci/site_check.py`: six rules (an index; every local reference resolves; nothing loaded from another origin; no script; the
+  page's metadata; no word of replay). Red first: 59 cases, then 66 green after the review; `ci` runs them.
+- `.github/workflows/site.yml`: a build job (checks, build, artifact) and a deploy job that alone holds the Pages token.
+- Review: FAIL in round 1 on two cases that passed for the wrong reason, PASS in round 2. Nine hand mutants of the checker,
+  all killed. The copy was narrowed to what the design says (a large body is streamed; payloads recorded up to a limit).
+- Not shown: the page as Pages serves it. Nothing is deployed and the `site` workflow is red until the owner switches Pages
+  on; the owner's steps (Pages, DNS, the custom domain, the About box) are in agent/packets/BRAND-6.md. DNS values from knowledge.
+- New row BRAND-8 [A]: what the checker would miss if the page grew. `ci` of FIX-235's head: run 233 in progress at this commit, to be read.
+
 ## 2026-11-15 — FIX-235 nothing the writer was given throws through BatchingWriter — done, review PASS [C]
 
 - D-146 says no public method of the writer completes by throwing; FIX-195's late review found four throws that still did.

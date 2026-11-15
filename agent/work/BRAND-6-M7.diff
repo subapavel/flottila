@@ -1,0 +1,4 @@
+50c50
+<     return [part.split()[0] for part in value.split(",") if part.strip()]
+---
+>     return [value]

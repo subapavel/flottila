@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rail8</title>
+<meta name="description" content="Rail8 — a modern open-source alternative to legacy integration middleware: Java 25 virtual threads, Vert.x 5, fast by design, every message traceable end to end. Apache 2.0.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://rail8.dev/">
+<link rel="icon" href="brand/favicon.ico" sizes="32x32">
+<link rel="icon" href="brand/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="brand/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="hero">
+  <h1>
+    <picture>
+      <source srcset="brand/rail8-logo-dark.svg" media="(prefers-color-scheme: dark)">
+      <img class="logo" src="brand/rail8-logo.svg" width="188" height="88" alt="Rail8">
+    </picture>
+  </h1>
+  <p class="lead">A modern open-source alternative to legacy integration middleware: Java 25 virtual threads,
+    Vert.x 5, fast by design, every message traceable end to end. Apache 2.0.</p>
+  <nav aria-label="Project links">
+    <ul class="links">
+      <li><a class="button primary" href="https://github.com/subapavel/rail8">Repository on GitHub</a></li>
+      <li><a class="button" href="https://github.com/subapavel/rail8/blob/main/docs/QUICKSTART.md">Quick start</a></li>
+      <li><a class="button" href="https://github.com/subapavel/rail8/blob/main/docs/ARCHITECTURE.md">Architecture</a></li>
+    </ul>
+  </nav>
+</header>
+<main>
+  <section>
+    <h2>What that means</h2>
+    <p>Every message in flight runs on its own virtual thread, and a large message body is streamed, not held
+      whole in memory. “Fast by design” describes how Rail8 is built, not a measured number.</p>
+    <p>Every message and every step is recorded and searchable, with its payload up to a recording limit, so each
+      message can be followed from the moment it arrives to the moment it leaves.</p>
+  </section>
+  <section>
+    <h2>Stack</h2>
+    <ul class="stack">
+      <li>Java 25</li>
+      <li>Vert.x 5.1</li>
+      <li>PostgreSQL</li>
+      <li>ClickHouse</li>
+      <li>Valkey</li>
+      <li>S3</li>
+    </ul>
+    <p>Licence: Apache 2.0.</p>
+  </section>
+  <section class="status">
+    <h2>Status</h2>
+    <p>Under construction. There is no release yet, and Rail8 is not usable in production.</p>
+  </section>
+</main>
+<footer>
+  <picture>
+    <source srcset="brand/rail8-mark-dark.svg" media="(prefers-color-scheme: dark)">
+    <img class="mark" src="brand/rail8-mark.svg" width="24" height="24" alt="">
+  </picture>
+  <p>Apache License 2.0 · © 2026 The Rail8 Authors</p>
+</footer>
+</body>
+</html>

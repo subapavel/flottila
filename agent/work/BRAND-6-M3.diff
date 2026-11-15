@@ -1,0 +1,4 @@
+92c92
+<                     if name in LOADS.get(tag, ()) and is_foreign(ref) and not (tag == "link" and "canonical" in rel):
+---
+>                     if name in LOADS.get(tag, ()) and is_foreign(ref):
