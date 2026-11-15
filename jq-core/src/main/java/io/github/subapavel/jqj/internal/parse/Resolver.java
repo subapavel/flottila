@@ -89,7 +89,7 @@ import java.util.function.Supplier;
  * and a Break of its slot; and (#69, ADR-0041) {@code reduce} and {@code foreach}, a Reduce or Foreach around its
  * pattern's Binds and the Advance of its state slot, and {@code range(a; b)}, an Intrinsic of Range; and (#70,
  * ADR-0040) {@code def}, which makes no node: a call of a definition is its body, inlined; and (#71, ADR-0042) a call
- * of a prelude definition, {@code ..} among them, inlined so too, and an unbuilt native, a Stub; and (#72) the language
+ * of a prelude definition, inlined so too, {@code ..} a call of recurse/0 (#110), and an unbuilt native, a Stub; and (#72) the language
  * natives, each an Intrinsic of its operation, {@code last(f)} a Reduce over f. Every other kind is a Stub.
  *
  * <p>A key or bound that is a Const or a Var is the step's argument; any other is bound around the step's target, the
@@ -108,20 +108,21 @@ import java.util.function.Supplier;
  * parameter {@code $a} is also a Bind of it around the body, the first parameter outermost (ADR-0040), and past {@link
  * #BIND_RUN} of them their one Binds (ADR-0043), as an object's, an interpolation's and a pattern's Binds are.
  *
- * <p>A call of a definition of the filter's text in a recursive group is a Call of its lifted function (ADR-0045 #107,
- * GLOSSARY "Lifted function"), every other call stays inlined: the first call places the definition in the program's
- * functions, and its body is lowered after the main filter, from a worklist, once for every call. A function's
- * parameters are its own, then its captures in the Binder's order ({@link Binder#captures}): a value parameter and a
- * value capture each a value slot, the first at 0; a filter parameter, a value parameter a call names, and a closure
- * capture each a closure, which a call of it in the body runs as a ParamCall. A call into a recursive group of the
- * prelude, or of a definition nested in a prelude body, is a Stub until #110. One compile spends at most {@link #INLINE_CAP} nodes inside
- * expansions, and nests at most {@link #EXPANSIONS} - 1 of them; past either the filter is a Stub (GLOSSARY "Inline
- * cap"), and so is a filter with a body of more than {@link #MAX_IR_DEPTH} levels of IR (F-44). Nesting and depth
- * restart at 0 in each function (#106 "Functions in the IR"). A Stub is thrown at once.
+ * <p>A call of a definition in a recursive group, of the filter's text, of the prelude or nested in a prelude body, is a
+ * Call of its lifted function (ADR-0045 #107, ADR-0042 amendment for #110, GLOSSARY "Lifted function"), every other
+ * call stays inlined: the first call places the definition in the program's functions, once per compile, and its body
+ * is lowered after the main filter, from a worklist, once for every call. A function's parameters are its own, then its
+ * captures in the Binder's order ({@link Binder#captures}): a value parameter and a value capture each a value slot,
+ * the first at 0; a filter parameter, a value parameter a call names, and a closure capture each a closure, which a call
+ * of it in the body runs as a ParamCall. One compile spends at most {@link #INLINE_CAP} nodes inside expansions, and
+ * nests at most {@link #EXPANSIONS} - 1 of them; past either the filter is a Stub (GLOSSARY "Inline cap"), and so is a
+ * filter with a body of more than {@link #MAX_IR_DEPTH} levels of IR (F-44). Nesting and depth restart at 0 in each
+ * function (#106 "Functions in the IR"). A Stub is thrown at once.
  *
  * <p>A prelude definition's body is written in no environment of the filter's, and every node lowered from it takes
  * the Source of the filter's call that reached the prelude, while a closure argument of the filter keeps its own
- * (ADR-0042 "Source", amending ADR-0031): {@link #here} gives each new node its Source.
+ * (ADR-0042 "Source", amending ADR-0031): {@link #here} gives each new node its Source. A lifted body's nodes take the
+ * Source of the call that first placed it (ADR-0042 amendment for #110).
  */
 public final class Resolver {
   /** jq's message for a program with no top-level filter, which is no syntax error (ADR-0032). */
@@ -235,9 +236,10 @@ public final class Resolver {
 
   /**
    * A definition in a recursive group, lifted to a function of the program: its environment where it is written,
-   * which its body is lowered in, and its captures.
+   * which its body is lowered in, its captures, and the {@link #site} of the call that placed it, which its body's
+   * nodes take: null for a definition of the filter's text (ADR-0042 amendment for #110).
    */
-  private record Lifted(Ast.FuncDef def, Env defining, List<Binder.Capture> captures) {}
+  private record Lifted(Ast.FuncDef def, Env defining, List<Binder.Capture> captures, Source site) {}
 
   /**
    * A declaration the Binder bound a reference to, in scope where the lowering is: a variable's, label's or value
@@ -356,8 +358,9 @@ public final class Resolver {
     int values = slots;
     env = inner;
     // Nesting and depth restart at 0 in each function (#106 "Functions in the IR", ADR-0040, F-54). A lowering that
-    // ends restores the site, the levels and the expansions it is inside, so all three are the main filter's start
-    // again: no site, no level, no expansion.
+    // ends restores the site, the levels and the expansions it is inside, so the levels and the expansions are the main
+    // filter's start again, no level and no expansion; the site is the one the function was placed at.
+    site = f.site();
     Node body = lower(f.def().body());
     within(body, MAX_IR_DEPTH);
     return new Function(f.def().source(), closures, values, body);
@@ -570,8 +573,15 @@ public final class Resolver {
         yield expand(d.def(), c, body.env(), body.site());
       }
       // A prelude body is written in no environment of the filter's, and its nodes take the Source of the filter's
-      // call that reached the prelude: this call's, or the one a prelude body that calls it was reached by.
-      case Binder.Library l -> expand(l.def(), c, null, site == null ? c.source() : site);
+      // call that reached the prelude: this call's, or the one a prelude body that calls it was reached by. A lifted
+      // one is called by its place, before expand would lift it again: _flatten and combinations call themselves.
+      case Binder.Library l -> {
+        Integer place = places.get(l.def());
+        if (place != null) {
+          yield invoke(place, c);
+        }
+        yield expand(l.def(), c, null, site == null ? c.source() : site);
+      }
       case Binder.Parameter p -> closure(find(p.param()).closure(), c.source());
     };
   }
@@ -649,17 +659,13 @@ public final class Resolver {
    * environment, at {@code bodySite}, plus its parameters, each bound to its argument's closure in the caller's
    * environment, a closure that is a parameter of the caller passed on as it is; each value parameter's closure is also
    * lowered here, on the call's input, and bound to a slot of its own around the body, the first parameter outermost.
-   * A definition of the filter's text in a recursive group is not inlined: it is lifted ({@link #lift}) and the call is
-   * a Call of it. One of the prelude, or nested in a prelude body, is a Stub until #110, and so is the expansion nested
-   * {@link #EXPANSIONS} deep.
+   * A definition in a recursive group, of the filter's text or the prelude's, is not inlined: it is lifted ({@link
+   * #lift}) at {@code bodySite} and the call is a Call of it (ADR-0042 amendment for #110). The expansion nested {@link
+   * #EXPANSIONS} deep is a Stub.
    */
   private Node expand(Ast.FuncDef def, Ast.Call c, Env defining, Source bodySite) {
     if (binder.recursive(def)) {
-      // The filter's own text is the one at no site (ADR-0042 "Source"): a Library call always has one.
-      if (bodySite == null) {
-        return invoke(lift(def, defining), c);
-      }
-      throw stub("the call of the recursive ", def.name(), "/", def.params().size(), " at byte ", here(c.source()).start());
+      return invoke(lift(def, defining, bodySite), c);
     }
     if (depth + 1 >= EXPANSIONS) {
       throw stub("a filter that nests ", EXPANSIONS, " expansions");
@@ -708,11 +714,12 @@ public final class Resolver {
 
   /**
    * The place of {@code def} in the program's functions, a new one at the end, its body lowered after the main filter
-   * in {@code defining}, where it is written.
+   * in {@code defining}, where it is written, at {@code site}, the Source its nodes take: that of the call that places
+   * it, or null in the filter's text.
    */
-  private int lift(Ast.FuncDef def, Env defining) {
+  private int lift(Ast.FuncDef def, Env defining, Source site) {
     int place = lifted.size();
-    lifted.add(new Lifted(def, defining, binder.captures(def)));
+    lifted.add(new Lifted(def, defining, binder.captures(def), site));
     places.put(def, place);
     return place;
   }

@@ -319,7 +319,7 @@ final class Binder {
     level = new Level(id);
     owner = id;
     prelude = def.name() + "/" + def.params().size();
-    // The definition itself, which its body may call: a recursive group, which the Resolver stubs.
+    // The definition itself, which its body may call: a recursive group, which the Resolver lifts (#110).
     push(prelude, new Library(def));
     for (Ast.Param p : def.params()) {
       push(p.name() + "/0", new Parameter(p));
