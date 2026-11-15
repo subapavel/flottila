@@ -115,9 +115,11 @@ import java.util.function.Supplier;
  * captures in the Binder's order ({@link Binder#captures}): a value parameter and a value capture each a value slot,
  * the first at 0; a filter parameter, a value parameter a call names, and a closure capture each a closure, which a call
  * of it in the body runs as a ParamCall. One compile spends at most {@link #INLINE_CAP} nodes inside expansions, and
- * nests at most {@link #EXPANSIONS} - 1 of them; past either the filter is a Stub (GLOSSARY "Inline cap"), and so is a
- * filter with a body of more than {@link #MAX_IR_DEPTH} levels of IR (F-44). Nesting and depth restart at 0 in each
- * function (#106 "Functions in the IR"). A Stub is thrown at once.
+ * nests at most {@link #EXPANSIONS} - 1 of them (GLOSSARY "Inline cap"): a call whose expansion measure ({@link
+ * ExpansionMeasure}) would pass the cap or {@link #MAX_IR_DEPTH}, or that would be the {@link #EXPANSIONS}th nested
+ * expansion, is a PLAIN Call of its definition, lifted once, and so is every later call of it (ADR-0040 "Amendment
+ * (ticket #114)", F-54). Any other construct past {@link #MAX_IR_DEPTH} levels of IR makes the filter a Stub (F-44).
+ * Nesting and depth restart at 0 in each function (#106 "Functions in the IR"). A Stub is thrown at once.
  *
  * <p>A prelude definition's body is written in no environment of the filter's, and every node lowered from it takes
  * the Source of the filter's call that reached the prelude, while a closure argument of the filter keeps its own
@@ -131,13 +133,13 @@ public final class Resolver {
   /** ADR-0040: how many nodes one compile lowers inside expansions, definition bodies and closures, at most. */
   static final int INLINE_CAP = 65_536;
 
-  /** ADR-0040: the nesting of expansions that is a Stub, the 512th (#70 red ruling: 511 nested compile). */
+  /** ADR-0040: the nesting of expansions that is a PLAIN Call, the 512th (#70 red ruling: 511 nested are inlined; #114). */
   static final int EXPANSIONS = 512;
 
   /**
    * ADR-0040 "IR depth" and "What counts" (F-44): the most levels of built IR a filter may have, the leaf counted
-   * ({@code [[.]]} has three); past it the filter is a Stub, as the 512th nested expansion is, since nested expansions
-   * and chains of computed keys would otherwise stack the IR, and the Resolver's, IrVerifier's and the Compiler's
+   * ({@code [[.]]} has three); a call whose expansion would pass it is a PLAIN Call (#114), and any other construct
+   * past it makes the filter a Stub, since nested expansions and chains of computed keys would otherwise stack the IR, and the Resolver's, IrVerifier's and the Compiler's
    * recursion on it, as deep as the inline cap lets them. The depth is the whole built IR's, as IrVerifier recurses on
    * it ({@link #within}), so every node counts wherever the Resolver built it: in an Ast's lowering, as a value
    * parameter's Bind around an expansion, as a chain's Bind of a computed key, or in a balanced Pipe or Comma tree. The
@@ -200,6 +202,9 @@ public final class Resolver {
   /** What pass 1 bound each reference to. */
   private final Binder binder;
 
+  /** The expansion measure of the filter's texts, which decides whether a call is inlined (ADR-0040 #114). */
+  private final ExpansionMeasure measure;
+
   /** The declarations in scope where the lowering is, innermost first. */
   private Env env;
 
@@ -253,7 +258,7 @@ public final class Resolver {
    * its caller's environment (GLOSSARY "Closure"), or a definition's body, lowered in its definition's; or, with no
    * body, closure parameter {@code param} of the function whose body the lowering is in, which runs as a ParamCall.
    */
-  private record Closure(Ast body, Env env, Source site, int param) {}
+  private record Closure(Ast body, Env env, Source site, int param, ExpansionMeasure.Form measured) {}
 
   /** A Bind a pattern's match lowers to: its value, its slot, and the part of the pattern it spans. */
   private record Step(Node value, int slot, Source source) {}
@@ -284,10 +289,11 @@ public final class Resolver {
   /** A {@code ?} on a term that is no step, spanning {@code at}: a Try with {@code empty} as its handler around its target. */
   private record Quiet(Source at) implements Peeled {}
 
-  private Resolver(ConstantKey folds, FilterText text, Binder binder) {
+  private Resolver(ConstantKey folds, FilterText text, Binder binder, ExpansionMeasure measure) {
     this.folds = folds;
     this.text = text;
     this.binder = binder;
+    this.measure = measure;
   }
 
   /**
@@ -328,6 +334,17 @@ public final class Resolver {
    * @throws JqCompileException as {@link #resolve(ParsedFilter, List)}
    */
   public static Resolved resolved(ParsedFilter filter, List<String> parameters) {
+    return resolved(filter, parameters, 0);
+  }
+
+  /**
+   * {@link #resolved(ParsedFilter, List)} with {@code spentBefore} nodes of the compile's inline cap spent before the
+   * lowering starts, so the expansions have {@link #INLINE_CAP} - {@code spentBefore} left: the seam of the expansion
+   * measure's property (#114).
+   *
+   * @throws JqCompileException as {@link #resolve(ParsedFilter, List)}
+   */
+  static Resolved resolved(ParsedFilter filter, List<String> parameters, int spentBefore) {
     if (filter.main() == null) {
       throw new JqCompileException(List.of(NOT_GIVEN), 1, 1);
     }
@@ -335,7 +352,8 @@ public final class Resolver {
       throw Stub.unbuilt("the module directive and imports");
     }
     Binder binder = Binder.bind(filter.main(), parameters, filter.text());
-    Resolver resolver = new Resolver(filter.folds(), filter.text(), binder);
+    Resolver resolver = new Resolver(filter.folds(), filter.text(), binder, ExpansionMeasure.of(filter.main(), binder));
+    resolver.inlined = spentBefore;
     for (Object host : binder.hosts()) {
       resolver.env = new Env(host, resolver.slots++, null, resolver.env);
     }
@@ -368,13 +386,13 @@ public final class Resolver {
     Env inner = f.defining();
     for (Ast.Param p : f.def().params()) {
       int slot = p.value() ? slots++ : NO_SLOT;
-      Closure run = p.value() && !binder.called(p) ? null : new Closure(null, null, null, closures++);
+      Closure run = p.value() && !binder.called(p) ? null : new Closure(null, null, null, closures++, ExpansionMeasure.PARAM_CALL);
       inner = new Env(p, slot, run, inner);
     }
     captured = new IdentityHashMap<>();
     for (Binder.Capture c : f.captures()) {
       int slot = c.value() ? slots++ : NO_SLOT;
-      Closure run = c.closure() ? new Closure(null, null, null, closures++) : null;
+      Closure run = c.closure() ? new Closure(null, null, null, closures++, ExpansionMeasure.PARAM_CALL) : null;
       captured.put(c.declaration(), new Env(c.declaration(), slot, run, null));
     }
     int values = slots;
@@ -564,7 +582,10 @@ public final class Resolver {
     return site == null ? own : site;
   }
 
-  /** Spends one node of the compile's inline cap when the lowering is inside an expansion; past the cap, a Stub. */
+  /**
+   * Spends one node of the compile's inline cap when the lowering is inside an expansion; past the cap, a Stub. Since
+   * #114 an expansion starts only when its measure fits the cap, so the Stub is a backstop no filter reaches (F-90).
+   */
   private void spend() {
     if (depth > 0 && ++inlined > INLINE_CAP) {
       throw stub("a filter that inlines more than ", INLINE_CAP, " nodes");
@@ -683,15 +704,12 @@ public final class Resolver {
    * environment, a closure that is a parameter of the caller passed on as it is; each value parameter's closure is also
    * lowered here, on the call's input, and bound to a slot of its own around the body, the first parameter outermost.
    * A definition in a recursive group, of the filter's text or the prelude's, is not inlined: it is lifted ({@link
-   * #lift}) at {@code bodySite} and the call is a Call of it (ADR-0042 amendment for #110). The expansion nested {@link
-   * #EXPANSIONS} deep is a Stub.
+   * #lift}) at {@code bodySite} and the call is a Call of it (ADR-0042 amendment for #110). So is a definition whose
+   * call would not {@link #fit}: a PLAIN Call, and every later call of it is a Call too (ADR-0040 #114 amendment).
    */
   private Node expand(Ast.FuncDef def, Ast.Call c, Env defining, Source bodySite) {
-    if (binder.recursive(def)) {
+    if (binder.recursive(def) || !fit(def, c, defining)) {
       return invoke(lift(def, defining, bodySite), c);
-    }
-    if (depth + 1 >= EXPANSIONS) {
-      throw stub("a filter that nests ", EXPANSIONS, " expansions");
     }
     depth++;
     Env caller = env;
@@ -733,6 +751,25 @@ public final class Resolver {
     site = callerSite;
     depth--;
     return body;
+  }
+
+  /**
+   * Whether the call {@code c} of {@code def}, written in {@code defining}, is inlined (ADR-0040 #114 amendment): it is
+   * not the {@link #EXPANSIONS}th nested expansion, the nodes its expansion measure gives fit what is left of {@link
+   * #INLINE_CAP}, and the levels it gives fit what is left of {@link #MAX_IR_DEPTH}. The measure takes each argument's
+   * closure here, each parameter outside {@code def} its body runs as {@code defining} holds it, and each closure
+   * capture as {@link #invoke} would pass it.
+   */
+  private boolean fit(Ast.FuncDef def, Ast.Call c, Env defining) {
+    if (depth + 1 >= EXPANSIONS) {
+      return false;
+    }
+    List<ExpansionMeasure.Form> args = new ArrayList<>(c.args().size());
+    for (Ast arg : c.args()) {
+      args.add(argument(arg).measured());
+    }
+    ExpansionMeasure.Form m = measure.call(def, args, p -> lookup(p, defining).measured(), p -> find(p).closure().measured());
+    return inlined + m.nodes() <= INLINE_CAP && levels + m.reach() <= MAX_IR_DEPTH;
   }
 
   /**
@@ -810,7 +847,28 @@ public final class Resolver {
     if (binder.binding(arg) instanceof Binder.Parameter p) {
       return find(p.param()).closure();
     }
-    return new Closure(arg, env, site, NO_SLOT);
+    return new Closure(arg, env, site, NO_SLOT, concrete(measure.argument(arg), env));
+  }
+
+  /**
+   * The measure of {@code form} here: each parameter it runs taken as the measure of its closure, found from {@code
+   * from} (a function's captures first, as {@link #find} finds them).
+   */
+  private ExpansionMeasure.Form concrete(ExpansionMeasure.Form form, Env from) {
+    return ExpansionMeasure.evaluated(form, p -> lookup(p, from).measured());
+  }
+
+  /** The closure of {@code declaration}, a closure parameter, as {@link #find} finds it, but from {@code from}. */
+  private Closure lookup(Object declaration, Env from) {
+    Env e = captured.get(declaration);
+    if (e != null) {
+      return e.closure();
+    }
+    e = from;
+    while (e.declaration() != declaration) {
+      e = e.outer();
+    }
+    return e.closure();
   }
 
   /**
@@ -840,7 +898,7 @@ public final class Resolver {
     Env outer = env;
     Ast rest = d;
     while (rest instanceof Ast.Def def) {
-      env = new Env(def.def(), NO_SLOT, new Closure(def.def().body(), env, site, NO_SLOT), env);
+      env = new Env(def.def(), NO_SLOT, new Closure(def.def().body(), env, site, NO_SLOT, null), env);
       rest = def.body();
     }
     Node node = lower(rest);
