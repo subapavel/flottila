@@ -78,9 +78,10 @@ final class CalibrationCell {
    * F-95's Collect-heavy descent, on this branch: each level's call sits under 100 Collects, as each of #114's 300
    * PLAIN calls of IrDepthTest's 30 001-level filter does. That filter is a Stub until #114 lifts it (IrDepthTest
    * {@code aFilterOf30001LevelsIsAStub}); a RECURSIVE call weighs its units as a PLAIN one does (#114), so the
-   * recursion is its stand-in here.
+   * recursion is its stand-in here. As in #114's filter nothing rises above the call's result but one step, {@code |
+   * $n}.
    */
-  static final String COLLECT_DESCENT = "def c: if . == 0 then 0 else " + "[".repeat(100) + ". - 1 | c" + "]".repeat(100) + " | " + ".[0]".repeat(100) + " + 1 end; 300 | c";
+  static final String COLLECT_DESCENT = "def c: if . == 0 then 0 else . as $n | " + "[".repeat(100) + "$n - 1 | c" + "]".repeat(100) + " | $n end; 300 | c";
 
   /**
    * The shapes of ADR-0046 #113 (K4), and F-95's Collect-heavy descent: Spike A's T, E, M and N on {@link #ONES}; the
