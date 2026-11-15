@@ -1,0 +1,133 @@
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/journal/JournalSegmentRowsTest.java b/platform/runtime/src/test/java/dev/rail8/runtime/journal/JournalSegmentRowsTest.java
+index f5ff7b00..e86f7353 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/journal/JournalSegmentRowsTest.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/journal/JournalSegmentRowsTest.java
+@@ -17,6 +17,7 @@ import java.nio.file.Path;
+ import java.nio.file.StandardOpenOption;
+ import java.time.Duration;
+ import java.util.ArrayList;
++import java.util.Arrays;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+@@ -198,6 +199,24 @@ class JournalSegmentRowsTest {
+         assertArrayEquals(JournalFixture.body("id-1", 50), back.read(ref));
+     }
+ 
++    /**
++     * FIX-218: the identity file's magic is a stored name — a node of another build must not read the file. The expectation is the
++     * four bytes as hex literals, never {@code SegmentFormat}'s constant (a node file written and read with one changed constant
++     * would still agree with itself).
++     */
++    @Test
++    void theIdentityFileWrittenByAFirstStartBeginsWithTheMagicRJN1() throws Exception {
++        Settings s = in("identity-magic");
++        Journal j = Journal.open(s.config(), clock, timer, keys(KEY), JournalFiles.real(), new RecordingRows(),
++                () -> UUID.fromString("6f1c2a4e-0d3b-4c5a-9e8f-7a6b5c4d3e2f"));
++        journals.add(j);
++
++        byte[] node = Files.readAllBytes(s.dir.resolve("NODE"));
++
++        assertArrayEquals(new byte[] {0x52, 0x4A, 0x4E, 0x31},   // ASCII RJN1
++                Arrays.copyOf(node, 4), "the first four bytes of NODE are the ASCII magic RJN1 (52 4A 4E 31)");
++    }
++
+     private static UUID uuidAt(byte[] b) {
+         ByteBuffer buf = ByteBuffer.wrap(b);
+         return new UUID(buf.getLong(ID_AT), buf.getLong(ID_AT + 8));
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/PeerKnownAnswerTest.java b/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/PeerKnownAnswerTest.java
+index 02c7631f..0fa62e42 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/PeerKnownAnswerTest.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/PeerKnownAnswerTest.java
+@@ -28,8 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
+  * <p>Inputs: K1 = bytes 0x00..0x1f, K2 = bytes 0x80..0x9f (32 each); the dialer node-b (epoch 4, journal 0b0b0b0b-…-0b, masters
+  * [K1], nonce 0x40..0x5f) dials the listener node-a (epoch 3, journal 0a0a0a0a-…-0a, masters [K2, K1]: K1 its previous key,
+  * nonce 0x60..0x7f). The fingerprint label is {@code INFO + " fingerprint"} with {@code INFO = "rail8-peer-v1"}
+- * (PeerHandshake.java:35, :39) = {@code "rail8-peer-v1 fingerprint"}; the HKDF info is {@code "rail8-peer-v1"} (:114),
+- * the proof label {@code "rail8-peer-v1 proof"} (:38). P5: K_peer = HKDF-SHA256(salt empty, ikm master, info
++ * (PeerHandshake's {@code INFO} and {@code FINGERPRINT_LABEL}) = {@code "rail8-peer-v1 fingerprint"}; the HKDF info is
++ * {@code "rail8-peer-v1"} ({@code INFO}), the proof label {@code "rail8-peer-v1 proof"} ({@code PROOF_LABEL}). P5: K_peer = HKDF-SHA256(salt empty, ikm master, info
+  * {@code "rail8-peer-v1 subkey"}, 32); the fingerprint is HMAC-SHA256(K_peer, label)[0..8] and the session keys HKDF over K_peer:
+  * the master key keys no HMAC on the link; its only use there is the input of the one HKDF that makes the subkey. Both HELLOs
+  * name channel read (1); the listener's too (assumed: a 5a2 listener's HELLO goes out before the dialer's, on the only channel
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplFramesTest.java b/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplFramesTest.java
+index 895f83b9..b428212d 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplFramesTest.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplFramesTest.java
+@@ -16,8 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
+ 
+ /**
+  * CORE-5b1 T1 (packet "Wire" as amended: SEAL = A · end u64 · crc32c u32): each repl frame's payload is the golden bytes
+- * computed outside the code — {@code agent/work/CORE-5b1-frames.py}, run with {@code python3 -I}, its output in
+- * {@code agent/work/CORE-5b1-frames.log} — and decodes back to its fields; a payload one byte short or long of its layout is
++ * computed outside the code — {@code agent/work/BRAND-1-C-golden.py}, run with {@code python3 -I}, its outputs in
++ * {@code agent/work/BRAND-1-C-golden-old.txt} / {@code -new.txt}, reproduces HEADER, OPEN, FILE_CRC and SEAL; DATA, RECEIPT and
++ * REFUSE were computed by the CORE-5b1 script, which was not kept, and have no derivation in the tree (row FIX-226) — and decodes back to its fields; a payload one byte short or long of its layout is
+  * refused. DATA has no fixed length (1..4 MiB of bytes): its refusals are one byte short of its fixed fields, no bytes at all,
+  * and one byte past DATA_MAX. The address's bounds are refused too: an owner of 0 or 64 bytes, n = 0.
+  *
+@@ -31,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
+  */
+ class ReplFramesTest {
+ 
+-    // agent/work/CORE-5b1-frames.log; HEADER, OPEN, FILE_CRC and SEAL with the magic RJS1 (BRAND-1): agent/work/BRAND-1-C-golden.md
++    // agent/work/BRAND-1-C-golden-new.txt reproduces HEADER, OPEN, FILE_CRC and SEAL only (DATA, RECEIPT, REFUSE: the CORE-5b1 script was not kept, no derivation in the tree, row FIX-226); HEADER, OPEN, FILE_CRC and SEAL with the magic RJS1 (BRAND-1): agent/work/BRAND-1-C-golden.md
+     static final String OWNER = "node-b";
+     static final UUID JOURNAL = UUID.fromString("0b0b0b0b-0000-4000-8000-00000000000b");
+     static final long N = 7;
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplWire.java b/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplWire.java
+index d52f3047..79eb83bc 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplWire.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/journal/peer/ReplWire.java
+@@ -11,7 +11,9 @@ import java.util.zip.CRC32C;
+  * The repl channel's payloads written field by field from the CORE-5b packet's text ("Wire", as amended: SEAL carries the
+  * crc32c of the file's bytes [0, end)), never by {@code ReplFrames}: what an owner sends a holder and what it reads back.
+  * {@code ReplFramesTest#theWireFixtureWritesTheGoldenBytes} checks these encoders against the payloads computed outside the
+- * code ({@code agent/work/CORE-5b1-frames.py}). Big-endian throughout.
++ * code ({@code agent/work/BRAND-1-C-golden.py}, outputs {@code BRAND-1-C-golden-old.txt} / {@code -new.txt}, reproduces HEADER, OPEN,
++ * FILE_CRC and SEAL; DATA, RECEIPT and REFUSE were computed by the CORE-5b1 script, which was not kept, and have no derivation in the
++ * tree, row FIX-226). Big-endian throughout.
+  *
+  * <pre>
+  * A       = u16 L · owner UTF-8 (1..63) · journal id (u64 msb, u64 lsb) · n u64 (≥ 1)
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/store/RetentionIT.java b/platform/runtime/src/test/java/dev/rail8/runtime/store/RetentionIT.java
+index 2e0c9465..75f451e7 100644
+--- a/platform/runtime/src/test/java/dev/rail8/runtime/store/RetentionIT.java
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/store/RetentionIT.java
+@@ -979,7 +979,9 @@ class RetentionIT {
+         db.query("alter database \"" + database + "\" set log_statement = 'all'").execute().await();   // the sessions opened from here on
+         PgConnection rival = PgConnection.connect(vertx, options(database)).await();
+         sessions.add(rival);
+-        rival.preparedQuery("select pg_advisory_lock($1)").execute(Tuple.of(Retention.LOCK_KEY)).await();
++        // the rival takes the key by its literal (ASCII r a i l 8 = 72 61 69 6C 38, then three zero bytes), not by Retention.LOCK_KEY:
++        // a production key changed to another would then find the lock free and this case would fail (FIX-218)
++        rival.preparedQuery("select pg_advisory_lock($1)").execute(Tuple.of(0x7261696C38000000L)).await();
+         Retention r = job(newPool(), 1000);   // a pool opened after the setting: its sessions log their statements
+ 
+         Retention.Run run = run(r);
+diff --git a/platform/runtime/src/test/java/dev/rail8/runtime/store/RetentionLockKeyTest.java b/platform/runtime/src/test/java/dev/rail8/runtime/store/RetentionLockKeyTest.java
+new file mode 100644
+index 00000000..78ec32e5
+--- /dev/null
++++ b/platform/runtime/src/test/java/dev/rail8/runtime/store/RetentionLockKeyTest.java
+@@ -0,0 +1,20 @@
++package dev.rail8.runtime.store;
++
++import org.junit.jupiter.api.Test;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++
++/**
++ * FIX-218: the retention advisory-lock key is a stored name on the database server, shared by every node and every build that
++ * runs retention against one database: two builds with different keys would both run retention. The expectation is a literal
++ * written here, never read from {@code Retention}.
++ */
++class RetentionLockKeyTest {
++
++    @Test
++    void theRetentionLockKeyIsTheAsciiBytesOfRail8InTheHighFiveBytesAndZeroBelow() {
++        // ASCII r a i l 8 = 72 61 69 6C 38, then three zero bytes: 72 61 69 6C 38 00 00 00 as a big-endian long
++        assertEquals(0x7261696C38000000L, Retention.LOCK_KEY,
++                "Retention.LOCK_KEY is 0x7261696C38000000 (\"rail8\" then three zero bytes): another build's key would let two retention runs overlap");
++    }
++}

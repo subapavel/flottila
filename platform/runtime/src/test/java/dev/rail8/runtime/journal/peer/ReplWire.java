@@ -11,7 +11,9 @@ import java.util.zip.CRC32C;
  * The repl channel's payloads written field by field from the CORE-5b packet's text ("Wire", as amended: SEAL carries the
  * crc32c of the file's bytes [0, end)), never by {@code ReplFrames}: what an owner sends a holder and what it reads back.
  * {@code ReplFramesTest#theWireFixtureWritesTheGoldenBytes} checks these encoders against the payloads computed outside the
- * code ({@code agent/work/CORE-5b1-frames.py}). Big-endian throughout.
+ * code ({@code agent/work/BRAND-1-C-golden.py}, outputs {@code BRAND-1-C-golden-old.txt} / {@code -new.txt}, reproduces HEADER, OPEN,
+ * FILE_CRC and SEAL; DATA, RECEIPT and REFUSE were computed by the CORE-5b1 script, which was not kept, and have no derivation in the
+ * tree, row FIX-226). Big-endian throughout.
  *
  * <pre>
  * A       = u16 L · owner UTF-8 (1..63) · journal id (u64 msb, u64 lsb) · n u64 (≥ 1)

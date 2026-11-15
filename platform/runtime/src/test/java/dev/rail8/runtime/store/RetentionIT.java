@@ -979,7 +979,9 @@ class RetentionIT {
         db.query("alter database \"" + database + "\" set log_statement = 'all'").execute().await();   // the sessions opened from here on
         PgConnection rival = PgConnection.connect(vertx, options(database)).await();
         sessions.add(rival);
-        rival.preparedQuery("select pg_advisory_lock($1)").execute(Tuple.of(Retention.LOCK_KEY)).await();
+        // the rival takes the key by its literal (ASCII r a i l 8 = 72 61 69 6C 38, then three zero bytes), not by Retention.LOCK_KEY:
+        // a production key changed to another would then find the lock free and this case would fail (FIX-218)
+        rival.preparedQuery("select pg_advisory_lock($1)").execute(Tuple.of(0x7261696C38000000L)).await();
         Retention r = job(newPool(), 1000);   // a pool opened after the setting: its sessions log their statements
 
         Retention.Run run = run(r);

@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -196,6 +197,24 @@ class JournalSegmentRowsTest {
         journals.add(back);
         assertArrayEquals(node, Files.readAllBytes(s.dir.resolve("NODE")), "NODE is read, never rewritten");
         assertArrayEquals(JournalFixture.body("id-1", 50), back.read(ref));
+    }
+
+    /**
+     * FIX-218: the identity file's magic is a stored name — a node of another build must not read the file. The expectation is the
+     * four bytes as hex literals, never {@code SegmentFormat}'s constant (a node file written and read with one changed constant
+     * would still agree with itself).
+     */
+    @Test
+    void theIdentityFileWrittenByAFirstStartBeginsWithTheMagicRJN1() throws Exception {
+        Settings s = in("identity-magic");
+        Journal j = Journal.open(s.config(), clock, timer, keys(KEY), JournalFiles.real(), new RecordingRows(),
+                () -> UUID.fromString("6f1c2a4e-0d3b-4c5a-9e8f-7a6b5c4d3e2f"));
+        journals.add(j);
+
+        byte[] node = Files.readAllBytes(s.dir.resolve("NODE"));
+
+        assertArrayEquals(new byte[] {0x52, 0x4A, 0x4E, 0x31},   // ASCII RJN1
+                Arrays.copyOf(node, 4), "the first four bytes of NODE are the ASCII magic RJN1 (52 4A 4E 31)");
     }
 
     private static UUID uuidAt(byte[] b) {

@@ -16,8 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * CORE-5b1 T1 (packet "Wire" as amended: SEAL = A · end u64 · crc32c u32): each repl frame's payload is the golden bytes
- * computed outside the code — {@code agent/work/CORE-5b1-frames.py}, run with {@code python3 -I}, its output in
- * {@code agent/work/CORE-5b1-frames.log} — and decodes back to its fields; a payload one byte short or long of its layout is
+ * computed outside the code — {@code agent/work/BRAND-1-C-golden.py}, run with {@code python3 -I}, its outputs in
+ * {@code agent/work/BRAND-1-C-golden-old.txt} / {@code -new.txt}, reproduces HEADER, OPEN, FILE_CRC and SEAL; DATA, RECEIPT and
+ * REFUSE were computed by the CORE-5b1 script, which was not kept, and have no derivation in the tree (row FIX-226) — and decodes back to its fields; a payload one byte short or long of its layout is
  * refused. DATA has no fixed length (1..4 MiB of bytes): its refusals are one byte short of its fixed fields, no bytes at all,
  * and one byte past DATA_MAX. The address's bounds are refused too: an owner of 0 or 64 bytes, n = 0.
  *
@@ -31,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 class ReplFramesTest {
 
-    // agent/work/CORE-5b1-frames.log; HEADER, OPEN, FILE_CRC and SEAL with the magic RJS1 (BRAND-1): agent/work/BRAND-1-C-golden.md
+    // agent/work/BRAND-1-C-golden-new.txt reproduces HEADER, OPEN, FILE_CRC and SEAL only (DATA, RECEIPT, REFUSE: the CORE-5b1 script was not kept, no derivation in the tree, row FIX-226); HEADER, OPEN, FILE_CRC and SEAL with the magic RJS1 (BRAND-1): agent/work/BRAND-1-C-golden.md
     static final String OWNER = "node-b";
     static final UUID JOURNAL = UUID.fromString("0b0b0b0b-0000-4000-8000-00000000000b");
     static final long N = 7;

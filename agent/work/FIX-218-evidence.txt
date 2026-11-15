@@ -1,0 +1,29 @@
+FIX-218 — evidence (2026-11-15)
+
+The gap: in BRAND-1 C a mutant of the node identity file's magic (SegmentFormat, "RJN1") and one of the retention advisory-lock
+key (Retention.LOCK_KEY) survived the unit tests.
+
+The kill — one run of the runtime module, failures ignored, with one byte of each production constant changed (temporary:
+agent/work/FIX-218-kill-node.diff NODE_MAGIC 0x524A4E31 -> …32; agent/work/FIX-218-kill-lock.diff LOCK_KEY …38000000L -> …39000000L):
+EXECUTED_FAIL  agent/work/FIX-218-kill.log   runtime: Tests run: 1578, Failures: 2 — exactly the two new cases
+               JournalSegmentRowsTest.theIdentityFileWrittenByAFirstStartBeginsWithTheMagicRJN1:216 "the first four bytes of NODE
+               are the ASCII magic RJN1 (52 4A 4E 31) ==> array contents differ at index [3], expected: <49> but was: <50>"
+               RetentionLockKeyTest.theRetentionLockKeyIsTheAsciiBytesOfRail8InTheHighFiveBytesAndZeroBelow:17 "… ==> expected:
+               <8241984706581626880> but was: <8241984706598404096>" (larger by 2^24, the changed byte)
+               (excerpts: agent/work/FIX-218-kill-node.log, FIX-218-kill-lock.log). Both production files restored.
+
+The final tree:
+VERIFIED_PASS  agent/work/FIX-218-runtime.log                     author: runtime 1578, 0 failures, BUILD SUCCESS
+VERIFIED_PASS  agent/work/FIX-218-retention-it.log                author: RetentionIT alone under -Pit, 32 tests, 0 failures
+VERIFIED_PASS  agent/work/FIX-222-218-verify-unit.log             verifier (after the comment correction): runtime 1578 and 3,
+               0 failures, exit 0; upstream modules at their counts
+VERIFIED_PASS  agent/work/FIX-222-218-verify-retention-it.log     verifier: RetentionIT 32 tests, 0 failures
+NOT_RUN        RetentionIT against a changed lock key. By construction: production takes pg_try_advisory_xact_lock(LOCK_KEY)
+               (Retention.java:435); with another key the try succeeds against the rival's literal key, the outcome is not
+               SKIPPED and RetentionIT:989 fails.
+
+review: PASS   class A. The NODE case reads the file a real first start wrote (JournalStart.identity) and uses no SegmentFormat
+               constant; the lock-key literal and its derivation are right (72 61 69 6C 38 00 00 00). The citations name files
+               and constants that exist. After the review the architect corrected the packet's own sentence: the golden script
+               reproduces HEADER, OPEN, FILE_CRC and SEAL only; the comments now say so (row FIX-226).
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-218.diff.

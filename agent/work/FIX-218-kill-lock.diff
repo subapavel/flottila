@@ -1,0 +1,13 @@
+diff --git a/platform/runtime/src/main/java/dev/rail8/runtime/store/Retention.java b/platform/runtime/src/main/java/dev/rail8/runtime/store/Retention.java
+index 71bbe393..2fcbde2b 100644
+--- a/platform/runtime/src/main/java/dev/rail8/runtime/store/Retention.java
++++ b/platform/runtime/src/main/java/dev/rail8/runtime/store/Retention.java
+@@ -55,7 +55,7 @@ public final class Retention {
+     private static final System.Logger LOG = System.getLogger(Retention.class.getName());
+ 
+     /** The advisory lock every batch tries first: the ASCII bytes of "rail8" in the high five bytes, zero below (D-088). */
+-    static final long LOCK_KEY = 0x7261696C38000000L;
++    static final long LOCK_KEY = 0x7261696C39000000L;
+ 
+     private static final String LOCK = "select pg_try_advisory_xact_lock($1)";
+ 

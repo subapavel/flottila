@@ -1,4 +1,17 @@
 
+## 2026-11-15 — FIX-218 the node file's magic and the retention lock key are pinned — done, review PASS
+
+- Gap (BRAND-1 C): the rename changed two persisted values and no unit test noticed — the identity file's magic `RJN1` and the
+  retention advisory-lock key `Retention.LOCK_KEY`; `RetentionIT` took the rival's lock by the constant itself.
+- Tests (test-author, test only): `JournalSegmentRowsTest` reads the `NODE` file a first start wrote and compares its first four
+  bytes with `52 4A 4E 31`; new `RetentionLockKeyTest` compares the key with `0x7261696C38000000L`; `RetentionIT`'s rival takes
+  the lock by that literal, so the IT fails when production takes another key (shown by construction, not by a run).
+- The kill, since the values are right and the cases green from the start: one byte of each constant changed (temporary) —
+  EXECUTED_FAIL exactly the two new cases, each with its message (FIX-218-kill.log); production restored.
+- Comments: `ReplFramesTest`, `ReplWire`, `PeerKnownAnswerTest` cite what is in the tree. Found on the way: the golden script
+  reproduces HEADER, OPEN, FILE_CRC, SEAL only — DATA, RECEIPT, REFUSE have no derivation in the tree: new row FIX-226.
+- Evidence: VERIFIED_PASS runtime 1578 (1576 + 2) and RetentionIT 32, by the author and by the verifier. Review PASS (class A).
+
 ## 2026-11-15 — FIX-222 the other replica start test waits for the pre-open — done, review PASS
 
 - Fault (not seen failing): `ReplicaStartTest…:145` compared `bytes()` with the disk right after the start; the journal counts the

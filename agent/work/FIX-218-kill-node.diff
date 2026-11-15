@@ -1,0 +1,13 @@
+diff --git a/platform/runtime/src/main/java/dev/rail8/runtime/journal/SegmentFormat.java b/platform/runtime/src/main/java/dev/rail8/runtime/journal/SegmentFormat.java
+index c0fa5d6c..a11f9dbd 100644
+--- a/platform/runtime/src/main/java/dev/rail8/runtime/journal/SegmentFormat.java
++++ b/platform/runtime/src/main/java/dev/rail8/runtime/journal/SegmentFormat.java
+@@ -24,7 +24,7 @@ final class SegmentFormat {
+ 
+     static final int MAGIC = 0x524A5331;
+     static final int END_MAGIC = 0x524A5345;
+-    static final int NODE_MAGIC = 0x524A4E31;
++    static final int NODE_MAGIC = 0x524A4E32;
+     static final byte VERSION = 1;
+     static final int TRAILER = 32;
+     private static final int TRAILER_CRC_AT = 24;

@@ -28,8 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Inputs: K1 = bytes 0x00..0x1f, K2 = bytes 0x80..0x9f (32 each); the dialer node-b (epoch 4, journal 0b0b0b0b-…-0b, masters
  * [K1], nonce 0x40..0x5f) dials the listener node-a (epoch 3, journal 0a0a0a0a-…-0a, masters [K2, K1]: K1 its previous key,
  * nonce 0x60..0x7f). The fingerprint label is {@code INFO + " fingerprint"} with {@code INFO = "rail8-peer-v1"}
- * (PeerHandshake.java:35, :39) = {@code "rail8-peer-v1 fingerprint"}; the HKDF info is {@code "rail8-peer-v1"} (:114),
- * the proof label {@code "rail8-peer-v1 proof"} (:38). P5: K_peer = HKDF-SHA256(salt empty, ikm master, info
+ * (PeerHandshake's {@code INFO} and {@code FINGERPRINT_LABEL}) = {@code "rail8-peer-v1 fingerprint"}; the HKDF info is
+ * {@code "rail8-peer-v1"} ({@code INFO}), the proof label {@code "rail8-peer-v1 proof"} ({@code PROOF_LABEL}). P5: K_peer = HKDF-SHA256(salt empty, ikm master, info
  * {@code "rail8-peer-v1 subkey"}, 32); the fingerprint is HMAC-SHA256(K_peer, label)[0..8] and the session keys HKDF over K_peer:
  * the master key keys no HMAC on the link; its only use there is the input of the one HKDF that makes the subkey. Both HELLOs
  * name channel read (1); the listener's too (assumed: a 5a2 listener's HELLO goes out before the dialer's, on the only channel
