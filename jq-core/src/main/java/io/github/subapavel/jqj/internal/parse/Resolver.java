@@ -360,7 +360,7 @@ public final class Resolver {
   /**
    * The function of {@code f}: its body lowered in its environment where it is written, its own parameters in scope,
    * then its captures as {@link #captured}, on slots of its own from 0, inside no expansion and at no level (ADR-0045
-   * #107 "Parameters").
+   * #107 "Parameters"), at the site it was placed at (ADR-0042 amendment for #110).
    */
   private Function function(Lifted f) {
     slots = 0;
@@ -385,7 +385,8 @@ public final class Resolver {
     site = f.site();
     Node body = lower(f.def().body());
     within(body, MAX_IR_DEPTH);
-    return new Function(f.def().source(), closures, values, body);
+    // A Source is text of the filter's (ADR-0031): a prelude function's is its placing call's, as its nodes' are.
+    return new Function(here(f.def().source()), closures, values, body);
   }
 
   /**

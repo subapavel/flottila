@@ -153,6 +153,19 @@ class PreludeLiftTest {
     assertThat(sources(main.get(1).closures().getFirst())).as("Sources of the second Call's closure").contains(new Source(21, 23)).allMatch(s -> s.start() >= 21 && s.end() <= 23);
   }
 
+  /**
+   * A Source is text of the filter's (ADR-0031): a function lifted from the prelude takes the Source of the call that
+   * first placed it, as its body's nodes do, not its definition's bytes in builtin.jq, which {@code explain()} would
+   * print on the function's line (#108). In {@code [..]} that is the {@code ..} at [1,3); a function of the filter's own
+   * text keeps its definition's, {@code def r: ., (.[]?|r);} at [0,19).
+   */
+  @Test
+  void aLiftedPreludeFunctionTakesTheSourceOfTheCallThatFirstPlacedIt() {
+    assertThat(program("[recurse(.a),recurse(.b)]").functions().getFirst().source()).as("Source of r in [recurse(.a),recurse(.b)]").isEqualTo(new Source(1, 12));
+    assertThat(program("[..]").functions().getFirst().source()).as("Source of r in [..]").isEqualTo(new Source(1, 3));
+    assertThat(program("def r: ., (.[]?|r); r").functions().getFirst().source()).as("Source of the user's r").isEqualTo(new Source(0, 19));
+  }
+
   /** The Calls under {@code node}, pre-order, through every record component and list. */
   private static List<Call> calls(Object node) {
     List<Call> out = new ArrayList<>();
