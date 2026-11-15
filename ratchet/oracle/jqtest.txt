@@ -131,6 +131,7 @@ jq.test#659d070cbd30	interpreter
 jq.test#663c20f1ca0d	interpreter
 jq.test#666c81527b86	interpreter
 jq.test#6ad20475b077	interpreter
+jq.test#6b5532332fa0	interpreter
 jq.test#6b9b5e5c13be	interpreter
 jq.test#6cf832b06912	interpreter
 jq.test#6dcfb1c9a7df	interpreter
@@ -381,6 +382,7 @@ man.test#471bc8807f54	interpreter
 man.test#471ca600c8d6	interpreter
 man.test#47f9f93530b6	interpreter
 man.test#490d2216ccf2	interpreter
+man.test#4979b7fa9ee4	interpreter
 man.test#4a106423ef6a	interpreter
 man.test#4c503ec50e58	interpreter
 man.test#4f52aef61f90	interpreter
@@ -393,6 +395,7 @@ man.test#580ed5a815e2	interpreter
 man.test#5a75c08fb948	interpreter
 man.test#5bc64f426e59	interpreter
 man.test#5bf81149996b	interpreter
+man.test#5ce2f15ada43	interpreter
 man.test#5e789a5c5d46	interpreter
 man.test#617996232d4b	interpreter
 man.test#63841dfe671e	interpreter
