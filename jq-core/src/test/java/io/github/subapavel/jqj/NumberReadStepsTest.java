@@ -261,6 +261,32 @@ class NumberReadStepsTest {
   }
 
   /**
+   * A copy of a short literal by {@code -x} or {@code length} ticks nothing (ADR-0008 amendment for #97: "a short
+   * literal ... free"; #97 review round 3), whether the document holds it or the run built it. Each document is under 1
+   * KiB, one read tick, so each count on {@code [1.5]} is 1. On {@code [1.0000000000000]}, short at 15 bytes, the
+   * negation the run builds has 16 bytes with its minus and is no short literal, so copying it again ticks its 1 KiB:
+   * {@code -(-.[0])} and {@code -.[0] | length} cost 2. jq-ref 1.8.2 prints each result as given (observed 2026-11-15,
+   * {@code jq-ref -c} on the same document).
+   */
+  @ParameterizedTest(name = "{1} on {0}: {2} steps")
+  @CsvSource(
+      delimiterString = "=>",
+      textBlock =
+          """
+          [1.5]             => -.[0]          => 1 => -1.5
+          [1.5]             => -(-.[0])       => 1 => 1.5
+          [1.5]             => .[0] | length  => 1 => 1.5
+          [1.5]             => -.[0] | length => 1 => 1.5
+          [1.0000000000000] => -.[0]          => 1 => -1.0000000000000
+          [1.0000000000000] => .[0] | length  => 1 => 1.0000000000000
+          [1.0000000000000] => -(-.[0])       => 2 => 1.0000000000000
+          [1.0000000000000] => -.[0] | length => 2 => 1.0000000000000
+          """)
+  void aCopyOfAShortLiteralTicksNothing(String json, String filter, long steps, String result) {
+    assertSteps(filter, json.getBytes(US_ASCII), steps, result);
+  }
+
+  /**
    * No double is cached per token (ADR-0008 amendment for #97): {@code .[0] + .[0]} reads the same token as each of
    * its two operands, so it ticks its KiB twice; a cache would tick them once, 3 and 4. Today 2 and 2.
    */
