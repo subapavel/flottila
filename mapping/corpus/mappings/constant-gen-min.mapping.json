@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-gen.xsd"
+    ],
+    "fingerprint": "sha256:4a92b5bce393664363954017c2b1029537235b8a4557f9a2a220c66d516f4e35",
+    "root": {
+      "element": "Gens"
+    }
+  },
+  "targetFieldMappings": {
+    "/Gens/Grp": {
+      "boxes": {
+        "S1": {
+          "context": "/Orders",
+          "field": "/Orders/Order",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Gens/Grp/Gen": {
+      "boxes": {
+        "C1": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": "g"
+          }
+        }
+      },
+      "id": "T2",
+      "result": "C1"
+    }
+  }
+}

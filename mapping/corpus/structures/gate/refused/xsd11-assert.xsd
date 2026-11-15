@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture for GATE check 1 (#100): XSD 1.1 is refused when the schema loads (ADR-0008
+     "XSD"); xs:assert is an element only XSD 1.1 has -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:gate:refused">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+      </xs:sequence>
+      <xs:assert test="Id"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

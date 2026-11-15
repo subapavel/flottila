@@ -1,0 +1,10 @@
+CPI parameter/default/queue audit — 2026-11-13
+59/59 cases complete; 0 remaining in this scope.
+Arithmetic15; Boolean9; Constant15; Date16; Statistic4.
+Progress ledger: parameter-queue-progress.json. Per-family meta.json latest CPI runs link live parameter exports, native editor notes and queue JSONs.
+
+No SAP PO operations or timezone changes. Exact JVM timezone ID, runtime provenance/monitor start times and prohibited non-UTC environment variants remain outside completion scope. Existing partial environment observations are preserved. This is not a claim that every open question in the entire corpus is resolved.
+
+CPI Save actions in this audit: api_constant_concat Draft (moved two constant nodes to expose concat; editor serialized previously implicit empty delimeter explicitly); api_copy_value_default Draft (blank Index UI Save normalized to stored nnumber=0); api_fix_values_empty_table Draft (editor accepts no rows, strategy1/default- preserved). Fresh API exports verify these stored bindings. Other temporary nodes and layouts were discarded. Nothing deployed.
+
+Notable queue findings: copyValue selects across full input queue and emits a generator; index converts SUPPRESS to numbered values; replaceValue turns SUPPRESS into5 before sum (sum/003 cannot establish sum handling SUPPRESS directly); fixValues preserves SUPPRESS and maps empty strings to E; count over a constant produces one ordinary1. Raw display markers are retained, and display queues are kept distinct from target serialization.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-suffix.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-arithmetic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-arithmetic/po75/formatNum-014-fmt-014.xml and corpus/observations/obs-arithmetic/cpi/formatNum-014-fmt-014.xml; before #214: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture 0.0 m; assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-014)",
+  "expect": "output",
+  "note": "Unquoted text after the digits is the suffix: 1 gives 1.0 m and -2.25 gives -2.2 m, rounded half to even."
+}

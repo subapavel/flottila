@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/average-suppress.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-statistic (#212, #216, F-45), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both give V 5 in all three Items, because replaceValue replaces the SUPPRESS with 5 before average reads it: corpus/observations/obs-statistic/po75/average-004-stat-average-suppress.xml and corpus/observations/obs-statistic/cpi/average-004-stat-average-suppress.xml, the run in po75/average-004-stat-average-suppress-check.txt; before #216: #2 §5 Statistics: sum, average and count work per context (\"Sum of values X1 to Xi of a context\") [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; assumed reading of #75: SUPPRESS is no value (as for exists and mapWithDefault, #57) (contradicted in this chain)",
+  "expect": "output",
+  "note": "createIf(Tag) is \"\", SUPPRESS, \"\" | SUPPRESS | \"\". replaceValue(5) replaces every slot, the SUPPRESS included: 5, 5, 5 | 5 | 5, so average gives 5 in every context. average sees no SUPPRESS here. The assumed reading gave 5, no V, 5."
+}

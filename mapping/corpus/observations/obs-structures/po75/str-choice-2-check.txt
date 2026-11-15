@@ -1,0 +1,7 @@
+SAP PO 7.50 ESR str_choice_2, 2026-11-11.
+Source Orders; imported unchanged tgt-choice.xsd. ESR shows Choice/Pick 1..1 and A/B 0..1, although the XSD declares each choice branch 1..1.
+Id explicitly context Orders -> equalsS input 1; Constant A -> input 2. equalsS -> ifWithoutElse if; same Id -> then; Keep SUPPRESS Values checked; result -> Choice/Pick/A. B, Pick and Choice have no explicit target wire.
+Saved copy; object check: No errors found during object check; Problem 0, Warning 0.
+ch1.xml imported unchanged. Test 20:19:31-20:19:32; compilation successful; execution 12 ms; executed successfully. Exact export: ch1-str-choice-2-export.zip, extracted instance.xml preserved as ch1-str-choice-2.xml. Result Choice/Pick/A=A; no B.
+ch2.xml imported unchanged. Test 20:21:05; execution 5 ms; executed successfully. Exact export: ch2-str-choice-2-export.zip, extracted instance.xml preserved as ch2-str-choice-2.xml. Result Choice/Pick empty, no A/B. ESR uses explicit <Pick></Pick> spelling.
+Reading: unmapped choice branch B causes neither a design-time error nor a runtime shortfall. Both semantic outputs agree with CPI.

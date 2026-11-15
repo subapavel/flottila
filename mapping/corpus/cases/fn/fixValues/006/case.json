@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fix-values-empty-table.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/fixValues-006-fix-values-empty-table.xml and corpus/observations/obs-constant/cpi/fixValues-006-fix-values-empty-table.xml; before #214: ADR-0026 \"Table params\" (#83), assumed reading: an empty table holds no key, so every key is missing; obs-constant row fn/fixValues/006",
+  "expect": "output",
+  "note": "FixValues with an empty table and the default value -: every Sku gives -."
+}

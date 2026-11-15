@@ -1,0 +1,12 @@
+SAP PO retry observation 2026-11-11
+Mapping: spec2_suppress_sort_descending_format; case fn/sort/013.
+After owner restarted SAP PO, reopened saved mapping in display mode. Sort parameters persisted: case sensitive, descending. Graph: Tag context Orders -> createIf -> sort -> formatByExample input 1; Sku context Order -> formatByExample input 2; output -> Out/All only.
+Check: No errors found during object check; Problem 0, Warning 0.
+Imported original sort-013.xml without edits.
+23:12:40 Start of test
+Compilation of spec2_suppress_sort_descending_format successful
+Execution of mapping on server took 11 milliseconds
+Executed successfully
+23:12:41 End of test
+UI export: spec2-suppress-sort-descending-format-013-export.zip; instance.xml extracted unchanged as spec2-suppress-sort-descending-format-013.xml.
+Reading: One empty All. Descending puts SUPPRESS first, contradicting the assumed two empty All; agrees with CPI. Earlier blocked attempt retained in the separate blocker file.

@@ -1,0 +1,52 @@
+{
+  "obsId": "obs-shared-box",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/37",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "date": "2026-11-11",
+    "tool": "ESR message mapping",
+    "releaseVerification": "ESR About read during obs-target-creation-2. PO execution deferred to evening at owner's request."
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-11",
+    "tool": "Message Mapping artifact editor",
+    "releaseVerification": "Read live from user menu > About during this observation session."
+  },
+  "divergence": [],
+  "notes": [
+    "PO execution deferred to evening at owner's request; no cross-system comparison is available.",
+    "The live CPI counter inspected immediately beforehand for obs-ifwithoutelse has only Initial value and Increment parameters, both default 1, and an output connector. It has no input connector, preventing the Id -> counter wires required by both shared-box mappings.",
+    "Both CPI runs are NOT_RUN. No artifact was built and no result is inferred for counter evaluation sharing; removing the requested Id wire would change the mapping.",
+    "PO catch-up inspection completed using the counter inspected live for obs-ifwithoutelse. No input connector exists in PO either; see po75/shared-counter-check.txt. No runtime conclusion about shared evaluation is made."
+  ],
+  "runs": [
+    {
+      "mapping": "shared-1",
+      "input": "s1.xml",
+      "case": null,
+      "po75": "NOT_RUN",
+      "po75Reason": "PO counter has no input connector, so the requested Id -> counter wires cannot be drawn. Initial Value and Increment default to 1.",
+      "cpi": "NOT_RUN",
+      "cpiReason": "CPI counter has no input connector, so Id -> N1 in1 cannot be drawn. Available parameters are Initial value and Increment (default 1 each).",
+      "reading": "n/a",
+      "summary": "No mapping built; shared evaluation remains unobserved. PO independently confirms the same editor limitation."
+    },
+    {
+      "mapping": "shared-2",
+      "input": "s1.xml",
+      "case": null,
+      "po75": "NOT_RUN",
+      "po75Reason": "PO counter has no input connector, so the requested Id -> counter wires cannot be drawn. Initial Value and Increment default to 1.",
+      "cpi": "NOT_RUN",
+      "cpiReason": "CPI counter has no input connector, so Id -> N2/N3 in1 cannot be drawn. Available parameters are Initial value and Increment (default 1 each).",
+      "reading": "n/a",
+      "summary": "No mapping built; separate-counter control remains unobserved. PO independently confirms the same editor limitation."
+    }
+  ]
+}

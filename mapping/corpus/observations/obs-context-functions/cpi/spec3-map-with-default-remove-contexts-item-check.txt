@@ -1,0 +1,8 @@
+CPI editor / Save, mapping spec3-map-with-default-remove-contexts-item.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Line with context Orders -> Item. The Line box is italic and its visible SVG title includes Context: /Orders.
+Sku default Line context -> removeContexts -> mapWithDefault (Default Value D) -> V. No other fields mapped.
+D entered with fill and Enter after all V connections. Selected the Item expression before Save; Save completed without validation error.
+First simulation returned Item 1 with empty V and Item 2 without V. Returning to the V expression showed Default Value empty: D had not been retained across the expression switch. Initial exact output retained separately and excluded from the semantic reading.
+D re-entered with ordinary keystrokes and Tab while the V expression remained selected. M1 queue then showed D. Saved again before rerun.
+Rerun of retained mapWithDefault-010.xml succeeded: Item 1 V D, Item 2 without V. No runtime or validation error; navigation back to the package did not prompt for unsaved changes.

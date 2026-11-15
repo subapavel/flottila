@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#25): ../order.xsd with Quantity maxOccurs="2". A changed structure: a different fingerprint. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="OrderId" type="xs:string"/>
+        <xs:element name="Quantity" type="xs:int" minOccurs="0" maxOccurs="2"/>
+        <xs:element name="Amount" type="xs:decimal" minOccurs="0" nillable="true"/>
+        <xs:element name="Urgent" type="xs:boolean" minOccurs="0"/>
+        <xs:element name="DeliveryDate" type="xs:date" minOccurs="0"/>
+        <xs:element name="PickupTime" type="xs:time" minOccurs="0"/>
+        <xs:element name="CreatedAt" type="xs:dateTime" minOccurs="0"/>
+        <xs:element name="Note" type="xs:normalizedString" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="channel" type="xs:token"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

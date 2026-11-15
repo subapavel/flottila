@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-numeric-descending.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-sort-numeric-descending-007.xml and corpus/observations/obs-context-functions/cpi/sort-006-spec2-sort-numeric-descending.xml; before #214: #48 owner decision Q4: numeric compares decimals (ADR-0005's xs:decimal lexical form); #2 §4 sort: \"within the existing or set context\", stable, numeric or lexicographic (case-sensitive or not), ascending or descending [SAP✓ STD]",
+  "expect": "output",
+  "note": "numeric, descending over the input of fn/sort/006: 10, 9, \" 2 \", 1.50, 1.5, +0.5, .25, -1 and 007, 7, 1. Equal values keep their input order in descending order too (1.50 before 1.5, 007 before 7): a stable sort, not fn/sort/006 reversed. R1 joins the contexts S1 keeps, so All shows each context's order in turn. Observe in SAP PO (#33)."
+}

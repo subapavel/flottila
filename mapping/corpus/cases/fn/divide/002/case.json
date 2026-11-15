@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-divide.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (division by zero raises FOAR0001)",
+  "expect": "error",
+  "note": "obs-division d2 (#38): 7 divided by 0 is err:FOAR0001 at the divide box A1."
+}

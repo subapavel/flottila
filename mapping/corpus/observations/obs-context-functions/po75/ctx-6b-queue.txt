@@ -1,0 +1,12 @@
+SAP PO Display Queue: ctx_6b / collapseContexts / original f6.xml
+Compilation successful; execution 10 milliseconds; Executed successfully.
+Literal numbered rows. All text regular, not italic. Brackets are displayed literally.
+Row | collapseContexts:in0 | collapseContexts:out
+0 | <null> (gray) | <null> (gray)
+1 | [5] (white) | [5] (white)
+2 | [5] (gray) | SUPPRESS (cyan)
+3 | SUPPRESS (cyan) | [7] (white)
+4 | SUPPRESS (gray) | [7] (dark gray)
+5 | [7] (white) | blank padding
+6 | [7] (dark gray) | blank padding
+Reading: input contexts [5] | [SUPPRESS] | [7]; output single context [5,SUPPRESS,7]. Gray context and terminal rows are not extra values. SUPPRESS is not a literal string and is not converted to an empty value.

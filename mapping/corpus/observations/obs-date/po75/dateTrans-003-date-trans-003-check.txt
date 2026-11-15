@@ -1,0 +1,19 @@
+Case: fn/dateTrans/003
+Date: 2026-11-12
+Platform: SAP PO 7.50, ESR message mapping Test
+Mapping: date_trans_003, copied from date_trans_002
+Input: dateTrans-003.xml
+Schemas: src-orders.xsd -> tgt-list.xsd
+Graph: Sku (Orders context) -> DateTrans -> All.
+Confirmed formats: yyyy-MM-dd HH:mmXXX -> yyyy-MM-dd HH:mm Z.
+Advanced calendar settings inherited unchanged from date_trans_001 (Calendar Is Lenient checked).
+Saved; Object Check: No errors found, Problem 0, Warning 0.
+Loaded input and verified SRC: 2026-11-04 10:00+02:00; 2026-11-04 10:00Z; 2026-01-01 00:30+01:00.
+Processing Log: 19:13:33 start; compilation successful; execution 10 milliseconds; executed successfully; 19:13:34 end. Log timezone unspecified.
+All values: 2026-11-04 09:00 +0100; 2026-11-04 11:00 +0100; 2026-01-01 00:30 +0100.
+Observed output offset +0100 for all three dates, preserving their instants. This is consistent with JVM default zone offset +01:00 for these winter dates; named JVM zone is not exposed and remains unknown.
+LIMITATION: case 003 explicitly requests a UTC JVM. This run did not meet that precondition. It is partial evidence, not completion of the UTC scenario, and is not a semantic divergence under equivalent environment conditions. No JVM settings changed.
+Values agree with case 004's +01:00 scenario; a separate requested-input run will record that case.
+ZIP retained from ESR export; XML copied byte-for-byte from instance.xml without reformatting.
+No queues requested or captured. UI screenshots inspected, not saved as files.
+CPI: NOT_RUN.

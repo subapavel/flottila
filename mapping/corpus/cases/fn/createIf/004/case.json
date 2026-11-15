@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if-row.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31, spec-2 part), mapping spec2-create-if-row, input probes/probe-bool-a.xml: corpus/observations/obs-target-creation/po75/probe-bool-a-spec2-create-if-row.xml and cpi/probe-bool-a-spec2-create-if-row.xml, display queue po75/probe-bool-a-spec2-create-if-row-queue.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json): createIf gives SUPPRESS, \"\", \"\", SUPPRESS for false, 1, TRUE, 0; F-37, ADR-0006 Consequences (createIf casts as PO's Bool.toBoolean does)",
+  "expect": "output",
+  "note": "Row per createIf(Sku) in context Orders: Sku false, 1, TRUE, 0 give SUPPRESS, \"\", \"\", SUPPRESS; Val per Qty in its default context Line: 1 | 2 | 3 | 4. The SUPPRESS slots 1 and 4 create no Row, so two Rows, Val 2 and 3. A case-sensitive rule would drop the TRUE Row; an error on false or 0 would give no output."
+}

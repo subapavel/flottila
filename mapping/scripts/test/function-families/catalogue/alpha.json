@@ -1,0 +1,39 @@
+{
+  "apple": {
+    "executionKind": "single",
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "params": [
+      {
+        "default": "",
+        "name": "replacement",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "kiwia": {
+    "executionKind": "context",
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "portable": true
+  },
+  "melon": {
+    "executionKind": "queue",
+    "inputs": [
+      {
+        "name": "values"
+      },
+      {
+        "name": "example"
+      }
+    ],
+    "portable": false
+  }
+}

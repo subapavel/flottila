@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): beside a file that stopped, a name no bundle file declares, a reference into the
+     stopped file's namespace (an element and a simple type), a use of a type whose declaration is
+     refused, and a refused local element that declares no global name -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:b="urn:flottila:corpus:broken"
+           xmlns:u="urn:flottila:corpus:user"
+           targetNamespace="urn:flottila:corpus:user">
+  <xs:import namespace="urn:flottila:corpus:broken"/>
+  <xs:complexType name="Refused" default="no"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="b:Item"/>
+        <xs:element ref="b:After"/>
+        <xs:element name="Kind" type="u:Refused"/>
+        <xs:element name="Count" type="u:Missing"/>
+        <xs:element name="Missing" type="xs:string" final="#all"/>
+      </xs:sequence>
+      <xs:attribute name="code" type="b:Code"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

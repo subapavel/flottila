@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): annotated.xsd without the constructs accepted with no effect -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:no-effect"
+           targetNamespace="urn:flottila:corpus:no-effect">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+        <xs:element name="Status" type="tns:Status"/>
+        <xs:element name="Line" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="No" type="xs:int"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="channel" type="xs:string"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:simpleType name="Status">
+    <xs:restriction base="xs:token"/>
+  </xs:simpleType>
+</xs:schema>

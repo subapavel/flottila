@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-trim.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-43 addendum: PO equals the expected output (obs-text po75/trim-001-text-trim.xml); the empty second value on CPI is a simulator input artefact (its meta: input normalization unverified); was assumed: ADR-0025 (functions bind by name; the reading of trim follows java.lang.String and XPath); obs-text row trim/001",
+  "expect": "output",
+  "note": "trim leaves out space, tab, line feed and return at both ends and nothing inside: '  a b  ' gives a b, an all-space value gives an empty value; a no-break space is not trimmed."
+}

@@ -1,0 +1,11 @@
+CPI observation 2026-11-13: fn/dateTrans/006
+Artifact: api_date_trans_006
+Input: original dateTrans-006.xml uploaded through simulator.
+Visible graph verified: Sku context /Orders -> dateTrans -> /Out/All.
+Simulation completed. All values: 2026/11/04; 1999/12/31. Downloaded XML preserved unchanged.
+Live format dialog and fresh editor defaults not independently inspected. Output from API-prepared mapping does not establish the editor default or empty-field acceptance. No environment settings changed. Output observed; parameter/default verification pending.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_date_trans_006.json, cpi/native-default-dateTrans-006.txt.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

@@ -1,0 +1,23 @@
+Date: 2026-11-12
+Mapping str-attr; artifact api_str_attr (unchanged API-prepared artifact).
+Source Orders and target Flagged render correctly; historical Missing Node blocker
+is retained in str-attr-check.txt and did not recur on the prepared artifact.
+Native graph/tooltips verified separately for all three mapped targets:
+Tag context /Orders/Order -> createIf -> /Flagged/@flag;
+Id context /Orders/Order -> /Flagged/@code (UI occurrence 1..1);
+Id context /Orders -> /Flagged/V. Flag occurrence is 0..1, V 0..*.
+Each original input uploaded unchanged through the tab's file chooser, then Test.
+
+- target/attribute/001, attr2.xml: VERIFIED_PASS. Download Output saved 76 bytes,
+  copied byte-for-byte to attr2-str-attr.xml. Flagged code="X1", no flag, V=X1.
+  Reading confirmed.
+- target/attribute/002, attr3.xml: EXECUTED_FAIL. Required code has insufficient
+  queue values. Exact diagnostic in attr3-str-attr-error.txt. No XML returned.
+  Reading confirmed.
+- target/attribute/003, attr4.xml: VERIFIED_PASS. Download Output copied
+  byte-for-byte to attr4-str-attr.xml. Flagged code="X1" flag="", V=X1.
+  Reading confirmed semantically; CPI serializes code before flag, whereas the
+  assumed XML and PO output order flag before code. Exact bytes preserved.
+
+Prior tenant version evidence retained, no PNG saved. No display queues requested.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.

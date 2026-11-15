@@ -1,0 +1,8 @@
+CPI, Simulate, input mc-memo-1.xml, mapping mc_memo, case n/a. No output.
+Run time on target /Doc/Grp[3]/Row.
+
+Error
+com.sap.aii.mappingtool.tf7.IllegalInstanceException: Cannot produce target element /Doc/Grp[3]/Row. Queue has not enough values in context. Target xsd requires a value for this element, but target field mapping does not produce one. Probably the xml-instance is not valid to the source xsd, or the target field mapping does not fulfill the requirement of the target xsd. on the exchange: Exchange[<exchange-id>]
+OK
+
+The dialog displayed no Caused by lines or stack frames.

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synthetic fixture for GATE check 1 (#100): $dynamicRef is refused (ADR-0008)",
+  "type": "object",
+  "properties": {
+    "parts": {"type": "array", "items": {"$dynamicRef": "#part"}}
+  },
+  "$defs": {"Part": {"$dynamicAnchor": "part", "type": "object"}}
+}

@@ -1,0 +1,13 @@
+CPI observation 2026-11-13: fn/formatNum/010
+Artifact: api_fmt_010
+Input: original formatNum-010.xml uploaded through simulator.
+Visible graph verified: Qty context /Orders -> formatNumber -> /Out/All.
+Simulation completed. All values: 12.5%, -50%, 100%. Downloaded XML preserved unchanged.
+Live pattern dialog not independently inspected. JVM locale and arithmetic mode not exposed/verified. Output observed; parameter verification pending.
+
+Parameter audit 2026-11-13 — VERIFIED_PASS: Fresh live API export verifies the configured number pattern and decimal separator. All 15 patterns were reviewed against request.md. Editor spot-check api_fmt_001 showed Number Format=0 and Decimal Separator=.; inspection cancelled and layout changes discarded. JVM locale and arithmetic implementation remain unverified; no settings changed. Evidence: cpi/parameter-audit/api_fmt_010.json
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_fmt_010.json.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

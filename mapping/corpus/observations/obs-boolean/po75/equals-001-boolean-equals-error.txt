@@ -1,0 +1,15 @@
+Observation: obs-boolean / fn/equals/001
+Platform: SAP PO 7.50, ESR Message Mapping test
+Date: 2026-11-12
+Mapping: boolean_equals (request: boolean-equals)
+Input: ../equals-001.xml imported unchanged; all five pairs verified in source XML.
+Graph: Sku context Orders -> Boolean palette Equals input 1; Qty context Orders -> Equals input 2; Equals -> Out/All. No other target wires.
+Saved. Object check: No errors found during object check; Problem 0, Warning 0.
+02:34:16 Start of test. Compilation of boolean_equals successful.
+
+Problem when Testing (literal text, runtime context identity sanitized):
+Runtime exception when processing target-field mapping /Out/All; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'keep' to boolean] in class com.sap.aii.mappingtool.flib7.Bool method equalsBoolean[keep, keep, com.sap.aii.mappingtool.tf7.rt.Context@[redacted]]
+See error logs for details
+
+Reading: Boolean Equals converts operands to boolean and rejects the first keep/keep pair. No output XML was produced or exported. This contradicts the assumed string-comparison result; individual output values are not inferred. The function used was Equals in Boolean, not equalsS in Text.

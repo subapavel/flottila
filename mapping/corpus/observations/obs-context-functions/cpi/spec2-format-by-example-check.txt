@@ -1,0 +1,4 @@
+CPI editor / Save, mapping spec2-format-by-example.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Tag default Order context -> formatByExample input (in1); Sku context /Orders/Order -> formatByExample pattern (in2). formatByExample -> All. No other fields mapped.
+Source Sku context verified in node tooltip. Three expression connections verified after Save; no validation error was shown.

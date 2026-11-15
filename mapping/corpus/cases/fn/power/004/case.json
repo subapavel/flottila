@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/power.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: the double power 0^-1 is Infinity, which has no xs:decimal",
+  "expect": "error",
+  "note": "0^-1 is Infinity as a double: power raises err:FORG0001 at its box V1."
+}

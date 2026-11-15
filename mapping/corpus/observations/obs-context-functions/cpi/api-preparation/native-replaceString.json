@@ -1,0 +1,11 @@
+{
+  "source": "Native CPI editor Save followed by public API export of preparation copy api_ctx_1_r2",
+  "label": "replaceString",
+  "simulation": "NOT_RUN",
+  "functions": [
+    {
+      "nativeName": "replaceString",
+      "bindings": null
+    }
+  ]
+}

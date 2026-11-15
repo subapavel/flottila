@@ -1,0 +1,11 @@
+{
+  "source": "Native CPI editor Save followed by public API export of preparation copy api_ctx_1_r2",
+  "label": "copyValue",
+  "simulation": "NOT_RUN",
+  "functions": [
+    {
+      "nativeName": "CopyValue",
+      "bindings": "<bindings><param name=\"nnumber\"><value>0</value></param></bindings>"
+    }
+  ]
+}

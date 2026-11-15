@@ -1,0 +1,7 @@
+CPI editor / Save, mapping str-attr. No simulation output.
+
+Before Save, References showed Local (2): src-orders.xsd and tgt-attr.xsd.
+Drawn definitions: Id (default context) -> @code; Tag (default context) -> createIf -> @flag; separate Id with context /Orders -> V.
+After Save the editor showed Local (0), Add source message, Add target message, Missing Node on the source/target fields, and Mapping assigned to a missing source on connections.
+One page reload was attempted. The saved artifact still showed Local (0), Source Messages / Target Messages without schemas, and Missing Node.
+ENVIRONMENT_BLOCKED for attr2.xml, attr3.xml and attr4.xml: the uploaded schemas did not survive Save and reload. No input was simulated. This is not treated as the required-attribute behavior under test.

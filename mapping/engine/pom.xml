@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Engine modules (ADR-0016): JPMS direction is enforced by javac; this POM bans framework artefacts. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila.mapping</groupId>
+    <artifactId>flottila-mapping-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>flottila-mapping-engine</artifactId>
+  <packaging>pom</packaging>
+  <name>Flottila Mapping engine</name>
+
+  <modules>
+    <module>xdm</module>
+    <module>structure</module>
+    <module>structure-import</module>
+    <module>ir</module>
+    <module>serializer</module>
+    <module>udf-api</module>
+    <module>udf</module>
+    <module>runtime</module>
+    <module>mapping</module>
+    <module>xslt-export</module>
+    <module>api</module>
+    <module>oracle</module>
+  </modules>
+
+  <!-- no mocking library: ports have hand-written fakes (ADR-0017) -->
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce</id>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes combine.children="append">
+                    <!-- the engine knows no framework (ADR-0014, ADR-0016) -->
+                    <exclude>io.quarkus*</exclude>
+                    <exclude>jakarta.*</exclude>
+                    <exclude>com.fasterxml*</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+          <!-- Saxon-HE is the differential oracle (ADR-0018): banned at every scope, test scope
+               included, in every engine module but engine/oracle, which switches this execution
+               off; the root POM's ban outside test scope still holds there -->
+          <execution>
+            <id>enforce-no-saxon</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <message>Saxon-HE is allowed at test scope in engine/oracle only (ADR-0018, #27)</message>
+                  <excludes>
+                    <exclude>net.sf.saxon</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

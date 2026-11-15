@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-divide.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "Negative and zero dividends, and two quotients that terminate after more than 18 fractional digits, which Saxon-HE rounds to 18: 1 / 2^30 = 0.000000000931322574615478515625 gives ...575, and the tie 3 / 2^19 = 0.0000057220458984375 is rounded half-down to ...437. This is narrower than the ADR-0005 sentence that a terminating quotient is exact."
+}

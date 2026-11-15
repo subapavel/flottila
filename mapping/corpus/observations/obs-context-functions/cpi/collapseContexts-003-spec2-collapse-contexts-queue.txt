@@ -1,0 +1,8 @@
+Display Queue of box C1 (collapseContexts), CPI Function Message Queue after collapseContexts-003.xml, mapping spec2-collapse-contexts.
+S. No. enabled. Both rows are italic.
+
+row  collapseContexts:in1  shading    collapseContexts:out1  shading
+0    <null>                gray       <null>                 gray
+1    [ ]                   dark gray  [ ]                    dark gray
+
+Reading: both columns have only the start and end markers, no white value row and no intermediate context-change marker. The [ ] in row 1 is an end marker, not an empty-string value. No All is emitted.

@@ -1,0 +1,8 @@
+CPI, message mapping editor, Simulate, input a3.xml, mapping create-a. No output.
+Transcribed from the owner's screenshot. The exchange id is replaced by <exchange-id>.
+
+Error dialog:
+com.sap.aii.mappingtool.tf7.IllegalInstanceException: Cannot produce target element /Create/Row. Queue has not enough values in context. Target xsd requires a value for this element, but target field mapping does not produce one. Probably the xml-instance is not valid to the source xsd, or the target field mapping does not fulfill the requirement of the target xsd. on the exchange: Exchange[<exchange-id>]
+
+Same exception class as PO 7.5 (po75/a3-create-a.txt); the message wording differs.
+Identical text to cpi/a2-create-a.txt, as on PO 7.5.

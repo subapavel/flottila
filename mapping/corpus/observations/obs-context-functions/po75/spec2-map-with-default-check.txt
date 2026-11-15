@@ -1,0 +1,14 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_map_with_default; case fn/mapWithDefault/003.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context -> mapWithDefault -> removeContexts -> Out/All only.
+Parameter label: Default Value to Be Mapped; value Default. Saved node displayed [Default].
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original mapWithDefault-003.xml imported through test UI, no edits.
+21:49:11 Start of test
+Compilation of spec2_map_with_default successful
+Execution of mapping on server took 11 milliseconds
+Executed successfully
+21:49:12 End of test
+Result exported through UI as spec2-map-with-default-export.zip; instance.xml extracted unchanged as spec2-map-with-default.xml.
+Reading: All empty string,Default,empty string,x. A present empty Tag remains a value; only the missing Tag's empty context is filled. Confirms assumed reading and agrees with verified CPI rerun. Initial CPI attempt remains historical only.

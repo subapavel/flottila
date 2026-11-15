@@ -1,0 +1,1260 @@
+{
+  "date": "2026-11-12",
+  "packageId": "flottilaobservations",
+  "mappingCount": 100,
+  "caseCount": 112,
+  "status": "API_PREPARATION_COMPLETE_WITH_EXCEPTIONS",
+  "simulation": "NOT_RUN",
+  "verification": "VERIFIED_PASS: 300 mmap/XSD resources parse and match downloaded readback exactly",
+  "editorValidation": "Sample imports ctx-1/r2 and boolean-if opened and rendered; the other artifacts have not individually been editor-validated. No simulation results are implied.",
+  "exceptions": [
+    {
+      "cases": [
+        "obs-statistic:fn/counter/001",
+        "obs-statistic:fn/counter/002",
+        "obs-statistic:fn/counter/003"
+      ],
+      "reason": "CPI counter has no input port; requested source-to-counter graph is not drawable as specified."
+    },
+    {
+      "cases": [
+        "obs-target-creation-2:mc-opt/minOccurs-004.xml"
+      ],
+      "reason": "Requested in-place change of spec2_nested_grp_row_val remains blocked by existing locked/unsaved editor state; not bypassed or replaced by an independent mapping."
+    },
+    {
+      "cases": [
+        "obs-ifwithoutelse:iwe-1",
+        "obs-shared-box:shared-1",
+        "obs-shared-box:shared-2"
+      ],
+      "reason": "Existing counter input-port blockers remain; historical records unchanged."
+    },
+    {
+      "cases": [
+        "obs-structures:JSON conversion"
+      ],
+      "reason": "Adapter/JSON conversion requires an iFlow and remains outside this mapping-only scope."
+    }
+  ],
+  "caveats": [
+    "replaceString fixed pattern/replacement are supplied using native constant input boxes; see per-mapping nativeRepresentation.",
+    "The old spec2_sort_by_key_001_api pilot is superseded by api_spec2_sort_by_key because its initial text metadata was stripped.",
+    "api_ctx_1_r2 is a diagnostic helper used for native parameter exports, currently containing currentDate. It is not a prepared observation and is excluded from counts.",
+    "Existing observation outputs and meta.json run histories were not changed. Input XML files and exact runtime capture requirements remain in each linked request."
+  ],
+  "mappings": [
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_arith_inv",
+      "cases": [
+        "fn/inv/001"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/arith-inv/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_trans_002",
+      "cases": [
+        "fn/dateTrans/002"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-trans-002/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_trans_001",
+      "cases": [
+        "fn/dateTrans/001"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-trans-001/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_before_001",
+      "cases": [
+        "fn/dateBefore/001"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-before-001/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_after_001",
+      "cases": [
+        "fn/dateAfter/001"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-after-001/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_current_date_time",
+      "cases": [
+        "fn/currentDate/002"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/current-date-time/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_current_date_item",
+      "cases": [
+        "fn/currentDate/003"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/current-date-item/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_current_date_concat",
+      "cases": [
+        "fn/currentDate/004"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/current-date-concat/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_current_date",
+      "cases": [
+        "fn/currentDate/001"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/current-date/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_compare_dates_004",
+      "cases": [
+        "fn/compareDates/004"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/compare-dates-004/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_compare_dates_002",
+      "cases": [
+        "fn/compareDates/002"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/compare-dates-002/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_compare_dates_001",
+      "cases": [
+        "fn/compareDates/001"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/compare-dates-001/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec3_suppress_split_each_item",
+      "cases": [
+        "fn/splitByValue/022"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec3-suppress-split-each-item/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_suppress_split_empty_collapse",
+      "cases": [
+        "fn/splitByValue/021"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-suppress-split-empty-collapse/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_suppress_split_each_collapse",
+      "cases": [
+        "fn/splitByValue/019"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-suppress-split-each-collapse/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_suppress_split_change_collapse",
+      "cases": [
+        "fn/splitByValue/020"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-suppress-split-change-collapse/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_suppress_sort_by_key",
+      "cases": [
+        "fn/sortByKey/006"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-suppress-sort-by-key/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_split_by_value_empty_flat",
+      "cases": [
+        "fn/splitByValue/015",
+        "fn/splitByValue/016"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-split-by-value-empty-flat/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_split_by_value_empty",
+      "cases": [
+        "fn/splitByValue/011",
+        "fn/splitByValue/012",
+        "fn/splitByValue/013",
+        "fn/splitByValue/014"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-split-by-value-empty/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_split_by_value_each",
+      "cases": [
+        "fn/splitByValue/004",
+        "fn/splitByValue/005"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-split-by-value-each/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_split_by_value_change",
+      "cases": [
+        "fn/splitByValue/006",
+        "fn/splitByValue/007",
+        "fn/splitByValue/008",
+        "fn/splitByValue/009",
+        "fn/splitByValue/010"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-split-by-value-change/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_sort_by_key_numeric_descending",
+      "cases": [
+        "fn/sortByKey/003"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-sort-by-key-numeric-descending/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_trans_003",
+      "cases": [
+        "fn/dateTrans/003"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-trans-003/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_sort_by_key_case_insensitive",
+      "cases": [
+        "fn/sortByKey/002"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-sort-by-key-case-insensitive/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_trans_004",
+      "cases": [
+        "fn/dateTrans/004"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-trans-004/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_trans_006",
+      "cases": [
+        "fn/dateTrans/006"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-trans-006/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_toUpperCase",
+      "cases": [
+        "fn/toUpperCase/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-toUpperCase/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_toLowerCase",
+      "cases": [
+        "fn/toLowerCase/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-toLowerCase/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_startsWith",
+      "cases": [
+        "fn/startsWith/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-startsWith/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_replaceString_empty_search",
+      "cases": [
+        "fn/replaceString/003"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-replaceString-empty-search/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_replaceString_dollar",
+      "cases": [
+        "fn/replaceString/002"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-replaceString-dollar/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_replaceString_aa_b",
+      "cases": [
+        "fn/replaceString/004"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-replaceString-aa-b/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_replaceString_a_bb",
+      "cases": [
+        "fn/replaceString/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-replaceString-a-bb/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_equalsS",
+      "cases": [
+        "fn/equalsS/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-equalsS/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_endsWith",
+      "cases": [
+        "fn/endsWith/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-endsWith/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_concat",
+      "cases": [
+        "fn/concat/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-concat/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-structures",
+      "artifactId": "api_str_attr",
+      "cases": [
+        "target/attribute/001",
+        "target/attribute/002",
+        "target/attribute/003"
+      ],
+      "evidence": "corpus/observations/obs-structures/cpi/api-preparation/str-attr/preparation.json",
+      "request": "corpus/observations/obs-structures/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_sum_suppress",
+      "cases": [
+        "fn/sum/003"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-sum-suppress/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_sum",
+      "cases": [
+        "fn/sum/002"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-sum/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_index_suppress",
+      "cases": [
+        "fn/index/004"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-index-suppress/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_index_default",
+      "cases": [
+        "fn/index/003"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-index-default/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_count_suppress",
+      "cases": [
+        "fn/count/003"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-count-suppress/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_count",
+      "cases": [
+        "fn/count/002"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-count/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_average_suppress",
+      "cases": [
+        "fn/average/004"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-average-suppress/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-statistic",
+      "artifactId": "api_stat_average",
+      "cases": [
+        "fn/average/003"
+      ],
+      "evidence": "corpus/observations/obs-statistic/cpi/api-preparation/stat-average/preparation.json",
+      "request": "corpus/observations/obs-statistic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-lift-reuse",
+      "artifactId": "api_lift_1",
+      "cases": [
+        "lift-1/l1.xml"
+      ],
+      "evidence": "corpus/observations/obs-lift-reuse/cpi/api-preparation/lift-1/preparation.json",
+      "request": "corpus/observations/obs-lift-reuse/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_trans_012",
+      "cases": [
+        "fn/dateTrans/012"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-trans-012/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-date",
+      "artifactId": "api_date_trans_005",
+      "cases": [
+        "fn/dateTrans/005"
+      ],
+      "evidence": "corpus/observations/obs-date/cpi/api-preparation/date-trans-005/preparation.json",
+      "request": "corpus/observations/obs-date/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_spec2_sort_by_key",
+      "cases": [
+        "fn/sortByKey/001",
+        "fn/sortByKey/004"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/spec2-sort-by-key/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-context-functions",
+      "artifactId": "api_ctx_1",
+      "cases": [
+        "ctx-1/f1.xml"
+      ],
+      "evidence": "corpus/observations/obs-context-functions/cpi/api-preparation/ctx-1/preparation.json",
+      "request": "corpus/observations/obs-context-functions/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_fix_values_suppress",
+      "cases": [
+        "fn/fixValues/007"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/fix-values-suppress/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_empty_keep",
+      "cases": [
+        "fn/ifWithoutElse/008"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-empty-keep/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_collapse_tags",
+      "cases": [
+        "fn/ifWithoutElse/010"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-collapse-tags/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_collapse",
+      "cases": [
+        "fn/ifWithoutElse/009"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-collapse/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_if",
+      "cases": [
+        "fn/if/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-if/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_equals",
+      "cases": [
+        "fn/equals/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-equals/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_and",
+      "cases": [
+        "fn/and/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-and/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_015",
+      "cases": [
+        "fn/formatNum/015"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-015/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_014",
+      "cases": [
+        "fn/formatNum/014"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-014/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_013",
+      "cases": [
+        "fn/formatNum/013"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-013/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_012",
+      "cases": [
+        "fn/formatNum/012"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-012/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_011",
+      "cases": [
+        "fn/formatNum/011"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-011/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_010",
+      "cases": [
+        "fn/formatNum/010"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-010/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_009",
+      "cases": [
+        "fn/formatNum/009"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-009/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_008",
+      "cases": [
+        "fn/formatNum/008"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-008/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_007",
+      "cases": [
+        "fn/formatNum/007"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-007/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_006",
+      "cases": [
+        "fn/formatNum/006"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-006/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_005",
+      "cases": [
+        "fn/formatNum/005"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-005/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_004",
+      "cases": [
+        "fn/formatNum/004"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-004/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_003",
+      "cases": [
+        "fn/formatNum/003"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-003/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_002",
+      "cases": [
+        "fn/formatNum/002"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-002/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-arithmetic",
+      "artifactId": "api_fmt_001",
+      "cases": [
+        "fn/formatNum/001"
+      ],
+      "evidence": "corpus/observations/obs-arithmetic/cpi/api-preparation/fmt-001/preparation.json",
+      "request": "corpus/observations/obs-arithmetic/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_item",
+      "cases": [
+        "fn/ifWithoutElse/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-item/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_item_keep",
+      "cases": [
+        "fn/ifWithoutElse/002"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-item-keep/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_orders",
+      "cases": [
+        "fn/ifWithoutElse/003"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-orders/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_suppress",
+      "cases": [
+        "fn/ifWithoutElse/005"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-suppress/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_fix_values_key",
+      "cases": [
+        "fn/fixValues/002"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/fix-values-key/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_fix_values_exception",
+      "cases": [
+        "fn/fixValues/004"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/fix-values-exception/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_fix_values_exact",
+      "cases": [
+        "fn/fixValues/008"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/fix-values-exact/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_fix_values_empty_table",
+      "cases": [
+        "fn/fixValues/006"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/fix-values-empty-table/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_fix_values_default_empty",
+      "cases": [
+        "fn/fixValues/005"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/fix-values-default-empty/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_fix_values_default",
+      "cases": [
+        "fn/fixValues/003"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/fix-values-default/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_copy_value_suppress",
+      "cases": [
+        "fn/copyValue/004"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/copy-value-suppress/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_copy_value_default",
+      "cases": [
+        "fn/copyValue/002"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/copy-value-default/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_copy_value_beyond",
+      "cases": [
+        "fn/copyValue/003"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/copy-value-beyond/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_copy_value",
+      "cases": [
+        "fn/copyValue/001"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/copy-value/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-text",
+      "artifactId": "api_text_trim",
+      "cases": [
+        "fn/trim/001"
+      ],
+      "evidence": "corpus/observations/obs-text/cpi/api-preparation/text-trim/preparation.json",
+      "request": "corpus/observations/obs-text/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_constant_item",
+      "cases": [
+        "fn/constant/003"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/constant-item/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_constant_empty",
+      "cases": [
+        "fn/constant/008"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/constant-empty/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_constant_count",
+      "cases": [
+        "fn/constant/006"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/constant-count/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_constant_concat_constants",
+      "cases": [
+        "fn/constant/005"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/constant-concat-constants/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_constant_concat",
+      "cases": [
+        "fn/constant/004"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/constant-concat/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_or",
+      "cases": [
+        "fn/or/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-or/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_notEquals",
+      "cases": [
+        "fn/notEquals/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-notEquals/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_not",
+      "cases": [
+        "fn/not/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-not/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_isNil",
+      "cases": [
+        "fn/isNil/001"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-isNil/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_tags",
+      "cases": [
+        "fn/ifWithoutElse/004"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-tags/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-boolean",
+      "artifactId": "api_boolean_ifWithoutElse_suppress_condition",
+      "cases": [
+        "fn/ifWithoutElse/007"
+      ],
+      "evidence": "corpus/observations/obs-boolean/cpi/api-preparation/boolean-ifWithoutElse-suppress-condition/preparation.json",
+      "request": "corpus/observations/obs-boolean/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-constant",
+      "artifactId": "api_constant_gen_numbering",
+      "cases": [
+        "fn/constant/007"
+      ],
+      "evidence": "corpus/observations/obs-constant/cpi/api-preparation/constant-gen-numbering/preparation.json",
+      "request": "corpus/observations/obs-constant/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    },
+    {
+      "observation": "obs-useoneasmany",
+      "artifactId": "api_spec2_use_one_as_many_root_value",
+      "cases": [
+        "fn/useOneAsMany/003"
+      ],
+      "evidence": "corpus/observations/obs-useoneasmany/cpi/api-preparation/spec2-use-one-as-many-root-value/preparation.json",
+      "request": "corpus/observations/obs-useoneasmany/request.md",
+      "status": "API_CREATED_READBACK_VERIFIED",
+      "simulation": "NOT_RUN",
+      "editorValidation": "NOT_RUN"
+    }
+  ]
+}

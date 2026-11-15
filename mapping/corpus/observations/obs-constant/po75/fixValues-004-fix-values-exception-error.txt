@@ -1,0 +1,13 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/fixValues/004 (exception run explicitly requested in fn/fixValues/002)
+Mapping: fix_values_exception, copied from fix_values_key.
+Input: unchanged copyValue-001.xml imported through Test UI; source XML verified.
+Graph: Order (context Orders) -> Item; Sku (context Order) -> F1 FixValues -> V. W and All unmapped.
+Table: a=A, d=D. Behaviour if lookup fails: Throw Exception, selected and visually verified. Default Value empty.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+10:20:31 Start of test. Compilation of fix_values_exception successful.
+Problem when Testing dialog, transcribed with object identity hashes redacted:
+Runtime exception when processing target-field mapping /Out/Item/V; root message:
+Exception:[java.lang.IllegalArgumentException: No value found for 'b'] in class com.sap.aii.mappingtool.flib7.TextFunctions method fixed_values[b, FixedValues{a=A, d=D}, com.sap.aii.ib.bom.flib.types.ValueMappingStrategy@[redacted], , com.sap.aii.mappingtool.tf7.rt.Context@[redacted]]
+See error logs for details
+Reading: confirmed. Throw Exception aborts on the first missing key b. No result XML was produced or exported.

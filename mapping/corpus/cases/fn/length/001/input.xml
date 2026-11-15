@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>abc</Sku></Line>
+    <Line><Sku></Sku></Line>
+    <Line><Sku> a </Sku></Line>
+    <Line><Sku>é</Sku></Line>
+  </Order>
+</Orders>

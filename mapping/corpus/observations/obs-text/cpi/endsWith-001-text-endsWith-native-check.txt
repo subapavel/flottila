@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/endsWith/001
+Artifact: api_text_endsWith_native; original endsWith-001.xml.
+Visible graph: Sku and Qty context /Orders -> endsWith -> /Out/All.
+VERIFIED_PASS: All true, false, true, false, false. Original downloaded XML preserved.
+Resolved original generic failure by using native function identifier endWith instead of endsWith in separate API revision. Inputs and contexts unchanged. Native identifier observed from palette Save request; see native-function-identifiers-diagnostic.txt.

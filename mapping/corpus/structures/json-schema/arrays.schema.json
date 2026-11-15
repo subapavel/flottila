@@ -1,0 +1,24 @@
+{
+  "title": "An array property is one repeated field with minItems and maxItems",
+  "type": "object",
+  "required": ["lines", "tags"],
+  "properties": {
+    "lines": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["sku"],
+        "properties": {
+          "sku": {"type": "string"},
+          "qty": {"type": "integer"}
+        }
+      }
+    },
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "array", "minItems": 2, "items": {"type": "string", "format": "date"}},
+    "untyped": {"items": {"type": "boolean"}},
+    "bare": {"type": "array"}
+  }
+}

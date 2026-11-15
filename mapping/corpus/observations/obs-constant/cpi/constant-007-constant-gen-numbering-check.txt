@@ -1,0 +1,8 @@
+CPI observation: fn/constant/007
+Date: 2026-11-12
+Artifact: api_constant_gen_numbering
+Input: constant-007.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Gens/Grp; constant g -> Gen; Qty in /Orders/Order/Line context -> Gen/V. Editor shows Gen occurrence 2..3, V 0..1.
+Simulation completed. Two Gen per Grp: first Grp V=1,2; second Grp V=3,4. Matches the assumed output.
+Exact downloaded output copied byte-for-byte to constant-007-constant-gen-numbering.xml.
+No mapping changed or deployed. No queue requested. Screenshots not retained.

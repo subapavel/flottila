@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/gate-order-po.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (projection by $ field paths, whatever the member order of the input) and \"JSON Schema and WSDL\" (oneOf gives each branch's properties with minimum 0); ADR-0008 \"XSD\" (the branches of a choice are sibling fields with minimum 0); GATE check 1, ticket #100",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. The pickup branch of the oneOf delivery: Pickup is written and Delivery, the other branch of the target's choice, is not, so its mandatory Street and City are not asked for. customer's members come in the other order; the output follows the target's order. issued is absent, so @issued is not written. One line gives one Line."
+}

@@ -1,0 +1,4 @@
+CPI editor, mapping spec2-sort-descending.
+In-place edit of spec2_sort after all case-insensitive outputs were saved. Comparison rule changed back to case sensitive. An immediate desc click during the dropdown rerender did not persist; before simulation, fresh inspection still showed asc. Clicked desc again on the current control and verified asc=false, desc=true before Save.
+Graph and contexts unchanged: Tag default Order -> sort -> removeContexts -> All.
+Save and simulation completed without validation/runtime error. sort-001 output b,a,_,B,A,9,10,é,f,e,Z confirms the assumed descending order.

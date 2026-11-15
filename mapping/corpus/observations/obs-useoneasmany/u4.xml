@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>A</Id>
+    <Tag>t1</Tag>
+    <Tag>t2</Tag>
+  </Order>
+  <Order>
+    <Id>B</Id>
+    <Line><Sku>s1</Sku></Line>
+    <Line><Sku>s2</Sku></Line>
+  </Order>
+  <Order>
+    <Tag>t3</Tag>
+    <Line><Sku>s3</Sku></Line>
+  </Order>
+  <Order>
+    <Id>D</Id>
+    <Tag>t4</Tag>
+    <Line><Sku>s4</Sku></Line>
+  </Order>
+</Orders>

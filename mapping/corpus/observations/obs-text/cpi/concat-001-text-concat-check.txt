@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/concat/001
+Artifact: api_text_concat
+Input: original concat-001.xml uploaded through simulator.
+Visible graph verified: Sku and Qty both context /Orders -> concat -> /Out/All.
+Simulation completed. Four All values: abcd, x, x, empty string. Empty sides preserve the other side; two empty sides produce an existing empty All element. Downloaded XML preserved unchanged.

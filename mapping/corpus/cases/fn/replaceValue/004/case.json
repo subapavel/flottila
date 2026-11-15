@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/replace-value.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-lift-reuse (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-lift-reuse/po75/replaceValue-004-spec2-replace-value.xml and corpus/observations/obs-lift-reuse/cpi/replaceValue-004-spec2-replace-value.xml; before #214: obs-lift-reuse lift-1 o5 (#32): <Tag/> is a value that is the empty string, not an empty context; #2 §7.3; observation #61",
+  "expect": "output",
+  "note": "Sku in context Orders: a, then <Sku/>, the value \"\", then a Line without Sku, which gives no slot. replaceValue replaces both values, the empty one included, so two All. Taking <Sku/> for no value would give one."
+}

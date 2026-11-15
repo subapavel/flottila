@@ -1,0 +1,9 @@
+Display Queue of box M1 (mapWithDefault), CPI, input collapseContexts-003.xml, mapping spec2-map-with-default-remove-contexts, fn/mapWithDefault/004.
+S. No. enabled. Default Value displayed as D.
+row  mapWithDefault:in1  shading          mapWithDefault:out1  shading
+0    <null>              gray italic      <null>               gray italic
+1    [ ]                 dark gray italic D                    white
+2    (none)                               D                    dark gray italic
+
+Reading: in1 = one empty context; out1 = [D].
+First simulation emitted one empty All despite displayed D. Its original bytes are retained separately; effective compiled parameter in that attempt is unverified.

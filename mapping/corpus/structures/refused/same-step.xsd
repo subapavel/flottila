@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure (#92, ADR-0008 "Refused when a mapping uses the field", ADR-0007
+     Consequences): same-step siblings load, and a mapping that uses one is refused with
+     ambiguous-field-path. Id is the one mandatory leaf of Doc. Note is declared twice around its
+     neighbour Code, both optional (the second at line 14). Head is optional and holds Ref twice,
+     both mandatory (the second at line 19). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+        <xs:element name="Note" type="xs:string" minOccurs="0"/>
+        <xs:element name="Code" type="xs:string" minOccurs="0"/>
+        <xs:element name="Note" type="xs:string" minOccurs="0"/>
+        <xs:element name="Head" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Ref" type="xs:string"/>
+              <xs:element name="Ref" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

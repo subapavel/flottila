@@ -1,0 +1,8 @@
+CPI, Simulate, input createIf-003.xml, mapping create_if_twice, case fn/createIf/003. No output.
+Run time on target /Out/All, box C2 (createIf), consuming C1's empty-string result.
+
+Error
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/All. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Cannot cast "" to boolean.] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[, com.sap.aii.mappingtool.tf7.rt.Context@<id>] Cannot cast "" to boolean. on the exchange: Exchange[<exchange-id>]
+OK
+
+The dialog displayed no Caused by lines or stack frames.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/parents-head-order.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §1 nested queues: a structure field's queue holds one empty string per occurrence, \"The number of contexts of a queue must be the same as the number of values (empty strings) of the upper-level queue\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/fbd21666d33de4e10000000a42189e/content.htm]; ADR-0008",
+  "expect": "output",
+  "note": "The source structure field Order in context Orders onto the target leaf Head/Id: one \"\" per Order, three in one context, so three empty Ids, Order 2 without an Id included. Reading each Order's text instead would give Ids holding the text of its Id, Tags and Lines."
+}

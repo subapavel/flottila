@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target for obs-structures (ADR-0018): Pick holds a choice of A or B. The declared
+     minOccurs of each branch is 1; ADR-0008 assumes a branch of a choice counts as optional. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Choice">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Pick" minOccurs="1" maxOccurs="1">
+          <xs:complexType>
+            <xs:choice>
+              <xs:element name="A" type="xs:string" minOccurs="1" maxOccurs="1"/>
+              <xs:element name="B" type="xs:string" minOccurs="1" maxOccurs="1"/>
+            </xs:choice>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

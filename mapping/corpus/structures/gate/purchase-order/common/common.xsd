@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure for GATE check 1 (#100): the second namespace of the purchase order,
+     imported by order.xsd and types.xsd -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:c="urn:flottila:corpus:gate:common"
+           targetNamespace="urn:flottila:corpus:gate:common"
+           elementFormDefault="qualified">
+  <xs:complexType name="Party">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Address">
+    <xs:sequence>
+      <xs:element name="Street" type="xs:string"/>
+      <xs:element name="City" type="xs:string"/>
+    </xs:sequence>
+    <xs:attribute name="country" type="xs:string"/>
+  </xs:complexType>
+</xs:schema>

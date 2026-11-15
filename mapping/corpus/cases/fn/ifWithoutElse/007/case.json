@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-ifWithoutElse-suppress-condition.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-ifWithoutElse-suppress-condition, input ifWithoutElse-007.xml: corpus/observations/obs-boolean/po75/ifWithoutElse-007-boolean-ifWithoutElse-suppress-condition.xml with the X1 and X2 display queues in its check, cpi/ifWithoutElse-007-boolean-ifWithoutElse-suppress-condition.xml, cpi/ifWithoutElse-007-X1-queue.json and X2-queue.json; PO 7.50 and CPI agree (meta.json); F-44, ADR-0006 Consequences, ifWithoutElse",
+  "expect": "output",
+  "note": "X1 = ifWithoutElse(Sku, Qty) with keepSuppressValues=true, X2 = ifWithoutElse(X1, Qty) without params, all in context Orders, onto Item; V is Qty in context Line. Lines (true, true), (false, true), (true, false), (true, true): X1 is true, SUPPRESS, false, true, and X2 is true, SUPPRESS, SUPPRESS, true: a SUPPRESS condition and a false one both give SUPPRESS. The Items of slots 1 and 4 read lines 1 and 4: true and true."
+}

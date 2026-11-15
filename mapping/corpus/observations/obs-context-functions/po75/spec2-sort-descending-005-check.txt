@@ -1,0 +1,14 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_sort_descending; case fn/sort/005.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context Order -> sort -> removeContexts -> Out/All only.
+Sort parameters explicitly selected and observed: case sensitive, descending.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original sort-001.xml imported through test UI, no edits.
+22:23:25 Start of test
+Compilation of spec2_sort_descending successful
+Execution of mapping on server took 9 milliseconds
+Executed successfully
+22:23:26 End of test
+Result exported through UI as spec2-sort-descending-005-export.zip; instance.xml extracted unchanged as spec2-sort-descending-005.xml.
+Reading: All b,a,_,B,A,9,10,é,f,e,Z. Confirms descending case-sensitive ordering separately in each context, agrees with CPI. No additional queue observation was made.

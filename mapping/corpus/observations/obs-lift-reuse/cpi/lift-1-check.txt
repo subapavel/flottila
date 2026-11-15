@@ -1,0 +1,19 @@
+CPI Message Mapping editor, lift_1, Save, 2026-11-11.
+No error dialog, red target field or triangle remained after Save.
+Source Orders: src-orders.xsd. Target Out: tgt-list.xsd.
+Orders/Order -> Out/Item, node to node.
+L1 concat: string1 = Tag (default context Order); string2 = Sku (context /Orders/Order).
+L1 -> Out/Item/V. All other target fields unmapped.
+The concat parameter is labeled Delimiter String; its default input value is empty and was left unchanged.
+
+Simulate l1.xml, initial attempt:
+Error
+Test execution has failed; please try again
+OK
+
+One retry, after remaining at 10% in Mapping test is in progress...:
+Error
+Error while setting mpl log level to None
+OK
+
+ENVIRONMENT_BLOCKED. No output was displayed or downloaded. No mapping exception or stack trace was shown.

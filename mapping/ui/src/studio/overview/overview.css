@@ -1,0 +1,34 @@
+/*
+ * The Overview tab's styles, ported from the prototype's studio.css (branch prototype/mapping-studio,
+ * ui/prototype/mapping-studio/src/studio.css) with its values unchanged.
+ */
+.mapping-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: 16px;
+  align-items: start;
+}
+.overview-properties,
+.overview-description {
+  padding: clamp(16px, 2vw, 28px);
+}
+.overview-properties h2,
+.overview-description label {
+  display: block;
+  margin-bottom: 18px;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+.overview-properties dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.overview-properties code {
+  font: 13px/1.5 var(--mono);
+}
+@media (max-width: 960px) {
+  .mapping-overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

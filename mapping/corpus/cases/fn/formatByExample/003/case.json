@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-by-example.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 formatByExample: \"equal value counts required (\\\"empty contexts are not counted\\\")\" [SAP✓ https://help.sap.com/doc/saphelp_nw74/7.4.16/en-us/4b/f416dceaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/saphelp_ewm900/helpdata/en/4b/f416dceaca4c86e10000000a42189e/content.htm]",
+  "expect": "output",
+  "note": "Empty contexts in both queues are not counted. The values, Tag in context Order, are t1, t2, t3 | (empty) | (empty); the example, Sku in context Order, is a | (empty) | b, c: three values each, five against four contexts. formatByExample gives t1 | (empty) | t2, t3, so All is t1. Counting an empty context as a value would refuse the counts; keeping the values' contexts would give t1, t2, t3."
+}

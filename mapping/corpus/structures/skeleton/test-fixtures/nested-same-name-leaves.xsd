@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#92): leaf siblings A B A A under Line. Each A carries ambiguous-field-path at the
+     second A's declaration (line 15), not the first's or the last's; B, their neighbour, and Line
+     carry no refusal. The As differ in type so that each can be told apart in field order. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Line">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="A" type="xs:string"/>
+              <xs:element name="B" type="xs:int"/>
+              <xs:element name="A" type="xs:date" minOccurs="0"/>
+              <xs:element name="A" type="xs:boolean" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

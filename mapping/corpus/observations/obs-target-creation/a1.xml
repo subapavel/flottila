@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>skip</Sku><Qty>1</Qty></Line>
+    <Line><Sku>keep</Sku><Qty>2</Qty></Line>
+    <Line><Sku>keep</Sku><Qty>3</Qty></Line>
+    <Line><Sku>keep</Sku><Qty>4</Qty></Line>
+  </Order>
+</Orders>

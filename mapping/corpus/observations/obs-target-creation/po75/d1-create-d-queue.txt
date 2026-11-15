@@ -1,0 +1,16 @@
+Display Queue of box D1 (mapWithDefault{default=D}), PO 7.5 Test tab, input d1.xml, mapping create-d.
+Transcribed literally from the owner's screenshot (default view). Shading as shown; the last row
+was the selected row.
+
+row  mapWithDefault:in0   mapWithDefault:out   shading
+0    <null>               <null>               gray
+1    [a]                  [a]                  white
+2    [a]                  [a]                  gray
+3    [c]                  [c]                  white
+4    [c]                  [c]                  dark gray
+
+Row numbers from the second toolbar button, which adds an index column and nothing else.
+Owner's reading: a gray row is a context change (PO shows the preceding value's text on it).
+With that reading the queue is [a] [c]: two contexts, none for order 2 (no Memo).
+
+No D appears in the queue: order 2 (no Memo) contributes no context.

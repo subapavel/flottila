@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target for unmapped target parents and structure-to-structure mapping (ADR-0018,
+     #63). Head is 1..1 and Pair 2..2, both created whatever the mapping; Opt is 0..1 and left out
+     with its subtree unless mapped. Item repeats, and holds Info 1..1 and Twin 2..2. Every leaf is
+     an optional string. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Parents">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Head" minOccurs="1" maxOccurs="1">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Id" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Pair" minOccurs="2" maxOccurs="2">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="V" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Opt" minOccurs="0" maxOccurs="1">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="W" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Item" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Tag" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+              <xs:element name="Info" minOccurs="1" maxOccurs="1">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Sku" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="Twin" minOccurs="2" maxOccurs="2">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Qty" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

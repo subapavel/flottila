@@ -1,0 +1,15 @@
+SAP PO observation 2026-11-11
+Mapping: ctx_3_empty
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag in default Order context -> removeContexts R1 -> SplitByValue S1 [Empty Value] -> collapseContexts -> Out/Item.
+Separate Tag in default Order context -> removeContexts R2 -> SplitByValue S2 [Empty Value] -> Out/Item/V.
+W and All unmapped. Both parameter selections verified in UI.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f3.xml imported through test UI, no edits; SRC verified.
+23:57:27 Start of test
+Compilation of ctx_3_empty successful
+Execution of mapping on server took 11 milliseconds
+Executed successfully
+23:57:28 End of test
+Result exported through UI as ctx-3-empty-export.zip; instance.xml extracted unchanged as ctx-3-empty.xml.
+Reading: three Items with V [a,a], [b], then no V. Agrees with CPI. No fixed assumed result, so reading other.

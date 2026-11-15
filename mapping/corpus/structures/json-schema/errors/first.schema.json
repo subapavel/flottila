@@ -1,0 +1,8 @@
+{
+  "title": "A $ref outside the bundle, beside one to the second bundle file",
+  "type": "object",
+  "properties": {
+    "second": {"$ref": "second.schema.json"},
+    "party": {"$ref": "party.schema.json"}
+  }
+}

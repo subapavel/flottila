@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure for GATE check 1 (#100), included by order.xsd: po:Buyer extends c:Party
+     of the imported common/common.xsd; po:Money is simple content with two attributes; po:Product
+     is an abstract head whose members are Article, declared without a type so that it takes the
+     head's, and Service -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:po="urn:flottila:corpus:gate:po"
+           xmlns:c="urn:flottila:corpus:gate:common"
+           targetNamespace="urn:flottila:corpus:gate:po"
+           elementFormDefault="qualified">
+  <xs:import namespace="urn:flottila:corpus:gate:common" schemaLocation="common/common.xsd"/>
+  <xs:complexType name="Buyer">
+    <xs:complexContent>
+      <xs:extension base="c:Party">
+        <xs:sequence>
+          <xs:element name="CustomerNo" type="xs:string"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Money">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="currency" type="xs:string" use="required"/>
+        <xs:attribute name="vatIncluded" type="xs:boolean"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="ProductType">
+    <xs:sequence>
+      <xs:element name="Sku" type="xs:string"/>
+      <xs:element name="Name" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:element name="Product" type="po:ProductType" abstract="true"/>
+  <xs:element name="Article" substitutionGroup="po:Product"/>
+  <xs:element name="Service" type="po:ProductType" substitutionGroup="po:Product"/>
+</xs:schema>

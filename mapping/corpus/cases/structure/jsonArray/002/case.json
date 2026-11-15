@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-tags.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (an array property is one repeated field, its items its occurrences); RFC 8259 §7 (string escapes); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. Each item of the array of strings $/tags is one occurrence of tags, in the root's one context: red, the empty string, a string with the escapes \\\", \\\\ and \\/, and one with \\u escapes, a surrogate pair among them, each read as the string it escapes."
+}

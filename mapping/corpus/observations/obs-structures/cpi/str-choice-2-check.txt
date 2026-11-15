@@ -1,0 +1,4 @@
+CPI, Message Mapping editor, str-choice-2, target/choiceBranch/004-005.
+Source src-orders.xsd / Orders; target tgt-choice.xsd / Choice. A and B are shown as 0..1; Choice and Pick as 1..1.
+Only the A chain is drawn: Id context Orders -> equals(string) string1; constant A -> string2; equals(string) -> ifWithoutElse condition, Id context Orders -> true value; ifWithoutElse -> A. Keep SUPPRESS checked. B stays unmapped, and there are no other target wires.
+Save completed without an error dialog, red field or target error triangle. Five connections verified in the expression. Simulate is available. No design-time shortfall was reported for unmapped B.

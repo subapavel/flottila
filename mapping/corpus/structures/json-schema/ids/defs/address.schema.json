@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/shared/address.json",
+  "title": "Named types under a root $id, referred to by pointer and by anchor",
+  "$defs": {
+    "Address": {
+      "type": "object",
+      "required": ["city"],
+      "properties": {
+        "city": {"type": "string"},
+        "country": {"$ref": "#/$defs/Country"},
+        "home": {"$ref": "#home"}
+      }
+    },
+    "Country": {"type": "string"},
+    "Home": {"$anchor": "home", "type": "object", "properties": {"street": {"type": "string"}}}
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-substring-1-3.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "substring{start=1, length=3}: the start is 0-based, so abcdef gives bcd; a value shorter than start+length is cut to its end (ab gives b), one shorter than start gives an empty value."
+}

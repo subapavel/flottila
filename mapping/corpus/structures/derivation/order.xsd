@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure (#95): an order and its receipt. Buyer and Customer are of o:Customer, an
+     extension of o:Party; a reference to the abstract head o:Item is a choice of its members
+     o:Book and o:Disc; o:Money is simple content with a required attribute currency; Remark is of
+     the abstract type o:Remark. Local elements have no namespace -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:o="urn:flottila:corpus:order"
+           targetNamespace="urn:flottila:corpus:order">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Buyer" type="o:Customer"/>
+        <xs:element ref="o:Item" maxOccurs="unbounded"/>
+        <xs:element name="Total" type="o:Money"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Receipt">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Customer" type="o:Customer"/>
+        <xs:element ref="o:Item" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:element name="Paid" type="o:Money"/>
+        <xs:element name="Remark" type="o:Remark" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Party">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Customer">
+    <xs:complexContent>
+      <xs:extension base="o:Party">
+        <xs:sequence>
+          <xs:element name="Number" type="xs:string"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Money">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="currency" type="xs:string" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="ItemType">
+    <xs:sequence>
+      <xs:element name="Title" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:element name="Item" type="o:ItemType" abstract="true"/>
+  <xs:element name="Book" type="o:ItemType" substitutionGroup="o:Item"/>
+  <xs:element name="Disc" type="o:ItemType" substitutionGroup="o:Item"/>
+  <xs:complexType name="Remark" abstract="true">
+    <xs:sequence>
+      <xs:element name="Text" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

@@ -1,0 +1,7 @@
+{
+  "mapping": "bench/contexts/contexts.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0021",
+  "expect": "none",
+  "note": "The contexts bench mapping on its small input, as corpus/bench/contexts/ContextsGenerator.java writes it from the seed in bench.json (#187): differential only, so every benchmark of it times output that Saxon agrees with."
+}

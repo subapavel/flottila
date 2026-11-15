@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-startsWith.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/startsWith-001-text-startsWith.xml and corpus/observations/obs-text/cpi/startsWith-001-text-startsWith-native.xml; before #214: ADR-0025 (functions bind by name; the reading of startsWith follows java.lang.String and XPath); obs-text row startsWith/001",
+  "expect": "output",
+  "note": "startsWith(Sku, Qty) is true for a prefix and for an empty prefix, false when the prefix is inside, or longer than the value."
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): the file xsd/main.xsd includes, in the same target namespace -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:include">
+  <xs:complexType name="Line">
+    <xs:sequence>
+      <xs:element name="Sku" type="xs:string"/>
+      <xs:element name="Qty" type="xs:integer" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

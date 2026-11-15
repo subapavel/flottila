@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sum.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 \"Data errors name their box\" (Q10) and ADR-0005: a number is read in the xs:decimal lexical form only, anything else is err:FORG0001 at the box",
+  "expect": "error",
+  "note": "Qty is 1e3, a double's form, not an xs:decimal's: sum raises err:FORG0001 at its box F1."
+}

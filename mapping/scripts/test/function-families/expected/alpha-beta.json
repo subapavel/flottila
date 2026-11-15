@@ -1,0 +1,105 @@
+{
+  "apple": {
+    "executionKind": "single",
+    "family": "alpha",
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "params": [
+      {
+        "default": "",
+        "name": "replacement",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "banana": {
+    "executionKind": "context",
+    "family": "beta",
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "params": [
+      {
+        "default": "eachValue",
+        "name": "mode",
+        "type": "string",
+        "values": [
+          "eachValue",
+          "valueChange"
+        ]
+      },
+      {
+        "default": "é \"q\" \\ \u001f",
+        "name": "label",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "kiwiB": {
+    "executionKind": "single",
+    "family": "beta",
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  },
+  "kiwia": {
+    "executionKind": "context",
+    "family": "alpha",
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "portable": true
+  },
+  "melon": {
+    "executionKind": "queue",
+    "family": "alpha",
+    "inputs": [
+      {
+        "name": "values"
+      },
+      {
+        "name": "example"
+      }
+    ],
+    "portable": false
+  },
+  "melonBall": {
+    "executionKind": "queue",
+    "family": "beta",
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "portable": true
+  },
+  "zucchini": {
+    "executionKind": "context",
+    "family": "beta",
+    "inputs": [
+      {
+        "name": "keys"
+      }
+    ],
+    "params": [
+      {
+        "default": {},
+        "name": "rows",
+        "type": "table"
+      }
+    ],
+    "portable": true
+  }
+}

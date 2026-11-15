@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-length.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "ADR-0025 \"Families\" and the amendment of 2026-11-03: text counts, indexes and orders in code points, not UTF-16 units; a character outside the BMP is a catalogue deviation. One character outside the BMP counts 1 (UTF-16 would give 2), a, a clef and b count 3 (UTF-16: 4)."
+}

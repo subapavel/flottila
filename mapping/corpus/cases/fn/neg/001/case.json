@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-neg.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "Qty with its sign changed in context Orders: neg(-0.5) is 0.5, and neg(0) is 0, not -0."
+}

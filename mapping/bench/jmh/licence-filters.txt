@@ -1,0 +1,3 @@
+# JMH is GPL-2.0 with the Classpath Exception (ADR-0017). Excepted in this module only; the root
+# POM bans org.openjdk.jmh everywhere else.
+exclude gaPattern org\.openjdk\.jmh:.*

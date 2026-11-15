@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-split-each-collapse.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-suppress-split-each-collapse, input splitByValue-019.xml, 2026-11-12: corpus/observations/obs-context-functions/po75/splitByValue-019-spec2-suppress-split-each-collapse.xml and cpi/splitByValue-019-spec2-suppress-split-each-collapse.xml, PO display queue in po75/splitByValue-019-spec2-suppress-split-each-collapse-check.txt; PO 7.50 and CPI 6.84.77 agree on the output: splitByValue keeps each SUPPRESS as a context of its own, and collapseContexts keeps a SUPPRESS first slot as SUPPRESS; F-47, ADR-0006 Consequences",
+  "expect": "output",
+  "note": "Tag in context Orders is true, false | true, false, false, so createIf gives \"\", SUPPRESS, \"\", SUPPRESS, SUPPRESS. eachValue puts each slot, SUPPRESS included, in a context of its own: \"\" | SUPPRESS | \"\" | SUPPRESS | SUPPRESS (PO queue). collapseContexts keeps each first slot, SUPPRESS as SUPPRESS: \"\", SUPPRESS, \"\", SUPPRESS, SUPPRESS, so two empty All. SUPPRESS taken for \"\", the reading before F-47, gives five."
+}

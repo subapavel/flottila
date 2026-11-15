@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/exists.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-exists, input f4.xml, 2026-11-11: corpus/observations/obs-context-functions/po75/spec2-exists.xml (po75/spec2-exists-check.txt) and cpi/f4-spec2-exists.xml (cpi/spec2-exists-check.txt); ctx-4 on the same input, po75/ctx-4.xml and cpi/f4-ctx-4.xml, shows the contexts: true,true | false | false | true; PO 7.50 and CPI 6.84.77 agree; F-48, ADR-0006 Consequences (exists is per value, false only for an empty context)",
+  "expect": "output",
+  "note": "The input of obs-context-functions ctx-4 (f4.xml). Sku in context Order is a, b | (empty) | (empty) | \"\": o2's one Line has no Sku, o3 has no Line, o4's <Sku/> is the value \"\". exists gives true per value and one false per empty context, true, true | false | false | true, and removeContexts puts them under the root's one slot. One value per context, the reading before F-48, gives true, false, false, true."
+}

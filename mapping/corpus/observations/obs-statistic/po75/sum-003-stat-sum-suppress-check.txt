@@ -1,0 +1,15 @@
+PO 7.5 ESR; 2026-11-12; stat-sum-suppress; sum-003.xml; fn/sum/003.
+Created stat_sum_suppress as a copy of the already recorded stat_average_suppress; replaced average with sum and retained other wires. Saved.
+Source Tag with default Order context -> createIf -> replaceValue [5] -> sum -> Out/Item/V. Existing Order -> Item retained.
+Check: No errors found during object check
+Problem 0; Warning 0.
+Test input imported from the original sum-003.xml using the file chooser.
+13:45:43 Start of test
+Compilation of stat_sum_suppress successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+13:45:44 End of test
+Result exported by ESR to ZIP; instance.xml extracted byte-for-byte.
+Display Queue evaluation also compiled successfully and executed successfully (9 milliseconds).
+VERIFIED_PASS: native run, result export and numbered R1 queue observed.
+Reading: contradicted. Values are 15, 5, 0, 5. R1 replaces SUPPRESS with 5, so this graph does not isolate sum's treatment of SUPPRESS.

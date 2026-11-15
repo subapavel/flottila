@@ -1,0 +1,14 @@
+SAP PO observation 2026-11-11
+Mapping: spec3_map_with_default_remove_contexts_item; case fn/mapWithDefault/010.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Sku default context Line -> removeContexts -> mapWithDefault[D] -> Out/Item/V.
+Line explicitly set to context Orders -> Out/Item. Nothing else mapped.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original mapWithDefault-010.xml imported through test UI, no edits.
+21:52:05 Start of test
+Compilation of spec3_map_with_default_remove_contexts_item successful
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+21:52:06 End of test
+Result exported through UI as spec3-map-with-default-remove-contexts-item-export.zip; instance.xml extracted unchanged as spec3-map-with-default-remove-contexts-item.xml.
+Reading: Item 1 has V D; Item 2 has no V. Confirms assumed reading and agrees with verified CPI rerun. Initial CPI attempt remains historical only.

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<src:Order xmlns:src="urn:flottila:corpus:skeleton" channel="web">
+  <OrderId>PO 4711</OrderId>
+  <Quantity>3</Quantity>
+</src:Order>

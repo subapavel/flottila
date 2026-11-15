@@ -1,0 +1,17 @@
+SAP PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_replace_value_create_if
+Input: original replaceValue-002.xml imported through the Test file dialog.
+Source SRC verified: Order o1 Tag true,false; Order o2 Tag true.
+Graph: Tag (context Orders) -> createIf -> replaceValue -> All.
+replaceValue parameter: Value to Produce; default empty; explicitly set to yes.
+Item, V and W unmapped. Saved with Ctrl+S.
+Object check: No errors found during object check; Problem 0; Warning 0.
+19:19:09 Start of test
+Compilation of spec2_replace_value_create_if successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+19:19:10 End of test
+Result SRC: three All=yes values.
+Unmodified ESR result export: replaceValue-002-spec2-replace-value-create-if-export.zip
+The instance.xml entry was extracted without reserialization to replaceValue-002-spec2-replace-value-create-if.xml.
+Reading: contradicted. SUPPRESS from the false position is replaced too. PO agrees with CPI.

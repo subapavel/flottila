@@ -1,0 +1,5 @@
+CPI Message Mapping editor, create_if_twice, Save, 2026-11-11.
+No error dialog, red target field or triangle remained after Save.
+Source Orders: src-orders.xsd. Target Out: tgt-list.xsd.
+Tag [context /Orders] -> C1 createIf -> C2 createIf -> Out/All.
+All other target fields unmapped. Tag tooltip showed Context: /Orders and its label was italic.

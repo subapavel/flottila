@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-tags.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a value whose JSON kind does not fit its field reads as absent: an object or array for a leaf); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. The items of the array of strings $/tags are its occurrences only where they are scalars: the object and the array between a and d are not read, so All is a and d."
+}

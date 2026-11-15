@@ -1,0 +1,20 @@
+SAP PO observation 2026-11-12
+Mapping spec2_suppress_sort_by_key; fn/sortByKey/006; original sortByKey-006.xml imported unchanged via UI; source XML checked.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag context Orders -> createIf -> sortByKey first input; Sku context Orders -> second input; sortByKey -> All directly. Nothing else mapped.
+Parameters case sensitive and ascending. Saved (Save disabled); Check: No errors found during object check; Problem 0, Warning 0.
+00:58:33 Start of test
+Compilation of spec2_suppress_sort_by_key successful
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+00:58:34 End of test
+UI export instance.xml extracted unchanged.
+Display Queue separately compiled successfully, executed successfully in 7 milliseconds.
+Literal numbered rows, columns sortByKey:in0 | sortByKey:in1 | sortByKey:out:
+0: <null> | <null> | <null> (gray)
+1: [] | [s1] | [s1]
+2: SUPPRESS (cyan) | [s2] | [s3]
+3: [] | [s3] | [s2]
+4: SUPPRESS (cyan) | [s4] | [s4]
+5: SUPPRESS | [s4] | [s4] (dark gray terminal row)
+Reading: input keys empty,SUPPRESS,empty,SUPPRESS; values s1,s2,s3,s4; output s1,s3,s2,s4. SUPPRESS keys sort after empty keys, ties retain input order. Gray initial/terminal rows are not extra values. Contradicts assumed SUPPRESS-first order. CPI not run yet.

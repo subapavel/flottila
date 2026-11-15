@@ -1,0 +1,16 @@
+SAP PO 7.50, ESR message mapping, 2026-11-12
+Case: fn/constant/007
+Mapping: constant_gen_numbering
+Input: original constant-007.xml imported through Test UI, unchanged.
+Target: original tgt-gen.xsd imported through Definition UI.
+Graph: Order (Orders context) -> Grp; Constant g -> Gen;
+Qty (default Line context) -> Gen/V. Gen occurrence 2..3; V occurrence 0..1.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+Test: 10:00:04 Start of test; compilation successful; execution 7 milliseconds;
+Executed successfully; 10:00:05 End of test.
+Result exported via UI to constant-007-constant-gen-numbering.zip. Its instance.xml
+was extracted unchanged as constant-007-constant-gen-numbering.xml.
+
+Reading: confirmed. Each Grp contains two Gen elements. The first Grp has V 1, 2;
+the second Grp has V 3, 4. Source Order 1 has Qty 1, 2, 3 and Order 2 has Qty 4.
+The output numbering continues across the source Order boundary as requested.

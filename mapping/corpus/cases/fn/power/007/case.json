@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/power.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: an integer power is exact up to the exponent 1000, and computed in xs:double above it",
+  "expect": "output",
+  "note": "3^1000 is the last exact power (478 digits; as a double it would be Infinity, so an exact result tells the two apart). 1^1001 is a double power, 1."
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture for GATE check 1 (#100): a WSDL 2.0 message declared #other is refused
+     (ADR-0008 "JSON Schema and WSDL") -->
+<description xmlns="http://www.w3.org/ns/wsdl"
+             xmlns:tns="urn:flottila:corpus:gate:refused"
+             targetNamespace="urn:flottila:corpus:gate:refused">
+  <interface name="Port">
+    <operation name="Op">
+      <input element="#other"/>
+    </operation>
+  </interface>
+</description>

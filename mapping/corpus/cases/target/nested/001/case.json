@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/nested-item-v.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §1 nested queues: \"The number of contexts of a queue must be the same as the number of values (empty strings) of the upper-level queue\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/fbd21666d33de4e10000000a42189e/content.htm]; #2 §2 context i of a child's queue belongs to the i-th entry of the parent's queue [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/1f/ea0fb12403844bbb6c4cbc8a00cda9/content.htm]",
+  "expect": "output",
+  "note": "Item per Id in context Orders: slot numbers 1, 2, 3 in the root's one context. V per Sku in context Order: a, b | (empty) | c, one context per Order. Item k reads context k, so Item 2 has no V and Item 3 gets c. Skipping the empty context would give Item 2 c and Item 3 nothing; reading the Sku queue as one context would give a, b, c in Item 1."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sum-suppress.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-statistic (#212, #216, F-45), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both give 15, 5, 0, 5, because replaceValue replaces the SUPPRESS with 5 before sum reads it: corpus/observations/obs-statistic/po75/sum-003-stat-sum-suppress.xml and corpus/observations/obs-statistic/cpi/sum-003-stat-sum-suppress.xml, display queues of R1 po75/sum-003-stat-sum-suppress-queue.txt and cpi/sum-003-R1-queue.json; before #216: #2 §5 Statistics: sum, average and count work per context (\"Sum of values X1 to Xi of a context\") [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; assumed reading of #75: SUPPRESS is no value (as for exists and mapWithDefault, #57) (contradicted in this chain)",
+  "expect": "output",
+  "note": "createIf(Tag) is \"\", SUPPRESS, \"\" | SUPPRESS | (empty) | \"\". replaceValue(5) replaces every slot, the SUPPRESS included: 5, 5, 5 | 5 | (empty) | 5, so sum gives 15, 5, 0, 5; the empty context sums to 0. sum sees no SUPPRESS here. The assumed reading gave 10, 0, 0, 5."
+}

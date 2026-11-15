@@ -1,0 +1,13 @@
+Display Queue of box C1 (createIf), PO 7.5 Test tab, input probes/probe-bool-a.xml, mapping spec2-create-if-row.
+Transcribed from the owner's screenshot. Gray rows are context changes. Run "Executed successfully".
+
+row  createIf:in0   createIf:out
+0    <null>         <null>        (gray)
+1    [false]        SUPPRESS
+2    [1]            []
+3    [TRUE]         []
+4    [0]            SUPPRESS
+5    [0]            SUPPRESS      (dark gray, context change)
+
+Reading: createIf accepts false, 1, TRUE (case-insensitive) and 0 without error; 'no' throws
+"Cannot cast 'no' to boolean" (po75/max-002-spec2-create-if-row.txt).

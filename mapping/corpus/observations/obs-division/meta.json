@@ -1,0 +1,51 @@
+{
+  "obsId": "obs-division",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/38",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "date": "2026-11-11",
+    "tool": "ESR message mapping",
+    "releaseVerification": "ESR About read during obs-target-creation-2. PO catch-up executed 2026-11-11."
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-11",
+    "tool": "Message Mapping artifact, Simulate",
+    "releaseVerification": "Read live from user menu > About during this observation session."
+  },
+  "divergence": [],
+  "notes": [
+    "PO execution deferred to evening at owner's request; no PO/CPI comparison is available yet.",
+    "div-1 saved without editor errors. Order -> Item; Qty and Sku both explicitly context Order, connected to divide ports number1 and number2 respectively; divide -> V. Other target fields remain unmapped.",
+    "d1 output in order: 0.33333333333333333; 0.66666666666666667; 2; 0.25; 2.5; 2.3333333333333333; 0.000000000000000000000033333333333333333; 0.033333333333333333. Downloaded XML copied byte-for-byte.",
+    "d1 contradicts the request's stated 18-fractional-digit rule for recurring quotients: 1/3 is 0.33333333333333333, and the very small quotient is nonzero rather than 0. The terminating quotients match 2, 0.25 and 2.5; 4/2 has no trailing .0.",
+    "d2 fails with Division by zero in Arithm.div at /Out/Item/V. This confirms error behavior rather than Infinity; the UI uses SAP exception classes and does not expose the project's FOAR0001 code.",
+    "No arithmetic implementation mode was visible. The divide box has no float/BigDecimal option, and Mapping Settings exposes Basic Data Type Handling and External Namespace Handling. The mode remains unverified; no mode is inferred from output formatting and no settings were changed.",
+    "2026-11-11 PO catch-up supersedes the earlier deferral: both runs executed in saved and checked div_1. d1 exact values match CPI; d2 raises Division by zero. PO arithmetic implementation mode remains unverified."
+  ],
+  "runs": [
+    {
+      "mapping": "div-1",
+      "input": "d1.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "contradicted",
+      "summary": "CPI 1/3 = 0.33333333333333333; the tiny quotient is 0.000000000000000000000033333333333333333 rather than 0. Terminating results are 2, 0.25, 2.5. Full eight-value output retained exactly. PO catch-up: all eight V text values exactly match CPI; exact ESR export retained."
+    },
+    {
+      "mapping": "div-1",
+      "input": "d2.xml",
+      "case": null,
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "confirmed",
+      "summary": "7/0 raises Division by zero at D1 on /Out/Item/V. No Infinity or output; exact SAP exception text retained rather than substituting FOAR0001. PO catch-up: same Division by zero behavior at /Out/Item/V in Arithm.div[7, 0, ...]."
+    }
+  ]
+}

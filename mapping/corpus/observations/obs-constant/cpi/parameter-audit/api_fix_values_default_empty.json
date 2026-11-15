@@ -1,0 +1,22 @@
+{
+  "case": "fn/fixValues/005",
+  "artifact": "api_fix_values_default_empty",
+  "version": "1.0.0",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "FixValues",
+      "inputCount": 1,
+      "bindings": "<bindings><param name=\"vmdefault\"><value></value></param><param name=\"vmstrategy\"><value>1</value></param><param name=\"table\"><value><properties><property name=\"a\">A</property></properties></value></param></bindings>",
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders/Order"
+        }
+      ]
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

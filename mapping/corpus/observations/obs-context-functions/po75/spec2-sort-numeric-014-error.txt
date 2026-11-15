@@ -1,0 +1,10 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_sort_numeric; case fn/sort/014.
+Same saved mapping and successful Check as fn/sort/006: Tag default context Order -> sort (float number, ascending) -> removeContexts -> Out/All only.
+Input: original sort-014.xml imported through test UI, no edits.
+22:31:18 Start of test
+Exact dialog text (runtime identity hashes sanitized):
+Runtime exception when processing target-field mapping /Out/All; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'x' to decimal number] in class com.sap.aii.mappingtool.flib7.NodeFunctions method sort[[Ljava.lang.String;@[HASH], SortComparator.FLOAT_NUMBER, SortOrder.ASCENDING, com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[HASH], com.sap.aii.mappingtool.tf7.rt.Context@[HASH]]
+See error logs for details
+Reading: run-time invalid-number failure agrees with CPI. No output XML. The __EmptyDoc placeholder shown by the UI is not a mapping result. Symbolic po:SORT was not displayed. No additional queue observation.

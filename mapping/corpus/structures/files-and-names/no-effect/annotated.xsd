@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): constructs ADR-0008 accepts with no effect; plain.xsd is the same structure
+     without them -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:no-effect"
+           targetNamespace="urn:flottila:corpus:no-effect">
+  <xs:annotation>
+    <xs:documentation xml:lang="en">An order, <b xmlns="urn:x">documented</b>.</xs:documentation>
+    <xs:appinfo>tooling data</xs:appinfo>
+  </xs:annotation>
+  <xs:element name="Order">
+    <xs:annotation><xs:documentation>The root</xs:documentation></xs:annotation>
+    <xs:complexType>
+      <xs:annotation><xs:documentation>Its type</xs:documentation></xs:annotation>
+      <xs:sequence>
+        <xs:annotation><xs:documentation>Its fields</xs:documentation></xs:annotation>
+        <xs:element name="Id" type="xs:string">
+          <xs:annotation><xs:documentation>The key</xs:documentation></xs:annotation>
+        </xs:element>
+        <xs:element name="Status" type="tns:Status" default="open"/>
+        <xs:any namespace="##other" processContents="lax" minOccurs="0"/>
+        <xs:element name="Line" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="No" type="xs:int" fixed="1"/>
+            </xs:sequence>
+            <xs:anyAttribute namespace="##any"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="channel" type="xs:string" default="web">
+        <xs:annotation><xs:documentation>Where it came from</xs:documentation></xs:annotation>
+      </xs:attribute>
+      <xs:anyAttribute processContents="skip"/>
+    </xs:complexType>
+    <xs:key name="lineKey">
+      <xs:selector xpath="tns:Line"/>
+      <xs:field xpath="tns:No"/>
+    </xs:key>
+  </xs:element>
+  <xs:simpleType name="Status">
+    <xs:annotation><xs:documentation>A status</xs:documentation></xs:annotation>
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="open"/>
+      <xs:enumeration value="closed"/>
+      <xs:maxLength value="6"/>
+      <xs:pattern value="[a-z]+"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>

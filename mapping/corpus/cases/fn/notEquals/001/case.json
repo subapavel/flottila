@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-notEquals.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-notEquals, input notEquals-001.xml: corpus/observations/obs-boolean/po75/notEquals-001-boolean-notEquals-error.txt (PO 7.50, FunctionException \"Cannot cast 'keep' to boolean\" in flib7.Bool method notEquals) and cpi/notEquals-001-boolean-notEquals-error.txt (CPI, \"Cannot cast \"keep\" to boolean.\"); PO and CPI agree, no output (meta.json); F-44, ADR-0006 Consequences, the boolean family's cast",
+  "expect": "error",
+  "note": "notEquals casts both values as PO's Bool.toBoolean does and compares the truth values. The same lines as fn/equals/001: keep in line 1 is no boolean, so the run raises err:FORG0001 at F1, as PO and CPI end it with \"Cannot cast 'keep' to boolean\"."
+}

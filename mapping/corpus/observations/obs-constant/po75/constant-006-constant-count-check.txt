@@ -1,0 +1,28 @@
+SAP PO 7.50, ESR message mapping, 2026-11-12
+Case: fn/constant/006
+Mapping: constant_count
+Input: original constant-001.xml imported through Test UI, unchanged.
+Graph: Order (Orders context) -> Item. C1 Constant x -> N1 count -> Item/V.
+C2 Constant w -> Item/W. All unmapped.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+Test: 09:48:51 Start of test; compilation successful; execution 9 milliseconds;
+Executed successfully; 09:48:52 End of test.
+Result exported via UI to constant-006-constant-count.zip. Its instance.xml
+was extracted unchanged as constant-006-constant-count.xml.
+
+C1 Display Queue: compilation successful; execution 7 milliseconds; executed successfully.
+Literal displayed rows (brackets are UI notation; no italic cells observed):
+row | const:out
+0 | [x] [gray]
+1 | [x] [dark gray]
+
+N1 Display Queue: compilation successful; execution 7 milliseconds; executed successfully.
+Literal displayed rows (no italic cells observed):
+row | count:in0 | count:out
+0 | [x] [gray] | <null> [gray]
+1 | [x] [dark gray] | [1] [white]
+2 | [blank cell] | [1] [dark gray]
+
+Reading: confirmed. Only the first Item has V 1; all three Items have W w.
+The count output has one ordinary value row. Gray context and dark-gray terminal
+rows above are preserved literally and not counted as additional values.

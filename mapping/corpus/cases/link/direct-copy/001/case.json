@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/order-id-copy.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0006",
+  "expect": "output",
+  "note": "A direct copy of the one required leaf field OrderId. The root is created once with slot number 1, and OrderId once per slot of its source queue. The input's @channel and Quantity are unmapped, as witnesses that an unmapped field is never created."
+}

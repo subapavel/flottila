@@ -1,0 +1,10 @@
+SAP PO 7.50 ESR; 2026-11-11
+Mapping: spec3_suppress_use_one_as_many_occurrences
+Input: probes/probe-suppress-occurrence-a.xml, imported unchanged.
+Same saved graph as original useOneAsMany-009 run; see its error file for graph and Check.
+19:54:14 Start of test
+Compilation of spec3_suppress_use_one_as_many_occurrences successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+Exact ESR result export retained as ZIP; instance.xml extracted and renamed without rewriting.
+Reading: confirmed. All=A,A. The SUPPRESS slot on input 2 counts as an occurrence without becoming a repeated result value. Agrees with CPI. Original two-Order error remains unchanged.

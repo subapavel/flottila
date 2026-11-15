@@ -1,0 +1,22 @@
+{
+  "case": "fn/copyValue/002",
+  "artifact": "api_copy_value_default",
+  "version": "Draft",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "CopyValue",
+      "inputCount": 1,
+      "bindings": "<bindings><param name=\"nnumber\"><value>0</value></param></bindings>",
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders/Order"
+        }
+      ]
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

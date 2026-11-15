@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-min.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "The smaller of Qty and Sku in context Orders, as numbers: 9 beats 10 (a text comparison would pick 10), and 1.50 and 1.5 give 1.5."
+}

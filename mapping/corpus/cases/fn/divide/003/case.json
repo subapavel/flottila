@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-divide.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 (data errors name their box, a malformed number is err:FORG0001)",
+  "expect": "error",
+  "note": "A Sku that is no number: err:FORG0001 at the divide box A1."
+}

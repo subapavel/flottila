@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture for GATE check 1 (#100): an RPC part@type is refused (ADR-0008 "JSON Schema
+     and WSDL") -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  xmlns:tns="urn:flottila:corpus:gate:refused"
+                  targetNamespace="urn:flottila:corpus:gate:refused">
+  <wsdl:message name="Rpc">
+    <wsdl:part name="id" type="xs:string"/>
+  </wsdl:message>
+  <wsdl:portType name="Port">
+    <wsdl:operation name="Op">
+      <wsdl:input message="tns:Rpc"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

@@ -1,0 +1,5 @@
+CPI, Message Mapping editor, spec2-use-one-as-many, fn/useOneAsMany/006-008.
+Source src-orders.xsd / Orders; target tgt-list.xsd / Out.
+U1 input 1 = Id (default context); input 2 = Sku (context explicitly Order); input 3 = Tag (default context). U1 -> /Out/All. No other target wires.
+The editor labels the three input ports "input 1", "input 2", "input 3". Sku is italic and its tooltip says Context: /Orders/Order. Id and Tag have no explicit context override.
+Save completed without an error dialog, red field, or target error triangle. Four connections verified after Save. CPI has Save; no separate Check action was exposed in this editor.

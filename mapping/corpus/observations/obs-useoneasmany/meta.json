@@ -1,0 +1,201 @@
+{
+  "obsId": "obs-useoneasmany",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/34",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "date": "2026-11-11",
+    "tool": "ESR message mapping",
+    "releaseVerification": "ESR About read during obs-target-creation-2. PO execution deferred to evening at owner's request."
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-11",
+    "tool": "Message Mapping artifact, Simulate; Function Message Queue",
+    "releaseVerification": "Read live from user menu > About during this observation session."
+  },
+  "divergence": [],
+  "notes": [
+    "PO execution deferred to the evening at the owner's request. CPI runs first in this continuation. No cross-system comparison is possible yet.",
+    "CPI uoam-1 saved without editor error. Port labels are input 1, input 2, input 3; connected to Id default context, Sku explicitly Order, and Tag explicitly Order, respectively.",
+    "CPI u1 confirmed the baseline A,A,A | B. u2 and u3 fail at U1 with too many / too few values in the second queue; no assumed error reading is stated for these original runs.",
+    "CPI u4 fails at U1 for the whole run. Following the request's explicit progressive leading-Order-drop procedure, probe a removes A and still reports Too many values in first queue; probe b also removes B and reports No value found, requiring one and only one first-queue value per context. Neither original input nor mapping was changed; probe comments identify each deletion. The error dialogs for the full run and probe a do not name an individual Order.",
+    "The final progressive probe c retains only Order D and returns V=D. Its first simulation stalled at 10% before session expiry; the one retry succeeded after the session refreshed.",
+    "spec2-use-one-as-many-collapsed saved without editor errors. Its separate Sku boxes use Order and Line contexts. The downloaded output confirms external, empty string, external, internal, retaining the empty Line context.",
+    "spec2-use-one-as-many-root-value is ENVIRONMENT_BLOCKED: the first tab lost the browser connection during upload; the retry rebuilt the graph in a fresh tab, but Save exposed session expiry and recovery timed out. Save completion is unverified and no simulation result is claimed. The blocker is recorded in its check file.",
+    "spec2-suppress-use-one-as-many saved without editor errors. Original case 005 contradicts its assumed output because U1 rejects the first queue's context count before SUPPRESS repetition can be observed. One minimal owner probe removes the second Order and returns Out with no All, confirming isolated SUPPRESS repetition.",
+    "spec3-suppress-use-one-as-many-occurrences saved without editor errors. Original case 009 similarly fails on the first queue's context count, contradicting A,A,B. One minimal owner probe removes the second Order and returns A,A, confirming that SUPPRESS on input 2 counts as an occurrence without becoming a result value.",
+    "spec2-use-one-as-many saved without editor errors. Id and Tag retain default contexts; only Sku is changed to Order. Cases 006 and 007 confirm U1 failure for excess and insufficient second-queue values. Case 008 confirms a whole-run U1 failure, with the exact Too many values in first queue message rather than an identified third-Order failure.",
+    "CPI has Save but no separate Check action in this editor. Check files record the graph, contexts and editor state. There were no in-place edits to a previous mapping's semantics; each requested mapping has its own artifact.",
+    "Successful outputs were copied byte-for-byte from the browser downloads. Chrome left these completed XML payloads with .crdownload filenames and did not display a Save dialog; XML parsing verifies well-formedness without rewriting them.",
+    "PO catch-up started after the owner released the computer. Earlier deferral notes describe historical scheduling; individual po75 run statuses record current progress.",
+    "PO catch-up completed: all 16 requested original and probe runs have actual outputs or exact runtime errors. All 15 cases with results in both systems agree; root-value has only a PO runtime result because CPI remains environment-blocked."
+  ],
+  "runs": [
+    {
+      "mapping": "uoam-1",
+      "input": "u1.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "CPI Item 1 contains V=A,A,A; Item 2 V=B, matching the baseline. PO agrees: Item 1 V=A,A,A; Item 2 V=B. Exact ESR export saved."
+    },
+    {
+      "mapping": "uoam-1",
+      "input": "u2.xml",
+      "case": null,
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "other",
+      "summary": "No assumed reading stated. CPI fails at U1 on /Out/Item/V: Too many values in second queue in function useOneAsMany; total value counts of second and third queues must agree. PO agrees: Too many values in the second queue, at U1 /Out/Item/V."
+    },
+    {
+      "mapping": "uoam-1",
+      "input": "u3.xml",
+      "case": null,
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "other",
+      "summary": "No assumed reading stated. CPI fails at U1 on /Out/Item/V: Too few values in second queue in function useOneAsMany; total value counts of second and third queues must agree. PO agrees: Too few values in the second queue, at U1 /Out/Item/V."
+    },
+    {
+      "mapping": "uoam-1",
+      "input": "u4.xml",
+      "case": null,
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "other",
+      "summary": "No assumed reading stated. CPI fails at U1 on /Out/Item/V: Too many values in first queue in function useOneAsMany; it must have the same number of contexts as the second queue. No per-order output returned; request-directed leading-Order-drop probes follow. PO agrees: Too many values in the first queue, at U1 /Out/Item/V; no individual Order identified."
+    },
+    {
+      "mapping": "spec2-use-one-as-many-collapsed",
+      "input": "useOneAsMany-002.xml",
+      "case": "fn/useOneAsMany/002",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "CPI All = external, empty string, external, internal. The empty Line context is retained. Save completed without editor errors; separate Sku boxes use Order and Line contexts. PO agrees: external, empty string, external, internal; exact ESR export saved."
+    },
+    {
+      "mapping": "spec2-use-one-as-many-root-value",
+      "input": "u1.xml",
+      "case": "fn/useOneAsMany/003",
+      "po75": "error-observed",
+      "cpi": "ENVIRONMENT_BLOCKED",
+      "cpiReason": "Browser connection failed during first XSD upload; artifact rebuilt in a fresh tab. Save then exposed Your session has expired. Press OK to login again.; dismissal and subsequent state check timed out. Save completion unverified; simulation not started.",
+      "reading": "contradicted",
+      "summary": "PO fails at U1 /Out/All: Too few values in the first queue; it must have the same number of contexts as the second queue. This contradicts the assumed A,A,A,B output. CPI has no runtime result because of its recorded session blocker."
+    },
+    {
+      "mapping": "spec2-suppress-use-one-as-many",
+      "input": "useOneAsMany-005.xml",
+      "case": "fn/useOneAsMany/005",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "contradicted",
+      "summary": "CPI fails at U1 on /Out/All: Too many values in first queue; it must have the same number of contexts as the second queue. No single empty All is returned. One owner probe removes only the second Order to isolate SUPPRESS repetition without changing the mapping. PO agrees: U1 /Out/All fails with Too many values in the first queue; no successful output."
+    },
+    {
+      "mapping": "spec3-suppress-use-one-as-many-occurrences",
+      "input": "useOneAsMany-009.xml",
+      "case": "fn/useOneAsMany/009",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "contradicted",
+      "summary": "CPI fails at U1 on /Out/All: Too many values in first queue; it must have the same number of contexts as the second queue. No A,A,B output. One owner probe removes only the second Order to isolate occurrence counting without changing the mapping. PO agrees: U1 /Out/All fails with Too many values in the first queue; no successful output."
+    },
+    {
+      "mapping": "spec2-use-one-as-many",
+      "input": "u2.xml",
+      "case": "fn/useOneAsMany/006",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "confirmed",
+      "summary": "CPI fails at U1 on /Out/All: Too many values in second queue; total value counts of second and third queues must agree. PO agrees: Too many values in the second queue in function useOneAsMany. The number of values for all contexts must be the same as the number of values for the third queue. Whole-run U1 /Out/All failure."
+    },
+    {
+      "mapping": "spec2-use-one-as-many",
+      "input": "u3.xml",
+      "case": "fn/useOneAsMany/007",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "confirmed",
+      "summary": "CPI fails at U1 on /Out/All: Too few values in second queue; total value counts of second and third queues must agree. PO agrees: Too few values in the second queue in function useOneAsMany. The number of values for all contexts must be the same as the number of values for the third queue. Whole-run U1 /Out/All failure."
+    },
+    {
+      "mapping": "spec2-use-one-as-many",
+      "input": "u4.xml",
+      "case": "fn/useOneAsMany/008",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "confirmed",
+      "summary": "CPI fails at U1 on /Out/All for the whole run: Too many values in first queue; it must have the same number of contexts as the second queue. The requested U1 failure occurs, but the dialog does not identify the third Order as its cause. PO agrees: Too many values in the first queue in function useOneAsMany. It must have the same number of contexts as the second queue. Whole-run U1 /Out/All failure."
+    },
+    {
+      "mapping": "uoam-1",
+      "input": "probes/probe-empty-contexts-a.xml",
+      "case": null,
+      "probeFor": "u4.xml / uoam-1",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "other",
+      "summary": "Without original Order A, CPI still fails at U1: Too many values in first queue. No per-order output. PO agrees: Too many values in the first queue."
+    },
+    {
+      "mapping": "uoam-1",
+      "input": "probes/probe-empty-contexts-b.xml",
+      "case": null,
+      "probeFor": "u4.xml / uoam-1",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "other",
+      "summary": "Without original Orders A and B, CPI fails at U1: No value found; first queue must have one and only one value in each context. PO agrees: No value found; first queue must have one, and only one value in each context."
+    },
+    {
+      "mapping": "uoam-1",
+      "input": "probes/probe-empty-contexts-c.xml",
+      "case": null,
+      "probeFor": "u4.xml / uoam-1",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "Only original Order D remains: one Item with V=D. First attempt stalled at 10% and the session expired; one retry after the session refreshed succeeded on the saved mapping. PO agrees: one Item with V=D; exact ESR export saved."
+    },
+    {
+      "mapping": "spec2-suppress-use-one-as-many",
+      "input": "probes/probe-suppress-value-a.xml",
+      "case": "fn/useOneAsMany/005",
+      "probeFor": "useOneAsMany-005.xml / spec2-suppress-use-one-as-many",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "Only the first Order (Tag=false, two Sku) remains. CPI returns Out with no All, confirming that this isolated repetition preserves SUPPRESS. Original two-Order error remains the result of the original case. PO agrees: Out with no All; exact ESR export saved."
+    },
+    {
+      "mapping": "spec3-suppress-use-one-as-many-occurrences",
+      "input": "probes/probe-suppress-occurrence-a.xml",
+      "case": "fn/useOneAsMany/009",
+      "probeFor": "useOneAsMany-009.xml / spec3-suppress-use-one-as-many-occurrences",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "Only the first Order (Id=A, Sku=true,false) remains. CPI returns All=A,A: the SUPPRESS slot on the second input counts as an occurrence and is not carried into the repeated result. Original two-Order error remains the result of the original case. PO agrees: All=A,A; exact ESR export saved."
+    },
+    {
+      "mapping": "spec2-use-one-as-many-root-value",
+      "input": "u1.xml",
+      "case": "fn/useOneAsMany/003",
+      "cpi": "error-observed",
+      "date": "2026-11-12",
+      "artifact": "api_spec2_use_one_as_many_root_value",
+      "reading": "contradicted",
+      "cpiEvidence": "cpi/useOneAsMany-003-root-value-error.txt",
+      "summary": "CPI fails at useOneAsMany /Out/All: Too few values in first queue; it must have the same number of contexts as second queue. Matches PO; no output XML."
+    }
+  ]
+}

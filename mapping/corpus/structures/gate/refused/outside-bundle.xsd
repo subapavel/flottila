@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture for GATE check 1 (#100): an include whose location names no file of the
+     bundle fails the load at the include (ADR-0008 "Readers", refined 2026-11-05) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:gate:refused">
+  <xs:include schemaLocation="missing.xsd"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

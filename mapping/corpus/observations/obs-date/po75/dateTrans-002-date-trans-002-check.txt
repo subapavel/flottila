@@ -1,0 +1,19 @@
+Case: fn/dateTrans/002
+Date: 2026-11-12
+Platform: SAP PO 7.50, ESR message mapping Test
+Mapping: date_trans_002 (copy of date_trans_001)
+Input: dateTrans-002.xml
+Schemas: src-orders.xsd -> tgt-list.xsd
+Graph: Sku (Orders context) -> DateTrans -> All.
+Input Date Format: d.M.yyyy H:mm
+Output Date Format: yyyy-MM-dd'T'HH:mm:ss.SSS
+Both formats visibly confirmed before saving. Advanced calendar settings inherited unchanged from date_trans_001, where Calendar Is Lenient was checked.
+JVM default timezone unknown; no JVM setting changed.
+Object Check: No errors found; Problem 0, Warning 0.
+Loaded input, verified SRC values: 4.1.2026 7:05; 04.01.2026 07:05; 31.12.1999 23:59.
+Processing Log: 19:09:47 start; compilation successful; execution 8 milliseconds; executed successfully; 19:09:48 end. Log timezone unspecified.
+Result All values: 2026-01-04T07:05:00.000; 2026-01-04T07:05:00.000; 1999-12-31T23:59:00.000.
+Unpadded and padded inputs produce the same timestamp; omitted seconds and milliseconds serialize as zeros.
+ZIP retained from ESR result export. XML copied byte-for-byte from instance.xml without reformatting.
+No queues requested or captured. Screenshots inspected during execution, not saved as files.
+CPI: NOT_RUN; API preparation is not simulation evidence.

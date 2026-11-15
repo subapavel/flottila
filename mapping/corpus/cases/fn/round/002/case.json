@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/round.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: a number is read in the xs:decimal lexical form only, so 1e3 raises FORG0001",
+  "expect": "error",
+  "note": "Qty is 1e3, no xs:decimal: round raises err:FORG0001 at its box V1."
+}

@@ -1,0 +1,9 @@
+{
+  "date": "2026-11-12",
+  "initialImport": "API accepted and exported exact resources, but editor opening api_spec2_split_by_value_empty failed twice with: undefined could not be loaded.",
+  "cause": "Sanitization removed required textInfo child structure. Preserve the structure and replace identifiers with synthetic values instead.",
+  "verification": "api_ctx_1_r2 opened with source Orders and target Out; selecting All rendered removeContexts and Sku with context /Orders/Order/Line. No simulation executed.",
+  "repair": "44 own API imports recreated with corrected metadata. Every replacement guarded by exact mmap/XSD comparison with stored readback. No original UI-created mappings replaced.",
+  "audit": "Each initial-import directory preserves pre-repair files. api_ctx_1_r2 is a preparation diagnostic copy, not a further observed case. Disconnected palette nodes used to inspect available parameter labels were not retained by native Save/export.",
+  "simulation": "NOT_RUN"
+}

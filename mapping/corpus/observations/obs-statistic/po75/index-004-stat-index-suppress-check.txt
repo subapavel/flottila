@@ -1,0 +1,10 @@
+SAP PO 7.50 ESR message mapping observation, 2026-11-12
+Case: fn/index/004
+Mapping: stat_index_suppress
+Input: original obs-statistic/index-004.xml loaded through Test file chooser.
+Graph: Orders/Order -> Out/Item; Orders/Order/Tag (default context Order) -> createIf -> index -> Out/Item/V.
+Verified parameters: Initial Value 1; Increment 1; Reset Index to Initial Value with Each New Context selected; Do Not Reset Index to Initial Value not selected.
+Saved mapping; Check: No errors found during object check. Problem 0, Warning 0.
+Processing Log: 13:58:10 Start of test; Compilation of stat_index_suppress successful; Execution of mapping on server took 6 milliseconds; Executed successfully; 13:58:11 End of test.
+Actual result exported from Test UI; original ZIP retained, instance.xml extracted without reformatting.
+Reading: contradicted. V values 1,2,3 | 1,2 | none. index numbers SUPPRESS too, converting it to a value. Required F1 Display Queue in companion queue file.

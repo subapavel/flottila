@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-d.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31), mapping create-d, input d1.xml: corpus/observations/obs-target-creation/po75/d1-create-d.xml and cpi/d1-create-d.xml, display queues d1-create-d-queue.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json); ADR-0004 as amended for F-17: a parent absent under one occurrence adds no context",
+  "expect": "output",
+  "note": "Text in its default context Memo: orders 1 and 3 have Memo/Text a and c, order 2 has no Memo, so the queue is [a] [c], no context for order 2, and mapWithDefault keeps it so. Item per Order in context Orders, the owner's node-to-node wiring Orders/Order -> Out/Item, one \"\" per Order (ADR-0008, #63): Item 1 gets a, Item 2 gets c, Item 3 reads a context the queue lacks and gets no V."
+}

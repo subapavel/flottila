@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-quoted-digit.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the quoted text # holds a character)",
+  "expect": "error",
+  "note": "The pattern '#'0. Quoted text holding a character a picture reads: '#' is a literal # for DecimalFormat, and a picture has no quotes, so # would be a digit. Compiling refuses it at N1."
+}

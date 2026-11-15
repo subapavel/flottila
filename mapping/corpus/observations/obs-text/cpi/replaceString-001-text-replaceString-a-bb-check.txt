@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/replaceString/001
+Artifact: api_text_replaceString_a_bb
+Input: original replaceString-001.xml uploaded through simulator.
+Visible graph verified: Sku context /Orders and constants a, bb -> replaceString -> /Out/All. Constant titles a and bb observed in live graph.
+Simulation completed. Four All values: bbbnbbnbb, xyz, empty string, bbbbbb. Downloaded XML preserved unchanged.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/use-one-as-many.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-useoneasmany (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both end in an error as expected-error.json: corpus/observations/obs-useoneasmany/po75/u2-spec2-use-one-as-many.txt and corpus/observations/obs-useoneasmany/cpi/u2-spec2-use-one-as-many.txt; before #214: #2 §4 useOneAsMany [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f416edeaca4c86e10000000a42189e/content.htm]; the error conditions are not on the SAP page (#2 §7.10) and are assumed (ContextFunctions.useOneAsMany); po:USEONEASMANY at the box is ADR-0025 since #52; obs-useoneasmany decides (#34), input u2.xml",
+  "expect": "error",
+  "note": "obs-useoneasmany uoam-1 on u2.xml: Sku in context Order has 3 slots, Tag 2, so the third input has fewer slots than the second: po:USEONEASMANY at U1."
+}

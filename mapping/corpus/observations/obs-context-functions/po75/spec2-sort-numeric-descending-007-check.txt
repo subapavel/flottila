@@ -1,0 +1,14 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_sort_numeric_descending; case fn/sort/007.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context Order -> sort -> removeContexts -> Out/All only.
+Sort parameters explicitly selected and observed: float number, descending.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original sort-006.xml imported through test UI, no edits.
+22:33:41 Start of test
+Compilation of spec2_sort_numeric_descending successful
+Execution of mapping on server took 12 milliseconds
+Executed successfully
+22:33:42 End of test
+Result exported through UI as spec2-sort-numeric-descending-007-export.zip; instance.xml extracted unchanged as spec2-sort-numeric-descending-007.xml.
+Reading: All 10,9,space-2-space,1.50,1.5,+0.5,.25,-1,007,7,1. Numeric descending order per context preserves lexical forms and stable equal values; agrees with CPI. No additional queue observation.

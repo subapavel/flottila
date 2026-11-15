@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-endsWith.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/endsWith-001-text-endsWith.xml and corpus/observations/obs-text/cpi/endsWith-001-text-endsWith-native.xml; before #214: ADR-0025 (functions bind by name; the reading of endsWith follows java.lang.String and XPath); obs-text row endsWith/001",
+  "expect": "output",
+  "note": "endsWith(Sku, Qty) is true for a suffix and for an empty suffix, false when the suffix is inside, or longer than the value."
+}

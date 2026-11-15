@@ -1,0 +1,11 @@
+SAP PO observation 2026-11-12
+Mapping spec2_split_by_value_each; fn/splitByValue/005; original collapseContexts-003.xml imported unchanged via UI; source XML checked as empty Orders.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag default context Order -> removeContexts -> splitByValue (Each Value) -> All. Nothing else mapped.
+Same saved mapping as case 004; Check: No errors found during object check; Problem 0, Warning 0.
+01:10:02 Start of test
+Execution of mapping on server took 4 milliseconds
+Executed successfully
+01:10:02 End of test
+UI export instance.xml extracted unchanged.
+Reading: Out without All; confirmed assumed reading. CPI not run yet.

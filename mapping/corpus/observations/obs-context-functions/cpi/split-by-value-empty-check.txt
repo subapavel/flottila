@@ -1,0 +1,16 @@
+Date: 2026-11-12
+Artifact: api_spec2_split_by_value_empty (unchanged API-prepared artifact)
+Native tooltips: Tag context /Orders/Order, removeContexts, splitByValue, /Out/All.
+Exact graph/parameter verified in the earlier API readback: Tag -> removeContexts
+-> SplitByValue type=1 (emptyValue) -> All. Native parameter panel was not exposed
+because function boxes overlap; no UI parameter-panel verification is claimed.
+Each original input was uploaded using Enter on the tab's file input and filechooser.
+Each result was obtained using Test, then Download Output; files copied byte-for-byte.
+No display queues requested. Prior tenant version evidence retained, no PNG saved.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.
+
+Completed cases (VERIFIED_PASS: native simulation completed and XML downloaded):
+- fn/splitByValue/011, f3.xml: output All a,a; confirmed; 73 bytes.
+- fn/splitByValue/012, splitByValue-007.xml: output All a; confirmed; 61 bytes.
+- fn/splitByValue/013, splitByValue-013.xml: output All a,b; confirmed; 73 bytes.
+- fn/splitByValue/014, splitByValue-004.xml: Out without All; confirmed; 49 bytes.

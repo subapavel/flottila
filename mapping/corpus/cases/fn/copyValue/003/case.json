@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/copy-value-beyond.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212), mapping copy-value-beyond, input copyValue-001.xml: corpus/observations/obs-constant/po75/copyValue-003-copy-value-beyond.xml and -check.txt, cpi/copyValue-003-copy-value-beyond.xml, -check.txt and cpi/copyValue-003-F1-queue.json; PO 7.50 and CPI agree (meta.json, reading contradicted): Index 3 gives V d in all three Items and no error; CPI: \"Index 3 selects d across the entire input queue, ignoring context boundaries\"; F-46. Before #212: #2 §5 Constants: CopyValue \"For a frequently occurring element, copies the value at a defined position in the source structure to the assigned target field\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; the assumed reading of #79 (an empty context per context too short) is contradicted",
+  "expect": "output",
+  "note": "copyValue{position=3} over Sku in context Order, a, b, c | d | e, f: position 3 of the whole queue is d, the first value of o2, and that one value goes into every Item."
+}

@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flottila:mapping-model:1",
+  "title": "MappingModel",
+  "description": "A Flottila mapping model, formatVersion 1 (ADR-0010, ADR-0011, ADR-0029). Its canonical form is written by the engine's one writer. source and target are absent until the Signature tab chooses them.",
+  "type": "object",
+  "required": ["formatVersion"],
+  "additionalProperties": false,
+  "properties": {
+    "formatVersion": {
+      "description": "The version of this format. A reader refuses a newer one.",
+      "const": 1
+    },
+    "description": {
+      "description": "The mapping's free text, at most 4,000 characters (code points), which the engine ignores (ADR-0029). An empty one is not written.",
+      "type": "string",
+      "maxLength": 4000
+    },
+    "source": {
+      "$ref": "#/$defs/structureRef"
+    },
+    "target": {
+      "$ref": "#/$defs/structureRef"
+    },
+    "targetFieldMappings": {
+      "title": "TargetFieldMappings",
+      "description": "Keyed by target field path (ADR-0007). An unmapped field has no entry.",
+      "type": "object",
+      "patternProperties": {
+        "^/": {
+          "$ref": "#/$defs/targetFieldMapping"
+        }
+      },
+      "additionalProperties": false
+    },
+    "udfs": {
+      "title": "Udfs",
+      "description": "UDF declarations, keyed by UDF name.",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]{0,63}$": {
+          "$ref": "#/$defs/udfDeclaration"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "authoringId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "boxReference": {
+      "description": "The id of a box of the same target field mapping, or null when nothing is connected.",
+      "type": ["string", "null"],
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"
+    },
+    "fieldPath": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "structureRef": {
+      "title": "StructureRef",
+      "type": "object",
+      "required": ["bundle", "root", "fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "bundle": {
+          "description": "The schema files, as references; written sorted.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "root": {
+          "$ref": "#/$defs/rootSelector"
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "rootSelector": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/elementRoot"
+        },
+        {
+          "$ref": "#/$defs/wsdlRoot"
+        },
+        {
+          "$ref": "#/$defs/jsonRoot"
+        }
+      ]
+    },
+    "elementRoot": {
+      "title": "ElementRoot",
+      "type": "object",
+      "required": ["element"],
+      "additionalProperties": false,
+      "properties": {
+        "element": {
+          "description": "The root element's EQName.",
+          "type": "string"
+        }
+      }
+    },
+    "wsdlRoot": {
+      "title": "WsdlRoot",
+      "type": "object",
+      "required": ["wsdl"],
+      "additionalProperties": false,
+      "properties": {
+        "wsdl": {
+          "$ref": "#/$defs/wsdlOperation"
+        }
+      }
+    },
+    "wsdlOperation": {
+      "title": "WsdlOperation",
+      "description": "A WSDL operation's input, output or fault (ADR-0008). fault is present exactly when direction is fault. Names outside ASCII are not checked character by character.",
+      "type": "object",
+      "required": ["interface", "operation", "direction"],
+      "additionalProperties": false,
+      "properties": {
+        "interface": {
+          "description": "The portType (WSDL 1.1) or interface (WSDL 2.0), an EQName: Q{namespace}local, or a bare NCName when it has no namespace.",
+          "type": "string",
+          "pattern": "^(Q\\{[^{}]*\\})?[^\\x00-\\x40\\x5B-\\x5E\\x60\\x7B-\\x7F][^\\x00-\\x2C/\\x3A-\\x40\\x5B-\\x5E\\x60\\x7B-\\x7F]*$"
+        },
+        "operation": {
+          "description": "The operation's NCName.",
+          "type": "string",
+          "pattern": "^[^\\x00-\\x40\\x5B-\\x5E\\x60\\x7B-\\x7F][^\\x00-\\x2C/\\x3A-\\x40\\x5B-\\x5E\\x60\\x7B-\\x7F]*$"
+        },
+        "direction": {
+          "enum": ["input", "output", "fault"]
+        },
+        "fault": {
+          "description": "The fault's NCName.",
+          "type": "string",
+          "pattern": "^[^\\x00-\\x40\\x5B-\\x5E\\x60\\x7B-\\x7F][^\\x00-\\x2C/\\x3A-\\x40\\x5B-\\x5E\\x60\\x7B-\\x7F]*$"
+        }
+      },
+      "if": {
+        "required": ["direction"],
+        "properties": {
+          "direction": {
+            "const": "fault"
+          }
+        }
+      },
+      "then": {
+        "required": ["fault"]
+      },
+      "else": {
+        "not": {
+          "required": ["fault"]
+        }
+      }
+    },
+    "jsonRoot": {
+      "title": "JsonRoot",
+      "type": "object",
+      "required": ["json"],
+      "additionalProperties": false,
+      "properties": {
+        "json": {
+          "const": "$"
+        }
+      }
+    },
+    "targetFieldMapping": {
+      "title": "TargetFieldMapping",
+      "type": "object",
+      "required": ["id", "result", "boxes"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/authoringId"
+        },
+        "result": {
+          "$ref": "#/$defs/boxReference"
+        },
+        "boxes": {
+          "title": "Boxes",
+          "description": "The boxes of this target field mapping, keyed by their authoring id.",
+          "type": "object",
+          "minProperties": 1,
+          "patternProperties": {
+            "^[A-Za-z0-9_-]{1,64}$": {
+              "$ref": "#/$defs/box"
+            }
+          },
+          "additionalProperties": false
+        },
+        "layout": {
+          "$ref": "#/$defs/layout"
+        }
+      }
+    },
+    "layout": {
+      "title": "Layout",
+      "description": "The positions of this target field mapping's target and boxes, which the engine ignores (ADR-0029). A position whose box no longer exists is dropped on save; an empty layout is not written.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/boxPosition"
+        },
+        "boxes": {
+          "title": "LayoutBoxes",
+          "description": "The boxes' positions, keyed by their authoring id. A box without a position is placed by the studio.",
+          "type": "object",
+          "patternProperties": {
+            "^[A-Za-z0-9_-]{1,64}$": {
+              "$ref": "#/$defs/boxPosition"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "boxPosition": {
+      "title": "BoxPosition",
+      "type": "object",
+      "required": ["x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/coordinate"
+        },
+        "y": {
+          "$ref": "#/$defs/coordinate"
+        }
+      }
+    },
+    "coordinate": {
+      "description": "An integer position; the studio rounds before it writes.",
+      "type": "integer",
+      "minimum": -1000000,
+      "maximum": 1000000
+    },
+    "box": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/sourceFieldBox"
+        },
+        {
+          "$ref": "#/$defs/standardFunctionBox"
+        },
+        {
+          "$ref": "#/$defs/udfBox"
+        },
+        {
+          "$ref": "#/$defs/unresolvedFunctionBox"
+        }
+      ]
+    },
+    "sourceFieldBox": {
+      "title": "SourceFieldBox",
+      "type": "object",
+      "required": ["kind", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "source"
+        },
+        "field": {
+          "$ref": "#/$defs/fieldPath"
+        },
+        "context": {
+          "$ref": "#/$defs/fieldPath"
+        }
+      }
+    },
+    "standardFunctionBox": {
+      "title": "StandardFunctionBox",
+      "type": "object",
+      "required": ["kind", "fn"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "function"
+        },
+        "fn": {
+          "$ref": "#/$defs/name"
+        },
+        "inputs": {
+          "$ref": "#/$defs/inputs"
+        },
+        "params": {
+          "$ref": "#/$defs/params"
+        }
+      }
+    },
+    "udfBox": {
+      "title": "UdfBox",
+      "type": "object",
+      "required": ["kind", "udf"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "udf"
+        },
+        "udf": {
+          "$ref": "#/$defs/name"
+        },
+        "inputs": {
+          "$ref": "#/$defs/inputs"
+        },
+        "params": {
+          "$ref": "#/$defs/params"
+        }
+      }
+    },
+    "unresolvedFunctionBox": {
+      "title": "UnresolvedFunctionBox",
+      "type": "object",
+      "required": ["kind", "name", "origin"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "unresolved"
+        },
+        "name": {
+          "description": "The original function name, kept as it was found.",
+          "type": "string"
+        },
+        "origin": {
+          "enum": ["po", "cpi", "editor"]
+        },
+        "inputs": {
+          "$ref": "#/$defs/inputs"
+        },
+        "params": {
+          "$ref": "#/$defs/params"
+        }
+      }
+    },
+    "inputs": {
+      "description": "Input slots in the catalogue's input order.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/boxReference"
+      }
+    },
+    "params": {
+      "title": "Params",
+      "description": "Box parameters, keyed by the catalogue's parameter name.",
+      "type": "object",
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]{0,63}$": {
+          "$ref": "#/$defs/paramValue"
+        }
+      },
+      "additionalProperties": false
+    },
+    "paramValue": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/table"
+        }
+      ]
+    },
+    "table": {
+      "title": "Table",
+      "description": "A table parameter: its keys are source values, so it is the one open object.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "udfDeclaration": {
+      "title": "UdfDeclaration",
+      "type": "object",
+      "required": ["executionKind", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "executionKind": {
+          "enum": ["single", "context", "queue"]
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "params": {
+          "title": "UdfParams",
+          "description": "The UDF's parameter types, keyed by parameter name.",
+          "type": "object",
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]{0,63}$": {
+              "$ref": "#/$defs/udfParamType"
+            }
+          },
+          "additionalProperties": false
+        },
+        "source": {
+          "description": "The Java method: a file reference, '#', the method name.",
+          "type": "string",
+          "pattern": "^[^#]+#[^#]+$"
+        }
+      }
+    },
+    "udfParamType": {
+      "enum": ["string", "int"]
+    }
+  }
+}

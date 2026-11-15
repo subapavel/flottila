@@ -1,0 +1,14 @@
+CPI editor / Save and Simulate, mapping ctx-2.
+
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Target assignment initially stalled. After saving both uploaded resources, waiting for Save to finish, reloading once, and selecting local tgt-list.xsd, the Out tree loaded.
+Order -> Item. V expression: Qty context /Orders/Order -> greater number1; Constant 0 -> greater number2; greater -> ifWithoutElse condition; the same Qty -> true value; ifWithoutElse -> mapWithDefault -> V.
+Keep SUPPRESS checked. mapWithDefault label: Default Value; initial field empty, entered D. Six expression connections verified. No other target wires.
+Save completed without a validation dialog and Simulate opened.
+
+Parameter-entry timing discrepancy:
+- Initial replacement text did not survive an editor redraw; D was then entered with ordinary keystrokes and Tab, followed by Save. The editor displayed D after Save.
+- First simulation nevertheless returned an empty V for Item 3 (ctx-2-initial-simulation.xml, preserved exactly). Its effective compiled default value was not independently confirmed; do not use this attempt to infer mapWithDefault semantics.
+- Display Queue of M1 then showed D for the empty third context and SUPPRESS for the second context (f2-ctx-2-queue.txt).
+- Saved again, verified Save no longer busy and Default Value still D, reopened Simulate and reran the same retained f2.xml input without changing the graph or input. This returned D for Item 3 and matched the queue (f2-ctx-2.xml).
+The exact cause of the first simulation/editor mismatch is unverified.

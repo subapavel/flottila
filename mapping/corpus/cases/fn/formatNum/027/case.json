@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-no-digit.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (a subpattern has no digit)",
+  "expect": "error",
+  "note": "The pattern 0;(. A negative subpattern without digits: DecimalFormat takes it, and a picture's sub-picture needs a digit. Compiling refuses it at N1."
+}

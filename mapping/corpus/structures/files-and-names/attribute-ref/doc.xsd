@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): attribute references, each an attribute field named by the referenced
+     QName: to xml:lang and xml:space through the import of http://www.w3.org/2001/xml.xsd, which
+     falls back to the bundle file of its namespace (US 2), and to a global attribute of this file;
+     in a complex type and in an attribute group -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:attribute-ref"
+           targetNamespace="urn:flottila:corpus:attribute-ref">
+  <xs:import namespace="http://www.w3.org/XML/1998/namespace"
+             schemaLocation="http://www.w3.org/2001/xml.xsd"/>
+  <xs:attribute name="code" type="xs:int"/>
+  <xs:attributeGroup name="Text">
+    <xs:attribute ref="xml:space"/>
+  </xs:attributeGroup>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Text" type="xs:string"/>
+      </xs:sequence>
+      <xs:attribute ref="xml:lang" use="required"/>
+      <xs:attributeGroup ref="tns:Text"/>
+      <xs:attribute ref="tns:code"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

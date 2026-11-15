@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-separator-shown.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the decimal separator has no digit after it)",
+  "expect": "error",
+  "note": "The pattern 0.. A decimal separator without fraction digits: DecimalFormat then always shows it, 5 as 5., and XPath drops it, 5. Compiling refuses it at N1."
+}

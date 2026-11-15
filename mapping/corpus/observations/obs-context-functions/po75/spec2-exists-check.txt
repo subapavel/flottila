@@ -1,0 +1,13 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_exists; case fn/exists/003.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Sku explicitly in Order context -> exists -> removeContexts -> Out/All only.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f4.xml imported through test UI, no edits.
+21:31:09 Start of test
+Compilation of spec2_exists successful
+Execution of mapping on server took 4 milliseconds
+Executed successfully
+21:31:10 End of test
+Result exported through UI as spec2-exists-export.zip; instance.xml extracted unchanged as spec2-exists.xml.
+Reading: All true,true,false,false,true. Per-value existence for nonempty contexts contradicts the assumed four-value per-context result. Agrees with CPI.

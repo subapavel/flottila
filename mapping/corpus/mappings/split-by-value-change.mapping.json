@@ -1,0 +1,50 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-list.xsd"
+    ],
+    "fingerprint": "sha256:626cbacff639a86b480bb3c20cc032d8aa47ad341d9111e31882ad30ca6eca70",
+    "root": {
+      "element": "Out"
+    }
+  },
+  "targetFieldMappings": {
+    "/Out/All": {
+      "boxes": {
+        "A1": {
+          "field": "/Orders/Order/Tag",
+          "kind": "source"
+        },
+        "R1": {
+          "fn": "removeContexts",
+          "inputs": [
+            "A1"
+          ],
+          "kind": "function"
+        },
+        "S1": {
+          "fn": "splitByValue",
+          "inputs": [
+            "R1"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "valueChange"
+          }
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+CPI observation: fn/constant/006
+Date: 2026-11-12
+Artifact: api_constant_count
+Input: constant-001.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Item; constant x -> count -> V; constant w -> W.
+Simulation completed. Item 1 has V=1 and W=w; Items 2 and 3 have W=w only. Matches the assumed output.
+Exact downloaded output copied byte-for-byte to constant-006-constant-count.xml.
+Requested C1/N1 display queues remain pending; no intermediate queue inferred from final XML. Display Queue controls were not retried after repeated upload/menu failures earlier in the session.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_constant_count.json, cpi/constant-006-C1-queue.json, cpi/constant-006-N1-queue.json.
+C1 displayed generator x; count queue contains a single ordinary output value 1 and end marker, matching previous V1 in only first Item while Ww repeats. Temporary layout discarded.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

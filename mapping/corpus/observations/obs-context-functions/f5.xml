@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Qty>3</Qty></Line>
+    <Line><Qty>2</Qty></Line>
+  </Order>
+  <Order>
+    <Id>o2</Id>
+    <Line><Qty>10</Qty></Line>
+    <Line><Qty>11</Qty></Line>
+    <Line><Qty>43</Qty></Line>
+    <Line><Qty>2</Qty></Line>
+  </Order>
+  <Order>
+    <Id>o3</Id>
+    <Line><Qty>7</Qty></Line>
+  </Order>
+  <Order>
+    <Id>o4</Id>
+  </Order>
+</Orders>

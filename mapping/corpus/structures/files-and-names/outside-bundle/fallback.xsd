@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): an import whose schemaLocation names unlisted.xsd, a file beside it that the
+     bundle ["fallback.xsd", "listed.xsd"] does not list; it falls back to listed.xsd by namespace -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:u="urn:flottila:corpus:unlisted"
+           targetNamespace="urn:flottila:corpus:a">
+  <xs:import namespace="urn:flottila:corpus:unlisted" schemaLocation="unlisted.xsd"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="u:Listed"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

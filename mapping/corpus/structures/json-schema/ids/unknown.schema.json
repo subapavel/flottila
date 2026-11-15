@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "An absolute $ref that is no bundle file's root $id",
+  "type": "object",
+  "properties": {
+    "party": {"$ref": "https://example.com/shared/party.json#/$defs/Party"}
+  }
+}

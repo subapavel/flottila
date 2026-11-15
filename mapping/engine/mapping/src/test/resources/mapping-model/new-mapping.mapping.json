@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/partner.xsd"
+    ],
+    "fingerprint": "sha256:60a6987ab0d4a74971b939fe7b9dbef12f0fe51a3cfced4abb5ca170f5271d9c",
+    "root": {
+      "element": "Partner"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/partner-service.wsdl",
+      "../structures/partner-types.xsd"
+    ],
+    "fingerprint": "sha256:cc42b2f7cf5504b7335dda523f9e08ebd7521288ada1c60607c588b6c0d854a3",
+    "root": {
+      "wsdl": {
+        "direction": "input",
+        "interface": "PartnerService",
+        "operation": "UpsertPartner"
+      }
+    }
+  }
+}

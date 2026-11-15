@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fingerprint-stale-source.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0009 (amended 2026-11-05): compile (stage 3) re-reads the bundle and compares fingerprints; a mismatch is fingerprint-mismatch at /source/fingerprint or /target/fingerprint and blocks compile and test; spec #89, ticket #91",
+  "expect": "error",
+  "note": "The direct copy of link/direct-copy/001 with a stored source fingerprint that is not the one order.xsd gives under Order. The bundle loads and the field link would lower, but compiling refuses the model with fingerprint-mismatch at the source's fingerprint, so the run never starts."
+}

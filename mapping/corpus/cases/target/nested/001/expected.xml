@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Out>
+  <Item>
+    <V>a</V>
+    <V>b</V>
+  </Item>
+  <Item/>
+  <Item>
+    <V>c</V>
+  </Item>
+</Out>

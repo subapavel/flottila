@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): WSDL 2.0 load errors. An include outside the bundle, a fault of #other and one
+     with no element (#other too), an input of #any, an output of #none, a fault reference whose
+     prefix is not declared and one to no fault of the interface, and an interface that extends
+     another -->
+<description xmlns="http://www.w3.org/ns/wsdl"
+             xmlns:tns="urn:flottila:corpus:refusals20"
+             targetNamespace="urn:flottila:corpus:refusals20">
+  <include location="../../../etc/passwd"/>
+  <interface name="Any">
+    <fault name="Other" element="#other"/>
+    <fault name="Silent"/>
+    <operation name="Op">
+      <input element="#any"/>
+      <output element="#none"/>
+      <infault ref="tns:Other"/>
+      <infault ref="nope:Other"/>
+      <outfault ref="tns:Unknown"/>
+    </operation>
+  </interface>
+  <interface name="Child" extends="tns:Any"/>
+</description>

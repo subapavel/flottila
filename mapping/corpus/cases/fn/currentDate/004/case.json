@@ -1,0 +1,8 @@
+{
+  "mapping": "mappings/current-date-concat.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-43 addendum: the observation used the real clock and zone, the case uses the fixed test clock 2026-01-01T12:00Z, so the values cannot be compared; the observed formats are partial evidence (obs-date); was assumed: #2 §5 Date: the date functions take java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003; ADR-0006 generating function (#83, F-21); #80: currentDate is fixed once per mapping run from the run clock, in the run's time zone; assumed reading: at a single-value function's input currentDate gives the same value to every slot of every context, and an empty context stays empty (obs-date currentDate-004)",
+  "expect": "output",
+  "note": "concat(Sku, CurrentDate{'@'HH:mm:ss.SSS}) on V, Sku in context Order a, b | (empty) | c, run at 2026-11-04T10:15:30.125Z: a@10:15:30.125, b@10:15:30.125 | (empty) | c@10:15:30.125, one time for the whole run.",
+  "now": "2026-11-04T10:15:30.125Z"
+}

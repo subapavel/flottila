@@ -1,0 +1,7 @@
+SAP PO 7.50 / ESR Message Mapping / 2026-11-11
+Requested mappings: shared-1 and shared-2; input s1.xml.
+Status: NOT_RUN. The original graphs cannot be drawn exactly.
+The live PO Arithmetic > counter inspected immediately beforehand for obs-ifwithoutelse has only an output connector, with no input connector. Its Parameters dialog exposes Initial Value = 1 and Increment = 1 by default.
+Therefore Id -> N1 and Id -> N2/N3 cannot be drawn. This matches the CPI editor limitation.
+No shared-box mapping was built and no test was executed. Shared evaluation and the separate-counter control remain unobserved; no result is inferred by silently removing the required Id wires.
+Reading: n/a for both original runs.

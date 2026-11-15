@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): each schema document's own elementFormDefault and attributeFormDefault, and a
+     declaration's own form; b.xsd has the opposite defaults -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:b="urn:flottila:corpus:forms:b"
+           targetNamespace="urn:flottila:corpus:forms:a"
+           elementFormDefault="qualified" attributeFormDefault="unqualified">
+  <xs:import namespace="urn:flottila:corpus:forms:b" schemaLocation="b.xsd"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="X" type="xs:string"/>
+        <xs:element name="Y" type="xs:string" form="unqualified"/>
+        <xs:element ref="b:Item"/>
+        <xs:element name="Z" type="b:Part"/>
+      </xs:sequence>
+      <xs:attribute name="a1" type="xs:string"/>
+      <xs:attribute name="a2" type="xs:string" form="qualified"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

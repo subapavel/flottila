@@ -1,0 +1,9 @@
+{
+  "id": "J-201",
+  "customer": {"number": "C-9", "name": "Edsger Dijkstra"},
+  "delivery": {"pickup": "Counter 3"},
+  "lines": [
+    {"no": 1, "sku": "A-4", "quantity": 1, "price": 9.90, "currency": "EUR"}
+  ],
+  "note": "no address"
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): the defaults opposite to a.xsd's, which a.xsd's references keep -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:forms:b"
+           elementFormDefault="unqualified" attributeFormDefault="qualified">
+  <xs:element name="Item" type="xs:int"/>
+  <xs:complexType name="Part">
+    <xs:sequence>
+      <xs:element name="W" type="xs:string"/>
+      <xs:element name="V" type="xs:string" form="qualified"/>
+    </xs:sequence>
+    <xs:attribute name="code" type="xs:string"/>
+    <xs:attribute name="plain" type="xs:string" form="unqualified"/>
+  </xs:complexType>
+</xs:schema>

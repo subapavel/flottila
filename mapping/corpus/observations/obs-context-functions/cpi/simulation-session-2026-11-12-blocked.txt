@@ -1,0 +1,70 @@
+Status: ENVIRONMENT_BLOCKED
+Correction 2026-11-12: RESOLVED browser-interaction blocker; the original diagnosis
+of a stalled CPI initialization was not supported. See the appended findings below.
+Date: 2026-11-12
+Scope: browser-tab UI only; no native mouse or keyboard control, no SAP PO interaction.
+
+Artifacts inspected in the authorized observation package:
+- api_boolean_if (initial open tab): Simulate clicked once, then retried after reload.
+- api_spec2_sort_by_key: Simulate clicked once, then retried after reload.
+
+Observed UI on every attempt:
+Simulate <artifact-name>
+Mapping test is in progress...
+Cancel
+Test Input:
+Upload test file
+Generate
+Structure
+Value
+No data
+Test Output
+Structure
+Value
+No data
+Test
+Close
+
+The editor and package artifact list loaded successfully. Both mappings had Local (2)
+schemas. The simulation dialog remained in its nested progress dialog before any
+requested input was uploaded. The sortByKey attempts were each inspected after at
+least 45 seconds; the retry remained unchanged after an additional upload attempt.
+The browser file-chooser attempt on Upload Input returned:
+Timed out after 5000ms waiting for file chooser.
+The displayed simulation dialog was unchanged afterwards.
+Cancel on the first boolean-if attempt did not visibly dismiss the progress dialog;
+reload restored the editor. No native file picker fallback was used because the
+owner is using the computer and authorized tab-only operation.
+
+No requested XML input was uploaded. No case execution, output XML, runtime error
+result, or display queue was obtained. This is environment/initialization evidence,
+not a behavior observation and not evidence that the mapping itself is invalid.
+No new cases are counted as completed; historical observations remain unchanged.
+Tenant release was not rechecked. No screenshot file was saved.
+
+Resume: api_spec2_sort_by_key; fn/sortByKey/001, then fn/sortByKey/004.
+Use original input files and verify native parameters/contexts before execution.
+The last action reloads the tab to leave the stalled simulator.
+
+Follow-up investigation and correction (2026-11-12):
+- A browser-tab screenshot showed the normal input/output simulation dialog without
+  the progress overlay, although the accessibility/DOM snapshot included the text
+  "Mapping test is in progress..." and Cancel. Those nodes did not establish an
+  active wait. The prior report incorrectly treated them as a visible blocker.
+- The actual file input is enabled, type=file, aria-label="Upload Input". Its DOM
+  rectangle spans 5000 px and begins off-screen. Clicking the generic button or
+  the file input did not yield a filechooser event through this browser tool.
+- Activating that same input using locator.press('Enter') yielded the filechooser;
+  chooser.setFiles loaded the original sortByKey-001.xml. This uses tab-scoped
+  browser interaction, not system keyboard control.
+- The owner confirmed file-URL permission was already enabled; their screenshot
+  confirmed it. No extension or tenant setting was changed. The suggested
+  permission change was unnecessary and was withdrawn.
+- Test completed and displayed All values 3,2,1,4,5,7,6. Download Output produced
+  the original 133-byte XML. The download event waiter timed out despite a completed
+  file in Downloads; that tool timeout is not a CPI simulation failure.
+- The native graph's source tooltips show Sku and Qty context /Orders/Order.
+  sortByKey properties show case sensitive and selected asc; removeContexts and
+  target All are present. Some boxes overlap visually in the API-prepared layout.
+- No new behavior is inferred from the original failed interaction attempts.
+  Actual successful runs are recorded separately in meta.json and result files.

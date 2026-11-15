@@ -1,0 +1,12 @@
+Date: 2026-11-12
+Mapping: ctx-1; artifact api_ctx_1 (unchanged API-prepared artifact).
+Earlier target-assignment blocker in ctx-1-check.txt is historical and retained.
+Both source Orders and target Out rendered. Native graph/tooltips verified
+Sku context /Orders/Order/Line -> removeContexts -> /Out/All.
+Original f1.xml uploaded unchanged through the tab's file chooser.
+Test completed; Download Output copied byte-for-byte to ctx-1.xml (84 bytes).
+VERIFIED_PASS: native simulation completed and XML downloaded.
+Output: All a, empty string, b. Reading: confirmed; empty contexts are dropped
+while the explicit empty Sku value remains. Matches the existing PO observation.
+No display queue captured; prior tenant version evidence retained, no PNG saved.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.

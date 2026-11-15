@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-short-one.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (an array property reads each item of its array as one occurrence: [] gives none); #118",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/one is an array property at 0..1 and its array is empty, so one never occurs and no All is written; structure/jsonArray/003 reads one item with the same mapping."
+}

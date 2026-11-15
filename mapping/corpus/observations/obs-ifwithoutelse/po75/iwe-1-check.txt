@@ -1,0 +1,15 @@
+SAP PO 7.50 / ESR Message Mapping / 2026-11-11
+Requested mapping: iwe-1; inputs i1.xml and i2.xml.
+Status: NOT_RUN. The original graph cannot be drawn exactly.
+
+Live UI inspection:
+Arithmetic > counter inserts a box with an output connector on its right and no input connector on its left.
+The counter Parameters dialog has Initial Value = 1 and Increment = 1 by default.
+Therefore the requested Sku -> N1 and Sku -> N2 input wires are unavailable, as in CPI.
+Boolean > ifWithoutElse has input labels if and then.
+Exact parameter label: Keep SUPPRESS Values. Default: unchecked.
+CPI uses Keep SUPPRESS, also unchecked by default.
+
+A copy named iwe_1 was created from the completed spec2_use_one_as_many mapping to inspect these functions. The added disconnected counter and ifWithoutElse boxes were not saved; Close > Do Not Save discarded the exploratory edits. The copied baseline is not the requested iwe-1 graph and was not run as such.
+No original input was modified or executed; no output or display queues are claimed. No replacement generating-counter graph was substituted.
+Reading: n/a for both runs.

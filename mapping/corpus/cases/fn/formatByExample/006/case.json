@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-by-example.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 formatByExample: \"Values from queue 1, context changes from queue 2; equal value counts required\" [SAP✓ https://help.sap.com/doc/saphelp_nw74/7.4.16/en-us/4b/f416dceaca4c86e10000000a42189e/content.htm]; po:FORMATBYEXAMPLE at the box is ADR-0025 since #52",
+  "expect": "error",
+  "note": "Three Tags but two Skus in the one Order: the value counts differ, so the run raises po:FORMATBYEXAMPLE at F1. To observe on PO 7.5 and CPI (#61)."
+}

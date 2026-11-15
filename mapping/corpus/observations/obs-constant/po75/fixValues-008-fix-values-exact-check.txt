@@ -1,0 +1,10 @@
+Case: fn/fixValues/008
+Observed: 2026-11-12, SAP PO 7.50 ESR message mapping UI
+Mapping: fix_values_exact
+Input: unchanged fixValues-008.xml imported through the Test UI.
+Graph: Order (context Orders) -> Item; Sku (context Order) -> FixValues F1 -> V. W and All unmapped.
+Parameters verified in editor: table a=A and ' b'=B (one leading space in second key); Default Value ?; Use Default Value selected.
+Save completed (Save disabled). Check: No errors found during object check; Problem 0, Warning 0.
+Test log: 10:54:01 Start of test; compilation successful; execution took 7 milliseconds; executed successfully; 10:54:02 End of test.
+Result exported through UI to the accompanying ZIP. XML extracted unchanged from instance.xml.
+Reading: confirmed. Item 1 has V ?, ?, ?, A; Item 2 has V ?, B, ?. Case and leading/trailing whitespace are significant; no implicit trim is observed.

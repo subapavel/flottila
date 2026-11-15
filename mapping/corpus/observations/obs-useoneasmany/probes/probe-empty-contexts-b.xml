@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner probe for u4.xml on uoam-1: after probe-empty-contexts-a failed without per-order output, drop its leading Order B as the request's progressive-drop procedure directs. Only the original missing-Id Order and baseline D remain, unchanged. -->
+<Orders>
+  <Order>
+    <Tag>t3</Tag>
+    <Line><Sku>s3</Sku></Line>
+  </Order>
+  <Order>
+    <Id>D</Id>
+    <Tag>t4</Tag>
+    <Line><Sku>s4</Sku></Line>
+  </Order>
+</Orders>

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/copy-value-suppress.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212), mapping copy-value-suppress, input copyValue-004.xml: corpus/observations/obs-constant/po75/copyValue-004-copy-value-suppress.xml and -check.txt, cpi/copyValue-004-copy-value-suppress.xml, -check.txt, cpi/copyValue-004-C1-queue.json and cpi/copyValue-004-F1-queue.json; PO 7.50 and CPI agree (meta.json, reading contradicted): Index 1 selects SUPPRESS and copies it, and no Item has a V; F-46. Before #212: #2 §5 Constants: CopyValue \"For a frequently occurring element, copies the value at a defined position in the source structure to the assigned target field\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; the assumed reading of #79 (per context) is contradicted",
+  "expect": "output",
+  "note": "createIf(Tag) is \"\", SUPPRESS, \"\" | SUPPRESS, \"\" | (empty). copyValue{position=1} selects slot 1 of the whole queue, SUPPRESS, and copies it, so no Item gets a V, o2's included."
+}

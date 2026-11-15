@@ -1,0 +1,3 @@
+CPI editor / Save, mapping spec2-suppress-format-by-example, in-place variant of artifact spec2_format_by_example after its preceding output was saved locally.
+Changed Tag context from default Order to /Orders and inserted createIf before formatByExample input (in1). Retained Sku context /Orders/Order -> pattern (in2), formatByExample -> All. No other fields mapped.
+Both non-default contexts verified in node tooltips. Four expression connections verified visually after Save; no validation error was shown.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/nested-grp-row-val.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#212, #214), run 2026-11-02: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-target-creation/po75/max-003-spec2-nested-grp-row-val.xml and corpus/observations/obs-target-creation/cpi/max-003-spec2-nested-grp-row-val.xml; before #214: ADR-0006 TargetSlots and Consequences, assumed readings: creation stops after maxOccurs and truncated slots keep their numbers; obs-target-creation decides (#31)",
+  "expect": "output",
+  "note": "Row (1..2) per Sku in context Order: a, b, c | d, slots 1, 2, 3 | 4. Grp 1 creates Rows 1 and 2 (Val 1, 2); slot 3 is truncated but keeps its number, so Grp 2's Row is slot 4 and reads Qty context 4: Val 4. Renumbering after the truncation would give Val 3."
+}

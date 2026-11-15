@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/power.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: power with a fractional exponent is computed in xs:double (the catalogue deviation)",
+  "expect": "output",
+  "note": "An integer base against a fractional exponent, and a negative integer exponent, which is not an exact power: 9^0.5, 2^0.5, 4^-0.5, 2^-2, 10^-2, 2^3.5. Each is Math.pow of the two doubles, written as the xs:decimal it equals exactly (10^-2 is 0.01000000000000000020816681711721685132943093776702880859375)."
+}

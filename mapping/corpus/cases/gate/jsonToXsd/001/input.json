@@ -1,0 +1,11 @@
+{
+  "id": "J-200",
+  "issued": "2026-04-01",
+  "customer": {"name": "Grace Hopper", "number": "C-8"},
+  "delivery": {"address": {"street": "2 Compiler Road", "city": "Arlington"}},
+  "lines": [
+    {"no": 1, "sku": "A-2", "quantity": 3, "price": 1.50, "currency": "USD"},
+    {"no": 2, "sku": "A-3", "quantity": 10, "price": 100, "currency": "USD"}
+  ],
+  "note": "leave at the door"
+}

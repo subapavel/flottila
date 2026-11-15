@@ -1,0 +1,4 @@
+CPI editor, mapping spec2-sort-case-insensitive.
+In-place edit of spec2_sort after all three default-variant outputs were saved. Changed Comparison rule to case insensitive; Order asc remained selected. Other graph and contexts unchanged.
+Save and all three simulations completed without validation/runtime errors.
+sort-001: 10,9,_,a,A,B,b,e,f,Z,é. sort-002: z,ligature U+FB00,fullwidth A U+FF21,emoji U+1F600. sort-011: h,İ,I,i,SS,ß. All confirm the assumed order and stable ties.

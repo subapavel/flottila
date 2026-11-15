@@ -1,0 +1,12 @@
+SAP PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_use_one_as_many_collapsed
+Source Id default Order -> U1 input 1; separate Sku with Order context -> input 2; separate Sku default Line -> input 3. U1 -> collapseContexts C1 -> Out/All. Nothing else mapped.
+Saved. Check: No errors found during object check; Problem 0; Warning 0.
+Input: useOneAsMany-002.xml, imported unchanged.
+19:41:46 Start of test
+Compilation of spec2_use_one_as_many_collapsed successful
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+19:41:48 End of test
+Exact output in useOneAsMany-002-spec2-use-one-as-many-collapsed.xml, extracted without rewriting from the accompanying ESR export ZIP.
+Reading: confirmed. All = external, empty string, external, internal. PO agrees with CPI and retains the empty Line context.

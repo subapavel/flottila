@@ -1,0 +1,13 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_format_by_example; case fn/formatByExample/004.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context -> formatByExample input 1; Sku explicit context Order -> input 2; function output -> Out/All only.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original collapseContexts-003.xml imported through test UI, no edits.
+21:55:20 Start of test
+Compilation of spec2_format_by_example successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+21:55:21 End of test
+Result exported through UI as spec2-format-by-example-export.zip; instance.xml extracted unchanged as spec2-format-by-example.xml.
+Reading: Empty Out, no All, no error. Confirms assumed output and agrees with CPI. No queue cardinality conclusion is inferred from the XML alone.

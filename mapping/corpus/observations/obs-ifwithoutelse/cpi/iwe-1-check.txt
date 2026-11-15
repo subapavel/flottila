@@ -1,0 +1,5 @@
+CPI, Message Mapping editor, iwe-1. NOT_RUN for i1.xml and i2.xml.
+The requested N1 and N2 counter boxes require in1 = Sku. CPI counter has no input port. Its only editable fields are Initial value and Increment, both with default value 1; it has an output connector on the right. The palette describes counter as: Counts number of invocations. Initial value and increment defined by parameters.
+The requested Sku -> counter wires cannot be drawn exactly. No substitute mapping or simulation was run.
+The ifWithoutElse inline parameter is labelled Keep SUPPRESS (not Keep SUPPRESS Values). It is unchecked by default. The two ports are condition and true value.
+An iwe_1 artifact was created for this UI inspection. The incomplete exploratory editor changes were discarded through Cancel > Discard; no completed mapping was saved, and no Check/Save validation or output is claimed. No existing artifact was deleted.

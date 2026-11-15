@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure (#92 under #93, ADR-0008 "Refused when a mapping uses the field"): the
+     named complex type Pair, which a.xsd uses on two paths, declares Part twice (the second at
+     line 10), and the second Part's anonymous type declares Leaf twice (the second at line 14). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:refused:b">
+  <xs:complexType name="Pair">
+    <xs:sequence>
+      <xs:element name="Part" type="xs:string"/>
+      <xs:element name="Part">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Leaf" type="xs:string"/>
+            <xs:element name="Leaf" type="xs:integer"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

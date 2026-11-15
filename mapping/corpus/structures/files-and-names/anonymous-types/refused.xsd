@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): anonymous simple types and attributes outside the subset or invalid,
+     each where it stands -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:anonymous"
+           targetNamespace="urn:flottila:corpus:anonymous">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Typed" type="xs:string">
+          <xs:simpleType><xs:restriction base="xs:string"/></xs:simpleType>
+        </xs:element>
+        <xs:element name="Named">
+          <xs:simpleType name="Inner"><xs:restriction base="xs:string"/></xs:simpleType>
+        </xs:element>
+        <xs:element name="Unknown">
+          <xs:simpleType><xs:restriction base="tns:Missing"/></xs:simpleType>
+        </xs:element>
+        <xs:element name="Complex">
+          <xs:simpleType><xs:restriction base="tns:Pair"/></xs:simpleType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="typed" type="xs:string">
+        <xs:simpleType><xs:restriction base="xs:string"/></xs:simpleType>
+      </xs:attribute>
+      <xs:attribute name="untyped"/>
+      <xs:attribute name="schema" type="xs:string" xs:hint="x"/>
+      <xs:attribute name="nested"><xs:complexType/></xs:attribute>
+    </xs:complexType>
+  </xs:element>
+  <xs:attribute name="bare"/>
+  <xs:complexType name="Pair">
+    <xs:sequence/>
+  </xs:complexType>
+</xs:schema>

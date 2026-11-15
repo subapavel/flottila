@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/counter-malformed-increment.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 \"Data errors name their box\" (Q10) and ADR-0005: a number is read in the xs:decimal lexical form only, anything else is err:FORG0001 at the box; a box parameter that is a number follows the same rule (#75)",
+  "expect": "error",
+  "note": "counter{increment=x}: its increment is no xs:decimal, so counter raises err:FORG0001 at its box F1."
+}

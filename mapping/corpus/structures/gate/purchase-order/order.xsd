@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure for GATE check 1 (#100): a purchase order over three files. This file
+     includes types.xsd, of its own namespace, and imports common/common.xsd, of a second one.
+     PurchaseOrder has an anonymous type, Buyer the named type po:Buyer, which extends c:Party.
+     Delivery and Pickup are the branches of a choice. Line has an anonymous local type with a
+     reference to the substitution-group head po:Product and the simple-content leaf Price -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:po="urn:flottila:corpus:gate:po"
+           xmlns:c="urn:flottila:corpus:gate:common"
+           targetNamespace="urn:flottila:corpus:gate:po"
+           elementFormDefault="qualified">
+  <xs:include schemaLocation="types.xsd"/>
+  <xs:import namespace="urn:flottila:corpus:gate:common" schemaLocation="common/common.xsd"/>
+  <xs:element name="PurchaseOrder">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="OrderId" type="xs:string"/>
+        <xs:element name="Buyer" type="po:Buyer"/>
+        <xs:choice>
+          <xs:element name="Delivery" type="c:Address"/>
+          <xs:element name="Pickup" type="xs:string"/>
+        </xs:choice>
+        <xs:element name="Line" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element ref="po:Product"/>
+              <xs:element name="Quantity" type="xs:integer"/>
+              <xs:element name="Price" type="po:Money"/>
+            </xs:sequence>
+            <xs:attribute name="no" type="xs:positiveInteger" use="required"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="issued" type="xs:date"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

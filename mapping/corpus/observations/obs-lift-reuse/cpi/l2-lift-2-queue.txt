@@ -1,0 +1,47 @@
+Display Queue of box X1 (ifWithoutElse), CPI Function Message Queue, input l2.xml, mapping lift-2.
+S. No. enabled. Literal cell contents (CPI does not put brackets around these values).
+
+row  ifWithoutElse:in1  ifWithoutElse:in2  ifWithoutElse:out1  shading of all data cells
+0    <null>             <null>             <null>              gray, italic (start)
+1    true               5                  5                   white, normal
+2    false              0                  SUPPRESS            white, normal
+3    true               7                  7                   white, normal
+4    true               7                  7                   dark gray, italic (end)
+
+Reading: in1 = [true,false,true]; in2 = [5,0,7]; out1 = [5,SUPPRESS,7].
+
+Display Queue of box U1 (toUpperCase), same input and mapping.
+S. No. enabled.
+
+row  toUpperCase:in1  toUpperCase:out1  shading of both data cells
+0    <null>           <null>            gray, italic (start)
+1    a                A                 white, normal
+2    SUPPRESS         SUPPRESS          white, normal
+3    c                C                 white, normal
+4    c                C                 dark gray, italic (end)
+
+Reading: in1 = [a,SUPPRESS,c]; out1 = [A,SUPPRESS,C].
+
+Display Queue of box K1 (concat), same input and mapping.
+S. No. enabled.
+
+row  concat:in1  concat:in2  concat:out1  shading of all data cells
+0    <null>      <null>      <null>       gray, italic (start)
+1    a           5           a5           white, normal
+2    b           SUPPRESS    SUPPRESS     white, normal
+3    c           7           c7           white, normal
+4    c           7           c7           dark gray, italic (end)
+
+Reading: in1 = [a,b,c]; in2 = [5,SUPPRESS,7]; out1 = [a5,SUPPRESS,c7].
+
+Display Queue of box K2 (concat), same input and mapping.
+S. No. enabled.
+
+row  concat:in1  concat:in2  concat:out1  shading of all data cells
+0    <null>      <null>      <null>       gray, italic (start)
+1    a5          t1          a5t1         white, normal
+2    SUPPRESS    t2          SUPPRESS     white, normal
+3    c7          t3          c7t3         white, normal
+4    c7          t3          c7t3         dark gray, italic (end)
+
+Reading: in1 = [a5,SUPPRESS,c7]; in2 = [t1,t2,t3]; out1 = [a5t1,SUPPRESS,c7t3].

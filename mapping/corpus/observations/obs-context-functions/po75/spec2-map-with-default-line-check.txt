@@ -1,0 +1,12 @@
+PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_map_with_default_line.
+Graph: Sku (default Line context) -> mapWithDefault [D] -> Out/All only. Removed unused removeContexts from copied variant.
+Save completed. Object Check: No errors found during object check; Problem 0, Warning 0.
+Input: original collapseContexts-003.xml imported through Test; SRC verified empty Orders.
+21:10:55 Start of test
+Compilation of spec2_map_with_default_line successful
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+21:10:56 End of test
+Exact output exported as spec2-map-with-default-line-export.zip and extracted without rewriting as spec2-map-with-default-line.xml.
+Reading: One All D without removeContexts; confirms fn/mapWithDefault/005 and agrees with CPI.

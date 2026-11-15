@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/repeated-sequence-target.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"Refused when a mapping uses the field\" (in a target, a repeated group of two or more particles, unless it is a choice of single elements, because streamed output cannot interleave it) and its Shape (#92, #94): the refusal is reported at the authoringId of the target field mapping that uses the field, the message naming the schema file, line and column of the repeated group's declaration; spec #89, ticket #94",
+  "expect": "error",
+  "note": "pairs.xsd holds a repeated sequence of A and B, so A carries interleaved-target-group at the sequence, pairs.xsd 9:42. T1 writes A, so compiling refuses the model with interleaved-target-group at T1. B is optional and unmapped, so it is left out and not reported. The run never starts."
+}

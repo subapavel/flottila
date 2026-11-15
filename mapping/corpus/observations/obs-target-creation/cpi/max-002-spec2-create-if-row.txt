@@ -1,0 +1,8 @@
+CPI, Simulate, input max-002.xml, mapping spec2-create-if-row (built by editing create_a in place:
+the CPI editor cannot copy a mapping). Case target/max/002. No output.
+Transcribed from the owner's screenshot; the exchange id is replaced by <exchange-id>.
+
+Error dialog:
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Create/Row. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Cannot cast "no" to boolean.] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[no, com.sap.aii.mappingtool.tf7.rt.Context@<id>] Cannot cast "no" to boolean. on the exchange: Exchange[<exchange-id>]
+
+Same failure as PO 7.5 (po75/max-002-spec2-create-if-row.txt); CPI's exception classes and wording differ.

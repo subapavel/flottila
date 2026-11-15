@@ -1,4 +1,17 @@
 
+## 2026-11-15 — BRAND-3 step 1 the mapping engine imported with its history under `mapping/` — in progress
+
+- `git merge --allow-unrelated-histories` of the clone's `rail8-import` (cf970caf: the mapping's `main` plus one commit that moves every
+  file under `mapping/`), made on `main`; 1155 commits keep their SHAs. No conflict.
+- The merge commit adds one line beyond the two trees, `mapping/** | * | ...` in `ci/name-allowlist.txt` (3491 findings without it; an
+  entry added earlier would have been an unused entry), and these ledgers. Step 2 replaces the line by the mapping's history files.
+- VERIFIED_PASS, observed by the architect before the commit: `git diff --quiet MERGE_HEAD -- mapping` (byte-identical to cf970caf);
+  outside `mapping/` only the allow-list, PROGRESS, HANDOFF, BACKLOG and the packet differ from the first parent; `git rev-list
+  --first-parent <before>..HEAD` lists the merge commit alone, signed; the name guard clean on 5829 tracked files, its 19 tests pass.
+- Nothing builds `mapping/` yet: the root reactor lists `platform` only; the mapping's workflows lie inert under `mapping/.github/`.
+- NOT_RUN: Maven (no source outside `mapping/` changed); the `ci` workflow on the push.
+- Next: step 2 - the implementer renames inside `mapping/` with the BRAND-1 tool and makes the root reactor build it (packet, rulings).
+
 ## 2026-11-15 — OPS-1 ARCHITECTURE and the living documents follow the operations brief — done, review PASS. Deviation: F-38
 
 - Designer, the advisor as opponent (13 changes, all taken), the architect's twelve decisions (`agent/work/OPS-1-decided.md`, D-152).

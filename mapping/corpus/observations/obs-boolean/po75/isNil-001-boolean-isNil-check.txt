@@ -1,0 +1,13 @@
+Observation: obs-boolean / fn/isNil/001
+Platform: SAP PO 7.50, ESR Message Mapping test
+Date: 2026-11-12
+Mapping: boolean_isNil (request: boolean-isNil)
+Input: ../isNil-001.xml imported unchanged; source XML verified (x, xsi:nil=true, empty, one space).
+Graph: Sku context Orders -> Boolean palette isNil -> Out/All. No other target wires.
+Saved. Object check: No errors found during object check; Problem 0, Warning 0.
+02:46:28 Start of test. Compilation of boolean_isNil successful.
+Execution of mapping on server took 5 milliseconds. Executed successfully.
+02:46:30 End of test.
+
+Reading: All values false, true, false, false. Explicit xsi:nil is recognized; an empty string is not nil. This contradicts the assumed true for the third value.
+Result exported via ESR UI; XML extracted byte-for-byte from instance.xml in the accompanying ZIP.

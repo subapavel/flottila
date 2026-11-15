@@ -1,0 +1,14 @@
+CPI partial observation 2026-11-13: fn/dateTrans/004
+Artifact: api_date_trans_004
+Input: original dateTrans-004.xml uploaded through simulator.
+Visible graph verified: Sku context /Orders -> dateTrans -> /Out/All.
+Simulation completed. All values: 2026-11-04 08:00 +0000; 2026-11-04 10:00 +0000; 2025-12-31 23:30 +0000. Downloaded XML preserved unchanged.
+Requested +01:00 environment precondition is not met: observed output offset is +0000. This is evidence for the current environment only, not completion of the requested +01:00 variant. No environment settings changed.
+Live format dialog and exact JVM zone ID not independently verified. Status: partial current-environment output; requested timezone condition and parameter verification remain unmet.
+
+Parameter audit 2026-11-13 — VERIFIED_PASS: Fresh live API export verifies configured input/output patterns against request.md. Calendar binding le=true is explicitly stored (lenient enabled), fd=1 and md=1. This is configuration evidence, not a new invalid-date runtime probe. Exact JVM zone ID and message-monitor start times remain unverified. Requested non-UTC environment preconditions remain unmet; no settings changed. Evidence: cpi/parameter-audit/api_date_trans_004.json
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_date_trans_004.json.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

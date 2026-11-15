@@ -1,0 +1,13 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_suppress_format_by_example; case fn/formatByExample/005.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag explicit context Orders -> createIf -> formatByExample input 1; Sku explicit context Order -> input 2; formatByExample -> Out/All only.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original formatByExample-005.xml imported through test UI, no edits.
+22:01:13 Start of test
+Compilation of spec2_suppress_format_by_example successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+22:01:14 End of test
+Result exported through UI as spec2-suppress-format-by-example-export.zip; instance.xml extracted unchanged as spec2-suppress-format-by-example.xml.
+Reading: One empty All, no error. Confirms assumed output and agrees with CPI. No additional queue observation was made for this run.

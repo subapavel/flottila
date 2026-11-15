@@ -1,0 +1,14 @@
+SAP PO 7.50 ESR message mapping observation, 2026-11-12
+Case: fn/index/003
+Mapping: stat_index_default
+Input: original obs-statistic/index-003.xml loaded through Test file chooser.
+Graph: Orders/Order -> Out/Item; Orders/Order/Line/Sku (context Order) -> index -> Out/Item/V.
+Parameter dialog defaults, left unchanged:
+Initial Value: 1
+Increment: 1
+Reset Index: Reset Index to Initial Value with Each New Context (selected)
+Do Not Reset Index to Initial Value (not selected)
+Saved mapping; Check: No errors found during object check. Problem 0, Warning 0.
+Processing Log: 13:54:37 Start of test; Compilation of stat_index_default successful; Execution of mapping on server took 7 milliseconds; Executed successfully; 13:54:38 End of test.
+Actual result exported using Test result export; original ZIP retained and instance.xml extracted without reformatting.
+Reading: confirmed. V is 1, 2 | none | 1; the empty middle Item is retained.

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A $ref to another file of the schema bundle",
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"},
+    "shipTo": {"$ref": "./defs/address.schema.json#/$defs/Address"},
+    "country": {"$ref": "defs/address.schema.json#/$defs/Country"}
+  }
+}

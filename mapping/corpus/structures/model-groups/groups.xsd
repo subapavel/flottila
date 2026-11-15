@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#94): group and attributeGroup references are inlined where they stand, with the
+     reference's occurrence multiplied into the group's fields (ADR-0008). The groups Lines and
+     Audited are declared in common.xsd, in another namespace. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:g="urn:flottila:corpus:groups"
+           xmlns:c="urn:flottila:corpus:groups:common"
+           targetNamespace="urn:flottila:corpus:groups">
+  <xs:import namespace="urn:flottila:corpus:groups:common" schemaLocation="common.xsd"/>
+  <xs:group name="Party">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element name="City" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:group>
+  <xs:attributeGroup name="Stamped">
+    <xs:attribute name="created" type="xs:dateTime" use="required"/>
+    <xs:attributeGroup ref="c:Audited"/>
+  </xs:attributeGroup>
+  <xs:complexType name="Seller">
+    <xs:sequence>
+      <xs:group ref="g:Party"/>
+      <xs:element name="Rating" type="xs:integer" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Buyer">
+          <xs:complexType>
+            <xs:group ref="g:Party"/>
+            <xs:attributeGroup ref="g:Stamped"/>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Seller" type="g:Seller" minOccurs="0"/>
+        <xs:group ref="c:Lines" minOccurs="0" maxOccurs="2"/>
+      </xs:sequence>
+      <xs:attribute name="id" type="xs:string"/>
+      <xs:attributeGroup ref="c:Audited"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

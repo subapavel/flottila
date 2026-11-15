@@ -1,0 +1,130 @@
+{
+  "compareDates": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "date1"
+      },
+      {
+        "name": "date2"
+      }
+    ],
+    "params": [
+      {
+        "default": "yyyy/MM/dd",
+        "name": "format1",
+        "syntax": "datePattern",
+        "type": "string"
+      },
+      {
+        "default": "yyyy/MM/dd",
+        "name": "format2",
+        "syntax": "datePattern",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "currentDate": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "params": [
+      {
+        "default": "yyyy/MM/dd",
+        "name": "targetFormat",
+        "syntax": "datePattern",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "dateAfter": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "date1"
+      },
+      {
+        "name": "date2"
+      }
+    ],
+    "params": [
+      {
+        "default": "yyyy/MM/dd",
+        "name": "format1",
+        "syntax": "datePattern",
+        "type": "string"
+      },
+      {
+        "default": "yyyy/MM/dd",
+        "name": "format2",
+        "syntax": "datePattern",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "dateBefore": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "date1"
+      },
+      {
+        "name": "date2"
+      }
+    ],
+    "params": [
+      {
+        "default": "yyyy/MM/dd",
+        "name": "format1",
+        "syntax": "datePattern",
+        "type": "string"
+      },
+      {
+        "default": "yyyy/MM/dd",
+        "name": "format2",
+        "syntax": "datePattern",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "dateTrans": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "date"
+      }
+    ],
+    "params": [
+      {
+        "default": "yyyy/MM/dd",
+        "name": "sourceFormat",
+        "syntax": "datePattern",
+        "type": "string"
+      },
+      {
+        "default": "yyyy/MM/dd",
+        "name": "targetFormat",
+        "syntax": "datePattern",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  }
+}

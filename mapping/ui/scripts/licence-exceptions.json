@@ -1,0 +1,8 @@
+{
+  "_comment": "Per-package npm licence exceptions, owner ruling #39, ADR-0017 'npm licences'. Dev-only tools or data, never bundled. A new entry needs an owner ruling.",
+  "exceptions": {
+    "argparse": "Python-2.0, PSF-2.0 (through js-yaml in openapi-typescript and json-schema-to-typescript)",
+    "caniuse-lite": "CC-BY-4.0 (browser data for browserslist)",
+    "minimatch": "BlueOak-1.0.0 (glob tooling)"
+  }
+}

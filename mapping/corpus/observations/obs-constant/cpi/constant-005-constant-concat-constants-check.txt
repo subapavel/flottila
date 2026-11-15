@@ -1,0 +1,14 @@
+CPI observation: fn/constant/005
+Date: 2026-11-12
+Artifact: api_constant_concat_constants
+Input: constant-001.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Item; separate concat(constant a, constant b) expressions -> V and All.
+Simulation completed. Each of three Items has V=ab; root has one All=ab. Matches the assumed output.
+Exact downloaded output copied byte-for-byte to constant-005-constant-concat-constants.xml.
+Requested F1 display queue remains pending; no intermediate queue inferred from final XML. Display Queue controls were not retried after repeated upload/menu failures earlier in the session.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_constant_concat_constants.json, cpi/constant-005-F1-queue.json.
+Native concat queue shows generator inputs a,b and generator output ab with end marker. Matches prior ab per Item and root All. Temporary layout discarded.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

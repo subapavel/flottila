@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 createIf: \"Condition true → empty string, false → ResultList.SUPPRESS\" [SAP✓ https://help.sap.com/saphelp_em92/helpdata/en/4b/f416e1eaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/d9/3033f96c79674f90e3ab8d101a595b/content.htm]; #2 §3 SUPPRESS: \"The generation of the target field and its sub nodes is suppressed for such entries\" [SAP✓ https://help.sap.com/doc/javadocs_nw75_sps04/7.5.4/en-US/PI/com/sap/aii/mappingtool/tf7/rt/ResultList.html]",
+  "expect": "output",
+  "note": "Tag in context Orders is true, false, true in one context over two Orders. createIf gives \"\", SUPPRESS, \"\", so the root's one slot creates two empty All and skips the SUPPRESS slot. A SUPPRESS written as a value would give a third All; Tag in its default context Order would give one."
+}

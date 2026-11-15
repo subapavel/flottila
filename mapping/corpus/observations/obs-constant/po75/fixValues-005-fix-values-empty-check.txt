@@ -1,0 +1,12 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/fixValues/005
+Mapping: fix_values_empty
+Request mapping: fix-values-default-empty (ESR name differs).
+Input: unchanged copyValue-001.xml, imported through the Test UI.
+Graph: Order (context Orders) -> Item; Sku (context Order) -> F1 FixValues -> V. W and All unmapped.
+Fixed-Values Table: a=A only; Default Value empty; Use Default Value selected. Visually verified before accepting.
+The editor accepted the empty Default Value. Saved; Save disabled.
+Check: No errors found during object check; Problem 0, Warning 0.
+10:35:38 Start of test. Compilation successful. Server execution 7 milliseconds. Executed successfully. 10:35:39 End of test.
+Result exported through the UI to fixValues-005-fix-values-empty.zip. XML extracted unchanged to fixValues-005-fix-values-empty.xml.
+Reading: confirmed. The first V is A; all five missing keys produce present empty V elements. No exception.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/exists-create-if.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-exists-create-if, input exists-004.xml, 2026-11-11: corpus/observations/obs-context-functions/po75/spec2-exists-create-if.xml and cpi/exists-004-spec2-exists-create-if.xml, display queues po75/spec2-exists-create-if-queue.txt and cpi/exists-004-spec2-exists-create-if-queue.txt (out [true] [true,true] [false] [true]); PO 7.50 and CPI 6.84.77 agree; F-48, ADR-0006 Consequences (exists counts SUPPRESS as a value); createIf true → \"\", false → SUPPRESS (ADR-0006, F-37)",
+  "expect": "output",
+  "note": "Tag in its default context Order is false | false, true | (none) | true, so createIf gives SUPPRESS | SUPPRESS, \"\" | (empty) | \"\". exists gives true per slot, SUPPRESS included, and false for the empty context: true | true, true | false | true, and removeContexts puts them under the root's one slot. SUPPRESS taken for no value, the reading before F-48, gives false, true, false, true."
+}

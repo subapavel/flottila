@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "id": {"type": "string"},
+    "party": {"$ref": "party.schema.json#/$defs/Party"}
+  }
+}

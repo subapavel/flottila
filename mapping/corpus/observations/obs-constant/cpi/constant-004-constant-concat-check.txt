@@ -1,0 +1,14 @@
+CPI observation: fn/constant/004
+Date: 2026-11-12
+Artifact: api_constant_concat
+Input: constant-001.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Item; concat(Sku in /Orders/Order context, constant -x) -> V; concat(constant y-, Sku in /Orders/Order context) -> W.
+Simulation completed. Item 1 V=[a-x,b-x], W=[y-a,y-b]; Item 2 empty; Item 3 V=[c-x], W=[y-c]. Matches the assumed output; constants do not fill the empty second context.
+Exact downloaded output copied byte-for-byte to constant-004-constant-concat.xml.
+Requested F1/F2 display queues remain pending; no intermediate queue inferred from final XML. Display Queue controls were not retried after repeated upload/menu failures earlier in the session.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_constant_concat.json, cpi/constant-004-F1-queue.json, cpi/constant-004-F2-queue.json.
+Both concat queues captured with context/end marker classes. Empty middle context preserved. Moved constant nodes in both branches and saved visual layout only to expose overlapping concat nodes; no wiring or values intentionally changed.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/gate-order-po.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a JSON root reads JSON, projection by $ field paths, numbers keep their input spelling, an array property's items are its occurrences) and \"JSON Schema and WSDL\" ($ref/$defs through named types, allOf merges, oneOf gives each branch's properties with minimum 0, required gives minimum 1); GATE check 1, ticket #100",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. Source gate/order.schema.json, target gate/purchase-order. customer is a $ref to an allOf of the party $def and its own number: Buyer's Name and CustomerNo. delivery is a oneOf; its address branch gives Delivery with Street and City, and no Pickup. Each item of the array of objects lines gives one Line, with @no, an Article per sku, Quantity, and Price with @currency; the price 1.50 keeps its spelling. The member note, which the mapping does not read, is skipped. Also a differential case."
+}

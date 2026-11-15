@@ -1,0 +1,15 @@
+{
+  "artifactId": "api_text_replaceString_aa_b",
+  "logicalMapping": "text-replaceString-aa-b",
+  "cases": [
+    "fn/replaceString/004"
+  ],
+  "status": "API_CREATED_READBACK_VERIFIED",
+  "simulation": "NOT_RUN",
+  "editorValidation": "NOT_RUN",
+  "notes": "No observation output. New independent artifact; historical mappings untouched.",
+  "nativeRepresentation": "CPI replaceString has three input ports: source, pattern, replacement. Fixed search/replacement from request are supplied by const boxes; this differs from the request parameter notation and must remain explicit when interpreting future observations.",
+  "createHttp": 201,
+  "version": "1.0.0",
+  "readback": "VERIFIED_PASS: exact mmap and XSD content match"
+}

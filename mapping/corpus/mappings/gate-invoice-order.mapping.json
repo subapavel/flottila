@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/gate/invoice/invoice.xsd",
+      "../structures/gate/invoice/party.xsd"
+    ],
+    "fingerprint": "sha256:58de05eec9c995263cd630786bcdecf224806c5e23cdecad4681bea25648ea4a",
+    "root": {
+      "element": "Q{urn:flottila:corpus:gate:invoice}Invoice"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/gate/order.schema.json"
+    ],
+    "fingerprint": "sha256:ee54dcfa5f2ce0e42c2cbae54b270f17d2a89877141513ca5a9b8a3944df7f5d",
+    "root": {
+      "json": "$"
+    }
+  },
+  "targetFieldMappings": {
+    "/$/customer/name": {
+      "boxes": {
+        "S2": {
+          "field": "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:party}Party/Q{urn:flottila:corpus:gate:party}Name",
+          "kind": "source"
+        }
+      },
+      "id": "V2",
+      "result": "S2"
+    },
+    "/$/id": {
+      "boxes": {
+        "S1": {
+          "field": "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Number",
+          "kind": "source"
+        }
+      },
+      "id": "V1",
+      "result": "S1"
+    }
+  }
+}

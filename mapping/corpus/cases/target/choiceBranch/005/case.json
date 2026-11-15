@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/choice-branch-a.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-structures (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-structures/po75/ch2-str-choice-2.xml and corpus/observations/obs-structures/cpi/ch2-str-choice-2.xml; before #214: ADR-0008 Consequences, assumed reading 1: a branch of a choice counts as optional for the unmapped rules and for po:MINOCCURS; ADR-0006 (the rules for unmapped fields and TargetSlots(min, max) use the effective occurrence); observation request obs-structures, mapping str-choice-2, row target/choiceBranch/005 (#36); ticket #94",
+  "expect": "output",
+  "note": "Only Pick/A is mapped, and B is unmapped. Id B: X1 gives SUPPRESS for A, which raises no po:MINOCCURS, and B is never written, so Pick (1..1, unmapped) is written empty. Assumed until obs-structures str-choice-2 is observed."
+}

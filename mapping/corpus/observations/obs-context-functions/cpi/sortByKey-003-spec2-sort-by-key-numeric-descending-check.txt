@@ -1,0 +1,12 @@
+Date: 2026-11-12
+Case: fn/sortByKey/003
+Artifact: api_spec2_sort_by_key_numeric_descending
+Input: original sortByKey-003.xml
+Native source tooltips: Sku and Qty context /Orders/Order. Function sortByKey
+followed by removeContexts, target /Out/All. Existing API preparation unchanged.
+Native parameter panel opened: Comparison rule float number; desc selected, asc not selected.
+Test completed. Output tree All a,c,b,d,x.
+Original Download Output XML (109 bytes) copied without reformatting.
+Reading: confirmed; numeric descending keys, stable equal keys, values not parsed as numbers.
+No display queue requested. No screenshot file saved. Prior version evidence retained.
+Browser-tab UI only, no system mouse/keyboard takeover and no SAP PO interaction.

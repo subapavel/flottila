@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-collapse.mapping.json",
+  "provenance": "decided",
+  "ref": "Architect decision (#218), finding F-47, the precedent of fn/createIf/002 (decided by F-37's rule, #221): the expected output is derived from the rule F-47 observed on PO 7.50 and CPI 6.84.77, ADR-0006 Consequences as amended: collapseContexts keeps a SUPPRESS first slot as SUPPRESS and gives an empty context \"\" (obs-context-functions ctx-6b, #33, 2026-11-11: po75/ctx-6b-queue.txt and cpi/f6-ctx-6b-queue.txt, 5 | SUPPRESS | 7 gives 5, SUPPRESS, 7; also fn/splitByValue/019 to 021 and fn/collapseContexts/001). This case's own input was never run; its observation request follows milestone 1. Before F-47 the case was documented by #2 §3 and §4, STD: \"Empty contexts (= ResultList.SUPPRESS) are replaced by empty strings\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm], which ctx-6b contradicts for SUPPRESS",
+  "expect": "output",
+  "note": "Tag in its default context Order is false, true | true | (none), so createIf gives SUPPRESS, \"\" | \"\" | (empty). collapseContexts keeps the first slot of each context, SUPPRESS as SUPPRESS, and gives the empty context \"\": SUPPRESS, \"\", \"\", so two empty All. SUPPRESS taken for \"\", the documented reading before F-47, gives three."
+}

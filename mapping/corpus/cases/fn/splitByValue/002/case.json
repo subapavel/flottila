@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-each.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 SplitByValue: inserts a context change \"after each value, after each change to the value, or after each tag without a value\"; param value Each Value confirmed [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/34/c28d406b305537e10000000a1550b0/content.htm]",
+  "expect": "output",
+  "note": "eachValue over a queue of one value: Tag a gives the one context a, which S1 keeps, so All is a."
+}

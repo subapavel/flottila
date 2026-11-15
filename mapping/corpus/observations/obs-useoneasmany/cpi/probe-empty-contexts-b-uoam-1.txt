@@ -1,0 +1,8 @@
+CPI, Simulate/Test, input probes/probe-empty-contexts-b.xml, mapping uoam-1, owner probe for u4.xml. No output.
+Fired at run time on /Out/Item/V, box U1; this probe starts with the original Order without Id.
+
+Error
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/Item/V. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: No value found in function useOneAsMany. The first queue must have one and only one value in each context.] in class com.sap.aii.mappingtool.flib7.NodeFunctions method useOneAsMany[[Ljava.lang.String;@<id>, [Ljava.lang.String;@<id>, [Ljava.lang.String;@<id>, com.sap.aii.mappingtool.tf7.rt.ResultListImpl@<id>, com.sap.aii.mappingtool.tf7.rt.Context@<id>] on the exchange: Exchange[<exchange-id>]
+OK
+
+No separate Caused by lines or stack frames were exposed. Environment-specific object hashes and exchange id sanitized.

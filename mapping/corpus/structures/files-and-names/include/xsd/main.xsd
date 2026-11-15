@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): an include whose schemaLocation is relative to the including file -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:include"
+           targetNamespace="urn:flottila:corpus:include">
+  <xs:include schemaLocation="./parts/line.xsd"/>
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Line" type="tns:Line" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

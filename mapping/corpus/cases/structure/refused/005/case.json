@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/derivation-abstract-remark.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"Refused when a mapping uses the field\": an abstract element type in a target is refused with abstract-target-element, reported at the authoringId of the target field mapping that uses the field, the message naming the abstract declaration's schema file, line and column; spec #89, ticket #95",
+  "expect": "error",
+  "note": "derivation/order.xsd. T5 writes Remark/Text, and Remark is of the abstract complex type o:Remark, so compiling refuses the model with abstract-target-element at T5; its message names derivation/order.xsd and the end of o:Remark's start tag. The other target field mappings are those of structure/derivation/001 and stand. A source may read an element of an abstract type."
+}

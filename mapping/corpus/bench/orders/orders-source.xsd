@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic source of the orders bench mapping (ADR-0002, ADR-0021): sales orders with a buyer and
+     their lines. No namespace; OrderDate is yyyyMMdd and UnitPrice a decimal, both as text, as an
+     IDoc-like sender writes them. Every input is written by OrdersGenerator.java. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="SalesOrders">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Order" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="OrderNo" type="xs:string"/>
+              <xs:element name="OrderDate" type="xs:string"/>
+              <xs:element name="Buyer">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="FirstName" type="xs:string"/>
+                    <xs:element name="LastName" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="Line" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Sku" type="xs:string"/>
+                    <xs:element name="Quantity" type="xs:string"/>
+                    <xs:element name="UnitPrice" type="xs:string"/>
+                    <xs:element name="Warehouse" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if-item.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31, spec-2 part), mapping spec2-create-if-item, input probes/probe-bool-d.xml (suppress-001.xml with false for no, which PO refuses: F-37): corpus/observations/obs-target-creation/po75/probe-bool-d-spec2-create-if-item.xml and cpi/probe-bool-d-spec2-create-if-item.xml; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json): V 10, then V 30; ADR-0006 TargetSlots: a SUPPRESS slot creates nothing but keeps its number, so it consumes its child context",
+  "expect": "output",
+  "note": "Item per createIf(Sku) in context Orders: \"\", SUPPRESS, \"\" for Sku 1, false, true. V per Qty in its default context Line: 10 | 20 | 30. The SUPPRESS slot 2 creates no Item but consumes Qty context 2, so the second Item reads context 3: V 10, then V 30. Renumbering the created slots would give V 10, then V 20."
+}

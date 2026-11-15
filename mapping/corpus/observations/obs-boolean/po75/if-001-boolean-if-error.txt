@@ -1,0 +1,15 @@
+Observation: obs-boolean / fn/if/001
+Platform: SAP PO 7.50, ESR Message Mapping test
+Date: 2026-11-12
+Mapping: boolean_if (request: boolean-if)
+Input: ../if-001.xml imported unchanged.
+Graph: Sku context Orders -> if condition; Qty context Orders -> then; Tag context Orders -> else; if -> Out/All. No other target wires.
+Saved. Object check: No errors found during object check; Problem 0, Warning 0.
+02:43:33 Start of test. Compilation of boolean_if successful.
+
+Problem when Testing (literal text):
+Runtime exception when processing target-field mapping /Out/All;
+root message: Cannot cast '' to boolean
+See error logs for details
+
+Reading: if rejects the fourth Line empty condition. No output XML was produced or exported. This contradicts the assumed successful result; individual output values are not inferred.

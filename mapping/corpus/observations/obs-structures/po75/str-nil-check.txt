@@ -1,0 +1,9 @@
+SAP PO 7.50 ESR / str_nil / 2026-11-11
+Source: src-nil.xsd; target: tgt-list.xsd (Out).
+Nil/Item -> Out/Item. Val with default Item context -> concat input 1; Constant ! -> input 2; concat -> V. Delimiter String is empty.
+Val with default Item context -> exists -> W. All unmapped.
+Object check: No errors found during object check. Problem 0, Warning 0.
+Original nil.xml imported unchanged and verified in SRC view.
+20:35:19 Start of test; compilation successful; server execution 8 milliseconds; Executed successfully; 20:35:20 End of test.
+Exact UI-exported instance.xml preserved as nil-str-nil.xml, archive nil-str-nil-export.zip.
+Reading: four Items. V values x!, xsi:nil=true, !, absent; W true,true,true,false. Nil propagates through concat, contradicting the empty-string assumption. Semantic result agrees with CPI. Actual PO bytes declare xmlns:xsi on the second V after xsi:nil and spell its closing tag explicitly.

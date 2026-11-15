@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): names no file of the bundle declares, and a complex type where a simple type
+     is needed -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:undeclared"
+           targetNamespace="urn:flottila:corpus:undeclared">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Amount" type="tns:Missing"/>
+        <xs:element ref="tns:Gone"/>
+      </xs:sequence>
+      <xs:attribute name="kind" type="tns:Kind"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Kind"/>
+  <xs:simpleType name="Code">
+    <xs:restriction base="tns:Kind"/>
+  </xs:simpleType>
+  <xs:simpleType name="Size">
+    <xs:restriction base="tns:Absent"/>
+  </xs:simpleType>
+</xs:schema>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Parents>
+  <Head/>
+  <Pair/>
+  <Pair/>
+  <Item>
+    <Tag>x</Tag>
+    <Tag>y</Tag>
+    <Info>
+      <Sku>a</Sku>
+      <Sku>b</Sku>
+    </Info>
+    <Twin/>
+    <Twin/>
+  </Item>
+  <Item>
+    <Tag>z</Tag>
+    <Info/>
+    <Twin/>
+    <Twin/>
+  </Item>
+  <Item>
+    <Tag>w</Tag>
+    <Info>
+      <Sku>c</Sku>
+    </Info>
+    <Twin/>
+    <Twin/>
+  </Item>
+</Parents>

@@ -1,0 +1,189 @@
+{
+  "obsId": "obs-structures",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/36",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "date": "2026-11-11",
+    "tool": "ESR message mapping",
+    "releaseVerification": "ESR About read during obs-target-creation-2. PO execution deferred to evening at owner's request. Evening catch-up completed for all in-scope structure XML cases on 2026-11-11."
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-11",
+    "tool": "Message Mapping artifact, Simulate",
+    "releaseVerification": "Read live from user menu > About during this observation session."
+  },
+  "divergence": [
+    "str-attr-ns / attr4.xml: PO ns0 with flag before code; CPI ns1 with code before flag. Serialization-only difference; expanded names and values agree."
+  ],
+  "notes": [
+    "PO runs are deferred to evening at the owner's request. No PO/CPI comparison has been made.",
+    "CPI session expired before the first structure artifact was created. A fresh tab recovered the session and the previous task session's package lock was released. No original run occurred during recovery.",
+    "str-choice-1 editor shows the declared 1..1 choice branches A and B as 0..1. Both independent chains use Id context Orders, equals(string) (the CPI palette label for the requested equalsS) with constants A/B, and ifWithoutElse with Keep SUPPRESS checked. Save completed without editor errors.",
+    "structure/jsonNull/001 is outside the authorized message-mapping-only scope on both systems: its converter or adapter is not built. No converted XML or mapping result is inferred.",
+    "str-choice-2 leaves B unmapped. Save and both simulations completed without a validation error, confirming that CPI treats the choice branch as optional.",
+    "str-nil Save completed without validation errors. concat's Delimiter String was left at its observed empty default. Nil propagates through concat as xsi:nil=true, contradicting the assumed empty-string behavior; exists returns true for nil, as for a present empty element.",
+    "str-required-attr Save completed, but @code was red with Mandatory node is unmapped and the target header said Target has 1 errors. Simulate refused before input upload with Mapping has validation errors. Please fix them before you simulate. This confirms the design-time failure reading.",
+    "str-attr lost both uploaded resources on Save (Local (2) became Local (0)); one reload retained Missing Node and missing-source mapping warnings. All three original inputs are ENVIRONMENT_BLOCKED, without a simulation result.",
+    "The qualified-attribute variant uses the distinct mapping/result name str-attr-ns so attr4.xml outputs for the unqualified and qualified targets cannot overwrite one another. Initial schema assignment stalled; after Save completed, one reload and selection of the persisted local resources recovered the editor. The mapping was then built and saved without a validation error.",
+    "str-attr-ns attr4.xml contradicts the literal prefix assumption: CPI exports ns1 rather than ns0 (the editor had shown ns2). Namespace placement and expanded names match the assumed structure. Attribute order in the actual bytes is code, flag; V is unqualified.",
+    "2026-11-11 PO catch-up started with str_choice_2: choice branches shown as 0..1; unmapped B passes object check. Both original inputs executed successfully and agree semantically with CPI. Other deferred statuses are retained until their runs occur.",
+    "2026-11-11 PO str_choice_1 completed for all three original inputs: A only, B only, empty Pick. Both Keep SUPPRESS Values options checked; no validation or execution error. Results agree semantically with CPI.",
+    "2026-11-11 PO str_nil completed: nil propagates through concat and exists is true for nil and empty elements. All four Items agree semantically with CPI; exact serialization preserved.",
+    "2026-11-11 PO required attribute: unmapped @code fails Check and prevents execution. Exact check/test messages preserved; no activation attempted.",
+    "2026-11-11 PO str_attr: all three original XML inputs attempted. attr2 and attr4 succeeded; attr3 failed at runtime on missing required code. CPI environment blocker remains; no runtime comparison available.",
+    "2026-11-11 PO catch-up complete for all 11 XML structure cases: 9 successful outputs and 2 observed errors. JSON converter/adapter case remains explicitly excluded. Historical deferral notes above are retained as history."
+  ],
+  "runs": [
+    {
+      "mapping": "str-choice-1",
+      "input": "ch1.xml",
+      "case": "target/choiceBranch/001",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "CPI writes Choice/Pick/A=A. Suppressed branch B causes no shortfall error. PO catch-up: same semantic result; object check and original-input execution successful; exact XML export preserved."
+    },
+    {
+      "mapping": "str-choice-1",
+      "input": "ch2.xml",
+      "case": "target/choiceBranch/002",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "CPI writes Choice/Pick/B=B. Suppressed branch A causes no shortfall error. PO catch-up: same semantic result; object check and original-input execution successful; exact XML export preserved."
+    },
+    {
+      "mapping": "str-choice-1",
+      "input": "ch3.xml",
+      "case": "target/choiceBranch/003",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "Both branches SUPPRESS; CPI writes an empty Pick without an error. PO catch-up: same semantic result; object check and original-input execution successful; exact XML export preserved."
+    },
+    {
+      "mapping": "str-choice-2",
+      "input": "ch1.xml",
+      "case": "target/choiceBranch/004",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "Unmapped B causes no design-time or runtime error; CPI writes Choice/Pick/A=A. PO catch-up: same A=A result; object check and execution successful with B unmapped."
+    },
+    {
+      "mapping": "str-choice-2",
+      "input": "ch2.xml",
+      "case": "target/choiceBranch/005",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "A is SUPPRESS and B unmapped; CPI writes an empty Pick with no error. PO catch-up: empty Pick without error; exact export spells <Pick></Pick>."
+    },
+    {
+      "mapping": "str-nil",
+      "input": "nil.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "contradicted",
+      "summary": "CPI V values are x!, xsi:nil=true, !, absent. The second item's nil marker propagates through concat instead of behaving as an empty string. W is true,true,true,false. Exact output includes the standard xsi namespace declaration on the second V. PO catch-up: same semantic result, successful object check and original-input execution; exact XML and UI export preserved."
+    },
+    {
+      "mapping": "str-nil",
+      "input": "nil.json",
+      "case": "structure/jsonNull/001",
+      "po75": "NOT_RUN",
+      "po75Reason": "PO message mapping reads XML only; the case tests the adapter's / converter's JSON to XML conversion, not the mapping; channels and iFlows are out of scope for this run.",
+      "cpi": "NOT_RUN",
+      "cpiReason": "PO message mapping reads XML only; the case tests the adapter's / converter's JSON to XML conversion, not the mapping; channels and iFlows are out of scope for this run.",
+      "reading": "n/a",
+      "summary": "Explicitly excluded by the owner's observation prompt on both systems."
+    },
+    {
+      "mapping": "str-required-attr",
+      "input": "attr1.xml",
+      "case": "target/requiredAttribute/001",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "confirmed",
+      "summary": "CPI flags @code red: Mandatory node is unmapped; header Target has 1 errors. Simulate refuses with Mapping has validation errors. Please fix them before you simulate. Input upload and runtime never start. PO: Save succeeds, Check reports one incomplete target mapping /Coded/@code; after attr1 import, Test refuses execution with Mapping object str_required_attr incomplete. Unable to continue execution. No output."
+    },
+    {
+      "mapping": "str-attr",
+      "input": "attr2.xml",
+      "case": "target/attribute/001",
+      "po75": "observed",
+      "cpi": "ENVIRONMENT_BLOCKED",
+      "cpiReason": "Uploaded schemas disappeared on Save: Local (2) became Local (0), fields Missing Node. One page reload retained the same failure.",
+      "reading": "n/a",
+      "summary": "No simulation started; see str-attr-check.txt. PO catch-up: successful object check and execution; code=X1, V=X1, flag absent. Exact XML export preserved."
+    },
+    {
+      "mapping": "str-attr",
+      "input": "attr3.xml",
+      "case": "target/attribute/002",
+      "po75": "error-observed",
+      "cpi": "ENVIRONMENT_BLOCKED",
+      "cpiReason": "Uploaded schemas disappeared on Save: Local (2) became Local (0), fields Missing Node. One page reload retained the same failure.",
+      "reading": "n/a",
+      "summary": "No simulation started; see str-attr-check.txt. PO catch-up: runtime error Cannot create target element /Flagged/code. Values missing in queue context. No successful output; full error preserved in po75/str-attr-check.txt."
+    },
+    {
+      "mapping": "str-attr",
+      "input": "attr4.xml",
+      "case": "target/attribute/003",
+      "po75": "observed",
+      "cpi": "ENVIRONMENT_BLOCKED",
+      "cpiReason": "Uploaded schemas disappeared on Save: Local (2) became Local (0), fields Missing Node. One page reload retained the same failure.",
+      "reading": "n/a",
+      "summary": "No simulation started; see str-attr-check.txt. PO catch-up: successful execution; empty flag attribute, code=X1, V=X1. Exact XML preserves attribute order flag, code."
+    },
+    {
+      "mapping": "str-attr-ns",
+      "input": "attr4.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "contradicted",
+      "summary": "Qualified-prefix variant (#100): actual root and attributes use ns1, not assumed ns0. xmlns:ns1 is declared on Flagged, code precedes empty flag, and V is unqualified. Expanded names and values match; exact downloaded bytes preserved. PO: ns0 on root and both attributes; declaration on Flagged; flag precedes code; V unqualified. PO confirms the literal assumed prefix; expanded names and values agree with CPI, serialization differs."
+    },
+    {
+      "mapping": "str-attr",
+      "input": "attr2.xml",
+      "case": "target/attribute/001",
+      "cpi": "observed",
+      "date": "2026-11-12",
+      "artifact": "api_str_attr",
+      "reading": "confirmed",
+      "cpiResult": "cpi/attr2-str-attr.xml",
+      "cpiEvidence": "cpi/str-attr-retry-check.txt"
+    },
+    {
+      "mapping": "str-attr",
+      "input": "attr3.xml",
+      "case": "target/attribute/002",
+      "cpi": "error-observed",
+      "date": "2026-11-12",
+      "artifact": "api_str_attr",
+      "reading": "confirmed",
+      "cpiEvidence": "cpi/attr3-str-attr-error.txt"
+    },
+    {
+      "mapping": "str-attr",
+      "input": "attr4.xml",
+      "case": "target/attribute/003",
+      "cpi": "observed",
+      "date": "2026-11-12",
+      "artifact": "api_str_attr",
+      "reading": "confirmed",
+      "cpiResult": "cpi/attr4-str-attr.xml",
+      "cpiEvidence": "cpi/str-attr-retry-check.txt"
+    }
+  ]
+}

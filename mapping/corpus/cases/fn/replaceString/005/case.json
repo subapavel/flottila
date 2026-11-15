@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-replaceString-emoji.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "A character outside the BMP is found and replaced whole; replaceString counts nothing, so it has no deviation."
+}

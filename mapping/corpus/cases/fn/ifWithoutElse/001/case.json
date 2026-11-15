@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-ifWithoutElse-item.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-ifWithoutElse-item, input ifWithoutElse-001.xml: corpus/observations/obs-boolean/po75/ifWithoutElse-001-boolean-ifWithoutElse-item.xml with its check and X1 display queue (po75/ifWithoutElse-001-boolean-ifWithoutElse-item-check.txt), cpi/ifWithoutElse-001-boolean-ifWithoutElse-item.xml and cpi/ifWithoutElse-001-queue.json; PO 7.50 and CPI agree (meta.json), Keep SUPPRESS Values unchecked, the default; F-44, ADR-0006 Consequences, ifWithoutElse",
+  "expect": "output",
+  "note": "ifWithoutElse(Qty, Sku), both in context Orders, without params, onto Item; V is Sku in its default context Line. Lines (a, true), (b, false), (c, true), (d, true): the false b gives SUPPRESS at slot 2 though the parameter is off (X1 is a, SUPPRESS, c, d on PO and CPI), so the Items of slots 1, 3 and 4 read the Line contexts of a, c and d, as fn/ifWithoutElse/002 does with the parameter on."
+}

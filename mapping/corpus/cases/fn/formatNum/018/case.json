@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-currency.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the currency sign ¤)",
+  "expect": "error",
+  "note": "The pattern 0 ¤. The currency sign ¤: DecimalFormat writes the currency of the server's locale, which a picture cannot know. Compiling refuses it at N1."
+}

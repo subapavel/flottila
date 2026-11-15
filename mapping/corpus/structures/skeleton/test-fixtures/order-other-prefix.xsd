@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#25): ../order.xsd with the prefix xsd: and other indentation. The same structure: the same fingerprint (ADR-0009). -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             targetNamespace="urn:flottila:corpus:skeleton">
+    <xsd:element name="Order">
+      <xsd:complexType>
+        <xsd:sequence>
+          <xsd:element name="OrderId" type="xsd:string"/>
+          <xsd:element name="Quantity" type="xsd:int" minOccurs="0"/>
+          <xsd:element name="Amount" type="xsd:decimal" minOccurs="0" nillable="true"/>
+          <xsd:element name="Urgent" type="xsd:boolean" minOccurs="0"/>
+          <xsd:element name="DeliveryDate" type="xsd:date" minOccurs="0"/>
+          <xsd:element name="PickupTime" type="xsd:time" minOccurs="0"/>
+          <xsd:element name="CreatedAt" type="xsd:dateTime" minOccurs="0"/>
+          <xsd:element name="Note" type="xsd:normalizedString" minOccurs="0" maxOccurs="unbounded"/>
+        </xsd:sequence>
+        <xsd:attribute name="channel" type="xsd:token"/>
+      </xsd:complexType>
+    </xsd:element>
+</xsd:schema>

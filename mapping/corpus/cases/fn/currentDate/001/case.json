@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/current-date.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-43 addendum: the observation used the real clock and zone, the case uses the fixed test clock 2026-01-01T12:00Z, so the values cannot be compared; the observed formats are partial evidence (obs-date); was assumed: #2 §5 Date: the date functions take java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003; ADR-0006 generating function (#83, F-21); #80: currentDate is fixed once per mapping run from the run clock, in the run's time zone; assumed reading: the default pattern is yyyy/MM/dd (obs-date currentDate-001)",
+  "expect": "output",
+  "note": "CurrentDate with targetFormat left empty on All, 0..unbounded directly under the root, run at 2026-01-01T12:00:00Z (the corpus default): the default pattern yyyy/MM/dd, so one All 2026/01/01."
+}

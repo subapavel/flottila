@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): mixed on xs:complexContent, accepted with no effect: the extension gives
+     its base's content, then its own -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:skeleton"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order" type="tns:OrderType"/>
+  <xs:complexType name="Base">
+    <xs:sequence>
+      <xs:element name="OrderId" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="OrderType">
+    <xs:complexContent mixed="true">
+      <xs:extension base="tns:Base">
+        <xs:sequence>
+          <xs:element name="Note" type="xs:string"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:schema>

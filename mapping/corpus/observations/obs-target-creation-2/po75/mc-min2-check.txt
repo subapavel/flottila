@@ -1,0 +1,6 @@
+PO 7.5, Check, mapping mc-min2.
+No errors found during object check
+Problem 0
+Warning 0
+
+Verified in Definition: Id has context Orders; Sku uses its default context; Sku -> removeContexts -> Row; Val is unmapped. Target Row occurrence is 2..2.

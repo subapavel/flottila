@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-compare.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "compare(Sku, Qty) is -1, 0 or 1 by code point order: a before b, an empty value before a, a prefix before its extension, lower case a (97) after capital B (66)."
+}

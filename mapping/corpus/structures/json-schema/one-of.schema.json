@@ -1,0 +1,21 @@
+{
+  "title": "oneOf and anyOf give the union of their properties, each with minimum 0, iban too",
+  "type": "object",
+  "required": ["kind", "iban"],
+  "properties": {
+    "kind": {"type": "string"},
+    "value": {"oneOf": [{"type": "integer"}, {"type": "string", "format": "date"}]}
+  },
+  "oneOf": [
+    {"required": ["card"], "properties": {"card": {"type": "string"}}},
+    {"$ref": "#/$defs/Transfer"},
+    {"anyOf": [{"oneOf": [{"properties": {"cheque": {"type": "string"}}}]}]}
+  ],
+  "anyOf": [
+    {"allOf": [{"properties": {"memo": {"type": "string"}}}]},
+    {"properties": {"card": {"type": "string"}}}
+  ],
+  "$defs": {
+    "Transfer": {"required": ["iban"], "properties": {"iban": {"type": "string"}}}
+  }
+}

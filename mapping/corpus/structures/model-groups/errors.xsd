@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#94): load errors of model groups, each where it stands. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:group name="Empty"/>
+  <xs:group name="Loop">
+    <xs:sequence>
+      <xs:group ref="Back"/>
+    </xs:sequence>
+  </xs:group>
+  <xs:group name="Back">
+    <xs:choice>
+      <xs:element name="Stop" type="xs:string"/>
+      <xs:group ref="Loop"/>
+      <xs:group ref="Absent"/>
+    </xs:choice>
+  </xs:group>
+  <xs:group name="Twice">
+    <xs:sequence/>
+    <xs:choice/>
+  </xs:group>
+  <xs:group name="Bare">
+    <xs:element name="E" type="xs:string"/>
+  </xs:group>
+  <xs:group name="Refused" ref="r"/>
+  <xs:attributeGroup name="Self">
+    <xs:attributeGroup ref="Self"/>
+  </xs:attributeGroup>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:group ref="Refused"/>
+        <xs:sequence maxOccurs="many"/>
+        <xs:all/>
+        <xs:group ref="Loop" name="x"/>
+        <xs:element name="Bag">
+          <xs:complexType>
+            <xs:all>
+              <xs:choice/>
+            </xs:all>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attributeGroup ref="Nowhere"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

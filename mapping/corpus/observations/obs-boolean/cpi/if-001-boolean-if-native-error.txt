@@ -1,0 +1,6 @@
+CPI observation 2026-11-13: fn/if/001
+Artifact: api_boolean_if_native; original if-001.xml.
+Native palette if serializes fname iF, and documents input order value, condition, else. API revision uses Qty, Sku, Tag respectively, all context /Orders. This adapts the request's condition/then/else notation to native CPI port order. Original import used unsupported fname if.
+Visible graph verified: Qty, Sku, Tag -> if -> /Out/All.
+EXECUTED_FAIL: com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/All. The root message is: Cannot cast "" to boolean.
+Transient exchange identifier omitted. No output XML was produced. Original input contains an empty Sku condition; this run does not isolate TRUE handling from the empty-condition failure. The specific runtime error resolves the previous generic infrastructure-style blocker and contradicts the assumed successful output q1,e2,e3,e4.

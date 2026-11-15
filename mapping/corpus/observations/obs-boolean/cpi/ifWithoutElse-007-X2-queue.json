@@ -1,0 +1,169 @@
+{
+  "case": "fn/ifWithoutElse/007",
+  "input": "ifWithoutElse-007.xml",
+  "node": "X2",
+  "source": "CPI Function Message Queue",
+  "rows": [
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "ifWithoutElse:in1"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "ifWithoutElse:in2"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "ifWithoutElse:out1"
+        }
+      ],
+      "row": 1
+    },
+    {
+      "cells": [
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "<null>"
+        },
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "<null>"
+        },
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "<null>"
+        }
+      ],
+      "row": 2
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "true"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "true"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "true"
+        }
+      ],
+      "row": 3
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": true,
+          "text": "SUPPRESS"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "true"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": true,
+          "text": "SUPPRESS"
+        }
+      ],
+      "row": 4
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "false"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "false"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": true,
+          "text": "SUPPRESS"
+        }
+      ],
+      "row": 5
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "true"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "true"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "true"
+        }
+      ],
+      "row": 6
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "true"
+        },
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "true"
+        },
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "true"
+        }
+      ],
+      "row": 7
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/average.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-statistic (#212, #216, F-45), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both end the run at /Out/Item/V with \"Division undefined\" in flib7.Stat.average: corpus/observations/obs-statistic/po75/average-003-stat-average-error.txt (java.lang.ArithmeticException) and corpus/observations/obs-statistic/cpi/average-003-stat-average-error.txt (BehaviorInvocationException; its meta.json reading label says confirmed, the output file shows the error); the code err:FOAR0001 is ADR-0005's division error (F-45); before #216: assumed reading of #75: a context without a value gives an empty context, as XPath's avg(()) gives () (contradicted)",
+  "expect": "error",
+  "note": "Empty contexts: o1 has no Line and o2's one Line has no Qty, so Qty in context Order is (empty) | (empty) | 4. average has no value to divide in the first context: the run stops with err:FOAR0001 at its box F1, and no output is written. The assumed reading gave two empty Items and V 4."
+}

@@ -1,0 +1,18 @@
+Date: 2026-11-12
+Case: fn/splitByValue/021
+Artifact: api_spec2_suppress_split_empty_collapse (unchanged API-prepared artifact)
+Native tooltips verified Tag context /Orders, createIf, splitByValue,
+collapseContexts and /Out/All. Prepared mapping/readback specifies SplitByValue
+type=1 (emptyValue). No native parameter-panel verification is claimed
+(overlapping function boxes).
+Original splitByValue-019.xml uploaded unchanged through the tab's file chooser.
+Test completed; Download Output saved 60 bytes, copied byte-for-byte to
+splitByValue-019-spec2-suppress-split-empty-collapse.xml.
+Output: Out with one empty All element.
+VERIFIED_PASS: simulation completed and XML downloaded.
+Reading: contradicted the assumed three empty All; matches existing PO XML.
+Consistent with only the empty context becoming an empty string and suppressed
+contexts remaining SUPPRESS. No CPI display queue captured to independently
+establish the intermediate token sequence.
+Prior tenant version evidence retained, no PNG saved.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.

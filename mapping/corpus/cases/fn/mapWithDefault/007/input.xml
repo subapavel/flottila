@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Memo><Text>a</Text></Memo>
+  </Order>
+  <Order>
+    <Id>o2</Id>
+  </Order>
+  <Order>
+    <Id>o3</Id>
+    <Memo><Text>c</Text></Memo>
+  </Order>
+</Orders>

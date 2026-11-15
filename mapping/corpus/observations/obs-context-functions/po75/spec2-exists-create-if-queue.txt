@@ -1,0 +1,16 @@
+SAP PO Display Queue, spec2_exists_create_if, exists-004.xml, 2026-11-11.
+Selected function exists. Compilation successful; execution 8 milliseconds; Executed successfully.
+Numbering enabled. Literal columns: exists:in0 | exists:out.
+All displayed text regular, not italic. Brackets below are literal UI text.
+row | input text | input shading | output text | output shading
+0 | <null> | light gray | <null> | light gray
+1 | SUPPRESS | cyan | [true] | white
+2 | SUPPRESS | light gray | [false] | light gray
+3 | SUPPRESS | cyan | [true] | white
+4 | [] | white | [true] | white
+5 | [] | light gray | [false] | light gray
+6 | [] | light gray | [false] | white
+7 | [] | white | [false] | light gray
+8 | [] | dark gray | [true] | white
+9 | blank | white (padding) | [false] | dark gray
+Reading: Input contexts [SUPPRESS] [SUPPRESS,empty string] [] [empty string]. Output contexts [true] [true,true] [false] [true]. Gray rows are boundary/terminal markers even where their literal labels repeat a preceding value or show false; they are not additional values. Agrees with exported XML.

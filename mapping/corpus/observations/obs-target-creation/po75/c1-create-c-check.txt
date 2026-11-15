@@ -1,0 +1,14 @@
+PO 7.5, mapping create-c, design time (Message Mapping -> Check), before any test run.
+Editor: Req shows a red icon in the target tree; Head (unmapped, 1..1) shows green because its child A is mapped.
+
+Processing Log:
+Check Result for Object create_c
+[red triangle icon] Target field mapping '/Unmapped/Head/Req' incomplete; reason: Mapping for target field '/Unmapped/Head/Req' incomplete
+
+Activation of the change list holding create_c (namespace omitted, ADR-0002):
+Activation of the change list canceled
+Check result for Message Mapping: create_c:
+[red triangle icon] Target field mapping '/Unmapped/Head/Req' incomplete; reason: Mapping for target field '/Unmapped/Head/Req' incomplete
+Counters: Problem 1, Warning 0
+
+Reading: the unmapped mandatory leaf is a design-time error that blocks activation, not a warning.

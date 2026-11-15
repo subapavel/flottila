@@ -1,0 +1,18 @@
+{
+  "case": "sortByKey/001",
+  "date": "2026-11-12",
+  "status": "SUPERSEDED_IMPORT_METADATA_DEFECT",
+  "supersededBy": "api_spec2_sort_by_key",
+  "supersessionReason": "Initial pilot stripped required textInfo children. Historical API transfer checks below remain valid but do not establish editor usability. Use ../api-preparation/spec2-sort-by-key/preparation.json and batch.ps1 instead; historical pilot archive is retained for audit.",
+  "artifactId": "spec2_sort_by_key_001_api",
+  "packageId": "flottilaobservations",
+  "version": "1.0.0",
+  "authentication": "VERIFIED_PASS: OAuth client_credentials and scoped package GET",
+  "upload": "VERIFIED_PASS: POST MessageMappingDesigntimeArtifacts returned HTTP 201",
+  "readback": "VERIFIED_PASS: exported mmap, both XSDs and .project match upload exactly; server rewrapped manifest and added metainfo timestamp; empty directory entries omitted",
+  "graph": "Sku and Qty context /Orders/Order -> sortByKey (case-sensitive ascending) -> removeContexts -> /Out/All; no other target mapping",
+  "simulation": "NOT_RUN: API preparation only; native editor rendering and runtime behavior still need verification",
+  "initialAttempt": "HTTP 400: Version is auto-generated and must be omitted from create payload; corrected attempt succeeded",
+  "credentials": "External local service key; no credentials or tokens included in evidence",
+  "apiDocumentation": "https://github.com/SAP-docs/btp-integration-suite/blob/main/docs/ci/Development/integration-content-d1679a8.md"
+}

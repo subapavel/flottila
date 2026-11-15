@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sum.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §5 Statistics: sum, average and count work per context (\"Sum of values X1 to Xi of a context\") [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]",
+  "expect": "output",
+  "note": "Qty in context Order is 1, 2.5 | 10 | -3, 0.50, 2: sum gives one value per context, 3.5, 10 and -0.5, in the XPath canonical form (ADR-0005). Summing across contexts would give 13 in the first Item only."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fix-values-suppress.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/fixValues-007-fix-values-suppress.xml and corpus/observations/obs-constant/cpi/fixValues-007-fix-values-suppress.xml; before #214: ADR-0026 \"Table params\" (#83), assumed reading: a SUPPRESS key passes as SUPPRESS and raises nothing, as in every Lift (ADR-0006); obs-constant row fn/fixValues/007",
+  "expect": "output",
+  "note": "createIf over Tag gives \"\", SUPPRESS, \"\" | SUPPRESS, \"\" | (empty); FixValues with \"\"=E and missing: error gives E, SUPPRESS, E | SUPPRESS, E: SUPPRESS stays and creates no V. Read as \"\" Item 1 would get three V; read as a key the run would stop with po:FIXVALUES."
+}

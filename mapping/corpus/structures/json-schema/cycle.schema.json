@@ -1,0 +1,19 @@
+{
+  "title": "A schema that refers back to itself through allOf, anyOf, or $ref alone",
+  "type": "object",
+  "properties": {
+    "node": {"$ref": "#/$defs/Node"},
+    "loop": {"$ref": "#/$defs/Loop"}
+  },
+  "$defs": {
+    "Node": {
+      "allOf": [{"$ref": "#/$defs/Node"}],
+      "anyOf": [{"$ref": "#/$defs/Node"}],
+      "properties": {
+        "label": {"type": "string"},
+        "next": {"$ref": "#/$defs/Node"}
+      }
+    },
+    "Loop": {"$ref": "#/$defs/Loop"}
+  }
+}

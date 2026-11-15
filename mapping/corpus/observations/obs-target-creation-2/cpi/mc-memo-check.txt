@@ -1,0 +1,5 @@
+CPI Message Mapping editor, mc_memo, Save, 2026-11-11.
+No error dialog, red target field or triangle remained after Save.
+Source Orders: src-orders.xsd. Target Doc: tgt-nested.xsd; Row 1..2.
+Id -> Grp; source tooltip showed Context: /Orders and the label was italic.
+Memo/Text -> Row directly; Text context left at default. Val unmapped.

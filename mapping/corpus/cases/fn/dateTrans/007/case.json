@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-trans-dotted.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Data errors name their box (F-19, Q10): a malformed date is err:FORG0001 in both back ends, naming the box; ADR-0003: parsing is strict",
+  "expect": "error",
+  "note": "sourceFormat yyyyMMdd: Sku in context Orders is 20261104, 2026-11-04. dateTrans reads 20261104, then 2026-11-04, which the pattern does not read, so the run raises err:FORG0001 at N1 and writes nothing."
+}

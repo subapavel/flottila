@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/json-schema/short-arrays.schema.json"
+    ],
+    "fingerprint": "sha256:46f3c45a7b2abea8d85365d26a2e2e3fae15a1c486b7b8062bbe6fe043ac8247",
+    "root": {
+      "json": "$"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-list.xsd"
+    ],
+    "fingerprint": "sha256:626cbacff639a86b480bb3c20cc032d8aa47ad341d9111e31882ad30ca6eca70",
+    "root": {
+      "element": "Out"
+    }
+  },
+  "targetFieldMappings": {
+    "/Out/All": {
+      "boxes": {
+        "S1": {
+          "field": "/$/one",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    }
+  }
+}

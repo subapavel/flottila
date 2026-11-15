@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "home": {"$ref": "#nowhere"}
+  },
+  "$defs": {"Home": {"$anchor": "home", "type": "object"}}
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-change.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-010-spec2-split-by-value-change.xml and corpus/observations/obs-context-functions/cpi/splitByValue-010-spec2-split-by-value-change.xml; before #214: #48 owner decision Q3, mode valueChange: a context change where the value differs from the previous one; #2 §4 labels not seen on SAP pages; obs-context-functions ctx-3 (f3.xml) decides it; equality is Java String.equals, case-sensitive (#48 Q4 order rules by analogy)",
+  "expect": "output",
+  "note": "valueChange compares values exactly: a, A differ in case, so A starts a context and All is a alone. A case-insensitive comparison would give a, A. All under the root's one slot reads context 1 of S1's queue, so it shows where the first split falls."
+}

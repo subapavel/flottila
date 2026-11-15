@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-parents.xsd"
+    ],
+    "fingerprint": "sha256:2f05337dcfccb424e2a353eb4b124a3641ae56c154a742b5ba2e77c95c7c502d",
+    "root": {
+      "element": "Parents"
+    }
+  },
+  "targetFieldMappings": {
+    "/Parents/Item": {
+      "boxes": {
+        "S1": {
+          "context": "/Orders",
+          "field": "/Orders/Order",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Parents/Item/Info/Sku": {
+      "boxes": {
+        "S3": {
+          "context": "/Orders/Order",
+          "field": "/Orders/Order/Line/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T3",
+      "result": "S3"
+    },
+    "/Parents/Item/Tag": {
+      "boxes": {
+        "S2": {
+          "field": "/Orders/Order/Tag",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    }
+  }
+}

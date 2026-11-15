@@ -1,0 +1,11 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case fn/equalsS/001; mapping text_equalsS (requested text-equalsS).
+Copied text_concat; replaced only concat with equalsS, preserving explicit Orders contexts.
+Sku -> equalsS input 1; Qty -> equalsS input 2; equalsS -> Out/All. No other target mappings.
+Saved; Check: No errors found during object check. Problem 0, Warning 0.
+Original equalsS-001.xml loaded and inspected in Test SRC.
+14:12:28-14:12:29: Compilation of text_equalsS successful.
+Execution of mapping on server took 6 milliseconds. Executed successfully.
+Observed All: true, false, true, false. Case-sensitive comparison and empty values confirmed.
+Result exported from Test SRC to ZIP; instance.xml extracted byte-for-byte.
+No screenshot file retained; UI messages transcribed during the run.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-tags.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a value whose JSON kind does not fit its field reads as absent: here the root $, a structure field) and \"JSON Schema and WSDL\" (the root is an object); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. The input is an array, not an object, so the root $ never occurs: $/tags has one empty context, and no All is written although the array's object holds tags."
+}

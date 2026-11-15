@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<o:Order xmlns:o="urn:flottila:corpus:order">
+  <Buyer>
+    <Name>Ada</Name>
+    <Number>C-1</Number>
+  </Buyer>
+  <o:Book>
+    <Title>Dune</Title>
+  </o:Book>
+  <o:Disc>
+    <Title>Kind of Blue</Title>
+  </o:Disc>
+  <o:Book>
+    <Title>Emma</Title>
+  </o:Book>
+  <Total currency="EUR">12.50</Total>
+</o:Order>

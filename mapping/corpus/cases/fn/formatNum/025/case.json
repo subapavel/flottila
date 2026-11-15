@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-letter-e.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the letter e next to)",
+  "expect": "error",
+  "note": "The pattern 0e. The letter e right after the digits: DecimalFormat writes 3e, and Saxon reads the e as an exponent and writes 3. Compiling refuses it at N1."
+}

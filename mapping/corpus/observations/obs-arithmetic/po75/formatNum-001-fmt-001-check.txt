@@ -1,0 +1,19 @@
+SAP PO observation: fn/formatNum/001
+Date: 2026-11-12
+Mapping: fmt_001 (copied from arith_inv, replacing only the function)
+Source: src-orders.xsd; target: tgt-list.xsd.
+Graph: Qty (Orders context inherited from arith_inv) -> FormatNum -> Out/All.
+FormatNum parameters: Number Format = 0; Decimal Separator = . (existing default retained).
+Input: obs-arithmetic/formatNum-001.xml. SRC view verified Qty values 7, 2.5, 3.5, -0.4, -1.5 before execution.
+Saved mapping; Message Mapping > Check: No errors found during object check. Problem 0, Warning 0.
+Processing Log:
+17:52:08 Start of test
+Compilation of fmt_001 successful
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+17:52:10 End of test
+Result SRC: All values 7, 2, 4, -0, -2.
+Reading: confirmed. The observed ties are consistent with half-even rounding; negative zero is preserved.
+JVM default locale and internal numeric representation were not exposed by this UI. No conclusion about those properties is inferred from this case.
+ZIP is the original result export. XML is its instance.xml copied byte-for-byte without formatting.
+No queues requested or captured. No screenshot files retained.

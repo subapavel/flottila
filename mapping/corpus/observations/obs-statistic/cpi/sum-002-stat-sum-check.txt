@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/sum/002
+Artifact: api_stat_sum
+Input: original sum-002.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Qty context /Orders/Order -> sum -> V.
+Simulation completed. Three Item elements have V 0, 0, 4 respectively. Both empty contexts produce zero. Downloaded XML preserved unchanged.

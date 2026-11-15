@@ -1,0 +1,14 @@
+SAP PO 7.5 observation: fn/toLowerCase/001
+Date: 2026-11-12
+Mapping: text_toLowerCase
+Input: ../toLowerCase-001.xml (original corpus file)
+Source Orders/Order/Line/Sku, context Orders, -> toLowerCase -> Out/All.
+Copied the verified uppercase mapping, replaced only the function, saved.
+Object check: No errors found during object check; Problem 0, Warning 0.
+Test log 17:19:11-17:19:12: compilation successful, server execution 6 milliseconds, Executed successfully.
+Input XML was inspected in SRC before execution: ABC, Hello World, empty string, É1.
+Result SRC and exported instance.xml: abc, hello world, empty string, é1.
+Reading: confirmed, including Unicode conversion and unchanged digit.
+Result ZIP exported through the SAP PO result export control. instance.xml extracted and copied byte-for-byte to toLowerCase-001-text-toLowerCase.xml; no XML reconstruction or formatting.
+No queue capture requested for this case. Screenshots inspected live, not retained.
+Environment identifiers omitted.

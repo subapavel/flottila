@@ -1,0 +1,11 @@
+Case: fn/ifWithoutElse/010
+Mapping: boolean_ifWithoutElse_collapse_tags
+Observed in SAP PO 7.50 ESR on 2026-11-12.
+Graph: Qty (context Order) -> ifWithoutElse condition; Tag (context Orders) -> then; ifWithoutElse -> collapseContexts -> Out/All. No Item, V or W mapping.
+ifWithoutElse keep SUPPRESS option unchecked, inherited from the checked 009 mapping. Graph saved before VPN interruption and reopened after ESR restart.
+Object Check: No errors found during object check; Problem 0, Warning 0.
+Original ifWithoutElse-010.xml imported without editing; source view verified o1 Tag x and Line a/true, o2 Line b/true with no Tag.
+Processing Log: 08:38:14 Start of test; compilation successful; execution 6 milliseconds; Executed successfully; 08:38:15 End of test.
+Result source: <Out><All>x</All></Out>.
+Exported through ESR UI to the accompanying ZIP; instance.xml extracted without modification to the accompanying XML.
+Reading: contradicted. Only one All value x is produced; the assumed second empty All is absent. Intermediate queues were not requested or observed, so their contents are not inferred.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/current-date-refused-short-year.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate is a design-time error in milestone 1; ADR-0026 Pattern params (#74 amendment): invalid-parameter-value at the box, naming the element",
+  "expect": "error",
+  "note": "targetFormat dd.MM.yy: a year of two letters has no XPath picture that reads it back as SimpleDateFormat does (its century window), so the box N1 is refused with invalid-parameter-value."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/attribute-flag.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-structures (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both end in an error as expected-error.json: corpus/observations/obs-structures/po75/str-attr-check.txt and corpus/observations/obs-structures/cpi/attr3-str-attr-error.txt; before #214: ADR-0006 since #102: a required attribute is 1..1, so an empty context raises po:MINOCCURS at its target field mapping (assumed, obs-structures str-attr); ADR-0006 TargetSlots min check since #52; the Tag was no before #133, on which PO's createIf ends the run (F-37, corpus/observations/obs-target-creation/po75/max-002-spec2-create-if-row.txt), so it is false, which createIf reads as SUPPRESS",
+  "expect": "error",
+  "note": "The one Order has no Id, so code's queue in its default context Order is one empty context. code is required (use=\"required\", 1..1): the run raises po:MINOCCURS at its target field mapping T2. flag reads SUPPRESS for false and writes nothing first. Assumed until obs-structures str-attr is observed."
+}

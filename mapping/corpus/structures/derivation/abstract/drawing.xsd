@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): elements of the abstract type s:Shape and a reference to the abstract element
+     s:Figure, refused in a target at the abstract declaration in shapes.xsd; s:Circle extends
+     s:Shape and is not abstract. The two Twins are refused for their one step instead (ADR-0008) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:s="urn:flottila:corpus:shapes"
+           targetNamespace="urn:flottila:corpus:drawing">
+  <xs:import namespace="urn:flottila:corpus:shapes" schemaLocation="shapes.xsd"/>
+  <xs:element name="Drawing">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Shape" type="s:Shape" minOccurs="0"/>
+        <xs:element name="Circle" type="s:Circle"/>
+        <xs:element ref="s:Figure" minOccurs="0"/>
+        <xs:element name="Twin" type="s:Shape" minOccurs="0"/>
+        <xs:element name="Twin" type="s:Shape" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

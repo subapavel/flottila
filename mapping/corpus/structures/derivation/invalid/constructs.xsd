@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): derivations outside the XSD the reader reads, each refused where it stands -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:c="urn:flottila:corpus:constructs"
+           targetNamespace="urn:flottila:corpus:constructs">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Base">
+    <xs:sequence>
+      <xs:element name="A" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Late">
+    <xs:complexContent>
+      <xs:extension base="c:Base"/>
+    </xs:complexContent>
+    <xs:attribute name="late" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="Early">
+    <xs:attribute name="early" type="xs:string"/>
+    <xs:complexContent>
+      <xs:extension base="c:Base"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Empty">
+    <xs:complexContent/>
+  </xs:complexType>
+  <xs:complexType name="EmptySimple">
+    <xs:simpleContent/>
+  </xs:complexType>
+  <xs:complexType name="Twice">
+    <xs:complexContent>
+      <xs:extension base="c:Base"/>
+      <xs:restriction base="c:Base"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Any">
+    <xs:complexContent>
+      <xs:restriction base="xs:anyType"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Narrow">
+    <xs:simpleContent>
+      <xs:restriction base="c:Money"><xs:sequence/></xs:restriction>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="Money">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:element name="Flag" type="xs:string" abstract="1"/>
+  <xs:complexType name="EarlySimple">
+    <xs:attribute name="early" type="xs:string"/>
+    <xs:simpleContent>
+      <xs:extension base="xs:string"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="TwiceSimple">
+    <xs:simpleContent>
+      <xs:extension base="xs:string"/>
+      <xs:extension base="xs:string"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="Wrong">
+    <xs:complexContent>
+      <xs:sequence/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="WrongSimple">
+    <xs:simpleContent>
+      <xs:sequence/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:attributeGroup name="BadNoTag">
+    <xs:attribute name="tag" use="prohibited" default="x"/>
+  </xs:attributeGroup>
+</xs:schema>

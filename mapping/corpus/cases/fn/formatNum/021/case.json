@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-literal-digit.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the digit 5)",
+  "expect": "error",
+  "note": "The pattern 5#. A digit other than 0 as text: DecimalFormat writes 5 as literal text before the number, and a picture reads it as a digit. Compiling refuses it at N1."
+}

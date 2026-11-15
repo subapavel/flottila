@@ -1,0 +1,13 @@
+SAP PO 7.50 ESR; 2026-11-11
+Mapping: spec3_suppress_use_one_as_many_occurrences
+Input: useOneAsMany-009.xml, imported unchanged.
+Graph: Id (Orders) -> useOneAsMany U1 input 1; Sku (Order) -> createIf C1 -> U1 input 2; separate Sku (Orders) -> U1 input 3; U1 -> /Out/All only.
+Saved. Check: No errors found during object check. Problem 0, Warning 0.
+19:53:31 Start of test
+Compilation of spec3_suppress_use_one_as_many_occurrences successful
+
+Runtime exception when processing target-field mapping /Out/All; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Too many values in the first queue in function useOneAsMany. It must have the same number of contexts as the second queue] in class com.sap.aii.mappingtool.flib7.NodeFunctions method useOneAsMany[[Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[HASH], com.sap.aii.mappingtool.tf7.rt.Context@[HASH]]
+See error logs for details
+
+Reading: contradicted. U1 fails before producing A,A,B. Agrees with CPI. Object hashes sanitized.

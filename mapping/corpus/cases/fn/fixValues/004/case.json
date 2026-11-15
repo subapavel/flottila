@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fix-values-error.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0026 \"Table params\" (#83): missing: error raises po:FIXVALUES at the function box, the message fixValues: the key \"k\" is not in the table after the box (F-19); whether PO throws for this option is the question of obs-constant row fn/fixValues/002",
+  "expect": "error",
+  "note": "FixValues a=A … e=E, missing: error: f, the last Sku of o3, is not in the table, so the run stops with po:FIXVALUES at F1: the function box F1: fixValues: the key \"f\" is not in the table."
+}

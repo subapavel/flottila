@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-concat.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/concat-001-text-concat.xml and corpus/observations/obs-text/cpi/concat-001-text-concat.xml; before #214: ADR-0025 (functions bind by name; the reading of concat follows java.lang.String and XPath); obs-text row concat/001",
+  "expect": "output",
+  "note": "concat(Sku, Qty) joins the two strings; an empty side leaves the other as it is, two empty give an empty value."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-lines.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a value whose JSON kind does not fit its field reads as absent; the export's path navigation over the fn: representation gives the same); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. order is an array, but $/order is no array property, so it never occurs and gives no All; an array is not read as occurrences of a field that is not one. The second item of $/lines is an array, not an object, so lines occurs once: one Item, with V a."
+}

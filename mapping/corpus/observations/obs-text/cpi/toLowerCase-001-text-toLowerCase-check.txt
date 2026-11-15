@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/toLowerCase/001
+Artifact: api_text_toLowerCase
+Input: original toLowerCase-001.xml uploaded through simulator.
+Visible graph verified: Sku context /Orders -> toLowerCase -> /Out/All.
+Simulation completed. All values: abc, hello world, empty string, é1. Accent converted to lower case, digit preserved. Downloaded XML preserved unchanged.

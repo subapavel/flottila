@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#94): groups that groups.xsd and interleaved.xsd refer to from another namespace.
+     Repeated holds a repeated sequence of two elements, which interleaves in a target: its
+     fields are refused at that sequence, in this file. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:groups:common">
+  <xs:group name="Lines">
+    <xs:sequence>
+      <xs:element name="Line" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Sku" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:group>
+  <xs:group name="Repeated">
+    <xs:sequence>
+      <xs:sequence maxOccurs="unbounded">
+        <xs:element name="X" type="xs:string"/>
+        <xs:element name="Y" type="xs:string"/>
+      </xs:sequence>
+    </xs:sequence>
+  </xs:group>
+  <xs:attributeGroup name="Audited">
+    <xs:attribute name="by" type="xs:string"/>
+  </xs:attributeGroup>
+</xs:schema>

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-indexOf.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "indexOf(Sku, Qty) is the 0-based index of the first match: hello/l 2, no match -1, an empty search 0, the whole value 0."
+}

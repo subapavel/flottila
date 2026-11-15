@@ -1,0 +1,17 @@
+Case: fn/formatNum/004
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping test
+Mapping: fmt_004 (copy of fmt_003)
+Graph: Qty (Orders context) -> FormatNum -> Out/All.
+Schemas: src-orders / tgt-list, inherited from the preceding verified mapping.
+Number Format: 0.00. Decimal Separator: . (inherited).
+Parameter confirmed after leaving the field with Tab and in the graph after OK.
+Saved; Message Mapping > Check: No errors found during object check; Problem 0, Warning 0.
+Input: formatNum-004.xml; source view verified Qty values 1.5, 0.125, 0.375, 2.675 before execution.
+Processing Log: 18:06:01 Start of test; compilation of fmt_004 successful; execution on server took 6 milliseconds; Executed successfully; 18:06:02 End of test.
+Result source view: Out/All values 1.50, 0.12, 0.38, 2.68 in that order.
+Original result exported as formatNum-004-fmt-004.zip; instance.xml copied byte-for-byte to formatNum-004-fmt-004.xml.
+These examples are consistent with half-even rounding; 2.675 yielded 2.68. Internal numeric representation is not inferred from these samples.
+No queue inspection requested or captured. No screenshot file saved.
+JVM default locale and internal numeric type were not exposed by this UI; no claim made.
+CPI: NOT_RUN (API preparation is not a simulation).

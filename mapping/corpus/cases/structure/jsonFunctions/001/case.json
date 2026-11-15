@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-functions.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a JSON source's queue is a queue like any other); ADR-0006 (context functions are FunCalls over queues, single-value functions a Lift); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/lines/sku in its default context, the line, gives a | b | (empty) | c; the context function removeContexts joins them into one context, a, b, c, and the standard function toUpperCase writes A, B, C."
+}

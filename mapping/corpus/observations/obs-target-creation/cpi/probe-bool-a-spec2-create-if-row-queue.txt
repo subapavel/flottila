@@ -1,0 +1,12 @@
+Function Message Queue of box C1 (createIf), CPI Simulate, input probes/probe-bool-a.xml,
+mapping spec2-create-if-row. Transcribed from the owner's screenshot. Gray rows (italic) are context changes.
+
+S. No.  createIf:in1   createIf:out1
+0       <null>         <null>        (gray)
+1       false          SUPPRESS
+2       1              [ ]
+3       TRUE           [ ]
+4       0              SUPPRESS
+5       0              SUPPRESS      (dark gray, context change)
+
+Same as PO 7.5 (po75/probe-bool-a-spec2-create-if-row-queue.txt).

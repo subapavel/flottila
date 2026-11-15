@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-abs.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "The absolute value of Qty in context Orders, in canonical decimal form: -0.50 gives 0.5."
+}

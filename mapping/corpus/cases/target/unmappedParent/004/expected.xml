@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Parents>
+  <Head/>
+  <Pair/>
+  <Pair/>
+  <Item>
+    <Info/>
+    <Twin>
+      <Qty>1</Qty>
+    </Twin>
+    <Twin>
+      <Qty>2</Qty>
+    </Twin>
+  </Item>
+  <Item>
+    <Info/>
+    <Twin/>
+    <Twin/>
+  </Item>
+</Parents>

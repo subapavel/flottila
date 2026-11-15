@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/attribute-flag.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-structures (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-structures/po75/attr4-str-attr.xml and corpus/observations/obs-structures/cpi/attr4-str-attr.xml; before #214: ADR-0006 since #102: a \"\" value writes a=\"\", as a leaf writes <E/> (assumed, obs-structures str-attr); createIf gives \"\" for true (ADR-0006 Consequences, since #51)",
+  "expect": "output",
+  "note": "flag per createIf(Tag) in Tag's default context Order: \"\" for true, so Flagged has flag=\"\". code: X1. V: X1. Assumed until obs-structures str-attr is observed."
+}

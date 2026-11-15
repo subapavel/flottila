@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/flottila/observations/nil.schema.json",
+  "title": "Nil",
+  "description": "Synthetic JSON source for obs-structures (ADR-0018). Same names as src-nil.xsd, so the XML a JSON-to-XML converter produces (root Nil, repeated Item, Val) matches it.",
+  "type": "object",
+  "properties": {
+    "Item": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Val": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

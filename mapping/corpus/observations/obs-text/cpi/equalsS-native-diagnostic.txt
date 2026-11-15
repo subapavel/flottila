@@ -1,0 +1,5 @@
+2026-11-13 diagnostic, original api_text_equalsS.
+Original graph uses graphical function name/key equalsS (fname=equalsS in API archive).
+EXECUTED_FAIL: reproduced using original equalsS-001.xml. Mapping preparation HTTP 201; test submission HTTP 200; status poll HTTP 500 with errorCode "Exception occurred while getting StepTester" and errorMessage "Test execution has failed; please try again".
+Native editor palette offers equals(string). Added one unconnected native node and saved to inspect the browser's Save request. Its graphical function name/key is stringEquals, with two input pins; original connected node remains equalsS. Thus the imported function identifier differs from the native one.
+Hypothesis test: prepare separate api_text_equalsS_native revision, changing only fname to stringEquals. Original input and contexts unchanged. Original mapping currently retains the unconnected diagnostic native node; it does not replace the connected expression.

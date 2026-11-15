@@ -1,0 +1,11 @@
+CPI observation 2026-11-12: fn/fixValues/007
+Artifact: api_fix_values_suppress
+Input: original copyValue-004.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Tag context /Orders/Order -> createIf -> fixValues -> V.
+Simulation completed without exception. Output three Item elements: V [E, E] | [E] | no V. Original downloaded XML preserved unchanged.
+Requested C1 and F1 display queues were not captured; the queue UI remained unavailable in earlier repeated attempts in this session. No queue contents inferred from final XML. Live function parameter dialog not inspected. Output observed; queues and parameter verification pending.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_fix_values_suppress.json, cpi/fixValues-007-C1-queue.json, cpi/fixValues-007-F1-queue.json.
+C1/F1 queues verify empty strings map to E and SUPPRESS passes unchanged without exception; context/end marker flags distinguish displayed duplicate text. Temporary layout discarded.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

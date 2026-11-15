@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/one-pass-orphan-unmapped-leaf.mapping.json",
+  "provenance": "decided",
+  "ref": "spec #89, Implementation Decisions \"One-pass compile\" (closes the spec-2 carry of #48 comment 6595876651): lowering continues past a target field mapping that fails, emits nothing for it, and still applies the unmapped rules; ADR-0006 Consequences: an unmapped target leaf with minOccurs > 0 is a design-time error (#65), observed in obs-target-creation create-c (target/unmappedLeaf/001); ticket #91",
+  "expect": "error",
+  "note": "create-c with its one source-field box S1 reading /Orders/Order/Ref, a field src-orders.xsd lacks: T1 fails at S1 with orphaned-reference (target/onePass/002). The same compile still walks the target: Head (1..1) is unmapped and created once, and its mandatory Req is unmapped, so unmapped-mandatory-leaf stands at Req's absent target field mapping. Before #91 this needed a second compile after S1 was fixed."
+}

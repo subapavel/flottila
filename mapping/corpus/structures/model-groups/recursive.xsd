@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#94): a group that refers to itself through an element of an anonymous type. The
+     anonymous type is one type of the structure graph, shared by every use of the group, so the
+     recursion is never expanded (ADR-0008). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:g="urn:flottila:corpus:groups"
+           targetNamespace="urn:flottila:corpus:groups">
+  <xs:group name="Tree">
+    <xs:sequence>
+      <xs:element name="Label" type="xs:string"/>
+      <xs:element name="Node" minOccurs="0" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:group ref="g:Tree"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:group>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:group ref="g:Tree"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

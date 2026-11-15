@@ -1,0 +1,41 @@
+{
+  "case": "fn/constant/003",
+  "input": "constant-001.xml",
+  "node": "C1",
+  "source": "CPI Function Message Queue",
+  "rows": [
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "constant:out1"
+        }
+      ],
+      "row": 1
+    },
+    {
+      "cells": [
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "x"
+        }
+      ],
+      "row": 2
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "x"
+        }
+      ],
+      "row": 3
+    }
+  ]
+}

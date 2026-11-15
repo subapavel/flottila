@@ -1,0 +1,18 @@
+Case: fn/dateTrans/005
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping Test
+Mapping: date_trans_005, copied from date_trans_004.
+Graph: Sku (Orders context) -> DateTrans -> All; src-orders.xsd -> tgt-list.xsd.
+InputDateFormat: yyyy-MM-dd HH:mm
+OutputDateFormat: yyyy-MM-dd'T'HH:mm:ssXXX
+Both formats visually confirmed before saving. Initial input replacement did not persist; corrected by paste and verified before any execution.
+Inherited advanced defaults: Sunday, minimum first-week days 1, Calendar Is Lenient checked.
+Check: No errors found during object check; Problem 0, Warning 0.
+Input: dateTrans-005.xml; both source values verified before execution.
+Processing log: 19:27:41 to 19:27:42, successful compilation and execution, 11 milliseconds.
+Confirmed output:
+2026-11-04T10:00:00+01:00
+2026-01-01T00:00:00+01:00
+Status: PARTIAL. Required negative-offset JVM scenario was not available: measured +01:00 instead. Named JVM timezone unknown. No JVM settings changed. This is not a semantic divergence measured under equivalent environments; case remains pending for the requested timezone.
+ZIP exported from Result; XML copied byte-for-byte from instance.xml. No queue capture requested. No screenshot file retained.
+CPI: NOT_RUN; API preparation is not simulation evidence.

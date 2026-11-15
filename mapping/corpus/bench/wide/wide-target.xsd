@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target of the wide bench mapping (ADR-0002, ADR-0021): one Entry per record with the 29
+     fields the mapping writes from 30 of the record's 300, each of the source field's type, but
+     Consignee (two names concatenated) and BillTotal (the sum formatted), which are strings. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:bench:wide"
+           xmlns="urn:flottila:corpus:bench:wide"
+           elementFormDefault="qualified">
+  <xs:element name="WideBatch">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Entry" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="PartyRef" type="xs:string"/>
+              <xs:element name="PartyDate" type="xs:date"/>
+              <xs:element name="Consignee" type="xs:string"/>
+              <xs:element name="RouteZone" type="xs:string"/>
+              <xs:element name="RouteFrom" type="xs:date"/>
+              <xs:element name="RouteUntil" type="xs:date"/>
+              <xs:element name="CargoUnit" type="xs:string"/>
+              <xs:element name="CargoQty" type="xs:integer"/>
+              <xs:element name="CargoMass" type="xs:decimal"/>
+              <xs:element name="BillRef" type="xs:string"/>
+              <xs:element name="BillTotal" type="xs:string"/>
+              <xs:element name="BillDue" type="xs:date"/>
+              <xs:element name="DutyRate" type="xs:decimal"/>
+              <xs:element name="DutyFlag" type="xs:boolean"/>
+              <xs:element name="HaulArea" type="xs:string"/>
+              <xs:element name="HaulCount" type="xs:integer"/>
+              <xs:element name="DepotCode" type="xs:string"/>
+              <xs:element name="DepotLive" type="xs:boolean"/>
+              <xs:element name="ShipVol" type="xs:decimal"/>
+              <xs:element name="PermitRef" type="xs:string"/>
+              <xs:element name="PermitUntil" type="xs:date"/>
+              <xs:element name="ClaimSum" type="xs:decimal"/>
+              <xs:element name="ClaimDone" type="xs:boolean"/>
+              <xs:element name="TariffClass" type="xs:string"/>
+              <xs:element name="TariffShare" type="xs:decimal"/>
+              <xs:element name="LedgerNote" type="xs:string"/>
+              <xs:element name="LedgerSeq" type="xs:integer"/>
+              <xs:element name="LedgerLevel" type="xs:integer"/>
+              <xs:element name="LedgerCap" type="xs:decimal"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

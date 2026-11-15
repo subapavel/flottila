@@ -1,0 +1,11 @@
+CPI observation 2026-11-13: fn/index/004
+Artifact: api_stat_index_suppress
+Input: original index-004.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Tag context /Orders/Order -> createIf -> index -> V.
+Simulation completed. Three Item elements: V [1, 2, 3] | [1, 2] | no V. This differs from the request's assumed [1, 2] | [1] | no V. Downloaded XML preserved unchanged.
+Requested F1 display queue not captured; queue UI unavailable in earlier repeated attempts this session. Live index parameter dialog not independently inspected. No intermediate queue inferred from final output. Output observed; queue and parameter verification pending.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_stat_index_suppress.json, cpi/index-004-F1-queue.json.
+Index converts SUPPRESS to ordinary sequence numbers: empty,SUPPRESS,empty -> 1,2,3; SUPPRESS,empty -> 1,2; empty context stays empty. Initial1/increment1/reset0 verified in live parameters. Temporary layout discarded.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

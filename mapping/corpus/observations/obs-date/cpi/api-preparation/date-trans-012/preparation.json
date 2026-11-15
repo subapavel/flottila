@@ -1,0 +1,14 @@
+{
+  "artifactId": "api_date_trans_012",
+  "logicalMapping": "date-trans-012",
+  "cases": [
+    "fn/dateTrans/012"
+  ],
+  "status": "API_CREATED_READBACK_VERIFIED",
+  "simulation": "NOT_RUN",
+  "editorValidation": "NOT_RUN",
+  "notes": "No observation output. New independent artifact; historical mappings untouched.",
+  "createHttp": 201,
+  "version": "1.0.0",
+  "readback": "VERIFIED_PASS: exact mmap and XSD content match"
+}

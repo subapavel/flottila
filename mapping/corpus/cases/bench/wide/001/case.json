@@ -1,0 +1,7 @@
+{
+  "mapping": "bench/wide/wide.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0021",
+  "expect": "none",
+  "note": "The wide bench mapping on its small input, one record of 300 fields, as corpus/bench/wide/WideGenerator.java writes it from the seed in bench.json (#186): differential only, so every benchmark of it times output that Saxon agrees with."
+}

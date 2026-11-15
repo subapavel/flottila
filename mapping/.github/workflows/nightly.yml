@@ -1,0 +1,52 @@
+name: nightly
+
+# PIT on main over the nine class-C modules, failing below 80 % (ADR-0019). It commits nothing:
+# the mutation ratchet is written by the spec gate (step 1b), not here.
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+
+jobs:
+  mutation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Maven mirror
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      # -am: upstream modules join the reactor; modules without a mutation floor set pit.skip.
+      # Modules without production code set failWhenNoMutations=false until their first ticket removes it.
+      - name: PIT
+        run: >
+          ./mvnw -B
+          -pl engine/xdm,engine/ir,engine/runtime,engine/serializer,engine/mapping,engine/xslt-export,engine/api,engine/udf-api,engine/udf
+          -am test-compile org.pitest:pitest-maven:mutationCoverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pit-reports
+          path: engine/*/target/pit-reports
+          if-no-files-found: ignore

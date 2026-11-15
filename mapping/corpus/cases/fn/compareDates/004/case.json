@@ -1,0 +1,8 @@
+{
+  "mapping": "mappings/compare-dates-local.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: the time zone is the service's (UTC by default). PO 7.50 and CPI ran in their own environment zones, so only the parts observed in UTC are partial evidence: corpus/observations/obs-date/po75/compareDates-004-compare-dates-004.xml and corpus/observations/obs-date/cpi/compareDates-004-compare-dates-004.xml; was assumed: #2 §5 Date: CompareDates takes java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003; #80: the run's time zone is configurable, and the export takes it as the processor's implicit time zone; assumed reading: a date without an offset is read in the run's zone and compared as an instant (obs-date compareDates-004)",
+  "expect": "output",
+  "note": "format1 yyyy-MM-dd HH:mm, format2 yyyy-MM-dd HH:mmXXX, run at 2026-11-04T13:00:00+01:00: the pairs 2026-11-04 09:30 and 2026-11-04 09:00Z, 2026-11-04 10:00 and 2026-11-04 09:00Z. Sku is read at +01:00, 08:30 and 09:00 in UTC, so All is -1, 0. Read in UTC it would be 1, 1.",
+  "now": "2026-11-04T13:00:00+01:00"
+}

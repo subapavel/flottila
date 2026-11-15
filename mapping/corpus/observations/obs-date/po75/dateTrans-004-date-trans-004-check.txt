@@ -1,0 +1,18 @@
+Case: fn/dateTrans/004
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping Test
+Mapping: date_trans_004, copied from date_trans_003 with unchanged parameters.
+Graph: Sku (Orders context) -> DateTrans -> All; src-orders.xsd -> tgt-list.xsd.
+InputDateFormat: yyyy-MM-dd HH:mmXXX
+OutputDateFormat: yyyy-MM-dd HH:mm Z
+Inherited advanced defaults: First Weekday Sunday, minimum days in first week 1, Calendar Is Lenient checked.
+Check: No errors found during object check; Problem 0, Warning 0.
+Input: dateTrans-004.xml, all three values verified in source view before execution.
+Processing log: start 19:16:56, successful compilation and execution, 6 milliseconds.
+Result source verified after resuming on 2026-11-12:
+2026-11-04 09:00 +0100
+2026-11-04 11:00 +0100
+2026-01-01 00:30 +0100
+Observed output offset +0100 meets this case's winter +01:00 scenario. Named JVM timezone was not exposed and is not asserted to be Europe/Prague. No JVM settings were changed.
+ZIP exported from Result; XML copied byte-for-byte from instance.xml. No queue capture requested. No screenshot file retained.
+CPI: NOT_RUN; API preparation is not simulation evidence.

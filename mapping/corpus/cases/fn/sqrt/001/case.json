@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sqrt.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: sqrt is computed in xs:double and cast back to xs:decimal",
+  "expect": "output",
+  "note": "Qty is 4, 2.25, 0 and 0.25, whose roots are exact in a double: 2, 1.5, 0, 0.5."
+}

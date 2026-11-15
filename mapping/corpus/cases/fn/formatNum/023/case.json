@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-percent-one.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (a percent or per mille sign in one subpattern only)",
+  "expect": "error",
+  "note": "The pattern 0%;(0). A percent sign in one subpattern only: DecimalFormat multiplies both by 100, and the picture's negative sub-picture would not. Compiling refuses it at N1."
+}

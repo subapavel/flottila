@@ -1,0 +1,22 @@
+Case: fn/dateTrans/001
+Date: 2026-11-12
+Platform: SAP PO 7.50, ESR message mapping Test
+Mapping: date_trans_001
+Input: dateTrans-001.xml
+Schemas: src-orders.xsd -> tgt-list.xsd
+Graph: Sku (Orders context) -> DateTrans -> All.
+Mapping copied from fmt_015; FormatNum and Qty removed before wiring DateTrans.
+Input Date Format: yyyyMMdd
+Output Date Format: dd.MM.yyyy
+Both formats visibly confirmed in the parameter editor before saving.
+Advanced defaults observed and retained: First Weekday Sunday; Minimum Number Of Days Required In First Week 1; Calendar Is Lenient checked.
+This records the leniency setting, not a behavioral test with invalid dates.
+JVM default timezone: not exposed by the inspected parameter dialog; unknown. No JVM setting changed.
+Saved mapping. Object Check: No errors found; Problem 0, Warning 0.
+Loaded input and verified SRC values: 20261104, 20240229, 19991231, 00010101.
+Processing Log: 19:06:03 start; compilation successful; execution 16 milliseconds; executed successfully; 19:06:05 end. Log timezone unspecified.
+Result All values: 04.11.2026, 29.02.2024, 31.12.1999, 01.01.0001.
+Result matches the requested values.
+Result exported using the ESR result export control. ZIP retained; XML copied byte-for-byte from its instance.xml, without reformatting.
+No queues requested or captured. UI screenshots inspected during execution, not saved as files.
+CPI: NOT_RUN; API preparation is not simulation evidence.

@@ -1,0 +1,7 @@
+# LF on every OS (#49): goldens, corpus cases, contract files, canonical fixtures and generated
+# types are compared byte by byte, and a Windows checkout would otherwise write CRLF.
+# scripts/check-lf-checkout.sh checks it.
+* text=auto eol=lf
+
+# The Windows wrapper script is committed with CRLF and checked out as committed.
+mvnw.cmd -text

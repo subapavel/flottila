@@ -1,0 +1,9 @@
+CPI observation attempt: fn/constant/008
+Date: 2026-11-12
+Artifact: api_constant_empty
+Input: constant-001.xml (original corpus file uploaded and confirmed)
+Status: ENVIRONMENT_BLOCKED
+Editor showed a visually blank generating node connected to All. Its DOM title contained a newline and indentation spaces; empty-string parameter value was not independently verified.
+Initial execution and one retry both displayed: Test execution has failed; please try again
+No output, mapping exception detail, or root cause was supplied. This generic simulator failure is not evidence of the Constant function's behavior.
+Whether the editor saves a freshly inserted Constant with no value remains unverified. No mapping changed or deployed.

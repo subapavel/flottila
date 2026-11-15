@@ -1,0 +1,9 @@
+PO 7.5, Check, mapping mc-memo-opt.
+No errors found during object check
+Problem 0
+Warning 0
+
+Verified in Definition: Id has context Orders and is connected to Grp. Memo/Text uses its default Memo context and is connected directly to Row. Target Row occurrence is 0..2; Val is unmapped.
+
+mc-memo-1.xml: 03:51:10 Start of test; Compilation of mc_memo_opt successful; Execution of mapping on server took 4 milliseconds; Executed successfully; 03:51:11 End of test.
+mc-memo-2.xml: 03:52:25 Start of test; Execution of mapping on server took 3 milliseconds; Executed successfully; 03:52:25 End of test.

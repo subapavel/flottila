@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture for GATE check 1 (#100): a message with several parts is refused (ADR-0008
+     "JSON Schema and WSDL") -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  xmlns:tns="urn:flottila:corpus:gate:refused"
+                  targetNamespace="urn:flottila:corpus:gate:refused">
+  <wsdl:types>
+    <xs:schema targetNamespace="urn:flottila:corpus:gate:refused">
+      <xs:element name="Doc">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Id" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </wsdl:types>
+  <wsdl:message name="Two">
+    <wsdl:part name="first" element="tns:Doc"/>
+    <wsdl:part name="second" element="tns:Doc"/>
+  </wsdl:message>
+  <wsdl:portType name="Port">
+    <wsdl:operation name="Op">
+      <wsdl:input message="tns:Two"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

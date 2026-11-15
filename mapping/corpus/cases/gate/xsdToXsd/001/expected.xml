@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inv:Invoice xmlns:inv="urn:flottila:corpus:gate:invoice" xmlns:pty="urn:flottila:corpus:gate:party">
+  <inv:Number>PO-100</inv:Number>
+  <inv:Date>2026-03-14</inv:Date>
+  <pty:Party>
+    <pty:Name>Ada Lovelace</pty:Name>
+    <pty:Street>1 Engine Lane</pty:Street>
+    <pty:City>London</pty:City>
+  </pty:Party>
+  <inv:Item line="1" currency="EUR">
+    <inv:Text>A-1</inv:Text>
+    <inv:Amount>12.50</inv:Amount>
+  </inv:Item>
+  <inv:Item line="2" currency="EUR">
+    <inv:Amount>40.00</inv:Amount>
+  </inv:Item>
+  <inv:Section>
+    <inv:Title>C-7</inv:Title>
+    <inv:Section>
+      <inv:Title>London</inv:Title>
+    </inv:Section>
+  </inv:Section>
+</inv:Invoice>

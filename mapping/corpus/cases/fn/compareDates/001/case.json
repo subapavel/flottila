@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/compare-dates.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-date (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-date/po75/compareDates-001-compare-dates-001.xml and corpus/observations/obs-date/cpi/compareDates-001-compare-dates-001.xml; before #214: #2 §5 Date: CompareDates takes java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003; assumed reading: -1, 0 or 1 as date1, read in format1, is before, at or after date2, read in format2 (obs-date compareDates-001)",
+  "expect": "output",
+  "note": "format1 and format2 yyyyMMdd, Sku against Qty in context Orders: the pairs 20261103 and 20261104, 20261104 and 20261104, 20261231 and 20260101. All is -1, 0, 1."
+}

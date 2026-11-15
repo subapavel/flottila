@@ -1,0 +1,27 @@
+{
+  "title": "$ref and $defs resolve through named types; a recursive one is never expanded",
+  "type": "object",
+  "properties": {
+    "billTo": {"$ref": "#/$defs/Address"},
+    "shipTo": {"$ref": "#/$defs/Address"},
+    "category": {"$ref": "#/$defs/Category"},
+    "total": {"$ref": "#/$defs/Money"},
+    "home": {"$ref": "#home"}
+  },
+  "$defs": {
+    "Address": {
+      "type": "object",
+      "required": ["city"],
+      "properties": {"city": {"type": "string"}}
+    },
+    "Category": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "parent": {"$ref": "#/$defs/Category"}
+      }
+    },
+    "Money": {"type": "number"},
+    "Home": {"$anchor": "home", "type": "object", "properties": {"street": {"type": "string"}}}
+  }
+}

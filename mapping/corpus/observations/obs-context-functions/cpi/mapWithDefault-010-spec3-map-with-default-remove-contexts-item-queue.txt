@@ -1,0 +1,8 @@
+Display Queue of box M1 (mapWithDefault), CPI, input mapWithDefault-010.xml, mapping spec3-map-with-default-remove-contexts-item, fn/mapWithDefault/010.
+S. No. enabled. Default Value D re-entered after the initial simulation, which had run with an empty default.
+row  mapWithDefault:in1  shading          mapWithDefault:out1  shading
+0    <null>              gray italic      <null>               gray italic
+1    [ ]                 dark gray italic D                    white
+2    (none)                               D                    dark gray italic
+
+Reading: in1 = one empty context after removeContexts; out1 = [D].

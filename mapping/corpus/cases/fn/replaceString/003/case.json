@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-replaceString-empty-search.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/replaceString-003-text-replaceString-empty.xml and corpus/observations/obs-text/cpi/replaceString-003-text-replaceString-empty-search.xml; before #214: ADR-0025 (functions bind by name; the reading of replaceString follows java.lang.String and XPath); obs-text row replaceString/003",
+  "expect": "output",
+  "note": "replaceString with an empty search leaves the value as it is (Java would insert the replacement between all characters)."
+}

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): references to substitution-group heads, whose members members.xsd declares in
+     another namespace. Each becomes a choice of the non-abstract members, head first and then by
+     QName (ADR-0008). An abstract head with no non-abstract member stays, refused in a target -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:h="urn:flottila:corpus:heads"
+           targetNamespace="urn:flottila:corpus:heads">
+  <xs:element name="Catalog">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="h:Product" maxOccurs="unbounded"/>
+        <xs:element ref="h:Note"/>
+        <xs:element ref="h:Plain"/>
+        <xs:element ref="h:Ghost" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Product" type="h:ProductType" abstract="true"/>
+  <xs:element name="Gadget" type="h:ProductType" substitutionGroup="h:Product"/>
+  <xs:complexType name="ProductType">
+    <xs:sequence>
+      <xs:element name="Sku" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:element name="Note" type="xs:string"/>
+  <xs:element name="Aside" type="xs:string" substitutionGroup="h:Note"/>
+  <xs:element name="Plain" type="xs:string"/>
+  <xs:element name="Ghost" type="xs:string" abstract="true"/>
+</xs:schema>

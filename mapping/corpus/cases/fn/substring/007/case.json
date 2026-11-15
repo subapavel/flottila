@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-substring-spaces.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "XML whitespace around a param is ignored, as the cast to xs:decimal ignores it: ' 1 ' and a tab then 2 give bc."
+}

@@ -1,0 +1,20 @@
+Date: 2026-11-12
+Artifact: api_spec2_split_by_value_change (unchanged API-prepared artifact)
+Native tooltips: Tag context /Orders/Order, removeContexts, splitByValue, /Out/All.
+Exact graph/parameter verified in the earlier API readback: Tag -> removeContexts
+-> SplitByValue type=2 (valueChange) -> All. Native parameter panel was not exposed
+because function boxes overlap; no UI parameter-panel verification is claimed.
+Each original input was uploaded using Enter on the tab's file input and filechooser.
+Each result was obtained using Test, then Download Output; files copied byte-for-byte.
+No display queues requested. Prior tenant version evidence retained, no PNG saved.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.
+
+Completed cases:
+- fn/splitByValue/006, f3.xml: output All a,a; confirmed; 73 bytes.
+- fn/splitByValue/007, splitByValue-007.xml: output All a; confirmed; 61 bytes.
+- fn/splitByValue/008, splitByValue-008.xml: output All a,a,a; confirmed; 85 bytes.
+- fn/splitByValue/009, splitByValue-009.xml: output two empty All; confirmed; 71 bytes.
+- fn/splitByValue/010, splitByValue-010.xml: output All a; confirmed; 61 bytes.
+
+Upload of input 010 initially timed out waiting for the browser filechooser; input
+was still enabled. One retry loaded the original file successfully before Test.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-short-maybe.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (an array property reads each item of its array as one occurrence; a null item reads as the empty string) and GLOSSARY \"Array property\"; #118",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/maybe is a nillable array property at 0..1 and its array holds one null item: one occurrence of maybe whose value reads as the empty string, so one empty All is written. Read by its maximum, maybe would be a leaf, the array would read as absent and no All would be written."
+}

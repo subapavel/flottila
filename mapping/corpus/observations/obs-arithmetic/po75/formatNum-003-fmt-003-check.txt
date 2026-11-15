@@ -1,0 +1,17 @@
+Case: fn/formatNum/003
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping test
+Mapping: fmt_003 (copy of fmt_002)
+Graph: Qty (Orders context) -> FormatNum -> Out/All.
+Schemas: src-orders / tgt-list, inherited from the preceding verified mapping.
+Number Format: #. Decimal Separator: . (inherited).
+Parameter confirmed after leaving the field with Tab and in the graph after OK.
+Saved; Message Mapping > Check: No errors found during object check; Problem 0, Warning 0.
+Input: formatNum-003.xml; source view verified Qty values 0, 0.4, 123 before execution.
+An initial load used a nonexistent input subdirectory. The path was corrected before simulation; no execution used that failed load.
+Processing Log: 18:02:29 Start of test; compilation of fmt_003 successful; execution on server took 16 milliseconds; Executed successfully; 18:02:30 End of test.
+Result source view: Out/All values 0, 0, 123 in that order.
+Original result exported as formatNum-003-fmt-003.zip; instance.xml copied byte-for-byte to formatNum-003-fmt-003.xml.
+No queue inspection requested or captured. No screenshot file saved.
+JVM default locale and internal numeric type were not exposed by this UI; no claim made.
+CPI: NOT_RUN (API preparation is not a simulation).

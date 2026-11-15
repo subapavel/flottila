@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-after.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Data errors name their box (F-19, Q10): a malformed date is err:FORG0001 in both back ends, naming the box; ADR-0003: parsing is strict",
+  "expect": "error",
+  "note": "format1 yyyyMMdd: Sku is 2026110, one digit short of the pattern, so the run raises err:FORG0001 at N1 and writes nothing."
+}

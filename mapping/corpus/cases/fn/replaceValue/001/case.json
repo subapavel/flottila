@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/replace-value.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 replaceValue: \"Replaces the value I with a value that you can define in the dialog for the function parameters.\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]",
+  "expect": "output",
+  "note": "Sku in context Orders is a, b, c in one context over two Orders; replaceValue with the replacement O'Brien & <Co> gives that text three times, its apostrophe, ampersand and angle brackets kept."
+}

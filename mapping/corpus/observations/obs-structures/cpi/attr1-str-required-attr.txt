@@ -1,0 +1,11 @@
+CPI, Simulate, intended input attr1.xml, mapping str-required-attr, case target/requiredAttribute/001. No output.
+Fired at design-time validation before simulation/input upload, target /Coded/@code. Input was not run.
+
+Editor: Target has 1 errors
+Target row @code: Mandatory node is unmapped
+
+Error
+Mapping has validation errors. Please fix them before you simulate.
+Close
+
+No exception class, Caused by lines or mapping-tool stack frames were exposed; this is an editor validation message rather than a runtime exception.

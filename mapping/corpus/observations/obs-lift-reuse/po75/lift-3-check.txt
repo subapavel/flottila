@@ -1,0 +1,15 @@
+SAP PO 7.50 / ESR message mapping lift_3, 2026-11-11
+Source XSD_src_orders/Orders; target XSD_tgt_list/Out.
+Order -> Item. W and All unmapped.
+C1=Constant 0; G1=greater(Qty at Order context,C1); X1=ifWithoutElse(G1,Qty at Order context), Keep SUPPRESS Values checked, inherited from the checked lift_2 branch.
+L3=concat(X1,Tag at default Order context), empty delimiter -> V.
+Saved. Message Mapping > Check: No errors found during object check. Problem 0, Warning 0.
+Unchanged corpus l3.xml imported directly; SRC view inspected.
+Processing Log:
+19:01:31 Start of test
+Compilation of lift_3 successful
+Execution of mapping on server took 10 milliseconds
+Executed successfully
+19:01:32 End of test
+Unmodified ESR ZIP: l3-lift-3-export.zip; instance.xml extracted byte-preservingly as l3-lift-3.xml.
+Reading: Item 1 has no V; Item 2 has only V=5t1. Confirms assumed reading; agrees with CPI. The final SUPPRESS is reused rather than skipped.

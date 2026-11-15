@@ -1,0 +1,17 @@
+Display Queue of box M1 (mapWithDefault), CPI Function Message Queue after exists-004.xml, mapping spec2-map-with-default-create-if. Parameter Default Value D.
+S. No. enabled. Gray and dark-gray cells are italic; white cells use normal type.
+
+row  mapWithDefault:in1  shading    mapWithDefault:out1  shading
+0    <null>             gray       <null>               gray
+1    SUPPRESS           white      SUPPRESS             white
+2    SUPPRESS           gray       SUPPRESS             gray
+3    SUPPRESS           white      SUPPRESS             white
+4    [ ]                white      [ ]                  white
+5    <null>             gray       <null>               gray
+6    <null>             gray       D                    white
+7    [ ]                white      D                    gray
+8    [ ]                dark gray  [ ]                  white
+9    (none)                        [ ]                  dark gray
+
+Reading: in1 = [SUPPRESS] [SUPPRESS,empty string] [] [empty string]; out1 = [SUPPRESS] [SUPPRESS,empty string] [D] [empty string].
+The SUPPRESS-only context is preserved, and only the truly empty context receives D. This queue was captured after the initial simulation whose compiled default disagreed with the displayed D; the first XML is retained separately for audit.

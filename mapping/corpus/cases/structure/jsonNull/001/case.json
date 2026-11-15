@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-nil.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 (JSON null reads as the empty string), owner decision 2026-11-13 (#212), finding F-43: not run on PO 7.50 or CPI (obs-structures NOT_RUN), observed again with the JSON spec; was assumed: ADR-0008 bullet 2 and \"JSON as a source at run time\": JSON null reads as the empty string, an assumed reading (#14, #36); obs-structures str-nil, nil.json; #98",
+  "expect": "output",
+  "note": "The input of obs-structures str-nil (nil.json), run on the JSON source directly: four items of $/Item, each an occurrence in the root's one context, with Val x, null, the empty string and no Val. Assumed: null reads as the empty string, so item 2 behaves like item 3: V = x!, !, !, none (concat of an empty context gives none), W = true, true, true, false (exists per context). Reading null as no value would make item 2 like item 4."
+}

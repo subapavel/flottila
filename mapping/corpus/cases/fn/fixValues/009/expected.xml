@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Out>
+  <Item>
+    <V>'</V>
+    <V>"</V>
+  </Item>
+  <Item>
+    <V>\</V>
+    <V>a&#9;b</V>
+  </Item>
+  <Item>
+    <V>&amp;&lt;</V>
+    <V>𝄞x</V>
+  </Item>
+</Out>

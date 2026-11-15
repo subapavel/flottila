@@ -1,0 +1,15 @@
+{
+  "artifactId": "api_text_toUpperCase",
+  "logicalMapping": "text-toUpperCase",
+  "cases": [
+    "fn/toUpperCase/001"
+  ],
+  "status": "API_CREATED_READBACK_VERIFIED",
+  "simulation": "NOT_RUN",
+  "editorValidation": "NOT_RUN",
+  "notes": "No observation output. New independent artifact; historical mappings untouched.",
+  "repair": "Recreated own API import after exact remote resource guard; restored required textInfo structure with synthetic identifiers. Initial import preserved locally.",
+  "createHttp": 201,
+  "version": "1.0.0",
+  "readback": "VERIFIED_PASS: exact mmap and XSD content match"
+}

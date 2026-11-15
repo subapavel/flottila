@@ -1,0 +1,19 @@
+SAP PO observation: fn/formatNum/002
+Date: 2026-11-12
+Mapping: fmt_002 (copied from fmt_001)
+Source: src-orders.xsd; target: tgt-list.xsd.
+Graph: Qty (Orders context inherited) -> FormatNum -> Out/All.
+FormatNum parameters: Number Format = 000; Decimal Separator = . (inherited).
+First edit did not persist: reopening the parameter dialog still showed 0. Retried by entering 000 and pressing Tab before OK; dialog and graph then showed 000. No simulation ran with the wrong pattern.
+Input: obs-arithmetic/formatNum-002.xml. SRC view verified Qty values 7, 42, 1234 before execution.
+Saved mapping; Message Mapping > Check: No errors found during object check. Problem 0, Warning 0.
+Processing Log:
+17:55:56 Start of test
+Compilation of fmt_002 successful
+Execution of mapping on server took 5 milliseconds
+Executed successfully
+17:55:57 End of test
+Result SRC: All values 007, 042, 1234. Reading: confirmed.
+JVM default locale and internal numeric representation were not exposed by this UI.
+ZIP is the original result export. XML is its instance.xml copied byte-for-byte without formatting.
+No queues requested or captured. No screenshot files retained.

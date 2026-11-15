@@ -1,0 +1,6 @@
+CPI, message mapping editor, mapping create-c, design time, before any simulation.
+Transcribed from the owner's screenshots.
+
+Target tree: Req (unmapped, 1..1) highlighted red; Head (unmapped, 1..1, child A mapped) not marked.
+Target root Unmapped shows a red triangle; tooltip: "Target has 1 errors"
+Save: succeeded with no message (PO 7.5 instead blocks activation of the change list).

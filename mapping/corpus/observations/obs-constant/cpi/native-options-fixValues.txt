@@ -1,0 +1,3 @@
+Native CPI editor 2026-11-13
+Fresh fixValues node: Default Value empty; On Failure preselected Use key. Opened selector offered exact labels Use key, Use default value, Throw exception. Selected Use default value and verified label. Stored per-case strategy/default/table separately verified in cpi/parameter-audit.
+No claim of editor Save acceptance for an empty table: that remains pending in fn/fixValues/006.

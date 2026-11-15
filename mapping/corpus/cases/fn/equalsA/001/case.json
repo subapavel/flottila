@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-equalsA.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "Qty equals Sku as numbers in context Orders: 1 and 1.0 are equal, 0.10 and 0.1 are equal, -0 and 0 are equal, and 10 and 9 differ. The results are the texts true and false."
+}

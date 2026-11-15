@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-fraction.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-arithmetic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-arithmetic/po75/formatNum-004-fmt-004.xml and corpus/observations/obs-arithmetic/cpi/formatNum-004-fmt-004.xml; before #214: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture 0.00; assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-004)",
+  "expect": "output",
+  "note": "Two mandatory fraction digits, rounded half to even: 1.5 gives 1.50, 0.125 gives 0.12, 0.375 gives 0.38, and 2.675 gives 2.68 over the decimal. A double would give 2.67 for 2.675, which this input asks of PO's arithmetic mode."
+}

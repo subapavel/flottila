@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-a.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31), mapping create-a, input a1.xml: corpus/observations/obs-target-creation/po75/a1-create-a.xml and cpi/a1-create-a.xml, display queue po75/a1-create-a-queue.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json): two Row, Val 2 and 3; ADR-0006 TargetSlots: a SUPPRESS slot creates nothing but keeps its number, so it consumes its child context; SUPPRESS does not count toward minOccurs / maxOccurs; truncated slots keep their numbers",
+  "expect": "output",
+  "note": "obs-target-creation a1 as drawn (A1 Constant{keep}, A2 equalsS(Sku, A1), A3 createIf): Sku skip, keep, keep, keep give equalsS false, true, true, true, so the createIf Row queue is SUPPRESS, \"\", \"\", \"\" and Qty 1 | 2 | 3 | 4 the Val contexts. SUPPRESS does not count toward maxOccurs 2 and keeps slot 1, so Rows 2 and 3 are created, Val 2 and 3, and slot 4 is truncated. If SUPPRESS counted: one Row, Val 2. If slots were renumbered: Val 1 and 2."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-descending.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-sort-descending-005.xml and corpus/observations/obs-context-functions/cpi/sort-001-spec2-sort-descending.xml; before #214: #48 owner decision Q4: lexicographic is Java String.compareTo, comparing UTF-16 code units; #2 §4 sort: \"within the existing or set context\", stable, numeric or lexicographic (case-sensitive or not), ascending or descending [SAP✓ STD]",
+  "expect": "output",
+  "note": "Lexicographic and descending over the input of fn/sort/001: b, a, _, B, A, 9, 10 and é, f, e, Z, fn/sort/001 reversed, as no two values are equal. R1 joins the contexts S1 keeps, so All shows each context's order in turn. Observe in SAP PO (#33)."
+}

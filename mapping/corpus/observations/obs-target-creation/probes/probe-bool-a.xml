@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner probe (not a case input): which strings PO's createIf reads as a boolean.
+     Run through mapping spec2-create-if-row after max-002.xml failed on 'no'. -->
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>false</Sku><Qty>1</Qty></Line>
+    <Line><Sku>1</Sku><Qty>2</Qty></Line>
+    <Line><Sku>TRUE</Sku><Qty>3</Qty></Line>
+    <Line><Sku>0</Sku><Qty>4</Qty></Line>
+  </Order>
+</Orders>

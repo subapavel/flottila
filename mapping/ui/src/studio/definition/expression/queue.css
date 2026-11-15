@@ -1,0 +1,50 @@
+/*
+ * The Display Queue dialog's styles, moved from the Test tab's test.css with the dialog (#152 review): `.queue-*` lay out
+ * the traced queue (the prototype's .q-* cells), with their values unchanged.
+ */
+.queue-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.queue-bar i {
+  color: var(--fn);
+  font-family: serif;
+}
+.queue-scroll {
+  overflow: auto;
+  max-height: 55dvh;
+}
+.queue-table td.q-boundary,
+.queue-table td.q-end {
+  background: #f0f3f6;
+}
+.queue-table td small {
+  margin-inline-start: 6px;
+  color: var(--muted);
+}
+.queue-note {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.queue-occurrences {
+  margin-top: 12px;
+}
+/* a dialog without test data in edit mode: the test file to load (#177) */
+.queue-load {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.queue-failure {
+  margin-bottom: 10px;
+}
+.queue-occurrences h4 {
+  font-size: 14px;
+  font-weight: 650;
+  margin: 0 0 4px;
+}

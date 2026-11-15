@@ -1,0 +1,10 @@
+Case: fn/ifWithoutElse/005
+Mapping: boolean-ifWithoutElse-suppress
+Input: original ifWithoutElse-005.xml imported unchanged through ESR Test UI; source XML verified.
+Graph: Sku (Orders) -> X1 condition; Qty (Orders) -> createIf -> X1 then; X1 -> Out/Item. Separate Qty (default Line) -> Out/Item/V. No other target wires.
+X1 ifWithoutElse parameter dialog: Keep SUPPRESS Values unchecked (default).
+Saved; object check: No errors found during object check; Problem 0, Warning 0.
+Processing Log: 07:54:52 Start of test; compilation successful; execution took 10 milliseconds; Executed successfully; 07:54:53 End of test.
+Result: two Items with V values 1 and true (Lines 1 and 4).
+Exact XML retained from instance.xml in the ZIP exported through ESR result UI.
+Reading: contradicted. Neither assumed 1,TRUE nor alternative 1,0 occurs. The output retains the positions of both false conditions even with Keep SUPPRESS Values unchecked. No display queue was requested or observed for this case.

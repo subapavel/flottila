@@ -1,0 +1,12 @@
+Date: 2026-11-12
+Case fn/or/001; artifact api_boolean_or, unchanged API-prepared mapping.
+Native graph verified Sku and Qty context /Orders -> or -> /Out/All.
+Original or-001.xml uploaded unchanged through tab file chooser, then Test.
+EXECUTED_FAIL: mapping error, not an environment failure.
+Exact diagnostic through root exception:
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/All. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Cannot cast "" to boolean.]
+Remaining stack identifies com.sap.aii.mappingtool.flib7.Bool method or with
+arguments empty string and true. Transient context object/exchange IDs omitted.
+No output XML; individual line results are not inferred.
+Reading contradicted the assumed output values; agrees with existing PO error.
+No PNG or display queue captured. CPI operated through tab controls.

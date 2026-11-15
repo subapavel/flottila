@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-unclosed-quote.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (a quote that is never closed)",
+  "expect": "error",
+  "note": "The pattern 'abc. A quote that is never closed: the pattern's text has no end. Compiling refuses it at N1."
+}

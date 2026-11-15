@@ -1,0 +1,11 @@
+Date: 2026-11-12
+Case fn/equals/001; artifact api_boolean_equals, unchanged API-prepared mapping.
+Native graph titles verified Sku and Qty context /Orders -> equals(boolean) -> /Out/All.
+Original equals-001.xml uploaded unchanged through tab file chooser, filename and five input Line rows verified, then Test.
+EXECUTED_FAIL: mapping error, not an environment failure.
+Exact diagnostic through root exception:
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/All. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Cannot cast "keep" to boolean.]
+Remaining stack identifies com.sap.aii.mappingtool.flib7.Bool method equalsBoolean with arguments keep, keep. Transient context object/exchange IDs omitted.
+No output XML; individual line results are not inferred.
+Reading contradicted the assumed text comparison; agrees with existing PO error.
+No PNG or display queue captured. CPI operated through tab controls.

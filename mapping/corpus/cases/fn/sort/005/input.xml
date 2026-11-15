@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Tag>B</Tag>
+    <Tag>b</Tag>
+    <Tag>10</Tag>
+    <Tag>9</Tag>
+    <Tag>_</Tag>
+    <Tag>a</Tag>
+    <Tag>A</Tag>
+  </Order>
+  <Order>
+    <Id>o2</Id>
+    <Tag>é</Tag>
+    <Tag>e</Tag>
+    <Tag>Z</Tag>
+    <Tag>f</Tag>
+  </Order>
+</Orders>

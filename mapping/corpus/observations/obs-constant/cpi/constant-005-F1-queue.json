@@ -1,0 +1,77 @@
+{
+  "case": "fn/constant/005",
+  "input": "constant-001.xml",
+  "node": "F1",
+  "source": "CPI Function Message Queue",
+  "rows": [
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "concat:in1"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "concat:in2"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "concat:out1"
+        }
+      ],
+      "row": 1
+    },
+    {
+      "cells": [
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "a"
+        },
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "b"
+        },
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "ab"
+        }
+      ],
+      "row": 2
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "a"
+        },
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "b"
+        },
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "ab"
+        }
+      ],
+      "row": 3
+    }
+  ]
+}

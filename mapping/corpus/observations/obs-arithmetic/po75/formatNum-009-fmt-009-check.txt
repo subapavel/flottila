@@ -1,0 +1,15 @@
+Case: fn/formatNum/009
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping Test
+Mapping: fmt_009, copied from fmt_008 in the authorized observation namespace.
+Graph: Qty (Orders context) -> FormatNum -> All; src-orders / tgt-list.
+NumberFormat: #,##,##0. DecimalSeparator: .
+Parameter confirmed after Tab and in the graph after OK. Saved mapping.
+Message Mapping > Check: No errors found during object check; Problem 0, Warning 0.
+Loaded formatNum-009.xml; input SRC verified Qty values 1234567, 12 before execution.
+Processing Log: 18:28:43-18:28:44; compilation successful; server execution 6 milliseconds; Executed successfully.
+Result SRC read: All values 1,234,567; 12.
+Export: formatNum-009-fmt-009.zip; instance.xml copied byte-for-byte to formatNum-009-fmt-009.xml.
+No queues requested or captured. Screenshot inspected in tool output; no screenshot file saved.
+JVM default locale and internal numeric type were not exposed in this UI.
+CPI: NOT_RUN; prepared artifact is not simulation evidence.

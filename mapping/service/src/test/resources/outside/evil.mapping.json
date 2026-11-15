@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "evil.xsd"
+    ],
+    "fingerprint": "sha256:b1e7aba69ac4f5572ccadcb28bc162f0cab8d7be4cca3a487fff96340387ad00",
+    "root": {
+      "element": "Q{urn:flottila:test:outside}Exfil"
+    }
+  },
+  "target": {
+    "bundle": [
+      "evil.xsd"
+    ],
+    "fingerprint": "sha256:b1e7aba69ac4f5572ccadcb28bc162f0cab8d7be4cca3a487fff96340387ad00",
+    "root": {
+      "element": "Q{urn:flottila:test:outside}Exfil"
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:test:outside}Exfil/SecretField": {
+      "boxes": {
+        "a1": {
+          "field": "/Q{urn:flottila:test:outside}Exfil/SecretField",
+          "kind": "source"
+        }
+      },
+      "id": "t1",
+      "result": "a1"
+    }
+  }
+}

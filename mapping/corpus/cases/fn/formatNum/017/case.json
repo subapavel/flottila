@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-exponent.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the exponent E)",
+  "expect": "error",
+  "note": "The pattern 0.00E0. The exponent E: DecimalFormat writes 1234 as 1.23E3, which no XPath picture writes (XPath 3.1's exponent is a lowercase e). Compiling refuses it at N1."
+}

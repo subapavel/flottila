@@ -1,0 +1,38 @@
+SAP PO 7.50, ESR message mapping, 2026-11-12
+Case: fn/constant/004
+Mapping: constant_concat
+Input: original constant-001.xml imported through Test UI, unchanged.
+Graph: Order (Orders context) -> Item. Sku (Order context) and Constant -x
+feed F1 concat in0 and in1 respectively -> V. Separate Constant y- and
+Sku (Order context) feed F2 concat in0 and in1 respectively -> W. All unmapped.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+Test: 09:27:55 Start of test; compilation successful; execution 8 milliseconds;
+Executed successfully; 09:27:56 End of test.
+Result exported via UI to constant-004-constant-concat.zip. Its instance.xml
+was extracted unchanged as constant-004-constant-concat.xml.
+
+F1 Display Queue: compilation successful; execution 8 milliseconds; executed successfully.
+Literal displayed rows (brackets are UI notation; no italic cells observed):
+row | concat:in0 | concat:in1 | concat:out
+0 | <null> [gray] | [-x] [gray] | <null> [gray]
+1 | [a] [white] | [-x] [dark gray] | [a-x] [white]
+2 | [b] [white] | blank | [b-x] [white]
+3 | [b] [gray] | blank | [b-x] [gray]
+4 | [b] [gray] | blank | [b-x] [gray]
+5 | [c] [white] | blank | [c-x] [white]
+6 | [c] [dark gray] | blank | [c-x] [dark gray]
+
+F2 Display Queue: compilation successful; execution 7 milliseconds; executed successfully.
+Literal displayed rows (no italic cells observed):
+row | concat:in0 | concat:in1 | concat:out
+0 | [y-] [gray] | <null> [gray] | <null> [gray]
+1 | [y-] [dark gray] | [a] [white] | [y-a] [white]
+2 | blank | [b] [white] | [y-b] [white]
+3 | blank | [b] [gray] | [y-b] [gray]
+4 | blank | [b] [gray] | [y-b] [gray]
+5 | blank | [c] [white] | [y-c] [white]
+6 | blank | [c] [dark gray] | [y-c] [dark gray]
+
+Reading: confirmed. V is a-x, b-x | none | c-x; W is y-a, y-b | none | y-c.
+The middle Item is empty. Gray context and terminal rows are preserved literally
+above, not counted as additional values.

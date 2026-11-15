@@ -1,0 +1,16 @@
+PO 7.5 ESR; Display Queue of R1 (replaceValue [5]); stat-sum-suppress; sum-003.xml; fn/sum/003.
+Row numbers enabled using second toolbar button. Column headers visually truncated to replaceVal...; left is input, right output.
+row  in0       shading     out  shading
+0    <null>    gray        [5]  gray
+1    []        white       [5]  white
+2    SUPPRESS  cyan        [5]  white
+3    []        white       [5]  white
+4    []        gray        [5]  gray
+5    SUPPRESS  cyan        [5]  white
+6    SUPPRESS  gray        [5]  gray
+7    SUPPRESS  gray        [5]  gray
+8    []        white       [5]  white
+9    []        dark gray   [5]  dark gray
+
+Reading: in0 = [empty string,SUPPRESS,empty string] [SUPPRESS] [] [empty string]; out = [5,5,5] [5] [] [5].
+Gray rows are context boundaries, not values. No italic text observed. Screenshot displayed in tool output only; no PNG file claimed.

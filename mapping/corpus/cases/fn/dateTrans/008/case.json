@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-trans-dotted.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Data errors name their box (F-19, Q10): a malformed date is err:FORG0001 in both back ends, naming the box; ADR-0003: parsing is strict, so a day the month lacks is no date",
+  "expect": "error",
+  "note": "sourceFormat yyyyMMdd: Sku in context Orders is 20260230, which has the digits of the pattern but no date: February 2026 has no day 30. The run raises err:FORG0001 at N1; a lenient parse would give 02.03.2026."
+}

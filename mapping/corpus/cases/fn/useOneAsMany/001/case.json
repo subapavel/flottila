@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/use-one-as-many-flat.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 useOneAsMany: input 1 the value, input 2 how often (the repeating field in input 1's context), input 3 the context changes; the SAP figure gives external,external | external | internal,internal | external from external | internal | external and 3 | 2 | 1 names [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f416edeaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/saphelp_nwpi71/helpdata/EN/ef/df564b6aa24fc9ab0d685460747de5/content.htm]",
+  "expect": "output",
+  "note": "The values of the SAP figure over src-orders. Id is external | internal | external, Sku in context Order has 3 | 2 | 1 values, and Sku in its default context Line has six contexts, more than the three of the other inputs. Each Id is repeated once per Sku of its order, and removeContexts lists the result: All is external, external, external, internal, internal, external. Without useOneAsMany, removeContexts(Id) would give three All."
+}

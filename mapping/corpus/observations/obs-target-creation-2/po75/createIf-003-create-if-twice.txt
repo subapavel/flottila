@@ -1,0 +1,24 @@
+SAP PO 7.5 | Test | Input createIf-003.xml | Mapping create-if-twice | Case fn/createIf/003 | No output.
+Failure: run time on C2 (second createIf), target-field mapping /Out/All.
+
+Problem when Testing
+Runtime exception when processing target-field mapping /Out/All; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast '' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+See error logs for details
+
+Processing log:
+04:14:37 Start of test
+Compilation of create_if_twice successful
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast '' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+com.sap.aii.utilxi.misc.api.BaseRuntimeException: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast '' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+  at com.sap.aii.mappingtool.tf7.rt.MethodImplementedIteratorHelper.executeMethod(MethodImplementedIteratorHelper.java:188)
+  at com.sap.aii.mappingtool.tf7.rt.FunctionWrapper.calculateCurrentValue(FunctionWrapper.java:106)
+  at com.sap.aii.mappingtool.tf7.rt.AbstractFunctionWrapper.cacheValue(AbstractFunctionWrapper.java:31)
+  at com.sap.aii.mappingtool.tf7.rt.AbstractFunctionWrapper.gotoNextContext(AbstractFunctionWrapper.java:41)
+  at com.sap.aii.mappingtool.tf7.rt.AMappingProgram.processNode(AMappingProgram.java:345)
+(remaining mapping-tool frames omitted after the first five)
+(server frames below the mapping tool omitted)
+Runtime exception when processing target-field mapping /Out/All; root message: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast '' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+04:14:38 End of test
+
+Reading: confirmed. The first empty string emitted by C1 fails the boolean cast at C2. The Result view displayed the editor's __EmptyDoc placeholder after the error, not a mapped Out document.

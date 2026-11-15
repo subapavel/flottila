@@ -1,0 +1,1193 @@
+{
+  "openapi" : "3.1.0",
+  "components" : {
+    "schemas" : {
+      "AuthoringIdLocation" : {
+        "type" : "object",
+        "required" : [ "kind", "authoringId" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "authoring-id"
+          },
+          "authoringId" : {
+            "type" : "string"
+          }
+        }
+      },
+      "CompileResponse" : {
+        "type" : "object",
+        "required" : [ "diagnostics" ],
+        "properties" : {
+          "diagnostics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DiagnosticDto"
+            }
+          }
+        }
+      },
+      "CreateMappingRequest" : {
+        "type" : "object",
+        "required" : [ "id" ],
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "source" : {
+            "$ref" : "#/components/schemas/StructureChoice"
+          },
+          "target" : {
+            "$ref" : "#/components/schemas/StructureChoice"
+          }
+        }
+      },
+      "DiagnosticDto" : {
+        "type" : "object",
+        "required" : [ "severity", "code", "message", "location" ],
+        "properties" : {
+          "severity" : {
+            "type" : "string",
+            "enum" : [ "error", "warning" ]
+          },
+          "code" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "location" : {
+            "$ref" : "#/components/schemas/LocationDto"
+          }
+        }
+      },
+      "FieldDto" : {
+        "type" : "object",
+        "required" : [ "kind", "step", "namespace", "localName", "min", "nillable" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "enum" : [ "element", "attribute", "json-property" ]
+          },
+          "step" : {
+            "type" : "string"
+          },
+          "namespace" : {
+            "type" : "string"
+          },
+          "localName" : {
+            "type" : "string"
+          },
+          "min" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "max" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "valueType" : {
+            "type" : "string"
+          },
+          "nillable" : {
+            "type" : "boolean"
+          },
+          "type" : {
+            "type" : "string"
+          },
+          "refusal" : {
+            "$ref" : "#/components/schemas/RefusalDto"
+          }
+        }
+      },
+      "FieldPathLocation" : {
+        "type" : "object",
+        "required" : [ "kind", "side", "fieldPath" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "field-path"
+          },
+          "side" : {
+            "type" : "string",
+            "enum" : [ "source", "target" ]
+          },
+          "fieldPath" : {
+            "type" : "string"
+          }
+        }
+      },
+      "FilePositionLocation" : {
+        "type" : "object",
+        "required" : [ "kind", "file", "line", "column" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "file-position"
+          },
+          "file" : {
+            "type" : "string"
+          },
+          "line" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "column" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "LocationDto" : {
+        "oneOf" : [ {
+          "$ref" : "#/components/schemas/PointerLocation"
+        }, {
+          "$ref" : "#/components/schemas/AuthoringIdLocation"
+        }, {
+          "$ref" : "#/components/schemas/FilePositionLocation"
+        }, {
+          "$ref" : "#/components/schemas/FieldPathLocation"
+        } ],
+        "discriminator" : {
+          "propertyName" : "kind",
+          "mapping" : {
+            "pointer" : "#/components/schemas/PointerLocation",
+            "authoring-id" : "#/components/schemas/AuthoringIdLocation",
+            "file-position" : "#/components/schemas/FilePositionLocation",
+            "field-path" : "#/components/schemas/FieldPathLocation"
+          }
+        },
+        "type" : "object"
+      },
+      "MappingSummary" : {
+        "type" : "object",
+        "required" : [ "id", "name", "package" ],
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "package" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "source" : {
+            "type" : "string"
+          },
+          "target" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ParentSlotDto" : {
+        "type" : "object",
+        "required" : [ "parentSlot", "created", "slots" ],
+        "properties" : {
+          "parentSlot" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "created" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "slots" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/SlotStatusDto"
+            }
+          }
+        }
+      },
+      "PointerLocation" : {
+        "type" : "object",
+        "required" : [ "kind", "pointer" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "pointer"
+          },
+          "pointer" : {
+            "type" : "string"
+          }
+        }
+      },
+      "Problem" : {
+        "type" : "object",
+        "required" : [ "type", "title", "status", "detail" ],
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "type" : "string"
+          }
+        }
+      },
+      "RefreshResponse" : {
+        "type" : "object",
+        "required" : [ "model", "diagnostics" ],
+        "properties" : {
+          "model" : {
+            "$ref" : "./mapping-model.schema.json"
+          },
+          "diagnostics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DiagnosticDto"
+            }
+          }
+        }
+      },
+      "RefusalDto" : {
+        "type" : "object",
+        "required" : [ "code", "side", "file", "line", "column" ],
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "side" : {
+            "type" : "string",
+            "enum" : [ "both", "target" ]
+          },
+          "file" : {
+            "type" : "string"
+          },
+          "line" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "column" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "RefusedProblem" : {
+        "type" : "object",
+        "required" : [ "type", "title", "status", "detail", "diagnostics" ],
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "type" : "string"
+          },
+          "diagnostics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DiagnosticDto"
+            }
+          }
+        }
+      },
+      "RuntimeErrorDto" : {
+        "type" : "object",
+        "required" : [ "code", "message" ],
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "authoringId" : {
+            "type" : "string"
+          }
+        }
+      },
+      "SlotStatusDto" : {
+        "type" : "object",
+        "required" : [ "slot", "status" ],
+        "properties" : {
+          "slot" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "created", "suppressed", "truncated" ]
+          }
+        }
+      },
+      "StructureChoice" : {
+        "type" : "object",
+        "required" : [ "bundle", "root" ],
+        "properties" : {
+          "bundle" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "root" : {
+            "$ref" : "./mapping-model.schema.json#/$defs/rootSelector"
+          }
+        }
+      },
+      "StructureLoaded" : {
+        "type" : "object",
+        "required" : [ "kind", "fingerprint", "root", "types" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "loaded"
+          },
+          "fingerprint" : {
+            "type" : "string"
+          },
+          "root" : {
+            "$ref" : "#/components/schemas/FieldDto"
+          },
+          "types" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "array",
+              "items" : {
+                "$ref" : "#/components/schemas/FieldDto"
+              }
+            }
+          }
+        }
+      },
+      "StructureRefused" : {
+        "type" : "object",
+        "required" : [ "kind", "diagnostics" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "refused"
+          },
+          "diagnostics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DiagnosticDto"
+            }
+          }
+        }
+      },
+      "StructureRequest" : {
+        "type" : "object",
+        "required" : [ "base", "bundle", "root" ],
+        "properties" : {
+          "base" : {
+            "type" : "string"
+          },
+          "bundle" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "root" : {
+            "$ref" : "./mapping-model.schema.json#/$defs/rootSelector"
+          }
+        }
+      },
+      "StructureResponse" : {
+        "oneOf" : [ {
+          "$ref" : "#/components/schemas/StructureLoaded"
+        }, {
+          "$ref" : "#/components/schemas/StructureRefused"
+        } ],
+        "discriminator" : {
+          "propertyName" : "kind",
+          "mapping" : {
+            "loaded" : "#/components/schemas/StructureLoaded",
+            "refused" : "#/components/schemas/StructureRefused"
+          }
+        },
+        "type" : "object"
+      },
+      "TestError" : {
+        "type" : "object",
+        "required" : [ "kind", "error", "diagnostics", "trace" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "error"
+          },
+          "error" : {
+            "$ref" : "#/components/schemas/RuntimeErrorDto"
+          },
+          "diagnostics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DiagnosticDto"
+            }
+          },
+          "trace" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "$ref" : "#/components/schemas/TraceEntryDto"
+            }
+          }
+        }
+      },
+      "TestOutput" : {
+        "type" : "object",
+        "required" : [ "kind", "output", "diagnostics", "trace" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "output"
+          },
+          "output" : {
+            "type" : "string"
+          },
+          "diagnostics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DiagnosticDto"
+            }
+          },
+          "trace" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "$ref" : "#/components/schemas/TraceEntryDto"
+            }
+          }
+        }
+      },
+      "TestRefused" : {
+        "type" : "object",
+        "required" : [ "kind", "diagnostics" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "refused"
+          },
+          "diagnostics" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DiagnosticDto"
+            }
+          }
+        }
+      },
+      "TestRequest" : {
+        "type" : "object",
+        "required" : [ "model", "input" ],
+        "properties" : {
+          "model" : {
+            "$ref" : "./mapping-model.schema.json"
+          },
+          "input" : {
+            "type" : "string"
+          }
+        }
+      },
+      "TestResult" : {
+        "oneOf" : [ {
+          "$ref" : "#/components/schemas/TestOutput"
+        }, {
+          "$ref" : "#/components/schemas/TestRefused"
+        }, {
+          "$ref" : "#/components/schemas/TestError"
+        } ],
+        "discriminator" : {
+          "propertyName" : "kind",
+          "mapping" : {
+            "output" : "#/components/schemas/TestOutput",
+            "refused" : "#/components/schemas/TestRefused",
+            "error" : "#/components/schemas/TestError"
+          }
+        },
+        "type" : "object"
+      },
+      "TraceAtomicDto" : {
+        "type" : "object",
+        "required" : [ "kind", "type", "value" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "atomic"
+          },
+          "type" : {
+            "type" : "string"
+          },
+          "value" : {
+            "type" : "string"
+          }
+        }
+      },
+      "TraceContext" : {
+        "type" : "array",
+        "items" : {
+          "$ref" : "#/components/schemas/TraceValue"
+        }
+      },
+      "TraceEntryDto" : {
+        "type" : "object",
+        "oneOf" : [ {
+          "$ref" : "#/components/schemas/TraceQueueDto"
+        }, {
+          "$ref" : "#/components/schemas/TraceOccurrencesDto"
+        }, {
+          "$ref" : "#/components/schemas/TraceAtomicDto"
+        } ],
+        "discriminator" : {
+          "propertyName" : "kind",
+          "mapping" : {
+            "queue" : "#/components/schemas/TraceQueueDto",
+            "occurrences" : "#/components/schemas/TraceOccurrencesDto",
+            "atomic" : "#/components/schemas/TraceAtomicDto"
+          }
+        }
+      },
+      "TraceOccurrencesDto" : {
+        "type" : "object",
+        "required" : [ "kind", "min", "parents", "capped" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "occurrences"
+          },
+          "min" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "max" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "parents" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ParentSlotDto"
+            }
+          },
+          "capped" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "TraceQueueDto" : {
+        "type" : "object",
+        "required" : [ "kind", "contexts", "capped", "slotCount", "contextCount" ],
+        "properties" : {
+          "kind" : {
+            "type" : "string",
+            "const" : "queue"
+          },
+          "contexts" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/TraceContext"
+            }
+          },
+          "capped" : {
+            "type" : "boolean"
+          },
+          "slotCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "contextCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "TraceValue" : {
+        "type" : [ "string", "null" ]
+      }
+    }
+  },
+  "paths" : {
+    "/api/catalogue" : {
+      "get" : {
+        "responses" : {
+          "200" : {
+            "description" : "The function catalogue, keyed by function id",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "./function-catalogue.schema.json"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Get",
+        "tags" : [ "Catalogue Resource" ]
+      }
+    },
+    "/api/mappings" : {
+      "get" : {
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/MappingSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary" : "List",
+        "tags" : [ "Mappings Resource" ]
+      },
+      "post" : {
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateMappingRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "The new mapping in canonical form, with its ETag and Location",
+            "headers" : {
+              "ETag" : {
+                "description" : "\"sha256:<hex>\" of the canonical bytes (ADR-0024)",
+                "schema" : {
+                  "type" : "string"
+                },
+                "required" : true
+              },
+              "Location" : {
+                "description" : "The new mapping's URI",
+                "schema" : {
+                  "type" : "string"
+                },
+                "required" : true
+              }
+            },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "./mapping-model.schema.json"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "invalid-workspace-path, malformed-json or invalid-request",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: the mapping's directory",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "mapping-exists",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415" : {
+            "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "model-refused: a structure cannot be loaded, or the description is over 4,000 characters",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Create",
+        "tags" : [ "Mappings Resource" ]
+      }
+    },
+    "/api/mappings/{id}" : {
+      "put" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "pattern" : ".+"
+          }
+        }, {
+          "description" : "The ETag the editor read; absent, the save is unconditional",
+          "name" : "If-Match",
+          "in" : "header",
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "./mapping-model.schema.json"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "The saved mapping in canonical form, with its new ETag",
+            "headers" : {
+              "ETag" : {
+                "description" : "\"sha256:<hex>\" of the canonical bytes (ADR-0024)",
+                "schema" : {
+                  "type" : "string"
+                },
+                "required" : true
+              }
+            },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "./mapping-model.schema.json"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "invalid-workspace-path or malformed-json",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: no mapping of this id",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409" : {
+            "description" : "mapping-changed: If-Match differs from the stored file's ETag",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415" : {
+            "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "model-refused: validation stage 1 or 2 refuses the model",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Save",
+        "tags" : [ "Mappings Resource" ]
+      },
+      "get" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "pattern" : ".+"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "The mapping in canonical form, with its ETag",
+            "headers" : {
+              "ETag" : {
+                "description" : "\"sha256:<hex>\" of the canonical bytes (ADR-0024)",
+                "schema" : {
+                  "type" : "string"
+                },
+                "required" : true
+              }
+            },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "./mapping-model.schema.json"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "invalid-workspace-path",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: no mapping of this id",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "model-refused: the stored file is no JSON document or no valid model",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Get",
+        "tags" : [ "Mappings Resource" ]
+      }
+    },
+    "/api/mappings/{id}/compile" : {
+      "post" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "pattern" : ".+"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "./mapping-model.schema.json"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "The working copy's diagnostics, none when it compiles with every box reached",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CompileResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "invalid-workspace-path or malformed-json",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: the mapping's directory",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415" : {
+            "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Compile",
+        "tags" : [ "Mappings Resource" ]
+      }
+    },
+    "/api/mappings/{id}/refresh" : {
+      "post" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "pattern" : ".+"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "./mapping-model.schema.json"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "The refreshed working copy and its diagnostics",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RefreshResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "invalid-workspace-path or malformed-json",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: the mapping's directory",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415" : {
+            "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422" : {
+            "description" : "model-refused: validation stage 1 or 2 refuses the working copy",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RefusedProblem"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Refresh",
+        "tags" : [ "Mappings Resource" ]
+      }
+    },
+    "/api/mappings/{id}/test" : {
+      "post" : {
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "pattern" : ".+"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/TestRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "The output, the diagnostics that refuse the working copy, or the runtime error",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/TestResult"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "invalid-workspace-path, malformed-json, invalid-request or malformed-input",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: the mapping's directory",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415" : {
+            "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Test",
+        "tags" : [ "Mappings Resource" ]
+      }
+    },
+    "/api/structures" : {
+      "post" : {
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/StructureRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "The structure, or the load error that refuses it",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/StructureResponse"
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "invalid-workspace-path, malformed-json or invalid-request",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "not-found: the base directory",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415" : {
+            "description" : "unsupported-media-type",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "summary" : "Load",
+        "tags" : [ "Structures Resource" ]
+      }
+    }
+  },
+  "info" : {
+    "title" : "flottila-mapping-service API",
+    "version" : "0.1.0-SNAPSHOT"
+  }
+}

@@ -1,0 +1,13 @@
+CPI observation 2026-11-13: fn/average/004
+Artifact: api_stat_average_suppress
+Input: original average-004.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Tag context /Orders/Order -> createIf -> replaceValue -> average -> V.
+Simulation completed. Three Item elements each contain V 5. This differs from the assumed absence of V for the second Item. Downloaded XML preserved unchanged.
+Live replaceValue parameter dialog not independently inspected. No intermediate queue captured; final output does not establish where the difference originates. Output observed; parameter verification pending.
+
+2026-11-13 VERIFIED_PASS parameter/queue audit: Live export confirms replaceValue value=5 upstream of average. Existing observed output is 5,5,5; this parameter check does not isolate upstream suppression behavior. Evidence: cpi/parameter-audit/api_stat_average_suppress.json
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_stat_average_suppress.json.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

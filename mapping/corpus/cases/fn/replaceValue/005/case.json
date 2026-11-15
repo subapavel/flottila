@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/replace-value-remove-contexts.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 replaceValue: \"Replaces the value I with a value that you can define in the dialog for the function parameters.\" and removeContexts: \"Removes all higher-level contexts of a source field\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]",
+  "expect": "output",
+  "note": "replaceValue(removeContexts(Sku), X), Sku in its default context Line: a | b | c over two Orders. removeContexts puts the three values into one context and replaceValue replaces each, so All is X, X, X. Without removeContexts the root's slot reads context 1 only and All is X once."
+}

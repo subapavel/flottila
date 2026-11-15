@@ -1,0 +1,10 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/fixValues/003
+Mapping: fix_values_default
+Input: unchanged copyValue-001.xml, imported through the Test UI.
+Graph: Order (context Orders) -> Item; Sku (context Order) -> F1 FixValues -> V. W and All unmapped.
+Fixed-Values Table: a=A, d=D; Default Value ?; Use Default Value selected and visually verified.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+10:31:16 Start of test. Compilation successful. Server execution 6 milliseconds. Executed successfully. 10:31:17 End of test.
+Result exported through the UI to fixValues-003-fix-values-default.zip. XML extracted unchanged to fixValues-003-fix-values-default.xml.
+Reading: confirmed. V values are A, ?, ? | D | ?, ?. Missing keys use the configured default.

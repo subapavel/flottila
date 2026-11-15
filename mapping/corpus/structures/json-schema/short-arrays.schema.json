@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synthetic array properties whose maxItems is 1 or 0: each is an array property, whatever its maxItems (ADR-0008 \"JSON Schema and WSDL\", #118)",
+  "type": "object",
+  "properties": {
+    "one": {"type": "array", "maxItems": 1, "items": {"type": "string"}},
+    "none": {"type": "array", "maxItems": 0, "items": {"type": "string"}},
+    "maybe": {"type": ["array", "null"], "maxItems": 1, "items": {"type": "string"}},
+    "objs": {
+      "type": "array",
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "sku": {"type": "string"}
+        }
+      }
+    },
+    "plain": {"type": "string"}
+  }
+}

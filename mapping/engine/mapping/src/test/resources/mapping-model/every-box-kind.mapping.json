@@ -1,0 +1,163 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/order-types.xsd",
+      "../structures/order.xsd"
+    ],
+    "fingerprint": "sha256:eb9557e1dbe93ad203f075592afed56672eb9f5fbd742d0260e04d12a37d86fc",
+    "root": {
+      "element": "Q{urn:flottila:test:order}Order"
+    }
+  },
+  "target": {
+    "bundle": [
+      "common-schemas@1.4.0:/invoice/invoice.wsdl"
+    ],
+    "fingerprint": "sha256:25cbda891fc394e70ba37c3794f34d10778f8d2d1e4f211c9fd58ca8666eff4f",
+    "root": {
+      "wsdl": {
+        "direction": "fault",
+        "fault": "InvoiceRejected",
+        "interface": "Q{urn:flottila:test:invoice}InvoicePortType",
+        "operation": "SendInvoice"
+      }
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:test:invoice}InvoiceRejection/Q{urn:flottila:test:invoice}Amount": {
+      "boxes": {
+        "2v9d0k5mxs": {
+          "context": "/Q{urn:flottila:test:order}Order",
+          "field": "/Q{urn:flottila:test:order}Order/Q{urn:flottila:test:order}Item/Q{urn:flottila:test:order}Price",
+          "kind": "source"
+        },
+        "5h7b3n1qgz": {
+          "inputs": [
+            "2v9d0k5mxs",
+            null
+          ],
+          "kind": "udf",
+          "params": {
+            "scale": "2"
+          },
+          "udf": "roundAmount"
+        },
+        "8e4w6y2j0p": {
+          "fn": "formatNumber",
+          "inputs": [
+            "5h7b3n1qgz"
+          ],
+          "kind": "function",
+          "params": {
+            "pattern": "#0.00"
+          }
+        }
+      },
+      "id": "0a3c5e7g9j",
+      "result": "8e4w6y2j0p"
+    },
+    "/Q{urn:flottila:test:invoice}InvoiceRejection/Q{urn:flottila:test:invoice}Currency": {
+      "boxes": {
+        "1c8kq3v7we": {
+          "field": "/Q{urn:flottila:test:order}Order/Q{urn:flottila:test:order}Header/@currency",
+          "kind": "source"
+        },
+        "4m2tz9r0ha": {
+          "fn": "fixValues",
+          "inputs": [
+            "1c8kq3v7we"
+          ],
+          "kind": "function",
+          "params": {
+            "defaultValue": "EUR",
+            "table": {
+              "": "EUR",
+              "CHF": "CHF",
+              "dollar": "USD",
+              "euro": "EUR"
+            }
+          }
+        }
+      },
+      "id": "0b4d6f8h0k",
+      "result": "4m2tz9r0ha"
+    },
+    "/Q{urn:flottila:test:invoice}InvoiceRejection/Q{urn:flottila:test:invoice}Reason": {
+      "boxes": {
+        "3r5t7v9x1z": {
+          "inputs": [
+            null,
+            "6k8m0p2r4t"
+          ],
+          "kind": "unresolved",
+          "name": "CopyValue",
+          "origin": "po",
+          "params": {
+            "index": "1"
+          }
+        },
+        "6k8m0p2r4t": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": "rejected"
+          }
+        },
+        "7n9q1s3v5x": {
+          "fn": "fixValues",
+          "inputs": [
+            "6k8m0p2r4t"
+          ],
+          "kind": "function",
+          "params": {
+            "table": {}
+          }
+        },
+        "9w1y3a5c7e": {
+          "inputs": [
+            "3r5t7v9x1z"
+          ],
+          "kind": "unresolved",
+          "name": "formatByExample",
+          "origin": "cpi"
+        },
+        "9x2z4b6d8f": {
+          "kind": "unresolved",
+          "name": "UserLookup",
+          "origin": "editor"
+        }
+      },
+      "id": "0c5e7g9j1m",
+      "result": null
+    }
+  },
+  "udfs": {
+    "headerFlag": {
+      "executionKind": "queue",
+      "params": {
+        "mode": "string"
+      },
+      "source": "../udfs/test/Amounts.java#headerFlag"
+    },
+    "roundAmount": {
+      "executionKind": "single",
+      "inputs": [
+        "amount",
+        "fallback"
+      ],
+      "params": {
+        "scale": "int"
+      },
+      "source": "../udfs/test/Amounts.java#roundAmount"
+    },
+    "sumByKey": {
+      "executionKind": "context",
+      "inputs": [
+        "keys",
+        "values"
+      ],
+      "source": "../udfs/test/Amounts.java#sumByKey"
+    }
+  }
+}

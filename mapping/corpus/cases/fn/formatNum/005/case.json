@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-optional-fraction.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-arithmetic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-arithmetic/po75/formatNum-005-fmt-005.xml and corpus/observations/obs-arithmetic/cpi/formatNum-005-fmt-005.xml; before #214: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture 0.##; assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-005)",
+  "expect": "output",
+  "note": "Optional fraction digits: trailing zeros go, so 1 gives 1 without a decimal separator, 1.5 gives 1.5, 1.256 gives 1.26 and 0.004 gives 0."
+}

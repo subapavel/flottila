@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/exists-default-context.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 exists: \"O = true, if the source field assigned to inbound channel I exists in the XML instance. Otherwise, false.\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/db/83f7b88528424c9113b15d5e0fb516/content.htm]",
+  "expect": "output",
+  "note": "exists on the 0..1 field Id in its default context Order, over one Order without an Id: the field is not in the instance, so its one context is empty and All is false. Giving no value for an empty context would write the root without All."
+}

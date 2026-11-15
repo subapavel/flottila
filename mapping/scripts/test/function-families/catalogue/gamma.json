@@ -1,0 +1,11 @@
+{
+  "cherry": {
+    "executionKind": "single",
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  }
+}

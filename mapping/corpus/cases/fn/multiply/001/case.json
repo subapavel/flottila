@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-multiply.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "Qty times Sku in context Orders, exact: 0.1 * 0.1 is 0.01, 1.50 * 1 is 1.5, and a 20-digit factor keeps every digit."
+}

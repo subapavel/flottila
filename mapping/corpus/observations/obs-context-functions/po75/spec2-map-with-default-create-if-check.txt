@@ -1,0 +1,14 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_map_with_default_create_if; case fn/mapWithDefault/002.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context -> createIf -> mapWithDefault -> removeContexts -> Out/All only.
+Parameter label: Default Value to Be Mapped; value D. Saved node displayed [D].
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original exists-004.xml imported through test UI, no edits.
+21:41:02 Start of test
+Compilation of spec2_map_with_default_create_if successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+21:41:03 End of test
+Result exported through UI as spec2-map-with-default-create-if-export.zip; instance.xml extracted unchanged as spec2-map-with-default-create-if.xml.
+Reading: All empty string,D,empty string. SUPPRESS-only context is retained rather than filled. Only the truly empty context gets D. Contradicts the assumed four-value result; agrees with the verified CPI result. Initial CPI attempt remains historical only.

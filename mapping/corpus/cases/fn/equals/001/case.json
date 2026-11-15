@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-equals.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-equals, input equals-001.xml: corpus/observations/obs-boolean/po75/equals-001-boolean-equals-error.txt (PO 7.50, FunctionException \"Cannot cast 'keep' to boolean\" in flib7.Bool method equalsBoolean) and cpi/equals-001-boolean-equals-error.txt (CPI, \"Cannot cast \"keep\" to boolean.\"); PO and CPI agree, no output (meta.json); F-44, ADR-0006 Consequences, the boolean family's cast",
+  "expect": "error",
+  "note": "The boolean family's equals casts both values as PO's Bool.toBoolean does and compares the truth values; it is no text comparison (that is equalsS). Lines (keep, keep), (keep, Keep), (empty, empty), (a, empty), (1, 1.0): keep in line 1 is no boolean, so the run raises err:FORG0001 at F1, as PO and CPI end it with \"Cannot cast 'keep' to boolean\"."
+}

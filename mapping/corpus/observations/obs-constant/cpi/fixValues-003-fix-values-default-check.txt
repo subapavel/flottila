@@ -1,0 +1,14 @@
+CPI observation: fn/fixValues/003
+Date: 2026-11-12
+Artifact: api_fix_values_default
+Input: copyValue-001.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Item; Sku in /Orders/Order context -> fixValues -> V.
+Simulation completed. V per Item: A,?,? | D | ?,?. Matches the assumed output for the prepared default-value variant.
+Exact downloaded output copied byte-for-byte to fixValues-003-fix-values-default.xml.
+Live table contents and missing-key parameters were not independently inspected in the editor.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_fix_values_default.json, cpi/native-options-fixValues.txt.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

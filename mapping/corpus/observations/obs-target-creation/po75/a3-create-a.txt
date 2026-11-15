@@ -1,0 +1,20 @@
+PO 7.5, Test tab, input a3.xml, mapping create-a.
+Fired at run time: "Compilation of create_a successful", then the error below. No output.
+The text is identical to a2 (SUPPRESS,SUPPRESS) although here the Row queue has no value at all.
+
+Dialog "Problem when Testing":
+Cannot create target element /Create/Row. Values missing in queue context. Target XSD requires a value for this element, but the target-field mapping does not create one. Check whether the XML instance is valid for the source XSD, and whether the target-field mapping fulfils the requirement of the target XSD
+See error logs for details
+
+Log with trace level "all":
+ Compilation of create_a successful
+
+* Document start
+* Start tag [Create]
+
+ Cannot create target element /Create/Row. Values missing in queue context. Target XSD requires a value for this element, but the target-field mapping does not create one. Check whether the XML instance is valid for the source XSD, and whether the target-field mapping fulfils the requirement of the target XSD
+com.sap.aii.mappingtool.tf7.IllegalInstanceException: Cannot create target element /Create/Row. Values missing in queue context. Target XSD requires a value for this element, but the target-field mapping does not create one. Check whether the XML instance is valid for the source XSD, and whether the target-field mapping fulfils the requirement of the target XSD
+	at com.sap.aii.mappingtool.tf7.AMappingProgram.processNode(AMappingProgram.java:420)
+	at com.sap.aii.mappingtool.tf7.AMappingProgram.processNode(AMappingProgram.java:467)
+	at com.sap.aii.mappingtool.tf7.AMappingProgram.start(AMappingProgram.java:573)
+	(server frames below the mapping tool omitted)

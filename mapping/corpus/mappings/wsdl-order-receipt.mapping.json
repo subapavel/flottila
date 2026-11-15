@@ -1,0 +1,59 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/files-and-names/import-location/common/types.xsd",
+      "../structures/files-and-names/import-location/po/order.xsd",
+      "../structures/wsdl/order-11.wsdl"
+    ],
+    "fingerprint": "sha256:510d96ec830e4ad8aa2e477a6fe73640f58587cc84ce10ec68ce666ca65edd16",
+    "root": {
+      "wsdl": {
+        "direction": "input",
+        "interface": "Q{urn:flottila:corpus:wsdl11}OrderPort",
+        "operation": "Submit"
+      }
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/files-and-names/import-location/common/types.xsd",
+      "../structures/files-and-names/import-location/po/order.xsd",
+      "../structures/wsdl/order-11.wsdl"
+    ],
+    "fingerprint": "sha256:facdda4e20e0833ad276202aa9f4c563264b3b071e5c12825ba01082ba1cbc85",
+    "root": {
+      "wsdl": {
+        "direction": "output",
+        "interface": "Q{urn:flottila:corpus:wsdl11}OrderPort",
+        "operation": "Submit"
+      }
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:corpus:wsdl11}Receipt/Q{urn:flottila:corpus:wsdl11}Accepted": {
+      "boxes": {
+        "C1": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": "true"
+          }
+        }
+      },
+      "id": "T2",
+      "result": "C1"
+    },
+    "/Q{urn:flottila:corpus:wsdl11}Receipt/Q{urn:flottila:corpus:wsdl11}OrderId": {
+      "boxes": {
+        "S1": {
+          "context": "/Q{urn:flottila:corpus:po}Order",
+          "field": "/Q{urn:flottila:corpus:po}Order/Q{urn:flottila:corpus:po}Id",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    }
+  }
+}

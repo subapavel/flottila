@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): global elements of a simple type, fields to refer to but never a root -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:leaf"
+           targetNamespace="urn:flottila:corpus:leaf">
+  <xs:element name="Code" type="xs:string"/>
+  <xs:element name="Amount" type="tns:Money"/>
+  <xs:element name="Doc" type="tns:DocType"/>
+  <xs:complexType name="DocType">
+    <xs:sequence>
+      <xs:element ref="tns:Code"/>
+      <xs:element ref="tns:Amount" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:simpleType name="Money">
+    <xs:restriction base="xs:decimal"/>
+  </xs:simpleType>
+</xs:schema>

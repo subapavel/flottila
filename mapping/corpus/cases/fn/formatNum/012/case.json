@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-negative.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-43 addendum: CPI equals the expected output (obs-arithmetic cpi/formatNum-012-fmt-012.xml), PO prints (1,234.50 without the closing parenthesis; Flottila follows CPI; was assumed: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture #,##0.00;(#,##0.00); assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-012)",
+  "expect": "output",
+  "note": "A negative subpattern gives the prefix and suffix of a negative number, its digits those of the positive one: -1234.5 gives (1,234.50), 1234.5 gives 1,234.50, and -0.001 gives (0.00). Taking the negative subpattern's own digits would give (1235)."
+}

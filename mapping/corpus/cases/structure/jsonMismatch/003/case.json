@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-lines.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a value whose JSON kind does not fit its field reads as absent: a non-array for an array property); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. lines is one object, not an array, so the array property $/lines never occurs: no Item and no V. order is an object as its field needs, so All is o1."
+}

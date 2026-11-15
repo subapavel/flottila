@@ -1,0 +1,17 @@
+{
+  "case": "fn/constant/003",
+  "artifact": "api_constant_item",
+  "version": "1.0.0",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "const",
+      "inputCount": 0,
+      "bindings": "<bindings><param name=\"value\"><value>x</value></param></bindings>",
+      "sourcePaths": []
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

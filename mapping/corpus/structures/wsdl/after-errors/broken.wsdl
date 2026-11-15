@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): stops being well-formed inside its inline schema; what it declares is unknown -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  targetNamespace="urn:flottila:corpus:broken-wsdl">
+  <wsdl:types>
+    <xs:schema targetNamespace="urn:flottila:corpus:broken-wsdl">
+      <xs:element name="Open" type="xs:string">
+    </xs:schema>
+  </wsdl:types>
+</wsdl:definitions>

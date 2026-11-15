@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/repeated-choice-target.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 XSD (the branches of a choice become sibling fields; effective occurrence is the product of every enclosing particle's occurrence) and \"Refused when a mapping uses the field\" (a repeated group of two or more particles is refused in a target unless it is a choice of single elements); spec #89, ticket #94",
+  "expect": "output",
+  "note": "picks.xsd holds a repeated choice of the single elements A and B, so each is 0..unbounded and the target is not refused. A copies every Id and B every Sku, each in context Orders: streamed output writes every A, then every B, which the repeated choice allows. Also a differential case: the exported XSLT gives the same output."
+}

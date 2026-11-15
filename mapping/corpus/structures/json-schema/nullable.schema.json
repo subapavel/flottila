@@ -1,0 +1,12 @@
+{
+  "title": "A type list [T, \"null\"] marks the field nillable",
+  "type": "object",
+  "required": ["price"],
+  "properties": {
+    "price": {"type": ["number", "null"]},
+    "code": {"type": ["string", "integer"]},
+    "address": {"type": ["object", "null"], "properties": {"city": {"type": "string"}}},
+    "dates": {"type": ["array", "null"], "items": {"type": "string", "format": "date"}},
+    "nothing": {"type": "null"}
+  }
+}

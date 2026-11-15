@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target for obs-target-creation (ADR-0018): Req is mandatory and stays unmapped. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Unmapped">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Head" minOccurs="1" maxOccurs="1">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="A" type="xs:string" minOccurs="0" maxOccurs="1"/>
+              <xs:element name="Req" type="xs:string" minOccurs="1" maxOccurs="1"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

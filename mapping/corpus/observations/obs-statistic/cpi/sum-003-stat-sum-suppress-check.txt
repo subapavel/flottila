@@ -1,0 +1,12 @@
+CPI observation 2026-11-13: fn/sum/003
+Artifact: api_stat_sum_suppress
+Input: original sum-003.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Tag context /Orders/Order -> createIf -> replaceValue -> sum -> V.
+Simulation completed. Four Item elements have V 15, 5, 0, 5. This differs from the request's assumed 10, 0, 0, 5. Downloaded XML preserved unchanged.
+Requested R1 display queue was not captured. Queue UI unavailable in earlier repeated attempts this session; no intermediate queue inferred from final XML. Live replaceValue parameter dialog not independently inspected. The output alone does not localize the difference to sum versus upstream functions.
+Status: output observed; queue and parameter verification pending.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_stat_sum_suppress.json, cpi/sum-003-R1-queue.json.
+replaceValue transforms both empty and SUPPRESS into numeric 5. R1 queue is 5,5,5 | 5 | empty | 5. Therefore previous sum output 15,5,0,5 does not test sum receiving SUPPRESS; the upstream replacement consumes it. Temporary layout discarded.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

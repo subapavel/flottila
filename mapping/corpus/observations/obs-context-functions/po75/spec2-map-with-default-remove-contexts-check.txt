@@ -1,0 +1,13 @@
+PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_map_with_default_remove_contexts.
+Graph: Sku (default Line context) -> removeContexts -> mapWithDefault -> Out/All only.
+Parameter label: Default Value to Be Mapped; value D. Saved; node displays [D].
+Object Check: No errors found during object check; Problem 0, Warning 0.
+Input: original collapseContexts-003.xml imported through Test.
+21:05:11 Start of test
+Compilation of spec2_map_with_default_remove_contexts successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+21:05:12 End of test
+Exact output exported as spec2-map-with-default-remove-contexts-export.zip and extracted without rewriting as spec2-map-with-default-remove-contexts.xml.
+Reading: One All D. Confirms fn/mapWithDefault/004 and agrees with the verified CPI rerun; historical initial CPI attempt is not used for comparison.

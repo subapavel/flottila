@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/map-with-default.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-map-with-default.xml and corpus/observations/obs-context-functions/cpi/mapWithDefault-003-spec2-map-with-default.xml; before #214: #2 §7.6: an empty context is a context with no values (partially resolved); obs-lift-reuse lift-1 o5 (#32): <Tag/> is a value that is the empty string, not an empty context; #57 ticket: an empty string value is a value for mapWithDefault; observation #61",
+  "expect": "output",
+  "note": "To observe in PO: <Tag/> under mapWithDefault. Tag in its default context Order is \"\" | (empty) | \"\", x: o1's <Tag/> is the value \"\", o2 has no Tag. mapWithDefault keeps both contexts with a value, the empty string included, and fills the empty one: \"\", Default, \"\", x. Taking \"\" for no value would give Default, Default, \"\", x."
+}

@@ -1,0 +1,51 @@
+SAP PO 7.50 / ESR Display Queue, lift_2, l2.xml, 2026-11-11
+Input loaded directly from the unchanged corpus l2.xml.
+Literal square brackets below are displayed by ESR around values.
+
+U1 / toUpperCase
+Columns: row | toUpperCase:in0 | toUpperCase:out | cell background
+0 | <null> | <null> | gray
+1 | [a] | [A] | white
+2 | SUPPRESS | SUPPRESS | cyan
+3 | [c] | [C] | white
+4 | [c] | [C] | dark gray
+No italic value text observed.
+Display Queue recalculation log: Compilation of lift_2 successful; Execution of mapping on server took 19 milliseconds; Executed successfully.
+
+Reading (U1): the middle SUPPRESS position is retained through toUpperCase. The dark-gray terminal row is recorded literally, not counted as an additional output value. Final XML contains W=A,C.
+
+X1 / ifWithoutElse (then=Qty)
+Columns: row | ifWithoutElse:in0 | ifWithoutElse:in1 | ifWithoutElse:out | cell backgrounds
+0 | <null> | <null> | <null> | all gray
+1 | [true] | [5] | [5] | all white
+2 | [false] | [0] | SUPPRESS | inputs white, output cyan
+3 | [true] | [7] | [7] | all white
+4 | [true] | [7] | [7] | all dark gray
+No italic value text observed.
+Display Queue recalculation log: Compilation of lift_2 successful; Execution of mapping on server took 10 milliseconds; Executed successfully.
+
+Reading (X1): the zero Qty position becomes SUPPRESS between 5 and 7; it is not removed from the queue.
+
+K1 / concat(Sku, X1), empty delimiter
+Columns: row | concat:in0 | concat:in1 | concat:out | cell backgrounds
+0 | <null> | <null> | <null> | all gray
+1 | [a] | [5] | [a5] | all white
+2 | [b] | SUPPRESS | SUPPRESS | in0 white, in1 and output cyan
+3 | [c] | [7] | [c7] | all white
+4 | [c] | [7] | [c7] | all dark gray
+No italic value text observed.
+Display Queue recalculation log: Compilation of lift_2 successful; Execution of mapping on server took 27 milliseconds; Executed successfully.
+
+Reading (K1): SUPPRESS propagates through concat in the middle position.
+
+K2 / concat(K1, Tag), empty delimiter
+Columns: row | concat:in0 | concat:in1 | concat:out | cell backgrounds
+0 | <null> | <null> | <null> | all gray
+1 | [a5] | [t1] | [a5t1] | all white
+2 | SUPPRESS | [t2] | SUPPRESS | in0 and output cyan, in1 white
+3 | [c7] | [t3] | [c7t3] | all white
+4 | [c7] | [t3] | [c7t3] | all dark gray
+No italic value text observed.
+Display Queue recalculation log: Compilation of lift_2 successful; Execution of mapping on server took 18 milliseconds; Executed successfully.
+
+Reading (K2): the SUPPRESS slot consumes t2. Final XML has V=a5t1,c7t3. Dark-gray terminal rows are not counted as additional values.

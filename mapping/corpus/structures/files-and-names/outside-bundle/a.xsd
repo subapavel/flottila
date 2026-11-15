@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): three references to files outside the bundle ["a.xsd"], and a type in no
+     namespace, which none of them can declare -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:a">
+  <xs:import namespace="urn:flottila:corpus:unlisted" schemaLocation="unlisted.xsd"/>
+  <xs:include schemaLocation="../../../etc/passwd"/>
+  <xs:import namespace="urn:flottila:corpus:nowhere"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Text" type="Missing"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

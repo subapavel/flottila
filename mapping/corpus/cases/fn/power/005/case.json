@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/power.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: a number is read in the xs:decimal lexical form only",
+  "expect": "error",
+  "note": "The exponent is 1e3, no xs:decimal: power raises err:FORG0001 at its box V1."
+}

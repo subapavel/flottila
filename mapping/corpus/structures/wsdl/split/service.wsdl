@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): a WSDL 1.1 portType whose message is declared in the WSDL it imports. Both
+     wsdl:imports have a URL and fall back to the bundle file with their namespace: a WSDL, and an
+     XSD -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:msg="urn:flottila:corpus:split-messages"
+                  targetNamespace="urn:flottila:corpus:split">
+  <wsdl:import namespace="urn:flottila:corpus:split-messages"
+               location="http://example.invalid/messages.wsdl"/>
+  <wsdl:import namespace="urn:flottila:corpus:split-types"
+               location="http://example.invalid/types.xsd"/>
+  <wsdl:portType name="Port">
+    <wsdl:operation name="Send">
+      <wsdl:input message="msg:Request"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

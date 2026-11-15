@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-equalsS.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/equalsS-001-text-equalsS.xml and corpus/observations/obs-text/cpi/equalsS-001-text-equalsS-native.xml; before #214: ADR-0025 (functions bind by name; the reading of equalsS follows java.lang.String and XPath); obs-text row equalsS/001",
+  "expect": "output",
+  "note": "equalsS compares case-sensitively and writes true or false: keep/keep is true, keep/Keep false, empty/empty true, a/empty false."
+}

@@ -1,0 +1,53 @@
+name: bench
+
+# JMH on a shared runner, for information only (ADR-0017, ADR-0021). Never a gate: shared runners are too
+# noisy for a regression threshold. A manual smoke test at -f 1; spec-gate step 5 runs the benchmarks at -f 3.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+
+jobs:
+  jmh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Maven mirror
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      - name: Build the benchmarks
+        run: ./mvnw -B -Pbench -pl bench/jmh -am package -DskipTests
+      - name: Run JMH
+        run: |
+          if [ -f bench/jmh/target/benchmarks.jar ]; then
+            mkdir -p .logs
+            java -jar bench/jmh/target/benchmarks.jar -f 1 -wi 3 -i 5 -w 1s -r 1s -prof gc -rf json -rff .logs/bench-ci-jmh.json
+          else
+            echo "No benchmarks.jar: the build step above did not produce it."
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: jmh
+          path: .logs/bench-ci-jmh.json
+          if-no-files-found: ignore

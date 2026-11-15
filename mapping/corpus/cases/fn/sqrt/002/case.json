@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sqrt.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: sqrt is computed in xs:double and cast back to xs:decimal (the catalogue deviation)",
+  "expect": "output",
+  "note": "Qty is 2 and 0.0001. The root is the double nearest to it, written as the xs:decimal that double equals exactly, so 0.0001 gives 0.01000000000000000020816681711721685132943093776702880859375, not 0.01. That is the deviation the catalogue states."
+}

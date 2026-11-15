@@ -1,0 +1,12 @@
+CPI observation 2026-11-12: fn/fixValues/005
+Artifact: api_fix_values_default_empty
+Input: original copyValue-001.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Sku context /Orders/Order -> fixValues -> V.
+Mapping test completed. Downloaded output preserved unchanged.
+Output: three Item elements, V values [A, empty, empty] | [empty] | [empty, empty]. Empty elements are present, not suppressed.
+Live function parameter dialog was not inspected; table and default configuration are not independently confirmed by this run. Output observed; parameter verification pending.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_fix_values_default_empty.json, cpi/native-options-fixValues.txt.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

@@ -1,0 +1,5 @@
+CPI, Message Mapping editor, spec2-use-one-as-many-collapsed.
+Save completed without an error dialog, red target, or warning triangle.
+U1 input 1 = Id (default Order); input 2 = separate Sku box with Context /Orders/Order; input 3 = separate Sku box with Context /Orders/Order/Line (the field's default context, restored after copying the box).
+U1 -> collapseContexts -> /Out/All. Five connections verified in the expression; no other target wire.
+Source boxes were copied through Copy Expression / Paste in the editor to obtain independent contexts. No complete mapping artifact was copied.

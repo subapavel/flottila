@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): a refusal in the last file of the bundle. The type Missing is declared
+     nowhere, but broken.xsd has the same (no) namespace and stopped, so it may declare it. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:redefine schemaLocation="x.xsd"/>
+  <xs:element name="Third" type="Missing"/>
+</xs:schema>

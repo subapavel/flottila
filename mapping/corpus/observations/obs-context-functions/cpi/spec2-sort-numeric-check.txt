@@ -1,0 +1,5 @@
+CPI editor, mapping spec2-sort-numeric.
+In-place edit of spec2_sort after the descending output was saved. Comparison rule float number is CPI's available numeric mode; no decimal option is exposed. Order asc.
+The first asc click during control rerender did not persist. Detected before simulation, clicked again on the current control, verified asc=true / desc=false and saved again.
+Graph unchanged: Tag default Order -> sort -> removeContexts -> All. No other fields mapped.
+Save completed without validation error. sort-006 succeeded with the expected numeric order, stable ties and unchanged lexical forms (including whitespace, plus sign, leading zeros and trailing decimal point). sort-014 failed at run time in sort with Cannot cast "x" to decimal number.; no output.

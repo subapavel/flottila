@@ -1,0 +1,10 @@
+Case: fn/count/003
+Date: 2026-11-12
+Environment: SAP PO 7.50 ESR message mapping
+Mapping: stat_count_suppress
+Input: unchanged ../count-003.xml imported through Test UI.
+Graph: Order (context Orders) -> Item; Tag (context Order) -> createIf -> count -> V. W and All unmapped.
+Definition saved; Save disabled. Object check: No errors found during object check; Problem 0, Warning 0.
+Test log: 11:10:31 Start of test; Compilation of stat_count_suppress successful; Execution of mapping on server took 11 milliseconds; Executed successfully; 11:10:33 End of test.
+Result observed in SRC and exported through UI to count-003-stat-count-suppress.zip. XML extracted unchanged from instance.xml.
+Reading: confirmed. The three Items contain V 2, 0, 0. SUPPRESS is not counted; the context containing only SUPPRESS and the empty context both produce zero.

@@ -1,0 +1,18 @@
+Display Queue of box M1 (mapWithDefault), CPI Function Message Queue, ctx-2, f2.xml.
+Default Value displayed D; S. No. enabled. Generated after the initial simulation and before the verification rerun.
+
+row  mapWithDefault:in1  shading    mapWithDefault:out1  shading
+0    <null>             gray       <null>              gray
+1    5                  white      5                   white
+2    5                  gray       5                   gray
+3    SUPPRESS           white      SUPPRESS            white
+4    SUPPRESS           gray       SUPPRESS            gray
+5    SUPPRESS           gray       D                   white
+6    SUPPRESS           white      D                   gray
+7    3                  white      SUPPRESS            white
+8    3                  dark gray  3                   white
+9    (none)                        3                   dark gray
+
+All gray and dark-gray cells are italic. Gray repeats the preceding value; it is not another value.
+Reading: in1 = [5] [SUPPRESS] [] [SUPPRESS,3]; out1 = [5] [SUPPRESS] [D] [SUPPRESS,3].
+M1 preserves a SUPPRESS-only context and supplies D only for the truly empty context.

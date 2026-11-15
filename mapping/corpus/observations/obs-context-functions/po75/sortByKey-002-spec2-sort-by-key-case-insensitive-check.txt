@@ -1,0 +1,22 @@
+SAP PO observation 2026-11-12
+Mapping spec2_sort_by_key_case_insensitive; fn/sortByKey/002; original sortByKey-002.xml imported unchanged via UI.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Sku context Order -> sortByKey first input; Qty context Order -> second input; sortByKey -> removeContexts -> All. Nothing else mapped.
+Copied from spec2_sort_by_key; comparison changed to case insensitive, ascending retained. Saved (Save disabled); Check: No errors found during object check; Problem 0, Warning 0.
+00:45:41 Start of test
+Compilation of spec2_sort_by_key_case_insensitive successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+00:45:42 End of test
+UI export instance.xml extracted unchanged.
+Display Queue triggered successful compilation/execution, 8 milliseconds.
+Literal numbered queue columns sortByKey:in0 | sortByKey:in1 | sortByKey:out:
+0 (gray): <null> | <null> | <null>
+1: [B] | [1] | [2]
+2: [a] | [2] | [4]
+3: [b] | [3] | [1]
+4: [A] | [4] | [3]
+5: [fullwidth A glyph] | [5] | [6]
+6: [grinning face glyph] | [6] | [5]
+7 (dark gray terminal): [grinning face glyph] | [6] | [5]
+Reading: ordinary output values 2,4,1,3,6,5. Gray initial and terminal rows are not extra values. Contradicts assumed 2,4,1,3,5,6; ties retain input order, supplementary character key precedes fullwidth A. CPI not run.

@@ -1,0 +1,15 @@
+CPI observation: fn/fixValues/004 (exception variant also requested under fn/fixValues/002)
+Date: 2026-11-12
+Artifact: api_fix_values_exception
+Input: copyValue-001.xml (original corpus file)
+Status: EXECUTED_FAIL (observed mapping exception, not a simulator blocker)
+Verified editor expressions: Order in /Orders context -> Item; Sku in /Orders/Order context -> fixValues -> V.
+Observed error, with only opaque object/exchange identifiers replaced:
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/Item/V. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: No value found for [b]] in class com.sap.aii.mappingtool.flib7.TextFunctions method fixed_values[b, FixedValues{a=A, d=D}, com.sap.aii.ib.bom.flib.types.ValueMappingStrategy@[redacted], , com.sap.aii.mappingtool.tf7.rt.Context@[redacted]] No value found for [b] on the exchange: Exchange[redacted]
+No output XML produced. The error confirms the a=A,d=D table and missing-key exception for b; later input values were not independently evaluated.
+Live dialog labels and default selection remain unverified. No mapping changed or deployed.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_fix_values_exception.json, cpi/native-options-fixValues.txt.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

@@ -1,0 +1,17 @@
+SAP PO observation 2026-11-11
+Mapping: ctx_6a
+Source: src-orders.xsd; target: tgt-list.xsd.
+Qty in default Line context -> greater in1; Constant 0 -> greater in2.
+greater -> ifWithoutElse if; same Qty -> then; Keep SUPPRESS Values checked.
+ifWithoutElse -> removeContexts R1 -> concat in1.
+Tag in default Order context -> separate removeContexts R2 -> concat in2.
+concat with empty delimiter -> Out/All only. Item, V and W unmapped.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f6.xml imported through test UI, no edits.
+23:37:23 Start of test
+Compilation of ctx_6a successful
+Execution of mapping on server took 10 milliseconds
+Executed successfully
+23:37:24 End of test
+Result exported through UI as ctx-6a-export.zip; instance.xml extracted unchanged as ctx-6a.xml.
+Reading: All 5t1,7t3 selects the SUPPRESS-kept candidate. The suppressed slot still consumes Tag t2. Agrees with CPI. No fixed assumed result, so reading other.

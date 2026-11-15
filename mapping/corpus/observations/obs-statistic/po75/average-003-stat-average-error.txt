@@ -1,0 +1,12 @@
+Case: fn/average/003
+Date: 2026-11-12
+Environment: SAP PO 7.50 ESR message mapping
+Mapping: stat_average
+Input: unchanged ../average-003.xml imported through Test UI and inspected in SRC.
+Graph: Order (context Orders) -> Item; Qty (context Order, inherited from stat_sum) -> average -> V. W and All unmapped.
+Definition saved; Save disabled. Object check: No errors found during object check; Problem 0, Warning 0.
+Test log: 11:29:08 Start of test; Compilation of stat_average successful.
+Problem when Testing:
+Runtime exception when processing target-field mapping /Out/Item/V; root message: Exception:[java.lang.ArithmeticException: Division undefined] in class com.sap.aii.mappingtool.flib7.Stat method average[[Ljava.lang.String;@[redacted], com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[redacted], com.sap.aii.mappingtool.tf7.rt.Context@[redacted]]
+See error logs for details
+Reading: contradicted. Empty input contexts cause a runtime arithmetic exception instead of omitted V values. No result XML produced. Runtime object identities redacted.

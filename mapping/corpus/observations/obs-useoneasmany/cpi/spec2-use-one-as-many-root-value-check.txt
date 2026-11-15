@@ -1,0 +1,7 @@
+CPI, Message Mapping editor, spec2-use-one-as-many-root-value, case fn/useOneAsMany/003. No output.
+ENVIRONMENT_BLOCKED before simulation.
+The first browser connection was lost during XSD upload. The same artifact was reopened in a fresh tab of the same browser and rebuilt through the UI. Five wires were verified: Id (Context /Orders) -> U1 input 1; Sku (Context /Orders/Order) -> U1 input 2; a separate default-context Sku -> U1 input 3; U1 -> removeContexts -> /Out/All.
+Save was clicked. The next visible state was the browser alert:
+Your session has expired. Press OK to login again.
+OK
+The attempted alert dismissal and subsequent state check both timed out while restoring browser interaction. Save completion could not be verified. No simulation was started and no runtime result is inferred.

@@ -1,0 +1,12 @@
+SAP PO 7.50 ESR / str_required_attr / 2026-11-11
+Source src-orders.xsd; target tgt-required-attr.xsd, Coded.
+Only mapping: Id with explicit Orders context -> Coded/V. Required @code stays unmapped (red in target tree).
+Save succeeded. Object Check: Problem 1, Warning 0.
+Exact check message:
+Target field mapping '/Coded/@code' incomplete; reason: Mapping for target field '/Coded/@code' incomplete
+Original attr1.xml imported unchanged and verified in SRC: Id X1 and X2.
+Test button, 20:38:29 Start of test:
+Mapping object str_required_attr incomplete. Unable to continue execution
+Target field mapping '/Coded/@code' incomplete; reason: Mapping for target field '/Coded/@code' incomplete
+No compilation/execution success, no output XML. The test is stopped by incomplete-mapping validation.
+Reading: confirms design-time rejection of an unmapped required attribute, as CPI; PO accepts input import before the test command rejects the mapping, whereas CPI Simulate rejects before input import.

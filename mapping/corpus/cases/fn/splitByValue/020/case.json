@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-split-change-collapse.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-suppress-split-change-collapse, input splitByValue-020.xml, 2026-11-12: corpus/observations/obs-context-functions/po75/splitByValue-020-spec2-suppress-split-change-collapse.xml and cpi/splitByValue-020-spec2-suppress-split-change-collapse.xml, PO display queue in po75/splitByValue-020-spec2-suppress-split-change-collapse-check.txt; PO 7.50 and CPI 6.84.77 agree on the output: in valueChange SUPPRESS equals only SUPPRESS, and collapseContexts keeps a SUPPRESS first slot as SUPPRESS; F-47, ADR-0006 Consequences",
+  "expect": "output",
+  "note": "createIf gives \"\", SUPPRESS, SUPPRESS, \"\", \"\" in one context. valueChange cuts where SUPPRESS meets \"\": \"\" | SUPPRESS, SUPPRESS | \"\", \"\" (PO queue). collapseContexts keeps each first slot, SUPPRESS as SUPPRESS: \"\", SUPPRESS, \"\", so two empty All. SUPPRESS taken for \"\", the reading before F-47, gives three."
+}

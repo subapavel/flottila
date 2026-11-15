@@ -1,0 +1,8 @@
+PO 7.5, Test tab, input c1.xml, mapping create-c (inactive: activation was canceled, see c1-create-c-check.txt).
+The test does not run: there is no "Compilation ... successful" line and no output.
+
+Processing Log:
+Start of test
+Mapping object create_c incomplete. Unable to continue execution
+  * Target field mapping '/Unmapped/Head/Req' incomplete; reason: Mapping for target field '/Unmapped/Head/Req' incomplete
+End of test

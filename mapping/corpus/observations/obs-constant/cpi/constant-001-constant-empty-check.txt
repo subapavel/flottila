@@ -1,0 +1,6 @@
+CPI observation 2026-11-13: fn/constant/008
+Artifact: api_constant_empty; original constant-001.xml.
+Visible connected graph: constant -> /Out/All.
+Original imported constant title contained newline plus 24 spaces, not empty text. Opened its inline parameter by clicking the bracket below the node, cleared Enter value.. textbox, pressed Enter, then Save. Save request valueBindingArguments explicitly contained value="". Native editor accepted the empty value.
+VERIFIED_PASS: simulation completed with exactly one empty All. Original downloaded XML preserved; parsed node is <All></All>.
+This resolves the original generic failure after correcting formatting whitespace in the imported empty binding. An unconnected native diagnostic Constant node remains in the saved draft; it does not feed the target.

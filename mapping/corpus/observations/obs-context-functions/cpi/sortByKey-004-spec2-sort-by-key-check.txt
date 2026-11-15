@@ -1,0 +1,10 @@
+Date: 2026-11-12
+Case: fn/sortByKey/004
+Artifact: api_spec2_sort_by_key
+Input: original sortByKey-004.xml, loaded through browser file chooser.
+Same unchanged native graph/parameters as case 001; see its check file.
+Test completed. Output tree All 3,2,1.
+Download Output produced the original 85-byte XML; copied without reformatting.
+Reading: confirmed. Equal keys retain their input value order.
+No display queue requested. No screenshot file saved. Tenant version not rechecked.
+No system mouse/keyboard control or SAP PO interaction.

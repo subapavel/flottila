@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/required-attribute-code.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0022 since #102: in an attribute value & < > and \" are escaped and CR, LF and TAB are written as character references, so a parser reads back every character; in text CR is &#13; and LF and TAB stay",
+  "expect": "output",
+  "note": "One Order whose Id holds a\"b&c<d>e'f, CR, g, LF, h, TAB, i. code carries it as an attribute value and V as text, both read back unchanged: a CR, LF or TAB written as itself in the attribute would be normalised to a space by the parser."
+}

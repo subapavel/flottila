@@ -1,0 +1,14 @@
+Date: 2026-11-12
+Case fn/and/001; artifact api_boolean_and, unchanged API-prepared mapping.
+Native graph/tooltips verified Sku and Qty context /Orders -> and -> /Out/All.
+Prepared mapping/readback verifies Sku input 0 and Qty input 1.
+Original and-001.xml uploaded unchanged through tab file chooser, then Test.
+EXECUTED_FAIL: mapping error, not an environment failure.
+Exact diagnostic through root exception:
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/All. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Cannot cast "" to boolean.]
+Remaining stack identifies com.sap.aii.mappingtool.flib7.Bool method and with
+arguments empty string and true. Transient context object/exchange IDs omitted.
+No output XML; individual line results are not inferred.
+Reading contradicted the assumed five output values; agrees with existing PO error.
+Prior tenant version evidence retained, no PNG or display queue captured.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.

@@ -1,0 +1,12 @@
+{
+  "$defs": {
+    "Address": {
+      "type": "object",
+      "properties": {
+        "city": {"type": "string"},
+        "country": {"$ref": "../defs/address.schema.json#/$defs/Country"}
+      }
+    },
+    "Country": {"type": "string"}
+  }
+}

@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/replaceString/004
+Artifact: api_text_replaceString_aa_b
+Input: original replaceString-004.xml uploaded through simulator.
+Visible graph verified: Sku context /Orders and constants aa, b -> replaceString -> /Out/All. Constant titles aa and b observed live.
+Simulation completed. All values ba, bb: left-to-right replacement without overlapping matches. Downloaded XML preserved unchanged.

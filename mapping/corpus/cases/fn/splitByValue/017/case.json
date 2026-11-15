@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-po-label.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 stage-3 codes: invalid-parameter-value, a string outside the entry's values (ADR-0011)",
+  "expect": "error",
+  "note": "The mode is SAP PO's label \"Value Change\", not one of the catalogue's values eachValue, valueChange, emptyValue: compiling refuses it at S1. A PO import translates the label."
+}

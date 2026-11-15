@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/collapse-contexts-line-item.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0004 as amended for F-17: a source queue whose context element never occurs in the message is one empty context, observed for a leaf queue (#31 d3, obs-target-creation create-d) and our rule for every source queue, a structure field's too (SourceQueue.structureField, Projection, po:source-queue); ADR-0006 Consequences as amended for F-47: collapseContexts gives no value for a queue with no slot and at most one context, observed on PO 7.50 and CPI for the leaf twin fn/collapseContexts/003",
+  "expect": "output",
+  "note": "An empty input: <Orders/> has no Order, so the source structure field Line in its context Order is one empty context, {0,0} (F-17). collapseContexts gives no value for it, as PO and CPI do for the leaf twin fn/collapseContexts/003 (F-47), so the root's one slot creates no Item. Since F-47 zero contexts, {0}, give the same; before F-47 the one empty context gave one empty Item."
+}

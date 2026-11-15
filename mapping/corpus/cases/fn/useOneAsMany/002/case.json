@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/use-one-as-many-collapsed.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-useoneasmany (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-useoneasmany/po75/useOneAsMany-002-spec2-use-one-as-many-collapsed.xml and corpus/observations/obs-useoneasmany/cpi/useOneAsMany-002-spec2-use-one-as-many-collapsed.xml; before #214: #2 §4 useOneAsMany: \"The context change takes useOneAsMany() from the name queue\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f416edeaca4c86e10000000a42189e/content.htm]; an empty context of input 3 is not on the SAP page (#2 §7.10) and is assumed to give an empty result context; obs-useoneasmany decides (#34)",
+  "expect": "output",
+  "note": "The result's contexts are input 3's. Sku in its default context Line is n1 | (empty) | n2 | n3, as o1's second Line has no Sku. Sku in context Order counts two values for external and one for internal, so the repeated values external, external, internal fill input 3's contexts in order: external | (empty) | external | internal. collapseContexts shows the first value of each, \"\" for the empty one: All is external, \"\", external, internal. With input 2's contexts All would be external, internal. To observe in PO."
+}

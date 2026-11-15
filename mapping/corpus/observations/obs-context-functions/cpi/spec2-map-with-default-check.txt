@@ -1,0 +1,6 @@
+CPI editor / Save, mapping spec2-map-with-default.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Tag default Order context -> mapWithDefault (Default Value Default) -> removeContexts -> All. No other fields mapped.
+Default Value was entered with ordinary keystrokes followed by Enter after the graph was fully connected. Save completed without a validation error.
+The parameter was still Default after a second Save, with three expression edges and no dialog. First simulation nevertheless emitted three empty All then x. Initial bytes are retained separately; compiled default in that attempt is unverified.
+M1 Display Queue showed Default in the empty context. Another Save followed by a rerun of the retained mapWithDefault-003.xml input produced empty string,Default,empty string,x. No validation or runtime error. Navigation back to the package raised no unsaved-changes dialog.

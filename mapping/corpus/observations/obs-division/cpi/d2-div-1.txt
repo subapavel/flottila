@@ -1,0 +1,8 @@
+CPI, Simulate / Test, input d2.xml, mapping div-1, case not specified. No output.
+Fired at run time on target /Out/Item/V, box D1 (divide).
+
+Error
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/Item/V. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Division by zero] in class com.sap.aii.mappingtool.flib7.Arithm method div[7, 0, com.sap.aii.mappingtool.tf7.rt.Context@<id>] Division by zero on the exchange: Exchange[<exchange-id>]
+OK
+
+The UI exposed no additional Caused by lines or mapping-tool stack frames.

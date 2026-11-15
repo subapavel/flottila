@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/inv/001
+Artifact: api_arith_inv
+Input: original i1.xml uploaded through simulator.
+Visible graph verified: Qty context /Orders -> inv -> /Out/All.
+Simulation completed. All values: 0.25, 0.33333333333333333, -0.5, 2. For these inputs inv is the reciprocal, not a sign change. Downloaded XML preserved unchanged.

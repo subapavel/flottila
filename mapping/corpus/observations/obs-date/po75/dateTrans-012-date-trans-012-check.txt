@@ -1,0 +1,15 @@
+Case: fn/dateTrans/012
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping Test
+Mapping: date_trans_012, copied from date_trans_006 in the authorized observation namespace.
+Graph: Sku (Orders context) -> DateTrans -> All; src-orders.xsd / tgt-list.xsd.
+Input Date Format: yyyyMMddHHmmZ
+Output Date Format: dd.MM.yyyy HH:mm XXX
+Both formats visually verified before saving. Calendar defaults retained (Is Lenient checked, as observed on the original DateTrans defaults).
+Save completed. Object Check: No errors found; Problem 0, Warning 0.
+Input: dateTrans-012.xml loaded and inspected in SRC: 202611041000+0200, 202611040030+0100, 202611041000-0530.
+Processing Log: 19:38:55 Start of test; compilation successful; execution 6 milliseconds; Executed successfully; 19:38:56 End of test.
+Result All values: 04.11.2026 09:00 +01:00; 04.11.2026 00:30 +01:00; 04.11.2026 16:30 +01:00.
+Original ZIP export retained. XML copied byte-for-byte from exported instance.xml; no reconstruction or formatting.
+Environment limitation: requested UTC JVM scenario is not met. Actual output offset is +01:00; named JVM timezone is not exposed. No JVM settings were changed. This is a partial observation, pending a UTC environment, not a semantic divergence.
+No queues requested or captured. Screenshots inspected live, not saved. CPI NOT_RUN.

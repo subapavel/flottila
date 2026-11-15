@@ -1,0 +1,43 @@
+{
+  "obsId": "obs-target-creation",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/31",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": "SP33",
+    "patch": "01",
+    "javaKernelVersion": "7.50.3301.480736.20231108143814",
+    "date": "2026-11-02",
+    "tool": "ESR message mapping, Test tab"
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-02",
+    "tool": "Message Mapping artifact, Simulate"
+  },
+  "divergence": [],
+  "notes": [
+    "create-a: Check (save) reported no error and no warning; the target root Create is not mapped.",
+    "a2 and a3 fail at run time with the same text, although a2's Row queue is SUPPRESS,SUPPRESS and a3's has no value.",
+    "a3 trace (level all): the root Create start tag is written before the error on /Create/Row.",
+    "create-b: Check (save) reported no error and no warning.",
+    "b1 and b2 give the same output: 2 Gen per Grp (minOccurs), V 1,2 and 3,4. b2 shows numbering by position across orders: Qty 3 of order 1 lands in Grp 2, not lost per order.",
+    "create-c: Req (unmapped, 1..1) is a design-time error: Check reports it, activation of the change list is canceled (Problem 1, Warning 0), and the Test tab refuses to run (no compilation, no output). Head (unmapped, 1..1, child A mapped) is not reported.",
+    "create-d: Check (save) reported no error and no warning.",
+    "d1 confirms: an absent Memo among present ones gives no context; queue [a][c]; Item 3 empty.",
+    "d2 confirms: an empty Memo gives an empty context; mapWithDefault fills D; Item 2 = D.",
+    "d3 CONTRADICTS ADR-0004 bullet 2: with no Memo anywhere, the queue is one empty context, mapWithDefault gives [D], Item 1 = D, Item 2 empty. Assumed was no V at all.",
+    "CPI matches PO 7.5 on every output (a1, b1, b2, d1, d2, d3) and on every failure (a2, a3, c1). No divergence.",
+    "a2/a3: same exception class com.sap.aii.mappingtool.tf7.IllegalInstanceException; CPI wording differs ('Cannot produce target element ... Queue has not enough values in context ...').",
+    "c1: CPI saves the mapping (red Req, 'Target has 1 errors' on the target root) but refuses Simulate: 'Mapping has validation errors. Please fix them before you simulate.' PO 7.5 cancels activation.",
+    "Display queue: gray rows are context changes on both systems (CPI also sets them in italics). For an empty context CPI shows '[ ]' where PO shows '<null>'.",
+    "Spec-2 part (#61), PO 7.50 SP33 and CPI 6.84.77, 2026-11-05/06. CPI cannot copy a mapping, so spec2-create-if-row, spec2-nested-grp-row-remove-contexts and spec2-create-if-item were built on CPI by editing create-a, spec2-nested-grp-row-val and create-d in place.",
+    "createIf (both systems): 'no', 'skip' and '' throw 'Cannot cast ... to boolean'; true/1 (any case) create, false/0 give SUPPRESS. max-002.xml, a2.xml and suppress-001.xml therefore fail before their question is reached. Owner probes in probes/ (probe-bool-a..d) record the accepted values and answer max/002 (probe b, = a1) and suppress/001 (probe d: V 10 then 30). minOccurs/002 is answered by a2 of create-a.",
+    "max-003: confirmed on both, Grp 2's Row reads slot 4 (Val 4).",
+    "minOccurs-004 CONTRADICTS the assumed reading on both: Grp 2 reads a context the Row queue lacks and gets one Row with the last value b; no po:MINOCCURS.",
+    "Side observation (PO and CPI): a complex target node with a mapped value and no mapped child gets the value as text (<Row>a</Row>).",
+    "Skipped on CPI as already decided by PO and the CPI probes: a2.xml and suppress-001.xml with 'no'/'skip', probe-bool-b."
+  ]
+}

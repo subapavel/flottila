@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/constant-gen-numbering.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/constant-007-constant-gen-numbering.xml and corpus/observations/obs-constant/cpi/constant-007-constant-gen-numbering.xml; before #214: ADR-0006 generating function (#83), assumed reading: the children of a generated structure field are numbered (p - 1) * copies + j; obs-constant row fn/constant/007",
+  "expect": "output",
+  "note": "Constant{g} on Gen (2..3) per Grp per Order, Qty in context Line on Gen/V: one context per Line, 1 | 2 | 3 | 4. Gen j of Grp p reads context (p - 1) * 2 + j: Grp 1 gets 1, 2 and Grp 2 gets 3, 4. Per order Grp 2 would get 4 only."
+}

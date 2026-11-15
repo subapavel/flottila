@@ -1,0 +1,5 @@
+CPI editor / Save and Simulate, mapping ctx-4.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Order -> Item. Sku context /Orders/Order -> exists -> V. No other fields mapped.
+Non-default context verified in source node tooltip. Save completed without a validation error; simulation f4.xml succeeded.
+Item 1 has two V values true,true; Items 2 and 3 each false; Item 4 true. Thus exists is per value for a nonempty context and produces false for an empty context; a present empty-string Sku exists.

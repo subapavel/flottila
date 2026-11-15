@@ -1,0 +1,11 @@
+{
+  "source": "Native CPI editor Save followed by public API export of preparation copy api_ctx_1_r2",
+  "label": "index",
+  "simulation": "NOT_RUN",
+  "functions": [
+    {
+      "nativeName": "index",
+      "bindings": "<bindings><param name=\"start\"><value>1</value></param><param name=\"inc\"><value>1</value></param><param name=\"type\"><value>0</value></param></bindings>"
+    }
+  ]
+}

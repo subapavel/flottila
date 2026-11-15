@@ -1,0 +1,47 @@
+{
+  "case": "fn/constant/005",
+  "artifact": "api_constant_concat_constants",
+  "version": "1.0.0",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "concat",
+      "inputCount": 2,
+      "bindings": null,
+      "sourcePaths": []
+    },
+    {
+      "nativeName": "const",
+      "inputCount": 0,
+      "bindings": "<bindings><param name=\"value\"><value>a</value></param></bindings>",
+      "sourcePaths": []
+    },
+    {
+      "nativeName": "const",
+      "inputCount": 0,
+      "bindings": "<bindings><param name=\"value\"><value>b</value></param></bindings>",
+      "sourcePaths": []
+    },
+    {
+      "nativeName": "concat",
+      "inputCount": 2,
+      "bindings": null,
+      "sourcePaths": []
+    },
+    {
+      "nativeName": "const",
+      "inputCount": 0,
+      "bindings": "<bindings><param name=\"value\"><value>a</value></param></bindings>",
+      "sourcePaths": []
+    },
+    {
+      "nativeName": "const",
+      "inputCount": 0,
+      "bindings": "<bindings><param name=\"value\"><value>b</value></param></bindings>",
+      "sourcePaths": []
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

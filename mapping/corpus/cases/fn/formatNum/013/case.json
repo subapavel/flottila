@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-quoted-prefix.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-arithmetic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-arithmetic/po75/formatNum-013-fmt-013.xml and corpus/observations/obs-arithmetic/cpi/formatNum-013-fmt-013.xml; before #214: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture EUR #,##0.00; assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-013)",
+  "expect": "output",
+  "note": "Quoted text is literal: 'EUR ' is the prefix, so 1234.5 gives EUR 1,234.50 and -3 gives -EUR 3.00, the minus sign before the prefix."
+}

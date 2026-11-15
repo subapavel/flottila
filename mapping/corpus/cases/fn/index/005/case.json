@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/index-malformed-initial.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 \"Data errors name their box\" (Q10) and ADR-0005: a number is read in the xs:decimal lexical form only, anything else is err:FORG0001 at the box; a box parameter that is a number follows the same rule, and is checked whatever the data (#75)",
+  "expect": "error",
+  "note": "index{initial=one}: its initial value is no xs:decimal, so index raises err:FORG0001 at its box F1, though o1 has no Sku to number."
+}

@@ -1,0 +1,18 @@
+SAP PO 7.50 / ESR Display Queue / 2026-11-11
+Mapping lift_4; original l4.xml imported. Row numbering enabled.
+Literal brackets and <null> below reproduce displayed cell text. No italic text observed.
+
+R1 removeContexts
+Compilation of lift_4 successful; execution 9 milliseconds; Executed successfully.
+row | removeContexts:in0 | removeContexts:out
+0 | [k] (gray) | [k] (gray)
+1 | [k] (dark gray) | [k] (dark gray)
+Reading: no white value row and no null start. Preserve this constant presentation literally; the dark-gray row is not an extra ordinary k value. Final XML repeats W=k across all three Items.
+
+N1 count
+Compilation of lift_4 successful; execution 8 milliseconds; Executed successfully.
+row | count:in0 | count:out
+0 | [k] (gray) | <null> (gray)
+1 | [k] (dark gray) | [1] (white)
+2 | blank (white) | [1] (dark gray)
+Reading: count output contains one ordinary value 1; gray start and dark-gray terminal rows do not add ordinary values. Input retains the literal constant presentation. Final XML has V=1 only in Item 1.

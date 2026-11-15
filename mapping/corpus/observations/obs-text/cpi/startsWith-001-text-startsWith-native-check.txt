@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/startsWith/001
+Artifact: api_text_startsWith_native; original startsWith-001.xml.
+Visible graph: Sku and Qty context /Orders -> startsWith(2) -> /Out/All.
+VERIFIED_PASS: All true, false, true, false, false. Original downloaded XML preserved.
+Resolved original generic failure by using native function identifier startWith2 instead of startsWith in separate API revision. Inputs and contexts unchanged. Native identifier observed from palette Save request; see native-function-identifiers-diagnostic.txt.

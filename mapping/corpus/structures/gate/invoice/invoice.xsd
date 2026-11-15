@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure for GATE check 1 (#100): an invoice in a second namespace. It refers to
+     the global element pty:Party of party.xsd, a third namespace, across files; inv:Section is a
+     recursive type, whose paths a mapping uses below the recursion cap -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:inv="urn:flottila:corpus:gate:invoice"
+           xmlns:pty="urn:flottila:corpus:gate:party"
+           targetNamespace="urn:flottila:corpus:gate:invoice"
+           elementFormDefault="qualified">
+  <xs:import namespace="urn:flottila:corpus:gate:party" schemaLocation="party.xsd"/>
+  <xs:element name="Invoice">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Number" type="xs:string"/>
+        <xs:element name="Date" type="xs:date" minOccurs="0"/>
+        <xs:element ref="pty:Party"/>
+        <xs:element name="Item" type="inv:Item" maxOccurs="unbounded"/>
+        <xs:element name="Total" type="xs:decimal" minOccurs="0"/>
+        <xs:element name="Section" type="inv:Section" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Item">
+    <xs:sequence>
+      <xs:element name="Text" type="xs:string" minOccurs="0"/>
+      <xs:element name="Amount" type="xs:decimal"/>
+    </xs:sequence>
+    <xs:attribute name="line" type="xs:positiveInteger"/>
+    <xs:attribute name="currency" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="Section">
+    <xs:sequence>
+      <xs:element name="Title" type="xs:string"/>
+      <xs:element name="Section" type="inv:Section" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

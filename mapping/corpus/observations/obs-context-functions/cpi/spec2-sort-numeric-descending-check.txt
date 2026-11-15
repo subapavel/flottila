@@ -1,0 +1,4 @@
+CPI editor, mapping spec2-sort-numeric-descending.
+In-place edit of spec2_sort after numeric ascending output and error were saved. Comparison rule remains float number; changed Order to desc. Verified asc=false, desc=true before Save.
+Graph unchanged: Tag default Order -> sort -> removeContexts -> All. No other fields mapped.
+Save and simulation succeeded without validation/runtime error. Output 10,9,space-2-space,1.50,1.5,+0.5,.25,-1,007,7,1. confirms numeric descending order with stable equal values and original lexical forms.

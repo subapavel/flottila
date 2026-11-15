@@ -1,0 +1,11 @@
+Display Queue of box C2 (createIf), CPI Function Message Queue, after Simulate create_if_twice with createIf-008.xml, 2026-11-11.
+Show Row Count enabled; S. No. column visible.
+
+row  createIf:in1  shading/font       createIf:out1  shading/font
+0    <null>        gray, italic       <null>         gray, italic
+1    SUPPRESS      white, normal      SUPPRESS       white, normal
+2    SUPPRESS      white, normal      SUPPRESS       white, normal
+3    SUPPRESS      dark gray, italic  SUPPRESS       dark gray, italic
+
+Reading: in1 = [SUPPRESS, SUPPRESS]; out1 = [SUPPRESS, SUPPRESS].
+Row 0 is the start marker; row 3 is the end marker, not a third SUPPRESS value.

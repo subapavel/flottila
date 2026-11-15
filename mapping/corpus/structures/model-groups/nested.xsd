@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#94): nested sequences and choices with occurrences of their own. A field's
+     effective occurrence is the product of its own and every enclosing particle's: Pair is
+     2..2 inside 1..5 inside 2..3, so 4..30; Many is 0..7 inside 0..unbounded; Last is 1..1
+     inside a choice of two branches inside 1..2, so 0..2 (ADR-0008). Each repeated group holds
+     one particle, so none interleaves. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:groups">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:sequence minOccurs="2" maxOccurs="3">
+          <xs:sequence minOccurs="1" maxOccurs="5">
+            <xs:element name="Pair" type="xs:string" minOccurs="2" maxOccurs="2"/>
+          </xs:sequence>
+        </xs:sequence>
+        <xs:sequence minOccurs="0" maxOccurs="unbounded">
+          <xs:element name="Many" type="xs:string" maxOccurs="7"/>
+        </xs:sequence>
+        <xs:sequence>
+          <xs:choice>
+            <xs:sequence minOccurs="1" maxOccurs="2">
+              <xs:element name="Last" type="xs:string"/>
+            </xs:sequence>
+            <xs:element name="Other" type="xs:string"/>
+          </xs:choice>
+        </xs:sequence>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

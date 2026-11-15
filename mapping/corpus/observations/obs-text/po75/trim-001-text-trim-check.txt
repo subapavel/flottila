@@ -1,0 +1,13 @@
+SAP PO 7.5 observation: fn/trim/001
+Date: 2026-11-12
+Mapping: text_trim
+Input: ../trim-001.xml (original corpus file, inspected in SRC before execution)
+Source Orders/Order/Line/Sku, context Orders, -> trim -> Out/All.
+Copied the verified lowercase mapping, replaced only the function, saved.
+Object check: No errors found during object check; Problem 0, Warning 0.
+Test log 17:23:36-17:23:37: compilation successful, server execution 6 milliseconds, Executed successfully.
+Result: a b; x; empty string; empty string; a; NBSP+a+NBSP.
+Exported XML parsed to verify the last value has code points 160,97,160. Interior ordinary space retained in the first value. Leading/trailing space, tab, LF and CR removed.
+Reading: confirmed.
+Result ZIP exported through the SAP PO result export control. instance.xml extracted and copied byte-for-byte to trim-001-text-trim.xml; no XML reconstruction or formatting.
+No queue capture requested for this case. Screenshots inspected live, not retained. Environment identifiers omitted.

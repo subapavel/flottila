@@ -1,0 +1,25 @@
+PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_collapse_contexts.
+Graph: Qty context Order (explicitly selected; italic Qty title verified) -> collapseContexts -> Out/All only.
+Saved. Object Check: No errors found during object check; Problem 0, Warning 0.
+Original inputs imported through Test; SRC inspected before each execution.
+001 / f5.xml:
+21:14:33 Start of test
+Compilation of spec2_collapse_contexts successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+21:14:34 End of test
+Reading: All 3,10,7,empty string; first value of each context, with empty context retained. Confirms assumption and agrees with CPI.
+002 / collapseContexts-002.xml:
+21:15:44 Start of test
+Execution of mapping on server took 3 milliseconds
+Executed successfully
+21:15:44 End of test
+Reading: All empty string,empty string,5; empty contexts retain their place. Confirms assumption and agrees with CPI.
+003 / collapseContexts-003.xml:
+21:16:47 Start of test
+Execution of mapping on server took 5 milliseconds
+Executed successfully
+21:16:47 End of test
+Reading: Empty Out, no All; contradicts assumed one empty All and agrees with CPI. See separate literal queue transcript.
+Each exact result exported as spec2-collapse-contexts-NNN-export.zip and extracted without rewriting as spec2-collapse-contexts-NNN.xml.

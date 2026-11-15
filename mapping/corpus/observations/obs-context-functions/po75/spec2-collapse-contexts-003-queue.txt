@@ -1,0 +1,9 @@
+PO 7.50 / ESR / 2026-11-11 / spec2_collapse_contexts
+Input: collapseContexts-003.xml, empty Orders. Qty context Order -> collapseContexts -> Out/All only.
+Display Queue completed successfully; compilation successful, server execution 6 milliseconds.
+Literal numbered UI rows (both columns are regular type, not italic):
+row | collapseContexts:in0 | shading | collapseContexts:out | shading
+0 | <null> | light gray | <null> | light gray
+1 | <null> | dark gray | <null> | dark gray
+No white ordinary-value rows are displayed.
+Reading: These are boundary/terminal markers, not two null values or an empty-string value. The queue contains no ordinary output value; the separately exported whole mapping result is empty Out without All.

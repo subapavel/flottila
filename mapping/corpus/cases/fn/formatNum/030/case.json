@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-integer-order.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the integer digits ,##0)",
+  "expect": "error",
+  "note": "The pattern ,##0. A grouping separator before the first digit: DecimalFormat takes it as grouping by three, and the translation takes only #s, then 0s, with single separators between digits. Compiling refuses it at N1."
+}

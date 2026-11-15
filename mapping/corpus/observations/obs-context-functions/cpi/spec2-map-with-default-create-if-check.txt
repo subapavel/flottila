@@ -1,0 +1,5 @@
+CPI editor / Save, mapping spec2-map-with-default-create-if.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Tag default Order context -> createIf -> mapWithDefault (Default Value D) -> removeContexts -> All. No other fields mapped.
+The initial D entry did not survive subsequent canvas edits; this was noticed before any simulation. D was entered again using ordinary keystrokes followed by Tab, then saved in a separate action. D remained visible after Save. Four expression connections verified; no validation error was shown.
+The first simulation nevertheless returned three empty All values. Exact bytes are retained in spec2-map-with-default-create-if-initial-simulation.xml. The editor still displayed D and the subsequently generated M1 queue showed D for the truly empty context. After another Save, the same input was rerun and produced empty string,D,empty string, matching the queue. The first attempt's effective compiled default and the cause of the discrepancy are unverified; it is not a semantic conclusion.

@@ -1,0 +1,16 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case fn/toUpperCase/001; mapping text_toUpperCase.
+Copied text_endsWith; removed endsWith and Qty from this new copy.
+Sku -> toUpperCase -> Out/All, no other target mappings.
+Sku context Orders verified by checked native Context menu.
+Saved; F7 Check: No errors found during object check. Problem 0, Warning 0.
+Original toUpperCase-001.xml loaded and inspected in Test SRC.
+The Generate action was initially mistaken for execution and reset the input;
+the original file was reloaded before the actual server test. F8 had no effect.
+Actual test executed using the monitor button next to Trace Level.
+17:10:20-17:10:22: Compilation of text_toUpperCase successful.
+Execution of mapping on server took 9 milliseconds. Executed successfully.
+VERIFIED_PASS: All values ABC, HELLO WORLD, empty string, STRASSE, ÉA.
+Assumed Unicode and empty-string reading confirmed.
+Result exported from Test SRC to ZIP; instance.xml extracted byte-for-byte.
+No screenshot file retained; UI messages transcribed during the run.

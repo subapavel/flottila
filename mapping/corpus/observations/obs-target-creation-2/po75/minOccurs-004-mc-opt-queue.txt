@@ -1,0 +1,12 @@
+PO 7.5, Display Queue of box R1 (removeContexts), mapping mc-opt, input minOccurs-004.xml.
+
+row  removeContexts:in0  shading    removeContexts:out  shading
+0    <null>              gray       <null>              gray
+1    [a]                 white      [a]                 white
+2    [a]                 gray       [b]                 white
+3    [b]                 white      [b]                 dark gray
+4    [b]                 dark gray  (none)
+
+Reading: in0 = [a] [b]; out = [a,b].
+
+The queue display recompiled mc_opt and reported Executed successfully.

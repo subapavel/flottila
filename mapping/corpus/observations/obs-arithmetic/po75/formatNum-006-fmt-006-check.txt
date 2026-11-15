@@ -1,0 +1,14 @@
+Case: fn/formatNum/006
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping test
+Mapping: fmt_006, copied from fmt_005 in the authorized observation namespace.
+Graph: Qty (Orders context) -> FormatNum -> All; src-orders / tgt-list schemas inherited.
+NumberFormat changed to #.##, committed with Tab and verified in parameters and graph. DecimalSeparator dot inherited.
+Saved. Message Mapping > Check: No errors found; Problem 0, Warning 0.
+Loaded formatNum-006.xml; source view confirmed Qty values 0.5, 0, 3.125.
+Processing log 18:15:33-18:15:34: compilation of fmt_006 successful; server execution 7 milliseconds; Executed successfully.
+Result source view: All values 0.5, 0, 3.12.
+Exported result ZIP via ESR. XML is a byte-preserving copy of exported instance.xml, not reconstructed.
+No queues requested or captured. No screenshot file saved.
+JVM default locale and internal numeric representation not exposed by this observation.
+CPI: NOT_RUN; API preparation is not a simulation.

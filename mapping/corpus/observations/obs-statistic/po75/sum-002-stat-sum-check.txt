@@ -1,0 +1,10 @@
+Case: fn/sum/002
+Date: 2026-11-12
+Environment: SAP PO 7.50 ESR message mapping
+Mapping: stat_sum
+Input: unchanged ../sum-002.xml imported through Test UI.
+Graph: Order (context Orders) -> Item; Qty (context explicitly changed from Line to Order) -> sum -> V. W and All unmapped.
+Definition saved; Save disabled. Object check: No errors found during object check; Problem 0, Warning 0.
+Test log: 11:24:29 Start of test; Compilation of stat_sum successful; Execution of mapping on server took 10 milliseconds; Executed successfully; 11:24:30 End of test.
+Result observed in SRC and exported through UI to sum-002-stat-sum.zip. XML extracted unchanged from instance.xml.
+Reading: confirmed. The three Items contain V 0, 0, 4. Both empty Qty contexts yield zero.

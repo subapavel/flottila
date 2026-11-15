@@ -1,0 +1,14 @@
+/*
+ * The start page (ADR-0028): the prototype has none, so it takes the studio's frame (shell.css) and PatternFly's
+ * table and toolbar. Its title sits in the tab line's place, at the studio title's size.
+ */
+/* the toolbar starts at the panel's top edge: give it the space it keeps below */
+.list-toolbar {
+  --pf-v6-c-toolbar--PaddingBlockStart: var(--pf-t--global--spacer--md);
+}
+.list-line h1 {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.15px;
+}

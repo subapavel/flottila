@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#25): not well-formed. The end tag on line 7 does not match the open xs:sequence. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

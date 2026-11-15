@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure (#94): Pairs holds a repeated sequence of A and B. As a target, streamed
+     output cannot interleave A and B, so a mapping that writes either is refused with
+     interleaved-target-group at the sequence (line 9). As a source, both read as fields
+     (ADR-0008). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Pairs">
+    <xs:complexType>
+      <xs:sequence maxOccurs="unbounded">
+        <xs:element name="A" type="xs:string"/>
+        <xs:element name="B" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

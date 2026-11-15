@@ -1,0 +1,6 @@
+2026-11-13 native CPI palette / Save comparison.
+Native palette startsWith(2) serializes name/key startWith2 with 2 pins.
+Native palette endsWith serializes name/key endWith with 2 pins.
+Native palette if serializes name/key iF with 3 pins. Palette description: returns first value if second argument is true, else third value.
+Original API preparations used startsWith, endsWith, if respectively. They displayed but failed simulation generically.
+Diagnostic native unconnected nodes were saved in api_text_startsWith to inspect serialization; connected original startsWith expression was unchanged. New separate native revisions will test corrected names without overwriting original input or graph contexts.

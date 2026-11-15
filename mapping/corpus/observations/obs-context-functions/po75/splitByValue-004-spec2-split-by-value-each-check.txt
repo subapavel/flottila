@@ -1,0 +1,12 @@
+SAP PO observation 2026-11-12
+Mapping spec2_split_by_value_each; fn/splitByValue/004; original splitByValue-004.xml imported unchanged via UI; source XML checked.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag default context Order -> removeContexts -> splitByValue (Each Value) -> All. Nothing else mapped.
+Saved (Save disabled); Check: No errors found during object check; Problem 0, Warning 0.
+01:05:19 Start of test
+Compilation of spec2_split_by_value_each successful
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+01:05:20 End of test
+UI export instance.xml extracted unchanged.
+Reading: one empty All. The empty first value remains the first split context; confirmed assumed reading. CPI not run yet.

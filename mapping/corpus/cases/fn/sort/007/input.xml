@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Tag>10</Tag>
+    <Tag>9</Tag>
+    <Tag>-1</Tag>
+    <Tag>1.50</Tag>
+    <Tag> 2 </Tag>
+    <Tag>1.5</Tag>
+    <Tag>+0.5</Tag>
+    <Tag>.25</Tag>
+  </Order>
+  <Order>
+    <Id>o2</Id>
+    <Tag>007</Tag>
+    <Tag>1.</Tag>
+    <Tag>7</Tag>
+  </Order>
+</Orders>

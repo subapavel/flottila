@@ -1,0 +1,83 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/derivation/order.xsd"
+    ],
+    "fingerprint": "sha256:7fa870df17665f949da9986b2036fc81a4299fe38c920afdd24b20ac29b17284",
+    "root": {
+      "element": "Q{urn:flottila:corpus:order}Order"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/derivation/order.xsd"
+    ],
+    "fingerprint": "sha256:f7b3d1697015e4f93e73caa19b269e7cbd44f8b19146ba6b50c49bdb7bfa5c84",
+    "root": {
+      "element": "Q{urn:flottila:corpus:order}Receipt"
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:corpus:order}Receipt/Customer/Name": {
+      "boxes": {
+        "S1": {
+          "field": "/Q{urn:flottila:corpus:order}Order/Buyer/Name",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Q{urn:flottila:corpus:order}Receipt/Customer/Number": {
+      "boxes": {
+        "S2": {
+          "field": "/Q{urn:flottila:corpus:order}Order/Buyer/Number",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    },
+    "/Q{urn:flottila:corpus:order}Receipt/Paid": {
+      "boxes": {
+        "S5": {
+          "field": "/Q{urn:flottila:corpus:order}Order/Total",
+          "kind": "source"
+        }
+      },
+      "id": "T5",
+      "result": "S5"
+    },
+    "/Q{urn:flottila:corpus:order}Receipt/Paid/@currency": {
+      "boxes": {
+        "S6": {
+          "field": "/Q{urn:flottila:corpus:order}Order/Total/@currency",
+          "kind": "source"
+        }
+      },
+      "id": "T6",
+      "result": "S6"
+    },
+    "/Q{urn:flottila:corpus:order}Receipt/Q{urn:flottila:corpus:order}Book": {
+      "boxes": {
+        "S3": {
+          "field": "/Q{urn:flottila:corpus:order}Order/Q{urn:flottila:corpus:order}Book",
+          "kind": "source"
+        }
+      },
+      "id": "T3",
+      "result": "S3"
+    },
+    "/Q{urn:flottila:corpus:order}Receipt/Q{urn:flottila:corpus:order}Book/Title": {
+      "boxes": {
+        "S4": {
+          "field": "/Q{urn:flottila:corpus:order}Order/Q{urn:flottila:corpus:order}Book/Title",
+          "kind": "source"
+        }
+      },
+      "id": "T4",
+      "result": "S4"
+    }
+  }
+}

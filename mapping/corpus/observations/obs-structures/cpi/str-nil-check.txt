@@ -1,0 +1,6 @@
+CPI, Message Mapping editor, str-nil.
+Source src-nil.xsd / Nil; target tgt-list.xsd / Out. Item -> Item node to node.
+For V: Val default context Item -> concat string1; constant ! -> string2; concat -> V. Delimiter String stays at its default empty value.
+For W: a separate Val box at default context Item -> exists input; exists -> W. No context overrides or other target wires.
+Save completed without an editor error dialog, red field or target error triangle. Three expression connections for V and two for W were verified before simulation.
+nil.json was not converted or run: the owner excludes adapter/converter work and iFlows from this observation.

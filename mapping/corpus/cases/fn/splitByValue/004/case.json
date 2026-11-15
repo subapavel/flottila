@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-each.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-004-spec2-split-by-value-each.xml and corpus/observations/obs-context-functions/cpi/splitByValue-004-spec2-split-by-value-each.xml; before #214: #2 §7.6 (a <Tag/> is the value \"\"; SplitByValue on it is open); #48 Q3 mode eachValue",
+  "expect": "output",
+  "note": "eachValue with the empty value first: <Tag/>, a gives \"\", a, and \"\" is a value like any other here, in a context of its own, so All is one empty All. If eachValue dropped \"\", All would be a. All under the root's one slot reads context 1 of S1's queue, so it shows where the first split falls."
+}

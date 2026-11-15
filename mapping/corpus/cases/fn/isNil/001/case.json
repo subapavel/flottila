@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-isNil.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-49: PO and CPI read an empty element as not nil (obs-boolean isNil-001); expected output kept; was assumed: ADR-0025 and spec #70 (only the exact text true is true, results are true or false); obs-boolean row isNil/001",
+  "expect": "output",
+  "note": "isNil is true for a source field that is xsi:nil and, since ADR-0008 reads xsi:nil as the empty string, for an empty one: x false, nil true, empty true, one space false."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/parents-head-id.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §2: \"Structure fields with n = minOccurs = maxOccurs > 0 are generated automatically, n times, whatever the mapping\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f414f7eaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bf414f7eaca4c86e10000000a42189e.html]; #2 §2: \"The message mapping suppresses optional structure fields (including sub-nodes) without a target field mapping\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f414f7eaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bf414f7eaca4c86e10000000a42189e.html]; obs-target-creation create-c (meta.json, #31): \"Head (unmapped, 1..1, child A mapped) is not reported\" at design time on PO 7.5 (its run was refused for the unmapped Req, so no output was observed)",
+  "expect": "output",
+  "note": "Id under the unmapped 1..1 Head, per Id in context Orders: o1, o3 (Order 2 has no Id). Head is created once and its slot number is the root's, 1, so Id reads context 1. Pair (2..2) is created twice although nothing under it is mapped; Opt (0..1) and Item (0..unbounded) are unmapped and optional, so they are left out. Refusing Id, as before #63, would give unsupported-field at T1."
+}

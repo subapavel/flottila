@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): complex types that derive from themselves, and elements in their own
+     substitution group: each is schema-invalid at its derivation or declaration -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:y="urn:flottila:corpus:cycles"
+           targetNamespace="urn:flottila:corpus:cycles">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Egg">
+    <xs:complexContent>
+      <xs:extension base="y:Hen"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Hen">
+    <xs:complexContent>
+      <xs:restriction base="y:Egg"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Self">
+    <xs:simpleContent>
+      <xs:extension base="y:Self"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:element name="Ping" type="xs:string" substitutionGroup="y:Pong"/>
+  <xs:element name="Pong" type="xs:string" substitutionGroup="y:Ping"/>
+</xs:schema>

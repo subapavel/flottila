@@ -1,0 +1,17 @@
+CPI observation: fn/ifWithoutElse/003
+Date: 2026-11-12
+Artifact: api_boolean_ifWithoutElse_orders
+Input: ifWithoutElse-003.xml (original corpus file)
+Verified editor expressions: Order with context /Orders -> Item. V and W each have a separate ifWithoutElse with Qty and Sku in context /Orders/Order.
+Simulation completed. Items: V=a W=a; V=d W=d; V=e W=e.
+Exact downloaded output copied byte-for-byte to ifWithoutElse-003-boolean-ifWithoutElse-orders.xml.
+Contradicts the assumed empty second Item: the uppercase TRUE condition passes the value d in both branches.
+Keep SUPPRESS settings were not independently inspected in the live editor for this run; V/W are the API-prepared default/keep variants. No intermediate queue inferred from output.
+No mapping changed or deployed. No queue requested. Screenshots not retained.
+
+2026-11-13 VERIFIED_PASS parameter/queue audit: Live export confirms keepss=true where configured and no keepss binding for default variants. Direct expanded editor inspection of api_boolean_ifWithoutElse_item shows Keep SUPPRESS unchecked, establishing the default used by absent bindings. No mapping or setting change saved. Evidence: cpi/parameter-audit/api_boolean_ifWithoutElse_orders.json
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_boolean_ifWithoutElse_orders.json.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

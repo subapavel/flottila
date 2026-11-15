@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): two attributes of one name in one complex type make the schema invalid
+     (XSD 1.1 Part 1, ct-props-correct.4), reported once at the second declaration: in one type,
+     through an extension, through an attribute group of duplicate-group.xsd and through
+     references. A restriction's redeclaration replaces the inherited attribute, an extension's
+     use="prohibited" adds none, an unqualified name differs from a qualified one -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:d="urn:flottila:corpus:duplicates"
+           targetNamespace="urn:flottila:corpus:duplicates">
+  <xs:include schemaLocation="duplicate-group.xsd"/>
+  <xs:attribute name="code" type="xs:string"/>
+  <xs:complexType name="Twice">
+    <xs:attribute name="a" type="xs:string"/>
+    <xs:attribute name="a" type="xs:int"/>
+  </xs:complexType>
+  <xs:complexType name="MoreThanTwice">
+    <xs:complexContent>
+      <xs:extension base="d:Twice"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Base">
+    <xs:attribute name="b" type="xs:string"/>
+    <xs:attribute name="code" type="xs:string"/>
+  </xs:complexType>
+  <xs:complexType name="Extended">
+    <xs:complexContent>
+      <xs:extension base="d:Base">
+        <xs:attribute name="b" type="xs:string" use="prohibited"/>
+        <xs:attribute ref="d:code"/>
+        <xs:attribute name="b" type="xs:string"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Restricted">
+    <xs:complexContent>
+      <xs:restriction base="d:Base">
+        <xs:attribute name="b" type="xs:string" use="required"/>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Grouped">
+    <xs:attribute ref="d:code"/>
+    <xs:attributeGroup ref="d:Shared"/>
+  </xs:complexType>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:attribute ref="d:code"/>
+      <xs:attribute name="code" type="xs:string" form="qualified"/>
+    </xs:complexType>
+  </xs:element>
+  <!-- a type that uses a group that refers to itself: the group is reported as such, once -->
+  <xs:attributeGroup name="Loop">
+    <xs:attributeGroup ref="d:Loop"/>
+  </xs:attributeGroup>
+  <xs:complexType name="Looped">
+    <xs:attributeGroup ref="d:Loop"/>
+  </xs:complexType>
+  <!-- a restriction's own two declarations of one name: the second is reported -->
+  <xs:complexType name="RestrictedTwice">
+    <xs:complexContent>
+      <xs:restriction base="d:Base">
+        <xs:attribute name="b" type="xs:string"/>
+        <xs:attribute name="b" type="xs:string" use="required"/>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:schema>

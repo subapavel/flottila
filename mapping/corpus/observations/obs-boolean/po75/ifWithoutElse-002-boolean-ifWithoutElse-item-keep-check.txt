@@ -1,0 +1,15 @@
+SAP PO 7.50 ESR observation, 2026-11-12
+Case: fn/ifWithoutElse/002
+Mapping: boolean-ifWithoutElse-item-keep (ESR boolean_ifWithoutElse_item_keep)
+Input: ifWithoutElse-002.xml, imported unchanged and all four Lines verified in source view.
+Graph: Qty context Orders -> X1 condition; Sku context Orders -> X1 then;
+X1 ifWithoutElse -> Item. Separate Sku context Line -> Item/V.
+Copied case 001 mapping; parameter Keep SUPPRESS Values explicitly checked.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+03:02:49 Start of test; compilation successful; execution 8 milliseconds.
+03:02:50 Executed successfully; End of test.
+Result XML exported through ESR UI ZIP; instance.xml extracted without rewriting.
+Result: three Items with V a, c, d.
+Reading: confirmed. Same XML values as case 001 with unchecked parameter.
+No separate Display Queue requested or recorded for this case.
+CPI NOT_RUN: PO first per owner instruction.

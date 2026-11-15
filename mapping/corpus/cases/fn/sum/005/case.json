@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sum.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: the xs:decimal lexical form, XML whitespace around it ignored, and the XPath canonical form of the result",
+  "expect": "output",
+  "note": "Qty in context Order is \" 2 \", \"+1.\", \".5\" | 1.50, 1.50 | -0.0: each is an xs:decimal, the spaces around \" 2 \" ignored. V is 3.5, 3 (no trailing zeros) and 0 (no sign)."
+}

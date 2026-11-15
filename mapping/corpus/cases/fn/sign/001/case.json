@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-sign.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "The sign of Qty in context Orders as -1, 0 or 1: -5 gives -1, 0 and -0.0 give 0, 0.001 gives 1."
+}

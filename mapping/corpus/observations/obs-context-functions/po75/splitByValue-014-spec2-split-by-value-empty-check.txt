@@ -1,0 +1,11 @@
+SAP PO observation 2026-11-12
+Mapping spec2_split_by_value_empty; fn/splitByValue/014; original splitByValue-004.xml imported unchanged via UI; source XML checked (empty,a).
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag default context Order -> removeContexts -> splitByValue (Empty Value) -> All. Nothing else mapped.
+Same saved, checked mapping as case 011; Problem 0, Warning 0.
+01:33:44 Start of test
+Execution of mapping on server took 3 milliseconds
+Executed successfully
+01:33:44 End of test
+UI export instance.xml extracted unchanged.
+Reading: empty Out, no All. Initial empty value produces an empty first context; confirmed assumed reading. CPI not run yet.

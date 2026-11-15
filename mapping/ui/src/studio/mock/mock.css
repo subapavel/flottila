@@ -1,0 +1,18 @@
+/*
+ * The test instance tools' own styles (the prototype's InstanceTools, a preview, #170), moved from the Test tab's
+ * test.css with the tools (#152 review), values unchanged: the gap after their "Preview" badge in either host, the Test
+ * tab's instance bar and the Definition tab's queue test input, their separator and their notice.
+ */
+.test-instance-bar .preview-badge,
+.expression-input-tools .preview-badge {
+  margin-inline-end: 5px;
+}
+.tool-separator {
+  height: 16px;
+  border-left: 1px solid var(--line);
+  margin-inline: 4px;
+}
+.instance-tool-notice {
+  font-size: 12px;
+  padding-inline: 5px;
+}

@@ -1,0 +1,15 @@
+SAP PO observation 2026-11-11
+Mapping: ctx_6b
+Source: src-orders.xsd; target: tgt-list.xsd.
+Qty in default Line context -> greater in1; Constant 0 -> greater in2.
+greater -> ifWithoutElse if; same Qty -> then; Keep SUPPRESS Values checked.
+ifWithoutElse -> collapseContexts -> Out/All. Item, V and W unmapped.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f6.xml imported through test UI, no edits.
+23:29:00 Start of test
+Compilation of ctx_6b successful
+Execution of mapping on server took 9 milliseconds
+Executed successfully
+23:29:01 End of test
+Result exported through UI as ctx-6b-export.zip; instance.xml extracted unchanged as ctx-6b.xml.
+Reading: All 5,7 with no empty All. Agrees with CPI; SUPPRESS is preserved by collapseContexts, not converted to an empty string.

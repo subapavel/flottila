@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/map-with-default-no-param.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 \"Every param has a default\" and lowering fills it in; #57: mapWithDefault's param default is a string with the default \"\"",
+  "expect": "output",
+  "note": "mapWithDefault without its param default, over Tag in its default context Order, a | (empty): the default \"\" fills the empty context, so removeContexts gives a, \"\": All a and an empty All."
+}

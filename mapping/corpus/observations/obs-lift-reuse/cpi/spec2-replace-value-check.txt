@@ -1,0 +1,5 @@
+CPI Message Mapping, Save, mapping spec2-replace-value.
+No error dialog, red target or error triangle displayed after Save.
+Sku explicitly uses context /Orders and feeds replaceValue V1, then Out/All.
+Exact parameter label: Replace By. Default: empty. Set to O'Brien & <Co> and read back unchanged from the input field.
+No other target is mapped (including Item).

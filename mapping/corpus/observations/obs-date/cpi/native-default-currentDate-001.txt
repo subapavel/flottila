@@ -1,0 +1,4 @@
+CPI native editor verification 2026-11-13
+fn/currentDate/001
+Fresh native currentDate added from palette showed Date Format yyyy/MM/dd.
+Temporary unconnected nodes in api_boolean_ifWithoutElse_item were discarded without saving. Stored mapping parameters: cpi/parameter-audit/api_current_date.json

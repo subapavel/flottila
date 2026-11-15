@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/first-read-item-sort-by-key.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0006 \"Target fields\": the queue of each mapped target field is evaluated lazily on first read, so a field never created is never evaluated",
+  "expect": "output",
+  "note": "Item per Memo/Text in context Orders: the Order has no Memo, so Item has no occurrence and V under it is never created. V's queue, sortByKey over two Skus and one Qty in the Order, would raise po:SORTBYKEY at K1 if it were evaluated; read on first use only, it never is, and the run writes Out without an Item."
+}

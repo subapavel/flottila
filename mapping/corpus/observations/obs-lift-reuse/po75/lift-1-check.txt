@@ -1,0 +1,27 @@
+SAP PO 7.50 / ESR Message Mapping: lift_1
+Observed: 2026-11-11
+
+Source: XSD_src_orders / Orders
+Target: XSD_tgt_list / Out
+Order -> Item (node to node).
+Tag (default Order context) -> concat input 1.
+Sku (context explicitly changed from Line to Order) -> concat input 2.
+concat -> Item/V. W and All unmapped.
+concat separator left empty.
+
+Save completed; lift_1 appeared in the Message Mappings tree.
+Check: No errors found during object check
+Problem 0; Warning 0.
+
+Processing Log (verbatim):
+18:26:30 Start of test
+Compilation of lift_1 successful
+Execution of mapping on server took 33 milliseconds
+Executed successfully
+18:26:33 End of test
+
+Input values/elements were l1.xml. The successful run used XML pasted into the Test editor with compacted inter-element whitespace; the original corpus input was not modified. The earlier file-load attempt was followed by resetting the test instance before this paste. No other runtime attempt returned a result.
+The result remained visible after the owner paused computer use, and was exported after resuming.
+ESR exported a ZIP containing instance.xml. l1-lift-1-export.zip is the unmodified export; l1-lift-1.xml is the byte-preserving extraction of instance.xml.
+
+Reading: confirmed. V by Item: [t1s1,t2s1], [], [], [t4s4,t5s5,t6s5], [s6].

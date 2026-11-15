@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): WSDL 1.1 load errors. A wsdl:import outside the bundle, an inline xs:import of
+     the WSDL's own namespace (no schema declares it), an XSD 1.1 assertion, an RPC part, a message
+     with two parts, a part without element, a part whose element no file declares, an input
+     without message and an output whose message no file declares -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  xmlns:s="urn:flottila:corpus:refusals11-types"
+                  xmlns:tns="urn:flottila:corpus:refusals11"
+                  targetNamespace="urn:flottila:corpus:refusals11">
+  <wsdl:import namespace="urn:flottila:corpus:nowhere" location="nowhere.wsdl"/>
+  <wsdl:types>
+    <xs:schema targetNamespace="urn:flottila:corpus:refusals11-types">
+      <xs:import namespace="urn:flottila:corpus:refusals11"/>
+      <xs:element name="Doc">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Id" type="xs:string"/>
+          </xs:sequence>
+          <xs:assert test="Id"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </wsdl:types>
+  <wsdl:message name="Rpc">
+    <wsdl:part name="id" type="xs:string"/>
+  </wsdl:message>
+  <wsdl:message name="Two">
+    <wsdl:part name="first" element="s:Doc"/>
+    <wsdl:part name="second" element="s:Doc"/>
+  </wsdl:message>
+  <wsdl:message name="Bare">
+    <wsdl:part name="bare"/>
+  </wsdl:message>
+  <wsdl:message name="Lost">
+    <wsdl:part name="body" element="s:Lost"/>
+  </wsdl:message>
+  <wsdl:portType name="Port">
+    <wsdl:operation name="Op">
+      <wsdl:input/>
+      <wsdl:output message="s:Missing"/>
+      <wsdl:fault name="Failed" message="tns:Rpc"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

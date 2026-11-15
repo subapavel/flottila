@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): a WSDL 1.1 document-literal portType whose inline schema imports the #93 XSD
+     files-and-names/import-location/po/order.xsd. Submit has an input, an output and a fault;
+     Cancel is one-way, and its message has no part. A policy, the binding and the service have no
+     effect. -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  xmlns:po="urn:flottila:corpus:po"
+                  xmlns:tns="urn:flottila:corpus:wsdl11"
+                  targetNamespace="urn:flottila:corpus:wsdl11">
+  <wsdl:documentation>A synthetic order service.</wsdl:documentation>
+  <wsp:Policy xmlns:wsp="http://www.w3.org/ns/ws-policy"/>
+  <wsdl:types>
+    <wsdl:documentation>The order is the imported schema's.</wsdl:documentation>
+    <xs:schema targetNamespace="urn:flottila:corpus:wsdl11" elementFormDefault="qualified">
+      <xs:import namespace="urn:flottila:corpus:po"
+                 schemaLocation="../files-and-names/import-location/po/order.xsd"/>
+      <xs:element name="Receipt">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="OrderId" type="xs:string"/>
+            <xs:element name="Accepted" type="xs:boolean"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Rejection" type="tns:Rejection"/>
+      <xs:complexType name="Rejection">
+        <xs:sequence>
+          <xs:element name="Reason" type="xs:string" maxOccurs="unbounded"/>
+        </xs:sequence>
+      </xs:complexType>
+    </xs:schema>
+  </wsdl:types>
+  <wsdl:message name="SubmitRequest">
+    <wsdl:part name="body" element="po:Order"/>
+  </wsdl:message>
+  <wsdl:message name="SubmitResponse">
+    <wsdl:part name="body" element="tns:Receipt"/>
+  </wsdl:message>
+  <wsdl:message name="SubmitFault">
+    <wsdl:part name="detail" element="tns:Rejection"/>
+  </wsdl:message>
+  <wsdl:message name="CancelRequest"/>
+  <wsdl:portType name="OrderPort">
+    <wsdl:operation name="Submit">
+      <wsdl:input message="tns:SubmitRequest"/>
+      <wsdl:output message="tns:SubmitResponse"/>
+      <wsdl:fault name="Rejected" message="tns:SubmitFault"/>
+    </wsdl:operation>
+    <wsdl:operation name="Cancel">
+      <wsdl:input message="tns:CancelRequest"/>
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="OrderBinding" type="tns:OrderPort">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="Submit">
+      <soap:operation soapAction="submit"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="OrderService">
+    <wsdl:port name="OrderPortSoap" binding="tns:OrderBinding">
+      <soap:address location="http://example.invalid/order"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

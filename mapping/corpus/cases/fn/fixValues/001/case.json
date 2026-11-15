@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fix-values-known.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §5 Conversions: FixValues \"Executes a value mapping using a fixed value table that you complete using the function parameters\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]; ADR-0026 \"Table params\" (#83)",
+  "expect": "output",
+  "note": "FixValues with a=A … f=F over Sku in context Order a, b, c | d | e, f: every key is in the table, A, B, C | D | E, F."
+}

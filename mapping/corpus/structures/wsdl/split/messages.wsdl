@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): two inline schemas; the first imports the second's namespace, which imports the
+     namespace of a bundle XSD, each by namespace only. A prefix is declared inside a schema. -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                  xmlns:a="urn:flottila:corpus:split-a"
+                  targetNamespace="urn:flottila:corpus:split-messages">
+  <wsdl:types>
+    <xs:schema targetNamespace="urn:flottila:corpus:split-a">
+      <xs:import namespace="urn:flottila:corpus:split-b"/>
+      <xs:element name="Doc">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element xmlns:b="urn:flottila:corpus:split-b" ref="b:Item"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+    <xs:schema xmlns:t="urn:flottila:corpus:split-types"
+               targetNamespace="urn:flottila:corpus:split-b">
+      <xs:import namespace="urn:flottila:corpus:split-types"/>
+      <xs:element name="Item">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element ref="t:Code"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </wsdl:types>
+  <wsdl:message name="Request">
+    <wsdl:part name="body" element="a:Doc"/>
+  </wsdl:message>
+</wsdl:definitions>

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-fraction-order.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the fraction digits #0)",
+  "expect": "error",
+  "note": "The pattern .#0. A 0 after a # among the fraction digits: DecimalFormat refuses it, and the translation takes only 0s, then #s. Compiling refuses it at N1."
+}

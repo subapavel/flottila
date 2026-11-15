@@ -1,0 +1,11 @@
+{
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "name": "root"
+    },
+    "node_modules/nolicence-pkg": {
+      "version": "1.0.0"
+    }
+  }
+}

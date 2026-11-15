@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synthetic fixture for GATE check 1 (#100): a root that is not an object is refused (ADR-0008)",
+  "type": "array",
+  "items": {"type": "object", "properties": {"id": {"type": "string"}}}
+}

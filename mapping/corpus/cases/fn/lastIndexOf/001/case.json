@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-lastIndexOf.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "lastIndexOf(Sku, Qty) is the 0-based index of the last match: hello/l 3, no match -1, an empty search the length, aaa/aa 1 (the last of two overlapping)."
+}

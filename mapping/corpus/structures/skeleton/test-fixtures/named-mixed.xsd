@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): mixed, block, final and id on a named complex type, with no effect -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:skeleton"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order" type="tns:OrderType"/>
+  <xs:complexType name="OrderType" mixed="true" block="#all" final="restriction" id="order">
+    <xs:sequence>
+      <xs:element name="OrderId" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

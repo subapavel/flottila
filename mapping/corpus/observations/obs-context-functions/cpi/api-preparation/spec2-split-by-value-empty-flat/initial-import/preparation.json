@@ -1,0 +1,15 @@
+{
+  "artifactId": "api_spec2_split_by_value_empty_flat",
+  "logicalMapping": "spec2-split-by-value-empty-flat",
+  "cases": [
+    "fn/splitByValue/015",
+    "fn/splitByValue/016"
+  ],
+  "status": "API_CREATED_READBACK_VERIFIED",
+  "simulation": "NOT_RUN",
+  "editorValidation": "NOT_RUN",
+  "notes": "No observation output. New independent artifact; historical mappings untouched.",
+  "createHttp": 201,
+  "version": "1.0.0",
+  "readback": "VERIFIED_PASS: exact mmap and XSD content match"
+}

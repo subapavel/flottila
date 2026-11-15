@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): two refusals in one file, in document order (#94: an assertion, not a choice) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:assert>
+        <xs:element name="A" type="xs:string"/>
+      </xs:assert>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Other" abstract="true" type="xs:string"/>
+</xs:schema>

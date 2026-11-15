@@ -1,0 +1,175 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/gate/order.schema.json"
+    ],
+    "fingerprint": "sha256:ee54dcfa5f2ce0e42c2cbae54b270f17d2a89877141513ca5a9b8a3944df7f5d",
+    "root": {
+      "json": "$"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/gate/purchase-order/common/common.xsd",
+      "../structures/gate/purchase-order/order.xsd",
+      "../structures/gate/purchase-order/types.xsd"
+    ],
+    "fingerprint": "sha256:c7a83f28ce9966a4cb158317dc7a29a6e89c59ec6ed129bbd3317aa50a7293f3",
+    "root": {
+      "element": "Q{urn:flottila:corpus:gate:po}PurchaseOrder"
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/@issued": {
+      "boxes": {
+        "S1": {
+          "field": "/$/issued",
+          "kind": "source"
+        }
+      },
+      "id": "U1",
+      "result": "S1"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer/Q{urn:flottila:corpus:gate:common}Name": {
+      "boxes": {
+        "S3": {
+          "field": "/$/customer/name",
+          "kind": "source"
+        }
+      },
+      "id": "U3",
+      "result": "S3"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer/Q{urn:flottila:corpus:gate:po}CustomerNo": {
+      "boxes": {
+        "S4": {
+          "field": "/$/customer/number",
+          "kind": "source"
+        }
+      },
+      "id": "U4",
+      "result": "S4"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery": {
+      "boxes": {
+        "S5": {
+          "field": "/$/delivery/address",
+          "kind": "source"
+        }
+      },
+      "id": "U5",
+      "result": "S5"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery/Q{urn:flottila:corpus:gate:common}City": {
+      "boxes": {
+        "S7": {
+          "field": "/$/delivery/address/city",
+          "kind": "source"
+        }
+      },
+      "id": "U7",
+      "result": "S7"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery/Q{urn:flottila:corpus:gate:common}Street": {
+      "boxes": {
+        "S6": {
+          "field": "/$/delivery/address/street",
+          "kind": "source"
+        }
+      },
+      "id": "U6",
+      "result": "S6"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line": {
+      "boxes": {
+        "S9": {
+          "field": "/$/lines",
+          "kind": "source"
+        }
+      },
+      "id": "U9",
+      "result": "S9"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/@no": {
+      "boxes": {
+        "S10": {
+          "field": "/$/lines/no",
+          "kind": "source"
+        }
+      },
+      "id": "U10",
+      "result": "S10"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Article": {
+      "boxes": {
+        "S11": {
+          "field": "/$/lines/sku",
+          "kind": "source"
+        }
+      },
+      "id": "U11",
+      "result": "S11"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Article/Q{urn:flottila:corpus:gate:po}Sku": {
+      "boxes": {
+        "S12": {
+          "field": "/$/lines/sku",
+          "kind": "source"
+        }
+      },
+      "id": "U12",
+      "result": "S12"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Price": {
+      "boxes": {
+        "S14": {
+          "field": "/$/lines/price",
+          "kind": "source"
+        }
+      },
+      "id": "U14",
+      "result": "S14"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Price/@currency": {
+      "boxes": {
+        "S15": {
+          "field": "/$/lines/currency",
+          "kind": "source"
+        }
+      },
+      "id": "U15",
+      "result": "S15"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Quantity": {
+      "boxes": {
+        "S13": {
+          "field": "/$/lines/quantity",
+          "kind": "source"
+        }
+      },
+      "id": "U13",
+      "result": "S13"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}OrderId": {
+      "boxes": {
+        "S2": {
+          "field": "/$/id",
+          "kind": "source"
+        }
+      },
+      "id": "U2",
+      "result": "S2"
+    },
+    "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Pickup": {
+      "boxes": {
+        "S8": {
+          "field": "/$/delivery/pickup",
+          "kind": "source"
+        }
+      },
+      "id": "U8",
+      "result": "S8"
+    }
+  }
+}

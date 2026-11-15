@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Doc>
+  <Grp>
+    <Row>
+      <Val>1</Val>
+    </Row>
+    <Row/>
+  </Grp>
+  <Grp>
+    <Row>
+      <Val>3</Val>
+    </Row>
+  </Grp>
+</Doc>

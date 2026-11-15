@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner probe for useOneAsMany-005.xml / spec2-suppress-use-one-as-many (fn/useOneAsMany/005). Removed only the second Order to avoid the first-queue context-count error while retaining the SUPPRESS value and its two requested repetitions. -->
+<Orders>
+  <Order>
+    <Tag>false</Tag>
+    <Line>
+      <Sku>s1</Sku>
+    </Line>
+    <Line>
+      <Sku>s2</Sku>
+    </Line>
+  </Order>
+</Orders>

@@ -1,0 +1,5 @@
+CPI editor, mapping spec2-suppress-sort-format.
+In-place rebuild of spec2_sort after all preceding outputs/errors were saved. Removed removeContexts, retained sort and Tag; changed Tag context to Orders; added createIf before sort and formatByExample after it. Added Sku context Order to formatByExample pattern. Final graph: Tag(Orders) -> createIf -> sort -> formatByExample input; Sku(Order) -> pattern; formatByExample -> All.
+CPI tree-to-canvas drag added two Sku boxes; removed the unused floating duplicate. Context titles verified: Tag /Orders; Sku /Orders/Order.
+Comparison rule case sensitive; Order asc=true, desc=false. Five final expression connections verified before Save. Nothing else mapped.
+Save and simulation succeeded. Output has two empty All, contradicting the assumed one. R1 queue confirms empty strings first, SUPPRESS last for ascending sorting.

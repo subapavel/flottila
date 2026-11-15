@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/gate-invoice-order.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a target\": a JSON Schema loads and shows as a target structure, but compiling a mapping with a JSON target is a design-time error in milestone 1; MappingDiagnostics json-target-unsupported at /target (#97); GATE check 1, ticket #100",
+  "expect": "error",
+  "note": "Source gate/invoice, target gate/order.schema.json under the root $. Both structures load and the stored fingerprints are the refreshed ones, so the only diagnostic is json-target-unsupported at the target, and no run starts."
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#25): the xs:sequence comes once, before the attributes -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:attribute name="id" type="xs:string"/>
+      <xs:sequence/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,9 @@
+SAP PO 7.50 ESR, 2026-11-11. Mapping uoam_1; input probes/probe-empty-contexts-a.xml imported unchanged.
+Request-directed probe: original leading Order A removed; B, missing-Id order, and D retained. Mapping unchanged.
+Start of test: 19:34:04. Failing box: U1 (useOneAsMany), target /Out/Item/V.
+Problem when Testing (literal text; Java object identity hashes sanitized):
+Runtime exception when processing target-field mapping /Out/Item/V; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Too many values in the first queue in function useOneAsMany. It must have the same number of contexts as the second queue] in class com.sap.aii.mappingtool.flib7.NodeFunctions method useOneAsMany[[Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[HASH], com.sap.aii.mappingtool.tf7.rt.Context@[HASH]]
+See error logs for details
+
+Reading: other. Whole run still fails; no individual Order identified. Agrees with CPI. No successful mapped XML.

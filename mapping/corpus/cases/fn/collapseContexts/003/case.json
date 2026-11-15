@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/collapse-contexts.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-collapse-contexts, input collapseContexts-003.xml, 2026-11-11: corpus/observations/obs-context-functions/po75/spec2-collapse-contexts-003.xml and cpi/collapseContexts-003-spec2-collapse-contexts.xml, display queues po75/spec2-collapse-contexts-003-queue.txt and cpi/collapseContexts-003-spec2-collapse-contexts-queue.txt (start and end markers only); PO 7.50 and CPI 6.84.77 agree; F-47, ADR-0006 Consequences (collapseContexts gives no value for a queue whose only context is empty); ADR-0004 as amended for F-17",
+  "expect": "output",
+  "note": "An empty input: <Orders/> has no Order, so Qty in context Order is one empty context (F-17), which PO's queue holds as nothing at all: no value and no context change. collapseContexts gives no value for it, so the root's one slot creates no All. Taking the one empty context for \"\", the reading before F-47, gives one empty All."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-ifWithoutElse-suppress.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-ifWithoutElse-suppress, input ifWithoutElse-005.xml: corpus/observations/obs-boolean/po75/ifWithoutElse-005-boolean-ifWithoutElse-suppress.xml and cpi/ifWithoutElse-005-boolean-ifWithoutElse-suppress.xml, with their checks; PO 7.50 and CPI agree (meta.json), Keep SUPPRESS Values unchecked; F-44, ADR-0006 Consequences, ifWithoutElse",
+  "expect": "output",
+  "note": "ifWithoutElse(Sku, createIf(Qty)), both in context Orders, without params, onto Item; V is Qty in context Line. Lines (true, 1), (false, 0), (false, TRUE), (true, true): createIf gives \"\", SUPPRESS, \"\", \"\". Both false lines give SUPPRESS at their slots though the parameter is off, so X1 is \"\", SUPPRESS, SUPPRESS, \"\" and the Items of slots 1 and 4 read the Qty of lines 1 and 4: 1 and true."
+}

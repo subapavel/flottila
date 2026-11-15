@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/wsdl-order-receipt.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON Schema and WSDL\": WSDL 1.1 and 2.0 are read by our own code, every inline schema is handed to the XSD reader, and the root is the element of the chosen operation's input, output or fault; ticket #96",
+  "expect": "output",
+  "note": "Source: the input of Submit in wsdl/order-11.wsdl, po:Order from the #93 XSD its inline schema imports. Target: the output of the same operation, Receipt of the inline schema. OrderId per Id in context Order: PO-7. Accepted is the constant true. A WSDL root reads XML like an element root."
+}

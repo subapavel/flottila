@@ -1,0 +1,14 @@
+{
+  "title": "Refusals found while the loaded schema is walked, each once in document order",
+  "type": "object",
+  "properties": {
+    "a": {"$ref": "#/$defs/Matrix"},
+    "b": {"$ref": "#/$defs/Matrix"},
+    "c": {"type": ["string", 1]},
+    "d": {"type": "string"}
+  },
+  "allOf": [{"properties": {"d": {"type": "integer"}}}],
+  "$defs": {
+    "Matrix": {"type": "array", "items": {"type": "array"}}
+  }
+}

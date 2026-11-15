@@ -1,0 +1,22 @@
+PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_remove_contexts, copied from saved ctx_1.
+Graph: Sku (default Line context) -> removeContexts -> Out/All only.
+Object Check: No errors found during object check; Problem 0, Warning 0.
+Original inputs imported through Test; outputs exported through Result/SRC and extracted without rewriting.
+
+f1.xml / fn/removeContexts/002:
+21:00:58 Start of test
+Compilation of spec2_remove_contexts successful
+Execution of mapping on server took 14 milliseconds
+Executed successfully
+21:01:00 End of test
+Output: spec2-remove-contexts-002.xml (original ZIP retained).
+Reading: All a, empty string, b; confirms the candidate and agrees semantically with CPI.
+
+collapseContexts-003.xml / fn/removeContexts/003:
+21:01:59 Start of test
+Execution of mapping on server took 4 milliseconds
+Executed successfully
+21:01:59 End of test
+Output: spec2-remove-contexts-003.xml (original ZIP retained).
+Reading: Out with no children; confirms the candidate and agrees semantically with CPI.

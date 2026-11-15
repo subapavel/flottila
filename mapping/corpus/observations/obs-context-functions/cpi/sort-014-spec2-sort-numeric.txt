@@ -1,0 +1,6 @@
+CPI Simulate, input sort-014.xml, mapping spec2-sort-numeric (artifact spec2_sort), fn/sort/014. No output.
+Run-time error on target /Out/All, box S1 sort, Comparison rule float number, Order asc.
+Dialog title: Error
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping  /Out/All. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Cannot cast "x" to decimal number.] in class com.sap.aii.mappingtool.flib7.NodeFunctions method sort[[Ljava.lang.String;@<id>, SortComparator.FLOAT_NUMBER, SortOrder.ASCENDING, com.sap.aii.mappingtool.tf7.rt.ResultListImpl@<id>, com.sap.aii.mappingtool.tf7.rt.Context@<id>] on the exchange: Exchange[<exchange-id>]
+Dialog button: OK
+No separate Caused by lines or stack frames were exposed in this dialog. The symbolic assumed po:SORT code was not displayed; the failure is the requested invalid-number sort error.

@@ -1,0 +1,376 @@
+/*
+ * The Test tab's styles. Ported from the prototype (branch prototype/mapping-studio,
+ * ui/prototype/mapping-studio/src/studio.css): the rules of the local test bench, the document cards, the instance tree
+ * and the processing log, with their values unchanged. Rules other tabs already carry (the panel, the splitters, the
+ * tool buttons, the view switch, the copy surface, the document tabs) are not repeated; the Display Queue's are in
+ * definition/expression/queue.css and the test instance tools' own in mock/mock.css.
+ * Added: `.stale-mark` marks a result whose trace is stale; `.parameters-preview` holds the Parameters section's
+ * "Preview" badge.
+ */
+.mapping-test {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-width: 0;
+}
+.test-split-layout {
+  flex: 1 0 auto;
+  --min-upper: 265px;
+  --min-lower: 84px;
+  height: 530px;
+}
+.test-split-layout > .split-lower {
+  margin-top: 6px;
+}
+.test-split-layout[data-view='minimized'] > .simulation-toolbar {
+  margin-top: 6px;
+}
+.test-document {
+  min-height: 0;
+  min-width: 0;
+}
+.test-document > :is(header, .doc-tools, .doc-tabs, .path-display, .doc-error) {
+  flex-shrink: 0;
+}
+.test-document > :is(.instance-scroll, .test-parameters, .result-empty, .empty-message) {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+@media (max-width: 700px) {
+  .test-split-layout {
+    --min-upper: 340px;
+  }
+}
+.test-instance-bar,
+.test-document .doc-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.test-instance-bar {
+  margin-bottom: 7px;
+  padding: 6px 9px;
+  gap: 2px;
+}
+.test-instance-bar select {
+  min-width: min(110px, 35vw);
+  max-width: 155px;
+  margin-left: 7px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  background: white;
+  font-size: 12px;
+  border-radius: 4px;
+}
+.test-document header code,
+.test-log header small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.test-document .doc-tools {
+  padding: 6px 10px;
+  gap: 8px;
+}
+.test-document .doc-tools .tree-tool-buttons {
+  border-left: 1px solid var(--line);
+  padding-left: 5px;
+}
+.instance-tree thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.instance-tree .selected-instance td {
+  background: #e6f2ff;
+}
+.instance-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  font-size: inherit;
+  color: inherit;
+  padding: 1px 0;
+}
+.instance-name svg {
+  width: 12px;
+  color: #708599;
+}
+.xml-card {
+  display: flex;
+  flex-direction: column;
+}
+.xml-card header {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  justify-content: space-between;
+}
+.xml-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.xml-card h3,
+.test-log h3 {
+  font-size: 15px;
+  font-weight: 650;
+}
+.xml-card h3 svg {
+  color: #567083;
+}
+.xml-card textarea,
+.result-xml {
+  width: 100%;
+  min-height: 300px;
+  resize: vertical;
+  border: 0;
+  background: white;
+  color: #184761;
+  padding: 16px;
+  font:
+    13px/1.65 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.xml-card textarea:focus-visible {
+  outline-offset: -3px;
+}
+.xml-card .result-xml {
+  margin: 0;
+  min-width: 0;
+}
+.result-empty {
+  padding: 18px;
+  color: var(--muted);
+  min-height: 300px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 9px;
+  text-align: center;
+}
+.result-empty svg {
+  font-size: 23px;
+  color: #73899b;
+}
+.stale-mark {
+  margin-inline: 8px auto;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #fff4e5;
+  color: #8a4a00;
+  font-size: 11px;
+}
+.doc-tools {
+  display: flex;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.doc-error,
+.table-empty {
+  padding: 8px 13px;
+  font-size: 13px;
+}
+.doc-error {
+  color: #8b261d;
+}
+.test-parameters {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  min-height: 300px;
+}
+.parameters-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.parameter-group h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+.params-scroll {
+  overflow: auto;
+  max-height: 215px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  min-height: 66px;
+}
+.table-empty {
+  color: var(--muted);
+  margin: 0;
+}
+.instance-scroll {
+  min-height: 300px;
+  max-height: 56vh;
+  overflow: auto;
+}
+.instance-tree {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.instance-tree th {
+  background: #f5f7f9;
+  padding: 7px 12px;
+  font-weight: 600;
+}
+.instance-tree td {
+  padding: 3px 12px;
+  border-top: 1px solid var(--line);
+}
+.instance-tree td:first-child {
+  width: 55%;
+  white-space: nowrap;
+}
+.instance-tree td:last-child {
+  overflow-wrap: anywhere;
+}
+.instance-spacer {
+  display: inline-block;
+  width: 16px;
+}
+.instance-tree input {
+  width: 100%;
+  background: white;
+  color: var(--ink);
+  padding: 2px 5px;
+  border: 1px solid #ced7df;
+  border-radius: 3px;
+}
+.processing-lines {
+  list-style: none;
+  padding: 8px 0;
+  margin: 0;
+  font:
+    12px/1.5 var(--mono);
+  max-height: 270px;
+  overflow: auto;
+}
+.processing-lines li {
+  padding: 2px 8px;
+}
+.processing-lines li.trace-detail {
+  padding-left: 24px;
+  color: #36566b;
+}
+.processing-lines time {
+  font-weight: 600;
+  margin-right: 10px;
+}
+.test-instance-bar,
+.simulation-toolbar {
+  background: var(--pf-t--color--blue--10);
+}
+.simulation-toolbar {
+  flex: none;
+  padding-block: 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.trace-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-inline-end: 8px;
+}
+.trace-level select {
+  background: white;
+  color: var(--ink);
+  border: 1px solid #b9c7d0;
+  border-radius: 4px;
+  padding: 4px 7px;
+  min-width: 0;
+  max-width: 100%;
+}
+.test-log {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.test-log > header {
+  flex-shrink: 0;
+}
+.test-log header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  min-height: 36px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.test-log header button:first-of-type {
+  margin-inline-start: auto;
+}
+.test-log .log-content > p {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+}
+.test-log .processing-lines {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  padding: 8px 4px;
+}
+.test-document .document-content,
+.test-log .log-content {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.test-document .document-content > :is(textarea, pre, .result-empty) {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  resize: none;
+  overflow: auto;
+  padding-inline-end: var(--copy-space);
+}
+.log-content .processing-lines,
+.test-log .log-content > p {
+  padding-inline-end: var(--copy-space);
+}
+.copy-surface.path-display {
+  min-height: 34px;
+  padding-inline-end: var(--copy-space);
+}
+.path-display {
+  border-top: 1px solid var(--line);
+  padding: 3px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: auto;
+  white-space: nowrap;
+}
+.path-display code {
+  display: block;
+  overflow-x: auto;
+}
+.path-display .clipboard-actions {
+  inset-block-start: 2px;
+  inset-inline-end: 4px;
+}
+@media (max-width: 700px) {
+  .test-document .doc-tools {
+    gap: 4px;
+  }
+  .instance-tree td {
+    padding-inline: 6px;
+  }
+}

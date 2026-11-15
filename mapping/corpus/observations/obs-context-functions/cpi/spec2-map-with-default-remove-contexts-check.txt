@@ -1,0 +1,5 @@
+CPI editor / Save, mapping spec2-map-with-default-remove-contexts.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Sku default Line context -> removeContexts -> mapWithDefault (Default Value D) -> All. No other fields mapped.
+Three expression connections verified. Default Value D entered with ordinary keystrokes and Tab; heading clicked before Save. Save completed with no validation error.
+First simulation returned an empty All despite displayed D. Exact initial XML retained separately; compiled parameter in that attempt is unverified. M1 queue showed D. Another Save and rerun of retained collapseContexts-003.xml yielded one All D, matching the queue. No runtime error.

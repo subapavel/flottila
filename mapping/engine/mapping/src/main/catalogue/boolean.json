@@ -1,0 +1,131 @@
+{
+  "and": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "a"
+      },
+      {
+        "name": "b"
+      }
+    ],
+    "portable": true
+  },
+  "equals": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "a"
+      },
+      {
+        "name": "b"
+      }
+    ],
+    "portable": true
+  },
+  "if": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "condition"
+      },
+      {
+        "name": "then"
+      },
+      {
+        "name": "else"
+      }
+    ],
+    "portable": true
+  },
+  "ifWithoutElse": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "condition"
+      },
+      {
+        "name": "then"
+      }
+    ],
+    "params": [
+      {
+        "default": "false",
+        "name": "keepSuppressValues",
+        "type": "string",
+        "values": [
+          "false",
+          "true"
+        ]
+      }
+    ],
+    "portable": true
+  },
+  "isNil": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Treats an empty element as nil. SAP PO treats only an element marked xsi:nil as nil."
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  },
+  "not": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  },
+  "notEquals": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "a"
+      },
+      {
+        "name": "b"
+      }
+    ],
+    "portable": true
+  },
+  "or": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "a"
+      },
+      {
+        "name": "b"
+      }
+    ],
+    "portable": true
+  }
+}

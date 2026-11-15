@@ -1,0 +1,4 @@
+CPI native editor verification 2026-11-13
+fn/dateTrans/006
+Fresh native dateTrans added from palette showed In Date Format and Out Date Format yyyy/MM/dd. Both fields could be cleared and tabbed out without validation error; after canvas redraw both displayed yyyy/MM/dd again. No blank format was persisted or simulated.
+Temporary unconnected nodes in api_boolean_ifWithoutElse_item were discarded without saving. Stored mapping parameters: cpi/parameter-audit/api_date_trans_006.json

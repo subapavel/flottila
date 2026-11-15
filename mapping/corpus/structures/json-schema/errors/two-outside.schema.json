@@ -1,0 +1,8 @@
+{
+  "title": "Two $refs to files the bundle does not list",
+  "type": "object",
+  "properties": {
+    "party": {"$ref": "party.schema.json"},
+    "item": {"$ref": "item.schema.json"}
+  }
+}

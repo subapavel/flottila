@@ -1,0 +1,6 @@
+CPI attempt 2026-11-13: fn/equalsS/001
+Artifact: api_text_equalsS
+Input: original equalsS-001.xml uploaded through simulator.
+Visible graph verified: Sku and Qty both context /Orders -> equalsS -> /Out/All.
+Two Test executions, original attempt plus one retry, each returned only: Test execution has failed; please try again
+No output XML or specific mapping exception exposed. ENVIRONMENT_BLOCKED; no behavioral conclusion and not counted as completed simulation.

@@ -1,0 +1,20 @@
+Case: fn/ifWithoutElse/008
+Mapping: boolean-ifWithoutElse-empty-keep
+Input: original ifWithoutElse-008.xml imported unchanged through ESR Test UI; all three Orders verified in source XML view.
+Graph: Qty (Order) -> X1 condition; Tag (default Order) -> X1 then; X1 -> removeContexts -> Out/Item; separate Sku (default Line) -> Out/Item/V. No other target wires.
+X1 parameter dialog verified: Keep SUPPRESS Values checked.
+Saved; object check: No errors found during object check; Problem 0, Warning 0.
+Processing Log: 08:09:36 Start of test; compilation successful; execution took 8 milliseconds; Executed successfully; 08:09:38 End of test.
+Result: one Item with V c. Exact XML retained from instance.xml in the ZIP exported through ESR result UI.
+Display Queue X1: compilation successful; execution 7 milliseconds; Executed successfully.
+Columns in0 | in1 | out; literal numbered rows (shading applies to each specified cell):
+0 <null> (gray) | <null> (gray) | <null> (gray)
+1 <null> (gray) | [z] | <null> (white)
+2 [false] | [z] (gray) | <null> (gray)
+3 [false] (gray) | [z] (gray) | SUPPRESS (cyan)
+4 [true] | [x] | SUPPRESS (gray)
+5 [false] | [y] | [x]
+6 [false] (dark gray) | [y] (dark gray) | SUPPRESS (cyan)
+7 blank | blank | SUPPRESS (dark gray)
+No italic values. Columns have independently positioned context markers; rows must not be interpreted as aligned evaluation tuples. Gray context/terminal cells are not additional data values.
+Reading: contradicted. Final V is c rather than assumed a. The first output context displays a white <null>, the second a cyan SUPPRESS, and the third x followed by cyan SUPPRESS. This records the actual queue representation without reclassifying white <null> as a literal string or as SUPPRESS.

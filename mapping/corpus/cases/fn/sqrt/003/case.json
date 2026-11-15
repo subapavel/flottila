@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sqrt.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: the double root of a negative number is NaN, which has no xs:decimal",
+  "expect": "error",
+  "note": "Qty is -4. Its double root is NaN, which cannot be an xs:decimal: sqrt raises err:FORG0001 at its box V1 in both back ends (a plain cast in the export would raise FOCA0002). Our reading; PO's text is unknown."
+}

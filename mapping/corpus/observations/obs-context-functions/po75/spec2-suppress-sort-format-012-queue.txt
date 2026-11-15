@@ -1,0 +1,11 @@
+SAP PO Display Queue observation 2026-11-11
+Mapping: spec2_suppress_sort_format; input sort-012.xml; case fn/sort/012.
+Display Queue on sort: compilation successful; execution 11 milliseconds; Executed successfully.
+Row numbering enabled. Literal columns sort:in0 | sort:out. All text regular, not italic. [] denotes the visible empty-string marker.
+0: <null> (gray) | <null> (gray)
+1: [] (white) | [] (white)
+2: SUPPRESS (cyan) | [] (white)
+3: [] (white) | SUPPRESS (cyan)
+4: SUPPRESS (cyan) | SUPPRESS (cyan)
+5: SUPPRESS (dark gray) | SUPPRESS (dark gray)
+Reading: One context, input [empty,SUPPRESS,empty,SUPPRESS], output [empty,empty,SUPPRESS,SUPPRESS]. Gray start and dark-gray terminal rows are not additional values. Ascending places SUPPRESS after empty values; agrees with CPI.

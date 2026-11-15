@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/map-with-default.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 mapWithDefault: \"Replaces empty contexts in the inbound queue with a default value … A|B1,B2| |C| |D → A | B1,B2 | Default | C | Default |D\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]",
+  "expect": "output",
+  "note": "The SAP example. Tag in its default context Order is A | B1, B2 | (empty) | C | (empty) | D; mapWithDefault with the default Default fills each empty context with one Default and keeps the others, and removeContexts puts every value under the root's one slot: A, B1, B2, Default, C, Default, D. Without the default the two empty contexts would leave nothing."
+}

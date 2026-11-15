@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#94): repeated groups of two or more particles load, and their fields carry
+     interleaved-target-group at the repeated group's declaration, unless the group is a choice of
+     single elements (ADR-0008). Same-step siblings carry ambiguous-field-path instead. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:g="urn:flottila:corpus:groups"
+           xmlns:c="urn:flottila:corpus:groups:common"
+           targetNamespace="urn:flottila:corpus:groups">
+  <xs:import namespace="urn:flottila:corpus:groups:common" schemaLocation="common.xsd"/>
+  <xs:group name="Pair">
+    <xs:sequence>
+      <xs:element name="H" type="xs:string"/>
+      <xs:element name="I" type="xs:string"/>
+    </xs:sequence>
+  </xs:group>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+        <xs:sequence maxOccurs="unbounded">
+          <xs:element name="A" type="xs:string"/>
+          <xs:element name="B" type="xs:string" minOccurs="0"/>
+        </xs:sequence>
+        <xs:choice maxOccurs="unbounded">
+          <xs:element name="C" type="xs:string"/>
+          <xs:element name="D" type="xs:string"/>
+        </xs:choice>
+        <xs:choice maxOccurs="2">
+          <xs:element name="E" type="xs:string"/>
+          <xs:sequence>
+            <xs:element name="F" type="xs:string"/>
+            <xs:element name="G" type="xs:string"/>
+          </xs:sequence>
+        </xs:choice>
+        <xs:group ref="g:Pair" maxOccurs="unbounded"/>
+        <xs:group ref="c:Repeated"/>
+        <xs:sequence maxOccurs="unbounded">
+          <xs:element name="Solo" type="xs:string"/>
+        </xs:sequence>
+        <xs:sequence minOccurs="0" maxOccurs="2">
+          <xs:element name="K" type="xs:string"/>
+          <xs:element name="K" type="xs:integer"/>
+        </xs:sequence>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

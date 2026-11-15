@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>abcdef</Sku><Qty>abc</Qty></Line>
+    <Line><Sku>abcdef</Sku><Qty>bc</Qty></Line>
+    <Line><Sku>abc</Sku><Qty></Qty></Line>
+    <Line><Sku></Sku><Qty>a</Qty></Line>
+    <Line><Sku>ab</Sku><Qty>abc</Qty></Line>
+  </Order>
+</Orders>

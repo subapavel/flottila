@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner probe (not a case input): does PO's createIf read an empty value as false? -->
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku/><Qty>1</Qty></Line>
+    <Line><Sku>1</Sku><Qty>2</Qty></Line>
+  </Order>
+</Orders>

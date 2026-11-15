@@ -1,0 +1,4 @@
+CPI editor / Save, mapping spec2-exists.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Sku context /Orders/Order -> exists -> removeContexts -> All. No other fields mapped.
+Source context verified in node tooltip. Three expression connections verified after Save; no validation error was shown.

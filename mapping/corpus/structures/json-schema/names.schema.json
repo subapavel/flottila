@@ -1,0 +1,14 @@
+{
+  "title": "Field paths start with $ and percent-encode % / @ { } in names",
+  "type": "object",
+  "properties": {
+    "a/b": {"type": "string"},
+    "50%": {"type": "string"},
+    "@id": {"type": "string"},
+    "{x}": {"type": "string"},
+    "$": {"type": "string"},
+    "$ref": {"type": "string"},
+    "$dynamicRef": {"type": "string"},
+    "plain name": {"type": "string"}
+  }
+}

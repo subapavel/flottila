@@ -1,0 +1,9 @@
+Date: 2026-11-12
+Case: target/attribute/002; mapping str-attr; artifact api_str_attr.
+Original attr3.xml uploaded unchanged through the tab's file chooser, then Test.
+EXECUTED_FAIL: native mapping exception at the required code attribute.
+Exact diagnostic, with only transient exchange-ID suffix omitted:
+com.sap.aii.mappingtool.tf7.IllegalInstanceException: Cannot produce target element /Flagged/code. Queue has not enough values in context. Target xsd requires a value for this element, but target field mapping does not produce one. Probably the xml-instance is not valid to the source xsd, or the target field mapping does not fulfill the requirement of the target xsd.
+No output XML. Error dialog read and dismissed using OK.
+Reading: confirmed; agrees semantically with existing PO observation.
+Graph verification and environment notes: str-attr-retry-check.txt.

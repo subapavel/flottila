@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>4.1.2026 7:05</Sku><Qty>1</Qty></Line>
+    <Line><Sku>04.01.2026 07:05</Sku><Qty>1</Qty></Line>
+    <Line><Sku>31.12.1999 23:59</Sku><Qty>1</Qty></Line>
+  </Order>
+</Orders>

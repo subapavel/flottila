@@ -1,0 +1,61 @@
+{
+  "banana": {
+    "executionKind": "context",
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "params": [
+      {
+        "default": "eachValue",
+        "name": "mode",
+        "type": "string",
+        "values": [
+          "eachValue",
+          "valueChange"
+        ]
+      },
+      {
+        "default": "é \"q\" \\ \u001f",
+        "name": "label",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "kiwiB": {
+    "executionKind": "single",
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  },
+  "melonBall": {
+    "executionKind": "queue",
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "portable": true
+  },
+  "zucchini": {
+    "executionKind": "context",
+    "inputs": [
+      {
+        "name": "keys"
+      }
+    ],
+    "params": [
+      {
+        "default": {},
+        "name": "rows",
+        "type": "table"
+      }
+    ],
+    "portable": true
+  }
+}

@@ -1,0 +1,6 @@
+CPI attempt 2026-11-13: fn/replaceString/003
+Artifact: api_text_replaceString_empty_search
+Input: original replaceString-003.xml uploaded through simulator.
+Visible graph: Sku context /Orders, blank-looking constant, and constant - -> replaceString -> /Out/All. Blank constant title contains formatting whitespace; exact parameter value not independently confirmed.
+Two Test executions, original attempt plus one retry, each returned only: Test execution has failed; please try again
+No output XML or specific mapping exception exposed. ENVIRONMENT_BLOCKED; no behavioral conclusion and not counted as completed simulation.

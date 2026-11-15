@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-flags.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" and \"JSON as a target\" (booleans stay strings, true and false); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. The array of booleans $/flags in the root's one context: each boolean reads as the string true or false."
+}

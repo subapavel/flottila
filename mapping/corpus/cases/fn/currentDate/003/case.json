@@ -1,0 +1,8 @@
+{
+  "mapping": "mappings/current-date-item.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-43 addendum: the observation used the real clock and zone, the case uses the fixed test clock 2026-01-01T12:00Z, so the values cannot be compared; the observed formats are partial evidence (obs-date); was assumed: #2 §5 Date: the date functions take java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003; ADR-0006 generating function (#83, F-21); #80: currentDate is fixed once per mapping run from the run clock, in the run's time zone; assumed reading: a generating function on a field under a repeated parent is in every occurrence (obs-date currentDate-003)",
+  "expect": "output",
+  "note": "CurrentDate{yyyyMMdd} on Item/V, Item per Order, run at 2026-11-05T00:30:00+01:00: each of the three Items gets one V 20261105, o2 without lines too. In UTC the date would be 20261104.",
+  "now": "2026-11-05T00:30:00+01:00"
+}

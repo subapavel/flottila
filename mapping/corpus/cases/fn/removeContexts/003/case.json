@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/remove-contexts.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-remove-contexts-003.xml and corpus/observations/obs-context-functions/cpi/collapseContexts-003-spec2-remove-contexts.xml; before #214: ADR-0004 as amended for F-17 (observed #31 d3): a source queue whose context element never occurs in the message is one empty context; removeContexts gives one context holding the values of all contexts",
+  "expect": "output",
+  "note": "An empty input: <Orders/> has no Order and no Line, so the Sku queue is one empty context (F-17). removeContexts gives one context and it holds no value, so the root's one slot creates no All and the root is written empty."
+}

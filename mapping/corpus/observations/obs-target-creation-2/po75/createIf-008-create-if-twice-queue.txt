@@ -1,0 +1,13 @@
+Display Queue of box C2 (second createIf), SAP PO 7.5, mapping create-if-twice, input createIf-008.xml, case fn/createIf/008.
+Row numbers enabled. Literal UI transcription:
+
+row  createIf:in0  shading    createIf:out  shading
+0    <null>        gray       <null>        gray
+1    SUPPRESS      cyan       SUPPRESS      cyan
+2    SUPPRESS      cyan       SUPPRESS      cyan
+3    SUPPRESS      dark gray  SUPPRESS      dark gray
+
+Reading: in0 = [SUPPRESS, SUPPRESS]; out = [SUPPRESS, SUPPRESS]. Row 3 is the end marker, not a third value. SUPPRESS passes through C2; it is not cast to boolean. The test output is <Out></Out>.
+
+Test log: 04:11:45 Start of test; Compilation of create_if_twice successful; Execution of mapping on server took 6 milliseconds; Executed successfully; 04:11:46 End of test.
+Display Queue log: Compilation of create_if_twice successful; Execution of mapping on server took 7 milliseconds; Executed successfully.

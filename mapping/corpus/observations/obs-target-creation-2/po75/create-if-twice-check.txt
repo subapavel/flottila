@@ -1,0 +1,8 @@
+SAP PO 7.5 | Definition > Check | Mapping create-if-twice
+Saved before Check. No activation requested or performed.
+
+No errors found during object check
+Problem 0
+Warning 0
+
+Graph: Tag with context Orders -> C1 createIf -> C2 createIf -> Out/All. No other target field is mapped.

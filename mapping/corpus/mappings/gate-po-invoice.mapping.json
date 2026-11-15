@@ -1,0 +1,166 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/gate/purchase-order/common/common.xsd",
+      "../structures/gate/purchase-order/order.xsd",
+      "../structures/gate/purchase-order/types.xsd"
+    ],
+    "fingerprint": "sha256:c7a83f28ce9966a4cb158317dc7a29a6e89c59ec6ed129bbd3317aa50a7293f3",
+    "root": {
+      "element": "Q{urn:flottila:corpus:gate:po}PurchaseOrder"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/gate/invoice/invoice.xsd",
+      "../structures/gate/invoice/party.xsd"
+    ],
+    "fingerprint": "sha256:58de05eec9c995263cd630786bcdecf224806c5e23cdecad4681bea25648ea4a",
+    "root": {
+      "element": "Q{urn:flottila:corpus:gate:invoice}Invoice"
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Date": {
+      "boxes": {
+        "S2": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/@issued",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Item": {
+      "boxes": {
+        "S6": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line",
+          "kind": "source"
+        }
+      },
+      "id": "T6",
+      "result": "S6"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Item/@currency": {
+      "boxes": {
+        "S8": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Price/@currency",
+          "kind": "source"
+        }
+      },
+      "id": "T8",
+      "result": "S8"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Item/@line": {
+      "boxes": {
+        "S7": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/@no",
+          "kind": "source"
+        }
+      },
+      "id": "T7",
+      "result": "S7"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Item/Q{urn:flottila:corpus:gate:invoice}Amount": {
+      "boxes": {
+        "S10": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Price",
+          "kind": "source"
+        }
+      },
+      "id": "T10",
+      "result": "S10"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Item/Q{urn:flottila:corpus:gate:invoice}Text": {
+      "boxes": {
+        "S9": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Line/Q{urn:flottila:corpus:gate:po}Article/Q{urn:flottila:corpus:gate:po}Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T9",
+      "result": "S9"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Number": {
+      "boxes": {
+        "S1": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}OrderId",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Section": {
+      "boxes": {
+        "S11": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer",
+          "kind": "source"
+        }
+      },
+      "id": "T11",
+      "result": "S11"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Section/Q{urn:flottila:corpus:gate:invoice}Section": {
+      "boxes": {
+        "S13": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery",
+          "kind": "source"
+        }
+      },
+      "id": "T13",
+      "result": "S13"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Section/Q{urn:flottila:corpus:gate:invoice}Section/Q{urn:flottila:corpus:gate:invoice}Title": {
+      "boxes": {
+        "S14": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery/Q{urn:flottila:corpus:gate:common}City",
+          "kind": "source"
+        }
+      },
+      "id": "T14",
+      "result": "S14"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:invoice}Section/Q{urn:flottila:corpus:gate:invoice}Title": {
+      "boxes": {
+        "S12": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer/Q{urn:flottila:corpus:gate:po}CustomerNo",
+          "kind": "source"
+        }
+      },
+      "id": "T12",
+      "result": "S12"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:party}Party/Q{urn:flottila:corpus:gate:party}City": {
+      "boxes": {
+        "S5": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery/Q{urn:flottila:corpus:gate:common}City",
+          "kind": "source"
+        }
+      },
+      "id": "T5",
+      "result": "S5"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:party}Party/Q{urn:flottila:corpus:gate:party}Name": {
+      "boxes": {
+        "S3": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Buyer/Q{urn:flottila:corpus:gate:common}Name",
+          "kind": "source"
+        }
+      },
+      "id": "T3",
+      "result": "S3"
+    },
+    "/Q{urn:flottila:corpus:gate:invoice}Invoice/Q{urn:flottila:corpus:gate:party}Party/Q{urn:flottila:corpus:gate:party}Street": {
+      "boxes": {
+        "S4": {
+          "field": "/Q{urn:flottila:corpus:gate:po}PurchaseOrder/Q{urn:flottila:corpus:gate:po}Delivery/Q{urn:flottila:corpus:gate:common}Street",
+          "kind": "source"
+        }
+      },
+      "id": "T4",
+      "result": "S4"
+    }
+  }
+}

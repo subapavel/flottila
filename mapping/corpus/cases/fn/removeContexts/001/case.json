@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/remove-contexts.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 removeContexts: \"Removes all higher-level contexts of a source field … delete all hierarchy levels and generate a list\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/1f/ea0fb12403844bbb6c4cbc8a00cda9/content.htm]",
+  "expect": "output",
+  "note": "removeContexts over a repeating parent: Sku in its default context Line gives a | b | c, three contexts over two Orders, and removeContexts puts all three values into one context, so All under the root's one slot is a, b, c. Without it the root's slot reads context 1 only and All is a alone. Qty and Id are unmapped witnesses."
+}

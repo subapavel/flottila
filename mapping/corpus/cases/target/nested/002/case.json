@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/nested-grp-row-val.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §1 nested queues: \"The number of contexts of a queue must be the same as the number of values (empty strings) of the upper-level queue\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/fbd21666d33de4e10000000a42189e/content.htm]; #2 §2 context i of a child's queue belongs to the i-th entry of the parent's queue [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/1f/ea0fb12403844bbb6c4cbc8a00cda9/content.htm]",
+  "expect": "output",
+  "note": "Depth four on tgt-nested. Grp per Id in context Orders: slots 1, 2. Row (1..2) per Sku in context Order: a, b | c, whose slot numbers count across the contexts, 1, 2 | 3. Val (0..1) per Qty in its default context Line: 1 | (empty) | 3. Row 3 (c) reads Qty context 3, so Grp 2's Row has Val 3. Numbering the slots per context would give c slot 1 and Val 1."
+}

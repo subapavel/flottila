@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-c.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31), mapping create-c, input c1.xml: corpus/observations/obs-target-creation/po75/c1-create-c-check.txt, po75/c1-create-c.txt, cpi/c1-create-c-check.txt and cpi/c1-create-c.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json): the unmapped Req (1..1) is a design-time error, \"Target field mapping '/Unmapped/Head/Req' incomplete\", PO cancels activation and its Test tab does not run, CPI refuses Simulate (\"Mapping has validation errors\"); Head (unmapped, 1..1, child A mapped) is not reported; ADR-0006 Consequences: an unmapped target leaf with minOccurs > 0 is a design-time error; unmapped-mandatory-leaf at /targetFieldMappings/<field path> is #65",
+  "expect": "error",
+  "note": "Only A is mapped, from Id in context Orders. Head (1..1) is unmapped and created once, so its mandatory Req would be missing: compiling refuses it with unmapped-mandatory-leaf at Req's absent target field mapping. Head itself is not reported, and the run never starts."
+}

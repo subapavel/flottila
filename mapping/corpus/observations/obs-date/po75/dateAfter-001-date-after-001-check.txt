@@ -1,0 +1,13 @@
+SAP PO 7.50 ESR message mapping Test, 2026-11-12
+Case: fn/dateAfter/001; mapping: date_after_001; input: dateAfter-001.xml.
+Copied date_before_001 in the authorized observation namespace, replaced DateBefore with a fresh DateAfter node.
+Graph: Sku (Orders context) -> DateAfter first input; Qty (Orders context) -> second input; DateAfter -> Out/All. Schemas src-orders.xsd and tgt-list.xsd.
+First date format yyyyMMdd; second dd.MM.yyyy. Both verified in the parameter dialog before Save.
+Advanced defaults unchanged: First Weekday Sunday; minimum days in first week 1; Calendar Is Lenient checked. Named JVM timezone not exposed.
+Save completed; Check: No errors found during object check, Problem 0, Warning 0.
+Input source view verified earlier/equal/later values 20261103, 20261104, 20261105 against 04.11.2026.
+Processing Log: 19:52:48 Start of test; compilation successful; execution took 6 milliseconds; Executed successfully; 19:52:49 End of test. Log does not display timezone.
+Result source view: three All values false, false, true.
+Original result ZIP exported; instance.xml copied byte-for-byte to the adjacent XML evidence file.
+Initial export dialog did not retain the requested filename and wrote schema.zip; that new accidental export was moved outside the repository. Retried with pasted path, verified filename before Save, and verified the expected export file on disk.
+No queue capture requested. No screenshot file retained. CPI NOT_RUN.

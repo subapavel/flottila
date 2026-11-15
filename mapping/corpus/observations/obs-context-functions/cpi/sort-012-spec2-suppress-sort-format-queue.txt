@@ -1,0 +1,12 @@
+Display Queue of box R1 (sort), CPI, input sort-012.xml, mapping spec2-suppress-sort-format, fn/sort/012.
+S. No. enabled. Comparison rule case sensitive, Order asc.
+row  sort:in1  shading           sort:out1  shading
+0    <null>    gray italic       <null>     gray italic
+1    [ ]       white             [ ]        white
+2    SUPPRESS  white             [ ]        white
+3    [ ]       white             SUPPRESS   white
+4    SUPPRESS  white             SUPPRESS   white
+5    SUPPRESS  dark gray italic   SUPPRESS   dark gray italic
+
+Reading: in1 = [empty string,SUPPRESS,empty string,SUPPRESS]; out1 = [empty string,empty string,SUPPRESS,SUPPRESS].
+Ascending puts SUPPRESS after empty strings, contrary to the assumed SUPPRESS-first order. The first pattern context therefore writes two empty All.

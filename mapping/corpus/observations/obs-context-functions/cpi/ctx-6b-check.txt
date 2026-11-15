@@ -1,0 +1,5 @@
+CPI editor / Save, mapping ctx-6b, in-place variant of artifact ctx_6a.
+Changed only after ctx-6a output f6-ctx-6a.xml had been saved locally.
+Retained constant 0, greater and ifWithoutElse, with Qty in default Line context and Keep SUPPRESS checked. Removed both removeContexts boxes, Tag and concat; inserted collapseContexts between ifWithoutElse and All. No other targets mapped.
+Six expression connections and Keep SUPPRESS true verified after Save; no validation error was shown. Simulate retained the same f6.xml input from ctx-6a.
+After the simulation and queue had been recorded, navigation showed "There are unsaved changes. Do you want to continue?" No was selected and Save was run again. The warning recurred despite no further graph edits; Yes then returned to the package. This navigation warning is recorded separately from the successful simulation and does not establish that the final editor state persisted.

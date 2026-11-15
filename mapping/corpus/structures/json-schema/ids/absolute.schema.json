@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/absolute.json",
+  "title": "An absolute $ref names the bundle file whose root $id it is, by pointer or by anchor",
+  "type": "object",
+  "properties": {
+    "billTo": {"$ref": "https://example.com/shared/address.json#/$defs/Address"},
+    "home": {"$ref": "https://example.com/shared/address.json#home"}
+  }
+}

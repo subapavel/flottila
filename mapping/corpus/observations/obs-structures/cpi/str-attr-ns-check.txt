@@ -1,0 +1,7 @@
+CPI editor / Save and Simulate, mapping str-attr-ns.
+
+Sources: src-orders.xsd (Orders), tgt-attr-ns.xsd (Flagged).
+Definitions: Id (default context) -> @ns2:code; Tag (default context) -> createIf -> @ns2:flag; separate Id with context /Orders -> V. No other fields mapped.
+Initial source assignment remained busy and did not populate the trees. The two uploaded XSD resources were saved. Once Save was no longer busy, one reload was performed; Local (2) persisted. Selecting the saved local source and target resources then populated both trees.
+The editor displayed ns2:Flagged, @ns2:flag and @ns2:code. Save completed with both schemas present. Simulate opened without a validation error.
+attr4.xml completed successfully. Downloaded XML uses ns1 for the root and both qualified attributes, declares xmlns:ns1 on the root, writes code before flag, and leaves V unqualified. See attr4-str-attr-ns.xml for exact bytes.

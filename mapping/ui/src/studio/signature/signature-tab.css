@@ -1,0 +1,338 @@
+/*
+ * The Signature tab's styles. Ported from the prototype (branch prototype/mapping-studio,
+ * ui/prototype/mapping-studio/src/): first the rules of studio.css the tab uses (section heads, editor tables, role
+ * tiles, tool buttons, the copy surface of the processing log), then signature.css, with their values unchanged.
+ * Added: `.sig-name-cell` and `.preview-badge` place a preview message's "Preview" badge beside its name.
+ */
+.mode-fields {
+  min-inline-size: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.role-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 36px;
+  width: 36px;
+  border-radius: 9px;
+  font-size: 16px;
+}
+.role-tile.source {
+  background: #def3ea;
+  color: var(--source);
+}
+.role-tile.target {
+  background: #e5effd;
+  color: var(--target);
+}
+.empty-message {
+  padding: 18px;
+  color: var(--muted);
+}
+.def-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 29px;
+  height: 29px;
+  padding: 4px 6px;
+  color: #415d70;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 13px;
+}
+.def-tool:hover:not(:disabled) {
+  background: #edf4fa;
+  border-color: #c1d2df;
+  color: var(--blue);
+}
+.def-tool:disabled {
+  color: #84929e;
+  opacity: 0.65;
+  cursor: default;
+}
+.copy-surface {
+  --copy-space: 52px;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.copy-surface.plain-log {
+  padding-inline-end: var(--copy-space);
+}
+.plain-log {
+  min-height: 38px;
+  padding-block: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.clipboard-actions {
+  position: absolute;
+  inset-block-start: 5px;
+  inset-inline-end: 16px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.signature-component span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.signature-component strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.editor-table input,
+.editor-table select {
+  background: white;
+  color: var(--ink);
+  border: 1px solid #b9c7d0;
+  border-radius: 4px;
+  padding: 4px 7px;
+  min-width: 0;
+  max-width: 100%;
+}
+.signature {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+.signature-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.signature-pair .panel {
+  min-height: 220px;
+}
+.signature > .panel {
+  min-height: 180px;
+}
+.editor-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--line);
+}
+.editor-section-head h2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 650;
+}
+.editor-section-head h2 svg {
+  color: #567083;
+}
+.signature-component {
+  padding: 12px 15px;
+}
+.editor-table-scroll {
+  overflow-x: auto;
+}
+.editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+.editor-table th,
+.editor-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.editor-table th {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  background: #f5f7f9;
+}
+.editor-table input {
+  width: 100%;
+  min-width: 85px;
+}
+@media (max-width: 750px) {
+  .signature-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .signature-pair .panel {
+    min-height: 135px;
+  }
+}
+
+/* signature.css */
+.signature {
+  align-content: start;
+}
+.signature-pair .sig-messages {
+  min-height: clamp(245px, 31vh, 360px);
+}
+.sig-parameters {
+  min-height: 225px !important;
+}
+.signature .editor-section-head {
+  padding: 10px 14px;
+}
+.signature h2 .role-tile {
+  width: 29px;
+  height: 29px;
+  border-radius: 6px;
+}
+.signature h2 small {
+  color: #ad271e;
+  font-size: 13px;
+}
+.sig-count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  background: #edf1f4;
+  border-radius: 10px;
+  min-width: 23px;
+  text-align: center;
+  color: var(--muted);
+}
+.signature .signature-component {
+  padding: 10px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+}
+.signature-component strong {
+  font-variant-numeric: tabular-nums;
+}
+.sig-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: #f7f9fa;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  gap: 3px;
+}
+.sig-toolbar i {
+  height: 17px;
+  width: 1px;
+  background: var(--line);
+  margin: 0 3px;
+}
+.sig-message-table,
+.sig-param-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.sig-message-table {
+  min-width: 485px;
+}
+.sig-param-table {
+  min-width: 660px;
+}
+.signature .editor-table td,
+.signature .editor-table th {
+  padding: 5px 6px;
+}
+.sig-message-table th:first-child {
+  width: 31px;
+}
+.sig-message-table th:nth-child(2) {
+  width: 27%;
+}
+.sig-message-table th:nth-child(3) {
+  width: 22%;
+}
+.sig-message-table th:nth-child(5) {
+  width: 24%;
+}
+.sig-param-table th:last-child {
+  width: 26%;
+}
+.signature .editor-table input,
+.signature .editor-table select,
+.sig-lookup {
+  width: 100%;
+  min-width: 0;
+  padding: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.signature .editor-table select {
+  cursor: pointer;
+}
+.signature .editor-table input:hover,
+.signature .editor-table select:hover,
+.sig-lookup:hover {
+  border-color: #b9c7d0;
+  border-radius: 4px;
+}
+.sig-lookup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  text-align: left;
+}
+.sig-lookup span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sig-lookup svg {
+  flex: none;
+  color: var(--blue);
+  width: 12px;
+}
+.sig-row-num {
+  color: var(--muted);
+  font: 11px var(--mono);
+  border: 0;
+  background: none;
+  min-width: 19px;
+}
+.sig-selected {
+  background: #eaf3fc;
+}
+.sig-selected td:first-child {
+  box-shadow: inset 3px 0 var(--blue);
+}
+.sig-log h3 {
+  font-size: 14px;
+  font-weight: 650;
+}
+.sig-log {
+  padding: 14px;
+}
+.sig-log p {
+  font-size: 13px;
+}
+@media (max-width: 1060px) {
+  .signature-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .signature-pair .sig-messages {
+    min-height: 170px;
+  }
+}
+
+/* added: a preview message's badge beside its name */
+.sig-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.preview-badge {
+  display: inline-flex;
+  flex: none;
+}

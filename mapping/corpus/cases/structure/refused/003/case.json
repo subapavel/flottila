@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/same-step-unmapped-sibling.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0007 Consequences: two sibling declarations with the same step have no unique path and are refused when a mapping uses them; ADR-0008 \"Refused when a mapping uses the field\" and its Shape (#92): the target walk never enters a refused field, and one with a minimum above 0 that no mapping writes is reported at its /targetFieldMappings/<field path> pointer, instead of unmapped-mandatory-leaf; spec #89, ticket #92",
+  "expect": "error",
+  "note": "T2 maps the optional Head from the source Head, so the target walk creates Head and meets its two unmapped Refs, both 1..1 and declared with one step. The walk never enters them and reports ambiguous-field-path once, at the pointer of their absent target field mapping, /targetFieldMappings/~1Doc~1Head~1Ref, the message naming same-step.xsd 19:56; before #92 it reported unmapped-mandatory-leaf there for each Ref. Head itself is no refused field, so T2 and its box stand."
+}

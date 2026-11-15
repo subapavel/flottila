@@ -1,0 +1,10 @@
+Date: 2026-11-12
+Case: fn/splitByValue/005
+Artifact: api_spec2_split_by_value_each
+Input: original collapseContexts-003.xml (empty Orders)
+Unchanged graph from case 004; see splitByValue-004-spec2-split-by-value-each-check.txt.
+Test completed. Output tree Out without All.
+Original Download Output XML (49 bytes) copied without reformatting.
+Reading: confirmed; no All is created for the empty input.
+No display queue requested, no screenshot file saved, prior version evidence retained.
+Browser-tab control only, no SAP PO interaction.

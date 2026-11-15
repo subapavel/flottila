@@ -1,0 +1,13 @@
+Function Message Queue of box D1 (mapWithDefault{default=D}), CPI Simulate, input d2.xml, mapping create-d.
+Transcribed literally from the owner's screenshot. Gray rows (italic in CPI) are context changes.
+
+S. No.  mapWithDefault:in1   shading      mapWithDefault:out1   shading
+0       <null>               gray         <null>                gray
+1       a                    white        a                     white
+2       a                    gray         a                     gray
+3       a                    gray         D                     white
+4       c                    white        D                     gray
+5       c                    dark gray    c                     white
+6       (none)                            c                     dark gray
+
+in1 = [a] [] [c], out1 = [a] [D] [c]. Same rows as PO 7.5 (po75/d2-create-d-queue.txt).

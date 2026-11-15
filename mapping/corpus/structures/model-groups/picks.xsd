@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target (#94): Picks holds a repeated choice of the single elements A and B. Each
+     is 0..unbounded, and streamed output writes every A, then every B, which the choice allows
+     (ADR-0008). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Picks">
+    <xs:complexType>
+      <xs:choice maxOccurs="unbounded">
+        <xs:element name="A" type="xs:string"/>
+        <xs:element name="B" type="xs:string"/>
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-if.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-if, input if-001.xml: corpus/observations/obs-boolean/po75/if-001-boolean-if-error.txt (PO 7.50, \"Cannot cast '' to boolean\") and cpi/if-001-boolean-if-native-error.txt (CPI, native if, 2026-11-13, \"Cannot cast \"\" to boolean.\"); PO and CPI agree, no output (meta.json); F-44, ADR-0006 Consequences, the boolean family's cast",
+  "expect": "error",
+  "note": "if casts its condition as PO's Bool.toBoolean does: true and 1 are true, false and 0 false, in any case. Lines (true, q1), (false, q2), (TRUE, q3), (empty, q4) with Tags e1 to e4: the empty condition of line 4 is no boolean, so the run raises err:FORG0001 at F1, as PO and CPI end it with \"Cannot cast '' to boolean\". TRUE in line 3 casts; the run does not show to which value."
+}

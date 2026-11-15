@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-min-integer.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-arithmetic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-arithmetic/po75/formatNum-002-fmt-002.xml and corpus/observations/obs-arithmetic/cpi/formatNum-002-fmt-002.xml; before #214: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture 000; assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-002)",
+  "expect": "output",
+  "note": "The minimum of integer digits: 000 pads 7 and 42 with leading zeros to 007 and 042, and writes 1234 in full. A maximum of three digits would give 234."
+}

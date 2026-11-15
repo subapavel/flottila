@@ -1,0 +1,6 @@
+CPI, Message Mapping editor, div-1.
+Source src-orders.xsd / Orders; target tgt-list.xsd / Out.
+Order -> Item (node to node). D1 number1 = Qty with explicit context Order; number2 = Sku with explicit context Order. D1 -> /Out/Item/V. Other targets unmapped.
+The exact port labels are number1 and number2. Both source box tooltips show Context: /Orders/Order and their labels are italic.
+Save completed without an editor error dialog, red field or target error triangle. The expression contains the three specified connections; the direct exploratory Qty -> V wire was replaced by D1 -> V before the run.
+No arithmetic-mode selector was exposed for divide. Mapping Settings showed Basic Data Type Handling and External Namespace Handling, not Java float / BigDecimal. The arithmetic implementation mode is therefore not verified. No settings were changed.

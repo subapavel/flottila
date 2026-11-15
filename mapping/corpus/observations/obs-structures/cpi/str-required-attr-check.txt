@@ -1,0 +1,5 @@
+CPI, Message Mapping editor, str-required-attr, target/requiredAttribute/001.
+Source src-orders.xsd / Orders; target tgt-required-attr.xsd / Coded. Id explicitly context Orders -> Coded/V. Coded/@code remains unmapped; no other targets mapped.
+Save completes, but the target header has a red triangle with tooltip: Target has 1 errors
+The @code row is red, shows 1..1, and has tooltip: Mandatory node is unmapped
+Selecting Simulate opens a validation error and does not open the simulation input dialog. No runtime is started and attr1.xml cannot be uploaded for this mapping.

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): a file beside a.xsd that its bundle does not list; it must never be read -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:unlisted">
+  <xs:element name="Unlisted">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="SecretField" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

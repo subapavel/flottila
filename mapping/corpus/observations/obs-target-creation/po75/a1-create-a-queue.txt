@@ -1,0 +1,9 @@
+Display Queue of box A3 (createIf), PO 7.5 Test tab, input a1.xml, mapping create-a.
+Transcribed from the owner's screenshot. A gray <null> row is a context change.
+
+createIf:in0   createIf:out
+<null>         <null>          (gray row, context change)
+[false]        SUPPRESS
+[true]         []
+[true]         []
+[true]         []

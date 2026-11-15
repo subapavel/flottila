@@ -1,0 +1,6 @@
+CPI editor / Save, mapping spec2-collapse-contexts.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Qty context /Orders/Order -> collapseContexts -> All; no other targets mapped. Source context verified in the node tooltip. Two connections verified after Save; no validation error was shown.
+The first target-upload control action was interrupted (browser reported "Detached while handling command."). The dialog remained open and one normal retry uploaded and assigned tgt-list.xsd successfully.
+After all outputs were captured, an intended in-place rebuild was abandoned: the automation approval review rejected confirmation of Delete all mapping definitions. Cancel was selected; no definitions were deleted. A new artifact spec2_exists was created instead.
+Navigation after queue inspection and Restore warned of unsaved changes despite another Save. The warning was accepted only after all result evidence was captured and without changing the mapping graph. Final persisted editor state was not rechecked.

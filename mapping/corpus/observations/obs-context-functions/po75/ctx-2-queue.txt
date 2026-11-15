@@ -1,0 +1,15 @@
+SAP PO Display Queue: ctx_2 / mapWithDefault / original f2.xml
+Compilation successful; execution 11 milliseconds; Executed successfully.
+Literal numbered rows. All text regular, not italic. Brackets are displayed literally.
+Row | mapWithDefault:in0 | mapWithDefault:out
+0 | <null> (gray) | <null> (gray)
+1 | [5] (white) | [5] (white)
+2 | [5] (gray) | [5] (gray)
+3 | SUPPRESS (cyan) | SUPPRESS (cyan)
+4 | SUPPRESS (gray) | SUPPRESS (gray)
+5 | SUPPRESS (gray) | [D] (white)
+6 | SUPPRESS (cyan) | [D] (gray)
+7 | [3] (white) | SUPPRESS (cyan)
+8 | [3] (dark gray) | [3] (white)
+9 | blank padding | [3] (dark gray)
+Reading: input contexts [5] | [SUPPRESS] | [] | [SUPPRESS,3]. Output contexts [5] | [SUPPRESS] | [D] | [SUPPRESS,3]. Gray context and terminal rows are not extra values. SUPPRESS is not a literal string. The SUPPRESS-only context is not replaced by D.

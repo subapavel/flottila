@@ -1,0 +1,26 @@
+PO 7.5, Test tab, input max-002.xml, mapping spec2-create-if-row (case target/max/002).
+Fired at run time: "Compilation of spec2_create_if_row successful", then the error below. No output.
+The run fails on the first Sku value 'no': PO's createIf does not read 'no' as false.
+
+Dialog "Problem when Testing":
+Runtime exception when processing target-field mapping /Create/Row; root message: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'no' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[no, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+See error logs for details
+
+Log (trace level all; server frames below the mapping tool omitted):
+ Compilation of spec2_create_if_row successful
+
+* Document start
+* Start tag [Create]
+* Exception occured during processing /Create/Row
+
+ Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'no' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[no, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+com.sap.aii.utilxi.misc.api.BaseRuntimeException: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'no' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[no, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+	at com.sap.aii.mappingtool.tf7.rt.MethodImplementedIteratorHelper.executeMethod(MethodImplementedIteratorHelper.java:188)
+	at com.sap.aii.mappingtool.tf7.rt.FunctionWrapper.calculateCurrentValue(FunctionWrapper.java:106)
+	at com.sap.aii.mappingtool.tf7.rt.AbstractFunctionWrapper.cacheValue(AbstractFunctionWrapper.java:31)
+	at com.sap.aii.mappingtool.tf7.rt.AbstractFunctionWrapper.gotoNextContext(AbstractFunctionWrapper.java:41)
+	at com.sap.aii.mappingtool.tf7.AMappingProgram.processNode(AMappingProgram.java:345)
+	...
+Caused by: com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'no' to boolean
+	at com.sap.aii.mappingtool.flib7.Bool.toBoolean(Bool.java:18)
+	at com.sap.aii.mappingtool.flib7.NodeFunctions.createIf(NodeFunctions.java:20)

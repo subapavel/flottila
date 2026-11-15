@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/toUpperCase/001
+Artifact: api_text_toUpperCase
+Input: original toUpperCase-001.xml uploaded through simulator.
+Visible graph verified: Sku context /Orders -> toUpperCase -> /Out/All.
+Simulation completed. All values: ABC, HELLO WORLD, empty string, STRASSE, ÉA. Sharp s expands to SS; accented letter maps to its capital. Downloaded XML preserved unchanged.

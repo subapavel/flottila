@@ -1,0 +1,5 @@
+CPI editor / Save, mapping spec2-map-with-default-line.
+In-place edit of artifact spec2_map_with_default_remove_contexts after its output was saved. Connected Sku directly to M1 input, replacing R1's connection; removed the now-unused R1 removeContexts box.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Sku default Line context -> mapWithDefault (Default Value D) -> All. No other fields mapped. D and two expression edges verified before Save.
+Save and simulation completed with no validation or runtime error. Retained collapseContexts-003.xml input produced one All D.

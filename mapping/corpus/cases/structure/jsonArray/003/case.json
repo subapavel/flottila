@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-short-one.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON Schema and WSDL\" (an array property records that it is one, whatever its maxItems) and \"JSON as a source at run time\" (an array property reads each item as one occurrence, by its array marker and never by its maximum); #118",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/one is an array with maxItems 1, so it is an array property at 0..1: its one item a is one occurrence of one, in the root's one context, and All is a. Read by its maximum, one would be a leaf, the array would read as absent and no All would be written."
+}

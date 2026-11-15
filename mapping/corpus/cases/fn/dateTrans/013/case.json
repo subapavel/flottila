@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-trans-numeric-zone.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Data errors name their box (F-19, Q10): a malformed date is err:FORG0001 in both back ends, naming the box; ADR-0003: parsing is strict, and an offset is at most 14 hours, as xs:dateTime's",
+  "expect": "error",
+  "note": "sourceFormat yyyyMMddHHmmZ: Sku in context Orders is 202611041000+1500, whose offset of 15 hours no xs:dateTime has, so the run raises err:FORG0001 at N1 and writes nothing."
+}

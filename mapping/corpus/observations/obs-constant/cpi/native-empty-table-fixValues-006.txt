@@ -1,0 +1,2 @@
+2026-11-13 CPI editor
+api_fix_values_empty_table: expanded fixValues showed Default Value -, On Failure Use default value. Advanced table displayed only empty entry fields Key and Value, no configured mapping rows. Pressed Save; no validation error. Cancel returned to view mode without unsaved-changes prompt. Fresh public API export shows Draft, vmdefault -, vmstrategy 1, table properties empty. Thus the editor accepts saving a table with no rows.

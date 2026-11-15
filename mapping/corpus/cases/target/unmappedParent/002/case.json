@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/parents-pair-v.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §2: \"Structure fields with n = minOccurs = maxOccurs > 0 are generated automatically, n times, whatever the mapping\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f414f7eaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bf414f7eaca4c86e10000000a42189e.html]; #2 §1 nested queues: \"The number of contexts of a queue must be the same as the number of values (empty strings) of the upper-level queue\", and a structure field's queue holds one empty string per occurrence [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/fbd21666d33de4e10000000a42189e/content.htm]",
+  "expect": "output",
+  "note": "V under the unmapped 2..2 Pair, per Tag in its default context Order: x, y | z | w. Pair is created twice under the root's slot 1, with slot numbers (1 - 1) * 2 + 1 = 1 and 2, so Pair 1 reads context 1 and Pair 2 context 2. Context 3 (w) lies beyond the last Pair and is never read. Creating Pair once would give x, y in one Pair."
+}

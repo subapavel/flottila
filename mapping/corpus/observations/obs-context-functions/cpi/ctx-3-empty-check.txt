@@ -1,0 +1,4 @@
+CPI editor / Save and Simulate, mapping ctx-3-empty, in-place variant of artifact ctx_3_each.
+Only S1 and S2 Context Change on changed from Value change to Empty value, after f3-ctx-3-change.xml had been saved. Both selections were verified; graph, contexts and retained f3.xml input were unchanged.
+Save completed without a validation error. Simulation produced three Items: V [a,a], [b], then no V. Empty input values are consumed as context separators, including a trailing empty context. Output preserved in f3-ctx-3-empty.xml.
+Artifact ctx_3_each is left with both splitByValue functions set to Empty value.

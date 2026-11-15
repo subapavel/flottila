@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Tag>false</Tag>
+    <Tag>true</Tag>
+    <Tag>false</Tag>
+    <Line>
+      <Sku>s1</Sku>
+    </Line>
+    <Line>
+      <Sku>s2</Sku>
+    </Line>
+    <Line>
+      <Sku>s3</Sku>
+    </Line>
+  </Order>
+  <Order>
+    <Tag>true</Tag>
+    <Line>
+      <Sku>s4</Sku>
+    </Line>
+  </Order>
+</Orders>

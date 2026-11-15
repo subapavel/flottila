@@ -1,0 +1,26 @@
+SAP PO 7.50 ESR observation, 2026-11-12
+Case: fn/ifWithoutElse/001
+Mapping: boolean-ifWithoutElse-item (ESR boolean_ifWithoutElse_item)
+Input: ifWithoutElse-001.xml, imported unchanged and verified in source view.
+Graph: Qty context Orders -> X1 condition; Sku context Orders -> X1 then;
+X1 ifWithoutElse -> Item. Separate Sku context Line -> Item/V.
+Parameter label: Keep SUPPRESS Values; unchecked (untouched default).
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+02:52:41 Start of test; compilation successful; execution 9 milliseconds.
+02:52:42 Executed successfully; End of test.
+Result XML exported through ESR UI ZIP; instance.xml extracted without rewriting.
+Result: three Items with V a, c, d.
+
+Display Queue on X1: compilation successful, execution 9 milliseconds, successful.
+Literal table (columns in0, in1, out; no italic values):
+0: <null> [gray] | <null> [gray] | <null> [gray]
+1: [true] [white] | [a] [white] | [a] [white]
+2: [false] [white] | [b] [white] | SUPPRESS [cyan]
+3: [true] [white] | [c] [white] | [c] [white]
+4: [true] [white] | [d] [white] | [d] [white]
+5: [true] [dark gray terminal] | [d] [dark gray terminal] | [d] [dark gray terminal]
+Reading: X1 emits a, SUPPRESS, c, d in one context. Gray initial and terminal
+rows are boundaries, not additional values. False produces SUPPRESS despite
+the unchecked parameter; Item suppression preserves alignment with V.
+Reading against request: contradicted (assumed a, b, c; observed a, c, d).
+CPI NOT_RUN: PO first per owner instruction.

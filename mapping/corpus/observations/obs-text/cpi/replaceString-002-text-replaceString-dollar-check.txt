@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/replaceString/002
+Artifact: api_text_replaceString_dollar
+Input: original replaceString-002.xml uploaded through simulator.
+Visible graph verified: Sku context /Orders and constants $ and \$1 -> replaceString -> /Out/All. Both constant titles observed live.
+Simulation completed. Single All value: a\$1b\$1. Dollar and replacement interpreted literally for this input. Downloaded XML preserved unchanged.

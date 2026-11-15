@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-by-example.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-format-by-example.xml and corpus/observations/obs-context-functions/cpi/collapseContexts-003-spec2-format-by-example.xml; before #214: ADR-0004 \"An absent parent gives zero contexts, not one empty context\" (assumed reading, Consequences); #2 §4 formatByExample takes the example's context changes",
+  "expect": "output",
+  "note": "An empty input: <Orders/> has no Order, so both queues have no context at all and no value. The counts agree at zero, and formatByExample gives the example's zero contexts, so the root's one slot reads no context and the root is written empty."
+}

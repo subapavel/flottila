@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-change.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-006-spec2-split-by-value-change.xml and corpus/observations/obs-context-functions/cpi/f3-spec2-split-by-value-change.xml; before #214: #48 owner decision Q3, mode valueChange: a context change where the value differs from the previous one; #2 §4 labels not seen on SAP pages; obs-context-functions ctx-3 (f3.xml) decides it",
+  "expect": "output",
+  "note": "The input of obs-context-functions ctx-3 (f3.xml): Tag a, a, <Tag/>, b, <Tag/>. valueChange starts a context at the \"\" and at b, so context 1 is a, a and All is a, a. All under the root's one slot reads context 1 of S1's queue, so it shows where the first split falls."
+}

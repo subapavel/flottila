@@ -1,0 +1,223 @@
+{
+  "description": "Bench mapping orders (ADR-0021): 1:1 fields, concat, dateTrans and formatNum through Lift, removeContexts and splitByValue into an unbounded target.",
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "orders-source.xsd"
+    ],
+    "fingerprint": "sha256:214edb8cc2d727f1cec53637228346a857d2f539c42871c5cea37f9431a98c6f",
+    "root": {
+      "element": "SalesOrders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "orders-target.xsd"
+    ],
+    "fingerprint": "sha256:5fbe142e70d99a399295c6702dd7d68a32d70ce1e01d4bf10ec5d7ae19a6da98",
+    "root": {
+      "element": "Q{urn:flottila:corpus:bench:orders}OrderBatch"
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order": {
+      "boxes": {
+        "S1": {
+          "field": "/SalesOrders/Order",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Customer": {
+      "boxes": {
+        "C1": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": ", "
+          }
+        },
+        "F1": {
+          "fn": "concat",
+          "inputs": [
+            "S4",
+            "C1"
+          ],
+          "kind": "function"
+        },
+        "F2": {
+          "fn": "concat",
+          "inputs": [
+            "F1",
+            "S5"
+          ],
+          "kind": "function"
+        },
+        "S4": {
+          "field": "/SalesOrders/Order/Buyer/LastName",
+          "kind": "source"
+        },
+        "S5": {
+          "field": "/SalesOrders/Order/Buyer/FirstName",
+          "kind": "source"
+        }
+      },
+      "id": "T4",
+      "result": "F2"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item": {
+      "boxes": {
+        "S6": {
+          "field": "/SalesOrders/Order/Line",
+          "kind": "source"
+        }
+      },
+      "id": "T5",
+      "result": "S6"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item/Q{urn:flottila:corpus:bench:orders}Price": {
+      "boxes": {
+        "N1": {
+          "fn": "formatNum",
+          "inputs": [
+            "S9"
+          ],
+          "kind": "function",
+          "params": {
+            "pattern": "0.00"
+          }
+        },
+        "S9": {
+          "field": "/SalesOrders/Order/Line/UnitPrice",
+          "kind": "source"
+        }
+      },
+      "id": "T8",
+      "result": "N1"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item/Q{urn:flottila:corpus:bench:orders}Quantity": {
+      "boxes": {
+        "S8": {
+          "field": "/SalesOrders/Order/Line/Quantity",
+          "kind": "source"
+        }
+      },
+      "id": "T7",
+      "result": "S8"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Item/Q{urn:flottila:corpus:bench:orders}Sku": {
+      "boxes": {
+        "S7": {
+          "field": "/SalesOrders/Order/Line/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T6",
+      "result": "S7"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Number": {
+      "boxes": {
+        "S2": {
+          "field": "/SalesOrders/Order/OrderNo",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Order/Q{urn:flottila:corpus:bench:orders}Placed": {
+      "boxes": {
+        "D1": {
+          "fn": "dateTrans",
+          "inputs": [
+            "S3"
+          ],
+          "kind": "function",
+          "params": {
+            "sourceFormat": "yyyyMMdd",
+            "targetFormat": "yyyy-MM-dd"
+          }
+        },
+        "S3": {
+          "field": "/SalesOrders/Order/OrderDate",
+          "kind": "source"
+        }
+      },
+      "id": "T3",
+      "result": "D1"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Pick": {
+      "boxes": {
+        "R1": {
+          "fn": "removeContexts",
+          "inputs": [
+            "S10"
+          ],
+          "kind": "function"
+        },
+        "S10": {
+          "field": "/SalesOrders/Order/Line/Warehouse",
+          "kind": "source"
+        }
+      },
+      "id": "T9",
+      "result": "R1"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Pick/Q{urn:flottila:corpus:bench:orders}Sku": {
+      "boxes": {
+        "P2": {
+          "fn": "splitByValue",
+          "inputs": [
+            "R3"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "R3": {
+          "fn": "removeContexts",
+          "inputs": [
+            "S12"
+          ],
+          "kind": "function"
+        },
+        "S12": {
+          "field": "/SalesOrders/Order/Line/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T11",
+      "result": "P2"
+    },
+    "/Q{urn:flottila:corpus:bench:orders}OrderBatch/Q{urn:flottila:corpus:bench:orders}Pick/Q{urn:flottila:corpus:bench:orders}Warehouse": {
+      "boxes": {
+        "P1": {
+          "fn": "splitByValue",
+          "inputs": [
+            "R2"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "R2": {
+          "fn": "removeContexts",
+          "inputs": [
+            "S11"
+          ],
+          "kind": "function"
+        },
+        "S11": {
+          "field": "/SalesOrders/Order/Line/Warehouse",
+          "kind": "source"
+        }
+      },
+      "id": "T10",
+      "result": "P1"
+    }
+  }
+}

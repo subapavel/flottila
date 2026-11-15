@@ -1,0 +1,9 @@
+SAP PO 7.50 ESR: requested counter graphs cannot be drawn exactly.
+Assessment date 2026-11-12. No new simulation performed.
+Evidence reused from recorded native PO inspection on 2026-11-11:
+../obs-shared-box/po75/shared-counter-check.txt (Arithmetic > counter inspected for obs-ifwithoutelse).
+The native counter has only an output connector and no input connector; parameter labels Initial Value and Increment, defaults 1 and 1.
+fn/counter/001 stat-counter-two-fields requires Id -> N1 and Id -> N2. The equivalent shared-2 observation is already NOT_RUN for this limitation.
+fn/counter/002 stat-counter requires Sku -> counter in1, which cannot be drawn.
+fn/counter/003 stat-counter-suppress requires createIf -> counter in1, which cannot be drawn. No N1 queue exists for the requested graph.
+All three cases: NOT_RUN; reading n/a. No substitute graph with the required input wire removed was executed, and no runtime behavior is inferred.

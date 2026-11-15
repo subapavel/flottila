@@ -1,0 +1,45 @@
+{
+  "case": "fn/constant/004",
+  "artifact": "api_constant_concat",
+  "version": "Draft",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "concat",
+      "inputCount": 2,
+      "bindings": "<bindings><param name=\"delimeter\"><value /></param></bindings>",
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders/Order"
+        }
+      ]
+    },
+    {
+      "nativeName": "const",
+      "inputCount": 0,
+      "bindings": "<bindings><param name=\"value\"><value>-x</value></param></bindings>",
+      "sourcePaths": []
+    },
+    {
+      "nativeName": "concat",
+      "inputCount": 2,
+      "bindings": "<bindings><param name=\"delimeter\"><value /></param></bindings>",
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders/Order"
+        }
+      ]
+    },
+    {
+      "nativeName": "const",
+      "inputCount": 0,
+      "bindings": "<bindings><param name=\"value\"><value>y-</value></param></bindings>",
+      "sourcePaths": []
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

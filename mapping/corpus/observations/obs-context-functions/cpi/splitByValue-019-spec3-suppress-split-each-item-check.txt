@@ -1,0 +1,16 @@
+Date: 2026-11-12
+Case: fn/splitByValue/022
+Artifact: api_spec3_suppress_split_each_item (unchanged API-prepared artifact)
+Native tooltips verified Tag context /Orders -> /Out/Item and, separately,
+Tag context /Orders, createIf, splitByValue -> /Out/Item/V.
+Prepared mapping/readback specifies SplitByValue type=0 (eachValue).
+No native parameter-panel verification is claimed (overlapping function boxes).
+Original splitByValue-019.xml uploaded unchanged through the tab's file chooser.
+Test completed; Download Output saved 128 bytes, copied byte-for-byte to the XML
+beside this evidence. Output: five Item; only Item 1 and Item 3 contain empty V.
+VERIFIED_PASS: simulation completed and XML downloaded.
+Reading: confirmed; SUPPRESS positions are retained rather than dropped or
+converted into empty strings. Together with case 019 this supports preservation
+of SUPPRESS through collapseContexts, matching the existing PO observation.
+No CPI display queue captured. Prior tenant version evidence retained, no PNG saved.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.

@@ -1,0 +1,8 @@
+SAP PO 7.50 ESR, 2026-11-11. Mapping uoam_1; input u2.xml imported unchanged.
+Start of test: 19:31:19. Failing box: U1 (useOneAsMany), target /Out/Item/V.
+Problem when Testing (literal text; Java object identity hashes sanitized):
+Runtime exception when processing target-field mapping /Out/Item/V; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Too many values in the second queue in function useOneAsMany. The number of values for all contexts must be the same as the number of values for the third queue] in class com.sap.aii.mappingtool.flib7.NodeFunctions method useOneAsMany[[Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[HASH], com.sap.aii.mappingtool.tf7.rt.Context@[HASH]]
+See error logs for details
+
+Reading: other (no assumed reading supplied for the original run). Whole run fails; no successful mapped XML. Agrees with CPI failure for excess second-queue values. ESR displays __EmptyDoc as an error placeholder, not a successful mapping result.

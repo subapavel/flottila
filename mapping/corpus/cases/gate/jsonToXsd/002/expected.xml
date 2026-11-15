@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<po:PurchaseOrder xmlns:po="urn:flottila:corpus:gate:po" xmlns:c="urn:flottila:corpus:gate:common">
+  <po:OrderId>J-201</po:OrderId>
+  <po:Buyer>
+    <c:Name>Edsger Dijkstra</c:Name>
+    <po:CustomerNo>C-9</po:CustomerNo>
+  </po:Buyer>
+  <po:Pickup>Counter 3</po:Pickup>
+  <po:Line no="1">
+    <po:Article>
+      <po:Sku>A-4</po:Sku>
+    </po:Article>
+    <po:Quantity>1</po:Quantity>
+    <po:Price currency="EUR">9.90</po:Price>
+  </po:Line>
+</po:PurchaseOrder>

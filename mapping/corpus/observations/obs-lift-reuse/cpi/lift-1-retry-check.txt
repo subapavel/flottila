@@ -1,0 +1,15 @@
+Date: 2026-11-12
+Mapping: lift-1; artifact api_lift_1 (unchanged API-prepared artifact).
+Earlier simulation-service failures are retained as historical evidence.
+Native tooltips verified Order context /Orders -> Item; Tag and Sku both have
+context /Orders/Order, with concat -> /Out/Item/V. Prepared mapping/readback
+verifies concat input 0 Tag and input 1 Sku, no explicit delimiter binding.
+Double-click did not expose the parameter panel; no new native delimiter-panel
+verification is claimed. Successful output has no delimiter between input values.
+Original l1.xml uploaded unchanged through the tab's file chooser.
+Test completed; Download Output copied byte-for-byte to l1-lift-1.xml.
+VERIFIED_PASS: native simulation completed and XML downloaded.
+Output V per Item: [t1s1,t2s1], [], [], [t4s4,t5s5,t6s5], [s6].
+Reading: confirmed; matches existing PO output. Earlier service error did not recur.
+Prior tenant version evidence retained, no PNG saved. No display queue requested.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): a WSDL 2.0 interface whose inline schema imports the #93 XSD
+     files-and-names/import-location/po/order.xsd by its namespace only. Submit has an input, an
+     output and a fault; the WSDL namespace is the default namespace. -->
+<description xmlns="http://www.w3.org/ns/wsdl"
+             xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:po="urn:flottila:corpus:po"
+             xmlns:tns="urn:flottila:corpus:wsdl20"
+             targetNamespace="urn:flottila:corpus:wsdl20">
+  <types>
+    <xs:schema targetNamespace="urn:flottila:corpus:wsdl20">
+      <xs:import namespace="urn:flottila:corpus:po"/>
+      <xs:element name="Receipt">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="OrderId" type="xs:string"/>
+          </xs:sequence>
+          <xs:attribute name="accepted" type="xs:boolean" use="required"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="Rejection">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Reason" type="xs:string" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </types>
+  <interface name="OrderInterface">
+    <fault name="Rejected" element="tns:Rejection"/>
+    <operation name="Submit" pattern="http://www.w3.org/ns/wsdl/in-out">
+      <input messageLabel="In" element="po:Order"/>
+      <output messageLabel="Out" element="tns:Receipt"/>
+      <outfault messageLabel="Out" ref="tns:Rejected"/>
+    </operation>
+  </interface>
+</description>

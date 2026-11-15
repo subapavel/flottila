@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synthetic fixture for GATE check 1 (#100): an array of arrays is refused at items (ADR-0008)",
+  "type": "object",
+  "properties": {
+    "grid": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}}
+  }
+}

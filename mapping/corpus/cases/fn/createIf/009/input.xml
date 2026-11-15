@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Tag>FALSE</Tag>
+    <Tag>1</Tag>
+    <Tag>True</Tag>
+  </Order>
+</Orders>

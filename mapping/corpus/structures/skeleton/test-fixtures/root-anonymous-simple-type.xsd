@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): a root of an anonymous simple type; a root element has a complex type -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order">
+    <xs:simpleType><xs:restriction base="xs:string"/></xs:simpleType>
+  </xs:element>
+</xs:schema>

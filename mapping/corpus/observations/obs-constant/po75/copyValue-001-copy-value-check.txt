@@ -1,0 +1,25 @@
+Case: fn/copyValue/001
+Mapping: copy_value
+Observed in SAP PO 7.50 ESR on 2026-11-12.
+Graph: Order (default Orders context) -> Out/Item; Sku (context explicitly changed from Line to Order) -> CopyValue -> Out/Item/V. W and All unmapped.
+CopyValue is in the Constants palette. Parameter label Index; new box proposed 0, changed to 1 and confirmed. Saved graph shows CopyValue [1].
+Saved; Object Check: No errors found during object check, Problem 0, Warning 0.
+Original copyValue-001.xml imported without editing.
+Processing Log: 08:44:12 Start of test; compilation successful; execution 6 milliseconds; Executed successfully; 08:44:13 End of test.
+Result: <Out><Item><V>b</V></Item><Item><V>b</V></Item><Item><V>b</V></Item></Out>.
+Exact result exported through ESR UI to ZIP; instance.xml extracted unchanged.
+
+F1 Display Queue: compilation successful, execution 5 milliseconds, Executed successfully.
+Literal numbered rows, input | output (shading recorded; no italic values):
+0: <null> gray | [b] gray
+1: [a] white | [b] dark gray
+2: [b] white | blank
+3: [c] white | blank
+4: [c] gray | blank
+5: [d] white | blank
+6: [d] gray | blank
+7: [e] white | blank
+8: [f] white | blank
+9: [f] dark gray | blank
+
+Reading: contradicted. All three Items receive b, rather than b, no V, f. The display output has only two shaded b entries and no white output rows; these are recorded literally, not counted as two ordinary output values. Input gray context markers and dark terminal marker are not additional Sku values.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-add.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005",
+  "expect": "error",
+  "note": "ADR-0005: the engine reads the xs:decimal lexical form only, so 1e3 is err:FORG0001 at A1."
+}

@@ -1,0 +1,428 @@
+{
+  "description": "Bench mapping contexts (ADR-0021, the FOUNDING section 7 copying risk): useOneAsMany of a customer's and an order's values over the items, sortByKey on numeric keys, splitByValue under the nested Order and Item and under Pick, and collapseContexts into one flat Pick list.",
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "contexts-source.xsd"
+    ],
+    "fingerprint": "sha256:9a5cd3896509eec3edc8570f381a42128d4b98accb379e7372f6056f7f4edb63",
+    "root": {
+      "element": "Customers"
+    }
+  },
+  "target": {
+    "bundle": [
+      "contexts-target.xsd"
+    ],
+    "fingerprint": "sha256:19ce6273eb060c4591317fddea6219e5847e3b87032d82f34c72376bd5b3d978",
+    "root": {
+      "element": "Q{urn:flottila:corpus:bench:contexts}Ledger"
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account": {
+      "boxes": {
+        "S1": {
+          "field": "/Customers/Customer",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Id": {
+      "boxes": {
+        "S2": {
+          "field": "/Customers/Customer/CustomerId",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Item": {
+      "boxes": {
+        "K4": {
+          "fn": "sortByKey",
+          "inputs": [
+            "S13",
+            "S14"
+          ],
+          "kind": "function",
+          "params": {
+            "comparison": "numeric"
+          }
+        },
+        "S13": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Rank",
+          "kind": "source"
+        },
+        "S14": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T8",
+      "result": "K4"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Item/Q{urn:flottila:corpus:bench:contexts}Order": {
+      "boxes": {
+        "K7": {
+          "fn": "sortByKey",
+          "inputs": [
+            "S19",
+            "U2"
+          ],
+          "kind": "function",
+          "params": {
+            "comparison": "numeric"
+          }
+        },
+        "P5": {
+          "fn": "splitByValue",
+          "inputs": [
+            "K7"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "S19": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Rank",
+          "kind": "source"
+        },
+        "S20": {
+          "field": "/Customers/Customer/Order/OrderNo",
+          "kind": "source"
+        },
+        "S21": {
+          "context": "/Customers/Customer/Order",
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        },
+        "S22": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        },
+        "U2": {
+          "fn": "useOneAsMany",
+          "inputs": [
+            "S20",
+            "S21",
+            "S22"
+          ],
+          "kind": "function"
+        }
+      },
+      "id": "T11",
+      "result": "P5"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Item/Q{urn:flottila:corpus:bench:contexts}Quantity": {
+      "boxes": {
+        "K6": {
+          "fn": "sortByKey",
+          "inputs": [
+            "S17",
+            "S18"
+          ],
+          "kind": "function",
+          "params": {
+            "comparison": "numeric"
+          }
+        },
+        "P4": {
+          "fn": "splitByValue",
+          "inputs": [
+            "K6"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "S17": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Rank",
+          "kind": "source"
+        },
+        "S18": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Quantity",
+          "kind": "source"
+        }
+      },
+      "id": "T10",
+      "result": "P4"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Item/Q{urn:flottila:corpus:bench:contexts}Sku": {
+      "boxes": {
+        "K5": {
+          "fn": "sortByKey",
+          "inputs": [
+            "S15",
+            "S16"
+          ],
+          "kind": "function",
+          "params": {
+            "comparison": "numeric"
+          }
+        },
+        "P3": {
+          "fn": "splitByValue",
+          "inputs": [
+            "K5"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "S15": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Rank",
+          "kind": "source"
+        },
+        "S16": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T9",
+      "result": "P3"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Name": {
+      "boxes": {
+        "S3": {
+          "field": "/Customers/Customer/Name",
+          "kind": "source"
+        }
+      },
+      "id": "T3",
+      "result": "S3"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Order": {
+      "boxes": {
+        "K1": {
+          "fn": "sortByKey",
+          "inputs": [
+            "S4",
+            "S5"
+          ],
+          "kind": "function",
+          "params": {
+            "comparison": "numeric"
+          }
+        },
+        "S4": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Priority",
+          "kind": "source"
+        },
+        "S5": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/OrderNo",
+          "kind": "source"
+        }
+      },
+      "id": "T4",
+      "result": "K1"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Order/Q{urn:flottila:corpus:bench:contexts}Account": {
+      "boxes": {
+        "S10": {
+          "field": "/Customers/Customer/CustomerId",
+          "kind": "source"
+        },
+        "S11": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/OrderNo",
+          "kind": "source"
+        },
+        "S12": {
+          "field": "/Customers/Customer/Order/OrderNo",
+          "kind": "source"
+        },
+        "U1": {
+          "fn": "useOneAsMany",
+          "inputs": [
+            "S10",
+            "S11",
+            "S12"
+          ],
+          "kind": "function"
+        }
+      },
+      "id": "T7",
+      "result": "U1"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Order/Q{urn:flottila:corpus:bench:contexts}Number": {
+      "boxes": {
+        "K2": {
+          "fn": "sortByKey",
+          "inputs": [
+            "S6",
+            "S7"
+          ],
+          "kind": "function",
+          "params": {
+            "comparison": "numeric"
+          }
+        },
+        "P1": {
+          "fn": "splitByValue",
+          "inputs": [
+            "K2"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "S6": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Priority",
+          "kind": "source"
+        },
+        "S7": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/OrderNo",
+          "kind": "source"
+        }
+      },
+      "id": "T5",
+      "result": "P1"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Account/Q{urn:flottila:corpus:bench:contexts}Order/Q{urn:flottila:corpus:bench:contexts}Priority": {
+      "boxes": {
+        "K3": {
+          "fn": "sortByKey",
+          "inputs": [
+            "S8",
+            "S9"
+          ],
+          "kind": "function",
+          "params": {
+            "comparison": "numeric"
+          }
+        },
+        "P2": {
+          "fn": "splitByValue",
+          "inputs": [
+            "K3"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "S8": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Priority",
+          "kind": "source"
+        },
+        "S9": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Priority",
+          "kind": "source"
+        }
+      },
+      "id": "T6",
+      "result": "P2"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Pick": {
+      "boxes": {
+        "C1": {
+          "fn": "collapseContexts",
+          "inputs": [
+            "S23"
+          ],
+          "kind": "function"
+        },
+        "S23": {
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T12",
+      "result": "C1"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Pick/Q{urn:flottila:corpus:bench:contexts}Customer": {
+      "boxes": {
+        "C2": {
+          "fn": "collapseContexts",
+          "inputs": [
+            "U3"
+          ],
+          "kind": "function"
+        },
+        "P6": {
+          "fn": "splitByValue",
+          "inputs": [
+            "C2"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "S24": {
+          "field": "/Customers/Customer/CustomerId",
+          "kind": "source"
+        },
+        "S25": {
+          "context": "/Customers/Customer",
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        },
+        "S26": {
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        },
+        "U3": {
+          "fn": "useOneAsMany",
+          "inputs": [
+            "S24",
+            "S25",
+            "S26"
+          ],
+          "kind": "function"
+        }
+      },
+      "id": "T13",
+      "result": "P6"
+    },
+    "/Q{urn:flottila:corpus:bench:contexts}Ledger/Q{urn:flottila:corpus:bench:contexts}Pick/Q{urn:flottila:corpus:bench:contexts}Sku": {
+      "boxes": {
+        "C3": {
+          "fn": "collapseContexts",
+          "inputs": [
+            "S27"
+          ],
+          "kind": "function"
+        },
+        "P7": {
+          "fn": "splitByValue",
+          "inputs": [
+            "C3"
+          ],
+          "kind": "function",
+          "params": {
+            "mode": "eachValue"
+          }
+        },
+        "S27": {
+          "field": "/Customers/Customer/Order/Item/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T14",
+      "result": "P7"
+    }
+  }
+}

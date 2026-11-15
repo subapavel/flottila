@@ -1,0 +1,18 @@
+Display Queue of box R1 (removeContexts), PO 7.5 Test tab, input minOccurs-004.xml,
+mapping spec2-nested-grp-row-remove-contexts. Transcribed from the owner's screenshot.
+Gray rows are context changes. Run executed successfully (see the .xml next to this file).
+
+row  removeContexts:in0   shading      removeContexts:out   shading
+0    <null>               gray         <null>               gray
+1    [a]                  white        [a]                  white
+2    [a]                  gray         [b]                  white
+3    [b]                  white        [b]                  dark gray
+4    [b]                  dark gray    (none)
+
+in0 = [a] [b] (two contexts, one per Line parent Order), out = [a, b] (one context).
+The Row queue has one context, but Grp has two occurrences. Grp 1 gets Rows a and b.
+Grp 2 reads context 2, which the queue lacks: PO creates one Row with value b, the last value
+of the queue, instead of the assumed po:MINOCCURS error at T2.
+
+Side observation: Row is a complex node (child Val, unmapped here) and PO writes the value as
+its text (<Row>a</Row>). In max-003 (Val mapped) Row carries no text.

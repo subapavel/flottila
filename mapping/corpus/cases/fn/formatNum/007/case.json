@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-no-integer.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-arithmetic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-arithmetic/po75/formatNum-007-fmt-007.xml and corpus/observations/obs-arithmetic/cpi/formatNum-007-fmt-007.xml; before #214: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture #.00; assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-007)",
+  "expect": "output",
+  "note": "No integer digit at all: 0.5 gives .50 and 0 gives .00, with no leading zero, and 12.3 gives 12.30."
+}

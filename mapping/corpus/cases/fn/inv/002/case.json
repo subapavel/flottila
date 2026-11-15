@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-inv.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (division by zero raises FOAR0001)",
+  "expect": "error",
+  "note": "inv of 0 is a division by zero: err:FOAR0001 at the inv box A1."
+}

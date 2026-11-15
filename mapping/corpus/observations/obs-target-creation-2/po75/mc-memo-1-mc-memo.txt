@@ -1,0 +1,16 @@
+PO 7.5, Test, input mc-memo-1.xml, mapping mc-memo, F-30 source-context probe. No output XML.
+Failure during target creation at /Doc/Grp[3]/Row. Compilation of mc_memo successful; test started at 03:43:42 local UI time.
+
+Problem when Testing
+Cannot create target element /Doc/Grp[3]/Row. Values missing in queue context. Target XSD requires a value for this element, but the target-field mapping does not create one. Check whether the XML instance is valid for the source XSD, and whether the target-field mapping fulfills the requirement of the target XSD
+See error logs for details
+
+com.sap.aii.mappingtool.tf7.IllegalInstanceException: Cannot create target element /Doc/Grp[3]/Row. Values missing in queue context. Target XSD requires a value for this element, but the target-field mapping does not create one. Check whether the XML instance is valid for the source XSD, and whether the target-field mapping fulfills the requirement of the target XSD
+at com.sap.aii.mappingtool.tf7.AMappingProgram.processNode(AMappingProgram.java:420)
+at com.sap.aii.mappingtool.tf7.AMappingProgram.processNode(AMappingProgram.java:467)
+at com.sap.aii.mappingtool.tf7.AMappingProgram.processNode(AMappingProgram.java:467)
+at com.sap.aii.mappingtool.tf7.AMappingProgram.start(AMappingProgram.java:573)
+at com.sap.aii.mappingtool.tf7.Transformer.start(Transformer.java:152)
+[Remaining mapping and server stack frames omitted.]
+
+Reading: the third Grp fails to obtain its required Row; the last source value b is not reused here. This is the requested probe's actual result, not an incidental failure before the question under test.

@@ -1,0 +1,13 @@
+SAP PO 7.50, ESR message mapping, 2026-11-12
+Case: fn/constant/008
+Mapping: constant_empty
+Input: original constant-001.xml imported through Test UI, unchanged.
+Graph: C1 Constant with empty Value -> Out/All. Item, V and W unmapped.
+The parameter dialog accepted the empty Value. Saved; Save disabled.
+Check: No errors found during object check; Problem 0, Warning 0.
+Test: 10:06:29 Start of test; compilation successful; execution 3 milliseconds;
+Executed successfully; 10:06:30 End of test.
+Result exported via UI to constant-008-constant-empty.zip. Its instance.xml
+was extracted unchanged as constant-008-constant-empty.xml.
+
+Reading: confirmed. The empty constant can be saved and produces one empty All.

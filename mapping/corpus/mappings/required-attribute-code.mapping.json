@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-required-attr.xsd"
+    ],
+    "fingerprint": "sha256:231ac22e1a8229cce19e6ab94298d8843aa7da573fbe9b8a5d844a5b05d112b7",
+    "root": {
+      "element": "Coded"
+    }
+  },
+  "targetFieldMappings": {
+    "/Coded/@code": {
+      "boxes": {
+        "S1": {
+          "field": "/Orders/Order/Id",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Coded/V": {
+      "boxes": {
+        "S2": {
+          "context": "/Orders",
+          "field": "/Orders/Order/Id",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    }
+  }
+}

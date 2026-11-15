@@ -1,0 +1,24 @@
+Case: fn/copyValue/003
+Mapping: copy_value_beyond
+Observed in SAP PO 7.50 ESR on 2026-11-12.
+Graph: Order (default Orders context) -> Out/Item; Sku (Order context) -> CopyValue [3] -> Out/Item/V. W and All unmapped.
+Parameter label Index, value 3. Saved; Object Check: No errors found during object check, Problem 0, Warning 0.
+Original copyValue-001.xml imported without editing.
+Processing Log: 08:57:40 Start of test; compilation successful; execution 4 milliseconds; Executed successfully; 08:57:41 End of test.
+Result: <Out><Item><V>d</V></Item><Item><V>d</V></Item><Item><V>d</V></Item></Out>.
+Exact result exported through ESR UI to ZIP; instance.xml extracted unchanged.
+
+F1 Display Queue: compilation successful, execution 5 milliseconds, Executed successfully.
+Literal numbered rows, input | output (no italic values):
+0: <null> gray | [d] gray
+1: [a] white | [d] dark gray
+2: [b] white | blank
+3: [c] white | blank
+4: [c] gray | blank
+5: [d] white | blank
+6: [d] gray | blank
+7: [e] white | blank
+8: [f] white | blank
+9: [f] dark gray | blank
+
+Reading: contradicted. Index 3 gives d in all three Items rather than no V in each Item; no index exception. Output consists of two shaded d entries, not two ordinary white output values. Input context and terminal markers are not additional Sku values.

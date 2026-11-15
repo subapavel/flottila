@@ -1,0 +1,15 @@
+Display Queue of box D1 (mapWithDefault{default=D}), PO 7.5 Test tab, input d2.xml, mapping create-d.
+Transcribed literally from the owner's screenshot, index column on.
+
+row  mapWithDefault:in0   shading      mapWithDefault:out   shading
+0    <null>               gray         <null>               gray
+1    [a]                  white        [a]                  white
+2    [a]                  gray         [a]                  gray
+3    [a]                  gray         [D]                  white
+4    [c]                  white        [D]                  gray
+5    [c]                  dark gray    [c]                  white
+6    (none)                            [c]                  dark gray
+
+Owner's reading: a gray row is a context change (PO shows the preceding value's text on it).
+With that reading: in0 = [a] [] [c] (order 2's empty Memo is an empty context),
+out = [a] [D] [c] (mapWithDefault fills the empty context with D).

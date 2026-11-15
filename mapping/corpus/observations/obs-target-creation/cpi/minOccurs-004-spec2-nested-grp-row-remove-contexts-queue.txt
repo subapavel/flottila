@@ -1,0 +1,13 @@
+Function Message Queue of box R1 (removeContexts), CPI Simulate, input minOccurs-004.xml,
+mapping spec2-nested-grp-row-remove-contexts (built by editing spec2-nested-grp-row-val in place).
+Transcribed from the owner's screenshot. Gray rows (italic) are context changes.
+
+S. No.  removeContexts:in1   shading      removeContexts:out1   shading
+0       <null>               gray         <null>                gray
+1       a                    white        a                     white
+2       a                    gray         b                     white
+3       b                    white        b                     dark gray
+4       b                    dark gray    (none)
+
+in1 = [a] [b], out1 = [a, b]. Same as PO 7.5: Grp 2 reads the missing context 2 and gets one Row
+with the last value b; no po:MINOCCURS error.

@@ -1,0 +1,11 @@
+CPI observation: fn/isNil/001
+Date: 2026-11-12
+Artifact: api_boolean_isNil (unchanged)
+Input: isNil-001.xml
+Mapping expression verified in editor: Sku, context /Orders -> isNil -> /Out/All.
+Simulation completed. Output UI: false, true, false, false.
+Downloaded output preserved byte-for-byte in isNil-001-boolean-isNil.xml.
+The xsi:nil value returns true; the empty Sku and space-only Sku return false.
+Matches the recorded PO output; contradicts the request's assumed empty-Sku result.
+No intermediate queues captured.
+Upload initially failed to open a file chooser; reloading the editor restored upload, and the correct filename and four Line nodes were verified before Test.

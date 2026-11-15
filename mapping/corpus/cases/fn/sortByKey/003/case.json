@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-by-key-numeric-descending.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/sortByKey-003-spec2-sort-by-key-numeric-descending.xml and corpus/observations/obs-context-functions/cpi/sortByKey-003-spec2-sort-by-key-numeric-descending.xml; before #214: #48 owner decision Q4: numeric compares decimals (ADR-0005's xs:decimal lexical form); #2 §4 sortByKey: like sort over (key, value) pairs, input 1 keys, input 2 values [SAP✓ STD]",
+  "expect": "output",
+  "note": "numeric, descending keys 10, 9, 10.0, -2 with values a, b, c, d: 10 and 10.0 are equal and keep their input order, so the values are a, c, b, d; o2's one pair gives x. The values are no numbers and are not parsed. Lexicographic descending would give b, c, a, d. R1 joins the contexts K1 keeps, so All shows each order's values in turn. Observe in SAP PO (#33)."
+}

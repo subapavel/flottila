@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/relative.json",
+  "title": "A relative $ref resolves against the bundle reference, whatever $id says",
+  "type": "object",
+  "properties": {
+    "shipTo": {"$ref": "defs/address.schema.json#/$defs/Address"}
+  }
+}

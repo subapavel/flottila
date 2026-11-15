@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/first-read-row-sort-by-key.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0006 \"Target fields\": the queue of each mapped target field is evaluated lazily on first read, so a field never created is never evaluated; min is checked before the first occurrence is written",
+  "expect": "error",
+  "note": "Row (1..2) per Memo/Text in context Orders: the Order has no Memo, so Row creates no occurrence and the run raises po:MINOCCURS at T1 before it writes one. Val under Row comes later in target document order; its queue, sortByKey over two Skus and one Qty in the Order, would raise po:SORTBYKEY at K1 if it were evaluated first."
+}

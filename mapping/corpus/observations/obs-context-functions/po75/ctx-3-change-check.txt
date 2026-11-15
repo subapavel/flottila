@@ -1,0 +1,15 @@
+SAP PO observation 2026-11-11
+Mapping: ctx_3_change
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag in default Order context -> removeContexts R1 -> SplitByValue S1 [Value Change] -> collapseContexts -> Out/Item.
+Separate Tag in default Order context -> removeContexts R2 -> SplitByValue S2 [Value Change] -> Out/Item/V.
+W and All unmapped. Both parameter selections verified in UI.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f3.xml imported through test UI, no edits; SRC verified.
+23:50:11 Start of test
+Compilation of ctx_3_change successful
+Execution of mapping on server took 15 milliseconds
+Executed successfully
+23:50:13 End of test
+Result exported through UI as ctx-3-change-export.zip; instance.xml extracted unchanged as ctx-3-change.xml.
+Reading: four Items with V [a,a], [empty string], [b], [empty string]. Agrees with CPI. No fixed assumed result, so reading other.

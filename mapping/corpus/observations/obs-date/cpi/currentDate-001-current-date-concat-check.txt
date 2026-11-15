@@ -1,0 +1,13 @@
+CPI observation 2026-11-13: fn/currentDate/004
+Artifact: api_current_date_concat
+Input: original currentDate-001.xml uploaded through simulator.
+Visible graph: Order context /Orders -> /Out/Item; Sku context /Orders/Order and currentDate -> concat -> /Out/Item/V.
+VERIFIED_PASS for execution: V values a@01:50:49.159, b@01:50:49.159 | empty Item | c@01:50:49.159. All three timestamps equal in this run. Original downloaded XML preserved.
+External UTC observation bracket: 2026-11-13 01:50:32 before Test; 01:51:07 after observed result. This is not a message-monitor start timestamp. Exact JVM zone ID and live format parameters remain unverified. No environment settings changed.
+
+Parameter audit 2026-11-13 — VERIFIED_PASS: Fresh live API export verifies configured input/output patterns against request.md. Calendar binding le=true is explicitly stored (lenient enabled), fd=1 and md=1. This is configuration evidence, not a new invalid-date runtime probe. Exact JVM zone ID and message-monitor start times remain unverified. Requested non-UTC environment preconditions remain unmet; no settings changed. Evidence: cpi/parameter-audit/api_current_date_concat.json
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_current_date_concat.json.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

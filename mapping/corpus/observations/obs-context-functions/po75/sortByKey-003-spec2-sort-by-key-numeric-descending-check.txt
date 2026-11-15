@@ -1,0 +1,12 @@
+SAP PO observation 2026-11-12
+Mapping spec2_sort_by_key_numeric_descending; fn/sortByKey/003; original sortByKey-003.xml imported unchanged via UI; source XML checked.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Sku context Order -> sortByKey first input; Qty context Order -> second input; sortByKey -> removeContexts -> All. Nothing else mapped.
+Copied case insensitive mapping; parameters changed to float number and descending. Saved (Save disabled); Check: No errors found during object check; Problem 0, Warning 0.
+00:50:13 Start of test
+Compilation of spec2_sort_by_key_numeric_descending successful
+Execution of mapping on server took 9 milliseconds
+Executed successfully
+00:50:14 End of test
+UI export instance.xml extracted unchanged.
+Reading: All a,c,b,d,x; confirmed. Equal numeric keys 10 and 10.0 retain value order a,c. Non-numeric values are preserved; second order contributes x.

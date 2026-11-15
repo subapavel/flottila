@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/count/003
+Artifact: api_stat_count_suppress
+Input: original count-003.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Tag context /Orders/Order -> createIf -> count -> V.
+Simulation completed. Three Item elements contain V 2, 0, 0. Downloaded XML preserved unchanged. Result agrees with the request's assumed exclusion of SUPPRESS and zero for an empty context.

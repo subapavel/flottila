@@ -1,0 +1,14 @@
+CPI observation: fn/copyValue/002
+Date: 2026-11-12
+Artifact: api_copy_value_default
+Input: copyValue-001.xml (original corpus file, shared by cases 001-003)
+Verified editor expressions: Order in /Orders context -> Item; Sku in /Orders/Order context -> copyValue -> V.
+Simulation completed. V=a in each of three Items, contradicting the assumed a,d,e.
+Exact downloaded output copied byte-for-byte to copyValue-002-copy-value-default.xml.
+The live default parameter and whether the editor accepts an empty index were not verified. This run covers only the prepared default artifact's output; it does not establish the default of a freshly inserted function.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_copy_value_default.json, cpi/native-default-copyValue-002.txt.
+Native default 0. Save with blank UI field accepted and persisted nnumber 0 (verified fresh API export).
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

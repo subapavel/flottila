@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): a refusal, then the end of what is well-formed; it stops only this file -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:group name="G"/>
+  <xs:element name="Doc">
+</xs:schema>

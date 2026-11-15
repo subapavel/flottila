@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): constructs refused inside named simple types and attributes; an import with
+     no namespace falls back to plain.xsd, a bundle file with no target namespace -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:refusals">
+  <xs:import schemaLocation="https://example.org/plain.xsd"/>
+  <xs:simpleType name="Code">
+    <xs:restriction base="xs:string">
+      <xs:assertion test="true()"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="Mixed">
+    <xs:complexContent/>
+  </xs:simpleType>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:attribute name="kind" type="xs:string">
+        <xs:simpleType/>
+      </xs:attribute>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

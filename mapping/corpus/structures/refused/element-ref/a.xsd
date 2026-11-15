@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure (#92 under #93): the root Doc reaches the global element Item of b.xsd by
+     reference, so the refusals inside Item's anonymous type name b.xsd. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:b="urn:flottila:corpus:refused:ref-b"
+           targetNamespace="urn:flottila:corpus:refused:ref-a">
+  <xs:import namespace="urn:flottila:corpus:refused:ref-b" schemaLocation="b.xsd"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="b:Item" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,13 @@
+PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: ctx_1 (request ctx-1)
+Source: src-orders.xsd / Orders. Target: tgt-list.xsd / Out.
+Graph: Sku (default context Line) -> removeContexts -> Out/All; no other targets mapped.
+Save completed. Object Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f1.xml imported through Test.
+20:57:43 Start of test
+Compilation of ctx_1 successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+20:57:44 End of test
+Result exported through Result/SRC to ctx-1-export.zip; instance.xml extracted without rewriting as ctx-1.xml.
+Reading: All values a, empty string, b. Empty contexts disappear; the present empty Sku remains a value. Confirms the requested candidate. CPI ctx-1 remains environment-blocked; no direct comparison for that artifact.

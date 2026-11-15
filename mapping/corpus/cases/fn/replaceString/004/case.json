@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-replaceString-aa-b.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/replaceString-004-text-replaceString-overlap.xml and corpus/observations/obs-text/cpi/replaceString-004-text-replaceString-aa-b.xml; before #214: ADR-0025 (functions bind by name; the reading of replaceString follows java.lang.String and XPath); obs-text row replaceString/004",
+  "expect": "output",
+  "note": "replaceString{search=aa, replacement=b} replaces matches left to right without overlap: aaa gives ba, aaaa gives bb."
+}

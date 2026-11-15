@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-substring-decimal.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "substring{start=0.5, length=1.5}: a decimal param is rounded half up as XPath's round, so start 1 and length 2 give bc."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-change.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-008-spec2-split-by-value-change.xml and corpus/observations/obs-context-functions/cpi/splitByValue-008-spec2-split-by-value-change.xml; before #214: #48 owner decision Q3, mode valueChange: a context change where the value differs from the previous one; #2 §4 labels not seen on SAP pages; obs-context-functions ctx-3 (f3.xml) decides it",
+  "expect": "output",
+  "note": "valueChange over one equal run across two orders: removeContexts gives a, a, a, and no value differs from the one before it, so nothing splits and All is a, a, a. eachValue would give one a (fn/splitByValue/003)."
+}

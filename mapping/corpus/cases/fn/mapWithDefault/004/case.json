@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/map-with-default-remove-contexts.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-map-with-default-remove-contexts.xml and corpus/observations/obs-context-functions/cpi/collapseContexts-003-spec2-map-with-default-remove-contexts.xml; before #214: ADR-0004 as amended for F-17 (observed #31 d3): a source queue whose context element never occurs in the message is one empty context; ContextFunctions.removeContexts gives a queue of one empty context one empty context (ADR-0004 starts {0, n}); observation #61",
+  "expect": "output",
+  "note": "To observe in PO: removeContexts over an empty input. <Orders/> has no Order and no Line, so Sku in its default context Line is one empty context (F-17). removeContexts keeps one empty context, which mapWithDefault fills with D, so the root's one slot creates one All D, as in fn/mapWithDefault/005 without removeContexts. Since F-17 the input is no longer zero contexts, so this case no longer tells removeContexts apart from a no-op; ContextFunctionsTest does, over {0}."
+}

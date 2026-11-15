@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/constant-concat-constants.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/constant-005-constant-concat-constants.xml and corpus/observations/obs-constant/cpi/constant-005-constant-concat-constants.xml; before #214: ADR-0006 generating function (#83), assumed reading: concat of two constants reads no source field, so it is a generating function; obs-constant row fn/constant/005",
+  "expect": "output",
+  "note": "concat(Constant{a}, Constant{b}) on Item/V and on All: one V ab per Item and one All ab."
+}

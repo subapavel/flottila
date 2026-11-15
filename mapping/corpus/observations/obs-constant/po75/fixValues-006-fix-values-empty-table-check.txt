@@ -1,0 +1,11 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/fixValues/006
+Mapping: fix_values_empty_table
+Input: unchanged copyValue-001.xml, imported through the Test UI.
+Graph: Order (context Orders) -> Item; Sku (context Order) -> F1 FixValues -> V. W and All unmapped.
+Fixed-Values Table: no rows; Default Value -; Use Default Value selected. Visually verified before accepting.
+The editor accepted the empty table. Saved; Save disabled.
+Check: No errors found during object check; Problem 0, Warning 0.
+10:45:05 Start of test. Compilation successful. Server execution 6 milliseconds. Executed successfully. 10:45:06 End of test.
+Result exported through the UI to fixValues-006-fix-values-empty-table.zip. XML extracted unchanged to fixValues-006-fix-values-empty-table.xml.
+Reading: confirmed. All six keys produce V with value -, distributed 3 | 1 | 2 across the three Items. No exception.

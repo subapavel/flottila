@@ -1,0 +1,4 @@
+CPI editor / Save, mapping spec2-exists-create-if.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Tag default Order context -> createIf -> exists -> removeContexts -> All. No other fields mapped.
+Four expression connections verified after Save; no validation error was shown.

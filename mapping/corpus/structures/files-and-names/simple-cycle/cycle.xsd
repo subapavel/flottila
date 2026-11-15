@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): two simple types that restrict each other, and a third that restricts one -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:cycle"
+           targetNamespace="urn:flottila:corpus:cycle">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Value" type="tns:A"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:simpleType name="A">
+    <xs:restriction base="tns:B"/>
+  </xs:simpleType>
+  <xs:simpleType name="B">
+    <xs:restriction base="tns:A"/>
+  </xs:simpleType>
+  <xs:simpleType name="C">
+    <xs:restriction base="tns:A"/>
+  </xs:simpleType>
+</xs:schema>

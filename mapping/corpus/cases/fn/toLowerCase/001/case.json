@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-toLowerCase.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/toLowerCase-001-text-toLowerCase.xml and corpus/observations/obs-text/cpi/toLowerCase-001-text-toLowerCase.xml; before #214: ADR-0025 (functions bind by name; the reading of toLowerCase follows java.lang.String and XPath); obs-text row toLowerCase/001",
+  "expect": "output",
+  "note": "toLowerCase uses the Unicode mapping: capital e-acute gives e-acute, digits stay."
+}

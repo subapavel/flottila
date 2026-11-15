@@ -1,0 +1,11 @@
+SAP PO observation 2026-11-12
+Mapping spec2_split_by_value_change; fn/splitByValue/010; original splitByValue-010.xml imported unchanged via UI; source XML checked (a,A).
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag default context Order -> removeContexts -> splitByValue (Value Change) -> All. Nothing else mapped.
+Same saved, checked mapping as case 006; Problem 0, Warning 0.
+01:20:44 Start of test
+Execution of mapping on server took 4 milliseconds
+Executed successfully
+01:20:44 End of test
+UI export instance.xml extracted unchanged. Initial local export path failed; corrected path exported successfully without rerunning test.
+Reading: one All a. Value Change distinguishes a from A; confirmed assumed reading. CPI not run yet.

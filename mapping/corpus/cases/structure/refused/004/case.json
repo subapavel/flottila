@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/same-step-unused.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0007 Consequences: two sibling declarations with the same step are refused when a mapping uses them; ADR-0008 \"Refused when a mapping uses the field\" and its Shape (#92): these are design-time errors raised only for a field that a mapping refers to or must create, the structure loads and shows these fields, and the target walk leaves out an optional refused field; spec #89, ticket #92",
+  "expect": "output",
+  "note": "T1 copies Id and T2 copies Code, the neighbour between the two Notes. The Notes, and the optional Head with its two Refs, are used on neither side, so the model compiles and runs although same-step.xsd declares both steps twice: the output holds Id and Code only. Also a differential case: the exported XSLT gives the same output."
+}

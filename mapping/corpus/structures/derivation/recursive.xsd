@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): a named type that is recursive through its own extension. It is one type of the
+     structure graph and loads lazily (ADR-0008) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:recursive"
+           targetNamespace="urn:flottila:corpus:recursive">
+  <xs:element name="Tree" type="tns:Branch"/>
+  <xs:complexType name="Node">
+    <xs:sequence>
+      <xs:element name="Label" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Branch">
+    <xs:complexContent>
+      <xs:extension base="tns:Node">
+        <xs:sequence>
+          <xs:element name="Child" type="tns:Branch" minOccurs="0" maxOccurs="unbounded"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:schema>

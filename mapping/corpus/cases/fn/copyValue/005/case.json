@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/copy-value-negative.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 \"Data errors name their box\" (Q10): a box parameter that is a number follows the xs:decimal rule of the statistic family (#75), and a position is an xs:nonNegativeInteger; anything else is err:FORG0001 at the box, checked whatever the data (#79)",
+  "expect": "error",
+  "note": "copyValue{position=-1}: the position is no xs:nonNegativeInteger, so copyValue raises err:FORG0001 at its box F1 before it reads Sku."
+}

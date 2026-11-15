@@ -1,0 +1,17 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/ifWithoutElse/003
+Mapping: boolean_ifWithoutElse_orders
+Input: original ifWithoutElse-003.xml imported unchanged through Test UI.
+Order (context Orders) -> Item.
+Separate Qty and Sku source boxes, all context Order, feed each ifWithoutElse.
+X1 -> V: Keep SUPPRESS Values unchecked (default).
+X2 -> W: Keep SUPPRESS Values checked, visually verified.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+07:40:29 Start of test
+Compilation of boolean_ifWithoutElse_orders successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+07:40:30 End of test
+Result exported through UI as ZIP; instance.xml preserved without rewriting.
+Reading: contradicted. Three Items contain V/W a/a, d/d, e/e.
+The uppercase TRUE condition includes d in both variants; the second Item is not empty.

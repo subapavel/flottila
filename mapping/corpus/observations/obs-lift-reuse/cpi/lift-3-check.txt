@@ -1,0 +1,7 @@
+CPI Message Mapping, Save, mapping lift-3.
+No error dialog, red target or error triangle displayed after Save.
+Order -> Item is node to node. Qty explicitly uses context /Orders/Order; Tag retains default Order context.
+C1 = constant 0; G1 = greater(Qty,C1); X1 = ifWithoutElse(G1,Qty), Keep SUPPRESS checked; L3 = concat(X1,Tag), Delimiter String empty; L3 -> V. W and All stay unmapped.
+The session expired during the initial unsaved construction. Its exact alert was:
+Your session has expired. Press OK to login again.
+The one recovery succeeded automatically. This run's own newly created artifact was unlocked and rebuilt; structures and completed graph were then saved.

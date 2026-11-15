@@ -1,0 +1,11 @@
+Display Queue of box D1 (mapWithDefault{default=D}), PO 7.5 Test tab, input d3.xml, mapping create-d.
+Transcribed literally from the owner's screenshot, index column on.
+
+row  mapWithDefault:in0   shading      mapWithDefault:out   shading
+0    <null>               gray         <null>               gray
+1    <null>               dark gray    [D]                  white
+2    (none)                            [D]                  dark gray
+
+Owner's reading: a gray row is a context change.
+With that reading: in0 = [] (one empty context, no value), out = [D] (one context with D).
+The Memo field is absent under every Order, yet the queue has one empty context, not zero contexts.

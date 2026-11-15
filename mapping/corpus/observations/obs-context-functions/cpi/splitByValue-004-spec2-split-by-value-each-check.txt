@@ -1,0 +1,13 @@
+Date: 2026-11-12
+Case: fn/splitByValue/004
+Artifact: api_spec2_split_by_value_each
+Input: original splitByValue-004.xml
+Native source tooltip Tag context /Orders/Order, removeContexts, splitByValue and
+target /Out/All verified. API readback graph is Tag -> removeContexts -> SplitByValue
+(type=0 / eachValue) -> All. Native parameter panel was obscured by overlapping
+function boxes; no native parameter-panel verification is claimed. Artifact unchanged.
+Test completed. Output tree Out with one empty All.
+Original Download Output XML is 60 bytes; copied without reformatting.
+Reading: confirmed; empty first value occupies the first split context.
+No display queue requested. No screenshot file saved. Prior version evidence retained.
+Browser-tab control only; no system mouse/keyboard takeover or SAP PO interaction.

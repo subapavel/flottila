@@ -1,0 +1,15 @@
+VERIFIED_PASS - SAP PO 7.50 ESR message mapping Test, 2026-11-12
+Case: fn/compareDates/004
+Mapping: compare_dates_004, copied from compare_dates_002 in the authorized observations namespace.
+Schemas: src-orders.xsd -> tgt-list.xsd.
+Graph: Sku (Orders context) -> CompareDates input 1; Qty (Orders context) -> input 2; result -> All.
+First format visibly set to yyyy-MM-dd HH:mm; second retained yyyy-MM-dd HH:mmXXX.
+Inherited calendar defaults: Sunday, minimum days 1, Calendar Is Lenient checked.
+Saved. Object check: No errors found during object check; Problem 0, Warning 0.
+Loaded compareDates-004.xml and verified both pairs in source view: 2026-11-04 09:30 / 2026-11-04 09:00Z and 2026-11-04 10:00 / 2026-11-04 09:00Z.
+Processing Log: 20:11:01 Start of test; compilation successful; server execution 8 milliseconds; Executed successfully; 20:11:02 End of test.
+Result source view and original exported XML: All values -1, 0.
+This matches the requested +01:00 winter scenario and the offset observed in dateTrans/004. Named JVM timezone was not exposed; do not infer a specific regional timezone.
+Original export retained as compareDates-004-compare-dates-004.zip; instance.xml copied byte-for-byte to adjacent XML.
+No queue evidence requested or captured. No screenshot file saved.
+CPI: NOT_RUN; API preparation is not simulation evidence.

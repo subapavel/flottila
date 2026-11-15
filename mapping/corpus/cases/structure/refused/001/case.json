@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/same-step-source-box.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0007 Consequences: two sibling declarations with the same step have no unique path and are refused when a mapping uses them; ADR-0008 \"Refused when a mapping uses the field\" and its Shape (#92): same-step siblings each carry ambiguous-field-path, reported at the authoringId of the box that uses the field, the message naming the schema file, line and column; spec #89, ticket #92",
+  "expect": "error",
+  "note": "Doc/Id from the source field Note, which same-step.xsd declares twice, around its neighbour Code. The path of box S1 cannot tell the two Notes apart, so compiling refuses the model with ambiguous-field-path at S1; its message names same-step.xsd 14:65, the end of the second Note's start tag. Before #92 S1 read the first Note."
+}

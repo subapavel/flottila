@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/replace-value-default.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 \"Every param has a default\" and lowering fills it in; #51 design: replaceValue's param replacement is a string with the default \"\"",
+  "expect": "output",
+  "note": "replaceValue without its param replacement, over Sku a, b, c in context Orders: the default \"\" replaces each value, so three empty All."
+}

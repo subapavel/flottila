@@ -1,0 +1,37 @@
+{
+  "fixValues": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "deviation",
+      "text": "A fresh FixValues box in SAP PO gives an empty value for a key the table lacks (\"Use default value\"). Flottila gives the key itself, as SAP Cloud Integration does."
+    },
+    "inputs": [
+      {
+        "name": "key"
+      }
+    ],
+    "params": [
+      {
+        "default": {},
+        "name": "table",
+        "type": "table"
+      },
+      {
+        "default": "key",
+        "name": "missing",
+        "type": "string",
+        "values": [
+          "key",
+          "default",
+          "error"
+        ]
+      },
+      {
+        "default": "",
+        "name": "defaultValue",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  }
+}

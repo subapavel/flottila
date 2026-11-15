@@ -1,0 +1,425 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Root of the one reactor (ADR-0017, ADR-0016). Every command is ./mvnw. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.flottila.mapping</groupId>
+  <artifactId>flottila-mapping-parent</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Flottila Mapping</name>
+
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+
+  <modules>
+    <module>engine</module>
+    <module>service</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.release>25</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!-- plugins (tools, not dependencies) -->
+    <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+    <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
+    <spotless-maven-plugin.version>3.10.4</spotless-maven-plugin.version>
+    <!-- gjf 1.37.0 breaks Spotless's glue (NoSuchMethodError ... Style.valueOf): keep 1.36.1 -->
+    <google-java-format.version>1.36.1</google-java-format.version>
+    <license-maven-plugin.version>2.7.1</license-maven-plugin.version>
+    <maven-surefire-plugin.version>3.6.1</maven-surefire-plugin.version>
+    <jacoco-maven-plugin.version>0.8.16</jacoco-maven-plugin.version>
+    <pitest-maven.version>1.30.1</pitest-maven.version>
+    <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
+    <!-- run scripts/function-families.java and add its output to the build (ADR-0025 "Families", F-15) -->
+    <exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
+    <build-helper-maven-plugin.version>3.6.2</build-helper-maven-plugin.version>
+    <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+    <quarkus.platform.version>3.40.1.1</quarkus.platform.version>
+
+    <!-- dependencies -->
+    <junit.version>6.1.3</junit.version>
+    <assertj.version>3.27.7</assertj.version>
+    <archunit.version>1.5.1</archunit.version>
+    <saxon-he.version>12.5</saxon-he.version>
+    <xmlunit.version>2.14.0</xmlunit.version>
+    <jmh.version>1.37</jmh.version>
+    <!-- validates mapping models (ADR-0011, F-1); an automatic module, F-3 -->
+    <json-skema.version>0.32.0</json-skema.version>
+    <!-- in-memory file system with Windows path semantics, service tests only (#44) -->
+    <jimfs.version>1.3.2</jimfs.version>
+
+    <!-- JaCoCo floors (ADR-0019): class-C default; structure, structure-import and service override -->
+    <jacoco.min.lines>0.90</jacoco.min.lines>
+    <jacoco.min.branches>0.80</jacoco.min.branches>
+    <!-- PIT floor (ADR-0019); nightly.yml runs it, it is not bound to verify -->
+    <pit.mutation.threshold>80</pit.mutation.threshold>
+    <pit.failWhenNoMutations>true</pit.failWhenNoMutations>
+    <!-- modules without a mutation floor (structure, structure-import, oracle, service) set this to true -->
+    <pit.skip>false</pit.skip>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.assertj</groupId>
+        <artifactId>assertj-core</artifactId>
+        <version>${assertj.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit</artifactId>
+        <version>${archunit.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.github.erosb</groupId>
+        <artifactId>json-sKema</artifactId>
+        <version>${json-skema.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.jimfs</groupId>
+        <artifactId>jimfs</artifactId>
+        <version>${jimfs.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>${maven-compiler-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>${quarkus.platform.group-id}</groupId>
+          <artifactId>quarkus-maven-plugin</artifactId>
+          <version>${quarkus.platform.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.pitest</groupId>
+          <artifactId>pitest-maven</artifactId>
+          <version>${pitest-maven.version}</version>
+          <dependencies>
+            <dependency>
+              <groupId>org.pitest</groupId>
+              <artifactId>pitest-junit5-plugin</artifactId>
+              <version>${pitest-junit5-plugin.version}</version>
+            </dependency>
+          </dependencies>
+          <configuration>
+            <threads>4</threads>
+            <mutationThreshold>${pit.mutation.threshold}</mutationThreshold>
+            <failWhenNoMutations>${pit.failWhenNoMutations}</failWhenNoMutations>
+            <skip>${pit.skip}</skip>
+            <outputFormats>
+              <outputFormat>XML</outputFormat>
+              <outputFormat>HTML</outputFormat>
+            </outputFormats>
+            <reportsDirectory>${project.build.directory}/pit-reports</reportsDirectory>
+            <timestampedReports>false</timestampedReports>
+          </configuration>
+        </plugin>
+        <!-- engine/mapping, engine/runtime and engine/xslt-export run the function families'
+             generator with the JDK that runs the build; it writes into target/ only -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>${exec-maven-plugin.version}</version>
+          <configuration>
+            <executable>${java.home}/bin/java</executable>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>${build-helper-maven-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <release>${maven.compiler.release}</release>
+          <parameters>true</parameters>
+          <compilerArgs>
+            <arg>-Xlint:all</arg>
+            <arg>-Werror</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven-enforcer-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[25,)</version>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>[3.9.11,4)</version>
+                </requireMavenVersion>
+                <dependencyConvergence/>
+                <bannedDependencies>
+                  <message>See ADR-0016 (module boundaries) and ADR-0017 (bans)</message>
+                  <excludes>
+                    <!-- Saxon-HE is the oracle: test scope only -->
+                    <exclude>net.sf.saxon:*:*:*:compile</exclude>
+                    <exclude>net.sf.saxon:*:*:*:runtime</exclude>
+                    <exclude>net.sf.saxon:*:*:*:provided</exclude>
+                    <!-- licence-excepted artifacts (.mvn/licence-filters.txt) outside test scope -->
+                    <exclude>io.smallrye.classfile:jdk-classfile-backport:*:*:compile</exclude>
+                    <exclude>io.smallrye.classfile:jdk-classfile-backport:*:*:runtime</exclude>
+                    <exclude>io.smallrye.classfile:jdk-classfile-backport:*:*:provided</exclude>
+                    <exclude>org.graalvm.sdk:nativeimage:*:*:compile</exclude>
+                    <exclude>org.graalvm.sdk:nativeimage:*:*:runtime</exclude>
+                    <exclude>org.graalvm.sdk:nativeimage:*:*:provided</exclude>
+                    <exclude>org.graalvm.sdk:word:*:*:compile</exclude>
+                    <exclude>org.graalvm.sdk:word:*:*:runtime</exclude>
+                    <exclude>org.graalvm.sdk:word:*:*:provided</exclude>
+                    <exclude>aopalliance:aopalliance:*:*:compile</exclude>
+                    <exclude>aopalliance:aopalliance:*:*:runtime</exclude>
+                    <exclude>aopalliance:aopalliance:*:*:provided</exclude>
+                    <exclude>javax.annotation:javax.annotation-api:*:*:compile</exclude>
+                    <exclude>javax.annotation:javax.annotation-api:*:*:runtime</exclude>
+                    <exclude>javax.annotation:javax.annotation-api:*:*:provided</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+          <!-- JMH lives in bench/jmh only, which switches this execution off -->
+          <execution>
+            <id>enforce-no-jmh</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <message>JMH is allowed in bench/jmh only (ADR-0017)</message>
+                  <excludes>
+                    <exclude>org.openjdk.jmh</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless-maven-plugin.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <version>${google-java-format.version}</version>
+            </googleJavaFormat>
+          </java>
+        </configuration>
+        <executions>
+          <execution>
+            <id>spotless-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+          <!-- corpus/bench is outside every module's basedir (Spotless globs cannot leave it), yet its generators
+               compile into bench/jmh: check them from the root project only; children keep the default globs -->
+          <execution>
+            <id>corpus-bench-format</id>
+            <inherited>false</inherited>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <java>
+                <includes>
+                  <include>corpus/bench/**/*.java</include>
+                </includes>
+                <googleJavaFormat>
+                  <version>${google-java-format.version}</version>
+                </googleJavaFormat>
+              </java>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Licences (CLAUDE.md list). Exceptions by groupId:artifactId in .mvn/licence-filters.txt.
+           npm licences (ui/): exceptions by package name in ui/scripts/licence-exceptions.json. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>${license-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>check-licences</id>
+            <goals>
+              <goal>add-third-party</goal>
+            </goals>
+            <configuration>
+              <force>true</force>
+              <failOnBlacklist>true</failOnBlacklist>
+              <failOnMissing>true</failOnMissing>
+              <excludedScopes>system</excludedScopes>
+              <artifactFiltersUrl>${licence.filters.uri}</artifactFiltersUrl>
+              <includedLicenses>
+                <includedLicense>Apache-2.0</includedLicense>
+                <includedLicense>MIT</includedLicense>
+                <includedLicense>MIT-0</includedLicense>
+                <includedLicense>BSD</includedLicense>
+                <includedLicense>EDL-1.0</includedLicense>
+                <includedLicense>ISC</includedLicense>
+                <includedLicense>0BSD</includedLicense>
+                <includedLicense>MPL-2.0</includedLicense>
+                <includedLicense>EPL</includedLicense>
+              </includedLicenses>
+              <licenseMerges>
+                <licenseMerge>Apache-2.0|Apache License, Version 2.0|The Apache Software License, Version 2.0|Apache License 2.0|The Apache License, Version 2.0|Apache 2.0|Apache License version 2.0|Apache License, version 2.0</licenseMerge>
+                <licenseMerge>MIT|MIT License|The MIT License</licenseMerge>
+                <licenseMerge>MPL-2.0|Mozilla Public License Version 2.0|Mozilla Public License, Version 2.0</licenseMerge>
+                <licenseMerge>EPL|Eclipse Public License v2.0|Eclipse Public License - v 1.0|EPL 2.0|EPL-2.0|Eclipse Public License, Version 2.0|Eclipse Public License 2.0|Eclipse Public License - v 2.0|Eclipse Public License v. 2.0</licenseMerge>
+                <licenseMerge>BSD|BSD-3-Clause|BSD-2-Clause</licenseMerge>
+                <licenseMerge>EDL-1.0|Eclipse Distribution License - v 1.0|EDL 1.0</licenseMerge>
+              </licenseMerges>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>jacoco-prepare</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>jacoco-report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>jacoco-check</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>${jacoco.min.lines}</minimum>
+                    </limit>
+                    <limit>
+                      <counter>BRANCH</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>${jacoco.min.branches}</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <!-- JaCoCo's agent; must start with @{argLine} (ADR-0019) -->
+          <argLine>@{argLine}</argLine>
+          <!-- test names become case ids in the reports (ADR-0018, ADR-0019) -->
+          <statelessTestsetReporter implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5Xml30StatelessReporter">
+            <usePhrasedTestCaseMethodName>true</usePhrasedTestCaseMethodName>
+          </statelessTestsetReporter>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <!-- licence.filters.uri: the URI of .mvn/licence-filters.txt for license-maven-plugin, which needs a well-formed
+         URI (URI.create). project.baseUri is one on every OS (drive letters, backslashes, spaces) but belongs to the
+         module, so these profiles add the module's depth below the root. File activation resolves project.basedir
+         to the module being built. Only jar modules run the check; they sit one or two levels deep (#42). -->
+    <profile>
+      <id>licence-filters-depth-2</id>
+      <activation>
+        <file>
+          <exists>${project.basedir}/../../.mvn/licence-filters.txt</exists>
+        </file>
+      </activation>
+      <properties>
+        <licence.filters.uri>${project.baseUri}../../.mvn/licence-filters.txt</licence.filters.uri>
+      </properties>
+    </profile>
+    <profile>
+      <id>licence-filters-depth-1</id>
+      <activation>
+        <file>
+          <exists>${project.basedir}/../.mvn/licence-filters.txt</exists>
+        </file>
+      </activation>
+      <properties>
+        <licence.filters.uri>${project.baseUri}../.mvn/licence-filters.txt</licence.filters.uri>
+      </properties>
+    </profile>
+    <!-- JMH benchmarks (ADR-0021); CI backend and the spec gate build them -->
+    <profile>
+      <id>bench</id>
+      <modules>
+        <module>bench/jmh</module>
+      </modules>
+    </profile>
+  </profiles>
+</project>

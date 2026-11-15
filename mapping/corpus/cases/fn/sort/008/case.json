@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-sort-008.xml and corpus/observations/obs-context-functions/cpi/sort-008-spec2-sort.xml; before #214: #48 owner decision Q4: lexicographic is Java String.compareTo, comparing UTF-16 code units; #2 §4 sort: \"within the existing or set context\", stable, numeric or lexicographic (case-sensitive or not), ascending or descending [SAP✓ STD]",
+  "expect": "output",
+  "note": "Each context is sorted on its own: o1 has no Tag, o2 has c, a and o3 has b. S1 keeps the empty context and the boundaries, so All is a, c, b; one sort over all values would give a, b, c. R1 joins the contexts S1 keeps, so All shows each context's order in turn. Observe in SAP PO (#33)."
+}

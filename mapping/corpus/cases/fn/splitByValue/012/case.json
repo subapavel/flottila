@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-empty.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-012-spec2-split-by-value-empty.xml and corpus/observations/obs-context-functions/cpi/splitByValue-007-spec2-split-by-value-empty.xml; before #214: #48 owner decision Q3, mode emptyValue: a context change at \"\", and the \"\" is dropped; #2 §4 labels not seen on SAP pages; obs-context-functions ctx-3 (f3.xml) decides it",
+  "expect": "output",
+  "note": "emptyValue over a queue of one value: Tag a has no \"\", so the one context a stays and All is a."
+}

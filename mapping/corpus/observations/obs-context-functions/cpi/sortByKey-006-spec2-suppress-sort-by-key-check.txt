@@ -1,0 +1,16 @@
+Date: 2026-11-12
+Case: fn/sortByKey/006
+Artifact: api_spec2_suppress_sort_by_key
+Input: original sortByKey-006.xml
+Native tooltips verified Tag and Sku context /Orders; createIf and sortByKey,
+target /Out/All. Imported graph has Tag -> createIf -> key and Sku -> value.
+API readback mapping has comparator cs and asc=true. Overlapping createIf/sortByKey
+boxes impeded opening the parameter panel; no native panel verification is claimed.
+Entered Edit. Attempted layout-only drag did not visibly move the box; no graph or
+parameter edit was intended. Save completed without an error before simulation.
+Test completed. Output tree All s1,s3,s2,s4.
+Download Output yielded original 101-byte XML, copied without formatting.
+Reading: contradicted the primary SUPPRESS-first assumption; matches the explicitly
+listed SUPPRESS-last alternative, preserving the relative order in each key class.
+No display queue requested. No screenshot file saved. Prior version evidence retained.
+No system mouse/keyboard takeover or SAP PO interaction.

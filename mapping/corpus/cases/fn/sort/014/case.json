@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-numeric.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both end in an error as expected-error.json: corpus/observations/obs-context-functions/po75/spec2-sort-numeric-014-error.txt and corpus/observations/obs-context-functions/cpi/sort-014-spec2-sort-numeric.txt; before #214: #48 Q4 (assumed): a numeric sort over a value that is no xs:decimal stops the run; po:SORT at the box is ADR-0025 since #52 (O3 revised)",
+  "expect": "error",
+  "note": "Tag 10, x, 9 sorted numerically: x is no number, so the run raises po:SORT at S1. Sorted as strings the same Tags give 10, 9, x."
+}

@@ -1,0 +1,17 @@
+Display Queue of box E1 (exists), CPI Function Message Queue after exists-004.xml, mapping spec2-exists-create-if.
+S. No. enabled. Gray and dark-gray cells are italic; white cells use normal type.
+
+row  exists:in1  shading    exists:out1  shading
+0    <null>      gray       <null>       gray
+1    SUPPRESS    white      true         white
+2    SUPPRESS    gray       false        gray
+3    SUPPRESS    white      true         white
+4    [ ]         white      true         white
+5    <null>      gray       false        gray
+6    <null>      gray       false        white
+7    [ ]         white      false        gray
+8    [ ]         dark gray  true         white
+9    (none)                 false        dark gray
+
+Reading: in1 = [SUPPRESS] [SUPPRESS,empty string] [] [empty string]; out1 = [true] [true,true] [false] [true].
+The gray output markers literally display false even after a true value; they are context/end markers, not additional false values. exists counts SUPPRESS as present and produces false only for the truly empty context in this input. The flattened XML values match the white output rows.

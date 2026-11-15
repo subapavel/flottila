@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#25): a root with attributes and no sequence is in the flat subset -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:attribute name="id" type="xs:long" use="required"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

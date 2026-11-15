@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if-row.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31, spec-2 part), mapping spec2-create-if-row, input probes/probe-bool-c.xml: corpus/observations/obs-target-creation/po75/probe-bool-c-spec2-create-if-row.txt and cpi/probe-bool-c-spec2-create-if-row.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json): the run ends with \"Cannot cast '' to boolean\" in createIf (com.sap.aii.mappingtool.flib7.Bool.toBoolean), no output; F-37; po:CREATEIF at the createIf box is ADR-0006 Consequences (amended with #133), the one code of a context function (RuntimeErrors)",
+  "expect": "error",
+  "note": "The first Sku is empty, the second 1. createIf casts each value as PO does, and \"\" is no boolean: the run raises po:CREATEIF at C1 and writes no Row. Reading \"\" as false would give one Row, Val 2."
+}

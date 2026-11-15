@@ -1,0 +1,15 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/fixValues/002
+Mapping: fix_values_key
+Input: unchanged copyValue-001.xml, imported through the Test UI.
+Graph: Order (context Orders) -> Item; Sku (context Order) -> F1 FixValues -> V. W and All unmapped.
+Fresh FixValues dialog title: Fixed-Values Table.
+Labels: Default Value; Behaviour if lookup fails; Use Key; Use Default Value; Throw Exception.
+Preselected option: Use Default Value. Default Value was empty.
+Initial sample rows: key2=value2, key1=value1. Replaced with a=A, d=D, verified visually before accepting.
+Missing-key option and empty Default Value left unchanged.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+10:16:18 Start of test. Compilation successful. Server execution 7 milliseconds. Executed successfully. 10:16:19 End of test.
+Result exported through the UI to fixValues-002-fix-values-key.zip. XML extracted unchanged to fixValues-002-fix-values-key.xml.
+Reading: contradicted. The default is Use Default Value, not Use Key. Missing b, c, e and f produce empty V elements: A, empty, empty | D | empty, empty.
+The separately requested Throw Exception run is fn/fixValues/004; this file records only the unchanged default-option run.

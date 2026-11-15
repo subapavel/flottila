@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/count-suppress.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-statistic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-statistic/po75/count-003-stat-count-suppress.xml and corpus/observations/obs-statistic/cpi/count-003-stat-count-suppress.xml; before #214: #2 §5 Statistics: sum, average and count work per context (\"Sum of values X1 to Xi of a context\") [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; assumed reading of #75: SUPPRESS is no value (as for exists and mapWithDefault, #57); obs-statistic decides it",
+  "expect": "output",
+  "note": "createIf(Tag) is \"\", SUPPRESS, \"\" | SUPPRESS | (empty). count skips SUPPRESS: V is 2, 0, 0. Counting SUPPRESS would give 3, 1, 0."
+}

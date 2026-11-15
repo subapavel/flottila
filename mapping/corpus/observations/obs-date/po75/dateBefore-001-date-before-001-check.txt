@@ -1,0 +1,14 @@
+Case: fn/dateBefore/001
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping Test
+Mapping: date_before_001, copied from date_trans_012 in the authorized observation namespace; DateTrans replaced by fresh DateBefore.
+Graph: Sku (Orders context) -> DateBefore input 1; Qty (Orders context, explicitly selected) -> input 2; DateBefore -> All. Schemas src-orders.xsd / tgt-list.xsd.
+Format of First Date: yyyyMMdd
+Format of Second Date: dd.MM.yyyy
+Formats visually verified. Advanced defaults inspected: First Weekday Sunday, Minimum Number of Days Required in First Week 1, Calendar Is Lenient checked; unchanged. Named JVM timezone unknown.
+Saved. Object Check: No errors found, Problem 0, Warning 0.
+Input dateBefore-001.xml loaded and SRC verified: 20261103/04.11.2026, 20261104/04.11.2026, 20261105/04.11.2026.
+Processing Log: 19:44:06 Start of test; compilation successful; execution 6 milliseconds; Executed successfully; 19:44:08 End of test.
+Result All values: true, false, false.
+Original ZIP retained; XML copied byte-for-byte from exported instance.xml, no reconstruction or formatting.
+No queues requested or captured. Screenshots inspected live, not saved. CPI NOT_RUN.

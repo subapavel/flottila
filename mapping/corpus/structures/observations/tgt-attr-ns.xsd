@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target for the qualified-prefix question of obs-structures str-attr (ADR-0018,
+     ADR-0022, #102): tgt-attr.xsd in the namespace urn:flottila:obs:attr, with qualified
+     attributes and unqualified local elements. Outside the import subset today (#100). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:flottila:obs:attr"
+           elementFormDefault="unqualified" attributeFormDefault="qualified">
+  <xs:element name="Flagged">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="V" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+      <xs:attribute name="flag" type="xs:string"/>
+      <xs:attribute name="code" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,11 @@
+{
+  "title": "additionalProperties, patternProperties, if/then/else and not are ignored",
+  "type": "object",
+  "properties": {"id": {"type": "string"}},
+  "additionalProperties": {"type": "string"},
+  "patternProperties": {"^x-": {"type": "integer"}},
+  "if": {"properties": {"id": {"const": "a"}}},
+  "then": {"properties": {"thenOnly": {"type": "string"}}},
+  "else": {"properties": {"elseOnly": {"type": "string"}}},
+  "not": {"properties": {"notOnly": {"type": "string"}}}
+}

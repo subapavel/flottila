@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/index-default.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-statistic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-statistic/po75/index-003-stat-index-default.xml and corpus/observations/obs-statistic/cpi/index-003-stat-index-default.xml; before #214: #2 §5 Statistics: index takes an initial value, an increment, and whether to reset \"at the beginning of every new context\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; assumed reading of #75: the defaults are initial 1, increment 1 and a reset at each context, and an empty context stays empty; obs-statistic decides it",
+  "expect": "output",
+  "note": "index without params over Sku in context Order, a, b | (empty) | c: 1, 2 | (empty) | 1, so o2's Item has no V. Without a reset the last would be 3."
+}

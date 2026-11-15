@@ -1,0 +1,53 @@
+{
+  "obsId": "obs-ifwithoutelse",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/35",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "date": "2026-11-11",
+    "tool": "ESR message mapping",
+    "releaseVerification": "ESR About read during obs-target-creation-2. PO execution deferred to evening at owner's request."
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-11",
+    "tool": "Message Mapping artifact editor",
+    "releaseVerification": "Read live from user menu > About during this observation session."
+  },
+  "divergence": [],
+  "notes": [
+    "PO execution deferred to evening at the owner's request. No cross-system comparison has been made.",
+    "CPI counter offers Initial value and Increment, both default 1, and an output connector; it has no input connector. The requested Sku -> N1 and Sku -> N2 wires are therefore unavailable. Both original runs are NOT_RUN rather than repaired to use a generating counter.",
+    "The exact CPI ifWithoutElse parameter label is Keep SUPPRESS; default unchecked. Its port labels are condition and true value. The requested display queues cannot be obtained without a drawable original mapping.",
+    "Created iwe_1 only to inspect the available functions. Cancel > Discard reverted the unsaved exploratory graph and schema selections. No complete mapping was saved and no simulation was run. No artifact was deleted.",
+    "PO catch-up inspection completed. counter has no input port in PO either. ifWithoutElse parameter is Keep SUPPRESS Values, default unchecked. Inspection details and discarded exploratory edits are recorded in po75/iwe-1-check.txt."
+  ],
+  "runs": [
+    {
+      "mapping": "iwe-1",
+      "input": "i1.xml",
+      "case": null,
+      "po75": "NOT_RUN",
+      "po75Reason": "PO counter has no input connector; requested Sku -> N1/N2 wires cannot be drawn. Initial Value and Increment both default to 1.",
+      "cpi": "NOT_RUN",
+      "cpiReason": "CPI counter has no input port; requested Sku -> N1/N2 wires cannot be drawn. Only Initial value and Increment parameters (both default 1) and an output connector are available.",
+      "reading": "n/a",
+      "summary": "No simulation or queues; original mapping cannot be drawn exactly. PO independently confirms the unavailable counter input; no original run or queues."
+    },
+    {
+      "mapping": "iwe-1",
+      "input": "i2.xml",
+      "case": null,
+      "po75": "NOT_RUN",
+      "po75Reason": "PO counter has no input connector; requested Sku -> N1/N2 wires cannot be drawn. Initial Value and Increment both default to 1.",
+      "cpi": "NOT_RUN",
+      "cpiReason": "CPI counter has no input port; requested Sku -> N1/N2 wires cannot be drawn. Only Initial value and Increment parameters (both default 1) and an output connector are available.",
+      "reading": "n/a",
+      "summary": "No simulation; original mapping cannot be drawn exactly. PO independently confirms the unavailable counter input; no original run or queues."
+    }
+  ]
+}

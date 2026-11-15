@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): complex content derived from b:Party of base.xsd. An extension gives the base
+     content, then its own, attributes first; a restriction gives its own particles only (ADR-0008).
+     Attribute uses follow XSD: both inherit the base's; a restriction's redeclaration wins in the
+     base's place and its use="prohibited" drops one, which an extension's does not -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:b="urn:flottila:corpus:base"
+           xmlns:tns="urn:flottila:corpus:derived"
+           targetNamespace="urn:flottila:corpus:derived">
+  <xs:import namespace="urn:flottila:corpus:base" schemaLocation="base.xsd"/>
+  <xs:element name="Deal">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Buyer" type="tns:Customer"/>
+        <xs:element name="Seller" type="tns:Contact" minOccurs="0"/>
+        <xs:element name="Agent">
+          <xs:complexType>
+            <xs:complexContent>
+              <xs:extension base="b:Party">
+                <xs:attribute name="desk" type="xs:string"/>
+                <xs:attribute name="note" type="xs:string" use="prohibited"/>
+              </xs:extension>
+            </xs:complexContent>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Customer">
+    <xs:complexContent>
+      <xs:extension base="b:Party">
+        <xs:sequence>
+          <xs:element name="Number" type="xs:integer"/>
+        </xs:sequence>
+        <xs:attribute name="tier" type="xs:string"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="Contact">
+    <xs:complexContent>
+      <xs:restriction base="b:Party">
+        <xs:sequence>
+          <xs:element name="Name" type="xs:string"/>
+        </xs:sequence>
+        <xs:attribute name="since" type="xs:date" use="required"/>
+        <xs:attribute name="note" use="prohibited"/>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:schema>

@@ -1,0 +1,6 @@
+PO 7.5, Test tab, input probes/probe-bool-c.xml, mapping spec2-create-if-row. No output.
+The run fails on the empty Sku: PO's createIf does not read the empty string as false.
+
+Dialog "Problem when Testing":
+Runtime exception when processing target-field mapping /Create/Row; root message: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast '' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+See error logs for details

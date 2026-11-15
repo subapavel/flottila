@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "children": {"type": "array", "items": {"$dynamicRef": "#node"}}
+  },
+  "$defs": {"Node": {"$dynamicAnchor": "node", "type": "object"}}
+}

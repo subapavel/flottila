@@ -1,0 +1,7 @@
+CPI observation 2026-11-13: fn/trim/001
+Artifact: api_text_trim
+Input: original trim-001.xml uploaded through simulator without edits.
+Visible graph verified: Sku context /Orders -> trim -> /Out/All.
+Simulation completed. Six All values in downloaded XML: [a b], [empty], [empty], [empty], [a], [U+00A0 a U+00A0]. Character-code inspection of last value: 160,97,160; no-break spaces preserved.
+The second source value is &#9;&#10;x&#13; but the exported second All is empty, not the assumed x. This run records the end-to-end simulator result; normalization during simulator upload versus mapping execution was not isolated. Do not attribute that difference to trim alone without further evidence.
+Downloaded XML preserved unchanged.

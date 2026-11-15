@@ -1,0 +1,136 @@
+{
+  "obsId": "obs-lift-reuse",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/32",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "date": "2026-11-11",
+    "tool": "ESR message mapping",
+    "releaseVerification": "ESR About was read during obs-target-creation-2. PO was initially deferred during the CPI phase; resumed on 2026-11-11 after the owner released the computer."
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-11",
+    "tool": "Message Mapping artifact, Simulate; Function Message Queue",
+    "releaseVerification": "Read live from user menu > About at the start of this observation run."
+  },
+  "divergence": [],
+  "notes": [
+    "PO execution was initially deferred to the evening at the owner's request; CPI was run first. PO resumed when the owner released the computer.",
+    "PO lift-1 completed successfully after Save and an object check with no errors or warnings. The unmodified ESR ZIP and its byte-preserving instance.xml extraction are retained. The successful input paste compacted inter-element whitespace from l1.xml; corpus input was unchanged. See po75/lift-1-check.txt.",
+    "The request explicitly supersedes spec2-create-if/createIf-002 and spec2-create-if-twice/createIf-003 with obs-target-creation-2. Both are NOT_RUN on both systems for that reason.",
+    "CPI lift-1: Save displayed no error. Order -> Item is node to node. concat string1 is Tag at default context Order, string2 is Sku at explicitly selected /Orders/Order. Delimiter String defaults to empty and was left unchanged.",
+    "CPI lift-1 simulation failed with 'Test execution has failed; please try again'. One retry remained at 10% before reporting 'Error while setting mpl log level to None'. No output or mapping exception was returned; recorded as an environment blocker.",
+    "CPI lift-2 confirmed the assumed reading. All four required queues were transcribed with row numbers and shading. Keep SUPPRESS defaults to unchecked; both filters were explicitly checked. Save displayed no errors.",
+    "During construction of CPI lift-3 the session expired with 'Your session has expired. Press OK to login again.' A single session recovery succeeded automatically; the unsaved graph was lost. The lock on this run's newly created lift_3 artifact was released and its graph rebuilt.",
+    "CPI lift-3 confirmed the assumed reading: Item 1 has no V, Item 2 only V=5t1. Save displayed no errors; Keep SUPPRESS was checked and concat Delimiter String empty.",
+    "CPI lift-4 contradicted the assumed W cardinality: V=1 occurs only in Item 1, while W=k occurs in all three Items. N1 out is the ordinary finite queue [1]; R1 in/out and N1 in show k on a gray and a dark-gray row, with no white value row or null start. The literal rows are recorded without inventing a conventional finite input queue. Save displayed no errors.",
+    "CPI spec2-replace-value-create-if contradicted the assumed reading: three All=yes are emitted for true,false,true, including the SUPPRESS position. Exact parameter label Replace By; default empty, set to yes. Save displayed no errors.",
+    "CPI spec2-replace-value confirmed the assumed reading: two All values, each O'Brien & <Co>, for Sku=a and empty Sku; absent Sku adds none. Replace By was read back as the exact requested text. Save displayed no errors.",
+    "CPI output downloads initially retained temporary .crdownload filenames locally despite containing complete XML payloads. Most were copied under those names; the last was copied after its normal .xml filename appeared. Bytes were preserved and parsed as XML; no output was reconstructed from the UI."
+  ],
+  "runs": [
+    {
+      "mapping": "lift-1",
+      "input": "l1.xml",
+      "case": null,
+      "po75": "observed",
+      "po75Reading": "confirmed",
+      "po75Output": "po75/l1-lift-1.xml",
+      "cpi": "ENVIRONMENT_BLOCKED",
+      "cpiReason": "First attempt: Test execution has failed; please try again. One retry: Error while setting mpl log level to None. No output or mapping exception shown.",
+      "reading": "confirmed (PO only)",
+      "summary": "PO V by Item: [t1s1,t2s1], [], [], [t4s4,t5s5,t6s5], [s6]. CPI simulation service failed before returning a mapping result."
+    },
+    {
+      "mapping": "lift-2",
+      "input": "l2.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "PO and CPI V = a5t1,c7t3 and W = A,C. X1, K1, K2 and U1 queues preserve the middle SUPPRESS; K2 consumes t2. PO Keep SUPPRESS Values explicitly checked on both independent filters; object check reports no errors or warnings. See po75/lift-2-check.txt and po75/lift-2-queues.txt.",
+      "po75Reading": "confirmed",
+      "po75Output": "po75/l2-lift-2.xml"
+    },
+    {
+      "mapping": "lift-3",
+      "input": "l3.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "PO and CPI Item 1 has no V; Item 2 has only V=5t1. The last SUPPRESS is reused. PO saved and checked without errors or warnings. See po75/lift-3-check.txt.",
+      "po75Reading": "confirmed",
+      "po75Output": "po75/l3-lift-3.xml"
+    },
+    {
+      "mapping": "lift-4",
+      "input": "l4.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "contradicted",
+      "summary": "PO and CPI V=1 only in Item 1, but W=k in all three Items. N1 and R1 queues agree, including gray and dark-gray constant rows. PO object check reported no errors or warnings. See po75/lift-4-check.txt and po75/lift-4-queues.txt.",
+      "po75Reading": "contradicted",
+      "po75Output": "po75/l4-lift-4.xml"
+    },
+    {
+      "mapping": "spec2-create-if",
+      "input": "createIf-002.xml",
+      "case": "fn/createIf/002",
+      "po75": "NOT_RUN",
+      "cpi": "NOT_RUN",
+      "reason": "Explicitly superseded and marked Skip this run in request.md; covered by obs-target-creation-2 (#134, F-29)",
+      "reading": "n/a",
+      "summary": "Superseded run."
+    },
+    {
+      "mapping": "spec2-create-if-twice",
+      "input": "createIf-003.xml",
+      "case": "fn/createIf/003",
+      "po75": "NOT_RUN",
+      "cpi": "NOT_RUN",
+      "reason": "Explicitly superseded and marked Skip this run in request.md; covered by obs-target-creation-2 (#134, F-29)",
+      "reading": "n/a",
+      "summary": "Superseded run."
+    },
+    {
+      "mapping": "spec2-replace-value-create-if",
+      "input": "replaceValue-002.xml",
+      "case": "fn/replaceValue/002",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "contradicted",
+      "summary": "PO and CPI write three All=yes after createIf(true,false,true) -> replaceValue(yes), including the SUPPRESS position. PO Value to Produce=yes; saved and checked without errors or warnings. See po75/spec2-replace-value-create-if-check.txt.",
+      "po75Reading": "contradicted",
+      "po75Output": "po75/replaceValue-002-spec2-replace-value-create-if.xml"
+    },
+    {
+      "mapping": "spec2-replace-value",
+      "input": "replaceValue-004.xml",
+      "case": "fn/replaceValue/004",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "PO and CPI write two All values, each O'Brien & <Co>: empty Sku is a value, absent Sku contributes no slot. PO object check reports no errors or warnings. See po75/spec2-replace-value-check.txt.",
+      "po75Reading": "confirmed",
+      "po75Output": "po75/replaceValue-004-spec2-replace-value.xml"
+    },
+    {
+      "mapping": "lift-1",
+      "input": "l1.xml",
+      "case": "lift-1/l1.xml",
+      "cpi": "observed",
+      "date": "2026-11-12",
+      "artifact": "api_lift_1",
+      "reading": "confirmed",
+      "cpiResult": "cpi/l1-lift-1.xml",
+      "cpiEvidence": "cpi/lift-1-retry-check.txt"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+SAP PO 7.50, ESR Message Mapping str_attr, 2026-11-11.
+Graph: Id (default Order context) -> @code; Tag (default Order context) -> createIf -> @flag; Id (explicit Orders context) -> V. No other mappings.
+Save succeeded. Object Check: No errors found during object check. Problem 0, Warning 0.
+
+attr2.xml, original file imported and source verified:
+20:43:59 Start of test
+Compilation of str_attr successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+20:44:00 End of test
+Exact exported XML: attr2-str-attr.xml; original UI archive: attr2-str-attr-export.zip.
+Reading: code=X1, V=X1; flag absent for false.
+
+attr3.xml, original file imported; source has Tag=false and no Id:
+20:45:20 Start of test
+Exact error dialog:
+Cannot create target element /Flagged/code. Values missing in queue context. Target XSD requires a value for this element, but the target-field mapping does not create one. Check whether the XML instance is valid for the source XSD, and whether the target-field mapping fulfills the requirement of the target XSD
+See error logs for details
+Reading: missing source Id prevents creation of required code at runtime. The dialog path is /Flagged/code without @, transcribed literally. The displayed __EmptyDoc is an error placeholder, not a successful output. No output exported.
+
+attr4.xml, original file imported; source verified Id=X1 and Tag=true:
+20:46:18 Start of test
+Execution of mapping on server took 40 milliseconds
+Executed successfully
+20:46:18 End of test
+Exact exported XML: attr4-str-attr.xml; original archive: attr4-str-attr-export.zip.
+Reading: flag is present with empty value, code=X1, V=X1. Literal attribute order in PO output is flag, code.

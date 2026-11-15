@@ -1,0 +1,12 @@
+{
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "name": "root"
+    },
+    "node_modules/dangling-pkg": {
+      "version": "1.0.0",
+      "license": "MIT AND"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+CPI Message Mapping, Save, mapping lift-2.
+No error dialog, red target or error triangle displayed after Save.
+Order -> Item is node to node. The V and W chains use separate function boxes.
+All Qty and Sku source boxes explicitly use context /Orders/Order. Tag retains default Order context.
+Both constants are 0. Both concat Delimiter String fields remain empty.
+The ifWithoutElse parameter is revealed by double-clicking the function header.
+Exact CPI label: Keep SUPPRESS. Default: unchecked. X1 and X2: checked.
+Simulation l2.xml succeeded; V = a5t1, c7t3; W = A, C.
+The downloaded XML bytes were copied unchanged from the browser's completed XML payload, whose local filename still had the .crdownload suffix.

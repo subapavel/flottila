@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<po:PurchaseOrder xmlns:po="urn:flottila:corpus:gate:po" xmlns:c="urn:flottila:corpus:gate:common" issued="2026-04-01">
+  <po:OrderId>J-200</po:OrderId>
+  <po:Buyer>
+    <c:Name>Grace Hopper</c:Name>
+    <po:CustomerNo>C-8</po:CustomerNo>
+  </po:Buyer>
+  <po:Delivery>
+    <c:Street>2 Compiler Road</c:Street>
+    <c:City>Arlington</c:City>
+  </po:Delivery>
+  <po:Line no="1">
+    <po:Article>
+      <po:Sku>A-2</po:Sku>
+    </po:Article>
+    <po:Quantity>3</po:Quantity>
+    <po:Price currency="USD">1.50</po:Price>
+  </po:Line>
+  <po:Line no="2">
+    <po:Article>
+      <po:Sku>A-3</po:Sku>
+    </po:Article>
+    <po:Quantity>10</po:Quantity>
+    <po:Price currency="USD">100</po:Price>
+  </po:Line>
+</po:PurchaseOrder>

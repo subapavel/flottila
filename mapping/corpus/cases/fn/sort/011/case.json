@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-case-insensitive.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-sort-case-insensitive-011.xml and corpus/observations/obs-context-functions/cpi/sort-011-spec2-sort-case-insensitive.xml; before #214: #48 owner decision Q4: case-insensitive is String.compareToIgnoreCase; #2 §4 sort: \"within the existing or set context\", stable, numeric or lexicographic (case-sensitive or not), ascending or descending [SAP✓ STD]",
+  "expect": "output",
+  "note": "caseInsensitive where Java's simple case mappings differ from XPath's full ones: ß has no single-character upper case and stays ß (U+00DF), after SS (folded to ss); İ (U+0130) folds to i, so İ, I and i are equal and keep their input order. Input İ, SS, h, ß, I, i gives h, İ, I, i, SS, ß; full mappings would make ß equal to SS and put İ last. R1 joins the contexts S1 keeps, so All shows each context's order in turn. Observe in SAP PO (#33)."
+}

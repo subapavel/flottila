@@ -1,0 +1,131 @@
+{
+  "obsId": "obs-target-creation-2",
+  "request": "https://github.com/subapavel/flottila-mapping/issues/134",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "javaKernelVersion": null,
+    "date": "2026-11-11",
+    "tool": "ESR message mapping, Check and Test tab; Display Queue",
+    "releaseVerification": "ESR About shows SAP BASIS 7.50. NWA System Information requires a separate login; the login screen remained after one reload, with no available authenticated session. SP and patch were not observed in this run and were not copied from an earlier observation."
+  },
+  "cpi": {
+    "integrationSuiteVersion": "4.14.0",
+    "cloudIntegration": "6.84.77",
+    "cloudIntegrationRuntime": "8.48.27",
+    "servicePlan": "trial",
+    "date": "2026-11-11",
+    "tool": "Message Mapping artifact, Simulate",
+    "releaseVerification": "Read live from user menu > About before the CPI phase."
+  },
+  "divergence": [],
+  "notes": [
+    "PO: all six mappings saved and checked; each Check said 'No errors found during object check', Problem 0, Warning 0. None activated.",
+    "PO mc-opt: Row 0..2 leaves Grp 2 empty. R1 output queue has a single context containing a,b. The reuse observed in #31 with Row 1..2 therefore depends on the target minimum in this comparison.",
+    "PO mc-min2: Row 2..2 produces two Row elements containing b under Grp 2, repeating the last value up to the minimum. This supports the contradiction of target/minOccurs/004's assumed error already recorded in #31; the original mapping was not rerun.",
+    "PO mc-memo: the direct Text source queue fails at /Doc/Grp[3]/Row. Its missing third context is not filled using the last value b as happened with removeContexts.",
+    "PO mc-memo-opt with mc-memo-1: Grp 3 is empty. With mc-memo-2: Grp 2 and Grp 3 are empty; a is not reused.",
+    "PO side observation confirmed: mapped complex Row nodes with no mapped children contain the mapped value as text.",
+    "PO create-if: FALSE,1,True yields two empty All elements; leading-space ' true' throws Cannot cast ' true' to boolean. Both assumed readings confirmed.",
+    "PO create-if-twice: false,0 gives an empty Out. C2 Display Queue contains two cyan SUPPRESS entries on both input and output, followed by a dark-gray end marker. SUPPRESS is propagated without a boolean cast.",
+    "PO create-if-twice: true,false,1 fails on the first empty string at C2, Cannot cast '' to boolean. Assumed reading confirmed.",
+    "PO successful XML files were exported through the Test result toolbar and extracted byte-for-byte from instance.xml in the export ZIP. The exporter produced compact XML after the declaration; it was not reformatted.",
+    "PO error results were transcribed from the dialog and processing log, with object hashes sanitized. No incidental failure prevented a requested question from being reached; no owner probe was needed.",
+    "CPI phase completed for eight runs; mc-opt remains blocked by the previous-session lock described below.",
+    "CPI mc-opt: required in-place edit blocked by a previous-session lock. Automatic approval review rejected Unlock and the retry of Edit. The previous session was left intact; no alternate graph was substituted for this run.",
+    "CPI earlier continuation checkpoint: mc_min2 was created, but source XSD upload was interrupted. After file-URL permission was enabled, both XSD uploads succeeded and the mapping was completed through the editor UI.",
+    "CPI mc-min2: simulation with minOccurs-004.xml shows Grp 1 Rows a,b and Grp 2 Rows b,b, matching PO. Download Output wrote a complete 119-byte XML file under a temporary download name; its bytes were copied unchanged and parsed. The browser download event did not report completion.",
+    "CPI mc-memo: the direct Memo/Text source fails at /Doc/Grp[3]/Row with IllegalInstanceException, matching PO. No additional stack trace was shown in the CPI dialog.",
+    "CPI mc-min2 and mc-memo: Save produced no error dialog and no remaining red target field or error triangle. Source Id was explicitly set to context /Orders; Sku and Memo/Text retained their default contexts.",
+    "CPI mc-memo-opt: both runs match PO. mc-memo-1 leaves Grp 3 empty; mc-memo-2 leaves Grp 2 and Grp 3 empty. Save displayed no error. Downloaded XML bytes were preserved, including the second download's temporary filename; both documents are complete and match the displayed output tree.",
+    "CPI create-if: Save displayed no error. FALSE,1,True gives two empty All elements; leading-space true fails with Cannot cast \" true\" to boolean. This matches PO semantically; CPI wraps the latter in MessageMappingException and BehaviorInvocationException.",
+    "CPI create-if-twice: Save displayed no error. false,0 gives empty Out; C2 Function Message Queue with S. No. enabled shows two SUPPRESS values on both input and output. CPI renders these white, with italic gray start and dark-gray end markers; PO uses cyan for SUPPRESS values.",
+    "CPI create-if-twice on true,false,1 fails at C2 on the empty string: Cannot cast \"\" to boolean. The error is the requested observation, so no owner probe is needed.",
+    "Across the eight executed CPI runs, XML content and failure semantics match PO. Export serialization differs only in the newline after the XML declaration, and CPI error wrappers/wording differ as preserved in the text files; no behavioral divergence was observed."
+  ],
+  "runs": [
+    {
+      "mapping": "mc-opt",
+      "input": "minOccurs-004.xml",
+      "case": "target/minOccurs/004",
+      "po75": "observed",
+      "cpi": "ENVIRONMENT_BLOCKED",
+      "cpiReason": "The required in-place mapping is locked by a previous session. Edit offers: Do you wish to close the previous session and continue? Unlock was rejected by automatic approval review because the previous session may have unsaved changes. A retry of Edit was also rejected. No unlock or edit was performed.",
+      "reading": "other",
+      "summary": "PO: Grp 1 has Row a,b; Grp 2 has no Row when Row is optional."
+    },
+    {
+      "mapping": "mc-min2",
+      "input": "minOccurs-004.xml",
+      "case": "target/minOccurs/004",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "contradicted",
+      "summary": "PO and CPI: Grp 2 has two Rows b,b, not the case's assumed minOccurs error."
+    },
+    {
+      "mapping": "mc-memo",
+      "input": "mc-memo-1.xml",
+      "case": null,
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "other",
+      "summary": "PO and CPI: missing queue context causes a runtime error at /Doc/Grp[3]/Row; direct source does not reuse b."
+    },
+    {
+      "mapping": "mc-memo-opt",
+      "input": "mc-memo-1.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "other",
+      "summary": "PO and CPI: Rows a and b in the first two groups; Grp 3 is empty."
+    },
+    {
+      "mapping": "mc-memo-opt",
+      "input": "mc-memo-2.xml",
+      "case": null,
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "other",
+      "summary": "PO and CPI: Row a in Grp 1; empty Grp 2 and Grp 3. No reuse of a."
+    },
+    {
+      "mapping": "create-if",
+      "input": "createIf-002.xml",
+      "case": "fn/createIf/002",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "PO and CPI: two empty All elements."
+    },
+    {
+      "mapping": "create-if",
+      "input": "createIf-007.xml",
+      "case": "fn/createIf/007",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "confirmed",
+      "summary": "PO and CPI: no trimming; cannot cast the leading-space value ' true' to boolean."
+    },
+    {
+      "mapping": "create-if-twice",
+      "input": "createIf-008.xml",
+      "case": "fn/createIf/008",
+      "po75": "observed",
+      "cpi": "observed",
+      "reading": "confirmed",
+      "summary": "PO and CPI: C2 propagates both SUPPRESS entries; output Out is empty."
+    },
+    {
+      "mapping": "create-if-twice",
+      "input": "createIf-003.xml",
+      "case": "fn/createIf/003",
+      "po75": "error-observed",
+      "cpi": "error-observed",
+      "reading": "confirmed",
+      "summary": "PO and CPI: C2 fails on empty string with Cannot cast '' to boolean."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/nested-grp-unmapped-row.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0006 \"Target fields\": an unmapped structure field with minOccurs = maxOccurs = n > 0 is created n times, and an unmapped optional field is left out with its subtree; no other unmapped field is created or left out. Under an unmapped parent with 0 < minOccurs < maxOccurs a mapped field stays unsupported-field, because PO needs a mapping there (ADR-0006 since #63); the same parent with nothing mapped below it is refused with that code at its absent target field mapping (spec #48 review). A design-time refusal, so the run never starts and the case is not in the differential.",
+  "expect": "error",
+  "note": "Only Grp is mapped, per Id in context Orders. Row (1..2) under it is unmapped and nothing below it is mapped: compiling refuses it with unsupported-field at /targetFieldMappings/~1Doc~1Grp~1Row. Leaving Row out would write Grp elements without the Row that each needs at least once, which the target schema refuses."
+}

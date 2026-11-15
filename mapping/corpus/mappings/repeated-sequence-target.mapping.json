@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/model-groups/pairs.xsd"
+    ],
+    "fingerprint": "sha256:aa69e5c99ad5d331ec99c143eb35502c33870cb818b29b4c974c97c11d37fdc2",
+    "root": {
+      "element": "Pairs"
+    }
+  },
+  "targetFieldMappings": {
+    "/Pairs/A": {
+      "boxes": {
+        "S1": {
+          "context": "/Orders",
+          "field": "/Orders/Order/Id",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>a"b&amp;c&lt;d&gt;e'f&#13;g&#10;h&#9;i</Id>
+  </Order>
+</Orders>

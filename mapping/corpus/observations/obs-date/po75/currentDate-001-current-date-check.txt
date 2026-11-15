@@ -1,0 +1,16 @@
+SAP PO 7.50 ESR Test, 2026-11-12. Case fn/currentDate/001.
+Mapping current_date in the authorized observation namespace only.
+Copied compare_dates_004 and replaced CompareDates with a fresh currentDate node.
+Source src-orders.xsd; target tgt-list.xsd. currentDate -> Out/All.
+Editor proposed yyyy/MM/dd; retained unchanged. Advanced defaults: Sunday,
+minimum days 1, Calendar Is Lenient checked. No timezone control exposed.
+Saved; Check: No errors found, Problem 0, Warning 0.
+Loaded currentDate-001.xml and checked the source XML before execution.
+Processing log: start 20:20:54, end 20:20:58; compilation successful;
+server execution 9 milliseconds; executed successfully.
+Log does not display timezone. Local workstation context Europe/Prague (+01:00
+on this date); log zone and named JVM default zone not independently exposed.
+Earlier dateTrans observations establish +01:00 winter output offset.
+Result SRC: one All, 2026/11/12, consistent with run date and editor default.
+Original ESR result ZIP retained; XML is the exact extracted instance.xml bytes.
+No queues requested or captured. No screenshot file retained. CPI NOT_RUN.

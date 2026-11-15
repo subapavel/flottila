@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/model-groups/pairs.xsd"
+    ],
+    "fingerprint": "sha256:aa69e5c99ad5d331ec99c143eb35502c33870cb818b29b4c974c97c11d37fdc2",
+    "root": {
+      "element": "Pairs"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-list.xsd"
+    ],
+    "fingerprint": "sha256:626cbacff639a86b480bb3c20cc032d8aa47ad341d9111e31882ad30ca6eca70",
+    "root": {
+      "element": "Out"
+    }
+  },
+  "targetFieldMappings": {
+    "/Out/All": {
+      "boxes": {
+        "S1": {
+          "context": "/Pairs",
+          "field": "/Pairs/A",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    }
+  }
+}

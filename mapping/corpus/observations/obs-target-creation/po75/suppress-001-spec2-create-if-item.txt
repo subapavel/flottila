@@ -1,0 +1,6 @@
+PO 7.5, Test tab, input suppress-001.xml, mapping spec2-create-if-item (case target/suppress/001). No output.
+The run fails on the second Sku 'no' in createIf (see po75/max-002-spec2-create-if-row.txt).
+
+Dialog "Problem when Testing":
+Runtime exception when processing target-field mapping /Out/Item; root message: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'no' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[no, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+See error logs for details

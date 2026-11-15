@@ -1,0 +1,17 @@
+SAP PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_replace_value
+Input: original replaceValue-004.xml imported through the Test file dialog.
+Source SRC verified: Order o1, three Lines with Sku=a / empty Sku / absent Sku and Qty=1/2/3.
+Graph: Sku (context explicitly changed from Line to Orders) -> replaceValue -> All.
+replaceValue parameter: Value to Produce; inherited yes changed to exact O'Brien & <Co>, read back before OK.
+Item, V and W unmapped. Saved with Ctrl+S.
+Object check: No errors found during object check; Problem 0; Warning 0.
+19:22:27 Start of test
+Compilation of spec2_replace_value successful
+Execution of mapping on server took 62 milliseconds
+Executed successfully
+19:22:28 End of test
+Result SRC: two All values, each O'Brien & <Co>, XML-escaped.
+Unmodified ESR result export: replaceValue-004-spec2-replace-value-export.zip
+The instance.xml entry was extracted without reserialization to replaceValue-004-spec2-replace-value.xml.
+Reading: confirmed. Empty Sku supplies a value; absent Sku adds no slot. PO agrees with CPI.

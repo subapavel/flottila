@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-by-key.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/sortByKey-001-spec2-sort-by-key.xml and corpus/observations/obs-context-functions/cpi/sortByKey-001-spec2-sort-by-key.xml; before #214: #48 owner decision Q4: lexicographic is Java String.compareTo, comparing UTF-16 code units; #2 §4 sortByKey: like sort over (key, value) pairs, input 1 keys, input 2 values [SAP✓ STD]",
+  "expect": "output",
+  "note": "Defaults, lexicographic and ascending, keys Sku and values Qty, both in context Order. o1's keys b, a, C, 😀, Ａ sort by UTF-16 code unit to C, a, b, 😀, Ａ, so its values 1, 2, 3, 4, 5 become 3, 2, 1, 4, 5; o2's keys y, x give 7, 6. The codepoint collation would put 5 before 4. R1 joins the contexts K1 keeps, so All shows each order's values in turn. Observe in SAP PO (#33)."
+}

@@ -1,12 +1,12 @@
 # Handoff
 
 state: CONSOLIDATION ON MAIN (owner 2026-11-15, D-148). Done: BRAND-1, BRAND-4, OPS-1. In flight: BRAND-3. Then MAIN-1 - BACKLOG "priority 0".
-last commit: OPS-1 - ARCHITECTURE 3.25 and the living documents follow docs/OPERATIONS-BRIEF.md; D-152, F-38, ISSUE-8; review PASS.
-in flight: BRAND-3 (clone of `subapavel/flottila-mapping` beside this checkout, branch `rail8-import` cf970caf, unpushed). A new file that
-  holds the old name needs an entry in ci/name-allowlist.txt (the guard is in CI).
-next exact action: the import merge ON `main` - packet step 1.2-1.3: `git merge --allow-unrelated-histories --no-commit FETCH_HEAD`, add
-  the `mapping/** | * | ...` allow-list line, hand-written message; before the push `git rev-list --first-parent <before>..HEAD` = signed only.
-  Then step 2 (implementer; rulings in the packet), step 3 (root CLAUDE.md is NOT edited: licences -> an issue + a patch for the owner).
+last commit: BRAND-3 step 1 - the import merge: `mapping/` holds the mapping engine with its history (1155 commits), unchanged, not built yet.
+in flight: BRAND-3 step 2. `ci/name-allowlist.txt` has `mapping/** | *` until step 2 narrows it; a new file with the old name needs an entry.
+next exact action: BRAND-3 step 2 - implementer, agent/packets/BRAND-3.md "Step 2" + "Rulings after the review of step 1": rename inside
+  `mapping/` with agent/tools/rail8_rename.py (base = the merge commit, full SHA), root reactor builds it; then the verifier: the mapping
+  suite vs agent/work/BRAND-3-base-counts.txt, the platform vs BASE-1. Step 3: root CLAUDE.md is NOT edited (licences -> ISSUE-9 + a patch).
+The mapping's old clone (`subapavel/flottila-mapping`, beside this checkout) is no longer needed; archiving the repository is the owner's.
 OPS-1, OWNER: answer ISSUE-8 (every line has a default); `git apply agent/patches/OPS-1-steering.patch` - never a session. After BRAND-3: scout mapping/ docs.
 Verify mode: `mvn -B -ntp clean verify -Pit -Dmaven.test.failure.ignore=true` (26 min); compare with agent/work/BASE-1-counts.txt.
 MAIN-1: CI is red on main since 2026-11-02 - FIX-217 (packet agent/packets/FIX-217.md; test-author only) stops it in testkit.

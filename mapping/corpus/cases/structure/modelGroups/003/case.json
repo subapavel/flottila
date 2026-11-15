@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/repeated-sequence-source.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"Refused when a mapping uses the field\" (a repeated group of two or more particles is refused in a target only) and XSD (effective occurrence); spec #89, ticket #94",
+  "expect": "output",
+  "note": "pairs.xsd as the source: A and B stand in a repeated sequence, which is refused in a target only, so the source-field box S1 reads every A in context Pairs and the model compiles. All gets a1, a2 and a3; the Bs between them are not read. Also a differential case: the exported XSLT gives the same output."
+}

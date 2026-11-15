@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/json-schema/run-input.schema.json"
+    ],
+    "fingerprint": "sha256:105d98ae878bb024b38d0a0dd69e349b563ff00572ce7e5e3fa27bd88ac8afe9",
+    "root": {
+      "json": "$"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-list.xsd"
+    ],
+    "fingerprint": "sha256:626cbacff639a86b480bb3c20cc032d8aa47ad341d9111e31882ad30ca6eca70",
+    "root": {
+      "element": "Out"
+    }
+  },
+  "targetFieldMappings": {
+    "/Out/All": {
+      "boxes": {
+        "S1": {
+          "field": "/$/numbers",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    }
+  }
+}

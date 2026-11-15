@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): attribute references to nothing, and with a type of their own -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:attribute-ref"
+           targetNamespace="urn:flottila:corpus:attribute-ref">
+  <xs:attribute name="code" type="xs:int"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:attribute ref="tns:missing"/>
+      <xs:attribute ref="tns:code" type="xs:string"/>
+      <xs:attribute ref="tns:code"><xs:simpleType/></xs:attribute>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): a global element with an anonymous complex type, referenced from a.xsd -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:b">
+  <xs:element name="Item">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Qty" type="xs:unsignedInt"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

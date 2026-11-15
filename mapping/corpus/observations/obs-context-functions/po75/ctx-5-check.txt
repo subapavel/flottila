@@ -1,0 +1,14 @@
+SAP PO observation 2026-11-11
+Mapping: ctx_5
+Source: src-orders.xsd; target: tgt-list.xsd.
+Qty explicitly in Order context -> collapseContexts -> Out/Item/V.
+Orders/Order -> Out/Item. No Out/All mapping.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f5.xml imported through test UI, no edits.
+21:25:10 Start of test
+Compilation of ctx_5 successful
+Execution of mapping on server took 11 milliseconds
+Executed successfully
+21:25:11 End of test
+Result exported through UI as ctx-5-export.zip; instance.xml extracted unchanged as ctx-5.xml.
+Reading: first value of each context, including empty-string replacement, is collected in one context. All four V values occur in first Item; remaining three Items contain no V. Agrees with CPI.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/counter.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: the counter has no input on PO 7.50 or CPI (obs-statistic: NOT_RUN, the graph is not drawable), so this case is Flottila's own extension; was assumed: #2 §5 counter: \"Number of calls for this target-field mapping where you specify the initial value and the increment\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]; assumed reading of #75 and #37: one call per value of the queue, so the count goes on across contexts, and an empty context stays empty; obs-statistic decides it",
+  "expect": "output",
+  "note": "counter over Sku in context Order, a, b | (empty) | c: 1, 2 | (empty) | 3. A count per context would give 1 for c, as index does."
+}

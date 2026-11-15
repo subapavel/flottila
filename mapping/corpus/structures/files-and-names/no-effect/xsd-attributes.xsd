@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): XSD 1.0 attributes the reader accepts with no effect: id, version, block,
+     final, mixed, nillable on an element of an anonymous complex type, attributes in other
+     namespaces and a vc:minVersion below 1.1. plain.xsd is the same structure without them -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning"
+           xmlns:f="urn:flottila:corpus:foreign"
+           xmlns:tns="urn:flottila:corpus:no-effect"
+           targetNamespace="urn:flottila:corpus:no-effect"
+           id="schema" version="2.4" xml:lang="en" vc:minVersion="1.0" f:tool="editor">
+  <xs:element name="Order" id="order" block="#all" final="extension" nillable="true" f:note="x">
+    <xs:complexType id="order-type" mixed="true">
+      <xs:sequence id="fields">
+        <xs:element name="Id" type="xs:string" id="id" block="substitution"/>
+        <xs:element name="Status" type="tns:Status" f:hint="enum"/>
+        <xs:element name="Line" maxOccurs="unbounded" nillable="true" block="restriction">
+          <xs:complexType mixed="false">
+            <xs:sequence>
+              <xs:element name="No" type="xs:int" vc:minVersion="1"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="channel" type="xs:string" id="channel" f:hint="free"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:simpleType name="Status" id="status" final="#all">
+    <xs:restriction base="xs:token" id="status-base"/>
+  </xs:simpleType>
+</xs:schema>

@@ -1,0 +1,37 @@
+{
+  "constant": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "params": [
+      {
+        "default": "",
+        "name": "value",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "copyValue": {
+    "executionKind": "queue",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Its result cannot feed a box that takes a single value, such as concat. SAP PO accepts that graph."
+    },
+    "generating": true,
+    "inputs": [
+      {
+        "name": "values"
+      }
+    ],
+    "params": [
+      {
+        "default": "0",
+        "name": "position",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  }
+}

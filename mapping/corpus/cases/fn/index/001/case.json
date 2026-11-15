@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/index.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §5 Statistics: index takes an initial value, an increment, and whether to reset \"at the beginning of every new context\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]",
+  "expect": "output",
+  "note": "index{initial=1, increment=1, reset=eachContext} over Sku in context Order, a, b, c | d | e, f: each value gets its number in its context, 1, 2, 3 | 1 | 1, 2."
+}

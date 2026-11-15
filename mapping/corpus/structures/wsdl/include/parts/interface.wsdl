@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): the interface main.wsdl includes; its element is declared in main.wsdl -->
+<description xmlns="http://www.w3.org/ns/wsdl"
+             xmlns:tns="urn:flottila:corpus:include20"
+             targetNamespace="urn:flottila:corpus:include20">
+  <interface name="Pinger">
+    <operation name="Ping" pattern="http://www.w3.org/ns/wsdl/in-only">
+      <input element="tns:Ping"/>
+    </operation>
+  </interface>
+</description>

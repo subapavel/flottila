@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic source of the contexts bench mapping (ADR-0002, ADR-0021): customers, their orders and
+     the orders' items, three levels deep. No namespace; Priority and Rank are whole numbers as text,
+     the keys the mapping sorts by. Every input is written by ContextsGenerator.java. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Customers">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Customer" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="CustomerId" type="xs:string"/>
+              <xs:element name="Name" type="xs:string"/>
+              <xs:element name="Order" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="OrderNo" type="xs:string"/>
+                    <xs:element name="Priority" type="xs:string"/>
+                    <xs:element name="Item" maxOccurs="unbounded">
+                      <xs:complexType>
+                        <xs:sequence>
+                          <xs:element name="Sku" type="xs:string"/>
+                          <xs:element name="Rank" type="xs:string"/>
+                          <xs:element name="Quantity" type="xs:string"/>
+                        </xs:sequence>
+                      </xs:complexType>
+                    </xs:element>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

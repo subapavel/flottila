@@ -1,0 +1,12 @@
+engine/api	99	100
+engine/ir	100	100
+engine/mapping	99	98
+engine/runtime	100	100
+engine/serializer	100	100
+engine/structure	93	100
+engine/structure-import	99	100
+engine/xdm	100	100
+engine/xslt-export	98	100
+service	98	96
+ui/src/model	100	100
+ui/src/studio/store	100	100

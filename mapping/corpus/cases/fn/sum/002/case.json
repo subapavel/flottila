@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sum.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-statistic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-statistic/po75/sum-002-stat-sum.xml and corpus/observations/obs-statistic/cpi/sum-002-stat-sum.xml; before #214: #2 §5 Statistics: sum, average and count work per context (\"Sum of values X1 to Xi of a context\") [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; assumed reading of #75: a context without a value sums to 0, as XPath's sum(()) does; obs-statistic decides it",
+  "expect": "output",
+  "note": "Empty contexts: o1 has no Line and o2's one Line has no Qty, so Qty in context Order is (empty) | (empty) | 4. Each empty context gives 0: V is 0, 0, 4. Giving no value for an empty context would leave the first two Items without V."
+}

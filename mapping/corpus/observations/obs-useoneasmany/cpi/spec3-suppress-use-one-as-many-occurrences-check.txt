@@ -1,0 +1,4 @@
+CPI, Message Mapping editor, spec3-suppress-use-one-as-many-occurrences.
+Save completed without an error dialog, red target, or warning triangle.
+Id (Context /Orders) -> U1 input 1; Sku (Context /Orders/Order) -> createIf -> U1 input 2; separate Sku (Context /Orders) -> U1 input 3; U1 -> /Out/All.
+Five connections verified. No other target field mapped.

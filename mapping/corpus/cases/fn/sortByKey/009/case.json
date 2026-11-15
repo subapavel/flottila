@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-by-key-numeric-concat-suppress.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §3: numeric keys \"must not be equal to the constant ResultList.SUPPRESS\" [SAP✓ STD]; ADR-0006 SUPPRESS through the context functions since #51; po:SORTBYKEY at the box is ADR-0025 since #52; the SUPPRESS key: createIf reads false as SUPPRESS (F-37, corpus/observations/obs-target-creation/po75/max-002-spec2-create-if-row.txt), and concat passes a SUPPRESS on and consumes its other input (obs-lift-reuse lift-2, corpus/observations/obs-lift-reuse/po75/lift-2-queues.txt K2 and cpi/l2-lift-2-queue.txt; F-45)",
+  "expect": "error",
+  "note": "Keys are concat(createIf(Tag), constant 5): 5 for Tag 1 and SUPPRESS for Tag false. A numeric sortByKey over a SUPPRESS key raises po:SORTBYKEY at K1; compared as strings the SUPPRESS key would come first and the run would write false, 1. fn/sortByKey/008 asked this with replaceValue until #216, which replaces the SUPPRESS (F-45)."
+}

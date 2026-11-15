@@ -1,0 +1,5 @@
+CPI editor / Save and Simulate, mapping ctx-5.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Order -> Item. Qty context /Orders/Order -> collapseContexts -> V. No other fields mapped.
+Non-default context verified in source node tooltip. Save completed without a validation error; simulation f5.xml succeeded.
+The first Item contains V 3, 10, 7 and an empty-string V. The other three Items have no V. collapseContexts keeps the first value of each input context, replaces the empty context with an empty string, and puts the resulting values into one context.

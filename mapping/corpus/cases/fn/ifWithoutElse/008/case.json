@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-ifWithoutElse-empty-keep.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-ifWithoutElse-empty-keep, input ifWithoutElse-008.xml: corpus/observations/obs-boolean/po75/ifWithoutElse-008-boolean-ifWithoutElse-empty-keep.xml with the X1 display queue in its check, cpi/ifWithoutElse-008-boolean-ifWithoutElse-empty-keep.xml and cpi/ifWithoutElse-008-X1-queue.json; PO 7.50 and CPI agree (meta.json); F-44, ADR-0006 Consequences, ifWithoutElse",
+  "expect": "output",
+  "note": "removeContexts(ifWithoutElse(Qty in context Order, Tag)) with keepSuppressValues=true onto Item; V is Sku in context Line. o1: Tag z, no Line; o2: Line (a, false), no Tag; o3: Tags x, y, Lines (b, true), (c, false). An empty context against a non-empty one gives a slot that creates nothing at each slot of the other (PO shows <null> for o1, SUPPRESS for o2; ours is SUPPRESS for both), so X1 is [SUPPRESS] [SUPPRESS] [x, SUPPRESS], R1 is SUPPRESS, SUPPRESS, x, SUPPRESS, and the one Item, at slot 3, reads the third Line context: c."
+}

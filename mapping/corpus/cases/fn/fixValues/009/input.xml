@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>it's</Sku></Line>
+    <Line><Sku>say "hi"</Sku></Line>
+  </Order>
+  <Order>
+    <Id>o2</Id>
+    <Line><Sku>back\slash</Sku></Line>
+    <Line><Sku>tab&#9;there</Sku></Line>
+  </Order>
+  <Order>
+    <Id>o3</Id>
+    <Line><Sku>&lt;&amp;&gt;</Sku></Line>
+    <Line><Sku>𝄞</Sku></Line>
+  </Order>
+</Orders>

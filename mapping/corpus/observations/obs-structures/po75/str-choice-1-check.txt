@@ -1,0 +1,11 @@
+SAP PO 7.50 ESR, 2026-11-11, str_choice_1
+Source Orders; target imported tgt-choice.xsd.
+Independent A and B chains: Id (explicit context Orders) -> equalsS input 1; Constant A/B -> equalsS input 2; equalsS -> ifWithoutElse if; same Id -> then; ifWithoutElse -> respective target A/B. Keep SUPPRESS Values checked on both functions. Choice and Pick have no explicit mapping.
+ESR displays Choice/Pick 1..1 and A/B 0..1.
+Saved. Object check: No errors found during object check; Problem 0, Warning 0.
+Unchanged original files imported through Test UI; SRC verified A, B, C respectively.
+ch1: 20:26:52-20:26:53; compilation successful; 9 milliseconds; Executed successfully. A=A only.
+ch2: 20:27:43-20:27:44; 5 milliseconds; Executed successfully. B=B only.
+ch3: 20:28:21-20:28:21; 4 milliseconds; Executed successfully. Empty Pick, neither branch.
+Exact result ZIPs exported from UI; instance.xml extracted without rewriting.
+Reading: all three results agree semantically with CPI. Suppression of one or both choice branches causes no shortfall error; empty Pick is serialized as <Pick></Pick>.

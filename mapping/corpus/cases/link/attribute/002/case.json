@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/required-attribute-code.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 (an attribute is a leaf field); ADR-0006 since #102 (a target attribute is a leaf, 1..1 when use=\"required\", whose item comes first in its element's content)",
+  "expect": "output",
+  "note": "The required attribute code of the root Coded per Id in its default context Order: the root's slot 1 reads context 1, X1. V per Id in context Orders: X1, X2. The attribute is written on Coded before its children. The target attribute was unsupported-field until #102."
+}

@@ -1,0 +1,16 @@
+CPI observation: fn/ifWithoutElse/010
+Date: 2026-11-12
+Artifact: api_boolean_ifWithoutElse_collapse_tags
+Input: ifWithoutElse-010.xml (original corpus file)
+Verified editor expression: Qty in /Orders/Order context and Tag in /Orders context -> ifWithoutElse -> collapseContexts -> All.
+Simulation completed. One All value: x. No second empty All was produced, contradicting the assumed x,empty output.
+Exact downloaded output copied byte-for-byte to ifWithoutElse-010-boolean-ifWithoutElse-collapse-tags.xml.
+Keep SUPPRESS setting was not independently inspected in the live editor; artifact is the API-prepared default variant.
+No mapping changed or deployed. No queue requested. Screenshots not retained.
+
+2026-11-13 VERIFIED_PASS parameter/queue audit: Live export confirms keepss=true where configured and no keepss binding for default variants. Direct expanded editor inspection of api_boolean_ifWithoutElse_item shows Keep SUPPRESS unchecked, establishing the default used by absent bindings. No mapping or setting change saved. Evidence: cpi/parameter-audit/api_boolean_ifWithoutElse_collapse_tags.json
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_boolean_ifWithoutElse_collapse_tags.json.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

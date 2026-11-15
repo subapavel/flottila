@@ -1,0 +1,9 @@
+# Licence exceptions (ADR-0017), by artifact. Read by license-maven-plugin (artifactFiltersUrl).
+# Each line is an artifact whose licence is outside the CLAUDE.md list and which the owner accepted.
+# The enforcer bans each of them outside test scope (root pom.xml). A dependency of an excepted
+# artifact is still checked.
+exclude gaPattern io\.smallrye\.classfile:jdk-classfile-backport
+exclude gaPattern org\.graalvm\.sdk:nativeimage
+exclude gaPattern org\.graalvm\.sdk:word
+exclude gaPattern aopalliance:aopalliance
+exclude gaPattern javax\.annotation:javax\.annotation-api

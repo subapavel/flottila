@@ -1,0 +1,3 @@
+CPI editor / Save and Simulate, mapping ctx-3-change, in-place variant of artifact ctx_3_each.
+Only S1 and S2 Context Change on changed from Each value to Value change, after f3-ctx-3-each.xml had been saved. Both selections were verified; graph, contexts and f3.xml input were unchanged.
+Save completed without a validation error. Simulation produced four Items: V [a,a], [empty string], [b], [empty string]. Output preserved in f3-ctx-3-change.xml.

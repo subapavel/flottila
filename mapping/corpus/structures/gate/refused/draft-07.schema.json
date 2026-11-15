@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Synthetic fixture for GATE check 1 (#100): a draft other than 2020-12 is refused (ADR-0008)",
+  "type": "object",
+  "properties": {"id": {"type": "string"}}
+}

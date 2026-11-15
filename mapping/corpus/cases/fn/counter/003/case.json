@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/counter-suppress.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: the counter has no input on PO 7.50 or CPI (obs-statistic: NOT_RUN, the graph is not drawable), so this case is Flottila's own extension; was assumed: #2 §5 counter: \"Number of calls for this target-field mapping where you specify the initial value and the increment\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]; assumed reading of #75: SUPPRESS is no value (as for exists and mapWithDefault, #57), so it keeps its slot and is not counted; obs-statistic decides it",
+  "expect": "output",
+  "note": "counter{initial=0, increment=2} over createIf(Tag), \"\", SUPPRESS, \"\" | (empty) | \"\": 0, SUPPRESS, 2 | (empty) | 4, so V is 0, 2 | none | 4. Counting SUPPRESS too would give 0, 4 | 6."
+}

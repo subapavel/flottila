@@ -1,0 +1,13 @@
+Case: fn/dateTrans/006
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping Test
+Mapping: date_trans_006, copied from date_trans_005; inherited DateTrans node removed and a fresh DateTrans inserted to obtain genuine defaults.
+Graph: Sku (Orders context) -> DateTrans -> All; src-orders.xsd -> tgt-list.xsd.
+Fresh node offered InputDateFormat yyyy/MM/dd and OutputDateFormat yyyy/MM/dd. Both defaults visually confirmed and left unchanged; fields were not blank.
+Check: No errors found during object check; Problem 0, Warning 0.
+Input: dateTrans-006.xml; source values 2026/11/04 and 1999/12/31 verified before execution.
+Processing log: 19:31:38 to 19:31:39, successful compilation and execution, 6 milliseconds.
+Result source: 2026/11/04, 1999/12/31.
+Named JVM timezone unknown. No JVM settings changed. Calendar defaults not changed; Calendar Is Lenient was checked on the previously inspected fresh DateTrans node.
+ZIP exported from Result; XML copied byte-for-byte from instance.xml. No queue capture requested. No screenshot file retained.
+CPI: NOT_RUN; API preparation is not simulation evidence.

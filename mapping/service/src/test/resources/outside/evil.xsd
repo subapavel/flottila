@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic schema outside the workspace (#28): a read of it shows the field SecretField. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:test:outside">
+  <xs:element name="Exfil">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="SecretField" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

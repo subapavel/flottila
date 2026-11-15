@@ -1,0 +1,31 @@
+Date: 2026-11-12
+Case: fn/sortByKey/002
+Logical mapping: spec2-sort-by-key-case-insensitive
+Physical artifact: api_spec2_sort_by_key_numeric_descending, changed in place only
+after its case 003 original output was captured and saved locally.
+The dedicated API-prepared case-insensitive artifact stalled twice; see blocked.txt.
+
+Native UI change on the already-working graph: Edit; Comparison rule dropdown
+offers case sensitive, case insensitive, float number. Selected case insensitive,
+then asc after controls rerendered. Snapshot showed case insensitive and asc selected.
+Save clicked; returned editor showed those settings, no error or busy dialog.
+No sources, contexts or graph wires changed. Sku and Qty context /Orders/Order,
+sortByKey -> removeContexts -> /Out/All as verified for case 003.
+Loaded original sortByKey-002.xml using tab file input Enter and chooser.setFiles.
+Test completed. Output tree All 2,4,1,3,5,6.
+Download Output produced original 121-byte XML, copied without formatting.
+Reading: confirmed; case-insensitive stable ties and supplementary-character order.
+
+This successful run resolves the case's blocker, preserving both previous attempts
+as audit only. It shows that the native UI-set variant works; the precise defect in
+the dedicated imported artifact is not yet proven by export comparison.
+Follow-up export comparison: downloaded the native saved artifact using the package
+row Actions > Download. Its mmap also uses sort_comp type="cis" and sort_order
+asc="true". Thus cis is not an invalid comparator code. Native serialization omits
+explicit pin="0" on first arguments; this alone is not established as a cause,
+because the default and numerical API-prepared artifacts executed successfully.
+The downloaded archive stays outside the repository; only this sanitized finding
+is recorded. No service, permission, or tenant setting was changed.
+Physical artifact is now left with case insensitive / asc, despite its original name.
+No display queue requested, no screenshot file saved, prior tenant version retained.
+No system mouse/keyboard takeover, direct API simulation, or SAP PO interaction.

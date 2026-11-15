@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): an abstract complex type, a type that extends it, and an abstract element of the
+     abstract type, used by drawing.xsd -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:s="urn:flottila:corpus:shapes"
+           targetNamespace="urn:flottila:corpus:shapes">
+  <xs:complexType name="Shape" abstract="true">
+    <xs:sequence>
+      <xs:element name="Colour" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Circle" abstract="false">
+    <xs:complexContent>
+      <xs:extension base="s:Shape">
+        <xs:sequence>
+          <xs:element name="Radius" type="xs:decimal"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:element name="Figure" type="s:Shape" abstract="true"/>
+</xs:schema>

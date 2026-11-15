@@ -1,0 +1,202 @@
+name: ci
+
+# ADR-0017. Required on main: backend, windows, ui, stack (windows: owner ruling 2026-11-02, #48).
+# Pushes to ticket branches (t/**) run it too, so a ticket's CI can be observed before the spec PR.
+on:
+  pull_request:
+  push:
+    branches: [main, 't/**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Central rate-limits shared IPs; the Google mirror of Central serves the same artefacts (ADR-0017).
+  MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+
+jobs:
+  # #67: Ticket, Co-authored-by and exactly one Signed-off-by on every non-merge commit and every merger-written merge
+  # commit of the range. GitHub's own PR merge commit is skipped by the script; commits already on main are out of range.
+  trailers:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Script tests
+        run: |
+          scripts/test/trailers-test.sh
+          scripts/test/trailers-root-test.sh
+          scripts/test/clean-worktrees-test.sh
+          scripts/test/pit-summary-test.sh
+          scripts/test/gate-spec-default-test.sh
+          scripts/test/gate-log-test.sh
+          scripts/test/push-retry-test.sh
+          scripts/test/handover-test.sh
+      - name: Commit trailers
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            range="$BASE_SHA..$HEAD_SHA"
+          elif [ "$BEFORE" = 0000000000000000000000000000000000000000 ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            # new branch or forced push: everything not on origin/main
+            range="origin/main..$AFTER"
+          else
+            range="$BEFORE..$AFTER"
+          fi
+          scripts/check-trailers.sh "$range"
+
+  backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Maven mirror
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      # The generator the build runs to merge the function families (ADR-0025 "Families", F-15), and the
+      # ratchet's mutation rows (#87); both scripts run on this job's JDK 25
+      - name: Script tests of scripts/function-families.java and scripts/ratchet.java
+        run: |
+          scripts/test/function-families-test.sh
+          scripts/test/function-families-refusals-test.sh
+          scripts/test/ratchet-mutation-test.sh
+          scripts/test/ratchet-moved-test.sh
+          scripts/test/ratchet-bench-test.sh
+          scripts/test/gate-spec-bench-test.sh
+      - name: Build, test, floors, licences, bans
+        run: ./mvnw -B -Pbench verify
+      - name: contract/ is up to date
+        run: git diff --exit-code contract/
+      - name: Every file checks out byte-identical on Windows (#49)
+        run: scripts/check-lf-checkout.sh
+
+  # The owner builds on Windows (#42): drive letters and backslashes in paths. Ticket-gate row 2.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Maven mirror
+        shell: bash
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      - name: Whole reactor compiles; Spotless, enforcer, licences
+        run: ./mvnw.cmd -B -q -DskipTests verify
+
+  ui:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - name: Licences (CLAUDE.md list, exceptions in ui/scripts/licence-exceptions.json)
+        run: npm run licences
+      # The pinned @playwright/test (1.63.0) decides the Chromium build.
+      - run: npx playwright install --with-deps chromium
+      - name: Generated types are up to date
+        run: |
+          npm run gen:types
+          git diff --exit-code src/generated
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run test:browser
+      - run: npm run e2e
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          if-no-files-found: error
+
+  stack:
+    needs: [backend, ui]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Maven mirror
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<'EOF'
+          <settings>
+            <mirrors>
+              <mirror>
+                <id>google-maven-central</id>
+                <mirrorOf>central</mirrorOf>
+                <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+              </mirror>
+            </mirrors>
+          </settings>
+          EOF
+      - uses: actions/download-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+      - name: Jar with the UI inside
+        run: ./mvnw -B -Pui -pl service -am package -DskipTests
+      - name: Playwright
+        working-directory: ui
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: '@stack suite against the jar'
+        working-directory: ui
+        run: npm run e2e:stack

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-by-example.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 formatByExample: \"Values from queue 1, context changes from queue 2; equal value counts required\" [SAP✓ https://help.sap.com/doc/saphelp_nw74/7.4.16/en-us/4b/f416dceaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/saphelp_ewm900/helpdata/en/4b/f416dceaca4c86e10000000a42189e/content.htm]",
+  "expect": "output",
+  "note": "Equal value counts, other contexts. The values, Tag in its default context Order, are t1 | t2, t3; the example, Sku in context Order, is a, b | c. formatByExample gives t1, t2 | t3, so All under the root's one slot is t1, t2. Keeping the values' own contexts would give t1 alone, taking the example's values would give a, b."
+}

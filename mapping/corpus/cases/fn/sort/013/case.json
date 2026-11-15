@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-sort-descending-format.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-suppress-sort-descending-format, input sort-013.xml, 2026-11-11: corpus/observations/obs-context-functions/po75/spec2-suppress-sort-descending-format-013.xml and cpi/sort-013-spec2-suppress-sort-descending-format.xml, display queues po75/spec2-suppress-sort-descending-format-013-queue.txt and cpi/sort-013-spec2-suppress-sort-descending-format-queue.txt; PO 7.50 and CPI 6.84.77 agree: descending puts SUPPRESS before the empty values; F-47, ADR-0006 Consequences (sort and sortByKey order a SUPPRESS as the greatest value or key)",
+  "expect": "output",
+  "note": "createIf over Tag in context Orders gives SUPPRESS, \"\", SUPPRESS, \"\". Descending puts SUPPRESS first: SUPPRESS, SUPPRESS, \"\", \"\" (both queues). formatByExample cuts after three slots, so the first context holds SUPPRESS, SUPPRESS, \"\": one empty All. SUPPRESS last, the reading before F-47, gives two."
+}

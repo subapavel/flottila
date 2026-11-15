@@ -1,0 +1,13 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_exists_create_if; case fn/exists/004.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context -> createIf -> exists -> removeContexts -> Out/All only.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original exists-004.xml imported through test UI, no edits.
+21:36:54 Start of test
+Compilation of spec2_exists_create_if successful
+Execution of mapping on server took 9 milliseconds
+Executed successfully
+21:36:55 End of test
+Result exported through UI as spec2-exists-create-if-export.zip; instance.xml extracted unchanged as spec2-exists-create-if.xml.
+Reading: All true,true,true,false,true. SUPPRESS counts as present, per value. Only the truly empty context gives false. Contradicts the assumed four-value result; agrees with CPI.

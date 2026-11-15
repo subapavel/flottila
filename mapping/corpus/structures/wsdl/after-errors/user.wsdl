@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): beside a file that stopped, a part element no bundle file declares, and a part
+     element and a message in the stopped file's namespace -->
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:other="urn:flottila:corpus:elsewhere"
+                  xmlns:b="urn:flottila:corpus:broken"
+                  xmlns:tns="urn:flottila:corpus:user-wsdl"
+                  targetNamespace="urn:flottila:corpus:user-wsdl">
+  <wsdl:message name="Lost">
+    <wsdl:part name="body" element="other:Doc"/>
+  </wsdl:message>
+  <wsdl:message name="Late">
+    <wsdl:part name="body" element="b:Later"/>
+  </wsdl:message>
+  <wsdl:portType name="Port">
+    <wsdl:operation name="Send">
+      <wsdl:input message="tns:Lost"/>
+    </wsdl:operation>
+    <wsdl:operation name="Resend">
+      <wsdl:input message="b:Gone"/>
+    </wsdl:operation>
+  </wsdl:portType>
+</wsdl:definitions>

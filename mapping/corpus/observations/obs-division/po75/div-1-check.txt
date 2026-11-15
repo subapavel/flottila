@@ -1,0 +1,7 @@
+SAP PO 7.50 ESR message mapping div_1, 2026-11-11.
+Graph: Qty context Order -> divide input 1; Sku context Order -> divide input 2; divide -> Out/Item/V; Order -> Out/Item. W and All unmapped.
+Saved; object check: No errors found during object check; Problem 0, Warning 0.
+d1.xml imported unchanged. Test 20:07:37-20:07:38; compilation successful; execution 8 ms. Result exported by ESR as d1-div-1-export.zip; instance.xml extracted without rewriting as d1-div-1.xml.
+All eight V text values exactly match CPI. Recurring quotients contradict the requested 18-fractional-digit rule; the tiny quotient is nonzero. 4/2 is 2 without .0.
+d2.xml imported unchanged; test started 20:09:07. Runtime error, not Infinity. Exact sanitized modal text retained in d2-div-1.txt. EmptyDoc displayed after failure is not a successful mapping output.
+Arithmetic mode not verified. No mode is inferred from the decimal formatting; no arithmetic settings changed.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/floor.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003 (the F&O core: fn:floor)",
+  "expect": "output",
+  "note": "Qty is 1.2, -1.2, 3, -0.5, 0.0, 2.50 and -3.999: the greatest whole number not above it. 1, -2, 3, -1, 0, 2, -4."
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<o:Receipt xmlns:o="urn:flottila:corpus:order">
+  <Customer>
+    <Name>Ada</Name>
+    <Number>C-1</Number>
+  </Customer>
+  <o:Book>
+    <Title>Dune</Title>
+  </o:Book>
+  <o:Book>
+    <Title>Emma</Title>
+  </o:Book>
+  <Paid currency="EUR">12.50</Paid>
+</o:Receipt>

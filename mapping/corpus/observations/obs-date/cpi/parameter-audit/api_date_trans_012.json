@@ -1,0 +1,22 @@
+{
+  "case": "fn/dateTrans/012",
+  "artifact": "api_date_trans_012",
+  "version": "1.0.0",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "TransformDate",
+      "inputCount": 1,
+      "bindings": "<bindings><param name=\"iform\"><value>yyyyMMddHHmmZ</value></param><param name=\"oform\"><value>dd.MM.yyyy HH:mm XXX</value></param><param name=\"calend\"><value><calend_props><fd>1</fd><md>1</md><le>true</le></calend_props></value></param></bindings>",
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders"
+        }
+      ]
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

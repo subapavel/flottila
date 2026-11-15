@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila.mapping</groupId>
+    <artifactId>flottila-mapping-engine</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>flottila-mapping-udf</artifactId>
+  <name>Flottila Mapping udf</name>
+
+  <properties>
+    <!-- No production code yet: PIT skips such a module, and fails "No mutations found" on a first
+         class without mutable bytecode. The first ticket that adds production code (the UDF spec (spec 7)) removes
+         this line. The mutation floor is not lowered. -->
+    <pit.failWhenNoMutations>false</pit.failWhenNoMutations>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>flottila-mapping-udf-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+  </dependencies>
+</project>

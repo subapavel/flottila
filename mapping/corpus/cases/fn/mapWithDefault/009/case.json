@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-d.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31), mapping create-d, input d3.xml: corpus/observations/obs-target-creation/po75/d3-create-d.xml and cpi/d3-create-d.xml, display queues d3-create-d-queue.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json); F-17 and ADR-0004 as amended: a source queue whose context element never occurs in the message is one empty context",
+  "expect": "output",
+  "note": "No Order has a Memo, so Text in its default context Memo is one empty context [], not zero contexts, and mapWithDefault fills it: [D]. Item per Order in context Orders, the owner's node-to-node wiring Orders/Order -> Out/Item, one \"\" per Order (ADR-0008, #63): Item 1 reads context 1 and gets V D, Item 2 reads a context the queue lacks and gets no V. Zero contexts, the reading F-17 replaced, would give no V at all."
+}

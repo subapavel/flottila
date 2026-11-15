@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-trans-time.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-date (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-date/po75/dateTrans-002-date-trans-002.xml and corpus/observations/obs-date/cpi/dateTrans-002-date-trans-002.xml; before #214: #2 §5 Date: DateTrans takes java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: each pattern is translated to an XPath picture and the date is parsed strictly; assumed reading: a field of one letter reads one or two digits and writes no leading zero, a field of two or three letters reads and writes that many (obs-date dateTrans-002)",
+  "expect": "output",
+  "note": "sourceFormat d.M.yyyy H:mm, targetFormat yyyy-MM-dd'T'HH:mm:ss.SSS: Sku in context Orders is 4.1.2026 7:05, 04.01.2026 07:05, 31.12.1999 23:59. The fields of one letter read one digit or two, so the first two are the same date; the time is written with seconds and milliseconds the source lacks, as zeros. All is 2026-01-04T07:05:00.000 twice, then 1999-12-31T23:59:00.000."
+}

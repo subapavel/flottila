@@ -1,0 +1,29 @@
+Case: fn/ifWithoutElse/007
+Mapping: boolean-ifWithoutElse-suppress-condition
+Input: original ifWithoutElse-007.xml imported unchanged through ESR Test UI; source XML verified.
+Graph: Sku (Orders) -> X1 condition; Qty (Orders) -> X1 then; X1 -> X2 condition; separate Qty (Orders) -> X2 then; X2 -> Out/Item. Separate Qty (default Line) -> Out/Item/V. No other target wires.
+Parameter dialogs verified: X1 Keep SUPPRESS Values checked; X2 unchecked (default).
+Saved; object check: No errors found during object check; Problem 0, Warning 0.
+Processing Log: 07:59:48 Start of test; compilation successful; execution took 5 milliseconds; Executed successfully; 07:59:49 End of test.
+Result: two Items with V values true, true.
+Exact XML retained from instance.xml in the ZIP exported through ESR result UI.
+
+Display Queue X1: compilation successful, execution 8 milliseconds, Executed successfully.
+Columns in0 | in1 | out; literal numbered rows:
+0 <null> | <null> | <null> (all gray)
+1 [true] | [true] | [true]
+2 [false] | [true] | SUPPRESS (output cyan)
+3 [true] | [false] | [false]
+4 [true] | [true] | [true]
+5 [true] | [true] | [true] (all dark gray)
+
+Display Queue X2: compilation successful, execution 6 milliseconds, Executed successfully.
+Columns in0 | in1 | out; literal numbered rows:
+0 <null> | <null> | <null> (all gray)
+1 [true] | [true] | [true]
+2 SUPPRESS | [true] | SUPPRESS (in0 and output cyan)
+3 [false] | [false] | SUPPRESS (output cyan)
+4 [true] | [true] | [true]
+5 [true] | [true] | [true] (all dark gray)
+No italic values in either queue. Gray context/terminal rows are not additional data values.
+Reading: contradicted. The requested assumed V true,false is not observed. X1 produces true,SUPPRESS,false,true; X2 preserves the incoming SUPPRESS and suppresses the false condition at the next position, producing true,SUPPRESS,SUPPRESS,true. Final Items retain Lines 1 and 4.

@@ -1,0 +1,11 @@
+SAP PO observation 2026-11-12
+Mapping spec2_split_by_value_change; fn/splitByValue/009; original splitByValue-009.xml imported unchanged via UI; source XML checked.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag default context Order -> removeContexts -> splitByValue (Value Change) -> All. Nothing else mapped.
+Same saved, checked mapping as case 006; Problem 0, Warning 0.
+01:19:10 Start of test
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+01:19:10 End of test
+UI export instance.xml extracted unchanged.
+Reading: two empty All. Equal initial empty values stay together before a; confirmed assumed reading. CPI not run yet.

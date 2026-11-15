@@ -1,0 +1,10 @@
+Flottila Mapping
+Copyright 2026 the Flottila Mapping authors
+
+This product is licensed under the Apache License, Version 2.0 (LICENSE).
+
+Third-party material included in this repository:
+
+- Agent skills in .claude/skills/ listed in .claude/skills/UPSTREAM.md, from
+  https://github.com/mattpocock/skills, Copyright (c) 2026 Matt Pocock, MIT License
+  (full text in .claude/skills/LICENSE-mattpocock-skills).

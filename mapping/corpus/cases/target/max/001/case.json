@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/row-val-max.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §2 occurrence rules: at most maxOccurs times, \"If sourceElem occurs more frequently … values are lost\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f414f7eaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bf414f7eaca4c86e10000000a42189e.html]",
+  "expect": "output",
+  "note": "Row (1..2) per Sku in context Orders: a, b, c, slots 1 to 3. Val (0..1) per Qty in context Order: 1, 2 | 3, one context per Order. Row 1 reads context 1 and keeps its first value, Val 1, as 2 is lost to Val's maxOccurs 1; Row 2 gets Val 3; slot 3 (c) is lost to Row's maxOccurs 2. Ignoring maxOccurs would give two Val in Row 1, or a third Row."
+}

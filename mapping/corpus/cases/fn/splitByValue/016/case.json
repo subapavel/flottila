@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-empty-flat.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-016-spec2-split-by-value-empty-flat.xml and corpus/observations/obs-context-functions/cpi/splitByValue-016-spec2-split-by-value-empty-flat.xml; before #214: #48 owner decision Q3, mode emptyValue: a context change at \"\", and the \"\" is dropped; #2 §4 labels not seen on SAP pages; obs-context-functions ctx-3 (f3.xml) decides it",
+  "expect": "output",
+  "note": "\"\" at both ends and two in a row, across two orders: <Tag/>, a, <Tag/> | <Tag/>, b, <Tag/>. removeContexts R1 gives \"\", a, \"\", \"\", b, \"\"; S1 drops all four \"\" and R2 joins what is left, so All is a, b."
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<po:PurchaseOrder xmlns:po="urn:flottila:corpus:gate:po" xmlns:c="urn:flottila:corpus:gate:common" issued="2026-03-14">
+  <po:OrderId>PO-100</po:OrderId>
+  <po:Buyer>
+    <c:Name>Ada Lovelace</c:Name>
+    <po:CustomerNo>C-7</po:CustomerNo>
+  </po:Buyer>
+  <po:Delivery country="GB">
+    <c:Street>1 Engine Lane</c:Street>
+    <c:City>London</c:City>
+  </po:Delivery>
+  <po:Line no="1">
+    <po:Article>
+      <po:Sku>A-1</po:Sku>
+      <po:Name>Gear</po:Name>
+    </po:Article>
+    <po:Quantity>2</po:Quantity>
+    <po:Price currency="EUR" vatIncluded="true">12.50</po:Price>
+  </po:Line>
+  <po:Line no="2">
+    <po:Service>
+      <po:Sku>S-9</po:Sku>
+    </po:Service>
+    <po:Quantity>1</po:Quantity>
+    <po:Price currency="EUR">40.00</po:Price>
+  </po:Line>
+</po:PurchaseOrder>

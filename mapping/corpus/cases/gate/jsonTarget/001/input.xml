@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inv:Invoice xmlns:inv="urn:flottila:corpus:gate:invoice" xmlns:pty="urn:flottila:corpus:gate:party">
+  <inv:Number>INV-1</inv:Number>
+  <pty:Party>
+    <pty:Name>Ada Lovelace</pty:Name>
+  </pty:Party>
+  <inv:Item>
+    <inv:Amount>12.50</inv:Amount>
+  </inv:Item>
+</inv:Invoice>

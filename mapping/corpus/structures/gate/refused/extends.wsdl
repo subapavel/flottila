@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture for GATE check 1 (#100): a WSDL 2.0 interface with extends is refused
+     (ADR-0008 "JSON Schema and WSDL", #96) -->
+<description xmlns="http://www.w3.org/ns/wsdl"
+             xmlns:xs="http://www.w3.org/2001/XMLSchema"
+             xmlns:tns="urn:flottila:corpus:gate:refused"
+             targetNamespace="urn:flottila:corpus:gate:refused">
+  <types>
+    <xs:schema targetNamespace="urn:flottila:corpus:gate:refused">
+      <xs:element name="Doc">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="Id" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:schema>
+  </types>
+  <interface name="Base"/>
+  <interface name="Child" extends="tns:Base">
+    <operation name="Op">
+      <input element="tns:Doc"/>
+    </operation>
+  </interface>
+</description>

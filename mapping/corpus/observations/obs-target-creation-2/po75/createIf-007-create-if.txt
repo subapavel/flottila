@@ -1,0 +1,19 @@
+System: SAP PO 7.5 | Action: Test | Input: createIf-007.xml | Mapping: create-if | Case: fn/createIf/007 | No output produced
+Failure place: C1 createIf while processing target /Out/All.
+Test start: 04:02:14 (UI clock).
+
+Dialog title: Problem when Testing
+Runtime exception when processing target-field mapping /Out/All; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast ' true' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[ true, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+See error logs for details
+
+Processing log exception and first five mapping frames:
+com.sap.aii.utilxi.misc.api.BaseRuntimeException: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast ' true' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[ true, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+at com.sap.aii.mappingtool.tf7.rt.MethodImplementedIteratorHelper.executeMethod(MethodImplementedIteratorHelper.java:188)
+at com.sap.aii.mappingtool.tf7.rt.FunctionWrapper.calculateCurrentValue(FunctionWrapper.java:106)
+at com.sap.aii.mappingtool.tf7.rt.AbstractFunctionWrapper.cacheValue(AbstractFunctionWrapper.java:31)
+at com.sap.aii.mappingtool.tf7.rt.AbstractFunctionWrapper.gotoNextContext(AbstractFunctionWrapper.java:41)
+at com.sap.aii.mappingtool.tf7.rt.AMappingProgram.processNode(AMappingProgram.java:345)
+Remaining mapping and server frames omitted. Context object identity sanitized.
+
+Reading: confirmed. The leading space is not trimmed; createIf rejects ' true'. The result pane's __EmptyDoc is the ESR error placeholder, not a mapped Out document.

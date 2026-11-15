@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-table.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 stage-3 codes: wrong-parameter-type, a table given for a string param (ADR-0011)",
+  "expect": "error",
+  "note": "The order is a table, and order is a string param: compiling refuses it at S1."
+}

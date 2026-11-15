@@ -1,0 +1,7 @@
+{
+  "title": "The second bundle file, with a $ref outside the bundle too",
+  "type": "object",
+  "properties": {
+    "item": {"$ref": "item.schema.json"}
+  }
+}

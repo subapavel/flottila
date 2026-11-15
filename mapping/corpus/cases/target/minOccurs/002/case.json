@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if-row.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31), mapping create-a, input a2.xml: corpus/observations/obs-target-creation/po75/a2-create-a.txt and cpi/a2-create-a.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json): Row's queue SUPPRESS, SUPPRESS fails on minOccurs 1 (com.sap.aii.mappingtool.tf7.IllegalInstanceException); the observed mapping create-a gives that queue by equalsS(Sku, keep) into createIf, this one by createIf over Sku false, false (observed false, probe-bool-a). The input was a2.xml (Sku skip) before #133, on which PO ends the run in createIf before the minOccurs check (F-37, po75/a2-spec2-create-if-row.txt); po:MINOCCURS at the target field mapping is ADR-0006 since #52",
+  "expect": "error",
+  "note": "Both Skus are false, so createIf gives SUPPRESS, SUPPRESS. SUPPRESS does not count toward minOccurs, so Row (1..2) has no created occurrence: po:MINOCCURS at T1. If SUPPRESS counted, the run would write the root without a Row."
+}

@@ -1,0 +1,13 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_sort_case_insensitive; case fn/sort/004.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context Order -> sort -> removeContexts -> Out/All only.
+Sort parameters explicitly selected and observed: case insensitive, ascending.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original sort-002.xml imported through test UI, no edits.
+22:18:00 Start of test
+Execution of mapping on server took 5 milliseconds
+Executed successfully
+22:18:00 End of test
+Result exported through UI as spec2-sort-case-insensitive-004-export.zip; instance.xml extracted unchanged as spec2-sort-case-insensitive-004.xml.
+Reading: All z,😀,ﬀ,Ａ. Differs from CPI z,ﬀ,Ａ,😀 and contradicts assumed code-point ordering. This result alone does not establish the implementation mechanism. No additional queue observation was made.

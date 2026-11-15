@@ -1,0 +1,66 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-create.xsd"
+    ],
+    "fingerprint": "sha256:c55781b0218fbd5796a6bb9e47dda32fbd3cb7129744178ee56130aeaa3c986f",
+    "root": {
+      "element": "Create"
+    }
+  },
+  "targetFieldMappings": {
+    "/Create/Row": {
+      "boxes": {
+        "A1": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": "keep"
+          }
+        },
+        "A2": {
+          "fn": "equalsS",
+          "inputs": [
+            "S1",
+            "A1"
+          ],
+          "kind": "function"
+        },
+        "A3": {
+          "fn": "createIf",
+          "inputs": [
+            "A2"
+          ],
+          "kind": "function"
+        },
+        "S1": {
+          "context": "/Orders",
+          "field": "/Orders/Order/Line/Sku",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "A3"
+    },
+    "/Create/Row/Val": {
+      "boxes": {
+        "S2": {
+          "field": "/Orders/Order/Line/Qty",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    }
+  }
+}

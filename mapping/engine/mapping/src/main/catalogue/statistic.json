@@ -1,0 +1,95 @@
+{
+  "average": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "values"
+      }
+    ],
+    "portable": true
+  },
+  "count": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "values"
+      }
+    ],
+    "portable": true
+  },
+  "counter": {
+    "executionKind": "queue",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "values"
+      }
+    ],
+    "params": [
+      {
+        "default": "1",
+        "name": "initial",
+        "type": "string"
+      },
+      {
+        "default": "1",
+        "name": "increment",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "index": {
+    "executionKind": "queue",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "values"
+      }
+    ],
+    "params": [
+      {
+        "default": "1",
+        "name": "initial",
+        "type": "string"
+      },
+      {
+        "default": "1",
+        "name": "increment",
+        "type": "string"
+      },
+      {
+        "default": "eachContext",
+        "name": "reset",
+        "type": "string",
+        "values": [
+          "eachContext",
+          "never"
+        ]
+      }
+    ],
+    "portable": true
+  },
+  "sum": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "values"
+      }
+    ],
+    "portable": true
+  }
+}

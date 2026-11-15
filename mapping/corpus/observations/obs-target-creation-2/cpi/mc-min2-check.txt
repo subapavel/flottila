@@ -1,0 +1,5 @@
+CPI Message Mapping editor, mc_min2, Save, 2026-11-11.
+No error dialog, red target field or triangle remained after Save.
+Source Orders: src-orders.xsd. Target Doc: tgt-nested-min2.xsd; Row 2..2.
+Id -> Grp; source tooltip showed Context: /Orders and the label was italic.
+Sku -> removeContexts -> Row; Sku context left at default. Val unmapped.

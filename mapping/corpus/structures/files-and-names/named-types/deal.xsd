@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): named complex types, one used at two paths and one recursive, and named simple
+     types whose value type comes from their built-in ancestry -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:named"
+           targetNamespace="urn:flottila:corpus:named">
+  <xs:element name="Deal">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Buyer" type="tns:Party"/>
+        <xs:element name="Seller" type="tns:Party" minOccurs="0"/>
+        <xs:element name="Amount" type="tns:Amount"/>
+        <xs:element name="Count" type="tns:Count"/>
+        <xs:element name="Codes" type="tns:Codes"/>
+        <xs:element name="Either" type="tns:Either"/>
+        <xs:element name="Tree" type="tns:Node"/>
+      </xs:sequence>
+      <xs:attribute name="currency" type="tns:Currency" use="required"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Party">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Node">
+    <xs:sequence>
+      <xs:element name="Label" type="xs:string"/>
+      <xs:element name="Child" type="tns:Node" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:simpleType name="Amount">
+    <xs:restriction base="xs:decimal"/>
+  </xs:simpleType>
+  <!-- a restriction of a named simple type declared further down -->
+  <xs:simpleType name="Count">
+    <xs:restriction base="tns:Small"/>
+  </xs:simpleType>
+  <xs:simpleType name="Small">
+    <xs:restriction base="xs:short"/>
+  </xs:simpleType>
+  <xs:simpleType name="Codes">
+    <xs:list itemType="xs:int"/>
+  </xs:simpleType>
+  <xs:simpleType name="Either">
+    <xs:union memberTypes="xs:int xs:date"/>
+  </xs:simpleType>
+  <xs:simpleType name="Currency">
+    <xs:restriction base="xs:token"/>
+  </xs:simpleType>
+</xs:schema>

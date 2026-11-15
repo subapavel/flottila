@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/map-with-default-create-if.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-map-with-default-create-if, input exists-004.xml, 2026-11-11: corpus/observations/obs-context-functions/po75/spec2-map-with-default-create-if.xml and cpi/exists-004-spec2-map-with-default-create-if.xml (the CPI rerun; the initial simulation is not a reading, cpi/spec2-map-with-default-create-if-check.txt), display queues po75/spec2-map-with-default-create-if-queue.txt and cpi/exists-004-spec2-map-with-default-create-if-queue.txt; ctx-2 (po75/ctx-2-queue.txt) keeps a SUPPRESS-only context too; PO 7.50 and CPI 6.84.77 agree; F-48, ADR-0006 Consequences (mapWithDefault fills only an empty context); createIf true → \"\", false → SUPPRESS (ADR-0006, F-37)",
+  "expect": "output",
+  "note": "Tag in its default context Order is false | false, true | (none) | true, so createIf gives SUPPRESS | SUPPRESS, \"\" | (empty) | \"\". mapWithDefault keeps the SUPPRESS-only context and SUPPRESS, \"\", fills the empty context and keeps \"\": removeContexts gives SUPPRESS, SUPPRESS, \"\", D, \"\", and the root's slot skips the SUPPRESS: \"\", D, \"\". A SUPPRESS-only context taken for empty, the reading before F-48, gives D, \"\", D, \"\"."
+}

@@ -1,0 +1,11 @@
+CPI observation 2026-11-13: fn/fixValues/008
+Artifact: api_fix_values_exact
+Input: original fixValues-008.xml uploaded without modifying whitespace.
+Visible graph verified: Order context /Orders -> Item; Sku context /Orders/Order -> fixValues -> V.
+Simulation completed. Output V values [?, ?, ?, A] | [?, B, ?]. Original downloaded XML preserved unchanged. For these inputs, matching distinguishes case and leading/trailing spaces.
+Live table/default parameter dialog not independently inspected. Output observed; parameter verification pending.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_fix_values_exact.json, cpi/native-options-fixValues.txt.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

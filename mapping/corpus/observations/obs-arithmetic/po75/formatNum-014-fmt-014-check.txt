@@ -1,0 +1,15 @@
+Case: fn/formatNum/014
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping test
+Mapping: fmt_014, copied from fmt_013 in the authorized observations namespace.
+Graph inherited and checked: Qty (Orders context) -> FormatNum -> All; src-orders / tgt-list.
+NumberFormat: 0.0 m; DecimalSeparator: .
+Parameter committed with Tab and confirmed in the graph; mapping saved.
+Object Check: No errors found during object check; Problem 0, Warning 0.
+Loaded formatNum-014.xml. Input SRC visibly confirmed Qty values 1 and -2.25 before execution.
+Processing Log: 18:52:30 Start of test; compilation of fmt_014 successful; server execution 6 milliseconds; Executed successfully; 18:52:31 End of test.
+Result SRC: All values 1.0 m and -2.2 m.
+Original result exported through ESR to formatNum-014-fmt-014.zip. Its instance.xml copied byte-for-byte to formatNum-014-fmt-014.xml.
+No queues requested or captured. No screenshot file saved.
+JVM locale and internal numeric type were not exposed by the observed UI.
+CPI: NOT_RUN; API preparation exists, simulation pending.

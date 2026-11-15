@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-d.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation (#31), mapping create-d, input d2.xml: corpus/observations/obs-target-creation/po75/d2-create-d.xml and cpi/d2-create-d.xml, display queues d2-create-d-queue.txt; PO 7.50 SP33 and CPI 6.84.77 agree (meta.json); ADR-0004 and GLOSSARY \"Empty context\": a parent occurrence without children is an empty context",
+  "expect": "output",
+  "note": "Text in its default context Memo: order 2 has <Memo/> without Text, so the queue is [a] [] [c], and mapWithDefault fills the empty context: [a] [D] [c]. Item per Order in context Orders, the owner's node-to-node wiring Orders/Order -> Out/Item, one \"\" per Order (ADR-0008, #63): V a, D, c. In fn/mapWithDefault/007 order 2 has no Memo at all and adds no context."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-sort-by-key.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-suppress-sort-by-key, input sortByKey-006.xml, 2026-11-12: corpus/observations/obs-context-functions/po75/sortByKey-006-spec2-suppress-sort-by-key.xml and cpi/sortByKey-006-spec2-suppress-sort-by-key.xml, PO display queue in po75/sortByKey-006-spec2-suppress-sort-by-key-check.txt; PO 7.50 and CPI 6.84.77 agree: a SUPPRESS key sorts after the empty keys, ties in input order; F-47, ADR-0006 Consequences (sort and sortByKey order a SUPPRESS as the greatest value or key)",
+  "expect": "output",
+  "note": "The keys, createIf over Tag in context Orders, are \"\", SUPPRESS, \"\", SUPPRESS; the values are s1 to s4. Ascending puts the SUPPRESS keys last, in input order: s1, s3, s2, s4. SUPPRESS first, the reading before F-47, gives s2, s4, s1, s3."
+}

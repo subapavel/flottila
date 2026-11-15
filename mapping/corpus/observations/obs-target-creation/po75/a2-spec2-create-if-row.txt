@@ -1,0 +1,7 @@
+PO 7.5, Test tab, input a2.xml, mapping spec2-create-if-row (case target/minOccurs/002). No output.
+The run fails on the first Sku 'skip' in createIf, before any minOccurs check. The case's question
+(SUPPRESS,SUPPRESS against minOccurs 1) is answered by a2 of create-a (po75/a2-create-a.txt).
+
+Dialog "Problem when Testing":
+Runtime exception when processing target-field mapping /Create/Row; root message: Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast 'skip' to boolean] in class com.sap.aii.mappingtool.flib7.NodeFunctions method createIf[skip, com.sap.aii.mappingtool.tf7.rt.Context@<id>]
+See error logs for details

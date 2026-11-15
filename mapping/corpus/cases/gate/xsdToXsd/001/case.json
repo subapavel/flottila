@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/gate-po-invoice.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"XSD\": the branches of a choice become sibling fields with minimum 0, an extension gives the base content then its own, a reference to a substitution-group head becomes a choice of its non-abstract members (a member without a type takes the head's), a recursive path may repeat one type; ADR-0008 \"Readers\": an import or include resolves inside the bundle; ADR-0006 since #102: simple content with attributes is a leaf; GATE check 1, ticket #100",
+  "expect": "output",
+  "note": "Source gate/purchase-order (three files: order.xsd includes types.xsd and imports common/common.xsd of a second namespace). Target gate/invoice (two files: invoice.xsd refers to pty:Party of party.xsd across files, and inv:Section is recursive). Number and Date from OrderId and @issued; Party, created once as a 1..1 parent, takes Name from the extended Buyer and Street and City from the Delivery branch of the choice. One Item per Line: @line from @no, Amount and @currency from the simple-content leaf Price; Text from the Article branch of the substitution group, so the Service line's Item has no Text. Section from Buyer with Title CustomerNo, and the nested Section, the recursive type's second level, from Delivery with Title City. Also a differential case."
+}

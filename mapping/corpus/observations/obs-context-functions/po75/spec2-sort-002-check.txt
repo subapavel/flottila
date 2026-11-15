@@ -1,0 +1,12 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_sort; case fn/sort/002.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag default context Order -> sort -> removeContexts -> Out/All only.
+Sort parameters observed: case sensitive, ascending. Same saved mapping as fn/sort/001; Check 0 problems, 0 warnings.
+Input: original sort-002.xml imported through test UI, no edits.
+22:07:29 Start of test
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+22:07:29 End of test
+Result exported through UI as spec2-sort-002-export.zip; instance.xml extracted unchanged as spec2-sort-002.xml.
+Reading: All values z,😀,ﬀ,Ａ. Confirms the requested ordering. No additional queue observation was made.

@@ -1,0 +1,18 @@
+SAP PO observation: fn/inv/001
+Date: 2026-11-12
+Mapping: arith_inv
+Source: src-orders.xsd; target: tgt-list.xsd.
+Graph: Qty (context Orders explicitly selected) -> 1/x -> Out/All.
+Input: obs-arithmetic/i1.xml; SRC view verified Qty values 4, 3, -2, 0.5 before execution.
+Saved mapping. F7 did not open the check log; Message Mapping > Check did.
+Object check: No errors found during object check. Problem 0, Warning 0.
+Processing Log:
+17:48:05 Start of test
+Compilation of arith_inv successful
+Execution of mapping on server took 9 milliseconds
+Executed successfully
+17:48:06 End of test
+Result SRC view and exported instance.xml contain All values 0.25, 0.33333333333333333, -0.5, 2.
+Reading: reciprocal confirmed, not arithmetic negation. The repeating decimal is retained exactly as exported by PO.
+ZIP is the original result export. XML is its instance.xml copied byte-for-byte without formatting.
+No queues requested or captured. No screenshot files retained. JVM locale and internal numeric representation were not visible in this run.

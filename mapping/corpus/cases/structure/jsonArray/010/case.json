@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-short-objs.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON Schema and WSDL\" (an array property records that it is one, whatever its maxItems) and \"JSON as a source at run time\" (an array property reads each item as one occurrence, by its array marker); ADR-0004 (contexts); #118",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/objs is an array of objects with maxItems 1, an array property and structure field at 0..1: its one item is one occurrence of objs, so one Item is written, and V from $/objs/sku in its default context, that item, is a. Read by its maximum, objs would be an object field, the array would read as absent and no Item would be written."
+}

@@ -1,0 +1,5 @@
+CPI editor / Save, mapping ctx-6a.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+C1 constant 0 -> G1 greater number2. Qty default Line context -> G1 number1 and X1 ifWithoutElse true value. G1 -> X1 condition. Keep SUPPRESS checked and verified true.
+X1 -> R1 removeContexts -> K1 concat string1. Tag default Order context -> separate R2 removeContexts -> K1 string2. K1 -> All. Delimiter String is empty. No other targets mapped.
+Nine expression connections verified visually after Save; no validation error was shown.

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>x</Sku></Line>
+    <Line><Sku xsi:nil="true"/></Line>
+    <Line><Sku></Sku></Line>
+    <Line><Sku> </Sku></Line>
+  </Order>
+</Orders>

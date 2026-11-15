@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/power.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: power with an integer exponent is computed exactly in decimal",
+  "expect": "output",
+  "note": "Base Qty, exponent Sku, one pair per line: 2^10, 1.5^2, 10^0, (-2)^3, 0^0, 2^100, 2.0^3.0 (a whole-number exponent written with a fraction part is an integer) and 0.1^2. All exact: 1024, 2.25, 1, -8, 1, 1267650600228229401496703205376, 8, 0.01. A double would give 2^100 and 0.1^2 with binary noise."
+}

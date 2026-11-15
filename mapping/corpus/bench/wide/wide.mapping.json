@@ -1,0 +1,361 @@
+{
+  "description": "Bench mapping wide (ADR-0021): a flat, IDoc-like source of 300 fields, of which the mapping reads 30, 27 of them 1:1, two through concat and one through formatNum.",
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "wide-source.xsd"
+    ],
+    "fingerprint": "sha256:2fab13720f8e551830e4e69ef2682da525177160535ece3092abc837bcfe6b19",
+    "root": {
+      "element": "Feed"
+    }
+  },
+  "target": {
+    "bundle": [
+      "wide-target.xsd"
+    ],
+    "fingerprint": "sha256:f86c88062497643172ac8aec2d2d94d5b55826a60df1f2e1c291fa61a6e49f72",
+    "root": {
+      "element": "Q{urn:flottila:corpus:bench:wide}WideBatch"
+    }
+  },
+  "targetFieldMappings": {
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry": {
+      "boxes": {
+        "S1": {
+          "field": "/Feed/Record",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}BillDue": {
+      "boxes": {
+        "S14": {
+          "field": "/Feed/Record/BillDue",
+          "kind": "source"
+        }
+      },
+      "id": "T13",
+      "result": "S14"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}BillRef": {
+      "boxes": {
+        "S12": {
+          "field": "/Feed/Record/BillRef",
+          "kind": "source"
+        }
+      },
+      "id": "T11",
+      "result": "S12"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}BillTotal": {
+      "boxes": {
+        "N1": {
+          "fn": "formatNum",
+          "inputs": [
+            "S13"
+          ],
+          "kind": "function",
+          "params": {
+            "pattern": "0.00"
+          }
+        },
+        "S13": {
+          "field": "/Feed/Record/BillSum",
+          "kind": "source"
+        }
+      },
+      "id": "T12",
+      "result": "N1"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}CargoMass": {
+      "boxes": {
+        "S11": {
+          "field": "/Feed/Record/CargoMass",
+          "kind": "source"
+        }
+      },
+      "id": "T10",
+      "result": "S11"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}CargoQty": {
+      "boxes": {
+        "S10": {
+          "field": "/Feed/Record/CargoQty",
+          "kind": "source"
+        }
+      },
+      "id": "T9",
+      "result": "S10"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}CargoUnit": {
+      "boxes": {
+        "S9": {
+          "field": "/Feed/Record/CargoUnit",
+          "kind": "source"
+        }
+      },
+      "id": "T8",
+      "result": "S9"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}ClaimDone": {
+      "boxes": {
+        "S25": {
+          "field": "/Feed/Record/ClaimDone",
+          "kind": "source"
+        }
+      },
+      "id": "T24",
+      "result": "S25"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}ClaimSum": {
+      "boxes": {
+        "S24": {
+          "field": "/Feed/Record/ClaimSum",
+          "kind": "source"
+        }
+      },
+      "id": "T23",
+      "result": "S24"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}Consignee": {
+      "boxes": {
+        "C1": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": ", "
+          }
+        },
+        "F1": {
+          "fn": "concat",
+          "inputs": [
+            "S4",
+            "C1"
+          ],
+          "kind": "function"
+        },
+        "F2": {
+          "fn": "concat",
+          "inputs": [
+            "F1",
+            "S5"
+          ],
+          "kind": "function"
+        },
+        "S4": {
+          "field": "/Feed/Record/PartyName",
+          "kind": "source"
+        },
+        "S5": {
+          "field": "/Feed/Record/ShipName",
+          "kind": "source"
+        }
+      },
+      "id": "T4",
+      "result": "F2"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}DepotCode": {
+      "boxes": {
+        "S19": {
+          "field": "/Feed/Record/DepotCode",
+          "kind": "source"
+        }
+      },
+      "id": "T18",
+      "result": "S19"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}DepotLive": {
+      "boxes": {
+        "S20": {
+          "field": "/Feed/Record/DepotLive",
+          "kind": "source"
+        }
+      },
+      "id": "T19",
+      "result": "S20"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}DutyFlag": {
+      "boxes": {
+        "S16": {
+          "field": "/Feed/Record/DutyFlag",
+          "kind": "source"
+        }
+      },
+      "id": "T15",
+      "result": "S16"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}DutyRate": {
+      "boxes": {
+        "S15": {
+          "field": "/Feed/Record/DutyRate",
+          "kind": "source"
+        }
+      },
+      "id": "T14",
+      "result": "S15"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}HaulArea": {
+      "boxes": {
+        "S17": {
+          "field": "/Feed/Record/HaulArea",
+          "kind": "source"
+        }
+      },
+      "id": "T16",
+      "result": "S17"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}HaulCount": {
+      "boxes": {
+        "S18": {
+          "field": "/Feed/Record/HaulCount",
+          "kind": "source"
+        }
+      },
+      "id": "T17",
+      "result": "S18"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}LedgerCap": {
+      "boxes": {
+        "S31": {
+          "field": "/Feed/Record/LedgerCap",
+          "kind": "source"
+        }
+      },
+      "id": "T30",
+      "result": "S31"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}LedgerLevel": {
+      "boxes": {
+        "S30": {
+          "field": "/Feed/Record/LedgerLevel",
+          "kind": "source"
+        }
+      },
+      "id": "T29",
+      "result": "S30"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}LedgerNote": {
+      "boxes": {
+        "S28": {
+          "field": "/Feed/Record/LedgerNote",
+          "kind": "source"
+        }
+      },
+      "id": "T27",
+      "result": "S28"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}LedgerSeq": {
+      "boxes": {
+        "S29": {
+          "field": "/Feed/Record/LedgerSeq",
+          "kind": "source"
+        }
+      },
+      "id": "T28",
+      "result": "S29"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}PartyDate": {
+      "boxes": {
+        "S3": {
+          "field": "/Feed/Record/PartyDate",
+          "kind": "source"
+        }
+      },
+      "id": "T3",
+      "result": "S3"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}PartyRef": {
+      "boxes": {
+        "S2": {
+          "field": "/Feed/Record/PartyRef",
+          "kind": "source"
+        }
+      },
+      "id": "T2",
+      "result": "S2"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}PermitRef": {
+      "boxes": {
+        "S22": {
+          "field": "/Feed/Record/PermitRef",
+          "kind": "source"
+        }
+      },
+      "id": "T21",
+      "result": "S22"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}PermitUntil": {
+      "boxes": {
+        "S23": {
+          "field": "/Feed/Record/PermitUntil",
+          "kind": "source"
+        }
+      },
+      "id": "T22",
+      "result": "S23"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}RouteFrom": {
+      "boxes": {
+        "S7": {
+          "field": "/Feed/Record/RouteFrom",
+          "kind": "source"
+        }
+      },
+      "id": "T6",
+      "result": "S7"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}RouteUntil": {
+      "boxes": {
+        "S8": {
+          "field": "/Feed/Record/RouteUntil",
+          "kind": "source"
+        }
+      },
+      "id": "T7",
+      "result": "S8"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}RouteZone": {
+      "boxes": {
+        "S6": {
+          "field": "/Feed/Record/RouteZone",
+          "kind": "source"
+        }
+      },
+      "id": "T5",
+      "result": "S6"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}ShipVol": {
+      "boxes": {
+        "S21": {
+          "field": "/Feed/Record/ShipVol",
+          "kind": "source"
+        }
+      },
+      "id": "T20",
+      "result": "S21"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}TariffClass": {
+      "boxes": {
+        "S26": {
+          "field": "/Feed/Record/TariffClass",
+          "kind": "source"
+        }
+      },
+      "id": "T25",
+      "result": "S26"
+    },
+    "/Q{urn:flottila:corpus:bench:wide}WideBatch/Q{urn:flottila:corpus:bench:wide}Entry/Q{urn:flottila:corpus:bench:wide}TariffShare": {
+      "boxes": {
+        "S27": {
+          "field": "/Feed/Record/TariffShare",
+          "kind": "source"
+        }
+      },
+      "id": "T26",
+      "result": "S27"
+    }
+  }
+}

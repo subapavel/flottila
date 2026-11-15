@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-trans-default.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-date (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-date/po75/dateTrans-006-date-trans-006.xml and corpus/observations/obs-date/cpi/dateTrans-006-date-trans-006.xml; before #214: #2 §5 Date: DateTrans takes java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0025: a param the box leaves out takes the catalogue's default; #80 rulings: the default pattern is yyyy/MM/dd (obs-date dateTrans-006)",
+  "expect": "output",
+  "note": "No params: both formats are the default yyyy/MM/dd. Sku in context Orders is 2026/11/04, 1999/12/31, so All is the same, 2026/11/04, 1999/12/31."
+}

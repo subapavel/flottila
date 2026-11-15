@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/one-pass-orphan-unmapped-leaf.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0011 stage 3 (#26): a source field path the structure lacks is orphaned-reference at its box; spec #89, Implementation Decisions \"One-pass compile\"; ticket #91",
+  "expect": "error",
+  "note": "The other half of target/onePass/001, the same mapping and compile: S1 reads /Orders/Order/Ref, which src-orders.xsd lacks, so it is refused with orphaned-reference at S1, beside the unmapped-mandatory-leaf of Req."
+}

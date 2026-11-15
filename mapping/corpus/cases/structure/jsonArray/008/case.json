@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-short-maybe.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (null is no array, so it reads as absent even with \"null\" in the type list) and GLOSSARY \"Array property\"; #118",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/maybe is typed [\"array\", \"null\"] with maxItems 1: a nillable array property at 0..1. Its value is null, which is no array, so maybe never occurs and no All is written. Read by its maximum, maybe would be a nillable leaf, null would read as the empty string and an empty All would be written."
+}

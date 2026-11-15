@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synthetic fixture for GATE check 1 (#100): a merged property with two shapes is refused (ADR-0008)",
+  "type": "object",
+  "allOf": [
+    {"properties": {"total": {"type": "number"}}},
+    {"properties": {"total": {"type": "object", "properties": {"value": {"type": "number"}}}}}
+  ]
+}

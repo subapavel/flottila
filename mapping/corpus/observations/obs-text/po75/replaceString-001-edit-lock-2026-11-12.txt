@@ -1,0 +1,7 @@
+SAP PO technical blocker: fn/replaceString/001
+Date: 2026-11-12
+Mapping: text_replaceString_a_bb
+After the user restarted and signed in to SAP PO, the existing mapping opened in display mode. It still contains the previously copied endsWith graph; the unsaved replaceString edits from the earlier session are not present.
+Edit attempt: Object Message Mapping: text_replaceString_a_bb | [namespace omitted] currently being edited by user [user omitted]. See error logs for details.
+One retry after completing toUpperCase/001, toLowerCase/001 and trim/001 returned the same lock message.
+No unlock, force edit or replacement object for this locked case was attempted. No simulation result exists for this case. It remains pending and is included in the remaining count.

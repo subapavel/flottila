@@ -1,0 +1,35 @@
+Case: fn/fixValues/007
+Observed: 2026-11-12, SAP PO 7.50 ESR message mapping UI
+Mapping: fix_values_suppress
+Input: unchanged copyValue-004.xml imported through Test UI.
+Graph: Order (context Orders) -> Item; Tag (default context Order) -> createIf C1 -> FixValues F1 -> V. W and All unmapped.
+Parameters: one table row with empty key and value E; Throw Exception selected; Default Value empty.
+Save completed (Save disabled). Check: No errors found during object check; Problem 0, Warning 0.
+Test: 10:59:30 Start; compilation successful; execution 8 milliseconds; executed successfully; 10:59:31 End.
+UI-exported ZIP contains instance.xml, extracted unchanged as accompanying XML.
+
+Literal Display Queue C1 (successful compilation/execution, 10 milliseconds). No italic entries observed.
+row | createIf:in0 | createIf:out
+0 | <null> gray | <null> gray
+1 | [true] white | [] white
+2 | [false] white | SUPPRESS cyan
+3 | [true] white | [] white
+4 | [true] gray | [] gray
+5 | [false] white | SUPPRESS cyan
+6 | [true] white | [] white
+7 | [true] gray | [] gray
+8 | [true] dark gray | [] dark gray
+
+Literal Display Queue F1 (successful compilation/execution, 9 milliseconds). No italic entries observed.
+row | FixValues:in0 | FixValues:out
+0 | <null> gray | <null> gray
+1 | [] white | [E] white
+2 | SUPPRESS cyan | SUPPRESS cyan
+3 | [] white | [E] white
+4 | [] gray | [E] gray
+5 | SUPPRESS cyan | SUPPRESS cyan
+6 | [] white | [E] white
+7 | [] gray | [E] gray
+8 | [] dark gray | [E] dark gray
+
+Reading: confirmed. SUPPRESS passes through without lookup exception. Empty values map to E. XML has two V E in Item 1, one V E in Item 2, and no V in Item 3. Gray boundary and dark-gray terminal display rows are not additional values.

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila.mapping</groupId>
+    <artifactId>flottila-mapping-engine</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>flottila-mapping-structure-import</artifactId>
+  <name>Flottila Mapping structure-import</name>
+
+  <properties>
+    <!-- ADR-0019: lines >= 80 %, no branch floor -->
+    <jacoco.min.lines>0.80</jacoco.min.lines>
+    <jacoco.min.branches>0.00</jacoco.min.branches>
+    <!-- no mutation floor (ADR-0019) -->
+    <pit.skip>true</pit.skip>
+    <!-- the XSD reader library (ADR-0008) -->
+    <xmlschema.version>2.3.3</xmlschema.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>flottila-mapping-structure</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.ws.xmlschema</groupId>
+      <artifactId>xmlschema-core</artifactId>
+      <version>${xmlschema.version}</version>
+    </dependency>
+    <!-- the JSON Schema reader library (ADR-0008, #97); MIT, version managed in the root POM -->
+    <dependency>
+      <groupId>com.github.erosb</groupId>
+      <artifactId>json-sKema</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <compilerArgs combine.children="append">
+            <!-- xmlschema-core 2.3.3 and json-sKema 0.32.0 have no module descriptor: automatic
+                 modules (ADR-0017, F-3) -->
+            <arg>-Xlint:-requires-automatic</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <!-- the golden corpus at the repository root (ADR-0018): the skeleton schema bundle -->
+            <flottila.corpus>${maven.multiModuleProjectDirectory}/corpus</flottila.corpus>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

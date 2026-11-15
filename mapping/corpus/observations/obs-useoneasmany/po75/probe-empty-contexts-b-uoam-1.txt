@@ -1,0 +1,9 @@
+SAP PO 7.50 ESR, 2026-11-11. Mapping uoam_1; input probes/probe-empty-contexts-b.xml imported unchanged.
+Request-directed probe: original Orders A and B removed; missing-Id order and D retained. Mapping unchanged.
+Start of test: 19:35:02. Failing box: U1 (useOneAsMany), target /Out/Item/V.
+Problem when Testing (literal text; Java object identity hashes sanitized):
+Runtime exception when processing target-field mapping /Out/Item/V; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: No value found in function useOneAsMany. The first queue must have one, and only one value in each context] in class com.sap.aii.mappingtool.flib7.NodeFunctions method useOneAsMany[[Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[HASH], com.sap.aii.mappingtool.tf7.rt.Context@[HASH]]
+See error logs for details
+
+Reading: other. Whole run fails because a first-queue context has no value. Agrees with CPI. No successful mapped XML.

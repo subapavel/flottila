@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-lines.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a value whose JSON kind does not fit its field reads as absent: a scalar for a structure field); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. order is a string, so the structure field $/order never occurs and $/order/id gives no All. The items b, 3 and true of $/lines are scalars, so only the two objects are occurrences of lines: two Items, with V a and c."
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#25): xs:redefine is refused when the schema loads (ADR-0008) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:redefine schemaLocation="other.xsd"/>
+  <xs:element name="Order"><xs:complexType/></xs:element>
+</xs:schema>

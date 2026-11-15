@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/collapse-contexts.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 collapseContexts, STD: \"Empty contexts (= ResultList.SUPPRESS) are replaced by empty strings … Finally, all internal context changes are deleted\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/saphelp_crm70/helpdata/en/58/cd834014d26f1de10000000a1550b0/content.htm]",
+  "expect": "output",
+  "note": "Empty contexts keep their place. o1 has no Line and o2's one Line has no Qty, so Qty in context Order is (empty) | (empty) | 5,6. collapseContexts replaces each empty context with \"\" ahead of o3's first value: All is \"\", \"\", 5. If empty contexts were dropped, All would be 5 alone; if the last value were kept, 6. To observe in PO, with obs-context-functions ctx-5 o4."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/order-channel-note.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §1: \"Attributes are in the context of their element\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/35/fb8c4057d5701de10000000a1550b0/content.htm]; ADR-0007 (a context is a proper ancestor, an attribute's default is its element); ADR-0006 since #102 (a source attribute's SourceQueue sets attribute)",
+  "expect": "output",
+  "note": "Note per @channel of the root Order, in its default context, its element Order: one context holding web. OrderId is the required leaf. The source attribute was unsupported-field until #102."
+}

@@ -1,0 +1,14 @@
+CPI observation: fn/copyValue/004
+Date: 2026-11-12
+Artifact: api_copy_value_suppress
+Input: copyValue-004.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Item; Tag in /Orders/Order context -> createIf -> copyValue -> V.
+Simulation completed. Three empty Items; no V in any Item. Contradicts the assumed empty V in Item 2.
+Exact downloaded output copied byte-for-byte to copyValue-004-copy-value-suppress.xml.
+The API-prepared index is 1; live parameter inspection and requested C1/F1 queues remain pending. No queue inferred from output.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_copy_value_suppress.json, cpi/copyValue-004-C1-queue.json, cpi/copyValue-004-F1-queue.json.
+C1 empty,SUPPRESS,empty | SUPPRESS,empty | empty context; F1 index1 selects SUPPRESS as generator across the entire queue, matching no V in any Item. Layout change discarded.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

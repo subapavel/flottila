@@ -1,0 +1,22 @@
+SAP PO 7.50 ESR Message Mapping, 2026-11-11
+Requested mapping: uoam-1; ESR object: uoam_1.
+Saved before execution. Object Check: No errors found during object check. Problem 0; Warning 0.
+Graph: Order -> Item; Id (default Order) -> U1 input 1; Sku (explicit Order) -> U1 input 2; Tag (Order) -> U1 input 3; U1 useOneAsMany -> Item/V. No W or All mapping.
+Sku and Tag context menus were inspected: Order checked.
+
+u1.xml: imported unchanged through the Test file dialog.
+19:29:57 Start of test
+Compilation of uoam_1 successful
+Execution of mapping on server took 5 milliseconds
+Executed successfully
+19:29:58 End of test
+Result exported through ESR as u1-uoam-1-export.zip; instance.xml extracted byte-for-byte to u1-uoam-1.xml.
+Reading: confirmed. Item 1 V=A,A,A; Item 2 V=B, agreeing with CPI.
+
+probe-empty-contexts-c.xml: only original Order D remains. Imported unchanged; mapping unchanged.
+19:35:44 Start of test
+Execution of mapping on server took 4 milliseconds
+Executed successfully
+19:35:45 End of test
+Result exported as probe-empty-contexts-c-uoam-1-export.zip and instance.xml extracted byte-for-byte to probe-empty-contexts-c-uoam-1.xml.
+Reading: confirmed. One Item, V=D; agrees with CPI. Full input and probes a/b remain separate failed observations.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/copy-value-default.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212), mapping copy-value-default, input copyValue-001.xml: corpus/observations/obs-constant/po75/copyValue-002-copy-value-default.xml and -check.txt, cpi/copyValue-002-copy-value-default.xml, -check.txt and cpi/native-default-copyValue-002.txt; PO 7.50 and CPI agree (meta.json, reading contradicted): the editor proposes Index 0, and V is a in all three Items; F-46. Before #212: #2 §5 Constants: CopyValue \"For a frequently occurring element, copies the value at a defined position in the source structure to the assigned target field\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; the assumed reading of #79 (the first value of each context) is contradicted",
+  "expect": "output",
+  "note": "copyValue without params over Sku in context Order, a, b, c | d | e, f: position 0 of the whole queue is a, and that one value goes into every Item."
+}

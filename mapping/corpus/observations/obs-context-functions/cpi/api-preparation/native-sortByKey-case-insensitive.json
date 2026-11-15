@@ -1,0 +1,12 @@
+{
+  "source": "Native CPI editor Save followed by public API export of preparation copy api_ctx_1_r2",
+  "label": "sortByKey-case-insensitive",
+  "simulation": "NOT_RUN",
+  "functions": [
+    {
+      "nativeName": "sortByKey",
+      "inputCount": 2,
+      "bindings": "<bindings><param name=\"comparator\"><value><sort_comp type=\"cis\" /></value></param><param name=\"order\"><value><sort_order asc=\"true\" /></value></param></bindings>"
+    }
+  ]
+}

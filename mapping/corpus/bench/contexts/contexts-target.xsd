@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target of the contexts bench mapping (ADR-0002, ADR-0021): one Account per customer
+     with its orders by priority and its items by rank, each naming its owner, then one Pick per item
+     of every customer, flattened. Every leaf is a string. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:bench:contexts"
+           xmlns="urn:flottila:corpus:bench:contexts"
+           elementFormDefault="qualified">
+  <xs:element name="Ledger">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Account" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Id" type="xs:string"/>
+              <xs:element name="Name" type="xs:string"/>
+              <xs:element name="Order" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Number" type="xs:string"/>
+                    <xs:element name="Priority" type="xs:string"/>
+                    <xs:element name="Account" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="Item" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="Sku" type="xs:string"/>
+                    <xs:element name="Quantity" type="xs:string"/>
+                    <xs:element name="Order" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Pick" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Customer" type="xs:string"/>
+              <xs:element name="Sku" type="xs:string"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

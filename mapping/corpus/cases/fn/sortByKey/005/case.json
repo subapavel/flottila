@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-by-key-short-order.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 stage-3 codes: invalid-parameter-value, a string outside the entry's values (ADR-0011)",
+  "expect": "error",
+  "note": "The order is \"desc\", not one of the catalogue's values ascending, descending: compiling refuses it at K1."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-split-empty-collapse.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-suppress-split-empty-collapse, input splitByValue-019.xml (the case's input.xml), 2026-11-12: corpus/observations/obs-context-functions/po75/splitByValue-021-spec2-suppress-split-empty-collapse.xml and cpi/splitByValue-019-spec2-suppress-split-empty-collapse.xml, PO display queue in po75/splitByValue-021-spec2-suppress-split-empty-collapse-check.txt; PO 7.50 and CPI 6.84.77 agree on the output: in emptyValue SUPPRESS is no \"\", and collapseContexts keeps a SUPPRESS first slot as SUPPRESS; F-47, ADR-0006 Consequences",
+  "expect": "output",
+  "note": "createIf gives \"\", SUPPRESS, \"\", SUPPRESS, SUPPRESS in one context. emptyValue cuts at each \"\" and drops it: (empty) | SUPPRESS | SUPPRESS, SUPPRESS (PO queue). collapseContexts gives the empty context \"\" and keeps each SUPPRESS first slot as SUPPRESS: \"\", SUPPRESS, SUPPRESS, so one empty All. SUPPRESS taken for \"\", the reading before F-47, gives three."
+}

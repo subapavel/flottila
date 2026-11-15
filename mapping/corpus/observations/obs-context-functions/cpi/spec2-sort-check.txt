@@ -1,0 +1,8 @@
+CPI editor, mapping spec2-sort.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Tag default Order context -> sort -> removeContexts -> All. Three edges verified; nothing else mapped.
+Parameter labels: Comparison rule; Order.
+Comparison rule options read from the opened dropdown: case sensitive (default), case insensitive, float number.
+Order options: asc (default selected), desc.
+Save and all three simulations succeeded without validation/runtime errors.
+sort-001: 10,9,A,B,_,a,b,Z,e,f,é. sort-002: z,emoji U+1F600,ligature U+FB00,fullwidth A U+FF21. sort-008: a,c,b, preserving per-Order sorting.

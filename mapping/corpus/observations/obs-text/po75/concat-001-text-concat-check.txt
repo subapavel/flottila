@@ -1,0 +1,12 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/concat/001; mapping: text_concat (requested text-concat)
+Source Orders, target Out. Sku and Qty explicitly set to context Orders.
+Sku -> concat input 1; Qty -> concat input 2; concat -> Out/All.
+Delimiter String inspected: empty. No other target field mappings.
+Saved; Check: No errors found during object check. Problem 0, Warning 0.
+Original concat-001.xml loaded through Test file chooser.
+14:06:32-14:06:33: Compilation of text_concat successful.
+Execution of mapping on server took 6 milliseconds. Executed successfully.
+Result exported from Test SRC to ZIP; instance.xml extracted byte-for-byte.
+Observed All: abcd, x, x, empty string. Assumed reading confirmed.
+No screenshot file retained; UI messages transcribed during the run.

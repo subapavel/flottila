@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/copy-value.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212), mapping copy-value, input copyValue-001.xml: corpus/observations/obs-constant/po75/copyValue-001-copy-value.xml and -check.txt, cpi/copyValue-001-copy-value.xml, -check.txt and cpi/copyValue-001-F1-queue.json; PO 7.50 and CPI agree (meta.json, reading contradicted): Index 1 gives V b in all three Items, and F1's display queue holds the one value b with the shape of a Constant's output; F-46. Before #212: #2 §5 Constants: CopyValue \"For a frequently occurring element, copies the value at a defined position in the source structure to the assigned target field\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; the assumed reading of #79 (from 0 in each context) is contradicted",
+  "expect": "output",
+  "note": "copyValue{position=1} over Sku in context Order, a, b, c | d | e, f: the position counts from 0 across the whole queue, context boundaries ignored, so it selects b, and that one value goes into every Item, as a constant's does."
+}

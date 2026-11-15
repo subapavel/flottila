@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-short-none.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON Schema and WSDL\" (maxItems 0 gives 0..0, and the field stays an array property) and \"JSON as a source at run time\" (the input is not validated: [1] gives one occurrence even under maxItems 0); #118",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/none is an array with maxItems 0, an array property at 0..0. The input is never validated, so its one item a is one occurrence of none and All is a. Read by its maximum, none would be a leaf, the array would read as absent and no All would be written."
+}

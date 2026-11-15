@@ -1,0 +1,12 @@
+Case: fn/copyValue/002
+Mapping: copy_value_default
+Observed in SAP PO 7.50 ESR on 2026-11-12.
+Graph: Order (default Orders context) -> Out/Item; Sku (Order context) -> newly inserted CopyValue -> Out/Item/V. W and All unmapped.
+New CopyValue parameter label Index, proposed value 0. Clearing the field and clicking OK shows Invalid parameter: The value of parameter nnumber is invalid.
+Closed validation and canceled parameter editing; graph retained CopyValue [0].
+Saved; Object Check: No errors found during object check, Problem 0, Warning 0.
+Original copyValue-001.xml imported without editing.
+Processing Log: 08:53:19 Start of test; compilation successful; execution 6 milliseconds; Executed successfully; 08:53:20 End of test.
+Result: <Out><Item><V>a</V></Item><Item><V>a</V></Item><Item><V>a</V></Item></Out>.
+Exact result exported through ESR UI to ZIP; instance.xml extracted unchanged.
+Reading: contradicted. Default Index 0 produces a in all three Items rather than a, d, e. Empty Index cannot be accepted in the parameter dialog.

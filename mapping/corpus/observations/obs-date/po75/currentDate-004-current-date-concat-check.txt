@@ -1,0 +1,14 @@
+Case: fn/currentDate/004
+Date: 2026-11-12
+Environment: SAP PO 7.50, ESR message mapping Test; authorized observation namespace.
+Mapping: current_date_concat, copied from current_date_item. Replaced direct generator with fresh currentDate and concat nodes.
+Schemas: src-orders.xsd -> tgt-list.xsd.
+Graph: inherited Order -> Item; Sku (Context Order explicitly selected) -> concat input 1; currentDate -> concat input 2; concat -> Item/V; All unmapped.
+currentDate format verified in parameter dialog: '@'HH:mm:ss.SSS. Fresh advanced properties not inspected. concat delimiter left at empty default, shown [] on node.
+Saved; Check: 0 problems, 0 warnings.
+Input: currentDate-001.xml loaded and source XML verified before execution (o1 a,b; empty o2; o3 c).
+Processing log: 20:43:10 Start of test; compilation successful; server execution 10 milliseconds; executed successfully; 20:43:12 End of test.
+Log timezone not displayed. Workstation timezone context Europe/Prague (+01:00 on this date), not independent proof of the log timezone. Named JVM default zone unknown; preceding currentDate/002 output exposed +01:00.
+Output: Item 1 has a@20:43:10.237 and b@20:43:10.237; Item 2 is empty; Item 3 has c@20:43:10.237. All generated values share the same time, including nonzero milliseconds. Exact processing-start equality cannot be established from a seconds-only log.
+Original result export retained as currentDate-004-current-date-concat.zip; instance.xml copied byte-for-byte to currentDate-004-current-date-concat.xml.
+No queue inspection requested; no screenshots saved. CPI NOT_RUN.

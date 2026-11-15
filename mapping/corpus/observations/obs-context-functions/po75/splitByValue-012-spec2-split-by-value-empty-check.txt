@@ -1,0 +1,11 @@
+SAP PO observation 2026-11-12
+Mapping spec2_split_by_value_empty; fn/splitByValue/012; original splitByValue-007.xml imported unchanged via UI; source XML checked (one a).
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag default context Order -> removeContexts -> splitByValue (Empty Value) -> All. Nothing else mapped.
+Same saved, checked mapping as case 011; Problem 0, Warning 0.
+01:30:23 Start of test
+Execution of mapping on server took 7 milliseconds
+Executed successfully
+01:30:23 End of test
+UI export instance.xml extracted unchanged.
+Reading: one All a. Single nonempty value stays in one context; confirmed assumed reading. CPI not run yet.

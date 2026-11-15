@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation-2 (#212, #214), run 2026-11-11: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-target-creation-2/po75/createIf-002-create-if.xml and corpus/observations/obs-target-creation-2/cpi/createIf-002-create-if.xml; before #214: ADR-0006 Consequences, createIf (amended with #133, F-37): PO casts with Bool.toBoolean, observed in #31 for true, TRUE, 1, false, 0; assumed until obs-target-creation-2 (#134) answers: false and true in any case (F-37, corpus/observations/obs-target-creation/po75/max-002-spec2-create-if-row.txt)",
+  "expect": "output",
+  "note": "One context of three conditions: FALSE, 1, True. false and true in any case are booleans, so SUPPRESS, \"\", \"\": two empty All. A case-sensitive true would give one All, a case-sensitive false an error at C1."
+}

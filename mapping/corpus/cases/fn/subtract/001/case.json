@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-subtract.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "Qty minus Sku in context Orders, in canonical decimal form: 0.3 - 0.1 is exactly 0.2, 1 - 1.5 is -0.5, and 10.00 - 0.5 is 9.5."
+}

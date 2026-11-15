@@ -1,0 +1,21 @@
+SAP PO 7.50, ESR message mapping, 2026-11-12
+Case: fn/constant/003
+Mapping: constant_item
+Input: original constant-001.xml imported through Test UI, unchanged.
+Graph: Order (default Orders context) -> Item. C1 Constant (Value x) -> Item/V.
+W and All unmapped.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+Test: 09:16:45 Start of test; compilation successful; execution 9 milliseconds;
+Executed successfully; 09:16:46 End of test.
+Result exported via UI to constant-003-constant-item.zip. Its instance.xml
+was extracted unchanged as constant-003-constant-item.xml.
+
+C1 Display Queue: compilation successful; execution 7 milliseconds; executed successfully.
+Literal displayed rows (brackets are UI notation; no italic cells observed):
+row | const:out
+0 | [x] [gray]
+1 | [x] [dark gray]
+
+Reading: confirmed. All three Items contain V x, including the middle Order
+without Line children. Gray and dark-gray rows above are preserved literally
+as display evidence, not interpreted as two distinct values.

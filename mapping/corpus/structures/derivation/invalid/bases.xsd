@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): bases and heads of the wrong kind or declared nowhere. A name a refused
+     declaration declares (Odd) is no second error -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:b="urn:flottila:corpus:bases"
+           targetNamespace="urn:flottila:corpus:bases">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Money">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="Party">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Odd" fixed="extension"/>
+  <xs:complexType name="FromMoney">
+    <xs:complexContent>
+      <xs:extension base="b:Money"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="FromNowhere">
+    <xs:complexContent>
+      <xs:restriction base="b:Nowhere"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="FromOdd">
+    <xs:complexContent>
+      <xs:extension base="b:Odd"/>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="ValueOfParty">
+    <xs:simpleContent>
+      <xs:extension base="b:Party"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="ValueOfNowhere">
+    <xs:simpleContent>
+      <xs:extension base="b:Nowhere"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="ValueOfOdd">
+    <xs:simpleContent>
+      <xs:extension base="b:Odd"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:element name="Member" type="xs:string" substitutionGroup="b:Missing"/>
+</xs:schema>

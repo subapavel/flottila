@@ -1,0 +1,14 @@
+Case: fn/currentDate/003
+Date: 2026-11-12
+Environment: SAP PO 7.50, ESR message mapping Test; authorized observation namespace.
+Mapping: current_date_item, copied from current_date_time. Fresh currentDate node created after removing the inherited node and its All connection.
+Schemas: src-orders.xsd -> tgt-list.xsd.
+Graph verified: Order -> Item; currentDate -> Item/V; All unmapped.
+Format verified in parameter dialog: yyyyMMdd. Advanced parameters of this fresh node were not inspected.
+Saved; Check: 0 problems, 0 warnings.
+Input: currentDate-001.xml loaded from the observation directory; source XML verified before execution (o1 has a,b; o2 has no Line; o3 has c).
+Processing log: 20:35:43 Start of test; compilation successful; server execution 18 milliseconds; executed successfully; 20:35:44 End of test.
+Log timezone not displayed. Workstation timezone context Europe/Prague (+01:00 on this date), not independent proof of the log timezone. Named JVM default timezone unknown; preceding currentDate/002 output exposed +01:00.
+Result: three Item elements, each with one V=20261112, including the empty middle Order. No All.
+Original Test result export retained as currentDate-003-current-date-item.zip; instance.xml copied byte-for-byte to currentDate-003-current-date-item.xml.
+No queue inspection requested; no screenshots saved. CPI NOT_RUN.

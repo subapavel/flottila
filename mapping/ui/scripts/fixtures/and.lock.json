@@ -1,0 +1,12 @@
+{
+  "lockfileVersion": 3,
+  "packages": {
+    "": {
+      "name": "root"
+    },
+    "node_modules/and-pkg": {
+      "version": "1.0.0",
+      "license": "(MIT AND CC-BY-4.0)"
+    }
+  }
+}

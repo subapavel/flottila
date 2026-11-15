@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-lines.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (projection by $ field paths; an array property is one repeated field, its items its occurrences) and \"JSON Schema and WSDL\"; ADR-0004 (contexts); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. Each item of the array of objects $/lines is one occurrence of lines: Item per line, and V from $/lines/sku in its default context, the line, so the third line, which has no sku, gives an empty context and an Item without V. $/order/id in its context order gives All. The member skipped, which the mapping does not use, is skipped whole, the lines inside it too."
+}

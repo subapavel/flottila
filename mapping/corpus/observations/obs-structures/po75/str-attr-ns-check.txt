@@ -1,0 +1,11 @@
+SAP PO 7.50, ESR Message Mapping str_attr_ns, 2026-11-11.
+Copied str_attr and replaced only target with original tgt-attr-ns.xsd. Source External Message Orders retained. All three existing mappings retained by the editor and inspected: Tag (default Order) -> createIf -> ns0:@flag; Id (default Order) -> ns0:@code; Id (explicit Orders, italic) -> unqualified V. No other target mappings.
+Save succeeded. Check: No errors found during object check. Problem 0, Warning 0.
+Original attr4.xml imported; source SRC verified Id=X1 and Tag=true.
+20:49:25 Start of test
+Compilation of str_attr_ns successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+20:49:26 End of test
+Exact XML: attr4-str-attr-ns.xml. Original UI export archive: attr4-str-attr-ns-export.zip.
+Reading: ns0 prefix on Flagged, flag and code. xmlns:ns0 declared on Flagged with urn:flottila:obs:attr. V unqualified. Attribute order in literal bytes: namespace declaration, flag, code. Empty flag, code=X1, V=X1. PO confirms the assumed ns0 spelling; CPI uses ns1 and code before flag. This is a serialization difference; expanded names and values agree.

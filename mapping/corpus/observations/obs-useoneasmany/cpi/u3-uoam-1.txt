@@ -1,0 +1,8 @@
+CPI, Simulate/Test, input u3.xml, mapping uoam-1, case not specified. No output.
+Fired at run time on /Out/Item/V, box U1 (useOneAsMany).
+
+Error
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/Item/V. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Too few values in second queue in function useOneAsMany. It must have over all contexts the same number of values as third queue.] in class com.sap.aii.mappingtool.flib7.NodeFunctions method useOneAsMany[[Ljava.lang.String;@<id>, [Ljava.lang.String;@<id>, [Ljava.lang.String;@<id>, com.sap.aii.mappingtool.tf7.rt.ResultListImpl@<id>, com.sap.aii.mappingtool.tf7.rt.Context@<id>] on the exchange: Exchange[<exchange-id>]
+OK
+
+No separate Caused by lines or stack frames were exposed by this dialog. Environment-specific object hashes and exchange id were sanitized.

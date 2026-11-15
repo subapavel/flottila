@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): a named simple type a.xsd imports through an absolute location -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:c">
+  <xs:simpleType name="Code">
+    <xs:restriction base="xs:date"/>
+  </xs:simpleType>
+</xs:schema>

@@ -1,0 +1,113 @@
+{
+  "description": "Orders to invoices, laid out in the studio.\nZweite Zeile: \"Größe\" 😀",
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/order.xsd"
+    ],
+    "fingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "root": {
+      "element": "Order"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/invoice.xsd"
+    ],
+    "fingerprint": "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "root": {
+      "element": "Invoice"
+    }
+  },
+  "targetFieldMappings": {
+    "/Invoice/Currency": {
+      "boxes": {
+        "s4": {
+          "field": "/Order/Currency",
+          "kind": "source"
+        }
+      },
+      "id": "t4",
+      "result": "s4"
+    },
+    "/Invoice/Date": {
+      "boxes": {
+        "s3": {
+          "field": "/Order/Date",
+          "kind": "source"
+        }
+      },
+      "id": "t3",
+      "layout": {
+        "target": {
+          "x": 640,
+          "y": 0
+        }
+      },
+      "result": "s3"
+    },
+    "/Invoice/Number": {
+      "boxes": {
+        "B2": {
+          "fn": "concat",
+          "inputs": [
+            "_p",
+            "a1"
+          ],
+          "kind": "function"
+        },
+        "_p": {
+          "field": "/Order/Prefix",
+          "kind": "source"
+        },
+        "a1": {
+          "field": "/Order/Number",
+          "kind": "source"
+        }
+      },
+      "id": "t1",
+      "layout": {
+        "boxes": {
+          "B2": {
+            "x": 0,
+            "y": -1000000
+          },
+          "_p": {
+            "x": -240,
+            "y": 1000000
+          },
+          "a1": {
+            "x": -1000000,
+            "y": 80
+          }
+        },
+        "target": {
+          "x": 1000000,
+          "y": -16
+        }
+      },
+      "result": "B2"
+    },
+    "/Invoice/Total": {
+      "boxes": {
+        "c2": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": "0"
+          }
+        }
+      },
+      "id": "t2",
+      "layout": {
+        "boxes": {
+          "c2": {
+            "x": 12,
+            "y": 34
+          }
+        }
+      },
+      "result": "c2"
+    }
+  }
+}

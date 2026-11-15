@@ -74,3 +74,4 @@ agent/tools/rail8_rename.py | * | the rename tool: the old name is what it trans
 ci/name_guard.py | * | the guard: the old name is what it looks for
 ci/test_name_guard.py | * | the guard's tests: the old name is their test data
 ci/name-allowlist.txt | * | this file: its literals hold the old name
+mapping/** | * | the mapping engine as imported (BRAND-3 step 1, D-150); step 2 renames inside it and replaces this entry by its history files

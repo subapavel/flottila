@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/constant-item.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/constant-003-constant-item.xml and corpus/observations/obs-constant/cpi/constant-003-constant-item.xml; before #214: ADR-0006 generating function (#83), assumed reading: a generating function on a field under a repeated parent repeats per parent occurrence; obs-constant row fn/constant/003",
+  "expect": "output",
+  "note": "Constant{x} on Item/V, Item per Order: each of the three Items gets one V x, o2 without lines too."
+}

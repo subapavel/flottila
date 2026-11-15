@@ -1,0 +1,3 @@
+CPI, Message Mapping editor, shared-1 and shared-2. NOT_RUN for s1.xml on both mappings.
+Both requests require Id -> counter in1. The live CPI counter inspected immediately beforehand for obs-ifwithoutelse has no input connector: it exposes Initial value = 1 and Increment = 1 by default, with an output connector only. Palette description: Counts number of invocations. Initial value and increment defined by parameters.
+This directly prevents all requested N1/N2/N3 input wires. No shared-1 or shared-2 artifact was built, and no simulation, validation or output is claimed. Using an unconnected generating counter would change the requested mapping, so it was not substituted.

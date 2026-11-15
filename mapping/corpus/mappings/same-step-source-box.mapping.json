@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/refused/same-step.xsd"
+    ],
+    "fingerprint": "sha256:d26971c5a6f2df7fa0bf9f7287ae22f1e93ef12dd6ea4ac8ce748990ba0ec32e",
+    "root": {
+      "element": "Doc"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/refused/same-step.xsd"
+    ],
+    "fingerprint": "sha256:d26971c5a6f2df7fa0bf9f7287ae22f1e93ef12dd6ea4ac8ce748990ba0ec32e",
+    "root": {
+      "element": "Doc"
+    }
+  },
+  "targetFieldMappings": {
+    "/Doc/Id": {
+      "boxes": {
+        "S1": {
+          "field": "/Doc/Note",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "S1"
+    }
+  }
+}

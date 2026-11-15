@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-or.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-or, input or-001.xml: corpus/observations/obs-boolean/po75/or-001-boolean-or-error.txt (PO 7.50, FunctionException \"Cannot cast '' to boolean\" in flib7.Bool method or) and cpi/or-001-boolean-or-error.txt (CPI, \"Cannot cast \"\" to boolean.\"); PO and CPI agree, no output (meta.json); F-44, ADR-0006 Consequences, the boolean family's cast",
+  "expect": "error",
+  "note": "or casts each value as PO's Bool.toBoolean does: true and 1 are true, false and 0 false, in any case. Lines (true, true), (false, true), (false, false), (TRUE, 1), (empty, true): the empty Sku of line 5 is no boolean, though Qty is true there, so the run raises err:FORG0001 at F1, as PO and CPI end it with \"Cannot cast '' to boolean\". TRUE and 1 in line 4 cast."
+}

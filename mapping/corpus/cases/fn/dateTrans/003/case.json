@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-trans-zone.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: the time zone is the service's (UTC by default). PO 7.50 and CPI ran in their own environment zones, so only the parts observed in UTC are partial evidence: corpus/observations/obs-date/po75/dateTrans-003-date-trans-003.xml and corpus/observations/obs-date/cpi/dateTrans-003-date-trans-003.xml; was assumed: #2 §5 Date: DateTrans takes java.text.SimpleDateFormat patterns [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003; #80: the run's time zone is the service's, UTC by default; assumed reading: a date with an offset keeps its instant and is written in the run's zone, as SimpleDateFormat parses and formats in the JVM's default zone (obs-date dateTrans-003)",
+  "expect": "output",
+  "note": "sourceFormat yyyy-MM-dd HH:mmXXX, targetFormat yyyy-MM-dd HH:mm Z, run in UTC: Sku in context Orders is 2026-11-04 10:00+02:00, 2026-11-04 10:00Z, 2026-01-01 00:30+01:00. Each instant is written in UTC, so All is 2026-11-04 08:00 +0000, 2026-11-04 10:00 +0000, 2025-12-31 23:30 +0000: the last one falls on the day before. Keeping the source's offset would give 10:00 +0200."
+}

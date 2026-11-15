@@ -1,0 +1,30 @@
+Date: 2026-11-12
+Status: ENVIRONMENT_BLOCKED (no behavioral result)
+Follow-up: case resolved by native UI configuration on the working numerical
+artifact; see sortByKey-002-spec2-sort-by-key-case-insensitive-check.txt and XML.
+This record remains historical and does not count as an additional completed case.
+Case: fn/sortByKey/002
+Artifact: api_spec2_sort_by_key_case_insensitive
+Input: original sortByKey-002.xml, successfully uploaded via Enter/file chooser.
+
+Native source tooltips verified Sku and Qty context /Orders/Order, function names
+sortByKey and removeContexts, target /Out/All. The API readback mapping has comparator
+sort_comp type="cis" and sort_order asc="true". The attempted native parameter-panel
+inspection did not expose the settings; this limitation is not a parameter verification.
+Overlapping function boxes/wire impeded selection. Temporary editor inspection was
+cancelled with Discard; no intentional graph/parameter changes were retained.
+
+First Test after upload: actual visible modal in browser screenshot:
+Mapping test is in progress...
+10%
+Cancel
+Output remained No data for several minutes. Cancel returned to the simulator.
+One retry using Test on the same loaded original input also stayed at 10%; cancelled.
+Read-only browser Network diagnostics observed repeated HTTP 200 responses for
+/api/1.0/stepteststatus/<id>, not authentication/network failures. No direct SAP API
+call was made by the agent and no response body was used as a behavior observation.
+No runtime exception or target XML was returned. No output is fabricated.
+Cause remains unresolved; UI/readback parameter compatibility is not yet established.
+Screenshot was viewed, not saved as a file. No system mouse/keyboard takeover.
+This actual post-Test progress dialog differs from the previously misread hidden
+pre-Test progress text described in simulation-session-2026-11-12-blocked.txt.

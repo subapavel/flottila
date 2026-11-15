@@ -1,0 +1,15 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-11
+Mapping: lift_4. Input: original l4.xml imported through the test file dialog.
+Source XML view verified three Order elements with Id o1, o2, o3.
+Order -> Item; independent Constant k -> count -> V and Constant k -> removeContexts -> W; All unmapped.
+Saved. Object check: No errors found during object check. Problem 0, Warning 0.
+
+Processing Log:
+19:12:05 Start of test
+Compilation of lift_4 successful
+Execution of mapping on server took 10 milliseconds
+Executed successfully
+19:12:06 End of test
+
+Result exported through ESR as l4-lift-4-export.zip. Its instance.xml was extracted without rewriting bytes to l4-lift-4.xml.
+Reading: V=1 only in Item 1; W=k in all three Items. This matches CPI and contradicts the assumed W cardinality.

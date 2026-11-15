@@ -1,0 +1,15 @@
+Observation: obs-boolean / fn/not/001
+Platform: SAP PO 7.50, ESR Message Mapping test
+Date: 2026-11-12
+Mapping: boolean_not (request: boolean-not)
+Input: ../not-001.xml imported unchanged; source XML verified in Test.
+Graph: Sku context Orders -> Not -> Out/All. No other target wires.
+Saved. Object check: No errors found during object check; Problem 0, Warning 0.
+02:32:09 Start of test. Compilation of boolean_not successful.
+
+Problem when Testing (literal text, runtime context identity sanitized):
+Runtime exception when processing target-field mapping /Out/All; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Cannot cast '' to boolean] in class com.sap.aii.mappingtool.flib7.Bool method not[, com.sap.aii.mappingtool.tf7.rt.Context@[redacted]]
+See error logs for details
+
+Reading: the empty Sku in the fifth Line cannot be converted to boolean. The whole run fails; no output XML was produced or exported. This contradicts the assumed five-value successful result. No individual output values are inferred from the failed run.

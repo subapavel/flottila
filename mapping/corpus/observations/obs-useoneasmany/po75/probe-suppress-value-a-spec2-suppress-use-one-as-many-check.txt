@@ -1,0 +1,11 @@
+SAP PO 7.50 ESR; 2026-11-11
+Mapping: spec2_suppress_use_one_as_many
+Input: probes/probe-suppress-value-a.xml, imported unchanged.
+Same saved graph as original useOneAsMany-005 run; see its error file for graph and Check.
+19:50:46 Start of test
+Compilation of spec2_suppress_use_one_as_many successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+19:50:47 End of test
+Exact ESR result export retained as ZIP; instance.xml extracted and renamed without rewriting.
+Reading: confirmed. Out has no All; isolated repetition preserves SUPPRESS. Agrees with CPI. This probe does not replace the original two-Order error.

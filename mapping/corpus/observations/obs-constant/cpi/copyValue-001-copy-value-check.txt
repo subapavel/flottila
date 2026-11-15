@@ -1,0 +1,14 @@
+CPI observation: fn/copyValue/001
+Date: 2026-11-12
+Artifact: api_copy_value
+Input: copyValue-001.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Item; Sku in /Orders/Order context -> copyValue -> V.
+Simulation completed. V=b in each of three Items, contradicting the assumed b, no V, f.
+Exact downloaded output copied byte-for-byte to copyValue-001-copy-value.xml.
+The API-prepared index is 1. Live parameter dialog could not be opened through double-click on the function text or right-click; index not independently verified in the editor. Requested F1 queue remains pending.
+Post-run editor inspection was cancelled and unsaved changes discarded; no mapping change saved or deployed. Screenshots inspected but not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_copy_value.json, cpi/copyValue-001-F1-queue.json.
+Display Queue shows input a,b,c | d | e,f but output generator b followed by end marker. Stored index 1. Existing simulation b in all three Items contradicts per-context selection.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

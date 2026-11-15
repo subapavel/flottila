@@ -1,0 +1,18 @@
+SAP PO 7.50 / ESR message mapping lift_2, 2026-11-11
+Source XSD_src_orders/Orders; target XSD_tgt_list/Out.
+Order -> Item; All unmapped.
+V: greater(Qty at Order context, Constant 0) -> ifWithoutElse condition; Qty at Order context -> then; concat(Sku at Order context, filtered Qty) -> concat with Tag at default Order context -> V.
+W: independent Constant 0, greater and ifWithoutElse; condition Qty > 0; then Sku at Order context; toUpperCase -> W.
+Both ifWithoutElse functions: Keep SUPPRESS Values explicitly checked (initially unchecked).
+Both concat delimiters empty.
+Saved; Message Mapping > Check: No errors found during object check. Problems 0, Warnings 0.
+Input imported directly from unchanged l2.xml and inspected in SRC view.
+Processing Log:
+18:50:03 Start of test
+Compilation of lift_2 successful
+Execution of mapping on server took 16 milliseconds
+Executed successfully
+18:50:04 End of test
+Unmodified ESR result export: l2-lift-2-export.zip.
+instance.xml extracted byte-preservingly as l2-lift-2.xml.
+Reading: one Item, V=a5t1,c7t3 and W=A,C. Confirms assumed reading and agrees with CPI. Literal X1, K1, K2 and U1 queues are in lift-2-queues.txt.

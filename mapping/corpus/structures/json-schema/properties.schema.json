@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Properties in declared order, required ones mandatory, value types by type and format",
+  "type": "object",
+  "required": ["zeta", "count"],
+  "properties": {
+    "zeta": {"type": "string"},
+    "alpha": {"type": "string", "format": "date"},
+    "count": {"type": "integer"},
+    "amount": {"type": "number"},
+    "urgent": {"type": "boolean"},
+    "pickup": {"type": "string", "format": "time"},
+    "created": {"type": "string", "format": "date-time"},
+    "email": {"type": "string", "format": "email"},
+    "anything": {}
+  }
+}

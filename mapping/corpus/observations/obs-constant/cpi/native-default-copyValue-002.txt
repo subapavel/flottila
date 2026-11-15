@@ -1,0 +1,3 @@
+2026-11-13 native CPI editor
+Fresh native copyValue palette insertion showed Index 0. Clearing and tabbing out was allowed, but subsequent redraw restored 0.
+In api_copy_value_default, expanded original copyValue, cleared Index, pressed Save. No validation error; Cancel returned to view mode without unsaved-changes dialog. Fresh API export after Save confirms nnumber=0, so leaving the field blank normalizes to zero rather than persisting an absent index.

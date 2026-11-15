@@ -1,0 +1,11 @@
+SAP PO 7.50 ESR message mapping Test, 2026-11-12
+Case fn/compareDates/001; mapping compare_dates_001; input compareDates-001.xml.
+Copied date_after_001 in the authorized observation namespace, replaced DateAfter with a fresh CompareDates.
+Graph: Sku (Orders context) -> first input; Qty (Orders context) -> second input; CompareDates -> Out/All. Schemas src-orders.xsd and tgt-list.xsd.
+Both date formats yyyyMMdd, visually verified before Save. Advanced defaults unchanged: Sunday, minimum days 1, Calendar Is Lenient checked. Named JVM timezone not exposed.
+Save completed. Check: No errors found during object check; Problem 0, Warning 0.
+Input source view verified pairs 20261103/20261104, 20261104/20261104, 20261231/20260101.
+Processing Log: 19:59:12 Start of test; compilation successful; execution took 7 milliseconds; Executed successfully; 19:59:13 End of test. Log does not display timezone.
+Result source view: All values -1, 0, 1.
+Original result ZIP exported, instance.xml copied byte-for-byte to adjacent XML evidence file.
+No queue capture requested. No screenshot file retained. CPI NOT_RUN.

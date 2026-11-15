@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Tag>e1</Tag>
+    <Tag>e2</Tag>
+    <Tag>e3</Tag>
+    <Tag>e4</Tag>
+    <Line><Sku>true</Sku><Qty>q1</Qty></Line>
+    <Line><Sku>false</Sku><Qty>q2</Qty></Line>
+    <Line><Sku>TRUE</Sku><Qty>q3</Qty></Line>
+    <Line><Sku></Sku><Qty>q4</Qty></Line>
+  </Order>
+</Orders>

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-compare.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Families and the amendment of 2026-11-03 (text is code points; Q10: a malformed number is err:FORG0001 at the box); ADR-0026 (a function with a deviation has no assumed case)",
+  "expect": "output",
+  "note": "ADR-0025 \"Families\" and the amendment of 2026-11-03: text counts, indexes and orders in code points, not UTF-16 units; a character outside the BMP is a catalogue deviation. By code point U+1F600 is after U+FF61 (UTF-16 order puts it before) and U+1D11E before U+1F600."
+}

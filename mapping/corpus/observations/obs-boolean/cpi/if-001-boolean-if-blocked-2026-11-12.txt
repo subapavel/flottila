@@ -1,0 +1,8 @@
+Date: 2026-11-12
+Case fn/if/001; artifact api_boolean_if, unchanged API-prepared mapping.
+Native expression titles: if -> /Out/All; Sku, Qty, Tag each with context /Orders.
+Original if-001.xml uploaded unchanged through tab chooser. Filename and input structure (four Tag and four Line rows) verified before Test.
+ENVIRONMENT_BLOCKED: first Test and one retry both returned exactly:
+Test execution has failed; please try again
+No mapping root exception, output XML, or semantic result was exposed. Cause unknown. Do not infer agreement with PO's empty-condition error.
+No display queue or PNG captured. Remains pending; moved to next case after one retry.

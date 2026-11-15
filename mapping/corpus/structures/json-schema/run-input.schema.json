@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Synthetic JSON source of the run-time cases (ADR-0008 \"JSON as a source at run time\", #98)",
+  "type": "object",
+  "properties": {
+    "numbers": {"type": "array", "items": {"type": "number"}},
+    "flags": {"type": "array", "items": {"type": "boolean"}},
+    "tags": {"type": "array", "items": {"type": "string"}},
+    "order": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"}
+      }
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sku": {"type": "string"}
+        }
+      }
+    }
+  }
+}

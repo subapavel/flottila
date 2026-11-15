@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/equalsS/001
+Artifact: api_text_equalsS_native; original equalsS-001.xml.
+Visible graph verified: Sku and Qty context /Orders -> equals(string) -> /Out/All.
+VERIFIED_PASS: All values true, false, true, false. Original downloaded XML preserved unchanged.
+Original API mapping used unsupported native identifier equalsS. Native palette Save serialized stringEquals. Separate revision changes only that function identifier; original input and contexts unchanged. Successful simulation confirms that correction resolves this blocker. See equalsS-native-diagnostic.txt and api-preparation/text-equalsS/native.

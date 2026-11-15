@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-format-by-example.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-suppress-format-by-example.xml and corpus/observations/obs-context-functions/cpi/formatByExample-005-spec2-suppress-format-by-example.xml; before #214: ADR-0006 Consequences, SUPPRESS through the context functions since #51 (assumed): formatByExample keeps SUPPRESS as a slot with its bit; the SUPPRESS comes from createIf, true for 1 or true and SUPPRESS for 0 or false, in any case, and anything else ends the run with po:CREATEIF (ADR-0006 amended, F-37; fn/createIf/002); observation #61",
+  "expect": "output",
+  "note": "createIf over Tag in context Orders gives SUPPRESS, \"\", \"\"; Sku in context Order cuts after two slots. The first context, SUPPRESS, \"\", is the one the root's slot reads: one empty All. A SUPPRESS written as a value, or no cut, gives two."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fix-values-escapes.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0026 \"Table params\" (#83): the table travels as one Literal of its compact canonical JSON (ADR-0010 escapes), which the runtime and the helper read back; #2 §5 Conversions: FixValues \"Executes a value mapping using a fixed value table that you complete using the function parameters\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]; ADR-0026 \"Table params\" (#83)",
+  "expect": "output",
+  "note": "FixValues whose keys and values hold an apostrophe, quotation marks, a backslash, a tab, markup characters and a character outside the BMP; every Sku is a key, so missing: error never fires and each value is mapped as written."
+}

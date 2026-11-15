@@ -1,0 +1,12 @@
+SAP PO 7.50 ESR observation, 2026-11-12
+Case: fn/ifWithoutElse/009
+Mapping: boolean_ifWithoutElse_collapse
+Input: original ifWithoutElse-009.xml imported unchanged through the test UI.
+Graph: Qty (context Order) -> X1 condition; Sku (default context Line) -> X1 then; X1 ifWithoutElse -> collapseContexts -> Out/All. Item, V and W unmapped.
+X1 Keep SUPPRESS Values was visibly unchecked in its parameter dialog.
+Saved graph; object check: No errors found during object check; Problem 0, Warning 0.
+Source XML view verified one Order with Lines (a,true), (b,true).
+Processing Log: 08:17:50 Start of test; compilation successful; execution 8 milliseconds; Executed successfully; 08:17:51 End of test.
+Result XML view: <Out><All>a</All><All></All></Out>
+Original UI ZIP exported alongside this record. XML extracted from instance.xml without rewriting.
+Reading: confirmed the requested All values a, empty. Intermediate queues were not requested or observed; their contents are not inferred.

@@ -1,0 +1,15 @@
+SAP PO observation 2026-11-12
+Mapping: spec2_sort_by_key; case fn/sortByKey/004.
+Source src-orders.xsd, root Orders; target tgt-list.xsd, root Out.
+Sku context Order -> sortByKey in1; Qty context Order -> sortByKey in2. Both source boxes italic.
+sortByKey -> removeContexts -> Out/All; nothing else mapped.
+Default parameters observed: Defines a Rule for Comparing Values = case sensitive; Defines sort order = ascending.
+Other options: case insensitive, float number; descending.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Original sortByKey-004.xml imported through UI without edits; source XML view verified.
+00:42:19 Start of test
+Execution of mapping on server took 5 milliseconds
+Executed successfully
+00:42:20 End of test
+UI export instance.xml extracted unchanged as sortByKey-004-spec2-sort-by-key.xml.
+Reading: All 3,2,1; confirmed.

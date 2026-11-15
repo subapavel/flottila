@@ -1,0 +1,14 @@
+Display Queue of box M1 (mapWithDefault), CPI, input mapWithDefault-003.xml, mapping spec2-map-with-default, fn/mapWithDefault/003.
+S. No. enabled. Default Value displayed as Default.
+row  mapWithDefault:in1  shading       mapWithDefault:out1  shading
+0    <null>              gray italic   <null>               gray italic
+1    [ ]                 white         [ ]                  white
+2    <null>              gray italic   <null>               gray italic
+3    <null>              gray italic   Default              white
+4    [ ]                 white         Default              gray italic
+5    x                   white         [ ]                  white
+6    x                   dark gray italic x                 white
+7    (none)                            x                    dark gray italic
+
+Reading: in1 = [empty string] [] [empty string,x]; out1 = [empty string] [Default] [empty string,x].
+The first simulation had three empty All then x, despite the editor's Default value. Its original bytes are retained in spec2-map-with-default-initial-simulation.xml; effective compiled default in that attempt is unverified.

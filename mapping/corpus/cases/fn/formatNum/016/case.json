@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-zero.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Data errors name their box (F-19, Q10): a malformed number is err:FORG0001 in both back ends, naming the box; ADR-0005: only the xs:decimal lexical form is read, so 1e3 is none",
+  "expect": "error",
+  "note": "Qty in context Orders is 7, 1e3. formatNum reads 7, then 1e3, which is not in the xs:decimal lexical form, so the run raises err:FORG0001 at N1 and writes nothing. Reading 1e3 as a double would give 1000."
+}

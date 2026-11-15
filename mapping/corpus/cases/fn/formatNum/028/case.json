@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-three-subpatterns.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (more than two subpatterns)",
+  "expect": "error",
+  "note": "The pattern 0;0;0. Three subpatterns: DecimalFormat and XPath both have two at most. Compiling refuses it at N1."
+}

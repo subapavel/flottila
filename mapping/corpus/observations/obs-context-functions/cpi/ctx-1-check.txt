@@ -1,0 +1,5 @@
+CPI editor, mapping ctx-1. No simulation output.
+
+src-orders.xsd uploaded and the Orders tree appeared. tgt-list.xsd uploaded and References showed Local (2), but the target stayed Add target message / No data with a busy indicator.
+Retried once by Add target message -> local resource tgt-list.xsd -> Select. The target still did not populate after waiting; no error dialog appeared. Save was requested to preserve the uploaded resources.
+ENVIRONMENT_BLOCKED: target-schema assignment did not finish. The requested removeContexts expression could not be drawn and f1.xml was not simulated. No behavior is inferred.

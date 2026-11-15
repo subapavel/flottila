@@ -1,0 +1,16 @@
+CPI observation: fn/ifWithoutElse/007
+Date: 2026-11-12
+Artifact: api_boolean_ifWithoutElse_suppress_condition
+Input: ifWithoutElse-007.xml (original corpus file)
+Verified editor expression for Item includes two ifWithoutElse nodes, Sku and two Qty sources in /Orders context. Qty in /Orders/Order/Line context -> V.
+Simulation completed. Two Items with V values true and true.
+Exact downloaded output copied byte-for-byte to ifWithoutElse-007-boolean-ifWithoutElse-suppress-condition.xml.
+Contradicts the assumed true,false output; matches the alternative output in the request, but the intermediate cause cannot be inferred from final XML alone.
+Requested X1/X2 queues remain pending: queue file chooser accepted the original file, but no filename confirmation was displayed; function rectangles overlap at the same coordinates and right-click did not expose a Display Queue menu. Neither queue was captured.
+Keep SUPPRESS settings were not independently inspected in the live editor; artifact is the API-prepared keep/default chain.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_boolean_ifWithoutElse_suppress_condition.json, cpi/ifWithoutElse-007-X1-queue.json, cpi/ifWithoutElse-007-X2-queue.json.
+Native display X1 true,SUPPRESS,false,true; X2 true,SUPPRESS,SUPPRESS,true. Both suppress-condition and false-condition positions appear as SUPPRESS in displayed X2. Stored X1 KeepSUPPRESS=true, X2 unspecified/default unchecked verified. Preserve display behavior separately from target serialization, which produced V true,true. Temporary layout discarded.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

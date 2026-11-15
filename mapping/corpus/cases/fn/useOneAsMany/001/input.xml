@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>external</Id>
+    <Line><Sku>n1</Sku></Line>
+    <Line><Sku>n2</Sku></Line>
+    <Line><Sku>n3</Sku></Line>
+  </Order>
+  <Order>
+    <Id>internal</Id>
+    <Line><Sku>n4</Sku></Line>
+    <Line><Sku>n5</Sku></Line>
+  </Order>
+  <Order>
+    <Id>external</Id>
+    <Line><Sku>n6</Sku></Line>
+  </Order>
+</Orders>

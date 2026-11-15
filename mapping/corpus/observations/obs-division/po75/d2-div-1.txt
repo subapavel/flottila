@@ -1,0 +1,2 @@
+Runtime exception when processing target-field mapping /Out/Item/V; root message: Exception:[java.lang.ArithmeticException: Division by zero] in class com.sap.aii.mappingtool.flib7.Arithm method div[7, 0, com.sap.aii.mappingtool.tf7.rt.Context@[HASH]]
+See error logs for details

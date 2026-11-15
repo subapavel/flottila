@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/text-replaceString-dollar.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-text (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-text/po75/replaceString-002-text-replaceString-dollar.xml and corpus/observations/obs-text/cpi/replaceString-002-text-replaceString-dollar.xml; before #214: ADR-0025 (functions bind by name; the reading of replaceString follows java.lang.String and XPath); obs-text row replaceString/002",
+  "expect": "output",
+  "note": "replaceString{search=$, replacement=\\$1} takes both literally, no regular expression and no group reference: a$b$ gives a\\$1b\\$1."
+}

@@ -1,0 +1,10 @@
+SAP PO observation: fn/replaceString/004
+Date: 2026-11-12
+Mapping: text_replaceString_overlap
+Input: replaceString-004.xml (original corpus file; source XML verified before execution)
+Graph: Sku (Orders context) -> replaceString input 1; Constant "aa" -> input 2; Constant "b" -> input 3; replaceString -> Out/All.
+Check: No errors found during object check; Problem 0, Warning 0.
+Processing Log: 17:41:06 Start of test; Compilation of text_replaceString_overlap successful; Execution of mapping on server took 6 milliseconds; Executed successfully; 17:41:07 End of test.
+Observed All values: ba, bb. Replacement consumes non-overlapping occurrences from the left.
+Original result export: replaceString-004-text-replaceString-overlap.zip; instance.xml copied byte-for-byte to replaceString-004-text-replaceString-overlap.xml.
+No queue requested or captured. Screenshots inspected during the run but not retained.

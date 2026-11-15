@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-add.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005 (canonical decimal form, no exponent) and ADR-0002 (every number is a decimal)",
+  "expect": "output",
+  "note": "Qty plus Sku in context Orders. The sums are written in canonical decimal form: 4.2 + -0.2 is 4, 1.50 + 1 is 2.5, -3 + 3 is 0, and 0.1 + 0.2 is exactly 0.3."
+}

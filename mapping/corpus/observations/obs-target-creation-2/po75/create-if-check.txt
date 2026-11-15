@@ -1,0 +1,13 @@
+System: SAP PO 7.5 | Action: Save, then Check | Mapping: create-if
+Graph: S1 Tag (context Orders) -> C1 createIf -> Out/All. Nothing else mapped.
+
+No errors found during object check
+Problem 0
+Warning 0
+
+Test createIf-002.xml processing log:
+04:00:29 Start of test
+Compilation of create_if successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+04:00:30 End of test

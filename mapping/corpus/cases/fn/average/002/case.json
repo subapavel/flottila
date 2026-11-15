@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/average.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: the sum divided by the count by Saxon-HE's division rule, max(18, scale(dividend) - scale(divisor) + 18) fractional digits, the last rounded half-down",
+  "expect": "output",
+  "note": "Qty in context Order is 3, 3, 4 | 2.0, 0, 0 | 0.01, 0, 0. The quotients 10 / 3, 2.0 / 3 and 0.01 / 3 do not terminate: 18 digits for the first two (2.0 has scale 0 without its trailing zero), 20 for the third (scale 2 + 18)."
+}

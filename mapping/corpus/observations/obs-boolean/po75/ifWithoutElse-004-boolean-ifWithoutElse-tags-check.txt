@@ -1,0 +1,14 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case: fn/ifWithoutElse/004
+Mapping: boolean_ifWithoutElse_tags
+Input: original ifWithoutElse-004.xml imported unchanged through Test UI.
+Copied boolean_ifWithoutElse_orders; replaced both Sku source boxes with separate Tag boxes (default context Order). Qty remains context Order in both branches.
+Order (context Orders) -> Item. X1 -> V (Keep SUPPRESS Values unchecked); X2 -> W (checked), inherited from verified case 003.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+07:45:18 Start of test
+Compilation of boolean_ifWithoutElse_tags successful
+Execution of mapping on server took 4 milliseconds
+Executed successfully
+07:45:19 End of test
+Result exported through UI as ZIP; instance.xml preserved without rewriting.
+Reading: confirmed. Four Items: V/W x,y / x,y; no V or W; p,q,r / p,q,r; no V or W.

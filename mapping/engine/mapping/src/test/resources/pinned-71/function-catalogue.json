@@ -1,0 +1,216 @@
+{
+  "collapseContexts": {
+    "executionKind": "queue",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "portable": true
+  },
+  "createIf": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "condition"
+      }
+    ],
+    "portable": true
+  },
+  "exists": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "portable": true
+  },
+  "formatByExample": {
+    "executionKind": "queue",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "values"
+      },
+      {
+        "name": "example"
+      }
+    ],
+    "portable": true
+  },
+  "mapWithDefault": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "params": [
+      {
+        "default": "",
+        "name": "default",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "removeContexts": {
+    "executionKind": "queue",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "portable": true
+  },
+  "replaceValue": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "params": [
+      {
+        "default": "",
+        "name": "replacement",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "sort": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Sorts case-insensitively by Unicode character (code point). SAP PO puts 😀 before ﬀ and Ａ there, so text with an emoji or another character beyond the Basic Multilingual Plane can sort differently."
+    },
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "params": [
+      {
+        "default": "lexicographic",
+        "name": "comparison",
+        "type": "string",
+        "values": [
+          "lexicographic",
+          "caseInsensitive",
+          "numeric"
+        ]
+      },
+      {
+        "default": "ascending",
+        "name": "order",
+        "type": "string",
+        "values": [
+          "ascending",
+          "descending"
+        ]
+      }
+    ],
+    "portable": true
+  },
+  "sortByKey": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Orders keys as `sort` does, case-insensitively by code point. SAP PO puts 😀 before ﬀ and Ａ, so keys with an emoji or another character beyond the Basic Multilingual Plane can sort differently."
+    },
+    "inputs": [
+      {
+        "name": "keys"
+      },
+      {
+        "name": "values"
+      }
+    ],
+    "params": [
+      {
+        "default": "lexicographic",
+        "name": "comparison",
+        "type": "string",
+        "values": [
+          "lexicographic",
+          "caseInsensitive",
+          "numeric"
+        ]
+      },
+      {
+        "default": "ascending",
+        "name": "order",
+        "type": "string",
+        "values": [
+          "ascending",
+          "descending"
+        ]
+      }
+    ],
+    "portable": true
+  },
+  "splitByValue": {
+    "executionKind": "context",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "queue"
+      }
+    ],
+    "params": [
+      {
+        "default": "eachValue",
+        "name": "mode",
+        "type": "string",
+        "values": [
+          "eachValue",
+          "valueChange",
+          "emptyValue"
+        ]
+      }
+    ],
+    "portable": true
+  },
+  "useOneAsMany": {
+    "executionKind": "queue",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      },
+      {
+        "name": "occurrences"
+      },
+      {
+        "name": "contexts"
+      }
+    ],
+    "portable": true
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "case": "fn/ifWithoutElse/007",
+  "artifact": "api_boolean_ifWithoutElse_suppress_condition",
+  "version": "1.0.0",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "ifWithoutElse",
+      "inputCount": 2,
+      "bindings": null,
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders"
+        },
+        {
+          "path": "/Orders/Order/Line/Qty",
+          "context": "/Orders"
+        },
+        {
+          "path": "/Orders/Order/Line/Qty",
+          "context": "/Orders"
+        }
+      ]
+    },
+    {
+      "nativeName": "ifWithoutElse",
+      "inputCount": 2,
+      "bindings": "<bindings><param name=\"keepss\"><value>true</value></param></bindings>",
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders"
+        },
+        {
+          "path": "/Orders/Order/Line/Qty",
+          "context": "/Orders"
+        }
+      ]
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

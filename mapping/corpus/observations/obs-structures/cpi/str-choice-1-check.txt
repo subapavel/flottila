@@ -1,0 +1,6 @@
+CPI, Message Mapping editor, str-choice-1, target/choiceBranch/001-003.
+Source src-orders.xsd / Orders; target tgt-choice.xsd / Choice. The editor shows Choice and Pick as 1..1, A and B as 0..1 although both branches declare minOccurs=1 in the XSD choice.
+Two separately built chains: Id context Orders -> equals(string) string1, constant A/B -> string2; equals(string) -> ifWithoutElse condition and Id context Orders -> true value; ifWithoutElse -> A/B respectively. Keep SUPPRESS is checked in both chains (default unchecked). No other targets mapped.
+The requested equalsS appears in the CPI palette as equals(string). The visible input labels are string1 and string2; ifWithoutElse uses condition and true value.
+Save completed without an editor error dialog, red field or target error triangle. Five connections in each expression. No separate Check action was exposed.
+The previous CPI tab expired while returning to the package before creation. Dismissing the expiry alert timed out; a fresh tab recovered access, and the prior session's package lock was released through its confirmation. No original run was attempted during this interruption.

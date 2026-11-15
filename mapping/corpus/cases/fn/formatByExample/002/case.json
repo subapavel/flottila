@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-by-example.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 formatByExample: \"empty contexts are not counted\", \"empty contexts of queue 2 are kept\"; #2 §7.6 [SAP✓ https://help.sap.com/doc/saphelp_nw74/7.4.16/en-us/4b/f416dceaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/saphelp_ewm900/helpdata/en/4b/f416dceaca4c86e10000000a42189e/content.htm]",
+  "expect": "output",
+  "note": "An empty context first in the example; to observe on PO 7.5 and CPI (#61). The values, Tag in context Order, are t1, t2 | (empty) | t3; the example, Sku in context Order, is (empty) | a, b | c, three values each when empty contexts are not counted. formatByExample keeps the example's empty context: (empty) | t1, t2 | t3, so the root's one slot reads an empty context and the root is written without All. Dropping the empty context would give All t1, t2."
+}

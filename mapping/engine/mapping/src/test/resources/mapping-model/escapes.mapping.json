@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/note.schema.json"
+    ],
+    "fingerprint": "sha256:1a1ccb81d562a8b476ab312751cbb7445babc727daf94e7a96ef39f553a64530",
+    "root": {
+      "json": "$"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/note-out.schema.json"
+    ],
+    "fingerprint": "sha256:9c30c670477f2ff71ab91ad4c1007989d62ed65b23ece3e7151ba029d12486f0",
+    "root": {
+      "json": "$"
+    }
+  },
+  "targetFieldMappings": {
+    "/$/note/text": {
+      "boxes": {
+        "Constant-With_Mixed-Case-and-the-longest-id-the-schema-allows-00": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": "q:\" b:\\ s:/ bs:\b ff:\f nl:\n cr:\r tab:\t nul:\u0000 soh:\u0001 us:\u001f del: e:é bom:﻿ ls:  ps:  pair:😀 high:\ud83d| low:\ude00| rev:\ude00\ud83d end"
+          }
+        },
+        "f": {
+          "fn": "fixValues",
+          "inputs": [
+            "s"
+          ],
+          "kind": "function",
+          "params": {
+            "table": {
+              "": "empty key",
+              "\u0001": "soh key",
+              "\"q\"": "quoted key",
+              "A": "upper",
+              "a": "lower",
+              "back\\slash": "tab\there",
+              "é": "e acute",
+              "😀": "astral, sorts before U+FF5E by UTF-16 code unit",
+              "～": "fullwidth tilde"
+            }
+          }
+        },
+        "s": {
+          "field": "/$/note/kind",
+          "kind": "source"
+        }
+      },
+      "id": "t",
+      "result": "f"
+    }
+  }
+}

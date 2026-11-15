@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Out>
+  <Item>
+    <V>a-x</V>
+    <V>b-x</V>
+    <W>y-a</W>
+    <W>y-b</W>
+  </Item>
+  <Item/>
+  <Item>
+    <V>c-x</V>
+    <W>y-c</W>
+  </Item>
+</Out>

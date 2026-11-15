@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fingerprint-stale-target.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0009 (amended 2026-11-05): compile (stage 3) re-reads the bundle and compares fingerprints; a mismatch is fingerprint-mismatch at /source/fingerprint or /target/fingerprint and blocks compile and test; spec #89, ticket #91",
+  "expect": "error",
+  "note": "The mirror of structure/fingerprint/001: the stored target fingerprint is stale, the source's is right. Compiling refuses the model with fingerprint-mismatch at the target's fingerprint."
+}

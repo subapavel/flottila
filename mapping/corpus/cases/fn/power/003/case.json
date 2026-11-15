@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/power.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: the double power of a negative base to a fractional exponent is NaN, which has no xs:decimal",
+  "expect": "error",
+  "note": "(-8)^0.5 is NaN as a double: power raises err:FORG0001 at its box V1."
+}

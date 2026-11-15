@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/constant-all.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §1.1 generating function directly on a target field: \"If minOccurs = 0 the value of the function is generated once. Otherwise, the value of the function is generated as often as is specified by minOccurs\", \"This applies regardless of the value set in maxOccurs.\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f414f7eaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/saphelp_crm70/helpdata/en/03/398c4024d26e1de10000000a1550b0/content.htm]; #2 §5 Constants: \"Since these functions do not have any input values, they are generating functions\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]; ADR-0006 generating function (#83)",
+  "expect": "output",
+  "note": "Constant{x} on All, 0..unbounded directly under the root: minOccurs 0, so one All x, whatever the source holds."
+}

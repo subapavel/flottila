@@ -1,0 +1,25 @@
+SAP PO observation 2026-11-12
+Mapping spec2_suppress_split_each_collapse; fn/splitByValue/019.
+Original splitByValue-019.xml imported unchanged via UI: true,false | true,false,false.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag context Orders -> createIf -> splitByValue (Each Value) -> collapseContexts -> All. Nothing else mapped.
+Saved; Check: No errors found during object check; Problem 0, Warning 0.
+01:48:14 Start of test
+Compilation successful; execution 6 milliseconds; executed successfully.
+01:48:15 End of test
+UI export instance.xml extracted unchanged: two empty All elements.
+Display Queue on collapseContexts: compilation successful, execution 8 milliseconds, executed successfully.
+Literal numbered rows, columns collapseContexts:in0 / collapseContexts:out:
+0 <null> gray / <null> gray
+1 [] white / [] white
+2 [] gray / SUPPRESS cyan
+3 SUPPRESS cyan / [] white
+4 SUPPRESS gray / SUPPRESS cyan
+5 [] white / SUPPRESS cyan
+6 [] gray / SUPPRESS dark gray terminal
+7 SUPPRESS cyan / blank
+8 SUPPRESS gray / blank
+9 SUPPRESS cyan / blank
+10 SUPPRESS dark gray terminal / blank
+No italic values. [] denotes the displayed empty-string glyph.
+Reading: split produces five singleton contexts, including three SUPPRESS contexts. collapseContexts preserves SUPPRESS as output tokens, rather than replacing them with empty strings. Gray boundary and terminal rows are not extra values. Final XML contains two empty All, contradicting the assumed five. CPI not run yet.

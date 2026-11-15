@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-sort-format.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#33, spec-2 part), mapping spec2-suppress-sort-format, input sort-012.xml, 2026-11-11: corpus/observations/obs-context-functions/po75/spec2-suppress-sort-format-012.xml and cpi/sort-012-spec2-suppress-sort-format.xml, display queues po75/spec2-suppress-sort-format-012-queue.txt and cpi/sort-012-spec2-suppress-sort-format-queue.txt; PO 7.50 and CPI 6.84.77 agree: ascending puts SUPPRESS after the empty values; F-47, ADR-0006 Consequences (sort and sortByKey order a SUPPRESS as the greatest value or key)",
+  "expect": "output",
+  "note": "createIf over Tag in context Orders gives \"\", SUPPRESS, \"\", SUPPRESS. Ascending puts SUPPRESS last: \"\", \"\", SUPPRESS, SUPPRESS (both queues). formatByExample cuts after three slots, as Sku in context Order does, so the first context holds \"\", \"\", SUPPRESS: two empty All. SUPPRESS first, the reading before F-47, gives one."
+}

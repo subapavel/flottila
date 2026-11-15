@@ -1,0 +1,95 @@
+Observation session stop report — 2026-11-11
+
+Stopped at the owner’s explicit request after completing fn/sort/013 (spec2-suppress-sort-descending-format). No next case started.
+Branch: codex/observation-run-2026-11-11
+Previous pushed checkpoint: bb2879b. The commit containing this report is the stop checkpoint; its hash is supplied in the final handoff.
+
+Current set: obs-context-functions has 57 requested CPI cases. 34 semantic cases are complete (33 XML outputs, 1 runtime error); 1 is environment-blocked (ctx-1); 22 are not yet attempted. Five additional initial parameter-verification attempts are retained separately and excluded from the 34/57 progress count.
+The six earlier blocked runs have not yet been retried. Including ctx-1, seven blocked runs remain for a later session. SAP PO was left untouched during the CPI-only work, as requested.
+
+Ledger counts by set (includes five request-directed probes in useoneasmany and five extra audit attempts in context-functions; these are not all unique requested cases). XML/error count means observed output/error, not whether the assumed reading was confirmed.
+
+Set | State | CPI XML | CPI error | CPI NOT_RUN | CPI blocked | PO XML | PO error | PO NOT_RUN
+--- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---:
+obs-target-creation-2 | partly done; PO done | 5 | 3 | 0 | 1 | 6 | 3 | 0
+obs-lift-reuse | partly done | 5 | 0 | 2 | 1 | 0 | 0 | 8
+obs-useoneasmany | partly done | 5 | 10 | 0 | 1 | 0 | 0 | 16
+obs-ifwithoutelse | partly done; CPI mapping not drawable | 0 | 0 | 2 | 0 | 0 | 0 | 2
+obs-shared-box | partly done; CPI mapping not drawable | 0 | 0 | 2 | 0 | 0 | 0 | 2
+obs-division | CPI done; PO deferred | 1 | 1 | 0 | 0 | 0 | 0 | 2
+obs-structures | partly done | 7 | 1 | 1 | 3 | 0 | 0 | 12
+obs-context-functions | partly done | 38 | 1 | 0 | 1 | 0 | 0 | 40
+obs-boolean | not started | 0 | 0 | 0 | 0 | 0 | 0 | 0
+obs-constant | not started | 0 | 0 | 0 | 0 | 0 | 0 | 0
+obs-statistic | not started | 0 | 0 | 0 | 0 | 0 | 0 | 0
+obs-text | not started | 0 | 0 | 0 | 0 | 0 | 0 | 0
+obs-arithmetic | not started | 0 | 0 | 0 | 0 | 0 | 0 | 0
+obs-date | not started | 0 | 0 | 0 | 0 | 0 | 0 | 0
+
+Every contradicted or other ledger entry (one line per run):
+
+- obs-target-creation-2; mc-opt; minOccurs-004.xml; target/minOccurs/004; other: PO: Grp 1 has Row a,b; Grp 2 has no Row when Row is optional.
+- obs-target-creation-2; mc-min2; minOccurs-004.xml; target/minOccurs/004; contradicted: PO and CPI: Grp 2 has two Rows b,b, not the case's assumed minOccurs error.
+- obs-target-creation-2; mc-memo; mc-memo-1.xml; other: PO and CPI: missing queue context causes a runtime error at /Doc/Grp[3]/Row; direct source does not reuse b.
+- obs-target-creation-2; mc-memo-opt; mc-memo-1.xml; other: PO and CPI: Rows a and b in the first two groups; Grp 3 is empty.
+- obs-target-creation-2; mc-memo-opt; mc-memo-2.xml; other: PO and CPI: Row a in Grp 1; empty Grp 2 and Grp 3. No reuse of a.
+- obs-lift-reuse; lift-4; l4.xml; contradicted: CPI V=1 only in Item 1, but W=k in all three Items. Thus count and removeContexts do not yield the same per-parent repetition from the constant. R1 queue shows k on gray and dark-gray rows, with no white value row.
+- obs-lift-reuse; spec2-replace-value-create-if; replaceValue-002.xml; fn/replaceValue/002; contradicted: CPI writes three All=yes, not two, after createIf(true,false,true) -> replaceValue with Replace By=yes. The SUPPRESS position is replaced too.
+- obs-useoneasmany; uoam-1; u2.xml; other: No assumed reading stated. CPI fails at U1 on /Out/Item/V: Too many values in second queue in function useOneAsMany; total value counts of second and third queues must agree.
+- obs-useoneasmany; uoam-1; u3.xml; other: No assumed reading stated. CPI fails at U1 on /Out/Item/V: Too few values in second queue in function useOneAsMany; total value counts of second and third queues must agree.
+- obs-useoneasmany; uoam-1; u4.xml; other: No assumed reading stated. CPI fails at U1 on /Out/Item/V: Too many values in first queue in function useOneAsMany; it must have the same number of contexts as the second queue. No per-order output returned; request-directed leading-Order-drop probes follow.
+- obs-useoneasmany; spec2-suppress-use-one-as-many; useOneAsMany-005.xml; fn/useOneAsMany/005; contradicted: CPI fails at U1 on /Out/All: Too many values in first queue; it must have the same number of contexts as the second queue. No single empty All is returned. One owner probe removes only the second Order to isolate SUPPRESS repetition without changing the mapping.
+- obs-useoneasmany; spec3-suppress-use-one-as-many-occurrences; useOneAsMany-009.xml; fn/useOneAsMany/009; contradicted: CPI fails at U1 on /Out/All: Too many values in first queue; it must have the same number of contexts as the second queue. No A,A,B output. One owner probe removes only the second Order to isolate occurrence counting without changing the mapping.
+- obs-useoneasmany; uoam-1; probes/probe-empty-contexts-a.xml; other: Without original Order A, CPI still fails at U1: Too many values in first queue. No per-order output.
+- obs-useoneasmany; uoam-1; probes/probe-empty-contexts-b.xml; other: Without original Orders A and B, CPI fails at U1: No value found; first queue must have one and only one value in each context.
+- obs-division; div-1; d1.xml; contradicted: CPI 1/3 = 0.33333333333333333; the tiny quotient is 0.000000000000000000000033333333333333333 rather than 0. Terminating results are 2, 0.25, 2.5. Full eight-value output retained exactly.
+- obs-structures; str-nil; nil.xml; contradicted: CPI V values are x!, xsi:nil=true, !, absent. The second item's nil marker propagates through concat instead of behaving as an empty string. W is true,true,true,false. Exact output includes the standard xsi namespace declaration on the second V.
+- obs-structures; str-attr-ns; attr4.xml; contradicted: Qualified-prefix variant (#100): actual root and attributes use ns1, not assumed ns0. xmlns:ns1 is declared on Flagged, code precedes empty flag, and V is unqualified. Expanded names and values match; exact downloaded bytes preserved.
+- obs-context-functions; ctx-2; f2.xml; initial verification attempt; other: Initial result V 5, absent, empty string, 3 disagreed with editor Default Value D and subsequent M1 queue. Effective compiled default not independently verified; preserved for audit, not used as the semantic result.
+- obs-context-functions; ctx-2; f2.xml; verified rerun after completed Save; other: No fixed assumed reading: V is 5, absent, D, 3. M1 preserves a SUPPRESS-only context and fills only the truly empty context. Matches the recorded M1 queue.
+- obs-context-functions; ctx-3-each; f3.xml; other: No fixed assumed reading: Each value makes five Items with V a, a, empty string, b, empty string. Both splitByValue boxes use Each value.
+- obs-context-functions; ctx-3-change; f3.xml; other: No fixed assumed reading: Value change makes four Items with V [a,a], [empty string], [b], [empty string]. In-place variant of ctx_3_each, both splitByValue boxes changed.
+- obs-context-functions; ctx-3-empty; f3.xml; other: No fixed assumed reading: Empty value makes three Items with V [a,a], [b], then no V. Empty strings are consumed as separators and a trailing empty context remains. In-place final variant of ctx_3_each.
+- obs-context-functions; ctx-6a; f6.xml; other: No fixed assumed reading: All 5t1,7t3 selects the SUPPRESS-kept candidate. The suppressed slot still consumes Tag t2.
+- obs-context-functions; ctx-6b; f6.xml; contradicted: All 5,7, with no empty All. CC output queue is [5,SUPPRESS,7], contradicting the assumed conversion of SUPPRESS to an empty string. In-place variant of ctx_6a.
+- obs-context-functions; spec2-collapse-contexts; collapseContexts-003.xml; fn/collapseContexts/003; contradicted: Empty Orders yields empty Out, no All. C1 input and output show only start/end markers, no white value row.
+- obs-context-functions; spec2-exists; f4.xml; fn/exists/003; contradicted: All true,true,false,false,true; exists is per value for nonempty contexts, contrary to the assumed four-value per-context result.
+- obs-context-functions; spec2-exists-create-if; exists-004.xml; fn/exists/004; contradicted: All true,true,true,false,true, not false,true,false,true. E1 output [true] [true,true] [false] [true] counts each SUPPRESS as present.
+- obs-context-functions; spec2-map-with-default-create-if; exists-004.xml; fn/mapWithDefault/002; initial verification attempt; other: Three empty All disagreed with displayed D and subsequent M1 queue. Effective compiled default unverified; retained for audit, not used as the semantic result.
+- obs-context-functions; spec2-map-with-default-create-if; exists-004.xml; fn/mapWithDefault/002; verified rerun after completed Save; contradicted: All empty string,D,empty string. M1 preserves SUPPRESS-only contexts, contrary to the assumed extra leading D. Matches the recorded M1 queue.
+- obs-context-functions; spec2-map-with-default; mapWithDefault-003.xml; fn/mapWithDefault/003; initial verification attempt; other: Three empty All then x disagreed with displayed Default and subsequent M1 queue. Effective compiled default unverified; retained for audit, not used as the semantic result.
+- obs-context-functions; spec2-map-with-default-remove-contexts; collapseContexts-003.xml; fn/mapWithDefault/004; initial verification attempt; other: One empty All disagreed with displayed D and subsequent M1 queue. Effective compiled default unverified; retained for audit, not used as the semantic result.
+- obs-context-functions; spec3-map-with-default-remove-contexts-item; mapWithDefault-010.xml; fn/mapWithDefault/010; initial verification attempt; other: Item 1 empty V, Item 2 without V. Default D had not been retained across the expression switch; returning to V showed the parameter empty. Retained for audit, not used as the semantic result.
+- obs-context-functions; spec2-suppress-sort-format; sort-012.xml; fn/sort/012; contradicted: Two empty All, not one. R1 queue shows empty string,empty string,SUPPRESS,SUPPRESS: ascending puts SUPPRESS last. In-place graph rebuild after preceding results saved.
+- obs-context-functions; spec2-suppress-sort-descending-format; sort-013.xml; fn/sort/013; contradicted: One empty All, not two. R1 queue shows SUPPRESS,SUPPRESS,empty string,empty string: descending puts SUPPRESS first. In-place variant after preceding result saved; final Save completed, then stopped at owner's request.
+
+PO/CPI divergence:
+- No semantic divergence recorded among the completed paired obs-target-creation-2 cases. CPI mc-opt was blocked, so that pair is unobserved. Other sets have no PO/CPI comparison because PO execution is deferred. Formatting differences alone were not treated as a semantic divergence.
+
+Environment blockers still pending:
+- obs-target-creation-2; mc-opt; minOccurs-004.xml: The required in-place mapping is locked by a previous session. Edit offers: Do you wish to close the previous session and continue? Unlock was rejected by automatic approval review because the previous session may have unsaved changes. A retry of Edit was also rejected. No unlock or edit was performed.
+- obs-lift-reuse; lift-1; l1.xml: First attempt: Test execution has failed; please try again. One retry: Error while setting mpl log level to None. No output or mapping exception shown.
+- obs-useoneasmany; spec2-use-one-as-many-root-value; u1.xml: Browser connection failed during first XSD upload; artifact rebuilt in a fresh tab. Save then exposed Your session has expired. Press OK to login again.; dismissal and subsequent state check timed out. Save completion unverified; simulation not started.
+- obs-structures; str-attr; attr2.xml: Uploaded schemas disappeared on Save: Local (2) became Local (0), fields Missing Node. One page reload retained the same failure.
+- obs-structures; str-attr; attr3.xml: Uploaded schemas disappeared on Save: Local (2) became Local (0), fields Missing Node. One page reload retained the same failure.
+- obs-structures; str-attr; attr4.xml: Uploaded schemas disappeared on Save: Local (2) became Local (0), fields Missing Node. One page reload retained the same failure.
+- obs-context-functions; ctx-1; f1.xml: tgt-list.xsd uploaded but target assignment remained busy; one retry via local resource selection also failed to populate Out.
+
+NOT_RUN reasons:
+- obs-lift-reuse; spec2-create-if; createIf-002.xml: Superseded run.
+- obs-lift-reuse; spec2-create-if-twice; createIf-003.xml: Superseded run.
+- obs-ifwithoutelse; iwe-1; i1.xml: CPI counter has no input port; requested Sku -> N1/N2 wires cannot be drawn. Only Initial value and Increment parameters (both default 1) and an output connector are available.
+- obs-ifwithoutelse; iwe-1; i2.xml: CPI counter has no input port; requested Sku -> N1/N2 wires cannot be drawn. Only Initial value and Increment parameters (both default 1) and an output connector are available.
+- obs-shared-box; shared-1; s1.xml: CPI counter has no input connector, so Id -> N1 in1 cannot be drawn. Available parameters are Initial value and Increment (default 1 each).
+- obs-shared-box; shared-2; s1.xml: CPI counter has no input connector, so Id -> N2/N3 in1 cannot be drawn. Available parameters are Initial value and Increment (default 1 each).
+- obs-structures; str-nil; nil.json: PO message mapping reads XML only; the case tests the adapter's / converter's JSON to XML conversion, not the mapping; channels and iFlows are out of scope for this run.
+
+Remaining work:
+- obs-context-functions: start next with spec2-sort-by-key; finish all key-sort and remaining splitByValue cases (22 unattempted cases), then retry ctx-1. Existing canonical result files must be skipped.
+- obs-boolean, obs-constant, obs-statistic, obs-text, obs-arithmetic and obs-date have not been started.
+- Retry the six older CPI blockers without overwriting their initial blocker records. Do not unlock a previous session with potentially unsaved work without the appropriate approval; mc-opt’s earlier unlock was rejected by automatic approval review.
+- PO work remains deferred to a later session. Cases requiring adapters/channels/iFlows remain out of scope.
+- Every observation’s meta.json and individual check/queue/output files remain the source of detail. No product code, tests, requests or source structures were modified.
+
+Last completed case:
+- fn/sort/013: one empty All, contrary to the assumed two. Descending case-sensitive sort queue is [SUPPRESS,SUPPRESS,empty string,empty string], so SUPPRESS precedes empty strings. Exact XML and numbered queue saved. Final editor Save completed and case sensitive/desc was verified, with no busy/error dialog.

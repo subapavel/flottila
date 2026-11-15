@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/required-attribute.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-structures (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both end in an error as expected-error.json: corpus/observations/obs-structures/po75/str-required-attr-check.txt and corpus/observations/obs-structures/cpi/attr1-str-required-attr.txt; before #214: spec #89, Implementation Decisions \"Required attribute\" (the spec-2 carry of #48 comment 6595876651, \"a required attribute counts as a leaf\"): an unmapped use=\"required\" attribute is unmapped-mandatory-leaf like a mandatory leaf element; ADR-0008 (an attribute is a leaf field); ADR-0006 Consequences (an unmapped target leaf with minOccurs > 0 is a design-time error, #65); observation request obs-structures, mapping str-required-attr (#36); ticket #91",
+  "expect": "error",
+  "note": "Only V is mapped, from Id in context Orders. The root Coded is created once and carries the attribute code, declared use=\"required\" and unmapped, so the output would lack it: compiling refuses it with unmapped-mandatory-leaf at code's absent target field mapping, as for a mandatory leaf element (target/unmappedLeaf/001). The run never starts. Assumed until obs-structures str-required-attr is observed."
+}

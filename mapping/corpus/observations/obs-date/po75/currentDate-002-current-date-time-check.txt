@@ -1,0 +1,17 @@
+SAP PO 7.50 ESR Test, 2026-11-12. Case fn/currentDate/002.
+Mapping current_date_time copied from current_date in authorized namespace.
+Source src-orders.xsd; target tgt-list.xsd. currentDate -> Out/All.
+Target format yyyy-MM-dd'T'HH:mm:ss.SSSXXX verified in parameter dialog.
+Advanced defaults inherited: Sunday, minimum days 1, Calendar Is Lenient checked.
+Saved; Check: No errors found, Problem 0, Warning 0.
+Loaded currentDate-001.xml, verified source XML before execution.
+Processing log start 20:25:09, end 20:25:10; compilation successful;
+server execution 4 milliseconds; executed successfully.
+Result: one All, 2026-11-12T20:25:08.777+01:00.
+Milliseconds are nonzero (777). Exact equality to message start cannot be
+established: log has seconds precision and no zone, and output precedes its
+displayed start by 223 ms if clocks and zones are identical. No clock sync assumed.
+Workstation context Europe/Prague (+01:00); named JVM default zone unknown.
+Output explicitly shows +01:00, consistent with prior winter dateTrans results.
+Original result ZIP retained; XML copied byte-for-byte from instance.xml.
+No queues requested/captured, no screenshot file retained. CPI NOT_RUN.

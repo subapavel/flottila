@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fix-values-default.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/fixValues-003-fix-values-default.xml and corpus/observations/obs-constant/cpi/fixValues-003-fix-values-default.xml; before #214: ADR-0026 \"Table params\" (#83), assumed reading: missing: default gives defaultValue for a key the table lacks; obs-constant row fn/fixValues/003",
+  "expect": "output",
+  "note": "FixValues a=A, d=D with the default value ?: b, c, e, f give ?."
+}

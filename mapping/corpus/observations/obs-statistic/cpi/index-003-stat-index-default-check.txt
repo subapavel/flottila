@@ -1,0 +1,11 @@
+CPI observation 2026-11-13: fn/index/003
+Artifact: api_stat_index_default
+Input: original index-003.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Sku context /Orders/Order -> index -> V.
+Simulation completed. Three Item elements: V [1, 2] | no V | [1]. Downloaded XML preserved unchanged. This prepared mapping resets numbering across contexts.
+Live parameter dialog labels and fresh editor defaults were not independently inspected; API preparation and output do not prove native defaults. Output observed; parameter verification pending.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_stat_index_default.json, cpi/native-default-index-003.txt.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/count/002
+Artifact: api_stat_count
+Input: original count-002.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Sku context /Orders/Order -> count -> V.
+Simulation completed. Three Item elements contain V 0, 0, 2. Empty contexts count as zero; the empty Sku element contributes one value. Downloaded XML preserved unchanged.

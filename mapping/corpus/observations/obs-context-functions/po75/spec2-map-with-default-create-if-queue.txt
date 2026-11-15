@@ -1,0 +1,16 @@
+SAP PO Display Queue, spec2_map_with_default_create_if, exists-004.xml, 2026-11-11.
+Selected function mapWithDefault. Compilation successful; execution 14 milliseconds; Executed successfully.
+Numbering enabled. Literal columns: mapWithDefault:in0 | mapWithDefault:out.
+All text regular, not italic. Brackets below are literal UI text.
+row | input text | input shading | output text | output shading
+0 | <null> | light gray | <null> | light gray
+1 | SUPPRESS | cyan | SUPPRESS | cyan
+2 | SUPPRESS | light gray | SUPPRESS | light gray
+3 | SUPPRESS | cyan | SUPPRESS | cyan
+4 | [] | white | [] | white
+5 | [] | light gray | [] | light gray
+6 | [] | light gray | [D] | white
+7 | [] | white | [D] | light gray
+8 | [] | dark gray | [] | white
+9 | blank | white (padding) | [] | dark gray
+Reading: Input contexts [SUPPRESS] [SUPPRESS,empty string] [] [empty string]. Output contexts [SUPPRESS] [SUPPRESS,empty string] [D] [empty string]. Gray rows are boundary/terminal markers, not additional values. SUPPRESS-only context is not replaced. Agrees with exported XML.

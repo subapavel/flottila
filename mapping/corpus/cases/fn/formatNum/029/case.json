@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-refused-digit-after-suffix.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003: a pattern that does not translate to an XPath picture is a design-time error; ADR-0026 pattern params (#74 amendment): invalid-parameter-value at the box, naming the element (the digit or separator 0 after the suffix began)",
+  "expect": "error",
+  "note": "The pattern 0 0. A digit after the suffix began: DecimalFormat refuses it, and a picture would read a passive character between two digits. Compiling refuses it at N1."
+}

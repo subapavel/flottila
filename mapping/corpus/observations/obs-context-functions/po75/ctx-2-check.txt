@@ -1,0 +1,15 @@
+SAP PO observation 2026-11-11
+Mapping: ctx_2
+Source: src-orders.xsd; target: tgt-list.xsd.
+Qty in Order context -> greater in1; Constant 0 -> greater in2.
+greater -> ifWithoutElse if; same Qty -> then; Keep SUPPRESS Values checked.
+ifWithoutElse -> mapWithDefault D -> Out/Item/V; Orders/Order -> Out/Item. W and All unmapped.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original f2.xml imported through test UI, no edits.
+23:22:59 Start of test
+Compilation of ctx_2 successful
+Execution of mapping on server took 10 milliseconds
+Executed successfully
+23:23:00 End of test
+Result exported through UI as ctx-2-export.zip; instance.xml extracted unchanged as ctx-2.xml.
+Reading: V is 5, absent, D, 3. A SUPPRESS-only context is preserved; only the truly empty context receives D. Agrees with verified CPI rerun.

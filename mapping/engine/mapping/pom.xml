@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.flottila.mapping</groupId>
+    <artifactId>flottila-mapping-engine</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>flottila-mapping-mapping</artifactId>
+  <name>Flottila Mapping mapping</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>flottila-mapping-ir</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>flottila-mapping-xdm</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>flottila-mapping-structure</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- stage 1 of loading a mapping model (ADR-0011) -->
+    <dependency>
+      <groupId>com.github.erosb</groupId>
+      <artifactId>json-sKema</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <resources>
+      <!-- the mapping-model schema is the contract's file, packed into the jar (ADR-0016) -->
+      <resource>
+        <directory>${maven.multiModuleProjectDirectory}/contract</directory>
+        <targetPath>io/flottila/mapping/mapping/internal</targetPath>
+        <includes>
+          <include>mapping-model.schema.json</include>
+        </includes>
+      </resource>
+      <!-- the module's own resources, which a resources list would otherwise drop -->
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <!-- the engine-internal function catalogue (ADR-0025), which the build merges from the family
+           files in src/main/catalogue (ADR-0025 "Families", F-15) -->
+      <resource>
+        <directory>${project.build.directory}/generated-resources/function-families</directory>
+      </resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>function-families</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>exec</goal>
+            </goals>
+            <configuration>
+              <arguments>
+                <argument>${maven.multiModuleProjectDirectory}/scripts/function-families.java</argument>
+                <argument>catalogue</argument>
+                <argument>${project.build.directory}/generated-resources/function-families/io/flottila/mapping/mapping/function-catalogue.json</argument>
+                <argument>${project.basedir}/src/main/catalogue</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <compilerArgs combine.children="append">
+            <!-- json-sKema 0.32.0 has no module descriptor: an automatic module (ADR-0017, F-3) -->
+            <arg>-Xlint:-requires-automatic</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

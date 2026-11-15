@@ -1,0 +1,14 @@
+CPI observation: fn/copyValue/003
+Date: 2026-11-12
+Artifact: api_copy_value_beyond
+Input: copyValue-001.xml (original corpus file)
+Verified editor expressions: Order in /Orders context -> Item; Sku in /Orders/Order context -> copyValue -> V.
+Simulation completed. V=d in each of three Items, contradicting the assumed absence of V in all Items. No execution error.
+Exact downloaded output copied byte-for-byte to copyValue-003-copy-value-beyond.xml.
+The API-prepared index is 3; live parameter inspection and requested F1 queue remain pending. No queue inferred from output.
+No mapping changed or deployed. Screenshots not retained.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_copy_value_beyond.json, cpi/copyValue-003-F1-queue.json.
+Index 3 selects d across the entire input queue, ignoring context boundaries. Output queue is generator d, matching prior d in every Item.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

@@ -1,0 +1,5 @@
+CPI observation 2026-11-13: fn/replaceString/003
+Artifact: api_text_replaceString_empty_search; original replaceString-003.xml.
+Visible graph: Sku context /Orders, empty-search constant, replacement constant "-" -> replaceString -> /Out/All.
+Original imported search constant contained newline plus 28 spaces from formatted XML, not empty text. Moved the overlapping replacement node downward in the tab to expose the search node. Opened the inline bracket parameter, observed whitespace in Enter value.., cleared it, pressed Enter and Save. Visible title then became empty; replacement title remained "-".
+VERIFIED_PASS: simulation completed; All values abc and empty string. Original downloaded XML preserved. Empty search leaves both input values unchanged. This resolves the original generic failure after correcting the imported empty binding. No SAP PO or environment settings changed.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/derivation-order-receipt.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"XSD\": an extension gives the base content, then its own content, and a reference to a substitution-group head becomes a choice of the non-abstract members, head first and then by QName; ADR-0006 since #102: an element with simple content and attributes is a leaf whose attributes are fields of their own; spec #89, ticket #95",
+  "expect": "output",
+  "note": "derivation/order.xsd. Buyer and Customer are of o:Customer, which extends o:Party: Name comes from the base, Number from the extension. The reference to the abstract head o:Item is the choice of its members o:Book and o:Disc; T3 creates one Book per source Book and T4 copies each Title, so the Disc in the input is not read. Paid is a leaf of simple content: T5 copies Total's value, T6 its attribute currency. The unmapped optional Disc and Remark are left out. Also a differential case."
+}

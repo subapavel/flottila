@@ -1,0 +1,18 @@
+Display Queue of box R1 (removeContexts), CPI Function Message Queue, input l4.xml, mapping lift-4.
+S. No. enabled. Literal cell contents:
+
+row  removeContexts:in1  removeContexts:out1  shading of both data cells
+0    k                   k                    gray, italic
+1    k                   k                    dark gray, italic (end)
+
+Reading: the UI shows k on both rows for both columns, with no white value row and no <null> start row. This is not the ordinary finite [k] queue display; no extra value or context is inferred from the shading. The saved simulation output contains W=k in each of the three Item elements.
+
+Display Queue of box N1 (count), same input and mapping.
+S. No. enabled. Literal cell contents:
+
+row  count:in1  shading            count:out1  shading
+0    k          gray, italic        <null>      gray, italic (start)
+1    k          dark gray, italic   1           white, normal
+2    (none)                         1           dark gray, italic (end)
+
+Reading: in1 has the same two-row constant display as R1; out1 = [1]. The saved simulation output contains V=1 only in Item 1.

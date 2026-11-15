@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/date-trans-local.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0025 Data errors name their box (F-19, Q10): a malformed date is err:FORG0001 in both back ends, naming the box; ADR-0003: parsing is strict, and HH stops at 23",
+  "expect": "error",
+  "note": "sourceFormat yyyy-MM-dd HH:mm: Sku in context Orders is 2026-11-04 24:00. xs:dateTime reads 24:00 as the next day's midnight, a strict SimpleDateFormat refuses the hour 24, so the run raises err:FORG0001 at N1 and writes nothing."
+}

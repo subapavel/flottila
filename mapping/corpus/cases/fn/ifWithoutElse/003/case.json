@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-ifWithoutElse-orders.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-ifWithoutElse-orders, input ifWithoutElse-003.xml: corpus/observations/obs-boolean/po75/ifWithoutElse-003-boolean-ifWithoutElse-orders.xml and cpi/ifWithoutElse-003-boolean-ifWithoutElse-orders.xml, with their checks; PO 7.50 and CPI agree (meta.json), X1 Keep SUPPRESS Values unchecked, X2 checked; F-44, ADR-0006 Consequences, ifWithoutElse",
+  "expect": "output",
+  "note": "Item per Order; V is ifWithoutElse(Qty, Sku) in context Order without params, W the same with keepSuppressValues=true. o1 (a, true), (b, false); o2 (c, false), (d, TRUE); o3 (e, true). The condition casts as PO's Bool.toBoolean does, so TRUE is true: o2's context is SUPPRESS, d, and its Item gets V and W d. The parameter changes nothing: V and W agree."
+}

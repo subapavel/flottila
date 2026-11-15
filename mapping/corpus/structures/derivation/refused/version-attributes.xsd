@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): vc:minVersion 1.1 or above is XSD 1.1, refused when the schema loads (ADR-0008),
+     wherever it stands, even on an annotation. A lower vc:minVersion loads with no effect (#89 review);
+     one that is no decimal, and another versioning attribute, stay refused as attributes not read -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:vc="http://www.w3.org/2007/XMLSchema-versioning"
+           targetNamespace="urn:flottila:corpus:refused">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="A" type="xs:string" vc:minVersion="2"/>
+        <xs:element name="B" type="xs:string" vc:minVersion="1.0"/>
+        <xs:element name="C" type="xs:string" vc:minVersion="next"/>
+        <xs:element name="D" type="xs:string" vc:maxVersion="1.1"/>
+        <xs:element name="E" type="xs:string">
+          <xs:annotation vc:minVersion="1.10"/>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

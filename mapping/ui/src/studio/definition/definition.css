@@ -1,0 +1,702 @@
+/*
+ * The Definition tab's message panes, their tools and the split around them. Ported from the prototype's studio.css
+ * (branch prototype/mapping-studio, ui/prototype/mapping-studio/src/studio.css) with its values unchanged; the rules of
+ * the mapping expression (#157) and of the other tabs are left out. Added: the spacer rows of the virtualised tree and
+ * table take no padding, and a pane's tool menus take the prototype's def-menu font size.
+ */
+.switches {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #c2cbd4;
+  border-radius: 7px;
+  padding: 2px;
+  background: #fff;
+}
+.switches button {
+  background: transparent;
+  border: 0;
+  min-height: 27px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 3px 11px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.switches button[aria-pressed='true'] {
+  color: #004a98;
+  background: #e7f1fc;
+  font-weight: 650;
+}
+
+.workbench {
+  display: grid;
+  gap: 12px;
+  align-items: stretch;
+}
+.schema {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 17px 16px 0;
+}
+.role-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  height: 36px;
+  width: 36px;
+  border-radius: 9px;
+  font-size: 16px;
+}
+.role-tile.source {
+  background: #def3ea;
+  color: var(--source);
+}
+.role-tile.target {
+  background: #e5effd;
+  color: var(--target);
+}
+.eyeline {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.pane-head h2 {
+  font-size: 20px;
+  line-height: 1.3;
+  letter-spacing: -0.35px;
+  font-weight: 650;
+}
+.field-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 9px;
+  border: 1px solid #c6d0d9;
+  border-radius: 6px;
+  margin: 0 12px 10px;
+  color: #687884;
+}
+.field-search input {
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 12px;
+  padding: 5px 0;
+  color: var(--ink);
+}
+.field-search:focus-within {
+  outline: 2px solid var(--blue);
+  outline-offset: 1px;
+}
+.field-search svg {
+  width: 12px;
+}
+
+.fields-scroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 100px;
+}
+.field-table {
+  width: 100%;
+  font-size: 12px;
+}
+.field-table thead th {
+  background: #f5f7f9;
+  color: #536271;
+  font-size: 11px;
+  line-height: 20px;
+  height: 28px;
+  padding: 3px 8px;
+  border-block: 1px solid var(--line);
+  font-weight: 600;
+}
+.field-table thead th:first-child {
+  padding-left: 14px;
+}
+.field-table tbody td {
+  padding: 0;
+  border: 0;
+  height: 28px;
+  font-size: 12px;
+}
+.field-table td.occurs,
+.field-table th:last-child {
+  text-align: right;
+  padding-right: 12px;
+  white-space: nowrap;
+}
+.occurs {
+  font-family: var(--mono);
+  font-size: 10px !important;
+  color: #526371;
+}
+.field-table .active-field td {
+  background: #eaf3fc;
+}
+.source .active-field td {
+  background: #e8f5ef;
+}
+.field-table tr:hover td {
+  background: #f0f3f5;
+}
+.field-table tr[aria-hidden='true'] td {
+  padding: 0;
+  background: transparent;
+}
+.field-cell {
+  padding-left: calc(5px + var(--level) * 9px);
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+.caret,
+.caret-spacer {
+  width: 16px;
+  flex: none;
+}
+.caret,
+.field-name {
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+}
+.caret {
+  height: 25px;
+  font-size: 13px;
+  color: #5c7180;
+}
+.caret-spacer {
+  display: inline-flex;
+  justify-content: center;
+  font-size: 13px;
+  color: #5c7180;
+}
+.field-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 24px;
+  text-align: left;
+}
+.field-name.branch {
+  font-weight: 550;
+}
+.wired-mark {
+  color: #258161;
+  font-size: 8px;
+  margin-left: 3px;
+}
+/* the orphaned field status: PatternFly's warning colour */
+.orphaned-mark {
+  color: var(--pf-t--global--icon--color--status--warning--default, #dca614);
+  font-size: 10px;
+  margin-left: 3px;
+}
+.canvas-panel {
+  display: flex;
+  flex-direction: column;
+}
+.graph-empty,
+.empty-message {
+  padding: 18px;
+  color: var(--muted);
+}
+
+@media (min-width: 1550px) {
+  .field-cell,
+  .field-table tbody td {
+    height: 33px;
+  }
+  .field-name {
+    font-size: 14px;
+  }
+}
+@media (max-width: 1070px) {
+  .field-cell {
+    padding-left: calc(2px + var(--level) * 6px);
+  }
+  .workbench {
+    gap: 8px;
+  }
+  .pane-head {
+    padding-left: 11px;
+  }
+  .field-search {
+    margin-inline: 8px;
+  }
+}
+@media (max-width: 560px) {
+  .switches button {
+    padding-inline: 7px;
+  }
+  .field-table td.occurs,
+  .field-table th:last-child {
+    padding-right: 4px;
+  }
+  .field-search input {
+    font-size: 11px;
+  }
+  .pane-head {
+    gap: 5px;
+  }
+  .role-tile {
+    height: 27px;
+    width: 27px;
+  }
+  .eyeline {
+    font-size: 10px;
+  }
+}
+.field-table th:nth-child(2) {
+  text-align: right;
+  padding-right: 12px;
+}
+.field-type-column {
+  display: none;
+}
+
+.vertical-split {
+  display: flex;
+  flex-direction: column;
+  overflow-anchor: none;
+}
+.vertical-split > .split-upper {
+  flex: var(--upper-share) 0 var(--min-upper);
+  min-height: var(--min-upper);
+}
+.vertical-split > .split-lower {
+  flex: var(--lower-share) 0 var(--min-lower);
+  min-height: var(--min-lower);
+}
+.split-divider {
+  position: relative;
+  flex: 0 0 18px;
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+}
+.split-divider::before,
+.split-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.split-divider::before {
+  inset-inline: 0;
+  height: 1px;
+  background: var(--line);
+}
+.split-divider::after {
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+  border-radius: 4px;
+  background: #798d9a;
+}
+.split-divider:is(:hover, :active, :focus-visible)::after {
+  background: var(--blue);
+}
+.split-divider:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: -2px;
+}
+.resizable-columns {
+  display: flex;
+  height: 100%;
+}
+.resizable-columns > .panel {
+  --pane-min: clamp(106px, 34vw, 240px);
+  min-width: var(--pane-min);
+  flex: var(--left-share) 0 var(--pane-min);
+  container-type: inline-size;
+}
+.resizable-columns > .panel:last-child {
+  flex-grow: var(--right-share);
+}
+.split-divider[aria-orientation='vertical'] {
+  flex-basis: 14px;
+  cursor: col-resize;
+}
+.split-divider[aria-orientation='vertical']::before {
+  inset: 0 auto 0 50%;
+  width: 1px;
+  height: auto;
+  transform: translateX(-50%);
+}
+.split-divider[aria-orientation='vertical']::after {
+  left: 50%;
+  width: 4px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+}
+@media (pointer: coarse) {
+  .split-divider,
+  .split-divider[aria-orientation='vertical'] {
+    flex-basis: 28px;
+  }
+}
+
+.definition-editor {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-width: 0;
+}
+.definition-split-layout {
+  flex: 1 0 auto;
+}
+
+/* Definition toolbars follow the scope of the action: message, tree, or graph. */
+.tree-tool-buttons {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.def-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 29px;
+  height: 29px;
+  padding: 4px 6px;
+  color: #415d70;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 13px;
+}
+.tool-split {
+  display: inline-flex;
+  align-items: center;
+}
+.tool-split .def-tool:last-child {
+  min-width: 13px;
+  padding-inline: 2px;
+}
+.def-tool .tool-caret {
+  width: 8px;
+}
+.def-tool:hover:not(:disabled) {
+  background: #edf4fa;
+  border-color: #c1d2df;
+  color: var(--blue);
+}
+.def-tool[aria-pressed='true'] {
+  background: #e8f2ff;
+  color: #0053a9;
+  border-color: #b7cfea;
+}
+.def-tool:disabled {
+  color: #84929e;
+  opacity: 0.65;
+  cursor: default;
+}
+.schema-tools {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.schema-tools .tree-tool-buttons {
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+  border-left: 1px solid var(--line);
+  padding-left: 6px;
+}
+.tree-search {
+  margin: 0 12px 6px;
+}
+.path-display {
+  border-top: 1px solid var(--line);
+  padding: 3px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: auto;
+  white-space: nowrap;
+}
+.path-display code {
+  display: block;
+  overflow-x: auto;
+}
+/* the orphaned target field mappings below the target tree (#174): kept short, so the tree keeps its rows */
+.orphaned-mappings {
+  flex: none;
+  max-height: 9rem;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  padding: 6px 12px 8px;
+  font-size: 12px;
+}
+.orphaned-mappings h3 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.orphaned-mappings h3 .orphaned-mark {
+  margin-left: 0;
+}
+.orphaned-mappings-help {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 2px 0 4px;
+}
+.orphaned-mappings li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.orphaned-mappings li code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 11px var(--mono);
+}
+.orphaned-mappings li.active-field {
+  background: #eaf3fc;
+}
+.mapping-code {
+  font: 11px var(--mono);
+  color: #285675;
+  white-space: nowrap;
+}
+.field-table td .pf-v6-c-switch {
+  vertical-align: middle;
+}
+.tree-tool-buttons .pf-v6-c-menu {
+  font-size: 13px;
+}
+@media (max-width: 1000px) {
+  .schema-tools .tree-tool-buttons {
+    flex-basis: 100%;
+    border-left: 0;
+    padding-left: 0;
+  }
+}
+@media (max-width: 560px) {
+  .def-tool {
+    min-width: 23px;
+    height: 24px;
+    padding: 2px 3px;
+  }
+  .tree-tool-buttons {
+    gap: 0;
+  }
+}
+
+/* Definition shows the schema pair above the per-target expression on every viewport. */
+.definition-split-layout {
+  --min-upper: 230px;
+  --min-lower: 210px;
+  height: 550px;
+}
+.workbench {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.workbench .canvas-panel {
+  min-height: 0;
+}
+.message-overview .source {
+  grid-area: source;
+}
+.message-overview .target {
+  grid-area: target;
+}
+.message-overview .fields-scroll {
+  min-height: 0;
+}
+.message-overview .pane-head {
+  padding: 12px 14px 8px;
+}
+.schema-id {
+  font: 11px var(--mono);
+  color: var(--muted);
+  margin-left: auto;
+  overflow-wrap: anywhere;
+}
+.schema-format {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+.schema-format button {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  color: #35586d;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: white;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.schema-format button:hover {
+  border-color: #6a95bd;
+  color: var(--blue);
+}
+.schema-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 9px;
+}
+.view-switch {
+  flex: none;
+}
+.view-switch button {
+  min-height: 25px;
+}
+.field-table th,
+.field-table td {
+  white-space: nowrap;
+}
+.field-table thead th,
+.field-table tbody td {
+  vertical-align: middle;
+}
+.field-table .field-type-column,
+.field-table .description-column {
+  display: table-cell;
+  text-align: left;
+  padding-inline: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.field-table th:first-child {
+  width: 44%;
+}
+.field-table th:nth-child(2),
+.field-table td.occurs {
+  text-align: left;
+  padding: 0 8px;
+}
+.schema-xml {
+  min-width: max-content;
+  font: 12px/1.7 var(--mono);
+  color: #204764;
+  padding: 5px 0;
+}
+.xml-line {
+  white-space: pre;
+  padding-inline: 12px;
+  min-height: 20px;
+}
+.xml-line button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  white-space: inherit;
+}
+.xml-line.find-match {
+  box-shadow: inset 3px 0 #bd7600;
+  background: #fff0c2;
+}
+.schema.target .active-field {
+  background: #eaf3fc;
+}
+.schema.source .active-field {
+  background: #e8f5ef;
+}
+
+@container (max-width: 300px) {
+  .message-overview .pane-head {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-inline: 6px;
+  }
+  .schema-format .schema-id {
+    display: none;
+  }
+  .schema-tools {
+    flex-wrap: wrap;
+    padding-inline: 6px;
+  }
+  .schema-tools .tree-tool-buttons {
+    flex-basis: 100%;
+    border-left: 0;
+    padding-left: 0;
+  }
+}
+@media (max-width: 1000px) {
+  .definition-split-layout {
+    --min-upper: 270px;
+  }
+  .field-table .description-column {
+    display: none;
+  }
+}
+@media (max-width: 720px) {
+  .schema-tools {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .schema-id {
+    display: none;
+  }
+  .field-table .field-type-column {
+    display: none;
+  }
+  .message-overview .pane-head {
+    padding: 8px;
+  }
+  .field-table th:nth-child(2),
+  .field-table td.occurs {
+    padding-inline: 3px;
+  }
+  .field-table thead th {
+    font-size: 10px;
+  }
+  .definition-split-layout {
+    --min-upper: 290px;
+    --min-lower: 266px;
+    height: 755px;
+  }
+}
+@media (max-width: 750px) {
+  .view-switch button {
+    padding-inline: 7px;
+  }
+}
+@media (max-width: 450px) {
+  .schema-tools .view-switch {
+    max-width: 100%;
+  }
+  .schema-tools .view-switch button {
+    padding-inline: 5px;
+  }
+}
+@media (max-width: 480px) {
+  .schema-tools {
+    padding-inline: 6px;
+  }
+}

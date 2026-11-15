@@ -1,0 +1,208 @@
+{
+  "compare": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Compares text by Unicode character (code point). SAP PO compares UTF-16 units, so text with an emoji or another character beyond the Basic Multilingual Plane can sort differently."
+    },
+    "inputs": [
+      {
+        "name": "a"
+      },
+      {
+        "name": "b"
+      }
+    ],
+    "portable": true
+  },
+  "concat": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "a"
+      },
+      {
+        "name": "b"
+      }
+    ],
+    "portable": true
+  },
+  "endsWith": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      },
+      {
+        "name": "suffix"
+      }
+    ],
+    "portable": true
+  },
+  "equalsS": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "a"
+      },
+      {
+        "name": "b"
+      }
+    ],
+    "portable": true
+  },
+  "indexOf": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Counts positions in Unicode characters (code points). SAP PO counts UTF-16 units, so positions after an emoji or another character beyond the Basic Multilingual Plane differ."
+    },
+    "inputs": [
+      {
+        "name": "value"
+      },
+      {
+        "name": "search"
+      }
+    ],
+    "portable": true
+  },
+  "lastIndexOf": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Counts positions in Unicode characters (code points). SAP PO counts UTF-16 units, so positions after an emoji or another character beyond the Basic Multilingual Plane differ."
+    },
+    "inputs": [
+      {
+        "name": "value"
+      },
+      {
+        "name": "search"
+      }
+    ],
+    "portable": true
+  },
+  "length": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Counts Unicode characters (code points). SAP PO counts UTF-16 units, so an emoji or another character beyond the Basic Multilingual Plane counts as two there."
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  },
+  "replaceString": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "params": [
+      {
+        "default": "",
+        "name": "search",
+        "type": "string"
+      },
+      {
+        "default": "",
+        "name": "replacement",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "startsWith": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      },
+      {
+        "name": "prefix"
+      }
+    ],
+    "portable": true
+  },
+  "substring": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "deviation",
+      "text": "Start and length count Unicode characters (code points). SAP PO counts UTF-16 units, so the cut differs after an emoji or another character beyond the Basic Multilingual Plane."
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "params": [
+      {
+        "default": "0",
+        "name": "start",
+        "type": "string"
+      },
+      {
+        "default": "0",
+        "name": "length",
+        "type": "string"
+      }
+    ],
+    "portable": true
+  },
+  "toLowerCase": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  },
+  "toUpperCase": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  },
+  "trim": {
+    "executionKind": "single",
+    "fidelity": {
+      "level": "exact"
+    },
+    "inputs": [
+      {
+        "name": "value"
+      }
+    ],
+    "portable": true
+  }
+}

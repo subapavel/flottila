@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-sku-flat.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (the input is never validated; a value whose JSON kind does not fit its field reads as absent: an object or array for a leaf); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. The leaf $/lines/sku in the root's one context: the second line's sku is an object and the third's an array, so neither is an occurrence of sku, and only a and d are read."
+}

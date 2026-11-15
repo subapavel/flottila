@@ -1,0 +1,178 @@
+{
+  "case": "fn/copyValue/004",
+  "input": "copyValue-004.xml",
+  "node": "F1",
+  "source": "CPI Function Message Queue",
+  "rows": [
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "copyValue:in1"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "copyValue:out1"
+        }
+      ],
+      "row": 1
+    },
+    {
+      "cells": [
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "<null>"
+        },
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "SUPPRESS"
+        }
+      ],
+      "row": 2
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "[ ]"
+        },
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "SUPPRESS"
+        }
+      ],
+      "row": 3
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": true,
+          "text": "SUPPRESS"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": ""
+        }
+      ],
+      "row": 4
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "[ ]"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": ""
+        }
+      ],
+      "row": 5
+    },
+    {
+      "cells": [
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "<null>"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": ""
+        }
+      ],
+      "row": 6
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": true,
+          "text": "SUPPRESS"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": ""
+        }
+      ],
+      "row": 7
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": "[ ]"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": ""
+        }
+      ],
+      "row": 8
+    },
+    {
+      "cells": [
+        {
+          "contextChange": true,
+          "end": false,
+          "suppress": false,
+          "text": "<null>"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": ""
+        }
+      ],
+      "row": 9
+    },
+    {
+      "cells": [
+        {
+          "contextChange": false,
+          "end": true,
+          "suppress": false,
+          "text": "[ ]"
+        },
+        {
+          "contextChange": false,
+          "end": false,
+          "suppress": false,
+          "text": ""
+        }
+      ],
+      "row": 10
+    }
+  ]
+}

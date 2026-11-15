@@ -1,0 +1,6 @@
+PO 7.5, Check, mapping mc-memo.
+No errors found during object check
+Problem 0
+Warning 0
+
+Verified in Definition: Id has context Orders and is connected to Grp. Memo/Text uses its default Memo context and is connected directly to Row. Target Row occurrence is 1..2; Val is unmapped.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-short-one.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (a value whose JSON kind does not fit its field reads as absent: a non-array for an array property, whatever its maxItems); #118",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. $/one is an array property at 0..1 and the input gives it one string, not an array, so one never occurs and no All is written. Read by its maximum, one would be a leaf and the string a would be written as All."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-43 addendum: a value that is not a boolean ends the run, as observed on no (F-37); was assumed: ADR-0006 Consequences, createIf (amended with #133, F-37): PO casts with Bool.toBoolean, so yes is no boolean and ends the run with po:CREATEIF at the createIf box (F-37, corpus/observations/obs-target-creation/po75/max-002-spec2-create-if-row.txt); before #133 this case expected two empty All; assumed until obs-lift-reuse answers",
+  "expect": "error",
+  "note": "One context of six conditions: TRUE, 1, yes, 0, \" true\" and \"\". TRUE and 1 are true and 0 is false, but yes is the first value that is no boolean, so the run raises po:CREATEIF at C1. Before #133 yes was read as false and the case expected two empty All."
+}

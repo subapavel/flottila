@@ -1,0 +1,10 @@
+{
+  "title": "A $ref outside the bundle, a $dynamicRef and two keywords json-sKema finds invalid",
+  "type": "object",
+  "properties": {
+    "party": {"$ref": "party.schema.json"},
+    "count": {"type": 5},
+    "node": {"$dynamicRef": "#node"},
+    "buyer": {"$ref": "#/$defs/Buyer"}
+  }
+}

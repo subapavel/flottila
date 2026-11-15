@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/json-numbers.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0008 \"JSON as a source at run time\" (spec-4 grilling, 2026-11-05: numbers keep their input spelling; Saxon-HE 12.5's json-to-xml keeps it, observed 2026-11-05); #98",
+  "expect": "output",
+  "note": "PO message mappings have no JSON source, so the reading is decided. The array of numbers $/numbers in the root's one context: each number is written as the input spells it, 1.50 with its trailing zero, 1e2 with its exponent, -0.0 with its sign, and a 20-digit decimal whole. A reading through xs:decimal or xs:double would give 1.5, 100, 0 and a rounded number."
+}

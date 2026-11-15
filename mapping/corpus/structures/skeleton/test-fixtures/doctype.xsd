@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#25): a DOCTYPE is refused, so no entity is ever resolved -->
+<!DOCTYPE xs:schema SYSTEM "missing.dtd">
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:skeleton">
+  <xs:element name="Order"><xs:complexType/></xs:element>
+</xs:schema>

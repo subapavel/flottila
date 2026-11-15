@@ -1,0 +1,10 @@
+SAP PO observation: fn/replaceString/002
+Date: 2026-11-12
+Mapping: text_replaceString_dollar
+Input: replaceString-002.xml (original corpus file; source XML verified before execution)
+Graph: Sku (Orders context) -> replaceString input 1; Constant "$" -> input 2; Constant "\$1" -> input 3; replaceString -> Out/All.
+Check: No errors found during object check; Problem 0, Warning 0. Check invoked through Message Mapping menu after F7 did not display a result.
+Processing Log: 17:32:08 Start of test; Compilation of text_replaceString_dollar successful; Execution of mapping on server took 6 milliseconds; Executed successfully; 17:32:09 End of test.
+Observed All value: a\$1b\$1. Both dollar signs were replaced literally, including the backslash and dollar sign in the replacement.
+Original result export: replaceString-002-text-replaceString-dollar.zip; instance.xml copied byte-for-byte to replaceString-002-text-replaceString-dollar.xml.
+No queue requested or captured. Screenshots inspected during the run but not retained.

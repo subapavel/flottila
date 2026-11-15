@@ -1,0 +1,22 @@
+SAP PO 7.50, ESR message mapping, 2026-11-12
+Case: fn/constant/005
+Mapping: constant_concat_constants
+Input: original constant-001.xml imported through Test UI, unchanged.
+Graph: Order (Orders context) -> Item. Separate Constant a and Constant b
+feed F1 concat in0 and in1 -> Item/V. Another separate pair Constant a and
+Constant b feed F2 concat in0 and in1 -> All. W unmapped.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+Test: 09:39:20 Start of test; compilation successful; execution 9 milliseconds;
+Executed successfully; 09:39:21 End of test.
+Result exported via UI to constant-005-constant-concat-constants.zip. Its instance.xml
+was extracted unchanged as constant-005-constant-concat-constants.xml.
+
+F1 Display Queue: compilation successful; execution 9 milliseconds; executed successfully.
+Literal displayed rows (brackets are UI notation; no italic cells observed):
+row | concat:in0 | concat:in1 | concat:out
+0 | [a] [gray] | [b] [gray] | [ab] [gray]
+1 | [a] [dark gray] | [b] [dark gray] | [ab] [dark gray]
+
+Reading: confirmed. Each of the three Items has one V ab, including the Order
+without Lines. The root has one All ab. Gray and dark-gray display rows above
+are preserved literally and not counted as two separate values.

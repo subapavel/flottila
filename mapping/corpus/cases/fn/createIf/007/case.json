@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/create-if.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-target-creation-2 (#212, #214), run 2026-11-11: PO 7.50 and CPI both end in an error as expected-error.json: corpus/observations/obs-target-creation-2/po75/createIf-007-create-if.txt and corpus/observations/obs-target-creation-2/cpi/createIf-007-create-if.txt; before #214: ADR-0006 Consequences, createIf (amended with #133, F-37): PO casts with Bool.toBoolean, observed in #31; assumed until obs-target-creation-2 (#134) answers: no trimming, so \" true\" is no boolean; po:CREATEIF at the createIf box, the one code of a context function (RuntimeErrors)",
+  "expect": "error",
+  "note": "One Tag \" true\" with a leading space. The cast does not trim, so the run raises po:CREATEIF at C1. A cast that trims would give one empty All."
+}

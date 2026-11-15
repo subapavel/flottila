@@ -1,0 +1,14 @@
+SAP PO observation 2026-11-11
+Mapping: spec2_suppress_sort_format; case fn/sort/012.
+Source: src-orders.xsd; target: tgt-list.xsd.
+Tag context Orders -> createIf -> sort -> formatByExample input 1; Sku context Order -> formatByExample input 2; formatByExample -> Out/All only.
+Sort parameters observed: case sensitive, ascending.
+Saved. Check: No errors found during object check; Problem 0, Warning 0.
+Input: original sort-012.xml imported through test UI, no edits.
+22:38:32 Start of test
+Compilation of spec2_suppress_sort_format successful
+Execution of mapping on server took 8 milliseconds
+Executed successfully
+22:38:33 End of test
+Result exported through UI as spec2-suppress-sort-format-012-export.zip; instance.xml extracted unchanged as spec2-suppress-sort-format-012.xml.
+Reading: Two empty All elements. Ascending sort places empty values before SUPPRESS; contradicts the proposed SUPPRESS-first assumption, agrees with CPI. See corresponding queue transcript.

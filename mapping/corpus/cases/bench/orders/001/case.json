@@ -1,0 +1,7 @@
+{
+  "mapping": "bench/orders/orders.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0021",
+  "expect": "none",
+  "note": "The orders bench mapping on its small input, as corpus/bench/orders/OrdersGenerator.java writes it from the seed in bench.json (#183): differential only, so every benchmark of it times output that Saxon agrees with."
+}

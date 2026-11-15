@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/boolean-ifWithoutElse-collapse-tags.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-boolean, mapping boolean-ifWithoutElse-collapse-tags, input ifWithoutElse-010.xml: corpus/observations/obs-boolean/po75/ifWithoutElse-010-boolean-ifWithoutElse-collapse-tags.xml and cpi/ifWithoutElse-010-boolean-ifWithoutElse-collapse-tags.xml, with their checks; PO 7.50 and CPI agree (meta.json), Keep SUPPRESS Values unchecked; F-44, ADR-0006 Consequences, ifWithoutElse",
+  "expect": "output",
+  "note": "collapseContexts(ifWithoutElse(Qty in context Order, Tag in context Orders)) onto All: the condition has two contexts, one per Order, the value one in all. o1: Tag x, Line (a, true); o2: Line (b, true). The result has as many contexts as the then input: context 1 pairs true with x, and o2's true condition has no value context, so there is no context 2 and no second All (fn/ifWithoutElse/009 is the other way round: a value context beyond the condition's last gives an empty context)."
+}

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): simple content. An element of a complex type with simple content is a leaf,
+     whose value type comes from the built-in ancestry of its base, and whose attributes are fields
+     of their own, the base's first (ADR-0006 since #102, ADR-0008). A restriction keeps its base's
+     value type, its facets shown and never validated (ADR-0004), and its base's attributes but
+     those it marks use="prohibited" -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:simple"
+           targetNamespace="urn:flottila:corpus:simple">
+  <xs:element name="Invoice">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Total" type="tns:Money" nillable="true"/>
+        <xs:element name="Tax" type="tns:TaggedMoney" minOccurs="0"/>
+        <xs:element name="Code">
+          <xs:complexType>
+            <xs:simpleContent>
+              <xs:extension base="tns:Code">
+                <xs:attribute name="list" type="xs:string"/>
+              </xs:extension>
+            </xs:simpleContent>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="Count" type="tns:Bare"/>
+        <xs:element name="Small" type="tns:SmallMoney"/>
+        <xs:element name="Stamped" type="tns:StampedMoney"/>
+        <xs:element name="Tagged" type="tns:RequiredTagMoney"/>
+        <xs:element name="Untagged" type="tns:UntaggedMoney"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="Money">
+    <xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="currency" type="xs:string" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="TaggedMoney">
+    <xs:simpleContent>
+      <xs:extension base="tns:Money">
+        <xs:attribute name="tag" type="xs:string"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="Bare">
+    <xs:simpleContent>
+      <xs:extension base="xs:int"/>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="SmallMoney">
+    <xs:simpleContent>
+      <xs:restriction base="tns:TaggedMoney">
+        <xs:maxInclusive value="100"/>
+        <xs:attribute name="tag" type="xs:string" use="prohibited"/>
+      </xs:restriction>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:simpleType name="Code">
+    <xs:restriction base="xs:token"/>
+  </xs:simpleType>
+  <!-- attribute groups in simple content: an extension's and a restriction's attributes, and a
+       restriction's prohibition; xs:anyAttribute has no effect -->
+  <xs:attributeGroup name="Stamp">
+    <xs:attribute name="stamp" type="xs:string"/>
+    <xs:anyAttribute/>
+  </xs:attributeGroup>
+  <xs:attributeGroup name="RequiredTag">
+    <xs:attribute name="tag" type="xs:string" use="required"/>
+  </xs:attributeGroup>
+  <xs:attributeGroup name="NoTag">
+    <xs:attribute name="tag" use="prohibited"/>
+  </xs:attributeGroup>
+  <xs:complexType name="StampedMoney">
+    <xs:simpleContent>
+      <xs:extension base="tns:Money">
+        <xs:attributeGroup ref="tns:Stamp"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="RequiredTagMoney">
+    <xs:simpleContent>
+      <xs:restriction base="tns:TaggedMoney">
+        <xs:attributeGroup ref="tns:RequiredTag"/>
+      </xs:restriction>
+    </xs:simpleContent>
+  </xs:complexType>
+  <xs:complexType name="UntaggedMoney">
+    <xs:simpleContent>
+      <xs:restriction base="tns:TaggedMoney">
+        <xs:attributeGroup ref="tns:NoTag"/>
+      </xs:restriction>
+    </xs:simpleContent>
+  </xs:complexType>
+</xs:schema>

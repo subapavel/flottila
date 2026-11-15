@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/exists-default-context.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 exists: \"O = true, if the source field assigned to inbound channel I exists in the XML instance. Otherwise, false.\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm] [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/db/83f7b88528424c9113b15d5e0fb516/content.htm]",
+  "expect": "output",
+  "note": "exists on the 0..1 field Id in its default context Order, as in the SAP example, over one Order that has an Id: its one context holds a value, so All is true. Per value and per context agree here, as the context holds at most one value. A false for a present field would give false."
+}

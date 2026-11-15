@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/replace-value-create-if.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-lift-reuse (#212, #216, F-45), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both replace the SUPPRESS too and write three All yes: corpus/observations/obs-lift-reuse/po75/replaceValue-002-spec2-replace-value-create-if.xml and corpus/observations/obs-lift-reuse/cpi/replaceValue-002-spec2-replace-value-create-if.xml, the run in po75/spec2-replace-value-create-if-check.txt; before #216: ADR-0006 Consequences: SUPPRESS in a Lift input gives SUPPRESS, for every single-value function (assumed reading); obs-lift-reuse lift-2 (#32): W assumed A, C, a single-value function passes SUPPRESS on; observation #61 (contradicted for replaceValue)",
+  "expect": "output",
+  "note": "replaceValue(createIf(Tag), yes) with Tag true, false, true in context Orders. createIf gives \"\", SUPPRESS, \"\"; replaceValue replaces every slot with yes, the SUPPRESS included, so All is yes, yes, yes. The assumed reading passed the SUPPRESS on and gave two All."
+}

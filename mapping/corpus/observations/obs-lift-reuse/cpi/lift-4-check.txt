@@ -1,0 +1,6 @@
+CPI Message Mapping, Save, mapping lift-4.
+No error dialog, red target or error triangle displayed after Save.
+Order -> Item is node to node.
+V branch: independent constant K1 with value k -> count N1 -> Out/Item/V.
+W branch: independent constant K2 with value k -> removeContexts R1 -> Out/Item/W.
+All stays unmapped. No source field feeds either constant/function chain.

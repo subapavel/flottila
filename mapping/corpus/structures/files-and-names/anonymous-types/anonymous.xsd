@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#89 review): anonymous simple types under elements and attributes, local and global.
+     Each value type comes from the built-in ancestry (US 5): a restriction gives its base's, a list
+     and a union a string. default, fixed and nillable are read as on a typed element -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:flottila:corpus:anonymous"
+           targetNamespace="urn:flottila:corpus:anonymous">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Amount">
+          <xs:simpleType>
+            <xs:restriction base="xs:decimal">
+              <xs:totalDigits value="9"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="Count" minOccurs="0" nillable="true" default="1">
+          <xs:simpleType>
+            <xs:restriction base="tns:Quantity"/>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="Codes">
+          <xs:simpleType>
+            <xs:list itemType="xs:int"/>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element name="Either" maxOccurs="unbounded">
+          <xs:simpleType>
+            <xs:union memberTypes="xs:int xs:date"/>
+          </xs:simpleType>
+        </xs:element>
+        <xs:element ref="tns:Due"/>
+      </xs:sequence>
+      <xs:attribute name="paid">
+        <xs:simpleType>
+          <xs:restriction base="xs:boolean"/>
+        </xs:simpleType>
+      </xs:attribute>
+      <xs:attribute ref="tns:rate" use="required"/>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Due" fixed="2026-01-01">
+    <xs:simpleType>
+      <xs:restriction base="xs:date"/>
+    </xs:simpleType>
+  </xs:element>
+  <xs:attribute name="rate">
+    <xs:simpleType>
+      <xs:restriction base="xs:decimal"/>
+    </xs:simpleType>
+  </xs:attribute>
+  <xs:simpleType name="Quantity">
+    <xs:restriction base="xs:int"/>
+  </xs:simpleType>
+</xs:schema>

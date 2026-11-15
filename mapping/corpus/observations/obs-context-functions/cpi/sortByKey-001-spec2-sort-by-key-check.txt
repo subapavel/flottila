@@ -1,0 +1,15 @@
+Date: 2026-11-12
+Case: fn/sortByKey/001
+Artifact: api_spec2_sort_by_key
+Input: original sortByKey-001.xml
+Preparation: existing API-created artifact; no mapping mutation in this run.
+UI verification: Local (2), src-orders and tgt-list. Source tooltips Sku and Qty
+both show context /Orders/Order. sortByKey Comparison rule case sensitive,
+Order asc selected. removeContexts and target /Out/All present in rendered SVG.
+Test: completed; output tree All 3,2,1,4,5,7,6.
+Output: Download Output, original bytes copied to sortByKey-001-spec2-sort-by-key.xml.
+Reading: confirmed; UTF-16 ascending ordering within each Order context.
+No display queue requested for this case. No screenshot file saved.
+Tenant version: prior 2026-11-11 version evidence retained; not rechecked this run.
+Upload used Enter on the browser file input and filechooser.setFiles.
+No system mouse/keyboard control, direct SAP API simulation or SAP PO interaction.

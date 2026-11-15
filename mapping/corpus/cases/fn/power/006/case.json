@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/power.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0005: an integer power is exact only up to the exponent 1000, so that one box cannot build an unbounded number; above it power is computed in xs:double",
+  "expect": "error",
+  "note": "3^1001 has an exponent above 1000, so it is a double power, Infinity here: power raises err:FORG0001 at its box V1. Exactly, it would be a number of 478 digits."
+}

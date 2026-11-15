@@ -1,0 +1,7 @@
+SAP PO environment observation 2026-11-11
+Case fn/sort/013; mapping spec2_suppress_sort_descending_format.
+Copied the saved ascending mapping after its output and queue were recorded. Copy opened successfully. Entered edit mode. Observed case sensitive and descending selected in sort parameters; confirmed OK.
+Save was attempted. The editor remained on Definition, mapping tab red and save icon enabled. Subsequent Message Mapping menu and Test-tab clicks did not open the requested surface. Accessibility repeatedly reported unavailable state; a later recovery check returned the window shell, but the next menu attempt again left the screen unchanged and accessibility unavailable.
+ENVIRONMENT_BLOCKED: SAP PO editor stopped responding after Save. Save completion, object Check, test execution and result export were not observed. No runtime result or queue is claimed for this case. The original ascending result remains preserved separately.
+Remaining unattempted PO catch-up: ctx-2, ctx-3 eachValue/valueChange/emptyValue, ctx-6a, ctx-6b. They were not executed in this blocked editor session. Do not count them as runtime failures.
+Resume: first inspect the current editor and saved sort parameters. Do not repeat completed ascending case fn/sort/012. Then import original sort-013.xml, Check, execute and export if the editor is responsive.

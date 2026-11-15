@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/remove-contexts.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/spec2-remove-contexts-002.xml and corpus/observations/obs-context-functions/cpi/f1-spec2-remove-contexts.xml; before #214: ADR-0004 \"removeContexts shares the value array\": an empty context has no slot, so nothing of it is kept; #2 §7.6 (assumed yes, not stated); obs-context-functions ctx-1 f1.xml decides it",
+  "expect": "output",
+  "note": "The input of obs-context-functions ctx-1 (f1.xml). Sku in context Line is a | (empty) | \"\" | b: o2's Line has no Sku and gives an empty context, o3 has no Line and gives no context, o4's <Sku/> is the value \"\". removeContexts drops the empty context and keeps the empty string, so All is a, \"\", b. If empty contexts were kept as \"\", there would be a fourth All."
+}

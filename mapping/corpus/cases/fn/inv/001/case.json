@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/arith-inv.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212, ticket #221), finding F-50: PO and CPI give 0.33333333333333333 (17 threes, obs-arithmetic inv-001), Flottila 18; expected output kept; was assumed: spec #70 story 5: inv is an assumed reading, 1 divided by the value; obs-arithmetic i1.xml decides",
+  "expect": "output",
+  "note": "inv is read as 1 divided by the value, with ADR-0005's division rule: 1/4 is 0.25, 1/3 is 0.333333333333333333, 1/-2 is -0.5 and 1/0.5 is 2. To observe in PO: the other reading of inv is the sign change."
+}

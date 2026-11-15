@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "properties": {
+    "buyer": {"$ref": "#/$defs/Buyer"},
+    "seller": {"$ref": "#/$defs/Seller"}
+  }
+}

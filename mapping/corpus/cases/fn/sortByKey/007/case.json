@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/sort-by-key.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 sortByKey: like sort over (key, value) pairs, input 1 keys, input 2 values; key/value count mismatch → exception [SAP✓ STD]; po:SORTBYKEY at the box is ADR-0025 since #52 (O3 revised)",
+  "expect": "error",
+  "note": "The second Line has a Sku but no Qty, so the Order has two keys and one value: the run raises po:SORTBYKEY at K1."
+}

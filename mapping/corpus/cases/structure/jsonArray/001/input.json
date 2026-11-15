@@ -1,0 +1,5 @@
+{
+  "skipped": {"lines": [{"sku": "z"}]},
+  "order": {"id": "o1"},
+  "lines": [{"sku": "a"}, {"sku": "b"}, {}, {"sku": "c"}]
+}

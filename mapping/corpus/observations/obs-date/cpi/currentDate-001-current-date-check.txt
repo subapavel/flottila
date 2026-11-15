@@ -1,0 +1,11 @@
+CPI observation 2026-11-13: fn/currentDate/001
+Artifact: api_current_date
+Input: original currentDate-001.xml uploaded through simulator.
+Visible graph: currentDate -> /Out/All.
+VERIFIED_PASS for execution: one All value 2026/11/13. Original downloaded XML preserved.
+External UTC observation bracket: 2026-11-13 01:43:35 before Test; 01:44:16 after observed result. This is not a message-monitor start timestamp. Exact JVM zone ID and live editor default remain unverified. No environment settings changed.
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_current_date.json, cpi/native-default-currentDate-001.txt.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

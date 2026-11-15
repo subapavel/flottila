@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-choice.xsd"
+    ],
+    "fingerprint": "sha256:49a6269dbb5b409cc061dc9e732e4e2142ecf725ba411e29a1949b0eea5048bf",
+    "root": {
+      "element": "Choice"
+    }
+  },
+  "targetFieldMappings": {
+    "/Choice/Pick/A": {
+      "boxes": {
+        "C1": {
+          "fn": "constant",
+          "kind": "function",
+          "params": {
+            "value": "A"
+          }
+        },
+        "E1": {
+          "fn": "equalsS",
+          "inputs": [
+            "S1",
+            "C1"
+          ],
+          "kind": "function"
+        },
+        "S1": {
+          "context": "/Orders",
+          "field": "/Orders/Order/Id",
+          "kind": "source"
+        },
+        "S2": {
+          "context": "/Orders",
+          "field": "/Orders/Order/Id",
+          "kind": "source"
+        },
+        "X1": {
+          "fn": "ifWithoutElse",
+          "inputs": [
+            "E1",
+            "S2"
+          ],
+          "kind": "function"
+        }
+      },
+      "id": "T1",
+      "result": "X1"
+    }
+  }
+}

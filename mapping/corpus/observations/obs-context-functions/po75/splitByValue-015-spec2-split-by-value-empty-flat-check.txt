@@ -1,0 +1,12 @@
+SAP PO observation 2026-11-12
+Mapping spec2_split_by_value_empty_flat; fn/splitByValue/015; original f3.xml imported unchanged via UI; source XML checked (a,a,empty,b,empty).
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag default context Order -> removeContexts R1 -> splitByValue (Empty Value) -> removeContexts R2 -> All. Nothing else mapped.
+Saved graph verified. Check: No errors found during object check; Problem 0, Warning 0.
+01:40:54 Start of test
+Compilation of spec2_split_by_value_empty_flat successful
+Execution of mapping on server took 6 milliseconds
+Executed successfully
+01:40:55 End of test
+UI export instance.xml extracted unchanged.
+Reading: All a,a,b. Both empty values dropped; confirmed assumed reading. CPI not run yet.

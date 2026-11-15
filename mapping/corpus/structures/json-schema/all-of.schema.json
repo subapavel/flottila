@@ -1,0 +1,28 @@
+{
+  "title": "allOf merges its subschemas, even a lone one; a $ref beside properties merges too",
+  "type": "object",
+  "required": ["id"],
+  "properties": {
+    "id": {"type": "string"},
+    "audit": {
+      "$ref": "#/$defs/Audited",
+      "properties": {"by": {"type": "string"}}
+    },
+    "meta": {"allOf": [{"$ref": "#/$defs/Audited"}]}
+  },
+  "allOf": [
+    {"$ref": "#/$defs/Audited"},
+    {
+      "required": ["note"],
+      "properties": {
+        "note": {"type": "string"},
+        "id": {"type": "string"}
+      }
+    }
+  ],
+  "$defs": {
+    "Audited": {
+      "properties": {"createdAt": {"type": "string", "format": "date-time"}}
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/ceil.mapping.json",
+  "provenance": "decided",
+  "ref": "ADR-0003 (the F&O core: fn:ceil)",
+  "expect": "output",
+  "note": "Qty is 1.2, -1.2, 3, -0.5, 0.0, 2.50 and -3.999: the least whole number not below it. 2, -1, 3, 0, 0, 3, -3; -0.5 is written 0, never -0."
+}

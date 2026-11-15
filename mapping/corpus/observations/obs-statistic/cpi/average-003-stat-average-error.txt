@@ -1,0 +1,7 @@
+CPI observation 2026-11-13: fn/average/003
+Artifact: api_stat_average
+Input: original average-003.xml uploaded through simulator.
+Visible graph verified: Order context /Orders -> Item; Qty context /Orders/Order -> average -> V.
+Result: EXECUTED_FAIL, specific mapping exception, not a generic simulator failure. No output XML available. Empty contexts do not yield the assumed absent V; execution fails with Division undefined.
+Error text (opaque Java object identities and exchange ID redacted):
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/Item/V. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Division undefined] in class com.sap.aii.mappingtool.flib7.Stat method average[[Ljava.lang.String;@[redacted], com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[redacted], com.sap.aii.mappingtool.tf7.rt.Context@[redacted]] on the exchange: Exchange[redacted]

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#94): the branches of a choice become sibling fields. A branch of a choice with two
+     or more branches has minimum 0, an xs:any branch among them; a choice of one branch keeps the
+     branch's minimum. The choice's own occurrence multiplies into its branches (ADR-0008). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:groups">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+        <xs:choice>
+          <xs:element name="Cash" type="xs:decimal"/>
+          <xs:element name="Card" type="xs:string" maxOccurs="2"/>
+          <xs:any processContents="skip"/>
+        </xs:choice>
+        <xs:choice minOccurs="0" maxOccurs="3">
+          <xs:element name="Only" type="xs:integer"/>
+        </xs:choice>
+        <xs:choice>
+          <xs:element name="Sole" type="xs:string"/>
+        </xs:choice>
+        <xs:element name="Tail" type="xs:date"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

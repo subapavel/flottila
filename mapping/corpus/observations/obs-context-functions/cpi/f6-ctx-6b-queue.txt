@@ -1,0 +1,14 @@
+Display Queue of box CC (collapseContexts), CPI Function Message Queue after f6.xml, mapping ctx-6b (artifact ctx_6a edited in place).
+S. No. enabled. Gray and dark-gray cells are italic; white cells use normal type.
+
+row  collapseContexts:in1  shading    collapseContexts:out1  shading
+0    <null>                gray       <null>                 gray
+1    5                     white      5                      white
+2    5                     gray       SUPPRESS               white
+3    SUPPRESS              white      7                      white
+4    SUPPRESS              gray       7                      dark gray
+5    7                     white      (none)
+6    7                     dark gray  (none)
+
+Reading: in1 = [5] [SUPPRESS] [7]; out1 = [5,SUPPRESS,7].
+collapseContexts preserves SUPPRESS as the selected value of its context; it does not turn it into an empty string. XML omits the suppressed All and contains only 5 and 7.

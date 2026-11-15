@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#96): a file in a WSDL bundle whose document element is neither a WSDL document nor
+     an xs:schema; it is read as an XSD -->
+<wsdl:types xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"/>

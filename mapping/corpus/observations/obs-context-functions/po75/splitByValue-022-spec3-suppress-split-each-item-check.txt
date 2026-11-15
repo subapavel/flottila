@@ -1,0 +1,12 @@
+SAP PO observation 2026-11-12
+Mapping spec3_suppress_split_each_item; fn/splitByValue/022.
+Original splitByValue-019.xml imported unchanged via UI: true,false | true,false,false.
+Source src-orders.xsd Orders; target tgt-list.xsd Out.
+Tag context Orders -> createIf -> splitByValue (Each Value) -> Item/V.
+Separate Tag context Orders -> Item. Nothing else mapped; copied All mapping removed.
+Saved, both source context labels italic; Check: No errors found during object check; Problem 0, Warning 0.
+02:13:56 Start of test
+Compilation successful; execution 7 milliseconds; executed successfully.
+02:13:57 End of test
+UI export instance.xml extracted unchanged: five Item elements. Items 1 and 3 contain empty V; Items 2, 4 and 5 contain no V.
+Reading: confirmed. SUPPRESS preserves its singleton context and suppresses V in the corresponding Item; it is neither converted to an empty string nor dropped from the positional alignment. CPI not run yet.

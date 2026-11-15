@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/use-one-as-many-root-value.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-useoneasmany (#34, #212), mapping spec2-use-one-as-many-root-value, input u1.xml: PO 7.50 (2026-11-11) and CPI 6.84.77 (2026-11-12) both end in an error at U1 on /Out/All, Too few values in the first queue ... It must have the same number of contexts as the second queue: corpus/observations/obs-useoneasmany/po75/u1-spec2-use-one-as-many-root-value.txt and cpi/useOneAsMany-003-root-value-error.txt; F-48, ADR-0025 Consequences (useOneAsMany needs one value per context of input 1 and as many contexts as input 2); po:USEONEASMANY at the box is ADR-0025 since #52",
+  "expect": "error",
+  "note": "Inputs with different context counts, over obs-useoneasmany u1.xml. Id in context Orders is one context A, B, while Sku in context Order has two, s1,s2,s3 | s4, and Sku in context Line four. Input 1 has one context for input 2's two and two values in it: po:USEONEASMANY at U1. Its values meeting input 2's contexts in order, the reading before F-48, gives All A, A, A, B."
+}

@@ -1,0 +1,10 @@
+Case: fn/average/004
+Date: 2026-11-12
+Environment: SAP PO 7.50 ESR message mapping
+Mapping: stat_average_suppress
+Input: unchanged ../average-004.xml imported through Test UI and verified in SRC.
+Graph: Order (context Orders) -> Item; Tag (default context Order) -> createIf -> replaceValue (Value to Produce: 5) -> average -> V. W and All unmapped.
+Definition saved; Save disabled. Object check: No errors found during object check; Problem 0, Warning 0.
+Test log: 11:32:39 Start of test; Compilation of stat_average_suppress successful; Execution of mapping on server took 7 milliseconds; Executed successfully; 11:32:40 End of test.
+Result observed in SRC and exported through UI to average-004-stat-average-suppress.zip. XML extracted unchanged from instance.xml.
+Reading: contradicted. All three Items contain V 5, including the second order whose Tag is false. The assumed reading was 5, no V, 5. This is the result of the complete requested chain; no intermediate queue was requested or captured for this case, so it does not independently establish how average treats an incoming SUPPRESS token.

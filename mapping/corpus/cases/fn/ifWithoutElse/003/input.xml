@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Line><Sku>a</Sku><Qty>true</Qty></Line>
+    <Line><Sku>b</Sku><Qty>false</Qty></Line>
+  </Order>
+  <Order>
+    <Id>o2</Id>
+    <Line><Sku>c</Sku><Qty>false</Qty></Line>
+    <Line><Sku>d</Sku><Qty>TRUE</Qty></Line>
+  </Order>
+  <Order>
+    <Id>o3</Id>
+    <Line><Sku>e</Sku><Qty>true</Qty></Line>
+  </Order>
+</Orders>

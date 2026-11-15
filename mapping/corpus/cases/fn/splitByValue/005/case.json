@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/split-by-value-each.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-005-spec2-split-by-value-each.xml and corpus/observations/obs-context-functions/cpi/collapseContexts-003-spec2-split-by-value-each.xml; before #214: ADR-0004 \"An absent parent gives zero contexts, not one empty context\" (assumed reading, Consequences); #2 §7.6 (empty contexts)",
+  "expect": "output",
+  "note": "An empty input: <Orders/> has no Order, so the Tag queue has no context; removeContexts gives one empty context and S1 keeps it as one empty context, so the root's slot creates no All."
+}

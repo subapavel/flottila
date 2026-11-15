@@ -1,0 +1,18 @@
+CPI observation: fn/ifWithoutElse/001
+Date: 2026-11-12
+Artifact: api_boolean_ifWithoutElse_item
+Input: ifWithoutElse-001.xml
+Verified editor expressions: Qty and Sku with context /Orders -> ifWithoutElse -> /Out/Item; Sku with context /Orders/Order/Line -> /Out/Item/V.
+Simulation completed: three Items with V values a, c, d.
+Exact downloaded output: ifWithoutElse-001-boolean-ifWithoutElse-item.xml.
+After simulation, entered Edit solely to inspect the existing function: checkbox label "Keep SUPPRESS", unchecked. No parameter changed.
+Contradicts the request's assumed a, b, c output with the parameter unset/off.
+The requested X1 display queue was not captured: both Enter on the queue file input and a retry via its upload button timed out waiting for a file chooser. This is a tooling limitation, not a mapping error. Do not infer the intermediate queue from the XML output.
+The default of a freshly inserted function was not independently verified.
+
+2026-11-13 VERIFIED_PASS parameter/queue audit: Live export confirms keepss=true where configured and no keepss binding for default variants. Direct expanded editor inspection of api_boolean_ifWithoutElse_item shows Keep SUPPRESS unchecked, establishing the default used by absent bindings. No mapping or setting change saved. Live Function Message Queue with original input: output a,SUPPRESS,c,d in the root context. Leading context-change row and trailing end row are markers, not values. Raw DOM cells and marker flags saved in cpi/ifWithoutElse-001-queue.json. Evidence: cpi/parameter-audit/api_boolean_ifWithoutElse_item.json
+
+Parameter/queue audit closeout 2026-11-13
+Parameter/default/queue checks: complete. Evidence: cpi/parameter-audit/api_boolean_ifWithoutElse_item.json, cpi/ifWithoutElse-001-queue.json.
+Stored bindings and requested editor/queue checks verified; see latest meta.json run.
+Environment provenance and prohibited time-zone variants are not established by this audit. Earlier pending notes are historical; latest meta.json run governs parameter/queue status.

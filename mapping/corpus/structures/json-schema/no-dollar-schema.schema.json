@@ -1,0 +1,7 @@
+{
+  "title": "No $schema: read as draft 2020-12",
+  "type": "object",
+  "properties": {
+    "id": {"type": "integer"}
+  }
+}

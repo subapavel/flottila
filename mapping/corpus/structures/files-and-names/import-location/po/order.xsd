@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#93): an import whose schemaLocation is relative to the importing file, a named
+     complex type, a named simple type and an element reference from another namespace -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:c="urn:flottila:corpus:common"
+           targetNamespace="urn:flottila:corpus:po" elementFormDefault="qualified">
+  <xs:import namespace="urn:flottila:corpus:common" schemaLocation="../common/types.xsd"/>
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+        <xs:element name="ShipTo" type="c:Address"/>
+        <xs:element name="Total" type="c:Money"/>
+        <xs:element ref="c:Note" minOccurs="0" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): xs:override is refused when the schema loads (ADR-0008) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:refused">
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:override schemaLocation="overridden.xsd">
+    <xs:simpleType name="Code">
+      <xs:restriction base="xs:string"/>
+    </xs:simpleType>
+  </xs:override>
+</xs:schema>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Orders>
+  <Order>
+    <Id>o1</Id>
+    <Tag>t1</Tag>
+    <Tag>t2</Tag>
+    <Line><Sku>s1</Sku></Line>
+  </Order>
+  <Order>
+    <Id>o2</Id>
+    <Line><Sku>s2</Sku></Line>
+    <Line><Sku>s3</Sku></Line>
+  </Order>
+  <Order>
+    <Id>o3</Id>
+    <Tag>t3</Tag>
+  </Order>
+  <Order>
+    <Id>o4</Id>
+    <Tag>t4</Tag>
+    <Tag>t5</Tag>
+    <Tag>t6</Tag>
+    <Line><Sku>s4</Sku></Line>
+    <Line><Sku>s5</Sku></Line>
+  </Order>
+  <Order>
+    <Id>o5</Id>
+    <Tag/>
+    <Line><Sku>s6</Sku></Line>
+  </Order>
+</Orders>

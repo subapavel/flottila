@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure (#92 under #93, ADR-0008 "Refused when a mapping uses the field"): the
+     global element Item, which a.xsd reaches by reference, has an anonymous complex type that
+     declares Code twice (the second at line 11). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:refused:ref-b">
+  <xs:element name="Item">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Code" type="xs:string"/>
+        <xs:element name="Code" type="xs:integer"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

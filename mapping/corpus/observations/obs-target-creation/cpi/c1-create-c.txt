@@ -1,0 +1,4 @@
+CPI, message mapping editor, Simulate, input c1.xml, mapping create-c. The simulation does not run; no output.
+
+Error dialog:
+Mapping has validation errors. Please fix them before you simulate.

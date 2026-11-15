@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/fix-values-exact.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/fixValues-008-fix-values-exact.xml and corpus/observations/obs-constant/cpi/fixValues-008-fix-values-exact.xml; before #214: ADR-0026 \"Table params\" (#83), assumed reading: the key matches exactly, in case and in leading or trailing white space; obs-constant row fn/fixValues/008",
+  "expect": "output",
+  "note": "FixValues a=A and ' b'=B, default ?: A, ' a', 'a ' are other keys than a, and b, ' b ' other keys than ' b'."
+}

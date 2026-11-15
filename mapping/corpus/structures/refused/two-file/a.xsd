@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic structure (#92 under #93): the root Doc uses the named complex type Pair of b.xsd
+     for First and for Second, so the refusals inside Pair name b.xsd, on both paths. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:b="urn:flottila:corpus:refused:b"
+           targetNamespace="urn:flottila:corpus:refused:a">
+  <xs:import namespace="urn:flottila:corpus:refused:b" schemaLocation="b.xsd"/>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="First" type="b:Pair"/>
+        <xs:element name="Second" type="b:Pair" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

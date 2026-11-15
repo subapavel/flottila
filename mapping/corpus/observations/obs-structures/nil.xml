@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Nil xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Item><Val>x</Val></Item>
+  <Item><Val xsi:nil="true"/></Item>
+  <Item><Val/></Item>
+  <Item/>
+</Nil>

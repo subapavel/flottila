@@ -1,0 +1,10 @@
+Case: fn/count/002
+Date: 2026-11-12
+Environment: SAP PO 7.50 ESR message mapping
+Mapping: stat_count
+Input: unchanged ../count-002.xml imported through Test UI.
+Graph: Order (context Orders) -> Item; Sku (context explicitly changed from Line to Order) -> count -> V. W and All unmapped.
+Definition saved; Save disabled. Object check: No errors found during object check; Problem 0, Warning 0.
+Test log: 11:15:57 Start of test; Compilation of stat_count successful; Execution of mapping on server took 5 milliseconds; Executed successfully; 11:15:59 End of test.
+Result observed in SRC and exported through UI to count-002-stat-count.zip. XML extracted unchanged from instance.xml.
+Reading: confirmed. The three Items contain V 0, 0, 2. Missing Sku values produce zero; the present empty Sku is counted alongside x.

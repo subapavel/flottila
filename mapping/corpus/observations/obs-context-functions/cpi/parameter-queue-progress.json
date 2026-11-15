@@ -1,0 +1,419 @@
+{
+  "date": "2026-11-13",
+  "scope": "59 parameter/default/queue cases; environment provenance and prohibited time-zone variants remain separate",
+  "cases": [
+    {
+      "case": "fn/average/004",
+      "set": "obs-statistic",
+      "artifact": "api_stat_average_suppress",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_average_suppress.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/compareDates/001",
+      "set": "obs-date",
+      "artifact": "api_compare_dates_001",
+      "parameterEvidence": "cpi/parameter-audit/api_compare_dates_001.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/compareDates/002",
+      "set": "obs-date",
+      "artifact": "api_compare_dates_002",
+      "parameterEvidence": "cpi/parameter-audit/api_compare_dates_002.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/compareDates/004",
+      "set": "obs-date",
+      "artifact": "api_compare_dates_004",
+      "parameterEvidence": "cpi/parameter-audit/api_compare_dates_004.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/constant/003",
+      "set": "obs-constant",
+      "artifact": "api_constant_item",
+      "parameterEvidence": "cpi/parameter-audit/api_constant_item.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/constant/004",
+      "set": "obs-constant",
+      "artifact": "api_constant_concat",
+      "parameterEvidence": "cpi/parameter-audit/api_constant_concat.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/constant/005",
+      "set": "obs-constant",
+      "artifact": "api_constant_concat_constants",
+      "parameterEvidence": "cpi/parameter-audit/api_constant_concat_constants.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/constant/006",
+      "set": "obs-constant",
+      "artifact": "api_constant_count",
+      "parameterEvidence": "cpi/parameter-audit/api_constant_count.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/copyValue/001",
+      "set": "obs-constant",
+      "artifact": "api_copy_value",
+      "parameterEvidence": "cpi/parameter-audit/api_copy_value.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/copyValue/002",
+      "set": "obs-constant",
+      "artifact": "api_copy_value_default",
+      "parameterEvidence": "cpi/parameter-audit/api_copy_value_default.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/copyValue/003",
+      "set": "obs-constant",
+      "artifact": "api_copy_value_beyond",
+      "parameterEvidence": "cpi/parameter-audit/api_copy_value_beyond.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/copyValue/004",
+      "set": "obs-constant",
+      "artifact": "api_copy_value_suppress",
+      "parameterEvidence": "cpi/parameter-audit/api_copy_value_suppress.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/currentDate/001",
+      "set": "obs-date",
+      "artifact": "api_current_date",
+      "parameterEvidence": "cpi/parameter-audit/api_current_date.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/currentDate/002",
+      "set": "obs-date",
+      "artifact": "api_current_date_time",
+      "parameterEvidence": "cpi/parameter-audit/api_current_date_time.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/currentDate/003",
+      "set": "obs-date",
+      "artifact": "api_current_date_item",
+      "parameterEvidence": "cpi/parameter-audit/api_current_date_item.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/currentDate/004",
+      "set": "obs-date",
+      "artifact": "api_current_date_concat",
+      "parameterEvidence": "cpi/parameter-audit/api_current_date_concat.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateAfter/001",
+      "set": "obs-date",
+      "artifact": "api_date_after_001",
+      "parameterEvidence": "cpi/parameter-audit/api_date_after_001.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateBefore/001",
+      "set": "obs-date",
+      "artifact": "api_date_before_001",
+      "parameterEvidence": "cpi/parameter-audit/api_date_before_001.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateTrans/001",
+      "set": "obs-date",
+      "artifact": "api_date_trans_001",
+      "parameterEvidence": "cpi/parameter-audit/api_date_trans_001.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateTrans/002",
+      "set": "obs-date",
+      "artifact": "api_date_trans_002",
+      "parameterEvidence": "cpi/parameter-audit/api_date_trans_002.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateTrans/003",
+      "set": "obs-date",
+      "artifact": "api_date_trans_003",
+      "parameterEvidence": "cpi/parameter-audit/api_date_trans_003.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateTrans/004",
+      "set": "obs-date",
+      "artifact": "api_date_trans_004",
+      "parameterEvidence": "cpi/parameter-audit/api_date_trans_004.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateTrans/005",
+      "set": "obs-date",
+      "artifact": "api_date_trans_005",
+      "parameterEvidence": "cpi/parameter-audit/api_date_trans_005.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateTrans/006",
+      "set": "obs-date",
+      "artifact": "api_date_trans_006",
+      "parameterEvidence": "cpi/parameter-audit/api_date_trans_006.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/dateTrans/012",
+      "set": "obs-date",
+      "artifact": "api_date_trans_012",
+      "parameterEvidence": "cpi/parameter-audit/api_date_trans_012.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/fixValues/002",
+      "set": "obs-constant",
+      "artifact": "api_fix_values_key",
+      "parameterEvidence": "cpi/parameter-audit/api_fix_values_key.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/fixValues/003",
+      "set": "obs-constant",
+      "artifact": "api_fix_values_default",
+      "parameterEvidence": "cpi/parameter-audit/api_fix_values_default.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/fixValues/004",
+      "set": "obs-constant",
+      "artifact": "api_fix_values_exception",
+      "parameterEvidence": "cpi/parameter-audit/api_fix_values_exception.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/fixValues/005",
+      "set": "obs-constant",
+      "artifact": "api_fix_values_default_empty",
+      "parameterEvidence": "cpi/parameter-audit/api_fix_values_default_empty.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/fixValues/006",
+      "set": "obs-constant",
+      "artifact": "api_fix_values_empty_table",
+      "parameterEvidence": "cpi/parameter-audit/api_fix_values_empty_table.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/fixValues/007",
+      "set": "obs-constant",
+      "artifact": "api_fix_values_suppress",
+      "parameterEvidence": "cpi/parameter-audit/api_fix_values_suppress.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/fixValues/008",
+      "set": "obs-constant",
+      "artifact": "api_fix_values_exact",
+      "parameterEvidence": "cpi/parameter-audit/api_fix_values_exact.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/001",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_001",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_001.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/002",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_002",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_002.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/003",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_003",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_003.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/004",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_004",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_004.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/005",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_005",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_005.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/006",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_006",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_006.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/007",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_007",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_007.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/008",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_008",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_008.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/009",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_009",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_009.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/010",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_010",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_010.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/011",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_011",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_011.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/012",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_012",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_012.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/013",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_013",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_013.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/014",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_014",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_014.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/formatNum/015",
+      "set": "obs-arithmetic",
+      "artifact": "api_fmt_015",
+      "parameterEvidence": "cpi/parameter-audit/api_fmt_015.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/001",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_item",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_item.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/002",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_item_keep",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_item_keep.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/003",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_orders",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_orders.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/004",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_tags",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_tags.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/005",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_suppress",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_suppress.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/007",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_suppress_condition",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_suppress_condition.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/008",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_empty_keep",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_empty_keep.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/009",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_collapse",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_collapse.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/ifWithoutElse/010",
+      "set": "obs-boolean",
+      "artifact": "api_boolean_ifWithoutElse_collapse_tags",
+      "parameterEvidence": "cpi/parameter-audit/api_boolean_ifWithoutElse_collapse_tags.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/index/003",
+      "set": "obs-statistic",
+      "artifact": "api_stat_index_default",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_index_default.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/index/004",
+      "set": "obs-statistic",
+      "artifact": "api_stat_index_suppress",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_index_suppress.json",
+      "status": "complete"
+    },
+    {
+      "case": "fn/sum/003",
+      "set": "obs-statistic",
+      "artifact": "api_stat_sum_suppress",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_sum_suppress.json",
+      "status": "complete"
+    }
+  ]
+}

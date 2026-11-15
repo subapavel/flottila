@@ -1,0 +1,42 @@
+SAP PO 7.50, ESR message mapping, 2026-11-12
+Case: fn/copyValue/004
+Mapping: copy_value_suppress
+Input: original copyValue-004.xml imported through Test UI, unchanged.
+Graph: Order (default Orders context) -> Item. Tag (default Order context)
+-> C1 createIf -> F1 CopyValue (Index 1) -> Item/V. W and All unmapped.
+Saved; Save disabled. Check: No errors found during object check; Problem 0, Warning 0.
+Test: 09:08:55 Start of test; compilation successful; execution 8 milliseconds;
+Executed successfully; 09:08:57 End of test.
+Result exported via UI to copyValue-004-copy-value-suppress.zip. Its instance.xml
+was extracted unchanged as copyValue-004-copy-value-suppress.xml.
+
+C1 Display Queue: compilation successful; execution 6 milliseconds; executed successfully.
+Literal displayed rows (brackets are UI notation; no italic cells observed):
+row | createIf:in0 | createIf:out
+0 | <null> [gray] | <null> [gray]
+1 | [true] [white] | [] [white]
+2 | [false] [white] | SUPPRESS [cyan]
+3 | [true] [white] | [] [white]
+4 | [true] [gray] | [] [gray]
+5 | [false] [white] | SUPPRESS [cyan]
+6 | [true] [white] | [] [white]
+7 | [true] [gray] | [] [gray]
+8 | [true] [dark gray] | [] [dark gray]
+
+F1 Display Queue: compilation successful; execution 9 milliseconds; executed successfully.
+Literal displayed rows (no italic cells observed):
+row | CopyValue:in0 | CopyValue:out
+0 | <null> [gray] | SUPPRESS [gray]
+1 | [] [white] | SUPPRESS [dark gray]
+2 | SUPPRESS [cyan] | blank
+3 | [] [white] | blank
+4 | [] [gray] | blank
+5 | SUPPRESS [cyan] | blank
+6 | [] [white] | blank
+7 | [] [gray] | blank
+8 | [] [dark gray] | blank
+
+Reading: contradicted. All three Items have no V; the second Item does not get
+an empty V. C1 has empty, SUPPRESS, empty | SUPPRESS, empty | empty context.
+F1 displays SUPPRESS as its output and no index exception occurs. Gray context
+and dark-gray terminal rows above are preserved as UI evidence, not extra values.

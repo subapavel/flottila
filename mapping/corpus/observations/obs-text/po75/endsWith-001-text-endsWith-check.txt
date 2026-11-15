@@ -1,0 +1,12 @@
+SAP PO 7.50 / ESR message mapping / 2026-11-12
+Case fn/endsWith/001; mapping text_endsWith (requested text-endsWith).
+Copied text_startsWith; replaced only function with two-input endsWith.
+Sku -> endsWith input 1; Qty -> endsWith input 2; endsWith -> Out/All.
+Both source contexts remain Orders; no other target mappings.
+Saved; F7 Check: No errors found during object check. Problem 0, Warning 0.
+Original endsWith-001.xml loaded and inspected in Test SRC.
+14:21:50-14:21:51: Compilation of text_endsWith successful.
+Execution of mapping on server took 6 milliseconds. Executed successfully.
+Observed All: true, false, true, false, false. Assumed reading confirmed.
+Result exported from Test SRC to ZIP; instance.xml extracted byte-for-byte.
+No screenshot file retained; UI messages transcribed during the run.

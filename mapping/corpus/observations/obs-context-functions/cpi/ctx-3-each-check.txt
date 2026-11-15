@@ -1,0 +1,7 @@
+CPI editor / Save and Simulate, mapping ctx-3-each (artifact ctx_3_each).
+
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out).
+Independent expressions: Tag default context -> R1 removeContexts -> S1 splitByValue -> CC collapseContexts -> Item; separate Tag default context -> R2 removeContexts -> S2 splitByValue -> V.
+Parameter is in Advanced, label Context Change on. Offered options: Each value, Empty value, Value change. Observed default: Each value.
+Both S1 and S2 were verified as Each value after Save. Four connections in Item expression and three in V expression. No other target fields mapped.
+Save completed without a validation error. f3.xml simulation succeeded: five Items with V a, a, empty, b, empty. Empty strings count as values.

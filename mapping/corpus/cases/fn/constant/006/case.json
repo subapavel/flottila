@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/constant-count.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/constant-006-constant-count.xml and corpus/observations/obs-constant/cpi/constant-006-constant-count.xml; before #214: ADR-0006 generating function (#83), assumed reading: at a context function's input a constant is one context with one value (AtomicToQueue); obs-constant row fn/constant/006",
+  "expect": "output",
+  "note": "count(Constant{x}) on V: the constant is one context with one value, so count is 1 in context 1 only and only Item 1 gets a V; Constant{w} on W is in every Item."
+}

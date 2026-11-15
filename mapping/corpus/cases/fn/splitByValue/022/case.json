@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/suppress-split-each-item.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-context-functions (#212, #214), run 2026-11-11 to 2026-11-12: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-context-functions/po75/splitByValue-022-spec3-suppress-split-each-item.xml and corpus/observations/obs-context-functions/cpi/splitByValue-019-spec3-suppress-split-each-item.xml; before #214: ADR-0006 Consequences, SUPPRESS through the context functions since #51 (assumed): splitByValue keeps SUPPRESS as a slot with its bit, in every mode; the SUPPRESS comes from createIf, true for 1 or true and SUPPRESS for 0 or false, in any case, and anything else ends the run with po:CREATEIF (ADR-0006 amended, F-37; fn/createIf/002); ADR-0006 TargetSlots: a SUPPRESS slot creates nothing; observation #61",
+  "expect": "output",
+  "note": "fn/splitByValue/019 without collapseContexts, so SUPPRESS shows: Tag in context Orders is true, false | true, false, false, one Item per Tag, five. createIf gives \"\", SUPPRESS, \"\", SUPPRESS, SUPPRESS, and eachValue puts each slot in a context of its own: [\"\"] [SUPPRESS] [\"\"] [SUPPRESS] [SUPPRESS]. Item i reads context i, so Items 1 and 3 get an empty V and Items 2, 4 and 5 none. SUPPRESS taken for \"\" gives a V in every Item; dropping SUPPRESS gives two contexts, a V in Items 1 and 2."
+}

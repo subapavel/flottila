@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/use-one-as-many.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 useOneAsMany [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f416edeaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/saphelp_nwpi71/helpdata/EN/ef/df564b6aa24fc9ab0d685460747de5/content.htm]; the input of obs-useoneasmany uoam-1 u1.xml, where the counts agree (#34)",
+  "expect": "output",
+  "note": "The wiring and input of obs-useoneasmany uoam-1 (u1.xml), with the result on All. Id is A | B, Sku in context Order s1,s2,s3 | s4, Tag t1,t2,t3 | t4. The result is A,A,A | B in Tag's contexts, and the root's one slot reads its context 1: All is A, A, A. Without useOneAsMany, Id would give one All A."
+}

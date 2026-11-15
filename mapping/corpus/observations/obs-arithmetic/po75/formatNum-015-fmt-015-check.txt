@@ -1,0 +1,15 @@
+Case: fn/formatNum/015
+Date: 2026-11-12
+Tool: SAP PO 7.50 ESR message mapping test
+Mapping: fmt_015, copied from fmt_014 in the authorized observations namespace.
+Graph inherited and checked: Qty (Orders context) -> FormatNum -> All; src-orders / tgt-list.
+NumberFormat: 0 'o''clock'; DecimalSeparator: .
+Exact pattern pasted, committed with Tab and confirmed in parameter dialog and graph; mapping saved.
+Object Check: No errors found during object check; Problem 0, Warning 0.
+Loaded formatNum-015.xml. Input SRC visibly confirmed Qty value 5 before execution.
+Processing Log: 18:55:58 Start of test; compilation of fmt_015 successful; server execution 7 milliseconds; Executed successfully; 18:55:59 End of test.
+Result SRC: All value 5 o'clock, serialized as 5 o&apos;clock.
+Original result exported through ESR to formatNum-015-fmt-015.zip. Its instance.xml copied byte-for-byte to formatNum-015-fmt-015.xml.
+No queues requested or captured. No screenshot file saved.
+JVM locale and internal numeric type were not exposed by the observed UI.
+CPI: NOT_RUN; API preparation exists, simulation pending.

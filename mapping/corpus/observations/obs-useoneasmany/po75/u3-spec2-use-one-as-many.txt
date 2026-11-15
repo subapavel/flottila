@@ -1,0 +1,16 @@
+SAP PO 7.50 / ESR Message Mapping / 2026-11-11
+Mapping: spec2_use_one_as_many
+Case: fn/useOneAsMany/007
+Input: u3.xml, imported unchanged.
+Graph: Id default context Order -> U1 input 1; Sku explicit context Order -> input 2; Tag default context Order -> input 3; U1 -> Out/All. Nothing else mapped.
+Saved. Check: No errors found during object check; Problem 0; Warning 0.
+20:00:21 Start of test
+Compilation of spec2_use_one_as_many successful
+
+Exact visible error (Java object identity hashes sanitized):
+Runtime exception when processing target-field mapping /Out/All; root message:
+Exception:[com.sap.aii.mappingtool.tf7.FunctionException: Too few values in the second queue in function useOneAsMany. The number of values for all contexts must be the same as the number of values for the third queue] in class com.sap.aii.mappingtool.flib7.NodeFunctions method useOneAsMany[[Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], [Ljava.lang.String;@[HASH], com.sap.aii.mappingtool.tf7.rt.ResultListImpl@[HASH], com.sap.aii.mappingtool.tf7.rt.Context@[HASH]]
+See error logs for details
+
+Failing box: U1 (useOneAsMany).
+Reading: confirmed. Whole-run U1 failure agrees with CPI. The error does not identify an individual Order. No successful XML output is claimed.

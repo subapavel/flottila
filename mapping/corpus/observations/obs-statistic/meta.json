@@ -1,0 +1,303 @@
+{
+  "obsId": "obs-statistic",
+  "po75": {
+    "release": "7.50",
+    "supportPackage": null,
+    "patch": null,
+    "date": "2026-11-12",
+    "tool": "ESR message mapping",
+    "releaseVerification": "ESR About read during obs-target-creation-2 in this observation session."
+  },
+  "divergence": [],
+  "notes": [
+    "PO first per owner instruction; CPI has not been run for this family."
+  ],
+  "runs": [
+    {
+      "mapping": "stat-index-suppress",
+      "input": "index-004.xml",
+      "case": "fn/index/004",
+      "po75": "observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "API preparation exists; simulation pending",
+      "reading": "contradicted",
+      "summary": "index numbers SUPPRESS too and replaces it with a numeric value: V 1,2,3 | 1,2 | none.",
+      "po75Result": "po75/index-004-stat-index-suppress.xml",
+      "po75Evidence": "po75/index-004-stat-index-suppress-check.txt",
+      "po75Queue": "po75/index-004-stat-index-suppress-queue.txt"
+    },
+    {
+      "mapping": "stat-index-default",
+      "input": "index-003.xml",
+      "case": "fn/index/003",
+      "po75": "observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "API preparation exists; simulation pending",
+      "reading": "confirmed",
+      "summary": "Default Initial Value 1, Increment 1, reset with each new context; V values 1, 2 | none | 1.",
+      "po75Result": "po75/index-003-stat-index-default.xml",
+      "po75Evidence": "po75/index-003-stat-index-default-check.txt"
+    },
+    {
+      "mapping": "stat-sum-suppress",
+      "input": "sum-003.xml",
+      "case": "fn/sum/003",
+      "po75": "observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "API preparation exists; simulation pending",
+      "reading": "contradicted",
+      "summary": "V values 15, 5, 0, 5. Numbered R1 queue shows replaceValue(5) changes SUPPRESS to 5; the requested chain therefore does not isolate sum's SUPPRESS behavior.",
+      "po75Result": "po75/sum-003-stat-sum-suppress.xml",
+      "po75Evidence": "po75/sum-003-stat-sum-suppress-check.txt",
+      "po75Queue": "po75/sum-003-stat-sum-suppress-queue.txt"
+    },
+    {
+      "mapping": "stat-average-suppress",
+      "input": "average-004.xml",
+      "case": "fn/average/004",
+      "po75": "observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "PO first per owner instruction",
+      "reading": "contradicted",
+      "summary": "The requested createIf -> replaceValue(5) -> average chain produces V 5 in all three Items, including the false-Tag order; intermediate SUPPRESS handling is not isolated by this result.",
+      "po75Result": "po75/average-004-stat-average-suppress.xml",
+      "po75Evidence": "po75/average-004-stat-average-suppress-check.txt"
+    },
+    {
+      "mapping": "stat-average",
+      "input": "average-003.xml",
+      "case": "fn/average/003",
+      "po75": "error-observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "PO first per owner instruction",
+      "reading": "contradicted",
+      "summary": "average on empty contexts throws ArithmeticException: Division undefined at /Out/Item/V; no result XML.",
+      "po75Evidence": "po75/average-003-stat-average-error.txt"
+    },
+    {
+      "mapping": "stat-sum",
+      "input": "sum-002.xml",
+      "case": "fn/sum/002",
+      "po75": "observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "PO first per owner instruction",
+      "reading": "confirmed",
+      "summary": "sum produces 0, 0, 4: both empty Qty contexts yield zero.",
+      "po75Result": "po75/sum-002-stat-sum.xml",
+      "po75Evidence": "po75/sum-002-stat-sum-check.txt"
+    },
+    {
+      "mapping": "stat-count",
+      "input": "count-002.xml",
+      "case": "fn/count/002",
+      "po75": "observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "PO first per owner instruction",
+      "reading": "confirmed",
+      "summary": "count produces 0, 0, 2: empty contexts count zero and a present empty Sku counts as a value.",
+      "po75Result": "po75/count-002-stat-count.xml",
+      "po75Evidence": "po75/count-002-stat-count-check.txt"
+    },
+    {
+      "mapping": "stat-count-suppress",
+      "input": "count-003.xml",
+      "case": "fn/count/003",
+      "po75": "observed",
+      "cpi": "NOT_RUN",
+      "cpiReason": "PO first per owner instruction",
+      "reading": "confirmed",
+      "summary": "count excludes SUPPRESS and produces 2, 0, 0 across the three contexts, including zero for an empty context.",
+      "po75Result": "po75/count-003-stat-count-suppress.xml",
+      "po75Evidence": "po75/count-003-stat-count-suppress-check.txt"
+    },
+    {
+      "mapping": "stat-counter-two-fields",
+      "input": "counter-001.xml",
+      "case": "fn/counter/001",
+      "po75": "NOT_RUN",
+      "po75Reason": "Native PO counter has no input connector; the requested incoming wire cannot be drawn. Reuses recorded native editor inspection from obs-shared-box.",
+      "cpi": "NOT_RUN",
+      "reading": "n/a",
+      "summary": "Exact requested graph is not drawable; no substitute simulation or runtime conclusion.",
+      "po75Evidence": "po75/counter-not-run.txt"
+    },
+    {
+      "mapping": "stat-counter",
+      "input": "counter-002.xml",
+      "case": "fn/counter/002",
+      "po75": "NOT_RUN",
+      "po75Reason": "Native PO counter has no input connector; the requested incoming wire cannot be drawn. Reuses recorded native editor inspection from obs-shared-box.",
+      "cpi": "NOT_RUN",
+      "reading": "n/a",
+      "summary": "Exact requested graph is not drawable; no substitute simulation or runtime conclusion.",
+      "po75Evidence": "po75/counter-not-run.txt"
+    },
+    {
+      "mapping": "stat-counter-suppress",
+      "input": "counter-003.xml",
+      "case": "fn/counter/003",
+      "po75": "NOT_RUN",
+      "po75Reason": "Native PO counter has no input connector; the requested incoming wire cannot be drawn. Reuses recorded native editor inspection from obs-shared-box.",
+      "cpi": "NOT_RUN",
+      "reading": "n/a",
+      "summary": "Exact requested graph is not drawable; no substitute simulation or runtime conclusion.",
+      "po75Evidence": "po75/counter-not-run.txt"
+    },
+    {
+      "mapping": "stat-sum",
+      "input": "sum-002.xml",
+      "case": "fn/sum/002",
+      "cpi": "observed",
+      "date": "2026-11-13",
+      "artifact": "api_stat_sum",
+      "reading": "confirmed",
+      "cpiEvidence": "cpi/sum-002-stat-sum-check.txt",
+      "cpiOutput": "cpi/sum-002-stat-sum.xml"
+    },
+    {
+      "mapping": "stat-sum-suppress",
+      "input": "sum-003.xml",
+      "case": "fn/sum/003",
+      "cpi": "observed-output-queue-and-parameter-pending",
+      "date": "2026-11-13",
+      "artifact": "api_stat_sum_suppress",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/sum-003-stat-sum-suppress-check.txt",
+      "cpiOutput": "cpi/sum-003-stat-sum-suppress.xml"
+    },
+    {
+      "mapping": "stat-average",
+      "input": "average-003.xml",
+      "case": "fn/average/003",
+      "cpi": "observed-error",
+      "date": "2026-11-13",
+      "artifact": "api_stat_average",
+      "reading": "confirmed",
+      "cpiEvidence": "cpi/average-003-stat-average-error.txt"
+    },
+    {
+      "mapping": "stat-average-suppress",
+      "input": "average-004.xml",
+      "case": "fn/average/004",
+      "cpi": "observed-output-parameter-verification-pending",
+      "date": "2026-11-13",
+      "artifact": "api_stat_average_suppress",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/average-004-stat-average-suppress-check.txt",
+      "cpiOutput": "cpi/average-004-stat-average-suppress.xml"
+    },
+    {
+      "mapping": "stat-count",
+      "input": "count-002.xml",
+      "case": "fn/count/002",
+      "cpi": "observed",
+      "date": "2026-11-13",
+      "artifact": "api_stat_count",
+      "reading": "confirmed",
+      "cpiEvidence": "cpi/count-002-stat-count-check.txt",
+      "cpiOutput": "cpi/count-002-stat-count.xml"
+    },
+    {
+      "mapping": "stat-count-suppress",
+      "input": "count-003.xml",
+      "case": "fn/count/003",
+      "cpi": "observed",
+      "date": "2026-11-13",
+      "artifact": "api_stat_count_suppress",
+      "reading": "confirmed",
+      "cpiEvidence": "cpi/count-003-stat-count-suppress-check.txt",
+      "cpiOutput": "cpi/count-003-stat-count-suppress.xml"
+    },
+    {
+      "mapping": "stat-index-default",
+      "input": "index-003.xml",
+      "case": "fn/index/003",
+      "cpi": "observed-output-parameter-verification-pending",
+      "date": "2026-11-13",
+      "artifact": "api_stat_index_default",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/index-003-stat-index-default-check.txt",
+      "cpiOutput": "cpi/index-003-stat-index-default.xml"
+    },
+    {
+      "mapping": "stat-index-suppress",
+      "input": "index-004.xml",
+      "case": "fn/index/004",
+      "cpi": "observed-output-queue-and-parameter-pending",
+      "date": "2026-11-13",
+      "artifact": "api_stat_index_suppress",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/index-004-stat-index-suppress-check.txt",
+      "cpiOutput": "cpi/index-004-stat-index-suppress.xml"
+    },
+    {
+      "mapping": "stat-average-suppress",
+      "input": "average-004.xml",
+      "case": "fn/average/004",
+      "cpi": "observed",
+      "date": "2026-11-13",
+      "artifact": "api_stat_average_suppress",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/average-004-stat-average-suppress-check.txt",
+      "cpiOutput": "cpi/average-004-stat-average-suppress.xml",
+      "parameterVerification": "VERIFIED_PASS",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_average_suppress.json",
+      "parameterQueueChecks": "complete",
+      "verificationDate": "2026-11-13"
+    },
+    {
+      "mapping": "stat-index-default",
+      "input": "index-003.xml",
+      "case": "fn/index/003",
+      "cpi": "observed",
+      "date": "2026-11-13",
+      "artifact": "api_stat_index_default",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/index-003-stat-index-default-check.txt",
+      "cpiOutput": "cpi/index-003-stat-index-default.xml",
+      "parameterVerification": "VERIFIED_PASS",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_index_default.json",
+      "nativeDefaultEvidence": "cpi/native-default-index-003.txt",
+      "parameterQueueChecks": "complete",
+      "verificationDate": "2026-11-13"
+    },
+    {
+      "mapping": "stat-sum-suppress",
+      "input": "sum-003.xml",
+      "case": "fn/sum/003",
+      "cpi": "observed",
+      "date": "2026-11-13",
+      "artifact": "api_stat_sum_suppress",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/sum-003-stat-sum-suppress-check.txt",
+      "cpiOutput": "cpi/sum-003-stat-sum-suppress.xml",
+      "parameterVerification": "VERIFIED_PASS",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_sum_suppress.json",
+      "additionalEvidence": [
+        "cpi/sum-003-R1-queue.json"
+      ],
+      "parameterQueueChecks": "complete",
+      "verificationDate": "2026-11-13",
+      "verificationNotes": "replaceValue transforms both empty and SUPPRESS into numeric 5. R1 queue is 5,5,5 | 5 | empty | 5. Therefore previous sum output 15,5,0,5 does not test sum receiving SUPPRESS; the upstream replacement consumes it. Temporary layout discarded."
+    },
+    {
+      "mapping": "stat-index-suppress",
+      "input": "index-004.xml",
+      "case": "fn/index/004",
+      "cpi": "observed",
+      "date": "2026-11-13",
+      "artifact": "api_stat_index_suppress",
+      "reading": "output-confirmed-parameter-unverified",
+      "cpiEvidence": "cpi/index-004-stat-index-suppress-check.txt",
+      "cpiOutput": "cpi/index-004-stat-index-suppress.xml",
+      "parameterVerification": "VERIFIED_PASS",
+      "parameterEvidence": "cpi/parameter-audit/api_stat_index_suppress.json",
+      "additionalEvidence": [
+        "cpi/index-004-F1-queue.json"
+      ],
+      "parameterQueueChecks": "complete",
+      "verificationDate": "2026-11-13",
+      "verificationNotes": "Index converts SUPPRESS to ordinary sequence numbers: empty,SUPPRESS,empty -> 1,2,3; SUPPRESS,empty -> 1,2; empty context stays empty. Initial1/increment1/reset0 verified in live parameters. Temporary layout discarded."
+    }
+  ]
+}

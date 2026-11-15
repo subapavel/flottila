@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/nested-grp-row-remove-contexts.mapping.json",
+  "provenance": "assumed",
+  "ref": "CONTRADICTED by obs-target-creation (#31) minOccurs-004, F-38: PO 7.50 SP33 and CPI 6.84.77 give Grp 2 one Row b (corpus/observations/obs-target-creation/{po75,cpi}/minOccurs-004-spec2-nested-grp-row-remove-contexts.xml), no error. The expectation stays the assumed reading of ADR-0006 TargetSlots (a context the queue lacks counts as empty; po:MINOCCURS at the target field mapping since #52) although obs-target-creation-2 (#134) was run, it did not decide the rule (F-38); the owner deferred the case past milestone 1 (#220, F-53, #222); not observed until then",
+  "expect": "error",
+  "note": "Grp per Id in context Orders: o1, o2. Row (1..2) per removeContexts(Sku): one context a, b. Grp 1 gets Rows a and b; Grp 2 reads context 2, which the queue lacks and which counts as empty, so the run raises po:MINOCCURS at T2. Skipping a missing context would write a second Grp without a Row."
+}

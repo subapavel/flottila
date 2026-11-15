@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/counter-two-fields.mapping.json",
+  "provenance": "decided",
+  "ref": "Owner decision 2026-11-13 (#212), finding F-43: the counter has no input on PO 7.50 or CPI (obs-statistic: NOT_RUN, the graph is not drawable), so this case is Flottila's own extension; was assumed: #2 §5 counter: \"Number of calls for this target-field mapping where you specify the initial value and the increment\" [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]; assumed reading of #37 (obs-shared-box): a counter counts the values of its own target field mapping, so each target field's counter starts at its initial value; formatVersion 1 has no box shared by two target fields (ADR-0010), so this is obs-shared-box's shared-2",
+  "expect": "output",
+  "note": "The input s1.xml of obs-shared-box: three orders with an Id each. V's counter N1 and W's counter N2 each count 1, 2, 3 across the Order contexts, so Item i has V = W = i. A counter shared across target fields would give W = 4, 5, 6 (shared-1)."
+}

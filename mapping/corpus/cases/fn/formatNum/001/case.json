@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/format-num-zero.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-arithmetic (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-arithmetic/po75/formatNum-001-fmt-001.xml and corpus/observations/obs-arithmetic/cpi/formatNum-001-fmt-001.xml; before #214: #2 §5 Arithmetic: FormatNum takes a java.text.DecimalFormat pattern [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bfbd16f66d33de4e10000000a42189e.html]; ADR-0003: the pattern is translated to the XPath picture 0; assumed reading: DecimalFormat over the xs:decimal (ADR-0005) with the symbols . and , (obs-arithmetic fmt-001)",
+  "expect": "output",
+  "note": "The mandatory digit 0: Qty in context Orders is 7, 2.5, 3.5, -0.4, -1.5. Each is rounded to an integer half to even, as DecimalFormat rounds, so All is 7, 2, 4, -0, -2; -0.4 keeps its sign. Rounding half up would give 3 for 2.5, and dropping the sign 0 for -0.4."
+}

@@ -1,0 +1,20 @@
+Date: 2026-11-12
+Case: fn/useOneAsMany/003; original input u1.xml.
+Artifact: api_spec2_use_one_as_many_root_value (unchanged API-prepared artifact).
+Native tooltips verified Id context /Orders, Sku context /Orders/Order,
+Sku context /Orders/Order/Line, useOneAsMany, removeContexts, /Out/All.
+Prepared mapping/readback verifies those sources on input 0, 1, 2 respectively.
+Original input uploaded unchanged through the tab's file chooser, then Test.
+
+EXECUTED_FAIL: native mapping exception, not a simulator service failure.
+Exact diagnostic through the root exception:
+com.sap.aii.mappingtool.tf7.MessageMappingException: Runtime exception during processing target field mapping /Out/All. The root message is: Exception:[com.sap.aii.mappingtool.tf7.rt.BehaviorInvocationException: Too few values in first queue in function useOneAsMany. It must have the same number of contexts as second queue.]
+
+Remaining stack suffix identifies com.sap.aii.mappingtool.flib7.NodeFunctions
+method useOneAsMany. Transient Java object identities and exchange ID omitted.
+No output XML returned. Error dialog read and dismissed using OK.
+Reading: contradicted assumed A,A,A,B; agrees with existing PO error.
+Historical CPI session blocker remains in earlier evidence; it did not recur.
+Tab screenshot visually confirmed the error; no PNG saved. No display queue captured.
+Prior tenant version evidence retained. No system mouse/keyboard takeover,
+direct API simulation or SAP PO interaction.

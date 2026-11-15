@@ -1,0 +1,16 @@
+Date: 2026-11-12
+Case: fn/splitByValue/020
+Artifact: api_spec2_suppress_split_change_collapse (unchanged API-prepared artifact)
+Native tooltips verified Tag context /Orders, createIf, splitByValue,
+collapseContexts and /Out/All. Prepared mapping/readback specifies SplitByValue
+type=2 (valueChange). No native parameter-panel verification is claimed
+(overlapping function boxes).
+Original splitByValue-020.xml uploaded unchanged through the tab's file chooser.
+Test completed; Download Output saved 71 bytes, copied byte-for-byte to the XML
+beside this evidence. Output: Out with two empty All elements.
+VERIFIED_PASS: simulation completed and XML downloaded.
+Reading: contradicted the assumed three empty All; matches existing PO XML.
+Consistent with SUPPRESS preserved through collapseContexts, but no CPI display
+queue was captured to independently establish the intermediate token sequence.
+Prior tenant version evidence retained, no PNG saved.
+No system mouse/keyboard takeover, direct API simulation or SAP PO interaction.

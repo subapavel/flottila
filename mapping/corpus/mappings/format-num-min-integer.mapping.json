@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "source": {
+    "bundle": [
+      "../structures/observations/src-orders.xsd"
+    ],
+    "fingerprint": "sha256:5e9bdd3db3b284fc086f0233797ede5e4f3fb874bd696ba3f496dd30bffef9a7",
+    "root": {
+      "element": "Orders"
+    }
+  },
+  "target": {
+    "bundle": [
+      "../structures/observations/tgt-list.xsd"
+    ],
+    "fingerprint": "sha256:626cbacff639a86b480bb3c20cc032d8aa47ad341d9111e31882ad30ca6eca70",
+    "root": {
+      "element": "Out"
+    }
+  },
+  "targetFieldMappings": {
+    "/Out/All": {
+      "boxes": {
+        "N1": {
+          "fn": "formatNum",
+          "inputs": [
+            "S1"
+          ],
+          "kind": "function",
+          "params": {
+            "pattern": "000"
+          }
+        },
+        "S1": {
+          "context": "/Orders",
+          "field": "/Orders/Order/Line/Qty",
+          "kind": "source"
+        }
+      },
+      "id": "T1",
+      "result": "N1"
+    }
+  }
+}

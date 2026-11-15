@@ -1,0 +1,4 @@
+CPI editor, mapping spec2-suppress-sort-descending-format.
+In-place variant of spec2_sort after the ascending SUPPRESS output and R1 queue were saved. Changed only sort Order to desc, verified selected=true; Comparison rule remains case sensitive. Same five edges and explicit source contexts.
+Save and simulation succeeded without validation/runtime error. sort-013 output has one empty All, contradicting the assumed two. R1 queue confirms SUPPRESS first, then empty strings.
+After recording the queue, closed it and saved again. Final inspection: no busy/error dialog, Comparison rule case sensitive, asc=false / desc=true. Testing stopped at owner's request; no next case started.

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/collapse-contexts.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §4 collapseContexts: \"copies the first value from all contexts to one context. Empty contexts are replaced with an empty string.\" [SAP✓ https://help.sap.com/saphelp_crm70/helpdata/en/58/cd834014d26f1de10000000a1550b0/content.htm] [SAP✓ https://help.sap.com/saphelp_nwpi711/helpdata/en/43/c4cdfc334824478090739c04c4a249/content.htm]; the page's figure shows the last value instead (#2 §7.16), obs-context-functions ctx-5 f5.xml decides (#33)",
+  "expect": "output",
+  "note": "The input of obs-context-functions ctx-5 (f5.xml), the queue of the SAP figure. Qty in context Order is 3,2 | 10,11,43,2 | 7 | (empty), as o4 has no Line. collapseContexts keeps the first value of each context, gives the empty context \"\", and puts them all in one context, so All is 3, 10, 7, \"\". The last value would give 2, 2, 7, \"\"; without collapseContexts the root's slot would read 3, 2 alone. To observe in PO: first or last."
+}

@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/nested-grp-row-val.mapping.json",
+  "provenance": "documented",
+  "ref": "#2 §2 occurrence rules: at least minOccurs times, \"If sourceElem does not occur a sufficient number of times in the source structure, the mapping runtime throws an exception\" [SAP✓ https://help.sap.com/saphelp_em900/helpdata/en/4b/f414f7eaca4c86e10000000a42189e/content.htm] [SAP✓ https://help.sap.com/docs/SAP_NETWEAVER_750/0b9668e854374d8fa3fc8ec327ff3693/4bf414f7eaca4c86e10000000a42189e.html]; the error QName po:MINOCCURS at the target field mapping is ADR-0006 since #52",
+  "expect": "error",
+  "note": "Grp per Id in context Orders: o1, o2. Row (1..2) per Sku in context Order: a | (empty), as o2 has no Line. Grp 1 gets its Row; Grp 2 reads the empty context 2, so the run raises po:MINOCCURS at Row's target field mapping T2."
+}

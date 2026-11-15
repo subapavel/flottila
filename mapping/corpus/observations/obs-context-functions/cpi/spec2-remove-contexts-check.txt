@@ -1,0 +1,4 @@
+CPI editor, mapping spec2-remove-contexts.
+In-place edit of artifact spec2_map_with_default_remove_contexts after both prior variants' results were saved. Added removeContexts, connected Sku to it and its output to All, then removed the unused mapWithDefault box.
+Source src-orders.xsd (Orders), target tgt-list.xsd (Out). Sku default Line context -> removeContexts -> All. Nothing else mapped.
+Two edges verified. Save and both simulations completed with no validation or runtime error. f1.xml produced All a,empty string,b; collapseContexts-003.xml produced empty Out. Navigation back to the package raised no unsaved-changes dialog.

@@ -1,0 +1,12 @@
+{
+  "source": "Native CPI editor Save followed by public API export of preparation copy api_ctx_1_r2",
+  "label": "fixValues",
+  "simulation": "NOT_RUN",
+  "functions": [
+    {
+      "nativeName": "FixValues",
+      "inputCount": 1,
+      "bindings": "<bindings><param name=\"vmdefault\"><value /></param><param name=\"vmstrategy\"><value>2</value></param><param name=\"table\"><value><properties><property name=\"key1\">value1</property><property name=\"key2\">value2</property></properties></value></param></bindings>"
+    }
+  ]
+}

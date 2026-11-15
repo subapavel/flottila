@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic target for obs-target-creation (ADR-0018): Row is 1..2, for SUPPRESS against
+     minOccurs / maxOccurs and slot numbers. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="unqualified">
+  <xs:element name="Create">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Row" minOccurs="1" maxOccurs="2">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="Val" type="xs:string" minOccurs="0" maxOccurs="1"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

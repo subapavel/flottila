@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<po:Order xmlns:po="urn:flottila:corpus:po" xmlns:c="urn:flottila:corpus:common">
+  <po:Id>PO-7</po:Id>
+  <po:ShipTo>
+    <Street>Main 1</Street>
+    <City>Brno</City>
+  </po:ShipTo>
+  <po:Total>12.50</po:Total>
+  <c:Note>leave at the door</c:Note>
+</po:Order>

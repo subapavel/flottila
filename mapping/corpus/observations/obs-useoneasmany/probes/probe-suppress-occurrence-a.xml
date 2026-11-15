@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Owner probe for useOneAsMany-009.xml / spec3-suppress-use-one-as-many-occurrences (fn/useOneAsMany/009). Removed only the second Order to avoid the first-queue context-count error while retaining true and false in the occurrence queue. -->
+<Orders>
+  <Order>
+    <Id>A</Id>
+    <Line>
+      <Sku>true</Sku>
+    </Line>
+    <Line>
+      <Sku>false</Sku>
+    </Line>
+  </Order>
+</Orders>

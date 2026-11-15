@@ -36,7 +36,8 @@ review of BRAND-1 C: a base is written as a full 40-character SHA, and `wire` sa
    `git merge --allow-unrelated-histories --no-commit FETCH_HEAD`, message written by hand with the
    trailers. After it `mapping/` holds the mapping repository unchanged and nothing builds it yet:
    the platform's build is untouched.
-3. The merge commit differs from the two trees it joins by one line, and its message says so:
+3. The merge commit differs from the two trees it joins by one line and the task's ledgers
+   (PROGRESS, HANDOFF, BACKLOG, this sentence), and its message says so:
    `ci/name-allowlist.txt` gains `mapping/** | * | …`, because the imported tree holds the old name
    (3491 findings without the line) and an entry added a commit earlier would be an unused entry.
    Step 2 replaces that line by entries for the mapping's history files only.

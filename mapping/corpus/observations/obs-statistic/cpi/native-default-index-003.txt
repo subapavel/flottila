@@ -1,0 +1,4 @@
+CPI native editor verification 2026-11-13
+fn/index/003
+Fresh native index added from palette showed Initial Value 1, Increment 1, Reset Index = Reset index (tooltip Reset index to initial value).
+Temporary unconnected nodes in api_boolean_ifWithoutElse_item were discarded without saving. Stored mapping parameters: cpi/parameter-audit/api_stat_index_default.json

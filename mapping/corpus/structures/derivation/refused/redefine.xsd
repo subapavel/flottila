@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (#95): xs:redefine is refused when the schema loads (ADR-0008) -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:flottila:corpus:refused">
+  <xs:redefine schemaLocation="redefined.xsd">
+    <xs:complexType name="Base">
+      <xs:sequence/>
+    </xs:complexType>
+  </xs:redefine>
+  <xs:element name="Doc">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Id" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

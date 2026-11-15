@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Doc>
+  <Id>d1</Id>
+  <Note>n1</Note>
+  <Code>c1</Code>
+  <Note>n2</Note>
+  <Head>
+    <Ref>r1</Ref>
+    <Ref>r2</Ref>
+  </Head>
+</Doc>

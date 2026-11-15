@@ -1,0 +1,22 @@
+{
+  "case": "fn/index/003",
+  "artifact": "api_stat_index_default",
+  "version": "1.0.0",
+  "date": "2026-11-13",
+  "source": "Fresh read-only public API export of live tenant artifact",
+  "evidence": "VERIFIED_PASS",
+  "functions": [
+    {
+      "nativeName": "index",
+      "inputCount": 1,
+      "bindings": "<bindings><param name=\"start\"><value>1</value></param><param name=\"inc\"><value>1</value></param><param name=\"type\"><value>0</value></param></bindings>",
+      "sourcePaths": [
+        {
+          "path": "/Orders/Order/Line/Sku",
+          "context": "/Orders/Order"
+        }
+      ]
+    }
+  ],
+  "scope": "Stored function identifiers, bindings and source contexts only. Does not establish fresh editor defaults, queue behavior or JVM settings."
+}

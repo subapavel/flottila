@@ -1,0 +1,7 @@
+{
+  "mapping": "mappings/constant-empty.mapping.json",
+  "provenance": "observed",
+  "ref": "obs-constant (#212, #214), run 2026-11-12 to 2026-11-13: PO 7.50 and CPI both match expected.xml: corpus/observations/obs-constant/po75/constant-008-constant-empty.xml and corpus/observations/obs-constant/cpi/constant-001-constant-empty.xml; before #214: ADR-0006 generating function (#83), assumed reading: a Constant without a value gives the empty string; obs-constant row fn/constant/008",
+  "expect": "output",
+  "note": "Constant with its value left empty on All: one All with empty text."
+}
