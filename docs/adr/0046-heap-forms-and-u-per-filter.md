@@ -220,8 +220,8 @@ grilling-adviser's rulings K1–K10 and corrections D1–D4, made for the owner 
 **The record**
 - The committed record is a tsv that the matrix run writes, never edited by hand, and that
   `bench/RESULTS.md` cites. The verifier rewrites it at the spec gate.
-- `constantsAreTheMatrixMaxima` checks that the constants equal the maxima over every row of the
-  record, whichever tier holds the maximum. It reads the record in-process.
+- `constantsAreTheMatrixMaxima` checks that the constants equal the maxima over the rows of the
+  record, from the `-Xint` and C1 rows only (K1: warm is proven, not measured). It reads the record in-process.
 - A fresh run asserts in one direction only: each cell completes, and fresh values are at most the
   constants (K7).
 
@@ -297,4 +297,39 @@ grilling-adviser's rulings K1–K10 and corrections D1–D4, made for the owner 
   leave PIT's test set; CalibrationRecordTest stays in.
 - If the warm cells give an intercept far above the linked `-Xint` one (warm W: slope 88, about
   248 KiB), the implementer stops and hands back.
+
+**Rulings on the matrix (2026-11-15, grilling-adviser K1–K8, delegation to 2026-11-16)**
+
+The full matrix ran on impl/113 e6f4cc0 in 92.5 minutes. Its record (234 cells) is the evidence.
+The warm intercept was far above the linked one, so the implementer stopped.
+- **Warm is proven, not measured (K1).** In warm children the search runs while the JIT is still
+  compiling, and under C2 some shapes almost fit 1 MiB whole. So their edges are not edges, and their
+  slopes are junk. A confirm-run does not fix this. `b` and the reserve are therefore *measured in
+  `-Xint` and C1, and proven in warm*. This replaces "the worst of `-Xint`, C1 only and warm".
+  - A warm cell runs its shape at the cell's own declared stack, 60 runs in a row from the first cold
+    one, in 3 default-tier children.
+  - Every run must give the reference result. One STACK is a red and a hand-back.
+- **`b` = 192 (K2).** C1 W CONSERVATIVE gives 189, with spread 0 and STACK at both sizes. Every
+  `-Xint` and C1 cell has spread 0.
+- **Reserve = 286 720, 280 KiB (K3).** It is the linked intercept of `-Xint` virtual ND OPTIMISED
+  (220 832) plus collect-descent's cold term (29 988), rounded up to 253 952, plus 32 768.
+- **One `b`, no split (K4).**
+  - `U_f` is 1237 − D_f at 512 KiB and 3968 − D_f at 1 MiB.
+  - A run cannot know its tier. A split by mode would gain 14 % at the price of a second constant.
+  - The tightest cell is C1 W CONSERVATIVE virtual, with `U*` 2131 against `U_f` 1136.
+  - Two shapes under C1 set `b`: W (189) and collect-descent (167). The rest lie between 24 and 100
+    (F-102).
+- **A seeded re-run before the commit (K5).** The order is: the K1 harness, then the constants, then
+  one full run seeded from the e6f4cc0 record.
+  - That run's `max-b` and `reserve` rows must equal the constants.
+  - Every `-Xint` and C1 `U*` must equal the e6f4cc0 record's.
+  - Any difference is a hand-back. No value is adjusted.
+- **Pins (K6).** The 128 KiB pins (StackUnitsTest, ExplainTest) read `StackUnits.reserve()`. The
+  literal lives only in the class PIT mutates.
+- **`[7], termination STACK` (K7)** at an `-Xint` first-or `U*+1` is a valid edge. The emit reached
+  the sink before the overflow.
+- **Open (not blocking):** whether ND OPTIMISED's intercept, twice every other cell's, is a fixed
+  cost or an extrapolation artefact. If it is an artefact, the reserve would be 168 KiB. That would be
+  a formula change for the owner, not the implementer's choice. The re-run probes it at 256 KiB and
+  384 KiB.
 
