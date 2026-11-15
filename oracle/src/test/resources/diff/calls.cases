@@ -234,3 +234,19 @@ arg -c
 filter [label $l | def f: if . > 2 then empty else (. + 1 | f) end; 0 | f]
 stdin null\n
 end
+
+# may break out (#115, ADR-0007 "Amendment (ticket #115)"): a Break to a captured label reached only through a group's
+# fixpoint (X1: od breaks, ev calls od) or through a Call into another group (X2: f calls g, which breaks). Guards at
+# #115; S2b.11's value form must keep both off it.
+
+case calls/break-through-a-mutual-recursion
+arg -c
+filter [label $l | def ev: def od: if . == 0 then break $l else . - 1 | ev end; if . == 0 then true else . - 1 | od end; (5 | ev), 7]
+stdin null\n
+end
+
+case calls/break-through-another-group
+arg -c
+filter [label $l | def g: if . > 3 then break $l else . + 1 | g end; def f: if . > 1 then g else . + 1 | f end; (0 | f), 7]
+stdin null\n
+end
