@@ -60,20 +60,20 @@ class IrDepthTest {
   private static final String DEEP = "." + "[.a]".repeat(300);
 
   /**
-   * jq-ref 1.8.2's result for {@code nested(513)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, 1 029
+   * Reference jq 1.8.2's result for {@code nested(513)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, 1 029
    * bytes): 512 nested arrays, as DEVIATIONS "IR depth" gave it.
    */
   private static final String NESTED_513 = "[".repeat(512) + "null" + "]".repeat(512);
 
   /**
-   * jq-ref 1.8.2's result for {@code nested(30_001)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log):
+   * Reference jq 1.8.2's result for {@code nested(30_001)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log):
    * 20 022 bytes, 10 001 brackets, {@code <skipped: too deep>}, 10 001 brackets and an LF, sha256 7abcf37e…, the bytes
    * of DeepBuiltArrayTest's oracle; {@code JqValue.toJson} is that text without its LF (F-54, diff/over-cap.rec {@code
    * over-cap/depth-30001}).
    */
   private static final String NESTED_30001 = "[".repeat(10_001) + "<skipped: too deep>" + "]".repeat(10_001);
 
-  /** jq-ref 1.8.2's result for {@code valueParameters(500)} on null (observed 2026-11-15, -nc -f, 1 005 bytes). */
+  /** Reference jq 1.8.2's result for {@code valueParameters(500)} on null (observed 2026-11-15, -nc -f, 1 005 bytes). */
   private static final String VALUE_PARAMETERS_500 = "[".repeat(500) + "null" + "]".repeat(500);
 
   /**
@@ -602,10 +602,14 @@ class IrDepthTest {
    *       checked with its own measure where it is lowered, so an enclosing call taken as fitting leaves {@code
    *       recurse/0} to be lifted instead, one function either way, and no assertion the pin rule allows (F-106) can
    *       see it, so the hand mutant there (the call's measure taken as a parameter's call) is equivalent; PIT's one mutant
-   *       at :443 is killed; the row is the arm's row, its results and the added function. The call dispatch masks the
-   *       same way for a prelude definition (:554): every prelude call is lowered where its own fit is checked, so the
-   *       same hand mutant there survives every row and is equivalent; for a definition in the text (:551) it is killed
-   *       by the call rows below (.logs/114-edges4.log);
+   *       at :443 is killed; the row is the arm's row, its results and the added function. {@code ..} hides it only
+   *       because recurse/0 has no closure: lifted, it is one Call, the level the mutant gives it. The call dispatch for
+   *       a prelude definition (:554) is not masked so: a prelude definition with a closure parameter (recurse/1,
+   *       recurse/2, until, while) lifts to a Call holding its closures, as deep as its inlined body, the inner recursive
+   *       definition's Call holding them, so lifting it saves no level. The rows {@code recurse([[.]]; false)} (4),
+   *       {@code recurse([[.]] | empty)} (5), {@code until(true; [[.]])} (4) and {@code while(false; [[.]])} (4) kill
+   *       the same hand mutant there (.logs/114-edges5-mLibraryParamCall.log), and the call rows below kill it for a
+   *       definition in the text (:551, .logs/114-edges4.log);
    *   <li>Native, two levels, or five and its arguments three down: {@code length}, {@code last(.)} (own), {@code
    *       last([[.]])} (shift), {@code range(length; 1)};
    *   <li>a call of a definition: the inlined form ({@code def g: [[.]]; g}, a closure run inside the inlined body),
@@ -631,7 +635,7 @@ class IrDepthTest {
    * </ul>
    *
    * <p>Each result is reference jq's: 1.8.2 gives each body on null ({@code def f: <body>; [f]}, -nc -f, observed
-   * 2026-11-15, the filter texts in .logs/114-jqref-arms.log, -arms2, -arms3, -arms64 and .logs/114-jqref-edges.log),
+   * 2026-11-15, the filter texts in .logs/114-jqref-arms.log, -arms2, -arms3, -arms64, -edges, -edges4 and -edges5),
    * and the whole filter for {@code -length}, {@code .[]?}, {@code {$__loc__}} and {@code . as $x | {$x}} at 513 levels,
    * those brackets around it.
    */
@@ -765,7 +769,12 @@ class IrDepthTest {
         // A value parameter called by name: its argument is a closure of the Call too.
         Arguments.of("def g($a): a; g([[.]])", 5, "[[null]]"),
         // An object pattern's computed key, its Bind's parts' shift down.
-        Arguments.of(". as {(\"a\"): $v} | $v", 14, "null"));
+        Arguments.of(". as {(\"a\"): $v} | $v", 14, "null"),
+        // Prelude definitions whose inlined body is an inner recursive definition's Call holding the closure.
+        Arguments.of("recurse([[.]]; false)", 4, "null"),
+        Arguments.of("recurse([[.]] | empty)", 5, "null"),
+        Arguments.of("until(true; [[.]])", 4, "null"),
+        Arguments.of("while(false; [[.]])", 4, null));
   }
 
   /**

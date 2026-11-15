@@ -57,7 +57,7 @@ class InlineCapTest {
 
   /**
    * One more call would spend the (CAP + 1)th node, so it is a PLAIN Call, and the filter runs: DEVIATIONS "Long comma
-   * chains", whose jqj column is 65 537 nulls; jq-ref 1.8.2 rejects the chain with its bytecode limit, rc 3, {@code
+   * chains", whose jqj column is 65 537 nulls; reference jq 1.8.2 rejects the chain with its bytecode limit, rc 3, {@code
    * function compiled to 524294 bytes which is too long} (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log).
    * Until #114 it was the cap's Stub.
    */
@@ -79,7 +79,7 @@ class InlineCapTest {
 
   /**
    * The cap's edge on a doubling chain: f15 lowers 2^16 - 1 = 65 535 nodes (its 32 768 leaves and 32 767 commas),
-   * within the cap, so nothing is lifted; jq-ref 1.8.2 gives {@code [… f15]|length} 32768 (observed 2026-11-13).
+   * within the cap, so nothing is lifted; reference jq 1.8.2 gives {@code [… f15]|length} 32768 (observed 2026-11-13).
    */
   @Test
   void aDoublingChainOf15DefinitionsCompiles() {
@@ -88,7 +88,7 @@ class InlineCapTest {
   }
 
   /**
-   * f16 would lower 2^17 - 1 = 131 071 nodes, past the cap, so its call is lifted and the chain runs: jq-ref 1.8.2
+   * f16 would lower 2^17 - 1 = 131 071 nodes, past the cap, so its call is lifted and the chain runs: reference jq 1.8.2
    * prints 65 536 nulls and {@code [… f16]|length} 65536 (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log).
    * Until #114 it was the cap's Stub.
    */
@@ -101,7 +101,7 @@ class InlineCapTest {
    * F-54: a PLAIN call ticks one step, so a chain of them cannot escape the step budget. {@code def f1: .; def f2:
    * f1|f1; …; f60} would run 2^59 calls and lower 2^60 - 1 nodes inlined; its calls are lifted, and with {@link #STEPS}
    * steps the run ends with {@code JqTermination(BUDGET, STEPS)} within 20 s, where calls that ticked nothing would
-   * run for ever. jq-ref 1.8.2 runs the chain to f22, 2^21 calls, and prints {@code null} (F-54; diff/over-cap.rec
+   * run for ever. Reference jq 1.8.2 runs the chain to f22, 2^21 calls, and prints {@code null} (F-54; diff/over-cap.rec
    * {@code over-cap/doubling-22}).
    */
   @Test

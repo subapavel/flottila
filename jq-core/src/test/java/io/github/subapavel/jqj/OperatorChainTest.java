@@ -59,7 +59,7 @@ class OperatorChainTest {
    * .logs/94-jqref-edges.log of the test-author's run): null for 6 554 terms of {@code .a+}, false for 3 277 of {@code
    * .a and} and of {@code .a or}, true for 2 185 of {@code .a == .a and}, null for 2 185 of {@code .a //}. A chain whose
    * operators alternate stays nested and is the IR bound's Stub ({@link #aLongAlternatingChainIsTheIrDepthStub}). The
-   * last line was a Stub until #114, when a call past the IR bound became a PLAIN Call (F-54): jq-ref 1.8.2 prints 600
+   * last line was a Stub until #114, when a call past the IR bound became a PLAIN Call (F-54): reference jq 1.8.2 prints 600
    * nulls and then 10 001 brackets, {@code <skipped: too deep>} and 10 001 brackets, 601 lines and 23 022 bytes
    * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log), which {@link Child} joins with {@code ", "} and {@code
    * JqValue.toJson} prints so too (DeepBuiltArrayTest).
@@ -189,7 +189,7 @@ class OperatorChainTest {
    * #94 (ADR-0043): a chain is one Binds, a few levels however long, so inside a definition 40 000 terms are no IR
    * depth Stub, as they were until #94; each term and each operator spend a node, 79 999 in all, past the cap of 65 536
    * (ADR-0040 "Inline cap", {@link #eachOperatorOfAChainSpendsANode}), so since #114 f's call is a PLAIN Call and the
-   * filter runs; until #114 it was the inline cap's Stub (F-89). jq-ref 1.8.2 gives no result within {@code timeout 10}
+   * filter runs; until #114 it was the inline cap's Stub (F-89). Reference jq 1.8.2 gives no result within {@code timeout 10}
    * (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, rc 124), so the result is the jqj column of DEVIATIONS
    * "Long operator runs": 0, the sum of 40 000 lengths of null.
    */
@@ -206,7 +206,7 @@ class OperatorChainTest {
    * Each operator of a chain spends a node of the inline cap, as its own lowering would: 15 000 chains of three terms
    * inside a definition are 75 000 nodes, past the cap of 65 536, while their terms alone are 45 000; so f's call is
    * a PLAIN Call, f is lifted (ADR-0040 #114 amendment), and the filter runs. Until #114 it was the cap's Stub (F-89).
-   * jq-ref 1.8.2 rejects the filter with its bytecode limit, rc 3, {@code function compiled to 405012 bytes which is
+   * Reference jq 1.8.2 rejects the filter with its bytecode limit, rc 3, {@code function compiled to 405012 bytes which is
    * too long} (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log), so the result is the jqj column of that
    * DEVIATIONS row: the array of 15 000 zeros, each chain's sum of three lengths of null.
    */
@@ -219,7 +219,7 @@ class OperatorChainTest {
 
   /**
    * And no more than one: 13 000 chains of three terms inside a definition are 65 000 nodes, under the cap, so f's
-   * call is inlined, where two nodes an operator would be 91 000 and lift it. jq-ref 1.8.2 rejects this one too, rc 3,
+   * call is inlined, where two nodes an operator would be 91 000 and lift it. Reference jq 1.8.2 rejects this one too, rc 3,
    * {@code function compiled to 351012 bytes which is too long} (.logs/114-jqref-probe.log).
    */
   @Test

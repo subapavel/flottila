@@ -15,7 +15,7 @@ import org.junit.jupiter.params.provider.CsvSource;
  * of {@code Resolver.INLINE_CAP} = 65 536): a definition whose body has {@code nodes} nodes lowers that many at each
  * call, so the most calls of it that are inlined are 65 536 / nodes, rounded down, and run as jq does; with one call
  * more the call that would pass the cap is a PLAIN Call, f is lifted once and every later call of it is a Call too
- * (ADR-0040 #114 amendment), so the filter runs; until #114 it was the cap's Stub. jq-ref 1.8.2 rejects every one of
+ * (ADR-0040 #114 amendment), so the filter runs; until #114 it was the cap's Stub. Reference jq 1.8.2 rejects every one of
  * those longer chains with its bytecode limit, rc 3 ({@code function compiled to 524294 bytes which is too long} for
  * the one-node bodies, 174766 for the three-node ones and 104862 for the five-node ones, observed 2026-11-15 with -nc
  * -f, .logs/114-jqref-probe.log), so their results are the jqj column of DEVIATIONS "Long comma chains": one body's

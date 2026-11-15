@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
  * ADR-0040 "Inline cap" and its #114 amendment: the 512th nested expansion is a PLAIN Call to a lifted function, lowered
  * once from the worklist, where nesting restarts at 0 (F-54). A call chain of n definitions nests n expansions and
  * lowers one node, so only the nesting can lift it. 511 nested expansions are inlined; the 512th, a Stub until #114,
- * runs. jq-ref 1.8.2 prints {@code null} for both (observed 2026-11-13, and 2026-11-15 for 512 with -nc -f,
+ * runs. Reference jq 1.8.2 prints {@code null} for both (observed 2026-11-13, and 2026-11-15 for 512 with -nc -f,
  * .logs/114-jqref-probe.log); the definitions are top-level, which the parser reads in a loop, so its 512 nesting
  * levels (DEVIATIONS "Parse depth") are not reached.
  */
@@ -48,7 +48,7 @@ class InlineDepthTest {
   }
 
   /**
-   * DEVIATIONS "Long definition runs" (row of {@code over-cap/flat-4097}): jq-ref 1.8.2 rejects 4 097 live definitions,
+   * DEVIATIONS "Long definition runs" (row of {@code over-cap/flat-4097}): reference jq 1.8.2 rejects 4 097 live definitions,
    * rc 3, {@code too many function parameters or local function definitions (max 4095)} (recorded in
    * diff/over-cap.rec), and runs 4 095 to {@code 1} (.logs/114-jqref-probe.log). jqj has no such limit: past 511
    * nested expansions a call is PLAIN, so the chain runs and gives the row's jqj column, {@code 1}.
