@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.query.compile;
 
+import io.github.subapavel.jqj.query.analysis.Facts;
 import io.github.subapavel.jqj.query.internal.interpret.Op;
 import io.github.subapavel.jqj.query.internal.interpret.Trampoline;
 import io.github.subapavel.jqj.query.run.RunState;
@@ -8,7 +9,8 @@ import io.github.subapavel.jqj.query.run.Termination;
 
 /**
  * A compiled program (GLOSSARY "Executable"): immutable, and it keeps nothing from one run to the next. Each run gets its
- * own frames (ADR-0034, ADR-0045 #107), so two runs on two threads share nothing.
+ * own frames (ADR-0034, ADR-0045 #107), so two runs on two threads share nothing. Its facts travel with it (ADR-0045
+ * #112).
  */
 public final class Executable {
   private static final Object[] NO_PARAMETERS = {};
@@ -21,10 +23,19 @@ public final class Executable {
   /** The number of parameter slots, slots {@code 0 .. parameters - 1} (ADR-0038). */
   private final int parameters;
 
-  Executable(Op root, int slots, int parameters) {
+  /** The facts of the program this was compiled from, by its freeze ids. */
+  private final Facts facts;
+
+  Executable(Op root, int slots, int parameters, Facts facts) {
     this.root = root;
     this.slots = slots;
     this.parameters = parameters;
+    this.facts = facts;
+  }
+
+  /** The facts of the compiled program, by body and freeze id ({@code query.analysis.Numbering}). */
+  public Facts facts() {
+    return facts;
   }
 
   /**
