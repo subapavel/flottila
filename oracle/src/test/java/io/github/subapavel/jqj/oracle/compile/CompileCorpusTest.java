@@ -5,18 +5,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
+import io.github.subapavel.jqj.JqEngine;
+import io.github.subapavel.jqj.oracle.StackProbe;
 import io.github.subapavel.jqj.oracle.diff.DiffCase;
 import io.github.subapavel.jqj.oracle.diff.Outcome;
 import io.github.subapavel.jqj.oracle.diff.Verdict;
+import io.github.subapavel.jqj.query.compile.CompileMode;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,6 +36,38 @@ class CompileCorpusTest {
 
   /** The thread on which F on 9999 completes only on the trampoline: DeepRuns' small stack. */
   private static final long SMALL = 256 * 1024;
+
+  /** F-88: {@code max(4 × Limits.cli().stackBytes(), 2 MiB)}, with the command line's 512 KiB: 2 MiB. */
+  private static final long RUNNER_STACK = 2L << 20;
+
+  /**
+   * F-88, #111: each case of the compile-mode oracle, a jqtest case through the API and a differential case through
+   * the command line, runs its hook on one fixed thread, not the caller's, that holds the stack of a fresh
+   * {@value #RUNNER_STACK}-byte thread.
+   */
+  @Test
+  void everyCaseRunsOnTheRunnersOneThread(@TempDir Path scratch) {
+    StackProbe.warm(RUNNER_STACK);
+    List<Thread> threads = new CopyOnWriteArrayList<>();
+    List<Integer> frames = new CopyOnWriteArrayList<>();
+    UnaryOperator<JqEngine.Builder> probe =
+        b -> {
+          threads.add(Thread.currentThread());
+          frames.add(StackProbe.frames());
+          return CompileModes.hook(CompileMode.CONSERVATIVE).apply(b);
+        };
+    List<CompileCorpus.Case> cases = CompileCorpus.cases(scratch);
+    CompileCorpus.Case api = cases.stream().filter(c -> c.id().startsWith("jq.test#")).findFirst().orElseThrow();
+    CompileCorpus.Case cli = cases.stream().filter(c -> c.id().equals("dot/null")).findFirst().orElseThrow();
+
+    api.run().apply(probe);
+    cli.run().apply(probe);
+
+    assertThat(threads).as("the threads the hook ran on, one per case").hasSize(2);
+    assertThat(threads.get(0)).as("the thread of the API case").isNotSameAs(Thread.currentThread()).isSameAs(threads.get(1));
+    StackProbe.assertHolds(frames.get(0), RUNNER_STACK, "the compile-mode oracle's API case");
+    StackProbe.assertHolds(frames.get(1), RUNNER_STACK, "the compile-mode oracle's command-line case");
+  }
 
   @Test
   void eachLineIsRequiredUnderItsMode(@TempDir Path dir) throws IOException {

@@ -1,0 +1,10 @@
+# The required cases of #111 "S2b.5 Stack units, the switch at U_f and the form-B starters" (ADR-0020, ADR-0046 and
+# its #111 amendment, F-55, F-88): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes
+# -Doracle.require=<file>. One id per line; # and blank lines skipped. The compile-mode oracle's lines come from the
+# after-merge regen (F-58), not from this file.
+
+# differential: every case of diff/deep.cases, on the runner thread of F-88.
+deep/collect
+deep/reduce
+deep/first-or
+deep/hold
