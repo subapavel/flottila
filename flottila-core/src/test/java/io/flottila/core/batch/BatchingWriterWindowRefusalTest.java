@@ -21,14 +21,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * FIX-69: a timer that refuses the window schedule (throws) leaves no item pending forever. Every save / saveWaiting
- * future completes; an item handed to the sink completes with its commit, an item that is not fails with the timer's
- * exception as cause (the architect's decision: the batches a drain took when its window could not be scheduled fail,
- * they are not committed); no item reaches the sink twice; flush() completes; the writer stays usable afterwards.
+ * D-146: a timer that refuses the window schedule (throws) fails no item. The batches the drain just took are
+ * committed, never failed; they reach the sink in the order taken and whatever stayed queued rides their completions,
+ * so nothing is left queued with no commit in flight and no window. Every save / saveWaiting future completes, no item
+ * reaches the sink twice, flush() completes, and the writer stays usable afterwards. A sink that completes inline may
+ * re-enter the drain, so a younger batch can reach the sink before the outer loop's next one — a documented
+ * non-guarantee, not asserted here.
  * The refusing timer refuses only the window delay, never a waiter's deadline (maxWait differs from the window).
  */
 class BatchingWriterWindowRefusalTest {
@@ -67,7 +69,7 @@ class BatchingWriterWindowRefusalTest {
             return inner.schedule(delay, () -> {
                 try {
                     task.run();
-                } catch (RuntimeException e) {
+                } catch (Throwable e) {   // an Error too: recorded, so the case sees an assertion and not a raw throw
                     escaped.add(e);
                 }
             });
@@ -98,18 +100,15 @@ class BatchingWriterWindowRefusalTest {
         }
     }
 
-    /** Every future complete; committed ⇔ handed to the sink (once); not handed ⇒ failed with the timer's refusal as cause. */
+    /** D-146: every future complete, every item in the sink exactly once, none failed — a refusal fails no item. */
     private void assertEverySettled(Map<String, Future<Void>> futures) {
         List<String> sunk = flushed();
         assertEquals(new HashSet<>(sunk).size(), sunk.size(), "no item reaches the sink twice: " + sunk);
         futures.forEach((item, f) -> {
             assertTrue(f.isComplete(), item + " never completed (left counted in flight or queued with no window): " + f + ", sink saw " + sunk);
-            if (sunk.contains(item)) {
-                assertTrue(f.succeeded(), item + " was handed to the sink and its commit succeeded, so it succeeds: " + f.cause());
-            } else {
-                assertTrue(f.failed(), item + " never reached the sink, so it cannot have succeeded");
-                assertSame(timer.refusal, f.cause(), item + " never reached the sink: it fails with the timer's exception as cause, got " + f.cause());
-            }
+            assertTrue(sunk.contains(item), item + " never reached the sink: a refused window commits what the drain took and what "
+                    + "stayed queued rides its completion (D-146), it fails nobody; the sink saw " + sunk);
+            assertTrue(f.succeeded(), item + " was handed to the sink and its commit succeeded, so it succeeds: " + f.cause());
         });
         assertEquals(List.of(), timer.escaped, "no window task threw on the timer's thread");
     }
@@ -174,8 +173,48 @@ class BatchingWriterWindowRefusalTest {
         assertUsableAfterwards(w);
     }
 
+    /**
+     * a goes to the sink at once; b, c, d queue behind it with every window refused; a's completion drains: the drain takes
+     * [b, c] and is refused the window for [d]. Returns with [b, c] handed to the sink (D-146) and d queued behind it.
+     */
+    private BatchingWriter<String> aRefusedWindowOnTheDrainAfterA(Map<String, Future<Void>> futures) {
+        timer.refuse = true;
+        BatchingWriter<String> w = writer(2, 1, 10);
+        futures.put("a", w.save("a"));
+        var gateA = sink.gate();
+        for (String item : List.of("b", "c", "d")) {
+            futures.put(item, assertDoesNotThrow(() -> w.save(item), "a refused window is never thrown at the saver of " + item));
+        }
+        int refusedBefore = timer.refused.get();
+        assertTrue(refusedBefore >= 1, "fixture: the window for the partial batch was asked for and refused");
+        gateA.complete();
+        assertTrue(timer.refused.get() > refusedBefore, "fixture: the drain on a's completion asked for a window of its own and was refused");
+        return w;
+    }
+
     @Test
-    void theBatchTakenWhenTheWindowIsRefusedFailsWithTheTimersExceptionAndEveryWaiterCompletes() {
+    void aRefusedWindowCommitsTheTakenBatchAndEveryItemSucceeds() {
+        Map<String, Future<Void>> futures = new LinkedHashMap<>();
+        BatchingWriter<String> w = aRefusedWindowOnTheDrainAfterA(futures);
+
+        assertEquals(List.of(List.of("a"), List.of("b", "c")), sink.batches,
+                "D-146: the drain whose window was refused hands the batch it took to the sink, oldest first");
+        for (String item : List.of("b", "c")) {
+            Future<Void> f = futures.get(item);
+            assertFalse(f.failed(), item + " was in the batch taken when the window was refused: it is committed, not failed: " + f.cause());
+        }
+        assertEquals(1, w.backlog(), "d stayed queued behind the committed batch");
+        assertEquals(1, w.inFlight(), "and it rides that commit: nothing is queued with no commit in flight and no window");
+
+        sink.gate().complete();   // [b, c] commits; its completion drains d
+        assertEquals(List.of("a", "b", "c", "d"), flushed(), "d rides the committed batch's completion; the sink saw arrival order");
+        completeEveryOpenCommit();
+        assertEverySettled(futures);
+        assertUsableAfterwards(w);
+    }
+
+    @Test
+    void aPermanentlyRefusedWindowDrainsTheWholeBacklogAndEveryWaiter() {
         BatchingWriter<String> w = writer(2, 1, 4);
         Map<String, Future<Void>> futures = new LinkedHashMap<>();
         futures.put("a", w.save("a"));
@@ -187,55 +226,31 @@ class BatchingWriterWindowRefusalTest {
         assertEquals(4, timer.inner.pending(), "fixture: the window and three deadlines are armed");
 
         timer.refuse = true;
-        clock.advance(WINDOW);                                  // the window fires; a's commit still holds the only slot
+        clock.advance(WINDOW);                                  // the window fires; every window asked for after it is refused
         assertTrue(timer.refused.get() >= 1, "fixture: the window task asked for the next window and was refused");
         assertEquals(List.of("a"), flushed(), "fixture: the slot is busy, nothing more was handed to the sink");
 
-        gateA.complete();                                       // the drain takes [b, c], tops up w1, w2, and is refused a window
-        assertTrue(futures.get("a").succeeded(), "a was committed: it completes although the drain after it met a refusing timer: " + futures.get("a"));
-        for (String item : List.of("b", "c")) {
-            Future<Void> f = futures.get(item);
-            assertTrue(f.failed(), item + " was in the batch taken when the window was refused: it fails at once, not left in flight: " + f);
-            assertSame(timer.refusal, f.cause(), item + " fails with the timer's exception as cause, got " + f.cause());
-        }
-        assertFalse(flushed().contains("b") || flushed().contains("c"), "the failed batch is not committed as well: " + flushed());
+        gateA.complete();
+        completeEveryOpenCommit();                              // every commit the permanently refused writer still issues
 
-        Future<Void> flush = assertDoesNotThrow(w::flush, "a refused window is never thrown at the flusher");
-        completeEveryOpenCommit();
-        assertTrue(flush.isComplete(), "flush completes once everything it saw completed: " + flush);
-        assertTrue(clock.instant().isBefore(Instant.EPOCH.plus(MAX_WAIT)), "fixture: no waiter's deadline has fired, each one completed by the writer");
+        assertEquals(0, w.backlog(), "a permanently refused window leaves nothing queued: the backlog rides the commits in flight");
+        assertEquals(0, w.waiting(), "every waiter entered the backlog and was handed on");
+        assertEquals(0, w.inFlight());
+        futures.forEach((item, f) -> assertNotSame(timer.refusal, f.cause(),
+                item + " was failed by the window refusal; D-146: a refusal fails no item"));
+        assertEquals(List.of("a", "b", "c", "d", "e", "w1", "w2", "w3"), flushed(),
+                "every item reached the sink once, the queue before the waiters, in arrival order");
+        assertTrue(clock.instant().isBefore(Instant.EPOCH.plus(MAX_WAIT)), "fixture: no waiter's deadline has fired, each one entered");
         assertEverySettled(futures);
         assertUsableAfterwards(w);
     }
 
-    /**
-     * a goes at once; b, c, d queue behind it, their window refused; a's completion takes [b, c] and is refused a window for
-     * [d]: [b, c] fail with the refusal, and the drain runs again on the freed slot and hands [d] to the sink.
-     */
-    private BatchingWriter<String> refusedBatchThenCommitted(Map<String, Future<Void>> futures) {
-        timer.refuse = true;
-        BatchingWriter<String> w = writer(2, 1, 10);
-        futures.put("a", w.save("a"));
-        var gateA = sink.gate();
-        for (String item : List.of("b", "c", "d")) {
-            futures.put(item, assertDoesNotThrow(() -> w.save(item), "a refused window is never thrown at the saver of " + item));
-        }
-        gateA.complete();
-        for (String item : List.of("b", "c")) {
-            Future<Void> f = futures.get(item);
-            assertTrue(f.failed(), item + " was in the batch taken when the window was refused: it fails at once: " + f);
-            assertSame(timer.refusal, f.cause(), item + " fails with the timer's own throwable as cause, got " + f.cause());
-        }
-        assertEquals(List.of("a", "d"), flushed(), "the failed batch never reaches the sink; d goes on the freed slot");
+    @Test
+    void aLaterFlushOnAWorkingTimerSucceedsOnceARefusedWindowsBatchHasCommitted() {
+        Map<String, Future<Void>> futures = new LinkedHashMap<>();
+        BatchingWriter<String> w = aRefusedWindowOnTheDrainAfterA(futures);
         completeEveryOpenCommit();
         assertEverySettled(futures);
-        return w;
-    }
-
-    @Test
-    void aLaterFlushOnAWorkingTimerSucceedsOnceARefusedBatchHasFailed() {
-        Map<String, Future<Void>> futures = new LinkedHashMap<>();
-        BatchingWriter<String> w = refusedBatchThenCommitted(futures);
         timer.refuse = false;
 
         Future<Void> e = w.save("e");
@@ -243,16 +258,25 @@ class BatchingWriterWindowRefusalTest {
         assertFalse(flush.isComplete(), "flush waits for e, which is in flight: " + flush);
         sink.gate().complete();
         assertTrue(e.succeeded());
-        assertTrue(flush.succeeded(), "the failed batch left flight with its refusal: a later flush waits only on e and succeeds, got " + flush.cause());
+        assertTrue(flush.succeeded(), "the refused window left nothing counted in flight: a later flush waits only on e, got " + flush.cause());
         assertUsableAfterwards(w);
     }
 
     @Test
-    void anErrorFromTheWindowScheduleFailsTheTakenBatchWithThatErrorAndTheWriterStaysUsable() {
+    void anErrorFromTheWindowScheduleIsCommittedAndTheWriterStaysUsable() {
         timer.refusal = new InternalError("timer cannot schedule");
         Map<String, Future<Void>> futures = new LinkedHashMap<>();
-        BatchingWriter<String> w = refusedBatchThenCommitted(futures);
-        assertTrue(futures.get("b").cause() instanceof InternalError, "fixture: the refusal was the Error: " + futures.get("b").cause());
+        BatchingWriter<String> w = aRefusedWindowOnTheDrainAfterA(futures);
+
+        assertEquals(List.of(List.of("a"), List.of("b", "c")), sink.batches,
+                "an Error from the window schedule commits the taken batch, as a RuntimeException does: " + sink.batches);
+        for (String item : List.of("b", "c")) {
+            Future<Void> f = futures.get(item);
+            assertFalse(f.failed(), item + " was taken when the window threw an Error: it is committed, not failed: " + f.cause());
+        }
+        completeEveryOpenCommit();
+        assertEverySettled(futures);
+
         timer.refuse = false;
         Future<Void> flush = w.flush();
         assertTrue(flush.succeeded(), "nothing is left in flight after an Error refusal: " + flush);

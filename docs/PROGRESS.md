@@ -1,4 +1,19 @@
 
+## 2026-11-15 — FIX-195 landed unreviewed, FIX-196 parked — state recorded on the owner's instruction
+
+- The owner stopped the test work ("žádné testy, kašli na to, pořádek si uděláme na main") and asked only that the state be written down.
+- FIX-195 is in the tree: BatchingWriter's D-146 policy, the three widened catch sites, the contained cancels, and the refused-cancel
+  episode throttle with one flag per site. The implementer reported the module green and all seven mutants killed; its last step, the
+  whole-module run and coverage, was cut short when the work was stopped.
+- NOT done by this project's definition: no verification build of the architect's own, no reviewer pass. The BACKLOG row says
+  `landed, unreviewed` and the D-146 row says the code, not the row, is the authority on what ships.
+- FIX-196 never got past one partial test file; it is parked at `agent/work/FIX-196-partial-lane3.diff` and its packet still stands.
+- Durability, on the owner's earlier instruction that everything reach main even against the rules: `agent/work/*.md` and `*.diff` are
+  force-added past the ignore rule, the scratchpad design extracts are in `agent/archive/branch-design/`, and FIX-195's two intermediate
+  states are on the remote branch `wip/fix195-snapshot` (f546913, 65403e1), both taken through a temporary git index so the agents at
+  work in those lanes were never interrupted.
+- Deviation: this entry records a task landed without its gate. That is the owner's call of 2026-11-15, not a precedent.
+
 ## 2026-11-15 — FIX-209 the ledger guard reports duplicate ids — done, review PASS (r2)
 - Test first: 5 red cases in ci/test_ledger_check.py (agent/work/FIX-209-red.log, 26 tests, 5 failures), each failing for its own reason.
 - Why: three id collisions in one night (D-101/D-102, D-144, CONSIDER-11). An allocation race between parallel sessions, not staleness -

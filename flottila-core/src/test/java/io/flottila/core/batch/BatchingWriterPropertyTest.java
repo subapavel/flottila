@@ -1,5 +1,6 @@
 package io.flottila.core.batch;
 
+import io.flottila.api.Timer;
 import io.flottila.testkit.FakeClock;
 import io.flottila.testkit.FakeTimer;
 import io.vertx.core.Future;
@@ -19,10 +20,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -309,6 +312,99 @@ class BatchingWriterPropertyTest {
         for (int i = 0; i < sink.batches.size(); i++) {
             for (String item : sink.batches.get(i)) assertEquals(outcomes.get(i), futures.get(item).succeeded(), item + " carries its batch's outcome");
         }
+    }
+
+    // --- FIX-195 (D-146): the window timer refuses on a generated flag; liveness and order together
+
+    /** A turn of the refused-window property: a save, a commit completion, a window tick, or the timer's refusal turned on or off. */
+    enum Turn { SAVE, COMPLETE_OK, COMPLETE_FAIL, TICK, REFUSE_WINDOW, ALLOW_WINDOW }
+
+    @Provide
+    Arbitrary<List<Turn>> turns() {
+        return Arbitraries.of(Turn.class).list().ofMinSize(1).ofMaxSize(80);
+    }
+
+    /**
+     * D-146: whatever the window timer does, the batches a drain took are committed and never failed. Under any mix of
+     * saves, commit completions and a window schedule that throws while the generated flag is on: no item is failed by
+     * the refusal, nothing stays queued with no commit in flight and no window (the backlog drains on the commits in
+     * flight even while every window is refused), every accepted item reaches the sink exactly once, the concatenation
+     * of the batches in hand-off order is arrival order, and every item carries the outcome of its own batch.
+     */
+    @Property(tries = 300)
+    void everyItemReachesTheSinkOnceAndTheirConcatenationIsArrivalOrder(@ForAll("turns") List<Turn> turns,
+                                                                        @ForAll @IntRange(min = 1, max = 4) int batchSize,
+                                                                        @ForAll @IntRange(min = 1, max = 3) int concurrency,
+                                                                        @ForAll @IntRange(min = 1, max = 3) int backlogBatches,
+                                                                        @ForAll @IntRange(min = 1, max = 20) int windowMs) {
+        FakeClock clock = FakeClock.at(Instant.EPOCH);
+        FakeTimer inner = new FakeTimer(clock);
+        Duration window = Duration.ofMillis(windowMs);
+        RuntimeException refusal = new RejectedExecutionException("timer shut down");
+        boolean[] refusing = {false};
+        List<Throwable> escaped = new ArrayList<>();
+        Timer timer = (delay, task) -> {
+            if (refusing[0] && delay.equals(window)) throw refusal;
+            return inner.schedule(delay, () -> {
+                try {
+                    task.run();
+                } catch (Throwable t) {   // as a Vert.x timer reports it to its context, not at the test that advanced the clock
+                    escaped.add(t);
+                }
+            });
+        };
+        FakeSink sink = new FakeSink();
+        sink.manual = true;
+        int maxBacklog = batchSize * backlogBatches;
+        BatchingWriter<String> w = new BatchingWriter<>(sink, timer,
+                new BatchingWriter.Options(batchSize, window, concurrency, maxBacklog));
+
+        Map<String, Future<Void>> futures = new HashMap<>();
+        List<String> acceptedOrder = new ArrayList<>();
+        List<Boolean> outcomes = new ArrayList<>();      // index = batch number in sink.batches
+        int refusalsSeen = 0;
+        int saves = 0;
+        for (Turn t : turns) {
+            switch (t) {
+                case SAVE -> {
+                    String item = "i" + (saves++);
+                    Future<Void> f = w.save(item);
+                    if (!(f.failed() && f.cause() instanceof OverloadedException)) {
+                        futures.put(item, f);
+                        acceptedOrder.add(item);
+                    }
+                }
+                case COMPLETE_OK -> { if (sink.open() > 0) { sink.gate().complete(); outcomes.add(true); } }
+                case COMPLETE_FAIL -> { if (sink.open() > 0) { sink.gate().fail(new RuntimeException("failed batch")); outcomes.add(false); } }
+                case TICK -> clock.advance(window);
+                case REFUSE_WINDOW -> { if (!refusing[0]) refusalsSeen++; refusing[0] = true; }
+                case ALLOW_WINDOW -> refusing[0] = false;
+            }
+            assertTrue(w.inFlight() <= concurrency, "in flight " + w.inFlight() + " > " + concurrency);
+            assertTrue(w.backlog() <= maxBacklog, "backlog " + w.backlog() + " > " + maxBacklog);
+        }
+        // drain with the timer left as the pattern left it: liveness may not depend on a window being granted
+        for (int guard = 0; guard < 10_000 && (w.backlog() > 0 || sink.open() > 0); guard++) {
+            clock.advance(window);
+            if (sink.open() > 0) { sink.gate().complete(); outcomes.add(true); }
+        }
+        assertEquals(0, w.backlog(), "nothing stays queued with no commit in flight and no window, refused windows included");
+        assertEquals(0, w.inFlight());
+
+        List<String> flushed = sink.batches.stream().flatMap(List::stream).toList();
+        assertEquals(acceptedOrder, flushed, "every accepted item reaches the sink exactly once, in arrival order ("
+                + refusalsSeen + " refusal episodes)");
+        futures.forEach((item, f) -> {
+            assertTrue(f.isComplete(), item + " never completed");
+            assertNotSame(refusal, f.cause(), item + " was failed by a window refusal; D-146: a refusal fails no item");
+        });
+        assertEquals(sink.batches.size(), outcomes.size(), "every batch was completed exactly once");
+        for (int i = 0; i < sink.batches.size(); i++) {
+            for (String item : sink.batches.get(i)) {
+                assertEquals(outcomes.get(i), futures.get(item).succeeded(), item + " carries the outcome of its own batch #" + i);
+            }
+        }
+        assertEquals(List.of(), escaped, "no window task threw on the timer's thread");
     }
 
     /** The accepted items not yet handed to the sink, in arrival order. */
