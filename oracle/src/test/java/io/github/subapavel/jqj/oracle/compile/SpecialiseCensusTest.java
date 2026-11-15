@@ -42,7 +42,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The specialisation census of #117 (design comment, "SpecialiseCensusTest.largestSpecialisedNodeCount"; ADR-0045
- * "Amendment (ticket #117)", S5 and "Order and cap"; ADR-0020 "Amendment (ticket #117)"; F-94; GLOSSARY
+ * "Amendment (ticket #117)", S5 and "Order and cap"; ADR-0020 "Amendment (ticket #117)"; F-94, F-96; GLOSSARY
  * "Specialisation cap"): every CompileCorpus filter, each jqtest case's program and each differential case's {@code
  * filter} key, plus each prelude definition of builtin.jq called as {@code name(.; …)}, compiled OPTIMISED as {@code
  * JqEngine.compile} does it (the Resolver with no declared variables, then {@code Compiler.compile}). A filter jqj does
@@ -88,12 +88,14 @@ class SpecialiseCensusTest {
   static final int TOP = 10;
 
   /**
-   * The filters refused by design (ADR-0045 #117 "Order and cap", F-94): #114's cases built to exceed every cap, whose
-   * demand grows with the chain by construction and which #114 requires with real closures. The census asserts that the
-   * filters refused under SPECIALISE_CAP are exactly these, and that each is refused under INLINE_CAP too. An entry needs
-   * a finding and a line in ADR-0045; a writer never edits this list.
+   * The filters refused by design (ADR-0045 #117 "Order and cap"): #114's cases built to exceed every cap, whose demand
+   * grows with the chain by construction and which #114 requires with real closures (F-94), and #117's order case,
+   * param-600's chain before a recurse, whose chain spends the cap first (F-96). The census asserts that the filters
+   * refused under SPECIALISE_CAP are exactly these, and that each is refused under INLINE_CAP too. An entry needs a
+   * finding and a line in ADR-0045; a writer never edits this list.
    */
-  static final List<String> REFUSED_BY_DESIGN = List.of("over-cap/param-600", "over-cap/param-unused-600", "over-cap/closure-doubling-20");
+  static final List<String> REFUSED_BY_DESIGN =
+      List.of("over-cap/param-600", "over-cap/param-unused-600", "over-cap/closure-doubling-20", "specialise/order-param-chain-then-recurse");
 
   /**
    * #117's required differential cases whose outside calls run copies (diff/specialise.cases, require/117.txt), so each
@@ -239,7 +241,7 @@ class SpecialiseCensusTest {
     }
     Set<String> refused = refusing.stream().map(c -> c.filter().id()).collect(Collectors.toCollection(TreeSet::new));
     soft.assertThat(refused)
-        .as("the filters refused under SPECIALISE_CAP %d are exactly REFUSED_BY_DESIGN (ADR-0045 #117, F-94); log %s", Specialiser.SPECIALISE_CAP, LOG)
+        .as("the filters refused under SPECIALISE_CAP %d are exactly REFUSED_BY_DESIGN (ADR-0045 #117, F-94, F-96); log %s", Specialiser.SPECIALISE_CAP, LOG)
         .isEqualTo(new TreeSet<>(REFUSED_BY_DESIGN));
     for (String id : REFUSED_BY_DESIGN) {
       Count c = byId.get(id);
