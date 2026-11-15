@@ -45,8 +45,10 @@ import java.util.List;
  * notes it, and notes the step count when that result's emit has returned (its {@link Many#next}); RAISED notes an error
  * of n's own (a downstream error passes the Try wrapped, ADR-0039) and raises it again with the same value; END, after
  * the Comma's one step, notes the step count when n ended normally. So a run of the wrapped program is the plain run
- * plus those notes, and "nothing runs after the result" (F-56) is {@code END - next = 1}: the Comma's step and no step
- * of n's own.
+ * plus those notes, and "nothing runs after the result" (F-56) is {@code END - next - nestedEnds = 1}: the Comma's step
+ * and no step of n's own. In a recursive body n's result can come from an activation of n nested in this one, whose
+ * Comma steps to its END after this activation's {@code next}: that step is the probe's, not n's, and {@link
+ * Activation#nestedEnds} counts it (#117: a copy makes a recursive body AT_MOST_ONE).
  */
 final class BoundProbe {
 
@@ -69,6 +71,18 @@ final class BoundProbe {
 
     /** The step count when n ended normally and END ran, or -1 when it did not. */
     long end = -1;
+
+    /** When ENTER made this activation, in the probe's order of ENTER and first {@code next} notes. */
+    long entered;
+
+    /** When the first result's emit returned, in the same order, or -1 while none has returned. */
+    long nextOrder = -1;
+
+    /**
+     * The activations entered before this one's {@link #next} that ended normally after it and before this one's END,
+     * so nested in it: each took its Comma's step to END, counted in {@code end - next} and not a step of n's.
+     */
+    int nestedEnds;
   }
 
   /** A run's results, each as compact JSON, and how it ended: null, {@code error <json>} or a termination. */
@@ -80,12 +94,19 @@ final class BoundProbe {
   /** Every activation of this probe's runs, in the order ENTER made them. */
   final List<Activation> activations = new ArrayList<>();
 
+  /** The activations whose first result's emit has returned and that have not ended normally. */
+  private final List<Activation> marked = new ArrayList<>();
+
+  /** The last order ENTER or a first {@code next} note took. */
+  private long order;
+
   private final Operation enter =
       new Operation(
           "_test_enter",
           (Fn0)
               (state, in) -> {
                 Activation a = new Activation();
+                a.entered = ++order;
                 activations.add(a);
                 return a;
               });
@@ -109,6 +130,8 @@ final class BoundProbe {
               Activation a = (Activation) args[0];
               if (a.next < 0) {
                 a.next = state.steps();
+                a.nextOrder = ++order;
+                marked.add(a);
               }
               return Many.END;
             }
@@ -137,7 +160,16 @@ final class BoundProbe {
           "_test_end",
           (Fn1)
               (state, in, token) -> {
-                ((Activation) token).end = state.steps();
+                Activation b = (Activation) token;
+                marked.remove(b);
+                // b ends while a is marked and was entered before a's first next: b runs inside a. An a that b holds has
+                // ended already, or raised or broke out and never ends, so its count is never read.
+                for (Activation a : marked) {
+                  if (b.entered < a.nextOrder) {
+                    a.nestedEnds++;
+                  }
+                }
+                b.end = state.steps();
                 return CallForm.NONE;
               });
 

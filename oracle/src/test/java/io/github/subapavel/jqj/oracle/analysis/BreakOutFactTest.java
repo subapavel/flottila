@@ -70,7 +70,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  * other refusal is a failure. A {@code label} filter jqj does not compile has nothing to watch and is counted; every
  * core-v1 seed must compile.
  *
- * <p>Seam (the design's): {@code Executable.facts()} and {@code Facts.mayBreakOut(int body, int id)}, -1 for main.
+ * <p>Seam (the design's): {@code Executable.facts()} and {@code Facts.mayBreakOut(int body, int id)}, -1 for main, by
+ * the freeze ids of the frozen program ({@code Executable.frozen()}, #117).
  */
 class BreakOutFactTest {
 
@@ -195,15 +196,19 @@ class BreakOutFactTest {
       count("label filters jqj does not compile");
       return;
     }
-    Facts facts = Compiler.compile(program, 0, CompileMode.OPTIMISED).facts();
-    Numbering numbering = Numbering.of(program);
+    // The optimised compile's facts number the program it froze, the specialised one (#117): its nodes are watched,
+    // the originals and the copies.
+    Executable optimised = Compiler.compile(program, 0, CompileMode.OPTIMISED);
+    Facts facts = optimised.facts();
+    Program frozen = optimised.frozen().program();
+    Numbering numbering = optimised.frozen().numbering();
     Workspace workspace = JqEngine.builder().build().newWorkspace();
     try (JsonDoc doc = workspace.read(MemorySegment.ofArray(firstDocument(stdin)))) {
       Object input = doc.root();
       List<String> violations = new ArrayList<>();
-      check(program, -1, program.main(), facts, numbering, input, violations);
-      for (int place = 0; place < program.functions().size(); place++) {
-        check(program, place, program.functions().get(place).body(), facts, numbering, input, violations);
+      check(frozen, -1, frozen.main(), facts, numbering, input, violations);
+      for (int place = 0; place < frozen.functions().size(); place++) {
+        check(frozen, place, frozen.functions().get(place).body(), facts, numbering, input, violations);
       }
       assertThat(violations).as("nodes marked false that broke out, in %s", filter).isEmpty();
     }
@@ -291,8 +296,10 @@ class BreakOutFactTest {
   @Test
   void theProbeSeesABreakOut() {
     String filter = "label $l | (1, break $l)";
-    Program program = Resolver.resolve(Parser.parse(filter));
-    Facts facts = Compiler.compile(program, 0, CompileMode.OPTIMISED).facts();
+    // The facts number the frozen program (#117), whose nodes are watched.
+    Executable optimised = Compiler.compile(Resolver.resolve(Parser.parse(filter)), 0, CompileMode.OPTIMISED);
+    Facts facts = optimised.facts();
+    Program program = optimised.frozen().program();
     List<Node> main = BoundProbe.preOrder(program.main());
     assertThat(main.get(1)).as("main 1 of %s", filter).isInstanceOf(Comma.class);
     assertThat(facts.mayBreakOut(-1, 1)).as("the Comma's fact").isTrue();
