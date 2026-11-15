@@ -237,3 +237,6 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
   probe shows the 220 KB intercept that sets it is an extrapolation artefact (about 105 KB measured at
   256–512 KiB), so the intercept rule changes with the next owed matrix run (#199, L2). Expected effect:
   `U_f` at 512 KiB rises from 1237 − D_f to between 1365 and 1834 − D_f.
+- **ADR-0040 lifted counts, F-106 (spec 2b run, told not asked).** The ADR said tests never pin how
+  many functions are lifted. It now allows a test to pin the lifted list wherever the rule leaves only
+  one answer, for example the single function a 512-deep call chain lifts. #114's `hasSize(1)` stays.
