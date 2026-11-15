@@ -1,20 +1,20 @@
 # Handoff
 
-state: branch MERGED with the core rework, pushed to the branch at 1fbd093 (on 5b5946d, on main's 542087b). NOT yet pushed to main.
-uncommitted (see `git status`): HANDOFF, NOTES docker lesson, DECISIONS D-144, BACKLOG CONSIDER-17, packets/FIX-196.md, the designer note.
-IN FLIGHT lane main: verifier, `clean verify -Pit` -> agent/work/push-gate3.log, then a runtime-only repeat, then coverage --check-baseline.
-IN FLIGHT lane 2: test-author on FIX-195 reds in /home/user/flottila-lane2, branch fix195, -Dmaven.repo.local=<scratchpad>/m2-lane2.
-gate run 2: 3208 tests, ONLY ReplicaStartTest:159 failed (FIX-194, a flake main already had); run 3 decides. bench needs -Pit or it fails.
-next exact action: on the verifier's hand-back, if green or FIX-194 only -> push to main (`git push origin HEAD:main`), PROGRESS, reviewer.
-FIX-195 (FIX-71's policy, lost by the rework): packet agent/packets/FIX-195.md, decision D-144 is WRITTEN in docs/DECISIONS.md.
-  Do NOT cite D-104: on main that is a different decision, and that mis-citation is the F-27 defect class.
-FIX-196 (FIX-59/60, lost): packet written, re-measured - 22 construction sites, 3 in src/main, 19 in tests. FIX-201 replays the other
-  32 branch commits against main: all three losses surfaced only because one of my own tests failed, so the check must be per commit.
-CONSIDER-15 (owner TOP PRIORITY): designer + advisor done, agent/work/CONSIDER-15-designer.md. Ids D-145<-D-102, D-146<-D-103,
-  D-147<-D-105, D-148<-D-106, F-37<-F-26, F-38<-F-27. The design exists on this branch only (a0b3f74, 585b6f4, 94fceab).
-OWNER, 3 OPEN, he is live and said "jeste nevim" at 00:30Z, so NOT handed to the advisor: (1) scoping, phases vs all at once vs
-  option C (handled still leaves a visible record); (2) N5 retention of a HANDLED message; (3) N7 D-107 vs D-136/D-142. Reminder 02:05Z.
-CONSIDER-17 new: the `dlq` name against the `park` verb, decide before /admin/dlq is public. Owner's question of 2026-11-15.
-TRAP, paid for once: `-Dtest=` on flottila-runtime overrides the heap-bounded execution's `**/*HeapTest.java` includes and runs an
-  18 MB-streaming class under -Xmx48m, which OOMs. An artefact of the command. Run the whole module. dockerd dies: see NOTES "Build and VM".
-open issues: ISSUE-1 (Context7 quota); ISSUE-2..5 answered. Ledger guard: 9 malformed rows, all pre-existing on main (FIX-197).
+state: branch PUSHED at 2dacd53, which merges main's 4d4c62c. main itself NOT yet advanced. Uncommitted: see `git status`.
+next exact action: run `clean verify -Pit` ALONE in this lane, then push main (`git push origin HEAD:main`) BEFORE folding FIX-195 in -
+  the owner asked for that window closed, so two gate runs are accepted over one. Then reviewer + commit on FIX-195 and FIX-209.
+FIX-195 IS GREEN in lane 2 (/home/user/flottila-lane2, branch fix195, <scratchpad>/m2-lane2), uncommitted: core 756 tests 0 failures,
+  BatchingWriter 49, mutation-checked, diff at lane2 agent/work/FIX-195.diff. Owed: the cancel-WARNING throttle the packet now rules on.
+  Its decision is D-146. NEVER cite D-104, D-144 or D-145 - each is a different decision on main.
+FIX-209 duplicate-id guard: 26/26 green, shape output byte-identical, uncommitted. Two mutant pins in flight in ci/test_ledger_check.py.
+  It found a live collision: CONSIDER-11 was the id of two different rows; the later (2026-11-11) is now CONSIDER-18, 4 references repointed.
+  Third collision tonight. The cause is an allocation race between parallel sessions, which WORKFLOW 3 does not address.
+FIX-201 AUDIT DONE: of 19 code/test commits, 9 CARRIED and 10 LOST - not the 3 the failing tests had shown, because a deleted test cannot
+  fail. Rows FIX-203..FIX-208 each cite the commit to restore; the 10th is FIX-132, already rowed as FIX-197. NOTE FIX-204 is commit 0adcbed
+  and is NOT FIX-136 (that is the ha profile). agent/work/FIX-201/ is gitignored, so git history is the only durable copy of those commits.
+OWNER, 3 OPEN (he is live; deliberately NOT handed to the advisor): scoping, phases vs all-at-once vs option C; N5 retention of HANDLED;
+  N7 D-107 vs D-136/D-142. All three are in agent/work/CONSIDER-15-designer.md section 5. Reminder fires 02:05Z.
+TRAPS, all four in agent/NOTES.md "Build and VM": `-Dtest=` on flottila-runtime hits the heap-bounded -Xmx48m fork and OOMs, run the whole
+  module; `python3 -I -m unittest ci.X` cannot import the ci package; two Maven reactors at once time out StepBodiesIT and ReplicaStartTest,
+  which spin-wait 20 s; dockerd dies silently, restart with `nohup dockerd &`, never `service docker start`.
+open issues: ISSUE-1 (Context7 quota); ISSUE-6 (commits unsigned; the key here is a 0-byte file - recommend leaving it); ISSUE-2..5 answered.

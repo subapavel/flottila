@@ -338,6 +338,22 @@ ruled out exhaustion. `/var/log/docker.log` was empty, so there is no record of 
 Then wait a few seconds and confirm with `docker ps` before trusting any `-Pit` figure. Read
 `docker ok=` first in every verifier hand-back that runs ITs: 106 errors with one cause is an
 ENVIRONMENT_BLOCKED, and reporting it as a code failure would have condemned the merge wrongly.
+
+### `python3 -I -m unittest ci.<module>` cannot work (2026-11-15)
+
+Two agents hit this an hour apart. `-I` (isolated mode) strips the working directory from
+`sys.path`, so the `ci` package is not importable and the run dies with
+`ModuleNotFoundError: No module named 'ci'` before a single test executes — which reads like a
+broken test module, not like a flag. Use the module form without `-I`:
+
+    cd /home/user/flottila && python3 -m unittest ci.test_ledger_check -v
+
+The script form is different and `-I` is right there, because the script's own directory goes on
+the path either way and `-I` is what keeps a planted module out:
+
+    python3 -I ci/ledger_check.py
+
+`.github/workflows/ci.yml` uses the module form without `-I`, so CI was never affected.
 ## Reference package, fixtures, tags
 
 packages/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +
