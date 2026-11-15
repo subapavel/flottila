@@ -75,8 +75,9 @@ before the call is lowered.
 - The choice is greedy and top-down: the outermost call that does not fit is lifted (Q1). It may
   lift more functions than needed. Where another choice could lift fewer, tests pin results and the
   node bound, not the number of lifted functions. Where the rule leaves one answer, a test may pin the
-  lifted list: a filter of one definition, or a call chain's 512th nested expansion, which lifts one
-  function (F-54; grilling-adviser 2026-11-15, F-106).
+  lifted list: a filter that reaches one non-recursive definition, prelude definitions counted, or a
+  call chain's 512th nested expansion, which lifts one function (F-54; grilling-adviser 2026-11-15,
+  F-106). Elsewhere a test pins at most how many functions an edge adds (#114 rewrite).
 - `spend()` keeps its Stub as a backstop (F-90). Any construct other than a call that goes past
   `MAX_IR_DEPTH` stays a Stub. A PLAIN call ticks one step.
 - Considered and rejected:
