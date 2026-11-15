@@ -4272,6 +4272,13 @@ number/top-level	5faa8f8e3d1d	interpreter
 number/upper-limit	19c5f734a2b9	interpreter
 number/zero-limits	d99c9b6d9b7b	interpreter
 number/zeros	c79b1fc4c8dc	interpreter
+over-cap/closure-doubling-20	eba478749af3	interpreter
+over-cap/depth-30001	5bb07fedfc64	interpreter
+over-cap/doubling-22	a333273ca122	interpreter
+over-cap/flat-4097	92e6b77503fb	interpreter
+over-cap/flat-600	48b839e1fa85	interpreter
+over-cap/param-600	d2dc86916b68	interpreter
+over-cap/param-unused-600	3680f7e14bee	interpreter
 precedence/additive-below-multiplicative	7d837f5b38db	interpreter
 precedence/additive-below-negation	116b54055af9	interpreter
 precedence/additive-left	d9dcb2f94520	interpreter
