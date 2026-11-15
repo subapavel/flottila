@@ -74,7 +74,28 @@ Proposed by the grilling-adviser for the owner under the delegation of 2026-11-1
     - T1: ADR-0018:29 is reworded; CONSERVATIVE stores no tail kind.
     - T2: ADR-0047 is amended; written closures are bound without a frame at jump sites.
     - The embedded recursion-depth default stays open.
+  - #117 census (F-94), from the adviser's rulings R1–R4: three over-cap cases are refused by
+    design and named in ADR-0045 #117; the census asserts that exact set. ADR-0020 #117: the census
+    reaches the capped compile by reflection. The adviser reads the change as fixing a wrong red,
+    not a weakening; a "no" makes the census red until a cap rule changes.
+  - F-96 closes F-94's open point: a parameter chain can spend the cap before a later prelude
+    loop; the order stays and the filter is the fourth refused by design. The order test changes
+    from "recurse must be copied" to "the result is jq's at default limits". The adviser reads this
+    as re-specifying its own earlier red before any pass exists; a "no" means reversing S2's order.
+  - F-95: the provisional b = 96 does not cover a Collect-heavy descent; #113 owns b, and #114
+    merges after #113.
   - #113 (calibration), from the adviser's rulings K1–K10 and corrections D1–D4 (ADR-0046 #113):
+    - Red rulings (ADR-0046 #113, "Rulings on the red"); each "yes" accepts the adviser:
+      - O1: the reserve is the largest linked intercept plus the largest cold-linkage term, rounded
+        up to 4 KiB, plus 32 KiB (T alone gives about 152 KiB against #111's 128 KiB).
+      - O2: `b` is published as measured, even near 200; `U_f` at 512 KiB then falls to about
+        1 850 − D_f, so deep recursion switches earlier with the same results.
+      - O3: heap per live activation is 88–887 B, so the 4 194 304 depth default costs 0.37–3.7 GB
+        before RECURSION_DEPTH fires. The default stays the owner's decision.
+      - O4: the matrix budget is its measured time, with a 45-minute target, re-run at #114 and
+        #116.
+      - O5: trampoline classes keep loading lazily, at the price of the O1 term (about 5 % of `U_f`
+        at 512 KiB), instead of prelinking on every CLI start.
     - ADR-0020's `calibrationFitsHalfStack` is renamed `everyCellSwitchesBeforeTheBackstop`.
       There is no margin beyond rounding and the 32 KiB; each cell's headroom is in the tsv.
     - The reserve is the measured intercept plus 32 KiB, and never below the guard pages plus 32 KiB.
@@ -193,3 +214,26 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
   instead of the owner's identity that earlier regens (e.g. a0ac318) carry. check-trailers accepts
   it. It is pushed to the integration branch; rewriting it is a history rewrite, so it stays unless
   the owner asks. Later regens are told to sign off with the GIT_AUTHOR identity.
+
+- **#117 re-pins and #198 (spec 2b run, told not asked).** The grilling-adviser ruled V1–V5 and
+  W1–W4 for the owner. Five #116 tests were re-pinned because specialisation removes the closures
+  they were built on. The over-cap run pin moved from a pipe ladder to a comma ladder, because a
+  filter with `U_f ≤ 0` runs wholly on the driver, which holds PLAIN activations (F-100). The
+  withdrawn expectation is issue #198. It is not ready for agents and waits for grilling with you
+  or the adviser after #113 and #119.
+
+- **#113 matrix rulings K1–K8 (spec 2b run; ADR-0046 #113 "Rulings on the matrix").** These amend
+  O2 and the measuring rule:
+  - Warm cells are proven (60 runs at the declared stack), not measured, because their edges are
+    junk (K1).
+  - `b` = 192 (C1 W), and the reserve is 280 KiB (K2, K3).
+  - `U_f` at 512 KiB is about 1237 − D_f, against O2's estimate of 1 850 (K4, F-102).
+  - The full matrix took 92.5 min, against the 45-minute target (O4).
+  - Open for you: whether ND OPTIMISED's large intercept is an artefact (reserve 168 KiB), bytes
+    per unit by kind, or a larger 512 KiB default.
+  - WORKFLOW §11's branch names disagree with practice (F-103), a WORKFLOW change for you.
+- **#113 L1–L4 and #199 (spec 2b run, told not asked).** The seeded re-run showed C1 edges found
+  mid-compile, so a JIT edge is now a fixed point (L1). The reserve stays 280 KiB in #113. The side
+  probe shows the 220 KB intercept that sets it is an extrapolation artefact (about 105 KB measured at
+  256–512 KiB), so the intercept rule changes with the next owed matrix run (#199, L2). Expected effect:
+  `U_f` at 512 KiB rises from 1237 − D_f to between 1365 and 1834 − D_f.

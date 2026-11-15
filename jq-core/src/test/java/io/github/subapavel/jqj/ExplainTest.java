@@ -2,11 +2,11 @@ package io.github.subapavel.jqj;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
-import java.util.ArrayList;
+import io.github.subapavel.jqj.query.compile.StackUnits;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -27,31 +27,8 @@ class ExplainTest {
 
   private final JqEngine engine = JqEngine.builder().build();
 
-  /** One line of the text: its fields before the first {@code name=value} one, and its facts by name. */
-  private record Line(List<String> fields, Map<String, String> facts) {
-    static Line of(String line) {
-      List<String> fields = new ArrayList<>();
-      Map<String, String> facts = new LinkedHashMap<>();
-      for (String field : line.split(" ")) {
-        int eq = field.indexOf('=');
-        if (eq < 0) {
-          fields.add(field);
-        } else {
-          facts.put(field.substring(0, eq), field.substring(eq + 1));
-        }
-      }
-      return new Line(fields, facts);
-    }
-
-    boolean isFunction() {
-      return fields.getFirst().equals("function");
-    }
-  }
-
   private List<Line> lines(String filter) {
-    String text = engine.compile(filter).explain();
-    assertThat(text).as("explain of %s", filter).endsWith("\n");
-    return Arrays.stream(text.split("\n")).map(Line::of).toList();
+    return ExplainLines.lines(engine, filter);
   }
 
   /** The node lines of {@code function}, in text order. */
@@ -235,7 +212,7 @@ class ExplainTest {
     assertThat(starter).as("T").isPositive();
     assertThat(callFree).as("D_f against 1 + T, T = %d", starter).isGreaterThanOrEqualTo(1 + starter);
     assertThat(fact(closing, "bytesPerUnit", "the closing line")).as("b").isPositive();
-    assertThat(fact(closing, "reserve", "the closing line")).as("the reserve, 128 KiB until #113").isEqualTo(128 * 1024L);
+    assertThat(fact(closing, "reserve", "the closing line")).as("the reserve, the release constant (ADR-0046 #113, K6)").isEqualTo(StackUnits.reserve());
 
     List<Line> param = conservativeLines("def r(f): if . > 3 then . else f | r(f) end; 0 | r(. + 1)");
     Map<String, String> paramClosing = closing(param);

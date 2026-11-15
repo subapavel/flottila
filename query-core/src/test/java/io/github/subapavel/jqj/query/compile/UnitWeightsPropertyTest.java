@@ -40,8 +40,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
@@ -58,8 +62,13 @@ import org.junit.jupiter.params.provider.MethodSource;
  * If, and leaves and consumers of Identity, Const, Var and intrinsics (the probe, a Many, raising and empty ones):
  * the 20 kinds. #111's deep shapes are among them: a Collect per level (deep/collect), a Reduce step per level
  * (deep/reduce), a Label and an Alt per level (deep/first-or), and a consumer that runs a function emitting from under
- * Trys (deep/hold). It runs at {@code U_f} 1, 2, 5, 17 and 64 under the conservative compile (#116 adds OPTIMISED), and
- * each run must end as the run with the default stack does, with the same probe count, and hold no units after.
+ * Trys (deep/hold). It runs at {@code U_f} 1, 2, 5, 17 and 64 under both compile modes (ADR-0046 #116, R1), and each
+ * run must end as the run with the default stack does, with the same probe count, and hold no units after; the
+ * optimised reference run ends as the conservative one does.
+ *
+ * <p>The same seeds also build value-eligible recursion (ADR-0046 #116, R1): with no closure parameter and a single
+ * probe as the leaf, a body whose wrappers are all at most one is value form in the optimised compile, and its calls run
+ * by {@code eval}, which holds the push form's units (ADR-0047 #116).
  *
  * <p>U_f, D_f and T are read through {@link StackUnits} ({@code compile/StackUnits}, #111).
  */
@@ -80,6 +89,60 @@ class UnitWeightsPropertyTest {
 
   static LongStream seeds() {
     return LongStream.range(0, 200);
+  }
+
+  /**
+   * The seeds, then two named cases of the #113 rulings (ADR-0046 #113 "Rulings on the red"): frames above units are a
+   * weight defect, not a {@code b}. Each is the IR the Resolver builds for a calibration shape, its consumers made
+   * intrinsics that pass their input on, and the probe at its leaf.
+   *
+   * <ul>
+   *   <li>The wide body W: 16 layers per level, each {@code Pipe(Pipe(Collect(Bind(Try(<next>), s, Intrinsic)),
+   *       Intrinsic), Intrinsic)}, the innermost {@code Bind(Pipe(dec, Call), v, Intrinsic)}, 50 levels.
+   *   <li>The Collect-heavy descent of F-95: {@code Bind(Identity, n, Pipe(Collect^100(Pipe(dec, Call)), Var n))}, 40
+   *       levels.
+   * </ul>
+   */
+  static Stream<Arguments> cases() {
+    return Stream.concat(
+        seeds().mapToObj(seed -> Arguments.of("seed " + seed, (Supplier<Program>) () -> new Gen(seed, false).program())),
+        Stream.of(
+            Arguments.of("wide body W", (Supplier<Program>) () -> wideBody(50)),
+            Arguments.of("Collect-heavy descent", (Supplier<Program>) () -> collectDescent(40))));
+  }
+
+  /** {@code if positive then <site> else (probe, 0) end} around one recursive function, run from {@code depth}. */
+  private static Program recursion(int depth, Node site) {
+    Node deepest = new Comma(AT, Gen.probe(), new Const(AT, 0));
+    Node body = new If(AT, Gen.fn0("positive", (state, in) -> ((Integer) in) > 0 ? "yes" : NO), site, deepest, TRUTH);
+    return new Program(new Pipe(AT, new Const(AT, depth), new Call(AT, 0, List.of(), List.of())), List.of(new Function(AT, 0, 0, body)));
+  }
+
+  private static Node pass(String name) {
+    return Gen.fn0(name, (state, in) -> in);
+  }
+
+  private static Node collect(Node x) {
+    return new Collect(AT, x, (elements, length) -> List.of(java.util.Arrays.copyOf(elements, length)));
+  }
+
+  private static Node dec() {
+    return Gen.fn0("dec", (state, in) -> in instanceof Integer i ? i - 1 : in);
+  }
+
+  private static Program wideBody(int depth) {
+    int slot = 0;
+    Node x = new Bind(AT, new Pipe(AT, dec(), new Call(AT, 0, List.of(), List.of())), slot++, pass("plus1"));
+    for (int layer = 0; layer < 16; layer++) {
+      x = new Pipe(AT, new Pipe(AT, collect(new Bind(AT, new Try(AT, x, new Const(AT, "caught")), slot++, pass("object"))), pass("index0")), pass("indexA"));
+    }
+    return recursion(depth, x);
+  }
+
+  private static Program collectDescent(int depth) {
+    Node x = new Pipe(AT, dec(), new Call(AT, 0, List.of(), List.of()));
+    for (int c = 0; c < 100; c++) x = collect(x);
+    return recursion(depth, new Bind(AT, new Identity(AT), 0, new Pipe(AT, x, new Var(AT, 0))));
   }
 
   /** The frames the probe saw in the current run, one per probe call. */
@@ -127,18 +190,46 @@ class UnitWeightsPropertyTest {
     return new Ended(List.copyOf(results), thrown, state.steps(), StackUnits.units(state), List.copyOf(FRAMES.get()));
   }
 
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("cases")
+  void framesStayUnderTheLimit(String name, Supplier<Program> program) {
+    onBigThread(name, () -> modes(name, program));
+  }
+
+  /** {@link #framesStayUnderTheLimit} over the value-eligible programs of the same seeds. */
   @ParameterizedTest(name = "seed {0}")
   @MethodSource("seeds")
-  void framesStayUnderTheLimit(long seed) {
-    Program program = new Gen(seed).program();
+  void framesStayUnderTheLimitInValueFormRecursion(long seed) {
+    onBigThread("seed " + seed, () -> modes("seed " + seed, () -> new Gen(seed, true).program()));
+  }
+
+  /**
+   * Witness that the value-eligible programs are not vacuous: in at least a quarter of the seeds the optimised compile
+   * runs function 0's body by its value form.
+   */
+  @Test
+  void theValueSeedsRecurseByTheValueForm() {
+    long value = seeds().filter(seed -> Compiler.compile(new Gen(seed, true).program(), 0, CompileMode.OPTIMISED).form(0, 0) == RunForm.VALUE).count();
+    assertThat(value).as("seeds whose function 0 is value form, of %d", seeds().count()).isGreaterThanOrEqualTo(seeds().count() / 4);
+  }
+
+  /** {@link #check} in each compile mode; the optimised reference run ends as the conservative one does. */
+  private static void modes(String name, Supplier<Program> program) {
+    Ended conservative = check(name, program.get(), CompileMode.CONSERVATIVE);
+    Ended optimised = check(name, program.get(), CompileMode.OPTIMISED);
+    assertThat(optimised.outcome()).as("%s: the optimised reference run against the conservative one", name).isEqualTo(conservative.outcome());
+  }
+
+  /** Runs {@code work} on a thread of {@link #THREAD} bytes and rethrows what it threw. */
+  private static void onBigThread(String name, Runnable work) {
     AtomicReference<Throwable> failure = new AtomicReference<>();
     Thread thread = new Thread(null, () -> {
       try {
-        check(seed, program);
+        work.run();
       } catch (Throwable t) {
         failure.set(t);
       }
-    }, "units-" + seed, THREAD);
+    }, "units " + name, THREAD);
     thread.start();
     try {
       thread.join();
@@ -150,24 +241,26 @@ class UnitWeightsPropertyTest {
     if (failure.get() instanceof RuntimeException runtime) throw runtime;
   }
 
-  private static void check(long seed, Program program) {
-    Executable e = Compiler.compile(program, 0, CompileMode.CONSERVATIVE);
+  /** The property for {@code program} compiled in {@code mode}; the reference run, at the default stack. */
+  private static Ended check(String name, Program program, CompileMode mode) {
+    Executable e = Compiler.compile(program, 0, mode);
     Ended reference = runProbed(e, DEFAULT_STACK);
-    assertThat(reference.frames()).as("seed %d: the probes of the reference run", seed).isNotEmpty();
+    assertThat(reference.frames()).as("%s, %s: the probes of the reference run", name, mode).isNotEmpty();
     long callFree = StackUnits.callFreeDepth(e);
     long starter = StackUnits.starterUnits(e);
     for (long limit : LIMITS) {
       long stackBytes = StackUnits.reserve() + StackUnits.bytesPerUnit() * (limit + callFree);
-      assertThat(StackUnits.unitLimit(e, stackBytes)).as("seed %d: U_f of stackBytes %d", seed, stackBytes).isEqualTo(limit);
+      assertThat(StackUnits.unitLimit(e, stackBytes)).as("%s, %s: U_f of stackBytes %d", name, mode, stackBytes).isEqualTo(limit);
       Ended run = runProbed(e, stackBytes);
       long bound = limit - 1 + callFree;
       assertThat(run.frames())
-          .as("seed %d, U_f %d, D_f %d, T %d: frames at each probe against %d", seed, limit, callFree, starter, bound)
+          .as("%s, %s, U_f %d, D_f %d, T %d: frames at each probe against %d", name, mode, limit, callFree, starter, bound)
           .allSatisfy(frames -> assertThat((long) frames).isLessThan(bound));
-      assertThat(run.outcome()).as("seed %d, U_f %d: the run against the default stack's", seed, limit).isEqualTo(reference.outcome());
-      assertThat(run.units()).as("seed %d, U_f %d: units after the run", seed, limit).isZero();
+      assertThat(run.outcome()).as("%s, %s, U_f %d: the run against the default stack's", name, mode, limit).isEqualTo(reference.outcome());
+      assertThat(run.units()).as("%s, %s, U_f %d: units after the run", name, mode, limit).isZero();
     }
-    assertThat(reference.units()).as("seed %d: units after the reference run", seed).isZero();
+    assertThat(reference.units()).as("%s, %s: units after the reference run", name, mode).isZero();
+    return reference;
   }
 
   /** The random program of one seed. Slots are unique across the program. */
@@ -177,11 +270,22 @@ class UnitWeightsPropertyTest {
     private final int[] closures;
     private final int depth;
 
-    Gen(long seed) {
+    /** Whether the program is value-eligible: no closure parameter, and the leaf a single probe. */
+    private final boolean value;
+
+    /**
+     * The generator of {@code seed}; with {@code value}, of its value-eligible program, from the same draws with every
+     * closure parameter dropped.
+     */
+    Gen(long seed, boolean value) {
       random = new SplittableRandom(seed);
       closures = new int[1 + random.nextInt(3)];
-      for (int i = 0; i < closures.length; i++) closures[i] = random.nextInt(2);
+      for (int i = 0; i < closures.length; i++) {
+        int drawn = random.nextInt(2);
+        closures[i] = value ? 0 : drawn;
+      }
       depth = 20 + random.nextInt(181);
+      this.value = value;
     }
 
     private int below(int n) {
@@ -204,8 +308,8 @@ class UnitWeightsPropertyTest {
       boolean param = closures[f] == 1;
       Node site = new Pipe(AT, fn0("dec", (state, in) -> ((Integer) in) - 1), call(below(closures.length), param));
       for (int k = 1 + below(3); k > 0; k--) site = wrap(site, param);
-      // The deepest leaf probes first, so every run probes at its deepest point.
-      Node deepest = new Comma(AT, probe(), leaf(2, List.of(), param));
+      // The deepest leaf probes first, so every run probes at its deepest point; a value-eligible one only probes.
+      Node deepest = value ? probe() : new Comma(AT, probe(), leaf(2, List.of(), param));
       return new If(AT, fn0("positive", (state, in) -> ((Integer) in) > 0 ? "yes" : NO), site, deepest, TRUTH);
     }
 
@@ -296,7 +400,7 @@ class UnitWeightsPropertyTest {
       };
     }
 
-    private static Node probe() {
+    static Node probe() {
       return fn0(
           "probe",
           (state, in) -> {
@@ -305,7 +409,7 @@ class UnitWeightsPropertyTest {
           });
     }
 
-    private static Node fn0(String name, Fn0 fn) {
+    static Node fn0(String name, Fn0 fn) {
       return new Intrinsic(AT, new Operation(name, fn), List.of());
     }
   }

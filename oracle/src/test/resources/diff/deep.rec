@@ -48,3 +48,80 @@ rc 0
 stdout 1000\n
 stderr
 end
+
+case deep/shape-t
+def 21fe65a0e68b
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-e
+def 535c99a6ee15
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-m
+def ef0bc17e1ca5
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-n
+def 78da9fdeabd2
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-w
+def 7cad82afd7bc
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-c
+def 19cf1bc07fd9
+rc 0
+stdout 10000\n
+stderr
+end
+
+case deep/shape-recurse
+def 7b002c3f56be
+rc 0
+stdout 9999\n
+stderr
+end
+
+case deep/shape-collect-descent
+def 6d7513b4bb8c
+rc 0
+stdout 300\n
+stderr
+end
+
+case deep/native-tojson
+def 1c84ac770cc4
+rc 0
+stdout 19998\n
+stderr
+end
+
+case deep/native-sort
+def 554c50541aef
+rc 0
+stdout 2\n
+stderr
+end
+
+case deep/native-sort-at-depth
+def 88035c4d4d3c
+rc 0
+stdout 19998\n
+stderr
+end

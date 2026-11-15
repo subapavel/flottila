@@ -220,8 +220,8 @@ grilling-adviser's rulings K1–K10 and corrections D1–D4, made for the owner 
 **The record**
 - The committed record is a tsv that the matrix run writes, never edited by hand, and that
   `bench/RESULTS.md` cites. The verifier rewrites it at the spec gate.
-- `constantsAreTheMatrixMaxima` checks that the constants equal the maxima over every row of the
-  record, whichever tier holds the maximum. It reads the record in-process.
+- `constantsAreTheMatrixMaxima` checks that the constants equal the maxima over the rows of the
+  record, from the `-Xint` and C1 rows only (K1: warm is proven, not measured). It reads the record in-process.
 - A fresh run asserts in one direction only: each cell completes, and fresh values are at most the
   constants (K7).
 
@@ -260,3 +260,102 @@ grilling-adviser's rulings K1–K10 and corrections D1–D4, made for the owner 
 - "Half" as a 2× margin, which would halve `U_f`.
 - Fresh equality with the constants, which is flaky across JIT runs.
 - Moving the ticket column to the spec gate.
+
+**Rulings on the red (2026-11-15, grilling-adviser, delegation to 2026-11-16)**
+- Shapes: 13. F-95's `collect-descent` (a recursion through 100 Collects with no rise) joins the 12;
+  #114 adds its PLAIN-call filter as a 14th after it merges and re-runs the matrix.
+- Cold linkage is a reserve term of its own. The first switch to the trampoline loads its classes
+  (`ClassLoader.defineClass1` at depth), a fixed cost of about 17.6 KiB on T under `-Xint`, the same
+  at 512 KiB and 1 MiB, so it is not a `b` term.
+  - An `-Xint` cell's `U*` is the cold edge: each probe is a fresh child's first run, and one
+    bisection suffices, because the edge is deterministic. JIT cells keep the smallest of 3.
+  - A second column holds the linked edge, measured after two linking runs. The two slopes of a pair
+    must agree.
+  - The reserve is the largest linked intercept plus the largest cold term, rounded up to 4 KiB, plus
+    32 KiB for the natives (owner-review O1).
+- The ticket column runs one fresh child per shape and mode. `edgeIsExact` runs `U*` and `U* + 1`,
+  each as the first run of its own fresh child.
+- `b` and the reserve are the `max-b` and `reserve` rows of the full matrix, run once at #111's
+  constants. Probes declare `stackBytesFor(U)`, so `U*` does not depend on the committed
+  constants; a second run confirms them. No stand-in value is committed. `b` is published as
+  measured, even near 200 (owner-review O2).
+- Frames above units are a weight defect, not a `b`: W and collect-descent join
+  `framesStayUnderTheLimit` as named cases first.
+- Heap per activation is measured on held generators, read at the first emit with depths n and 2n
+  (F with the leaf `(0, 0)`; the same with 16 `try` per level; the closure chain with leaf
+  `(f, f)`), per held filter and mode. Runtime's used heap is acceptable; it equals MemoryMXBean's
+  after two collections.
+- The warm proof excludes the probe's `down` method from compilation, because an inlined recursion
+  makes the warm proof unstable.
+- The matrix cuts no cell. `-Xint` and C1 children run 4 in parallel (`-Xbatch` edges are the same
+  alone and in parallel); warm children run one at a time. Each search is seeded from the committed
+  record. The time is measured and recorded; above 45 minutes it is a finding (owner-review O4).
+- C1 at 512 KiB is covered by the matrix's C1 cells. There is no C1 ticket column.
+- The implementer commits no `b` or reserve other than the record's rows, never raises one to absorb
+  the other's red, does not prelink or pre-warm classes to move the cold edge, changes no unit
+  weight and does not touch the 4 194 304 default. Only CalibrationTest and DeepStackFreshJvmTest
+  leave PIT's test set; CalibrationRecordTest stays in.
+- If the warm cells give an intercept far above the linked `-Xint` one (warm W: slope 88, about
+  248 KiB), the implementer stops and hands back.
+
+**Rulings on the matrix (2026-11-15, grilling-adviser K1–K8, delegation to 2026-11-16)**
+
+The full matrix ran on impl/113 e6f4cc0 in 92.5 minutes. Its record (234 cells) is the evidence.
+The warm intercept was far above the linked one, so the implementer stopped.
+- **Warm is proven, not measured (K1).** In warm children the search runs while the JIT is still
+  compiling, and under C2 some shapes almost fit 1 MiB whole. So their edges are not edges, and their
+  slopes are junk. A confirm-run does not fix this. `b` and the reserve are therefore *measured in
+  `-Xint` and C1, and proven in warm*. This replaces "the worst of `-Xint`, C1 only and warm".
+  - A warm cell runs its shape at the cell's own declared stack, 60 runs in a row from the first cold
+    one, in 3 default-tier children.
+  - Every run must give the reference result. One STACK is a red and a hand-back.
+- **`b` = 192 (K2).** C1 W CONSERVATIVE gives 189, with spread 0 and STACK at both sizes. Every
+  `-Xint` and C1 cell has spread 0.
+- **Reserve = 286 720, 280 KiB (K3).** It is the linked intercept of `-Xint` virtual ND OPTIMISED
+  (220 832) plus collect-descent's cold term (29 988), rounded up to 253 952, plus 32 768.
+- **One `b`, no split (K4).**
+  - `U_f` is 1237 − D_f at 512 KiB and 3968 − D_f at 1 MiB.
+  - A run cannot know its tier. A split by mode would gain 14 % at the price of a second constant.
+  - The tightest cell is C1 W CONSERVATIVE virtual, with `U*` 2131 against `U_f` 1136.
+  - Two shapes under C1 set `b`: W (189) and collect-descent (167). The rest lie between 24 and 100
+    (F-102).
+- **A seeded re-run before the commit (K5).** The order is: the K1 harness, then the constants, then
+  one full run seeded from the e6f4cc0 record.
+  - That run's `max-b` and `reserve` rows must equal the constants.
+  - Every `-Xint` and C1 `U*` must equal the e6f4cc0 record's.
+  - Any difference is a hand-back. No value is adjusted.
+- **Pins (K6).** The 128 KiB pins (StackUnitsTest, ExplainTest) read `StackUnits.reserve()`. The
+  literal lives only in the class PIT mutates.
+- **`[7], termination STACK` (K7)** at an `-Xint` first-or `U*+1` is a valid edge. The emit reached
+  the sink before the overflow.
+- **Open (not blocking):** whether ND OPTIMISED's intercept, twice every other cell's, is a fixed
+  cost or an extrapolation artefact. If it is an artefact, the reserve would be 168 KiB. That would be
+  a formula change for the owner, not the implementer's choice. The re-run probes it at 256 KiB and
+  384 KiB.
+
+**Rulings on the seeded re-run (2026-11-15, grilling-adviser L1–L4)**
+
+The K5 run (impl/113 078dd0a, 48.7 min) gave the K2/K3 rows, and every warm cell held. Three C1 edges
+moved up, by +1, +7 and +31. Those are exactly the gallop's points above the seed: the edges were
+found while C1 was still compiling.
+- **A JIT edge is a fixed point (L1).** A JIT cell searches again from its own result until two passes
+  agree. After 4 passes without agreement it is INVALID. Upward moves are not accepted, and C1 is not
+  run unseeded.
+  - The order: first the three cells alone, seeded from e6f4cc0, must return 5818, 2131 and 5113.
+    Then one full run, seeded the same way, under K5.
+  - The committed record is that run's. The e6f4cc0 and K5 records stay as evidence, and
+    `bench/RESULTS.md` cites all three. Later runs assert only as above (fresh ≤ constants, each cell
+    switches).
+- **The reserve stays 286 720 here (L2).** The side probe puts ND OPTIMISED's `-Xint` intercept at
+  about 105 K at 256, 384 and 512 KiB, against 220 832 on the 512 KiB → 1 MiB chord. So today's
+  intercept is an extrapolation artefact. The rule changes with the next owed re-run (#199):
+  - a 256 KiB platform thread;
+  - each intercept taken on its lowest pair;
+  - `b_cell` the largest adjacent slope;
+  - no cell excluded by name, and no fit.
+- **An edge at `U*+1` (L3)** may end `, termination STACK` with a prefix of the reference results,
+  e.g. `[7], termination STACK` for first-or. `[7], ran out`, any other termination, or a result that
+  is not a prefix stays red.
+- **UnitLimitTest's floorDiv witness (L4)** is re-pinned to −286 720/192 → −1494 (286 720 = 192·1493
+  + 64).
+

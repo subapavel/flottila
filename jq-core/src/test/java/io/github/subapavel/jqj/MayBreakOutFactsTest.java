@@ -1,13 +1,13 @@
 package io.github.subapavel.jqj;
 
+import static io.github.subapavel.jqj.ExplainLines.lines;
+import static io.github.subapavel.jqj.ExplainLines.node;
+import static io.github.subapavel.jqj.ExplainLines.nodeLines;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -27,61 +27,6 @@ import org.junit.jupiter.params.provider.MethodSource;
  * refinement needs no test change. The optimised compile is the default.
  */
 class MayBreakOutFactsTest {
-
-  /** One line of the text: its fields before the first {@code name=value} one, and its facts by name. */
-  private record Line(List<String> fields, Map<String, String> facts) {
-    static Line of(String line) {
-      List<String> fields = new ArrayList<>();
-      Map<String, String> facts = new LinkedHashMap<>();
-      for (String field : line.split(" ")) {
-        int eq = field.indexOf('=');
-        if (eq < 0) {
-          fields.add(field);
-        } else {
-          facts.put(field.substring(0, eq), field.substring(eq + 1));
-        }
-      }
-      return new Line(fields, facts);
-    }
-
-    boolean isFunction() {
-      return fields.getFirst().equals("function");
-    }
-
-    /** A node line: its first field is its body's column, {@code main} or {@code fn<place>}; the stack units line is not. */
-    boolean isNode() {
-      return fields.getFirst().matches("main|fn[0-9]+");
-    }
-  }
-
-  private static List<Line> lines(JqEngine engine, String filter) {
-    String text = engine.compile(filter).explain();
-    assertThat(text).as("explain of %s", filter).endsWith("\n");
-    return Arrays.stream(text.split("\n")).map(Line::of).toList();
-  }
-
-  private static List<Line> nodeLines(JqEngine engine, String filter) {
-    return lines(engine, filter).stream().filter(Line::isNode).toList();
-  }
-
-  /** The column of the body {@code body}: {@code main}, or the function line's {@code fn<place>} of a jq name/arity. */
-  private static String column(List<Line> lines, String body) {
-    if (body.equals("main")) {
-      return "main";
-    }
-    List<Line> found = lines.stream().filter(l -> l.isFunction() && l.fields().get(2).equals(body)).toList();
-    assertThat(found).as("function %s in %s", body, lines).hasSize(1);
-    return found.getFirst().fields().get(1);
-  }
-
-  /** The one node line of {@code body} with the freeze id {@code id}. */
-  private static Line node(List<Line> lines, String body, int id) {
-    String column = column(lines, body);
-    List<Line> found =
-        lines.stream().filter(l -> !l.isFunction() && l.fields().get(0).equals(column) && l.fields().get(1).equals(Integer.toString(id))).toList();
-    assertThat(found).as("node %d of %s in %s", id, body, lines).hasSize(1);
-    return found.getFirst();
-  }
 
   private static void assertBreaks(String filter, String body, int id, String kind, boolean breaks) {
     Line node = node(lines(JqEngine.builder().build(), filter), body, id);

@@ -20,6 +20,7 @@ public final class ParamCallOp extends Op {
   private final long starter;
 
   public ParamCallOp(int level, int cell, long units, long starter) {
+    super(false);
     this.level = level;
     this.cell = cell;
     this.units = units;
@@ -48,6 +49,12 @@ public final class ParamCallOp extends Op {
       state.removeUnits(held);
       state.leave();
     }
+  }
+
+  /** Never called: a ParamCall is never eligible for the value form (ADR-0047 #116). */
+  @Override
+  public Object eval(RunState state, Object[] slots, Object in) {
+    throw new IllegalStateException("A ParamCall has no value form");
   }
 
   @Override

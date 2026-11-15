@@ -352,3 +352,15 @@ delegation to 2026-11-16; on the owner-review list).
 - Considered and rejected: a public mode (ADR-0018, `exported-signatures.txt`); a system property
   (rejected under #60); timing in the oracle (not ADR-0019's JMH settings); an internal accessor
   behind `--add-exports` (product code for a test).
+
+## Amendment (ticket #117)
+
+Accepted by the architect under `/run-spec` #106, on the grilling-adviser's ruling R4 (owner's
+delegation to 2026-11-16; on the owner-review list).
+
+- The oracle's `SpecialiseCensusTest` also reaches the package-private
+  `Compiler.compile(Program, int, CompileMode, int cap)` by reflection, through `CompileModes.method`,
+  on the class path only. A reflective failure is an `IllegalStateException`; a rename of the target
+  is a change to the oracle.
+- The census's copy of `INLINE_CAP` is pinned against `Resolver.INLINE_CAP` by a premise, so a lower
+  Resolver cap cannot leave the census ceiling quietly too high.
