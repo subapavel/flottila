@@ -1,4 +1,19 @@
 
+## 2026-11-15 — The owner's answers: one licence list, the mapping joins the platform — recorded
+
+- Documents only; no code changed. The owner answered in the session, after the entry below.
+- D-159: one licence list for the repository ("a) ano b) ano") - ISC, 0BSD, MIT-0, EDL 1.0 join it; GPL-2.0 with the Classpath
+  Exception, CDDL and UPL at test scope and in a benchmark module only. Not covered, frozen: `aopalliance`, three dev-only npm tools.
+- D-158: the mapping's Quarkus service was a development harness; the mapping runs on the platform's technology and its editor
+  joins the Rail8 UI (React, PatternFly). MAP-1 is ready: the first step, then a designer draft for the owner. D-153 stands until then.
+- D-157 amended: a count of handled failures beside the error rate may be there ("to by mohlo být").
+- MAP-9 [C], new: one set of test rules - the comparison with SAP PO and SAP CPI stays, coverage is added; measured first, then a
+  proposal the owner sees. CONSIDER-26, new: the UI earlier than the end of the plan - the owner's session first.
+- `agent/patches/BRAND-3-steering.patch` rewritten for these answers (root CLAUDE.md: the `mapping/` paragraph and the licence
+  list; `mapping/CLAUDE.md` points to that list). Checked in a scratch tree: it applies after the OPS-1 patch and not before.
+  The owner applies both; the rule files say the old lists until then.
+- In flight, not in this commit: FIX-235 (review PASS in round 3), FIX-260 (review PASS); the whole reactor over both is running.
+
 ## 2026-11-15 — The owner's answers: no replay, a handled failure is a success — recorded
 
 - Context compacted before this entry. Documents only; no code changed. The owner answered in the session.

@@ -118,3 +118,28 @@ was told to apply `agent/patches/OPS-1-steering.patch` now and this one after th
 The architect's advice on the required checks for the `mapping · …` jobs, given the same day: not
 while work is pushed directly to `main`. The workflow runs only on changes under `mapping/`, so as
 required checks its jobs would never report on any other push.
+
+2026-11-15, later in the session, the owner's answers:
+- A, the two questions asked back: "a) ano b) ano". Recorded as D-159: one licence list for the
+  repository with ISC, 0BSD, MIT-0 and EDL 1.0 in it; GPL-2.0 with the Classpath Exception, CDDL and
+  UPL at test scope and in a benchmark module only, never in shipped code. Item 1 is answered. Of
+  item 2 the answer does not cover `aopalliance` (public domain, test scope) and the three dev-only
+  npm tools (`argparse` Python-2.0, `caniuse-lite` CC-BY-4.0, `minimatch` BlueOak-1.0.0): left as
+  imported, frozen; the npm tools go with the mapping's UI when its editor joins the Rail8 UI.
+- B item 3: the Quarkus service "bylo jenom abych si to mohl testovat a spouštět a navrhnout UI
+  mapování - takže mapping poběží na stejné technologii a UI část se přidá do UI R8 - ta bude stejná -
+  React a PatternFly". Recorded as D-158; the design is MAP-1, and D-153 stands until it is accepted.
+- B item 4: "Testy mapování se porovnávali se SAP PO a SAP CPI abychom pak v rámci migrace mohli
+  garantovat, že SAP PO mapování nebo SAP CPI mapování se bude chovat stejně - určitě chci taky
+  pokrytí, navrhni jak to sladit". Row MAP-9: the numbers measured first, then a proposal the owner
+  sees before anything tightens. The direction said in the session: the comparison stays the guarantee
+  of behaviour; the engine's modules take the platform's floors and the no-decrease rule; one PIT
+  threshold; the service and the present UI keep their floors until they go.
+- C items 5 to 7: not answered; the defaults hold.
+- D: the patch is rewritten for these answers (`agent/patches/BRAND-3-steering.patch`): the root
+  `CLAUDE.md` gains the paragraph on `mapping/` (D-153, D-158) and the one licence list (D-159);
+  `mapping/CLAUDE.md` points to that list instead of carrying its own. It applies after
+  `agent/patches/OPS-1-steering.patch`, not before (both change neighbouring lines), and no session
+  applies it.
+Open here after these answers: item 2's remainder, items 5 to 7, MAP-9's proposal, and the owner
+applying the two patches.

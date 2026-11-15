@@ -1,16 +1,57 @@
 diff --git a/CLAUDE.md b/CLAUDE.md
+index c1b49c05..6b6186ec 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -6,6 +6,12 @@
+@@ -6,6 +6,12 @@ read by section — the sections the row or the packet names, through the scout
  `docs/PROTOTYPE-VS-ARCHITECTURE.md`, `docs/GATE.md` and `docs/DECISIONS.md` only where a row or a
  packet refers to them. Everything in the repo is in English.
  
 +Under `mapping/` (the mapping engine, imported with its history: D-150, D-151) the Design rules
-+below do not apply until its embedding is designed (MAP-1, D-153). `mapping/CLAUDE.md` holds the
-+engine's technical rules and its licence list, which adds MIT-0, EDL 1.0, ISC and 0BSD for
-+`mapping/` only; its exceptions per artifact are ISSUE-9 item 2 and are not ruled here. Tests,
-+Working rules and Context hygiene bind both areas (D-153 names the lines that are the platform's).
++below do not apply until its embedding is designed (MAP-1, D-153); its Quarkus service and its UI
++are a development harness, not a product part (D-158). `mapping/CLAUDE.md` holds the engine's
++technical rules. Tests, Working rules and Context hygiene bind both areas (D-153 names the lines
++that are the platform's).
 +
  ## What this is
  
  Open-source enterprise integration platform where **monitoring is the product**: every message,
+@@ -46,8 +52,10 @@ build; this file holds the rules that keep the code and the way of working align
+ - An interface exists where a second implementation exists on day 1 (every store, every component
+   with its mock). Nowhere else. No `domain/application/infrastructure` ceremony.
+ - Clock, timers and id generation are injected through `Runtime`. No static singletons.
+-- Dependencies: Apache 2.0, MIT, BSD, MPL 2.0, EPL only. AGPL, GPL, BSL, SSPL → `ISSUE`, never
+-  linked. SAP JCo is `provided` scope and never redistributed.
++- Dependencies: Apache 2.0, MIT, MIT-0, BSD, 0BSD, ISC, MPL 2.0, EPL, EDL 1.0 only; at test scope
++  and in a benchmark module also GPL-2.0 with the Classpath Exception, CDDL and UPL, never in
++  shipped code (D-159). AGPL, GPL, BSL, SSPL → `ISSUE`, never linked. SAP JCo is `provided` scope
++  and never redistributed.
+ - Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited. A message's log has no per-message cap (D-147); its memory is bounded by the platform's record buffer, which stops intake when full (OPS-2, pending).
+ 
+ ## Tests (TDD from day 1)
+diff --git a/mapping/CLAUDE.md b/mapping/CLAUDE.md
+index 96a538ca..018eaefd 100644
+--- a/mapping/CLAUDE.md
++++ b/mapping/CLAUDE.md
+@@ -24,14 +24,14 @@ React + PatternFly. This file holds only pointers and the rules nobody may break
+ - Never weaken, skip or delete a test, an oracle case or a ratchet entry to go green.
+ - Never edit ratchet files (`ratchet/`) by hand in a task; only the verifier regenerates them.
+ - Library APIs: Context7 first, then `javap` / the package's `.d.ts`. Never an API from memory.
+-- Dependencies: Apache 2.0, MIT, MIT-0, BSD, EDL 1.0, ISC, 0BSD, MPL 2.0, EPL only (ISC, 0BSD: ADR-0012;
+-  MIT-0, EDL 1.0: ADR-0014); a dual licence counts under its allowed alternative. The list covers every
+-  compile, runtime and test dependency and all of `ui/package.json`. Exceptions are per artifact, listed in
+-  the mapping's POM and ADR-0017: Saxon-HE at test scope (oracle), JMH in `bench/jmh` only, and the Quarkus
+-  test framework's own dependencies, and three dev-only npm build tools (#39). Maven plugins are tools, not
+-  dependencies (any OSI licence). The list holds inside `mapping/`; the root list is unchanged (D-153).
+-  The list and the exceptions are frozen as imported: an addition is an issue for the owner, and until the
+-  embedding is designed work here adds no dependency, licence exception, listener or endpoint (D-153, ISSUE-9).
++- Dependencies: the licence list of the root `CLAUDE.md`, one list for the repository (D-159); a dual
++  licence counts under its allowed alternative. The list covers every compile, runtime and test
++  dependency and all of `ui/package.json`. Exceptions are per artifact, listed in the mapping's POM and
++  ADR-0017: Saxon-HE at test scope (oracle), JMH in `bench/jmh` only, the Quarkus test framework's own
++  dependencies, and three dev-only npm build tools (#39). Maven plugins are tools, not dependencies (any
++  OSI licence). The exceptions are frozen as imported: an addition is an issue for the owner, and until
++  the embedding is designed work here adds no dependency, licence exception, listener or endpoint
++  (D-153, ISSUE-9).
+ - No secret, customer payload or real partner data in the repo; corpora are synthetic.
+ - When practice contradicts an ADR or the architecture: write the finding (the root `docs/WORKFLOW.md` §7,
+   from F-54).
