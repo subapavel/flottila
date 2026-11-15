@@ -14,7 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.LongUnaryOperator;
 
 /**
  * The calibration's shapes and its child JVM (ADR-0046 and its #111, #113 and #116 amendments, F-55, F-30, F-93,
@@ -176,8 +175,21 @@ final class CalibrationCell {
         .build();
   }
 
+  /** A run of a shape as an in-process test stands in for it: its end at {@code stackBytes}, given its callers. */
+  interface Run {
+    String end(long stackBytes, List<String> callers);
+  }
+
+  /**
+   * An in-process test's stand-in for every run of {@link #ended}, which then runs no shape and passes it the methods
+   * on the stack, {@code ended} first; null in a child. It holds no local of {@code ended}, so a run's frames start
+   * where they did without it.
+   */
+  static volatile Run standIn;
+
   /** How {@code shape} ended in {@code mode} with {@code stackBytes} declared, on the calling thread. */
   static String ended(Shape shape, long stackBytes, CompileMode mode) {
+    if (standIn != null) return standIn.end(stackBytes, StackWalker.getInstance().walk(frames -> frames.map(StackWalker.StackFrame::getMethodName).toList()));
     try {
       JqEngine engine = engine(stackBytes, mode);
       JqFilter compiled = engine.compile(shape.filter());
@@ -349,6 +361,11 @@ final class CalibrationCell {
       return n >= 2 && edges.get(n - 1).equals(edges.get(n - 2));
     }
 
+    /** Whether the search is done: its passes agree, or {@value #PASSES} have run. */
+    boolean settled() {
+      return agreed() || edges.size() == PASSES;
+    }
+
     /** The passes as a search row prints them: each pass's {@code U*}, comma-separated, {@code fails} for -1. */
     @Override
     public String toString() {
@@ -357,81 +374,65 @@ final class CalibrationCell {
   }
 
   /**
-   * L1's fixed point: {@code pass} gives the U* of one gallop and bisection from its start. The first pass starts at
-   * {@code seed}, each later one at the U* of the pass before, until two consecutive passes agree, a pass fails, or
-   * {@value #PASSES} passes have run. A JIT cell's edge found while the JIT still compiles moves on the next pass; an
-   * {@code -Xint} linked edge is deterministic and agrees on pass 2.
-   */
-  static Passes fixedPoint(long seed, LongUnaryOperator pass) {
-    List<Long> edges = new ArrayList<>();
-    long from = seed;
-    while (edges.size() < PASSES) {
-      long edge = pass.applyAsLong(from);
-      edges.add(edge);
-      if (edge < 0 || (edges.size() >= 2 && edge == edges.get(edges.size() - 2))) break;
-      from = edge;
-    }
-    return new Passes(List.copyOf(edges));
-  }
-
-  /**
    * The gallop and bisection of the #113 design in this child, from {@code seed} (the committed record's edge), or
-   * from {@code floorDiv(S - reserve, b) - D_f} when it is negative, repeated to its {@link #fixedPoint} (L1). {@code
-   * U*} is {@code INVALID} when no two consecutive of {@value #PASSES} passes agree; the row's last field is the passes.
+   * from {@code floorDiv(S - reserve, b) - D_f} when it is negative, repeated from its own result until two
+   * consecutive passes agree (the adviser's L1): a JIT edge found while the JIT still compiles moves on the next pass,
+   * and an {@code -Xint} linked edge, which is deterministic, agrees on pass 2. {@code U*} is {@code INVALID} when no
+   * two consecutive of {@value #PASSES} passes agree, and a pass that fails at {@code U_f} 0 ends the search. The row's
+   * last field is the passes.
+   *
+   * <p>Every run of the shape, the control, each pass's and the end's at {@code U* + 1}, is a call of {@link #ended}
+   * from this frame, with nothing under its arguments, and the frame keeps 078dd0a's 17 local words, so a run starts
+   * where 078dd0a's did and the e6f4cc0 record stays the baseline (the architect's ruling (a)). Four helper frames under
+   * the passes' runs moved 82 of 156 edges by 11 to 58 units (impl/113 061f5cf).
    */
-  private static void search(Shape shape, long thread, CompileMode mode, Units u, long seed) {
+  static void search(Shape shape, long thread, CompileMode mode, Units u, long seed) {
     String control = ended(shape, GIB, mode);
     if (!control.equals(STACK)) {
       row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "-", "-", control, "-");
       return;
     }
-    Passes passes = fixedPoint(seed >= 0 ? seed : Math.max(0, u.unitLimitAt(thread)), start -> pass(shape, mode, u, start));
-    long edge = passes.edges().getLast();
-    if (edge < 0) {
-      row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "fails", ended(shape, u.stackBytesFor(0), mode), control, passes);
-      return;
-    }
-    row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), passes.agreed() ? Long.toString(edge) : "INVALID", ended(shape, u.stackBytesFor(edge + 1), mode), control, passes);
-  }
-
-  /** One gallop and bisection from {@code start}: the largest {@code U_f} at which the shape completes, or -1. */
-  private static long pass(Shape shape, CompileMode mode, Units u, long start) {
+    List<Long> edges = new ArrayList<>();
+    long start = seed >= 0 ? seed : Math.max(0, u.unitLimitAt(thread));
     long lo;
     long hi;
-    if (completes(shape, mode, u, start)) {
-      lo = start;
-      long step = 1;
-      hi = lo + step;
-      while (hi < SEARCH_LIMIT && completes(shape, mode, u, hi)) {
-        lo = hi;
-        step *= 2;
+    do {
+      if (ended(shape, u.stackBytesFor(start), mode).equals(shape.completed())) {
+        lo = start;
+        long step = 1;
         hi = lo + step;
-      }
-    } else {
-      hi = start;
-      long step = 1;
-      lo = Math.max(0, hi - step);
-      while (lo > 0 && !completes(shape, mode, u, lo)) {
-        hi = lo;
-        step *= 2;
-        lo = Math.max(0, hi - step);
-      }
-      if (lo == 0 && !completes(shape, mode, u, 0)) return -1;
-    }
-    while (hi - lo > 1) {
-      long mid = lo + (hi - lo) / 2;
-      if (completes(shape, mode, u, mid)) {
-        lo = mid;
+        while (hi < SEARCH_LIMIT && ended(shape, u.stackBytesFor(hi), mode).equals(shape.completed())) {
+          lo = hi;
+          step *= 2;
+          hi = lo + step;
+        }
       } else {
-        hi = mid;
+        hi = start;
+        long step = 1;
+        lo = Math.max(0, hi - step);
+        while (lo > 0 && !ended(shape, u.stackBytesFor(lo), mode).equals(shape.completed())) {
+          hi = lo;
+          step *= 2;
+          lo = Math.max(0, hi - step);
+        }
+        if (lo == 0 && !ended(shape, u.stackBytesFor(0), mode).equals(shape.completed())) {
+          edges.add(-1L);
+          row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), "fails", ended(shape, u.stackBytesFor(0), mode), control, new Passes(edges));
+          return;
+        }
       }
-    }
-    return lo;
-  }
-
-  /** Whether {@code shape} at {@code unitLimit} gives reference jq's result in this child. */
-  private static boolean completes(Shape shape, CompileMode mode, Units u, long unitLimit) {
-    return ended(shape, u.stackBytesFor(unitLimit), mode).equals(shape.completed());
+      while (hi - lo > 1) {
+        long mid = lo + (hi - lo) / 2;
+        if (ended(shape, u.stackBytesFor(mid), mode).equals(shape.completed())) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      edges.add(lo);
+      start = lo;
+    } while (!new Passes(edges).settled());
+    row("cell", mode, shape.id(), u.callFreeDepth(), u.starterUnits(), u.bytesPerUnit(), u.reserve(), new Passes(edges).agreed() ? Long.toString(lo) : "INVALID", ended(shape, u.stackBytesFor(lo + 1), mode), control, new Passes(edges));
   }
 
   /**
