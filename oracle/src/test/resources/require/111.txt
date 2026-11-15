@@ -8,3 +8,5 @@ deep/collect
 deep/reduce
 deep/first-or
 deep/hold
+deep/downstream-error-reenters-the-alt-bind
+deep/downstream-break-stops-the-forms

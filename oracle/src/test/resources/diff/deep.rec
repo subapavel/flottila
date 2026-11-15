@@ -27,3 +27,17 @@ rc 0
 stdout 0\n
 stderr
 end
+
+case deep/downstream-error-reenters-the-alt-bind
+def 022b2a66c58f
+rc 0
+stdout [[1]]\n
+stderr
+end
+
+case deep/downstream-break-stops-the-forms
+def f394cccaebf9
+rc 0
+stdout [1]\n
+stderr
+end

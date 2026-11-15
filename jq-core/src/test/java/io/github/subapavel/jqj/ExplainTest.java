@@ -2,6 +2,7 @@ package io.github.subapavel.jqj;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.github.subapavel.jqj.query.compile.CompileMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -175,6 +176,129 @@ class ExplainTest {
     assertThat(calls).as("ParamCalls in r").hasSize(2).allSatisfy(l -> assertThat(l.facts()).containsEntry("param", "0"));
     Line header = lines.stream().filter(l -> l.isFunction() && l.fields().get(1).equals(r)).findFirst().orElseThrow();
     assertThat(header.facts()).as("r's parameters").containsEntry("closures", "1").containsEntry("values", "1");
+  }
+
+  /** The conservative compile: no optimisation folds the nesting the units tests below build. */
+  private final JqEngine conservative = JqEngine.builder().compileMode(CompileMode.CONSERVATIVE).build();
+
+  private List<Line> conservativeLines(String filter) {
+    String text = conservative.compile(filter).explain();
+    return Arrays.stream(text.split("\n")).map(Line::of).toList();
+  }
+
+  /** The whole-number fact {@code name} of {@code facts}, which must carry it. */
+  private static long fact(Map<String, String> facts, String name, String what) {
+    assertThat(facts).as("the facts of %s", what).containsKey(name);
+    return Long.parseLong(facts.get(name));
+  }
+
+  /** The facts of the one closing line, the line that carries {@code callFreeDepth}. */
+  private static Map<String, String> closing(List<Line> lines) {
+    List<Line> found = lines.stream().filter(l -> l.facts().containsKey("callFreeDepth")).toList();
+    assertThat(found).as("the closing line with callFreeDepth in %s", lines).hasSize(1);
+    return found.getFirst().facts();
+  }
+
+  /** The facts of the one function line named {@code name}. */
+  private static Map<String, String> functionFacts(List<Line> lines, String name) {
+    return lines.stream().filter(l -> l.isFunction() && l.fields().get(2).equals(name)).findFirst().orElseThrow().facts();
+  }
+
+  /** The facts of the one RECURSIVE Call line of {@code function}. */
+  private static Map<String, String> recursiveCall(List<Line> lines, String function) {
+    List<Line> found = nodes(lines, function).stream().filter(l -> l.fields().get(2).equals("Call") && "RECURSIVE".equals(l.facts().get("call"))).toList();
+    assertThat(found).as("the RECURSIVE Call of %s in %s", function, lines).hasSize(1);
+    return found.getFirst().facts();
+  }
+
+  /**
+   * ADR-0046 #111: each Call line shows its {@code units}, its whole {@code w(site)}, each function line its
+   * {@code emitDepth}, and a closing line {@code callFreeDepth} ({@code D_f}), {@code starterUnits} ({@code T}),
+   * {@code bytesPerUnit} and {@code reserve}. A call holds at least one frame, and {@code w} is descent + rise + the
+   * callee's leaf-emit depth, so a call's units are at least the callee's {@code emitDepth}. Main here is one call, which
+   * counts as a starter nests it, {@code 1 + T}, so {@code D_f >= 1 + T}; a ParamCall counts {@code 2 + T}.
+   */
+  @Test
+  void unitsAndCallFreeDepth() {
+    List<Line> lines = conservativeLines(RECURSIVE_F);
+    String f = function(lines, "f/0");
+    long emitDepth = fact(functionFacts(lines, "f/0"), "emitDepth", "f's function line");
+    long outside = fact(node(lines, "main", "Call", "43..44"), "units", "the outside call");
+    long recursive = fact(node(lines, f, "Call", "29..30"), "units", "the recursive call");
+    Map<String, String> closing = closing(lines);
+    long callFree = fact(closing, "callFreeDepth", "the closing line");
+    long starter = fact(closing, "starterUnits", "the closing line");
+
+    assertThat(emitDepth).as("f's leaf-emit depth").isPositive();
+    assertThat(outside).as("the outside call's units against f's emitDepth %d", emitDepth).isGreaterThanOrEqualTo(emitDepth);
+    assertThat(recursive).as("the recursive call's units against f's emitDepth %d", emitDepth).isGreaterThanOrEqualTo(emitDepth);
+    assertThat(starter).as("T").isPositive();
+    assertThat(callFree).as("D_f against 1 + T, T = %d", starter).isGreaterThanOrEqualTo(1 + starter);
+    assertThat(fact(closing, "bytesPerUnit", "the closing line")).as("b").isPositive();
+    assertThat(fact(closing, "reserve", "the closing line")).as("the reserve, 128 KiB until #113").isEqualTo(128 * 1024L);
+
+    List<Line> param = conservativeLines("def r(f): if . > 3 then . else f | r(f) end; 0 | r(. + 1)");
+    Map<String, String> paramClosing = closing(param);
+    long paramStarter = fact(paramClosing, "starterUnits", "the ParamCall filter's closing line");
+    assertThat(nodes(param, function(param, "r/1")).stream().filter(l -> l.fields().get(2).equals("ParamCall")).toList())
+        .as("r's ParamCalls")
+        .isNotEmpty()
+        .allSatisfy(l -> assertThat(Long.parseLong(l.facts().getOrDefault("units", "-1"))).as("a ParamCall's units").isPositive());
+    assertThat(fact(paramClosing, "callFreeDepth", "the ParamCall filter's closing line")).as("D_f of a body with a ParamCall against 2 + T, T = %d", paramStarter).isGreaterThanOrEqualTo(2 + paramStarter);
+  }
+
+  /**
+   * The rise: frames a body nests above a call's results up to its own emit. Three Trys on the consumer side of the
+   * recursive call's Pipe leave its descent as it is and add at least three frames to its rise, and so to its units;
+   * the function's leaf-emit depth (the else branch) is the same in both.
+   */
+  @Test
+  void unitsCountTheRise() {
+    List<Line> plain = conservativeLines("def f: if . > 0 then (. - 1 | f) | . else . end; f");
+    List<Line> risen = conservativeLines("def f: if . > 0 then (. - 1 | f) | try (try (try .a)) else . end; f");
+
+    long plainUnits = fact(recursiveCall(plain, function(plain, "f/0")), "units", "the recursive call under no Try");
+    long risenUnits = fact(recursiveCall(risen, function(risen, "f/0")), "units", "the recursive call under three Trys");
+    assertThat(fact(functionFacts(risen, "f/0"), "emitDepth", "f with the Trys"))
+        .as("the leaf-emit depth, the else branch in both")
+        .isEqualTo(fact(functionFacts(plain, "f/0"), "emitDepth", "f without"));
+    assertThat(risenUnits - plainUnits).as("the units three Trys add to the rise (%d against %d)", risenUnits, plainUnits).isGreaterThanOrEqualTo(3);
+  }
+
+  /**
+   * The callee's leaf-emit depth (C1, the adviser's witness): g emits from under a hundred Trys, which stay live under
+   * every caller's rise. Each Try is at least one frame, so g's {@code emitDepth} is at least 100 more than with none,
+   * and the call of g at the same site is charged exactly that difference, its descent and rise being the same. A
+   * closure argument's root line shows its own {@code emitDepth}.
+   */
+  @Test
+  void unitsCountTheEmitDepth() {
+    String shape = "def g: if . == 0 then %s else (. - 1 | g) end; def f: if . == 0 then 0 else (. - 1 | f) | (1 | g) end; 9999 | f";
+    List<Line> shallow = conservativeLines(shape.formatted("."));
+    List<Line> deep = conservativeLines(shape.formatted("try(".repeat(100) + "." + ")".repeat(100)));
+
+    long shallowEmit = fact(functionFacts(shallow, "g/0"), "emitDepth", "g without Trys");
+    long deepEmit = fact(functionFacts(deep, "g/0"), "emitDepth", "g under 100 Trys");
+    assertThat(deepEmit - shallowEmit).as("the emitDepth of 100 Trys (%d against %d)", deepEmit, shallowEmit).isGreaterThanOrEqualTo(100);
+    long shallowCall = fact(plainCallOf(shallow, "f/0", "g/0"), "units", "f's call of g without Trys");
+    long deepCall = fact(plainCallOf(deep, "f/0", "g/0"), "units", "f's call of g under 100 Trys");
+    assertThat(deepCall - shallowCall).as("the units of f's call of g, against the emitDepth difference").isEqualTo(deepEmit - shallowEmit);
+
+    // A closure argument carries its leaf-emit depth: main's Call of r, then its argument's root, the Try.
+    List<Line> closure = conservativeLines("def r(f): if . > 3 then . else f | r(f) end; 0 | r(try (try (try .a)))");
+    List<Line> main = nodes(closure, "main");
+    int call = main.stream().map(l -> l.fields().get(2)).toList().indexOf("Call");
+    assertThat(main.get(call + 1).fields().get(2)).as("the root of r's closure argument").isEqualTo("Try");
+    assertThat(fact(main.get(call + 1).facts(), "emitDepth", "the closure argument's root line")).as("the closure argument's leaf-emit depth under three Trys").isGreaterThanOrEqualTo(3);
+  }
+
+  /** The facts of the one PLAIN or RECURSIVE Call of {@code caller} whose callee is {@code callee}. */
+  private static Map<String, String> plainCallOf(List<Line> lines, String caller, String callee) {
+    String from = function(lines, caller);
+    String to = function(lines, callee);
+    List<Line> found = nodes(lines, from).stream().filter(l -> l.fields().get(2).equals("Call") && to.equals(l.facts().get("callee"))).toList();
+    assertThat(found).as("the Call of %s in %s", callee, caller).hasSize(1);
+    return found.getFirst().facts();
   }
 
   static Stream<Arguments> kinds() {
