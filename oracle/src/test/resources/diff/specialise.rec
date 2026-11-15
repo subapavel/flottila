@@ -35,6 +35,13 @@ stdout 29999\n
 stderr
 end
 
+case specialise/over-inline-cap-comma-recurse
+def a8d311b715da
+rc 0
+stdout 29999\n
+stderr
+end
+
 case specialise/range-3-free-slots-30000
 def e88bb91dae00
 rc 0
