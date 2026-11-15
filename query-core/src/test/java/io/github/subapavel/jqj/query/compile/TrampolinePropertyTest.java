@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.subapavel.jqj.query.compile.BindsPropertyTest.Case;
 import io.github.subapavel.jqj.query.compile.RandomParts.Form;
 import io.github.subapavel.jqj.query.compile.RandomParts.Outcome;
+import io.github.subapavel.jqj.query.ir.Program;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -25,8 +26,11 @@ import org.junit.jupiter.params.provider.MethodSource;
  * on a thread of four times that.
  */
 class TrampolinePropertyTest {
-  /** The push run's declared stack: the roots hold no call, so they never reach its unit limit. */
-  private static final long PUSH = 256 * 1024;
+  /**
+   * The push run's declared stack: the roots hold no call, so they never reach its unit limit. It is above the reserve,
+   * 280 KiB since #113, or the push run would start on the trampoline too.
+   */
+  private static final long PUSH = 512 * 1024;
 
   /** The thread of every seed: four times the push run's declared stack (ADR-0046 "Where the stack is tested"). */
   private static final long THREAD = 4 * PUSH;
@@ -62,6 +66,8 @@ class TrampolinePropertyTest {
     Case c = BindsPropertyTest.generate(seed);
     for (Form form : List.of(Form.tail(c.free()), Form.push(c.free()))) {
       for (CompileMode mode : CompileMode.values()) {
+        Executable e = Compiler.compile(new Program(c.root().build(form), List.of()), 0, mode);
+        assertThat(StackUnits.unitLimit(e, PUSH)).as("seed %d, %s: U_f of the push run's %d bytes; at 0 or below it starts on the trampoline too", seed, mode, PUSH).isPositive();
         Outcome pushed = outcome(c.root().build(form), mode, c.steps(), c.stopAt(), PUSH);
         assertThat(pushed.crashed()).as("seed %d, %s: whether the push form crashed (%s) on %s", seed, mode, pushed, c).isFalse();
         assertThat(outcome(c.root().build(form), mode, c.steps(), c.stopAt(), 0)).as("seed %d, %s: outcome on the trampoline of %s", seed, mode, c).isEqualTo(pushed);

@@ -4,6 +4,81 @@ Every measured number with machine label, date, configuration and commit. A numb
 in this file does not exist (`AGENTS.md`, Evidence vocabulary). Written by the architect from
 verifier output; newest section first.
 
+## #113: the calibration matrix, `b` 192 and reserve 286 720 (ADR-0046 #113, K1–K8, L1–L4), 2026-11-15
+
+- Machine: `claude-cloud-4vcpu` (`nproc` 4), Temurin 25.0.5 at `/opt/temurin-25` (the record's
+  `jdk` row: Oracle Corporation 25.0.5.0.3+1-LTS-2, `cpus` 4), the only Maven on the host during
+  the committed run. Guard pages 98 304 B (the record's `guard` row). The record has no `machine`
+  row: the harness writes `time-ms`, `jdk` and `cpus` only (a carry for #199's re-run).
+- Command, each run: `./mvnw -o -B -pl jq-core -am test -Pcalibration-matrix -Dchecks.skip=true
+  -Djacoco.skip=true -Dtest=CalibrationTest#matrixCellsSwitchBeforeTheBackstop`, detached. The 234
+  cells: 13 shapes × `-Xint`, C1 (`-Xbatch -XX:TieredStopAtLevel=1`) and warm × platform 512 KiB,
+  platform 1 MiB and virtual on `-Xss512k` × CONSERVATIVE and OPTIMISED; `-Xint` and C1 children
+  4 at a time, warm children one at a time after them. Every later run seeded from the e6f4cc0 record.
+- The four runs, each record kept (cells are `-Xint` and C1 `U*cold`/`U*linked`, 156 per run):
+
+  | run | commit | record | progress log | time | max-b | reserve | outcome |
+  |---|---|---|---|---|---|---|---|
+  | e6f4cc0 | `e6f4cc0`, b 96, reserve 131 072 | `.logs/113-calibration.tsv` | `.logs/113-calibration-progress.log` (unstamped) | 5 547.8 s | 224 | 569 344 | warm rows in the maxima (K1); the seed |
+  | k5 | `078dd0a`, b 192, reserve 286 720 | `.logs/113-calibration-k5.tsv` | `.logs/113-calibration-progress-k5.log` (unstamped) | 2 924.9 s | 192 | 286 720 | 3 C1 U* above e6f4cc0's: +1, +7, +31 (L1) |
+  | l | `061f5cf` | `.logs/113-calibration-l.tsv` | `.logs/113-calibration-progress-l.log` | 2 784.0 s | 192 | 286 720 | EXECUTED_FAIL: passes ran 4 frames deeper than U*+1; 82 U* lower, 43 C1 cells complete at U*+1 |
+  | m | `dd089ac` | `jq-core/src/test/resources/stack/calibration.tsv` (`.logs/113-calibration-m.tsv`) | `.logs/113-calibration-progress-m.log` | 2 635.6 s | 192 | 286 720 | VERIFIED_PASS (`.logs/113-matrix5.log`); all 156 U* equal e6f4cc0's |
+
+- Per tier, from the stamped progress logs (wall: first child start to last child end;
+  child-seconds: the sum of each child's start to end, an `-Xint` cold bisection counted from its
+  start to its last probe). `-Xint` and C1 share the pool, so their walls overlap.
+
+  | run | `-Xint` wall | `-Xint` child-s (78 linked + 78 cold) | C1 wall | C1 child-s (234) | warm wall = child-s (234) |
+  |---|---|---|---|---|---|
+  | l | 1 130 s | 1 515 s | 1 140 s | 3 022 s | 1 644 s |
+  | m | 951 s | 1 057 s | 959 s | 2 763 s | 1 676 s |
+
+- The committed record (m): `max-b` 192 from the largest `b_cell`, 189 (C1 platform 512 KiB
+  CONSERVATIVE W, rounded up to 8 B). `reserve` 286 720 = ceil4K(220 832 + 29 988) + 32 768: the
+  largest intercept 220 832 is `-Xint` virtual 512 KiB OPTIMISED ND, the largest cold term 29 988
+  `-Xint` platform 1 MiB CONSERVATIVE collect-descent (K3). Every C1 cell's 3 children agree (spread
+  0 in all 78), each at its fixed point (L1); all 78 warm cells hold, 3 children × 60 runs at the
+  thread's size. `StackUnits` carries b 192 and reserve 280 KiB (286 720).
+- Pre-checks before m, children started by hand with ChildJvm's flags (`.logs/113-precheck2.log`,
+  3 C1 children each): C1 platform 1 MiB OPTIMISED collect-descent 5818 (passes 5819,5818,5818),
+  C1 virtual 512 KiB CONSERVATIVE W 2131 (2162,2131,2131), C1 virtual 512 KiB CONSERVATIVE collect
+  5113 (5120,5113,5113), and one `-Xint` linked child of platform 512 KiB OPTIMISED ND 12671
+  (12671,12671), each ending STACK at U*+1.
+- Side probe, ND OPTIMISED `-Xint` linked on platform 256 KiB and 384 KiB at `078dd0a`
+  (`.logs/113-side-probe.log`, one child each, 310 s and 321 s): U* 4 715 and 8 693 against
+  512 KiB's 12 671, a slope of 33 B per unit at 256 to 512 KiB, so the 220 832 intercept comes from
+  the slope, and the next run takes its intercept from its lowest pair (L2, #199).
+- In-process and untagged checks at `dd089ac` (`.logs/113-fixpoint-green.log`): `CalibrationTest`
+  13 tests, 21.85 s; `CalibrationRecordTest` 3.
+- The 10 000-deep native check (D4), `nativesCoverTheDeepestEmit`: VERIFIED_PASS
+  (`.logs/113-fixpoint-green.log` at `dd089ac`; again in the ticket gate, `.logs/113-gate-surefire.xml`).
+  On DEEP, each native's first use in its own `-Xint` child on a 512 KiB main thread with 512 KiB
+  declared, both modes: `tojson|length` 19998, `[.,.]|sort|length` 2, `def d: [.[]?|d]|sort;
+  d|tojson|length` 19998, reference jq's values (diff/deep.rec deep/native-*).
+- Tagged, at `24e8f1c` (`./mvnw -o -B -pl jq-core -am test -Pcalibration-matrix
+  -Dtest=CalibrationTest#edgeIsExact+heapPerActivationIsRecorded`, `.logs/113-tagged.log`,
+  `.logs/113-tagged-surefire.xml`): `edgeIsExact` VERIFIED_PASS, 574.6 s (the `-Xint` 512 KiB cold
+  edge of each shape and mode gives the reference result at U* and ends STACK, or STACK after a
+  prefix, at U*+1, each the first run of a fresh child); `heapPerActivationIsRecorded`
+  VERIFIED_PASS, 25.1 s.
+- Heap bytes per live call activation (`.logs/113-calibration-heap.tsv`): one child, platform
+  512 KiB, each held generator of `CalibrationCell.HELD` run to n = 100 000 and 2n = 200 000 live
+  activations (both give n twice, as jq-ref), the used heap read at the first emit after two
+  `System.gc()`; bytes = Δused / Δn. The child's `maxMemory` is 3 586 129 920 B.
+
+  | held filter | mode | stackBytes 0 | stackBytes 512 KiB | 4 194 304 × bytes (512 KiB) |
+  |---|---|---|---|---|
+  | F-held-try16 | OPTIMISED | 888 | 887 | 3 720 347 648 |
+  | F-held-try16 | CONSERVATIVE | 887 | 887 | 3 720 347 648 |
+  | C-held | OPTIMISED | 88 | 88 | 369 098 752 |
+  | C-held | CONSERVATIVE | 87 | 87 | 364 904 448 |
+  | F-held | OPTIMISED | 120 | 120 | 503 316 480 |
+  | F-held | CONSERVATIVE | 115 | 119 | 499 122 176 |
+
+  F-held-try16 at `Limits`' default depth of 4 194 304 would need more heap than this child's
+  `maxMemory`; the default stays open for the owner. The harness records only the slope, not the
+  used heap at n and 2n.
+
 ## #111: provisional bytes per unit `b` and reserve (ADR-0046 #111 amendment), 2026-11-15
 
 - Machine: the implementer's container, 4 vCPU, glibc 2.39 (Ubuntu 2.39-0ubuntu8.9), Temurin

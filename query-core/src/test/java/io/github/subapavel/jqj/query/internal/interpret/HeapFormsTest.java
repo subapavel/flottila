@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.query.compile.Compiler;
 import io.github.subapavel.jqj.query.compile.Executable;
+import io.github.subapavel.jqj.query.compile.StackUnits;
 import io.github.subapavel.jqj.query.ir.Alt;
 import io.github.subapavel.jqj.query.ir.Bind;
 import io.github.subapavel.jqj.query.ir.Break;
@@ -35,8 +36,11 @@ class HeapFormsTest {
   private static final Source AT = new Source(0, 1);
   private static final long UNLIMITED = Long.MAX_VALUE;
 
-  /** The push run's declared stack: these programs' calls hold far fewer units than its unit limit. */
-  private static final long PUSH = 256 * 1024;
+  /**
+   * The push run's declared stack: these programs' calls hold far fewer units than its unit limit. It is above the
+   * reserve, 280 KiB since #113, or every run, the push run too, would start on the trampoline.
+   */
+  private static final long PUSH = 512 * 1024;
 
   /** The thread of every run: four times the push run's declared stack (ADR-0046 "Where the stack is tested"). */
   private static final long THREAD = 4 * PUSH;
@@ -78,6 +82,7 @@ class HeapFormsTest {
   }
 
   private static void assertSameAsPushForm(Executable program, String expected, String what) {
+    assertThat(PUSH).as("the push run's declared stack against the reserve: at or under it, the push run starts on the trampoline too").isGreaterThan(StackUnits.reserve());
     String pushed = ran(program, PUSH);
     assertThat(pushed).as("push form of %s", what).startsWith(expected);
     assertThat(ran(program, 0)).as("%s on the trampoline", what).isEqualTo(pushed);

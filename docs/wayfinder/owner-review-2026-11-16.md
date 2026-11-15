@@ -214,3 +214,29 @@ Round 1 (2026-11-14), proposed by the grilling-adviser for the owner under the d
   instead of the owner's identity that earlier regens (e.g. a0ac318) carry. check-trailers accepts
   it. It is pushed to the integration branch; rewriting it is a history rewrite, so it stays unless
   the owner asks. Later regens are told to sign off with the GIT_AUTHOR identity.
+
+- **#117 re-pins and #198 (spec 2b run, told not asked).** The grilling-adviser ruled V1–V5 and
+  W1–W4 for the owner. Five #116 tests were re-pinned because specialisation removes the closures
+  they were built on. The over-cap run pin moved from a pipe ladder to a comma ladder, because a
+  filter with `U_f ≤ 0` runs wholly on the driver, which holds PLAIN activations (F-100). The
+  withdrawn expectation is issue #198. It is not ready for agents and waits for grilling with you
+  or the adviser after #113 and #119.
+
+- **#113 matrix rulings K1–K8 (spec 2b run; ADR-0046 #113 "Rulings on the matrix").** These amend
+  O2 and the measuring rule:
+  - Warm cells are proven (60 runs at the declared stack), not measured, because their edges are
+    junk (K1).
+  - `b` = 192 (C1 W), and the reserve is 280 KiB (K2, K3).
+  - `U_f` at 512 KiB is about 1237 − D_f, against O2's estimate of 1 850 (K4, F-102).
+  - The full matrix took 92.5 min, against the 45-minute target (O4).
+  - Open for you: whether ND OPTIMISED's large intercept is an artefact (reserve 168 KiB), bytes
+    per unit by kind, or a larger 512 KiB default.
+  - WORKFLOW §11's branch names disagree with practice (F-103), a WORKFLOW change for you.
+- **#113 L1–L4 and #199 (spec 2b run, told not asked).** The seeded re-run showed C1 edges found
+  mid-compile, so a JIT edge is now a fixed point (L1). The reserve stays 280 KiB in #113. The side
+  probe shows the 220 KB intercept that sets it is an extrapolation artefact (about 105 KB measured at
+  256–512 KiB), so the intercept rule changes with the next owed matrix run (#199, L2). Expected effect:
+  `U_f` at 512 KiB rises from 1237 − D_f to between 1365 and 1834 − D_f.
+- **ADR-0040 lifted counts, F-106 (spec 2b run, told not asked).** The ADR said tests never pin how
+  many functions are lifted. It now allows a test to pin the lifted list wherever the rule leaves only
+  one answer, for example the single function a 512-deep call chain lifts. #114's `hasSize(1)` stays.
