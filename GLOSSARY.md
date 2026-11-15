@@ -408,10 +408,16 @@ needs it whole (WHOLE, the safe value); ADR-0054's syntactic test.
 A pass over the IR that proves a property a backend can use: cardinality, path shape, root use,
 touched fields.
 
+**Freeze id**:
+A node's pre-order number in its body (main or one function), from 0; the key of every fact
+(ADR-0045, ADR-0007).
+_Avoid_: node index.
+
 **Cardinality**:
 How many results an IR node can produce for one input: none, exactly one, at most one, or many. An
 error or a break is not a result. One and at most one also promise that nothing runs after the
-result (F-56).
+result (F-56). The fixpoint starts below none and one, at no result and no normal end; a fact stores that
+as none (ADR-0007 #112).
 
 **Backend**:
 What turns IR into something that runs. There are two.

@@ -1,6 +1,6 @@
 # Analysis contracts
 
-Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0008 (issue #7); amended by ADR-0022 (issue #8); fact keys by ADR-0045 and cardinality's promise by F-56 (spec 2b); holds by F-77 and root use by ADR-0054 (spec 5); path shape's 10 000-step rule, the path-rule and P6 validity rows and bound values by spec 3 grilling (rounds 1–2; ADR-0048, F-59); may read input, hold sites, a hold's detach and path shape's read rule by spec 5 round 2 (F-79, F-80)
+Status: accepted (2026-11-10, owner, issue #6 "What shape does the IR have, and which analyses run on it?"); amended by ADR-0008 (issue #7); amended by ADR-0022 (issue #8); fact keys by ADR-0045 and cardinality's promise by F-56 (spec 2b); holds by F-77 and root use by ADR-0054 (spec 5); path shape's 10 000-step rule, the path-rule and P6 validity rows and bound values by spec 3 grilling (rounds 1–2; ADR-0048, F-59); may read input, hold sites, a hold's detach and path shape's read rule by spec 5 round 2 (F-79, F-80); the cardinality lattice, rules and fixpoint by ticket #112
 
 Analyses run once on a frozen program and write an immutable side table of facts, keyed by a dense
 node id: freeze numbers each function's nodes in pre-order into an identity map, and each fact is an
@@ -133,3 +133,24 @@ Proposed 2026-11-14, grilling-adviser for the owner under the delegation of 2026
 - **Root use**: "uses no outer slot" in the bullet above is replaced by ADR-0054's "Amendment
   (spec 5 round 2)": `rest` may use a parameter slot, and the fact has two values, ELEMENTS and
   WHOLE.
+
+## Amendment (ticket #112)
+
+Accepted 2026-11-15, architect under `/run-spec` #106; designer draft.
+
+- The cardinality lattice is NEVER < NONE, ONE < AT_MOST_ONE < MANY. NEVER means no result and no
+  normal end (a Break, or a body that only recurses). It is the bottom the fixpoint starts from, and
+  a stored fact keeps it as NONE.
+- Recursive groups are analysed callee-first. Each starts from NEVER and runs to its fixpoint, and
+  main runs last. A body is read in descending freeze id, with no recursion.
+- The rules backends may rely on: "each result of a runs b" is the core rule; a Comma after a left
+  result is MANY; a Try with a MANY body is MANY; a Label joins NONE; an AltBind is MANY (a
+  downstream error re-enters it, ADR-0038); an Intrinsic follows its call form; a Call takes its
+  callee's value; a ParamCall is MANY.
+- A ONE or AT_MOST_ONE op, once its result's emit returns, returns with no emit, raise or tick of
+  its own (F-56).
+- ParamCall's MANY differs on purpose from may-read-input's join over parameters: no 2b consumer
+  needs more, and may-break-out keeps every ParamCall off the value form.
+- Considered: ParamCall as the join over call sites (callers would feed callees, so there is no
+  callee-first order, e.g. `def k: g(k)`); NONE as the start (loses ONE in recursion); a summary
+  per closure tuple (up to 5^k per function, and no 2b consumer reads it).
