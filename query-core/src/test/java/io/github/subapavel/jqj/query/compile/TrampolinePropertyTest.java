@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.github.subapavel.jqj.query.compile.BindsPropertyTest.Case;
 import io.github.subapavel.jqj.query.compile.RandomParts.Form;
 import io.github.subapavel.jqj.query.compile.RandomParts.Outcome;
+import io.github.subapavel.jqj.query.ir.Program;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +66,8 @@ class TrampolinePropertyTest {
     Case c = BindsPropertyTest.generate(seed);
     for (Form form : List.of(Form.tail(c.free()), Form.push(c.free()))) {
       for (CompileMode mode : CompileMode.values()) {
+        Executable e = Compiler.compile(new Program(c.root().build(form), List.of()), 0, mode);
+        assertThat(StackUnits.unitLimit(e, PUSH)).as("seed %d, %s: U_f of the push run's %d bytes; at 0 or below it starts on the trampoline too", seed, mode, PUSH).isPositive();
         Outcome pushed = outcome(c.root().build(form), mode, c.steps(), c.stopAt(), PUSH);
         assertThat(pushed.crashed()).as("seed %d, %s: whether the push form crashed (%s) on %s", seed, mode, pushed, c).isFalse();
         assertThat(outcome(c.root().build(form), mode, c.steps(), c.stopAt(), 0)).as("seed %d, %s: outcome on the trampoline of %s", seed, mode, c).isEqualTo(pushed);

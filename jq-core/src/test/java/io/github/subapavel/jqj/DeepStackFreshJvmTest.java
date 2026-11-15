@@ -63,7 +63,7 @@ class DeepStackFreshJvmTest {
   }
 
   /**
-   * {@code b} is the largest over the tiers: declaring 1 MiB on a 1 MiB thread puts more units of each recursion on
+   * {@code b} is the largest over {@code -Xint} and C1, and proven in the warm default JIT (ADR-0046 #113, K1): declaring 1 MiB on a 1 MiB thread puts more units of each recursion on
    * the Java stack before the switch, and the frames per unit of every tier still fit.
    */
   @ParameterizedTest
