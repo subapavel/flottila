@@ -11,6 +11,12 @@
   <artifactId>jq-core</artifactId>
   <name>jq-core</name>
 
+  <!-- The calibration's full matrix (JUnit tag calibration-matrix, CalibrationTest) runs only under
+       -Pcalibration-matrix: the spec gate and nightly; the ticket gate runs its -Xint 512 KiB column (ADR-0046 #113). -->
+  <properties>
+    <calibration.excludedGroups>calibration-matrix</calibration.excludedGroups>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>io.github.subapavel.jqj</groupId>
@@ -43,8 +49,8 @@
           </execution>
         </executions>
       </plugin>
-      <!-- Every PIT minion start runs its test classes once before any mutant; these two still run in surefire
-           (F-84). -->
+      <!-- Every PIT minion start runs its test classes once before any mutant; these still run in surefire
+           (F-84, F-101). -->
       <plugin>
         <groupId>org.pitest</groupId>
         <artifactId>pitest-maven</artifactId>
@@ -54,12 +60,35 @@
             <param>io.github.subapavel.jqj.WideConstructStepsTest</param>
             <!-- 35.7 s in surefire; first killer of 4 of 3 259 mutants (F-84). -->
             <param>io.github.subapavel.jqj.OperatorChainTest</param>
+            <!-- The child-JVM classes of #113 (ADR-0046 #113, F-101): a child never runs a mutant. 21.85 s in surefire;
+                 killer of 0 of 3 543 mutants when the only tests. -->
+            <param>io.github.subapavel.jqj.CalibrationTest</param>
+            <!-- 9.2 s in surefire; killer of 299 of 3 543 mutants when the only tests, all in-process through
+                 reserveCoversTheGuardPages (F-101). -->
+            <param>io.github.subapavel.jqj.DeepStackFreshJvmTest</param>
             <!-- 1.8 s in surefire; killer of 0 of 3 751 mutants when the only tests: its filters run in child JVMs on
                  the unmutated class path (#118). -->
             <param>io.github.subapavel.jqj.TailJumpFreshJvmTest</param>
           </excludedTestClasses>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>${calibration.excludedGroups}</excludedGroups>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- ./mvnw -B -Pcalibration-matrix verify: the spec gate and nightly (ADR-0046 #113). -->
+    <profile>
+      <id>calibration-matrix</id>
+      <properties>
+        <calibration.excludedGroups></calibration.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
 </project>

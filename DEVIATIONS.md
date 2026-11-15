@@ -358,16 +358,14 @@ jq-ref's limit on a 512 KiB stack in a fresh JVM under three JIT tiers, and `Ope
 
 | case | filter | jq 1.8.2 | jqj |
 | --- | --- | --- | --- |
-| jq-core `IrDepthTest` | `def f1: [[…[.]…]]; def f2: [[…[f1]…]]; …`, 100 brackets each, 512 brackets around `.` in all: 513 levels, on `null` | 512 nested arrays around `null`, rc 0 | a Stub |
-| jq-core `IrDepthTest` | the same with 30 000 brackets: 30 001 levels | rc 0, printed 10 001 arrays deep and then `<skipped: too deep>` | a Stub |
-| jq-core `IrDepthTest` | `def g1: …; …; def g5: …;` as above, 500 brackets in all, then `def v1($a): g5; def v2($a): v1(.); …; v500(.)`: 500 nested expansions, each binding `$a` | 500 nested arrays around `null`, rc 0 | a Stub |
 | jq-core `IrDepthTest` | `.[.a:][.a:]…`, 2 000 steps, on `null` | `null`, rc 0 | a Stub |
 | jq-core `IrDepthTest` | `.[.a][.a]…`, 10 000 steps, on `null` | rc 5, `jq: error (at <unknown>): Cannot index null with null (null)` | a Stub |
 | jq-core `IrDepthTest` | `.a+.a-.a+…`, 400 terms, the operators alternating, on `null` | rc 5, `jq: error (at <unknown>): null (null) and null (null) cannot be subtracted` | a Stub |
 
 jq-ref 1.8.2 (observed 2026-11-13, the filter read with `-f`) compiles every row and gives its result. jqj stubs a
-filter of more than `Resolver.MAX_IR_DEPTH` = 512 levels of built IR, the leaf counted, as it stubs the 512th nested
-expansion (ADR-0040 "Inline cap"). The depth is the whole IR's, measured once the lowering is done and wherever the
+filter of more than `Resolver.MAX_IR_DEPTH` = 512 levels of built IR, the leaf counted. A call is not stubbed: one
+whose expansion would pass the bound, or would be the 512th nested expansion, is a PLAIN call (ADR-0040 "Inline cap"
+and "Amendment (ticket #114)"), so the rows left are constructs other than calls. The depth is the whole IR's, measured once the lowering is done and wherever the
 Resolver built a node (ADR-0040 "What counts"): an Ast's own node, the Bind of each value parameter around an
 expansion's body, the Bind of a computed key or bound around the chain before it, and the Pipe trees of a chain. So
 the bound stubs a construct whose IR is as deep as it is wide, up to `Resolver.BIND_RUN` = 64 nested Binds: an
@@ -383,15 +381,15 @@ without values, 4 995 computed keys, 4 368 interpolations, 9 361 variables or ke
 3 276 variables, 4 095 value parameters, and the operator runs of "Long operator runs"; one more is rc 3 there) on a
 512 KiB stack in a fresh JVM, each with jq-ref's result. Nested constructs still stack: a construct under the bound
 is its nested Binds, and one past it a level or two (its Binds, then the value it sits in), so nested wide objects
-take a few levels each; so do nested definitions and nested value parameters, whose Stub stays, and a chain that
+take a few levels each; so do nested definitions and nested value parameters, until a call of them is PLAIN, and a chain that
 alternates operators, such as `.a+.a-.a+…`, which is runs of one operator each (ResolverTest, IrDepthTest). The
 Binder and the Resolver walk an operator chain by a loop (#86, #94), so a chain of any length past the bound is this
 Stub, not a StackOverflowError (jq-core `OperatorChainTest`: 20 000 alternating terms on a 512 KiB stack in a fresh
 JVM, 200 000 on a 16 MiB one). The parser's 512 nesting levels bound one body ("Parse
 depth"); definitions nest one body in another, so without the bound the IR, and the Resolver's recursion over it,
-would be as deep as the inline cap lets them. 30 001 levels overflowed a 512 KiB stack (ADR-0017's `stackBytes`).
-`IrDepthTest` pins 512 levels running and 513, 30 001 levels and the 500 nested expansions a Stub on a 512 KiB stack
-in a fresh JVM, also with C1 only, and every row a Stub on a 16 MiB stack. Spec 2b's calls revisit the bound.
+would be as deep as the inline cap lets them. `IrDepthTest` pins 512 levels, 513, 30 001 levels and the 500 nested
+expansions running (jq-ref's results, the deeper ones through PLAIN calls, #114) on a 512 KiB stack in a fresh JVM at
+three tiers, and every row above a Stub on a 16 MiB stack.
 
 ## Array length limit (ADR-0035, issue #64)
 

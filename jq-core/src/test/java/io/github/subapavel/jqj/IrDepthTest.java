@@ -26,8 +26,10 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * ADR-0040 "IR depth" (F-44): past {@code Resolver.MAX_IR_DEPTH} = 512 levels of built IR the filter is a Stub, as the
- * 512th nested expansion is. A level is one node of the IR on the way from its root to a leaf, the leaf counted: {@code
+ * ADR-0040 "IR depth" (F-44): a call whose expansion would pass {@code Resolver.MAX_IR_DEPTH} = 512 levels of built IR,
+ * or would be the 512th nested expansion, is a PLAIN Call of its lifted definition, so the filter runs (ADR-0040
+ * "Amendment (ticket #114)"); any other construct past the bound, such as a chain of computed keys, makes the filter a
+ * Stub. A level is one node of the IR on the way from its root to a leaf, the leaf counted: {@code
  * [[.]]} has three. The depth is the built IR's wherever the Resolver builds it (ADR-0040 "What counts"): nested
  * Collects through definitions, each of {@link #PER} brackets around the previous one's call, while the parser's 512
  * nesting levels (DEVIATIONS "Parse depth") bound each body alone; the Bind of each value parameter around the body of
@@ -58,20 +60,20 @@ class IrDepthTest {
   private static final String DEEP = "." + "[.a]".repeat(300);
 
   /**
-   * jq-ref 1.8.2's result for {@code nested(513)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, 1 029
+   * Reference jq 1.8.2's result for {@code nested(513)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log, 1 029
    * bytes): 512 nested arrays, as DEVIATIONS "IR depth" gave it.
    */
   private static final String NESTED_513 = "[".repeat(512) + "null" + "]".repeat(512);
 
   /**
-   * jq-ref 1.8.2's result for {@code nested(30_001)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log):
+   * Reference jq 1.8.2's result for {@code nested(30_001)} on null (observed 2026-11-15, -nc -f, .logs/114-jqref-probe.log):
    * 20 022 bytes, 10 001 brackets, {@code <skipped: too deep>}, 10 001 brackets and an LF, sha256 7abcf37e…, the bytes
    * of DeepBuiltArrayTest's oracle; {@code JqValue.toJson} is that text without its LF (F-54, diff/over-cap.rec {@code
    * over-cap/depth-30001}).
    */
   private static final String NESTED_30001 = "[".repeat(10_001) + "<skipped: too deep>" + "]".repeat(10_001);
 
-  /** jq-ref 1.8.2's result for {@code valueParameters(500)} on null (observed 2026-11-15, -nc -f, 1 005 bytes). */
+  /** Reference jq 1.8.2's result for {@code valueParameters(500)} on null (observed 2026-11-15, -nc -f, 1 005 bytes). */
   private static final String VALUE_PARAMETERS_500 = "[".repeat(500) + "null" + "]".repeat(500);
 
   /**
@@ -89,7 +91,7 @@ class IrDepthTest {
    * stack claim of every test here.
    */
   @Test
-  void onA512KiBThreadInAFreshJvm512LevelsRunAndDeeperFiltersAreStubs() throws IOException, InterruptedException {
+  void onA512KiBThreadInAFreshJvmDeepCallsRunAndComputedIndexesStayAStub() throws IOException, InterruptedException {
     assertChildPrintsTheEdges();
   }
 
@@ -99,7 +101,7 @@ class IrDepthTest {
    * of 512 KiB about 500 levels down, before the bound's Stub (#86, 5 of 5 runs before the lowering's frames were made small).
    */
   @Test
-  void onA512KiBThreadInAFreshC1OnlyJvm512LevelsRunAndDeeperFiltersAreStubs() throws IOException, InterruptedException {
+  void onA512KiBThreadInAFreshC1OnlyJvmDeepCallsRunAndComputedIndexesStayAStub() throws IOException, InterruptedException {
     assertChildPrintsTheEdges("-Xbatch", "-XX:TieredStopAtLevel=1");
   }
 
@@ -109,7 +111,7 @@ class IrDepthTest {
    * under either tier).
    */
   @Test
-  void onA512KiBThreadInAFreshProfilingC1Jvm512LevelsRunAndDeeperFiltersAreStubs() throws IOException, InterruptedException {
+  void onA512KiBThreadInAFreshProfilingC1JvmDeepCallsRunAndComputedIndexesStayAStub() throws IOException, InterruptedException {
     assertChildPrintsTheEdges("-Xbatch", "-XX:TieredStopAtLevel=3");
   }
 
@@ -454,7 +456,7 @@ class IrDepthTest {
   }
 
   /**
-   * The child JVM of {@link #onA512KiBThreadInAFreshJvm512LevelsRunAndDeeperFiltersAreStubs}: on a 512 KiB thread
+   * The child JVM of {@link #onA512KiBThreadInAFreshJvmDeepCallsRunAndComputedIndexesStayAStub}: on a 512 KiB thread
    * each, it runs 512 levels on null, then compiles and runs 513 levels, 30 001 levels, 500 value parameters and 10 000
    * computed indexes, in that order, and prints a line for each: {@code ran}, {@code a Stub} or what was thrown. Since
    * #114 the first three lift their calls past the bound; only the walk of the built IR stops the last, a chain.
@@ -494,9 +496,10 @@ class IrDepthTest {
    * Q4 of #114: {@code def f0: .; def f1: f0,f0; …; def f4000: f3999,f3999; f4000} would lower 2^4001 - 1 nodes inlined.
    * In a fresh JVM with no agent, on a 512 KiB thread, it compiles in the optimised and the conservative mode, each
    * within {@link #COMPILE_BOUND_MS}, since its calls past the cap are PLAIN and no call is expanded twice (ADR-0040 #114
-   * amendment), and then its run under {@link Limits#embedded()} ends with {@code JqTermination(BUDGET, STEPS)}: each
-   * PLAIN call ticks one step (F-54). The compile times are printed into this test's output. Until #114 each compile
-   * was the cap's Stub.
+   * amendment), and then its run under {@link Limits#embedded()}'s budgets without its deadline ends with {@code
+   * JqTermination(BUDGET, STEPS)}: each PLAIN call ticks one step (F-54). The run has no deadline because the 10⁹ steps
+   * take longer than the embedded 10 s, so that deadline ended the run first (observed by the #114 implementer after
+   * #111). The compile times are printed into this test's output. Until #114 each compile was the cap's Stub.
    */
   @Test
   void aDoublingChainOf4000DefinitionsCompilesAndEndsAtTheStepBudgetInAFreshJvm() throws IOException, InterruptedException {
@@ -515,8 +518,8 @@ class IrDepthTest {
    * The child JVM of {@link #aDoublingChainOf4000DefinitionsCompilesAndEndsAtTheStepBudgetInAFreshJvm}: on a 512 KiB
    * thread each, it compiles the chain with an engine of {@link Limits#embedded()} in each mode, prints {@code <mode>:
    * compiled}, {@code a Stub} or what was thrown, and writes {@code <mode> <ms>} lines to the file {@code args[0]}; then it
-   * runs the optimised filter on null and prints {@code embedded run: <budget>}, the budget that ended it, or what else
-   * happened.
+   * compiles it once more with {@link Limits#embedded()}'s budgets and no deadline, runs that filter on null and prints
+   * {@code embedded run: <budget>}, the budget that ended it, or what else happened.
    */
   static final class DoublingChild {
     private DoublingChild() {}
@@ -544,11 +547,302 @@ class IrDepthTest {
         System.out.println("embedded run: not compiled");
         return;
       }
-      JqEngine engine = JqEngine.builder().limits(Limits.embedded()).compileMode(CompileMode.OPTIMISED).build();
+      Limits e = Limits.embedded();
+      Limits noDeadline = new Limits(e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), e.recursionDepth(), e.bytesBuilt(), e.bytesWritten(), e.regexMatchTime(), e.stackBytes());
+      JqEngine engine = JqEngine.builder().limits(noDeadline).compileMode(CompileMode.OPTIMISED).build();
       AtomicReference<Boolean> answer = new AtomicReference<>();
-      Throwable thrown = on(STACK, () -> answer.set(optimised.get().run(JqNull.NULL, RunBudgets.NONE, v -> true, engine.newWorkspace())));
+      Throwable thrown = on(STACK, () -> answer.set(engine.compile(filter).run(JqNull.NULL, RunBudgets.NONE, v -> true, engine.newWorkspace())));
       System.out.println("embedded run: " + (thrown instanceof JqTermination t ? String.valueOf(t.budget()) : thrown == null ? "ended, " + answer.get() : thrown));
     }
+  }
+
+  /**
+   * The depth edge of each arm of the expansion measure (ADR-0040 "Amendment (ticket #114)", #114 "Edge rows"): {@link
+   * #atDepth} puts {@code def f: <body>} under d definitions of 100 brackets each, d = min(4, (511 - reach) / 100), and
+   * {@code j} brackets of the main filter, so the call of p_d there would reach {@code j + 100·d + reach} levels, reach
+   * being f's measured levels. At 512 every call fits; at 513 one call must be a PLAIN Call, not the IR depth Stub, and
+   * the filter gives the same result one bracket deeper. The test pins only that difference, one function more at 513
+   * than at 512 (F-106): greedy top-down lifts p_d, as-late-as-possible lifts the innermost call whose lift brings the
+   * rest within the bound, and either way one lift is needed and one is enough, since a lifted body starts at depth 0
+   * and no body here comes near 512 alone. The prelude's own functions ({@code ..}'s recursive {@code r}) and a
+   * recursive definition's are in both counts. A level more in the measure lifts at 512, a level less inlines at 513 and
+   * the Stub fires (.logs/114-edges.log: each row against its count one off and against the mutants).
+   *
+   * <p>The rows by arm and threshold (ExpansionMeasure's own levels and the shift of its parts):
+   *
+   * <ul>
+   *   <li>leaves, one level: Dot {@code .}, Num {@code 1}, Constant {@code null}, Loc, Format {@code @text}, each alone
+   *       and in brackets (alone, f's call is at least its lifted form's one level, which hides a leaf's count); a Var, a
+   *       Break and builtin.jq's {@code $$$$v} (LastRead) as an unused closure argument, where only the leaf's level
+   *       decides (a Bind or a label above them would hide it), and an unbuilt native ({@code explode}) the same way;
+   *   <li>Paren and Def pass their part's form on: {@code (length)}, and every row with a {@code def};
+   *   <li>Comma, one level and its terms log2(terms) down: 2 terms, and 4 and 5 terms (2^k and 2^k+1, k = 2); its own
+   *       level never decides, as every term is a level;
+   *   <li>Pipe and ArrayCons, one level and their parts one down: {@code length | length}, {@code length | [[.]]},
+   *       {@code [length]}; an empty array, which has no part, is where the own level decides ({@code [[]]});
+   *   <li>Binary, four levels and its operands three down: {@code length + length}; the own levels never decide;
+   *   <li>Neg, three and its operand one down: {@code -(1)} (own), {@code -(-length)} (shift);
+   *   <li>If, Try and Label, three and their parts two down: the rows with {@code [2]}, {@code try length} and {@code
+   *       [.]} (shift); the own levels never decide (a part is a level, two down);
+   *   <li>Bind, reduce and foreach, {@code min(2·patterns + 2, 64)} plus 5, 8 and 8, their parts one less down: a part
+   *       in brackets (shift); two pattern nodes; 31 and 32 pattern nodes, the two sides of the 64 cap at
+   *       ExpansionMeasure.java:470, :476 and :482; an object pattern's computed key ({@code . as {("a"): $v} | $v},
+   *       :362), one of the parts. Their own levels never decide, so PIT's {@code k + 5} and {@code k + 8} mutants at
+   *       :471, :477 and :483 are equivalent;
+   *   <li>steps, {@code 3·steps + 3} and their keys and bounds two less down: {@code ."a"} (own), Field, StringField,
+   *       Index, Slice (from, to, both), Each, Optional, and a key in brackets or a second step (shift);
+   *   <li>Str, {@code min(parts, 64) + 3} and its interpolations one less down: {@code "a"} (own), {@code "a\([.])"}
+   *       (shift), 64 and 65 interpolations, the two sides of the cap at :493;
+   *   <li>ObjectCons, {@code 3·min(pairs, 64) + 4} and its keys and values two less down: {@code {a: 1}} (own), a value
+   *       in brackets and a computed key in a chain (shift), shorthand, string, interpolated, variable and {@code
+   *       $__loc__} keys, 64 and 65 pairs, the two sides of the cap at :505 (three definitions of brackets, as the
+   *       object takes 196 levels);
+   *   <li>Recurse: {@code ..}, a call of the prelude's {@code recurse}. A wrong measure here (ExpansionMeasure.java:443)
+   *       changes only which call is lifted: {@code ..} lowers to the one call of {@code recurse/0}, whose own fit is
+   *       checked with its own measure where it is lowered, so an enclosing call taken as fitting leaves {@code
+   *       recurse/0} to be lifted instead, one function either way, and no assertion the pin rule allows (F-106) can
+   *       see it, so the hand mutant there (the call's measure taken as a parameter's call) is equivalent; PIT's one mutant
+   *       at :443 is killed; the row is the arm's row, its results and the added function. {@code ..} hides it only
+   *       because recurse/0 has no closure: lifted, it is one Call, the level the mutant gives it. The call dispatch for
+   *       a prelude definition (:554) is not masked so: a prelude definition with a closure parameter (recurse/1,
+   *       recurse/2, until, while) lifts to a Call holding its closures, as deep as its inlined body, the inner recursive
+   *       definition's Call holding them, so lifting it saves no level. The rows {@code recurse([[.]]; false)} (4),
+   *       {@code recurse([[.]] | empty)} (5), {@code until(true; [[.]])} (4) and {@code while(false; [[.]])} (4) kill
+   *       the same hand mutant there (.logs/114-edges5-mLibraryParamCall.log), and the call rows below kill it for a
+   *       definition in the text (:551, .logs/114-edges4.log);
+   *   <li>Native, two levels, or five and its arguments three down: {@code length}, {@code last(.)} (own), {@code
+   *       last([[.]])} (shift), {@code range(length; 1)};
+   *   <li>a call of a definition: the inlined form ({@code def g: [[.]]; g}, a closure run inside the inlined body),
+   *       the lifted form's closure argument a level down ({@code g(.)} and {@code g([[[.]]])} of an unused or a run
+   *       closure), a value argument its Binds down, a captured closure, a recursive call (the lifted form alone, a
+   *       level), and 64 and 65 value parameters, the two sides of BIND_RUN at :99, :108 and :140, for a definition and
+   *       a recursive one: 64 put the k-th argument k Binds down and the body 64 down, 65 make one Binds. The inlined
+   *       form puts each value argument where the lifted form put it (:108 then :140, levels the larger), so PIT's
+   *       boundary and increment mutants at :140, which only lower that level, are equivalent;
+   *   <li>the lifted form's Call holds a Var for each value parameter and value capture, a level below it (:103):
+   *       {@code r($a)} of a recursive {@code r} (Bind, Call, Var: 3), a value capture under a Bind ({@code . as $x |
+   *       …}, 10) and under a value parameter's Binds in brackets ({@code def g($x): … [[r]]; g(.)}, 5, where the
+   *       capture alone decides);
+   *   <li>a value parameter called by name ({@code def g($a): a; g([[.]])}, 5): its argument is a closure of the Call
+   *       too (:110, {@code binder.called}), two levels down;
+   *   <li>a closure argument run in a lifted function's body, measured by {@code evaluated} (:157), its own test
+   *       below. In a lifted body a parameter is a call of no nodes, so PIT's survivor at :154 (its nodes not added)
+   *       is equivalent, and in an inlined body the enclosing call's measure already counts them; the two negated
+   *       conditionals at :148 are equivalent, as a form's uses and its levels above have the same parameters;
+   *   <li>MAX_IR_DEPTH, last fitting and first passing: every row, at 512 and 513;
+   *   <li>the nested-expansion count (Resolver's EXPANSIONS): 511 nested expansions inline every call and lift
+   *       nothing, the 512th is a PLAIN Call and lifts one function (InlineDepthTest).
+   * </ul>
+   *
+   * <p>Each result is reference jq's: 1.8.2 gives each body on null ({@code def f: <body>; [f]}, -nc -f, observed
+   * 2026-11-15, the filter texts in .logs/114-jqref-arms.log, -arms2, -arms3, -arms64, -edges, -edges4 and -edges5),
+   * and the whole filter for {@code -length}, {@code .[]?}, {@code {$__loc__}} and {@code . as $x | {$x}} at 513 levels,
+   * those brackets around it.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("measuredLevels")
+  void eachKindMeetsTheIrDepthAtItsMeasuredLevels(String body, int reach, String result) throws InterruptedException {
+    int defs = Math.min(4, (511 - reach) / PER);
+    int j = 512 - PER * defs - reach;
+    String inner = result == null ? "" : result;
+    String fits = atDepth(body, defs, j);
+    int before = functionsOnA16MiBThread(fits).size();
+    assertThat(resultsOnA16MiBThread(fits)).as("results of %s at 512 measured levels", body).containsExactly("[".repeat(PER * defs + j) + inner + "]".repeat(PER * defs + j));
+    String passes = atDepth(body, defs, j + 1);
+    assertThat(functionsOnA16MiBThread(passes)).as("functions of %s at 513 measured levels, %d at 512", body, before).hasSize(before + 1);
+    assertThat(resultsOnA16MiBThread(passes)).as("results of %s at 513 measured levels", body).containsExactly("[".repeat(PER * defs + j + 1) + inner + "]".repeat(PER * defs + j + 1));
+  }
+
+  static Stream<Arguments> measuredLevels() {
+    return Stream.of(
+        // Leaves.
+        Arguments.of(".", 1, "null"),
+        Arguments.of("1", 1, "1"),
+        Arguments.of("null", 1, "null"),
+        Arguments.of("$__loc__", 1, "{\"file\":\"<top-level>\",\"line\":1}"),
+        Arguments.of("@text", 1, "\"null\""),
+        // A leaf as f's whole body is hidden by the lifted form's level; in brackets its level decides.
+        Arguments.of("[null]", 2, "[null]"),
+        Arguments.of("[1]", 2, "[1]"),
+        Arguments.of("[$__loc__]", 2, "[{\"file\":\"<top-level>\",\"line\":1}]"),
+        Arguments.of("[@text]", 2, "[\"null\"]"),
+        Arguments.of("[[]]", 2, "[[]]"),
+        Arguments.of(". as $x | def g(h): .; g($x)", 10, "null"),
+        Arguments.of("label $f | def g(h): .; g(break $f)", 4, "null"),
+        Arguments.of(". as $v | def g(h): .; g($$$$v)", 10, "null"),
+        Arguments.of("def g(h): .; g(explode)", 2, "null"),
+        // Paren; Comma; Pipe; ArrayCons; Binary.
+        Arguments.of("(length)", 2, "0"),
+        Arguments.of("length, length", 3, "0,0"),
+        Arguments.of(terms(4, ", ", "length"), 4, "0,0,0,0"),
+        Arguments.of(terms(5, ", ", "length"), 5, "0,0,0,0,0"),
+        Arguments.of("length | length", 3, "0"),
+        Arguments.of("length | [[.]]", 4, "[[0]]"),
+        Arguments.of("[]", 1, "[]"),
+        Arguments.of("[length]", 3, "[0]"),
+        Arguments.of("length + length", 5, "0"),
+        // Neg; If, Try, Label.
+        Arguments.of("-(1)", 3, "-1"),
+        Arguments.of("-length", 3, "-0"),
+        Arguments.of("-(-length)", 4, "0"),
+        Arguments.of("if . then 1 else 2 end", 3, "2"),
+        Arguments.of("if . then 1 end", 3, "null"),
+        Arguments.of("if . then 1 else [2] end", 4, "[2]"),
+        Arguments.of("try length catch 0", 4, "0"),
+        Arguments.of("try length", 4, "0"),
+        Arguments.of("label $out | .", 3, "null"),
+        Arguments.of("label $out | [.]", 4, "[null]"),
+        Arguments.of("label $f | break $f", 3, null),
+        // Bind, reduce, foreach.
+        Arguments.of(". as $x | $x", 9, "null"),
+        Arguments.of(". as $x | [$x]", 10, "[null]"),
+        Arguments.of(". as [$a, $b] | $a", 13, "null"),
+        Arguments.of(". as [" + terms(30, ", ", "$a%d") + "] | [.]", 70, "[null]"),
+        Arguments.of(". as [" + terms(31, ", ", "$a%d") + "] | [.]", 70, "[null]"),
+        Arguments.of("reduce . as $x (.; $x)", 12, "null"),
+        Arguments.of("reduce . as $x (.; [$x])", 13, "[null]"),
+        Arguments.of("reduce . as [$a] (.; [$a])", 15, "[null]"),
+        Arguments.of("reduce . as [" + terms(30, ", ", "$a%d") + "] (.; [.])", 73, "[null]"),
+        Arguments.of("reduce . as [" + terms(31, ", ", "$a%d") + "] (.; [.])", 73, "[null]"),
+        Arguments.of("foreach . as $x (.; $x)", 12, "null"),
+        Arguments.of("foreach . as $x (.; $x; $x)", 12, "null"),
+        Arguments.of("foreach . as $x (.; [$x])", 13, "[null]"),
+        Arguments.of("foreach . as $x (.; $x; [$x])", 13, "[null]"),
+        Arguments.of("foreach . as [$a] (.; [$a])", 15, "[null]"),
+        Arguments.of("foreach . as [" + terms(30, ", ", "$a%d") + "] (.; [.])", 73, "[null]"),
+        Arguments.of("foreach . as [" + terms(31, ", ", "$a%d") + "] (.; [.])", 73, "[null]"),
+        // Steps.
+        Arguments.of(".\"a\"", 6, "null"),
+        Arguments.of(".a.b", 9, "null"),
+        Arguments.of(".\"\\(.)\"", 8, "null"),
+        Arguments.of(".[length]", 6, "null"),
+        Arguments.of(".[length?]", 10, "null"),
+        Arguments.of(".[length:]", 6, "null"),
+        Arguments.of(".[:length]", 6, "null"),
+        Arguments.of(".[length:length]", 6, "null"),
+        Arguments.of(".[length?:]", 10, "null"),
+        Arguments.of(".[:length?]", 10, "null"),
+        Arguments.of(".[]?", 6, null),
+        Arguments.of("length?", 6, "0"),
+        Arguments.of(".a[length?]", 13, "null"),
+        // Str.
+        Arguments.of("\"a\"", 4, "\"a\""),
+        Arguments.of("\"a\\(.)\"", 5, "\"anull\""),
+        Arguments.of("\"a\\([.])\"", 6, "\"a[null]\""),
+        Arguments.of("\"" + "\\([.])".repeat(64) + "\"", 68, "\"" + "[null]".repeat(64) + "\""),
+        Arguments.of("\"" + "\\([.])".repeat(65) + "\"", 68, "\"" + "[null]".repeat(65) + "\""),
+        // ObjectCons.
+        Arguments.of("{a: 1}", 7, "{\"a\":1}"),
+        Arguments.of("{a: [[.]]}", 8, "{\"a\":[[null]]}"),
+        Arguments.of("{a}", 7, "{\"a\":null}"),
+        Arguments.of("{\"a\"}", 9, "{\"a\":null}"),
+        Arguments.of("{(tostring): .}", 7, "{\"null\":null}"),
+        Arguments.of("{(tostring?): .}", 11, "{\"null\":null}"),
+        Arguments.of("{\"a\\(.)\": 1}", 10, "{\"anull\":1}"),
+        Arguments.of(". as $x | {$x}", 15, "{\"x\":null}"),
+        Arguments.of("{$__loc__}", 7, "{\"__loc__\":{\"file\":\"<top-level>\",\"line\":1}}"),
+        Arguments.of("{" + terms(64, ", ", "a%d: 1") + "}", 196, "{" + terms(64, ",", "\"a%d\":1") + "}"),
+        Arguments.of("{" + terms(65, ", ", "a%d: 1") + "}", 196, "{" + terms(65, ",", "\"a%d\":1") + "}"),
+        // Recurse; Native.
+        Arguments.of("..", 7, "null"),
+        Arguments.of("length", 2, "0"),
+        Arguments.of("last(.)", 5, "null"),
+        Arguments.of("last([[.]])", 6, "[[null]]"),
+        Arguments.of("range(length; 1)", 5, "0"),
+        // Calls of a definition.
+        Arguments.of("def g: [[.]]; g", 3, "[[null]]"),
+        Arguments.of("def g(h): [[h]]; g([.])", 4, "[[[null]]]"),
+        Arguments.of("def g(h): h; g(.)", 2, "null"),
+        Arguments.of("def g(h): .; g([[[.]]])", 5, "null"),
+        Arguments.of("def g($a): .; g([[.]])", 4, "null"),
+        Arguments.of("def g(h): def k: h; [[k]]; g(.)", 4, "[[null]]"),
+        Arguments.of("def r: if . then r else 0 end; r", 1, "0"),
+        Arguments.of("def r: if . then r else 0 end; [r]", 2, "[0]"),
+        Arguments.of(withValueParameters("def v(%s): [[.]]; v(%s)", 64, "."), 67, "[[null]]"),
+        Arguments.of(withValueParameters("def r(%s): if false then r(%s) else . end; r(%s)", 64, "[[.]]"), 67, "null"),
+        Arguments.of(withValueParameters("def v(%s): [[.]]; v(%s)", 65, "."), 4, "[[null]]"),
+        Arguments.of(withValueParameters("def r(%s): if false then r(%s) else . end; r(%s)", 65, "[[.]]"), 4, "null"),
+        // A Call's Vars, one for each value parameter and value capture, a level below it.
+        Arguments.of("def r($a): if false then r($a) else . end; r(.)", 3, "null"),
+        Arguments.of(". as $x | def r: if false then r else $x end; r", 10, "null"),
+        Arguments.of("def g($x): def r: if false then r else $x end; [[r]]; g(.)", 5, "[[null]]"),
+        // A value parameter called by name: its argument is a closure of the Call too.
+        Arguments.of("def g($a): a; g([[.]])", 5, "[[null]]"),
+        // An object pattern's computed key, its Bind's parts' shift down.
+        Arguments.of(". as {(\"a\"): $v} | $v", 14, "null"),
+        // Prelude definitions whose inlined body is an inner recursive definition's Call holding the closure.
+        Arguments.of("recurse([[.]]; false)", 4, "null"),
+        Arguments.of("recurse([[.]] | empty)", 5, "null"),
+        Arguments.of("until(true; [[.]])", 4, "null"),
+        Arguments.of("while(false; [[.]])", 4, null));
+  }
+
+  /**
+   * In a lifted function's body a closure argument that runs the function's own closure parameter ({@code [h]} in
+   * {@code r}) is measured with that parameter taken as a call, a level of its own (ExpansionMeasure.java:157): {@code
+   * k([h])} in 108 brackets inside four {@code w}, 100 brackets each, fits the IR depth in {@code r}'s body; in 109 one
+   * more function is lifted. {@code r} is recursive, so only the count difference is pinned (F-106). The count is the
+   * same under the greedy top-down choice and as late as possible: at 109 the body is one level past the bound; greedy
+   * lifts the outermost {@code w} that does not fit, as late as possible the innermost, and either lift takes that
+   * {@code w}'s 100 brackets into its own body, which starts at depth 0, while its closure argument stays in {@code r}'s
+   * body; lifting {@code k} would not help, as its Call is a level more than its inlined {@code [h]}. So one lift is
+   * needed and one is enough. Reference jq 1.8.2 gives 509 and 510 brackets around null (.logs/114-jqref-edges.log,
+   * the filter texts).
+   */
+  @Test
+  void aClosureArgumentRunningALiftedFunctionsParameterMeetsTheIrDepthAtItsMeasuredLevels() throws InterruptedException {
+    String fits = inLiftedBody(108);
+    int before = functionsOnA16MiBThread(fits).size();
+    assertThat(resultsOnA16MiBThread(fits)).as("results at 512 measured levels in r").containsExactly("[".repeat(509) + "null" + "]".repeat(509));
+    String passes = inLiftedBody(109);
+    assertThat(functionsOnA16MiBThread(passes)).as("functions at 513 measured levels in r, %d at 512", before).hasSize(before + 1);
+    assertThat(resultsOnA16MiBThread(passes)).as("results at 513 measured levels in r").containsExactly("[".repeat(510) + "null" + "]".repeat(510));
+  }
+
+  /** {@code def k(x): x; def w(y): [×100 y ]×100; def r(h): if false then r(h) else w(w(w(w([×j k([h]) ]×j)))) end; r(.)}. */
+  private static String inLiftedBody(int j) {
+    return "def k(x): x; def w(y): " + "[".repeat(PER) + "y" + "]".repeat(PER) + "; def r(h): if false then r(h) else w(w(w(w(" + "[".repeat(j) + "k([h])" + "]".repeat(j) + ")))) end; r(.)";
+  }
+
+  /**
+   * {@code template} with {@code n} value parameters {@code $a1; …}, then (for a recursive one) its call of itself with
+   * them, then a call with {@code n - 1} arguments {@code .} and {@code last}.
+   */
+  private static String withValueParameters(String template, int n, String last) {
+    StringJoiner params = new StringJoiner("; ");
+    StringJoiner args = new StringJoiner("; ");
+    for (int i = 1; i <= n; i++) {
+      params.add("$a" + i);
+      args.add(i == n ? last : ".");
+    }
+    return template.split("%s", -1).length == 3 ? template.formatted(params, args) : template.formatted(params, params, args);
+  }
+
+  /**
+   * {@code def f: <body>; def p1: [×100 f ]×100; … def p<defs>: [×100 p<defs - 1> ]×100;} and p<defs> in {@code j}
+   * brackets.
+   */
+  private static String atDepth(String body, int defs, int j) {
+    StringBuilder text = new StringBuilder("def f: ").append(body).append("; ");
+    String inner = "f";
+    for (int i = 1; i <= defs; i++) {
+      text.append("def p").append(i).append(": ").append("[".repeat(PER)).append(inner).append("]".repeat(PER)).append("; ");
+      inner = "p" + i;
+    }
+    return text.append("[".repeat(j)).append(inner).append("]".repeat(j)).toString();
+  }
+
+  /**
+   * The lifted functions of {@code filter}'s program, compiled on a 16 MiB thread ({@link Inlining#lifted}): the
+   * specialised copies ({@code copyOf=}) are skipped.
+   */
+  private static List<String> functionsOnA16MiBThread(String filter) throws InterruptedException {
+    AtomicReference<List<String>> got = new AtomicReference<>();
+    Throwable thrown = on(LARGE, () -> got.set(Inlining.lifted(filter)));
+    if (thrown != null) {
+      throw new AssertionError("compiling " + shown(filter) + " on a 16 MiB thread threw", thrown);
+    }
+    return got.get();
   }
 
   /** {@code def f0: .; def f1: f0,f0; …; def fn: f(n-1),f(n-1); fn}, Inlining's doubling chain and its call. */

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.github.subapavel.jqj.ExplainLines.Line;
 import io.github.subapavel.jqj.query.compile.CompileMode;
+import io.github.subapavel.jqj.query.compile.StackUnits;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -244,7 +245,7 @@ class ExplainTest {
     assertThat(starter).as("T").isPositive();
     assertThat(callFree).as("D_f against 1 + T, T = %d", starter).isGreaterThanOrEqualTo(1 + starter);
     assertThat(fact(closing, "bytesPerUnit", "the closing line")).as("b").isPositive();
-    assertThat(fact(closing, "reserve", "the closing line")).as("the reserve, 128 KiB until #113").isEqualTo(128 * 1024L);
+    assertThat(fact(closing, "reserve", "the closing line")).as("the reserve, the release constant (ADR-0046 #113, K6)").isEqualTo(StackUnits.reserve());
 
     List<Line> param = conservativeLines("def r(f): if . > 3 then . else f | r(f) end; 0 | r(. + 1)");
     Map<String, String> paramClosing = closing(param);

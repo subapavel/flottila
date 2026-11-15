@@ -17,7 +17,7 @@ import java.util.function.Function;
  * <p>It is computed once per compile, callee-first, by a loop over {@link Binder#calleeFirst()}, and each text is
  * walked by a loop with a stack of its own, never by recursion. At each call site of a definition outside a recursive
  * group it takes the larger of the inlined form (the body, its parameters bound to the arguments' forms, and each value
- * parameter's argument lowered once for its Bind) and the lifted form (a Call plus each closure argument lowered once,
+ * parameter's argument lowered once for its Bind) and the lifted form (a Call, its Vars, each closure argument lowered once,
  * since {@code invoke} lowers a closure for every filter parameter, used or not): for nodes the sum of the two, which is
  * exact for a call with no closure argument and an upper bound otherwise; for levels the larger. A call into a
  * recursive group has the lifted form only. A fold counts as unfolded.
@@ -92,10 +92,15 @@ final class ExpansionMeasure {
         binds++;
       }
     }
+    boolean vars = binds > 0;
+    for (Binder.Capture c : binder.captures(def)) {
+      vars |= c.value();
+    }
     int around = binds > Resolver.BIND_RUN ? 1 : binds;
     Acc acc = new Acc();
-    // The lifted form: the value parameters' Binds, the Call, and its closures inside it.
-    acc.own(0, around + 1L);
+    // The lifted form: the value parameters' Binds, the Call, a Var below it for each value parameter and value
+    // capture (Resolver#invoke), and its closures inside it.
+    acc.own(0, around + (vars ? 2L : 1L));
     int value = 0;
     for (int i = 0; i < params.size(); i++) {
       Ast.Param p = params.get(i);
@@ -314,7 +319,15 @@ final class ExpansionMeasure {
         }
       }
       case Ast.Call c -> parts.addAll(c.args());
-      default -> {}
+      // The leaves: no part. No default, so a new kind with parts cannot be walked as a leaf.
+      case Ast.Dot _ -> {}
+      case Ast.Recurse _ -> {}
+      case Ast.Num _ -> {}
+      case Ast.Format _ -> {}
+      case Ast.Var _ -> {}
+      case Ast.LastRead _ -> {}
+      case Ast.Loc _ -> {}
+      case Ast.Break _ -> {}
     }
     return parts;
   }
@@ -388,6 +401,11 @@ final class ExpansionMeasure {
           target = s.target();
         }
         case Ast.Optional o -> target = o.target();
+        // The chain's term: any kind but the six steps above (Pipe, Comma, Def, Bind, Label, Binary, Neg, Try,
+        // Reduce, Foreach, If, Dot, Recurse, Num, Str, Format, Paren, ArrayCons, ObjectCons, Var, LastRead, Loc, Call,
+        // Break). It is added as a part, so parts() and combine() measure it by its own exhaustive arms, never as a
+        // leaf here. A default, since an arm per term kind would add arms for kinds the parser never puts under a step
+        // (Pipe, Comma and Binary come in a Paren).
         default -> {
           boolean own = node instanceof Ast.Dot && (innermost instanceof Ast.Index || innermost instanceof Ast.Each || innermost instanceof Ast.Slice);
           if (!own && parts != null) {
@@ -488,8 +506,14 @@ final class ExpansionMeasure {
         acc.own(1L + n + shorthands, k + 2);
         children(acc, parts, done, k);
       }
-      // A leaf: a dot, a literal, a variable, a format, $__loc__ or a break.
-      default -> acc.own(1, 1);
+      // The leaves, a node and a level each. No default, so a new kind cannot be measured as a leaf unseen.
+      case Ast.Dot _ -> acc.own(1, 1);
+      case Ast.Num _ -> acc.own(1, 1);
+      case Ast.Format _ -> acc.own(1, 1);
+      case Ast.Var _ -> acc.own(1, 1);
+      case Ast.LastRead _ -> acc.own(1, 1);
+      case Ast.Loc _ -> acc.own(1, 1);
+      case Ast.Break _ -> acc.own(1, 1);
     }
     return acc.form();
   }
