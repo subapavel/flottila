@@ -4,9 +4,9 @@ import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Sink;
 
 /**
- * An invocation of a real closure (ADR-0045 #107): the closure in cell {@code cell} of the frame {@code level} links out
- * from the running one, a closure cell of the function's frame, runs on the input in the scope it was written in. It
- * ticks one step, then holds one more live activation until it ends, however it ends.
+ * A call activation of a real closure (ADR-0045 #107): the closure in cell {@code cell} of the frame {@code level}
+ * links out from the running one, a closure cell of the function's frame, runs on the input in the scope it was written
+ * in. It ticks one step, then adds one to the activation count until it ends, however it ends.
  */
 public final class ParamCallOp extends Op {
   private final int level;
