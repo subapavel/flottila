@@ -307,6 +307,25 @@ public final class Resolver {
    *     Stub
    */
   public static Program resolve(ParsedFilter filter, List<String> parameters) {
+    return resolved(filter, parameters).program();
+  }
+
+  /**
+   * A program and the name of each of its functions, by its place, as jq names a definition: {@code name/arity}
+   * (#108, for {@code explain()}).
+   */
+  public record Resolved(Program program, List<String> names) {
+    public Resolved {
+      names = List.copyOf(names);
+    }
+  }
+
+  /**
+   * {@link #resolve(ParsedFilter, List)} with the name of each function.
+   *
+   * @throws JqCompileException as {@link #resolve(ParsedFilter, List)}
+   */
+  public static Resolved resolved(ParsedFilter filter, List<String> parameters) {
     if (filter.main() == null) {
       throw new JqCompileException(List.of(NOT_GIVEN), 1, 1);
     }
@@ -323,11 +342,14 @@ public final class Resolver {
       // The whole IR, measured once at the top of the stack (ADR-0040 "What counts").
       within(root, MAX_IR_DEPTH);
       List<Function> functions = new ArrayList<>();
+      List<String> names = new ArrayList<>();
       // A body may place more functions: the loop takes them in turn.
       for (int place = 0; place < resolver.lifted.size(); place++) {
+        Ast.FuncDef def = resolver.lifted.get(place).def();
         functions.add(resolver.function(resolver.lifted.get(place)));
+        names.add(def.name() + "/" + def.params().size());
       }
-      return new Program(root, functions);
+      return new Resolved(new Program(root, functions), names);
     } catch (TooDeep e) {
       throw Stub.unbuilt("a filter of more than " + MAX_IR_DEPTH + " levels of IR");
     }

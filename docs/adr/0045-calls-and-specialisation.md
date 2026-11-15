@@ -1,6 +1,6 @@
 # Recursive and over-cap calls survive as a Program; specialisation is a query-core pass with its own cap; each activation has its own slot cells
 
-Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); amends ADR-0005 (`Call`, `ParamCall`, `Program`; 20 kinds built), ADR-0006 (lifting, passes, the specialisation cap), ADR-0007 (fact keys) and ADR-0040 (recursion; query-core's first user); over-cap calls are F-54's; parameters, captures and frames amended for #107; label captures by the grilling-adviser for the owner (2026-11-14)
+Status: proposed (2026-11-14, grilling-adviser for the owner under the delegation of 2026-11-14, spec 2b round 1); amends ADR-0005 (`Call`, `ParamCall`, `Program`; 20 kinds built), ADR-0006 (lifting, passes, the specialisation cap), ADR-0007 (fact keys) and ADR-0040 (recursion; query-core's first user); over-cap calls are F-54's; parameters, captures and frames amended for #107; label captures by the grilling-adviser for the owner (2026-11-14); freeze and call groups in query-core by ticket #112
 
 Spec 2a inlined every call in the Resolver and made a call into a recursive group a Stub (ADR-0040).
 So no `Call` reached query-core, and ADR-0006's pass order was left for 2b to re-check. 2b runs
@@ -90,3 +90,8 @@ capture (C4) was proposed by the grilling-adviser for the owner under the delega
     against ADR-0039's cost);
   - an untick rule for a Break closure (a type test on every ParamCall).
 
+## Amendment (ticket #112)
+
+- Freeze (`Numbering`) and the recursive groups (`CallGraph`) live in query-core's
+  `query.analysis`. `explain()` prints their ids and groups and keeps none of its own (#108's
+  printer copy goes). Facts travel with the `Executable`.
