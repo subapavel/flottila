@@ -510,14 +510,18 @@ class CalibrationTest {
     return r == null ? "no probe row" : r[8];
   }
 
-  /** A child of {@code tier}'s flags on {@code thread}, running {@code action} with the further args. */
+  /**
+   * A child of {@code tier}'s flags on {@code thread}, running {@code action} with the further args. A linked or search
+   * child, which only the matrix starts, has {@value ChildJvm#MATRIX_SECONDS} s; every other {@value ChildJvm#SECONDS} s.
+   */
   private Callable<String> child(List<String> tierFlags, CellThread thread, String action, String... more) {
     List<String> args = new ArrayList<>(List.of(action, thread.kind(), Long.toString(thread.bytes())));
     args.addAll(List.of(more));
     List<String> flags = new ArrayList<>(tierFlags);
     flags.addAll(PROOF_FLAGS);
     flags.add(thread.xss());
-    return () -> ChildJvm.run(dir, flags, CalibrationCell.class, args.toArray(String[]::new));
+    long seconds = action.equals("linked") || action.equals("search") ? ChildJvm.MATRIX_SECONDS : ChildJvm.SECONDS;
+    return () -> ChildJvm.run(dir, seconds, flags, CalibrationCell.class, args.toArray(String[]::new));
   }
 
   /** {@code child}, its output appended to the progress log when it ends. */
