@@ -12,3 +12,4 @@ specialise/range-3-free-slots-30000
 specialise/until-free-slot-30000
 specialise/free-break
 specialise/literal-arguments
+specialise/order-param-chain-then-recurse

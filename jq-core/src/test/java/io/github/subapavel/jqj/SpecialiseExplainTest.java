@@ -65,6 +65,21 @@ class SpecialiseExplainTest {
     return f.append("f0|f0|f0 | last(limit(30000; 0|recurse(.+1)))").toString();
   }
 
+  /**
+   * The order case (F-94 "Open"): over-cap/param-600's filter, {@code def g1(f): f; def g2(f): g1(f|.+1); … def g600(f):
+   * g599(f|.+1); 0|g600(.)}, then {@code | last(limit(30000; 0|recurse(.+1)))}; reference jq 1.8.2 gives {@code 29999}
+   * (specialise/order-param-chain-then-recurse).
+   */
+  static final String ORDER = order();
+
+  private static String order() {
+    StringBuilder f = new StringBuilder("def g1(f): f; ");
+    for (int i = 2; i <= 600; i++) {
+      f.append("def g").append(i).append("(f): g").append(i - 1).append("(f|.+1); ");
+    }
+    return f.append("0|g600(.) | last(limit(30000; 0|recurse(.+1)))").toString();
+  }
+
   private static JqEngine engine(CompileMode mode) {
     return RunBudgets.recursionDepth(DEPTH, mode);
   }
@@ -248,6 +263,25 @@ class SpecialiseExplainTest {
 
     assertThat(ended(CompileMode.OPTIMISED, OVER_CAP)).as("OPTIMISED run of the ladder with recursionDepth %d", DEPTH).isEqualTo("[29999], ran out");
     assertThat(ended(CompileMode.CONSERVATIVE, OVER_CAP)).as("CONSERVATIVE run of the ladder with recursionDepth %d", DEPTH).isEqualTo("[], termination BUDGET RECURSION_DEPTH");
+  }
+
+  /**
+   * Order (ADR-0045 #117 "Order and cap", S2; F-94 "Open"): keys are spent by Source, so param-600's chain, whose
+   * demand is above INLINE_CAP and which refuses keys (premise), is decided before the recurse key at the end of main.
+   * recurse/1 must still get its copy, so its 30 000 levels fit the depth budget, as in {@link
+   * #overInlineCapStillSpecialisesRecurse}; the conservative compile keeps the real closure and ends by a termination. A
+   * refusal of recurse's key here is a finding against S2/S5's order, not a reason to change this test.
+   */
+  @Test
+  void parameterChainBeforeRecurseStillSpecialisesRecurse() {
+    List<Line> lines = lines(CompileMode.OPTIMISED, ORDER);
+    assertThat(Integer.parseInt(closing(lines).get("refused"))).as("premise: keys of param-600's chain refused under SPECIALISE_CAP").isPositive();
+    String original = lines.stream().filter(l -> isFunction(l) && l.fields().get(2).equals("recurse/1") && !l.facts().containsKey("copyOf")).map(l -> l.fields().get(1)).findFirst().orElseThrow();
+    assertThat(copies(lines)).extracting(l -> l.facts().get("copyOf")).as("the copyOf= of the copies after the chain").contains(original);
+
+    assertThat(ended(CompileMode.OPTIMISED, ORDER)).as("OPTIMISED run of the order case with recursionDepth %d", DEPTH).isEqualTo("[29999], ran out");
+    // Which termination is the run's (F-95's stack calibration); the branch before the pass ends it STACK.
+    assertThat(ended(CompileMode.CONSERVATIVE, ORDER)).as("CONSERVATIVE run of the order case with recursionDepth %d", DEPTH).startsWith("[], termination ");
   }
 
   static Stream<Arguments> freeSlots() {

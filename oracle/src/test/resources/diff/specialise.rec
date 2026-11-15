@@ -62,3 +62,10 @@ rc 0
 stdout [0,1]\n[0,1]\n
 stderr
 end
+
+case specialise/order-param-chain-then-recurse
+def c1a3fa9d8fab
+rc 0
+stdout 29999\n
+stderr
+end
