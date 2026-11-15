@@ -1,0 +1,78 @@
+# The required cases of #110 "S2b.8 The recursive prelude and `..`" (ADR-0020, ADR-0042 and its #110 amendment,
+# ADR-0045): give this file to the ticket gate as ORACLE_REQUIRE=<absolute path>, which becomes
+# -Doracle.require=<file>. One id per line; # and blank lines skipped.
+
+# jqtest: the census cases whose spec column is 2b (census/jqtest.tsv, `java scripts/census.java counts`: spec 2b 26),
+# without jq.test#6b5532332fa0 (recursion:fac/0, #107's). man.test#4979b7fa9ee4 and man.test#5ce2f15ada43 define
+# their own range/3 and while/2, so they need only #107's user recursion and act as guards here (design).
+jq.test#0bb32124e748
+jq.test#3c0d9891d22c
+jq.test#4dbbd1dfe7cb
+jq.test#529480120c42
+jq.test#5b9f5544fa88
+jq.test#a26fd564e7de
+jq.test#b9dde8dddfea
+jq.test#bec2a40c5e77
+jq.test#d4e968bdaff6
+jq.test#e3be7cd91456
+jq.test#fe61ae38e899
+man.test#0cb4429f73f3
+man.test#3a256787eb78
+man.test#3c0d9891d22c
+man.test#42e9e6126d1e
+man.test#44201492dec7
+man.test#443a8da18aed
+man.test#4979b7fa9ee4
+man.test#5ce2f15ada43
+man.test#6a87b42232d2
+man.test#8884598c4b40
+man.test#8a997f771965
+man.test#a2c2194e6937
+man.test#b591eda20a41
+man.test#c94e6bedb2a6
+
+# differential: StubTest's former witness, re-recorded on jq-ref 1.8.2 at #110 (byte-identical: rc 0, [1] then 1).
+basics/recurse-of-array
+
+# differential: every case of diff/rec-prelude.cases.
+rec-prelude/dot-dot
+rec-prelude/dot-dot-optional
+rec-prelude/first-of-dot-dot
+rec-prelude/limit-of-dot-dot
+rec-prelude/reduce-over-dot-dot
+rec-prelude/dot-dot-scalar
+rec-prelude/dot-dot-empty-containers
+rec-prelude/dot-dot-repeated-key
+rec-prelude/dot-dot-escapes-and-big-number
+rec-prelude/dot-dot-numbers
+rec-prelude/dot-dot-100-deep
+rec-prelude/dot-dot-100-deep-built
+rec-prelude/shadow-recurse-1-dot-dot
+rec-prelude/shadow-recurse-1-recurse-0
+rec-prelude/shadow-while-range-3
+rec-prelude/recurse-field-until-its-error
+rec-prelude/recurse-error-caught
+rec-prelude/recurse-with-false-condition
+rec-prelude/recurse-with-condition
+rec-prelude/limit-of-endless-recurse
+rec-prelude/recurse-twice-in-one-filter
+rec-prelude/while-error-after-results
+rec-prelude/while-empty-update
+rec-prelude/until-true-never-runs-next
+rec-prelude/until-error-in-next
+rec-prelude/limit-of-repeat
+rec-prelude/first-of-repeat
+rec-prelude/range-3-positive-step
+rec-prelude/range-3-negative-step
+rec-prelude/range-3-zero-step
+rec-prelude/range-3-positive-step-past-upto
+rec-prelude/range-3-generators
+rec-prelude/flatten-impl-depth-1
+rec-prelude/flatten-impl-depth-minus-1
+rec-prelude/flatten-impl-depth-0
+rec-prelude/flatten-impl-on-a-string
+rec-prelude/combinations-of-empty
+rec-prelude/combinations-with-an-empty-row
+rec-prelude/combinations-of-rows
+rec-prelude/combinations-2
+rec-prelude/combinations-of-an-object
