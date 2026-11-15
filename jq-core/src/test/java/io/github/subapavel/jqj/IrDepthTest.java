@@ -494,9 +494,10 @@ class IrDepthTest {
    * Q4 of #114: {@code def f0: .; def f1: f0,f0; …; def f4000: f3999,f3999; f4000} would lower 2^4001 - 1 nodes inlined.
    * In a fresh JVM with no agent, on a 512 KiB thread, it compiles in the optimised and the conservative mode, each
    * within {@link #COMPILE_BOUND_MS}, since its calls past the cap are PLAIN and no call is expanded twice (ADR-0040 #114
-   * amendment), and then its run under {@link Limits#embedded()} ends with {@code JqTermination(BUDGET, STEPS)}: each
-   * PLAIN call ticks one step (F-54). The compile times are printed into this test's output. Until #114 each compile
-   * was the cap's Stub.
+   * amendment), and then its run under {@link Limits#embedded()}'s budgets without its deadline ends with {@code
+   * JqTermination(BUDGET, STEPS)}: each PLAIN call ticks one step (F-54). The run has no deadline because the 10⁹ steps
+   * take longer than the embedded 10 s, so that deadline ended the run first (observed by the #114 implementer after
+   * #111). The compile times are printed into this test's output. Until #114 each compile was the cap's Stub.
    */
   @Test
   void aDoublingChainOf4000DefinitionsCompilesAndEndsAtTheStepBudgetInAFreshJvm() throws IOException, InterruptedException {
@@ -515,8 +516,8 @@ class IrDepthTest {
    * The child JVM of {@link #aDoublingChainOf4000DefinitionsCompilesAndEndsAtTheStepBudgetInAFreshJvm}: on a 512 KiB
    * thread each, it compiles the chain with an engine of {@link Limits#embedded()} in each mode, prints {@code <mode>:
    * compiled}, {@code a Stub} or what was thrown, and writes {@code <mode> <ms>} lines to the file {@code args[0]}; then it
-   * runs the optimised filter on null and prints {@code embedded run: <budget>}, the budget that ended it, or what else
-   * happened.
+   * compiles it once more with {@link Limits#embedded()}'s budgets and no deadline, runs that filter on null and prints
+   * {@code embedded run: <budget>}, the budget that ended it, or what else happened.
    */
   static final class DoublingChild {
     private DoublingChild() {}
@@ -544,9 +545,11 @@ class IrDepthTest {
         System.out.println("embedded run: not compiled");
         return;
       }
-      JqEngine engine = JqEngine.builder().limits(Limits.embedded()).compileMode(CompileMode.OPTIMISED).build();
+      Limits e = Limits.embedded();
+      Limits noDeadline = new Limits(e.steps(), Limits.UNLIMITED_TIME, e.nestingDepth(), e.recursionDepth(), e.bytesBuilt(), e.bytesWritten(), e.regexMatchTime(), e.stackBytes());
+      JqEngine engine = JqEngine.builder().limits(noDeadline).compileMode(CompileMode.OPTIMISED).build();
       AtomicReference<Boolean> answer = new AtomicReference<>();
-      Throwable thrown = on(STACK, () -> answer.set(optimised.get().run(JqNull.NULL, RunBudgets.NONE, v -> true, engine.newWorkspace())));
+      Throwable thrown = on(STACK, () -> answer.set(engine.compile(filter).run(JqNull.NULL, RunBudgets.NONE, v -> true, engine.newWorkspace())));
       System.out.println("embedded run: " + (thrown instanceof JqTermination t ? String.valueOf(t.budget()) : thrown == null ? "ended, " + answer.get() : thrown));
     }
   }
