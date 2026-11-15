@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Collections;
 import java.util.List;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -67,14 +68,14 @@ class InlineCostKindsTest {
    * arguments, a computed key's object); a Bind, a reduce and a foreach one more per pattern node; an object one per
    * pair and one more per shorthand key, {@code {a}} or {@code {"a"}} but not {@code {$x}} or {@code {$__loc__}}; a chain
    * one a step, its computed keys, bounds and interpolated names counted, its leading dot not; a variable, {@code
-   * $__loc__} and a format one. Each equals the nodes spent but {@code ..}'s: it is the prelude's {@code recurse(.[]?)},
-   * a call with a closure argument, whose measure sums the lifted and the inlined form, so it counts the closure's node
-   * twice while the lowering spends one (the architect's ruling on nodes, #114). A wrong count moves the edge: one node
-   * more lifts f within the most calls, one less inlines the call past the cap and the backstop's Stub fires (F-90).
-   * Each body's result on null is reference jq's (1.8.2, {@code def f: <body>; [f]} with -nc -f, observed 2026-11-15,
-   * .logs/114-jqref-arms.log); an empty result is no result. The longer chains are past jq-ref's bytecode limit, as in
-   * {@link #theMostCallsOfABodyThatFitAreInlinedAndOneMoreLiftsIt}, so the counts are the jqj column of DEVIATIONS "Long
-   * comma chains".
+   * $__loc__} and a format one. Each equals the nodes spent. A wrong count moves the edge: one node more lifts f within
+   * the most calls; one less inlines the call past the cap, where the backstop's Stub fires (F-90), when 65 536 leaves
+   * a remainder of at least the count less one, so ExpansionMeasureTest#eachKindFitsTheBudgetLeftAtItsMeasuredNodes
+   * pins each count exactly. Each body reaches no definition but f, so every lifting order lifts f and the row names it
+   * (F-106). Each body's result on null is reference jq's (1.8.2, {@code def f: <body>; [f]} with -nc -f, observed
+   * 2026-11-15, .logs/114-jqref-arms.log); an empty result is no result. The longer chains are past reference jq's
+   * bytecode limit, as in {@link #theMostCallsOfABodyThatFitAreInlinedAndOneMoreLiftsIt}, so the counts are the jqj
+   * column of DEVIATIONS "Long comma chains".
    */
   @ParameterizedTest(name = "{0}")
   @CsvSource(
@@ -103,7 +104,6 @@ class InlineCostKindsTest {
           ."a"                          => 1 => 1 => null
           length?                       => 2 => 2 => 0
           .[]?                          => 1 => 1 =>
-          ..                            => 2 => 1 => null
           last(.)                       => 2 => 2 => null
           range(length; 1)              => 3 => 3 => 0
           {(tostring): .}               => 4 => 4 => {"null":null}
@@ -123,5 +123,23 @@ class InlineCostKindsTest {
     assertThat(results(calls(body, most))).as("results of %d calls of def f: %s on null", most, body).isEqualTo(result == null ? List.of() : Collections.nCopies(most, result));
     assertThat(lifted(calls(body, most + 1))).as("lifted functions of %d calls of def f: %s", most + 1, body).contains("f/0");
     assertThat(results(calls(body, most + 1))).as("results of %d calls of def f: %s on null", most + 1, body).isEqualTo(result == null ? List.of() : Collections.nCopies(most + 1, result));
+  }
+
+  /**
+   * {@code ..} at the node-cap edge: it is the prelude's {@code recurse(.[]?)}, a call with a closure argument, whose
+   * measure sums the lifted and the inlined form, so it counts the closure's node twice (two) while the lowering spends
+   * one (the architect's ruling on nodes, #114). So 65 535 calls of {@code def f: ..} are inlined and 65 536 are not,
+   * and the longer chain has more functions. The test pins no name and no count (F-106): f's body reaches the prelude's
+   * {@code recurse/0} and {@code recurse/1}, and with the cap the compile's, greedy top-down lifts f and then them,
+   * lowered with one node left, where another order may lift fewer; every order lifts at least one. Reference jq 1.8.2
+   * gives null for {@code ..} on null (.logs/114-jqref-arms.log).
+   */
+  @Test
+  void aRecurseCallMeetsTheCapAtItsMeasuredNodes() {
+    int most = (CAP - 2) + 1;
+    int fits = lifted(calls("..", most)).size();
+    assertThat(results(calls("..", most))).as("results of %d calls of def f: .. on null", most).isEqualTo(Collections.nCopies(most, "null"));
+    assertThat(lifted(calls("..", most + 1))).as("functions of %d calls of def f: .., %d with %d calls", most + 1, fits, most).hasSizeGreaterThan(fits);
+    assertThat(results(calls("..", most + 1))).as("results of %d calls of def f: .. on null", most + 1).isEqualTo(Collections.nCopies(most + 1, "null"));
   }
 }

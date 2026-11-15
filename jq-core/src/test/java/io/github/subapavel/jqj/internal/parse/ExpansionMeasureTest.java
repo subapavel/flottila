@@ -154,14 +154,31 @@ class ExpansionMeasureTest {
   }
 
   /**
-   * Each kind's measured nodes, exactly, at the seam (the #114 Standards review): {@code def f: <body>; f} with {@code
-   * 65 536 - measured} nodes spent before fits and is inlined; with one more spent it would pass the cap and is a PLAIN
-   * Call of f, lifted, not the backstop's Stub. So a count one more lifts at the first, and one less inlines at the
-   * second (and there the backstop fires when the lowering spends the measured nodes). The counts are those of
-   * InlineCostKindsTest#eachKindMeetsTheCapAtItsMeasuredNodes, whose edges at the most calls catch a count that is too
-   * high but not always one too low, and of IrDepthTest#eachKindMeetsTheIrDepthAtItsMeasuredLevels's rows with deeper
-   * parts: a part's nodes count once, whatever its levels. {@code ..} measures two and spends one (a call with a closure
-   * argument, both forms summed).
+   * Each arm's measured nodes, exactly, at the seam (#114 "Edge rows"): {@code def f: <body>; f} with {@code 65 536 -
+   * measured} nodes spent before fits and is inlined; with one more spent it would pass INLINE_CAP, the last count that
+   * fits and the first that does not, and f is a PLAIN Call of its lifted function, not the backstop's Stub. A count one
+   * more lifts at the first; one less inlines at the second, and the backstop fires there when the lowering spends the
+   * measured nodes (.logs/114-edges.log: each row against its count one off and against the mutants). Each body here
+   * reaches no definition but f (natives and a recursive group are no non-recursive definition), so the row names f/0
+   * (ADR-0040 #114, F-106: every lifting order lifts f, the only call that can pass the cap).
+   *
+   * <p>The rows by arm (nodes: the construct's own, then its parts'):
+   *
+   * <ul>
+   *   <li>leaves, one: Dot, Num, Constant {@code null}, Var (in a Bind), Loc, Format, Break (in a label); LastRead and an
+   *       unbuilt native are {@link #aStubLeafInAnUnusedClosureCountsANode}'s;
+   *   <li>Paren none of its own ({@code (length)}); Comma, Pipe, ArrayCons ({@code []} and {@code [length]}), Binary, Neg,
+   *       If (with and without else), Try (with and without a handler), Label one each;
+   *   <li>Bind, reduce and foreach one and one per pattern node (one, two and three nodes, an object pattern's computed
+   *       key a part), and foreach's extract;
+   *   <li>steps one a step, with Field, StringField (literal and interpolated), Index, Slice (from, to, both), Each,
+   *       Optional, two steps, and computed keys and bounds as parts;
+   *   <li>Str one, its interpolations parts; ObjectCons one, one per pair and one per shorthand ({@code {a}} and {@code
+   *       {"a"}}, not {@code {$x}} or {@code {$__loc__}}), computed keys and values parts;
+   *   <li>Native one and its arguments; Constant one; a recursive call (the lifted form, no node) inside a Collect;
+   *   <li>a call of a definition: {@link #aCallOfOneDefinitionFitsTheBudgetLeftAtItsMeasuredNodes} and {@link
+   *       #aCallReachingMoreDefinitionsFitsTheBudgetLeftAtItsMeasuredNodes}; Recurse ({@code ..}) the latter.
+   * </ul>
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("measuredNodes")
@@ -173,6 +190,22 @@ class ExpansionMeasureTest {
 
   static Stream<Arguments> measuredNodes() {
     return Stream.of(
+        // Leaves; Paren; Comma; Pipe; ArrayCons; Binary.
+        Arguments.of(".", 1),
+        Arguments.of("1", 1),
+        Arguments.of("null", 1),
+        Arguments.of("$__loc__", 1),
+        Arguments.of("@text", 1),
+        Arguments.of("(length)", 1),
+        Arguments.of("length, length", 3),
+        Arguments.of("length, length, length, length", 5),
+        Arguments.of("length, length, length, length, length", 6),
+        Arguments.of("length | length", 3),
+        Arguments.of("length | [[.]]", 5),
+        Arguments.of("[]", 1),
+        Arguments.of("[length]", 2),
+        Arguments.of("length + length", 3),
+        // Neg; If, Try, Label.
         Arguments.of("-length", 2),
         Arguments.of("-(-length)", 3),
         Arguments.of("if . then 1 else 2 end", 4),
@@ -183,60 +216,114 @@ class ExpansionMeasureTest {
         Arguments.of("label $out | .", 2),
         Arguments.of("label $out | [.]", 3),
         Arguments.of("label $f | break $f", 2),
+        // Bind, reduce, foreach.
+        Arguments.of(". as $x | $x", 4),
+        Arguments.of(". as $x | [$x]", 5),
+        Arguments.of(". as [$a, $b] | $a", 6),
+        Arguments.of(". as {(\"a\"): $v} | $v", 6),
         Arguments.of("reduce . as $x (.; $x)", 5),
         Arguments.of("reduce . as $x (.; [$x])", 6),
+        Arguments.of("reduce . as [$a] (.; [$a])", 7),
         Arguments.of("foreach . as $x (.; $x)", 5),
         Arguments.of("foreach . as $x (.; $x; $x)", 6),
         Arguments.of("foreach . as $x (.; $x; [$x])", 7),
-        Arguments.of(". as [$a, $b] | $a", 6),
-        Arguments.of(". as $x | $x", 4),
-        Arguments.of(". as $x | [$x]", 5),
-        Arguments.of("\"a\\(.)\"", 2),
+        // Steps.
+        Arguments.of(".\"a\"", 1),
+        Arguments.of(".\"\\(.)\"", 3),
         Arguments.of(".[length]", 2),
         Arguments.of(".[length?]", 3),
         Arguments.of(".[length:]", 2),
         Arguments.of(".[:length]", 2),
         Arguments.of(".[length:length]", 3),
-        Arguments.of(".\"\\(.)\"", 3),
-        Arguments.of(".\"a\"", 1),
-        Arguments.of("length?", 2),
         Arguments.of(".[]?", 1),
-        Arguments.of("..", 2),
+        Arguments.of("length?", 2),
+        Arguments.of(".a[length?]", 4),
+        // Str; ObjectCons.
+        Arguments.of("\"a\"", 1),
+        Arguments.of("\"a\\(.)\"", 2),
+        Arguments.of("\"a\\([.])\"", 3),
+        Arguments.of("{a: 1}", 3),
+        Arguments.of("{a: [[.]]}", 5),
+        Arguments.of("{a}", 3),
+        Arguments.of("{\"a\"}", 4),
+        Arguments.of("{(tostring): .}", 4),
+        Arguments.of("{(tostring?): .}", 5),
+        Arguments.of("{\"a\\(.)\": 1}", 5),
+        Arguments.of(". as $x | {$x}", 5),
+        Arguments.of("{$__loc__}", 2),
+        // Native; a recursive call.
         Arguments.of("length", 1),
         Arguments.of("last(.)", 2),
         Arguments.of("last([[.]])", 4),
         Arguments.of("range(length; 1)", 3),
-        Arguments.of("{(tostring): .}", 4),
-        Arguments.of("{(tostring?): .}", 5),
-        Arguments.of("{a}", 3),
-        Arguments.of("{\"a\"}", 4),
-        Arguments.of("{a: 1}", 3),
-        Arguments.of("{\"a\\(.)\": 1}", 5),
-        Arguments.of(". as $x | {$x}", 5),
-        Arguments.of("{$__loc__}", 2),
-        Arguments.of("$__loc__", 1),
-        Arguments.of("@text", 1),
-        Arguments.of("null", 1),
-        Arguments.of("length, length", 3),
-        Arguments.of("length | length", 3),
-        Arguments.of("length + length", 3),
-        Arguments.of(".a[length?]", 4),
-        Arguments.of("reduce . as [$a] (.; [$a])", 7),
-        Arguments.of(". as {(\"a\"): $v} | $v", 6),
-        // The lifted form lowers a closure argument once, used or not (D1), and a value argument once for its Bind;
-        // the inlined form lowers the body and the value argument again.
-        Arguments.of("def g(h): .; g([[[.]]])", 5),
-        Arguments.of("def g($a): .; g([[.]])", 7));
+        Arguments.of("def r: if . then r else 0 end; [r]", 1));
+  }
+
+  /**
+   * A call of the filter's one definition, at the seam: {@code <filter>} with {@code 65 536 - measured} nodes spent
+   * before inlines g; with one more spent g is a PLAIN Call of its lifted function. g is the only definition the filter
+   * reaches, so every lifting order lifts it and the row names it (F-106). The measured nodes of a call of a
+   * definition (ExpansionMeasure.call) are the lifted form's, each closure argument lowered once whether or not the body
+   * runs it (D1) and each value argument once for its Bind, plus the inlined form's, the body with its closures and each
+   * value argument again: the inlined form alone ({@code def g: [[.]]; g}, three), an unused closure ({@code
+   * g([[[.]]])}, its four and the body's one), a closure the body runs once ({@code g(.)}: two) and inside brackets
+   * ({@code [[h]]} on {@code [.]}: the closure twice and the brackets, six), and a value argument ({@code g([[.]])}: its
+   * three twice and the body's one).
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("callsOfOneDefinition")
+  void aCallOfOneDefinitionFitsTheBudgetLeftAtItsMeasuredNodes(String filter, int measured, String name) {
+    assertThat(Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured).names()).as("functions of %s with %d spent before", filter, CAP - measured).doesNotContain(name);
+    assertThat(Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured + 1).names()).as("functions of %s with %d spent before", filter, CAP - measured + 1).contains(name);
+  }
+
+  static Stream<Arguments> callsOfOneDefinition() {
+    return Stream.of(
+        Arguments.of("def g: [[.]]; g", 3, "g/0"),
+        Arguments.of("def g(h): .; g([[[.]]])", 5, "g/1"),
+        Arguments.of("def g(h): h; g(.)", 2, "g/1"),
+        Arguments.of("def g(h): [[h]]; g([.])", 6, "g/1"),
+        Arguments.of("def g($a): .; g([[.]])", 7, "g/1"));
+  }
+
+  /**
+   * A body that reaches more definitions than f, at the seam: with {@code 65 536 - measured} nodes spent before the
+   * program has as many functions as with none spent (the recursive groups only); with one more spent at least one
+   * function more. The row pins no name and no
+   * exact count (F-106): greedy top-down lifts f, and since the cap is the compile's, the calls in f's body are lowered
+   * with the nodes left and may lift too (with 65 535 spent, {@code ..} in a lifted f lifts the prelude's {@code
+   * recurse/0} and {@code recurse/1}); as-late-as-possible may lift an inner call alone. Each order lifts at least one.
+   * The rows: Recurse ({@code ..}, a prelude call whose closure {@code .[]?} both forms count, two), a captured closure
+   * ({@code def k: h} inside g: five), and a Var and a Break as unused closure arguments (five and three).
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("callsReachingMoreDefinitions")
+  void aCallReachingMoreDefinitionsFitsTheBudgetLeftAtItsMeasuredNodes(String body, int measured) {
+    String filter = "def f: " + body + "; f";
+    int whole = Resolver.resolved(Parser.parse(filter), List.of(), 0).names().size();
+    int fits = Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured).names().size();
+    assertThat(fits).as("functions of %s with %d spent before, as many as with none", filter, CAP - measured).isEqualTo(whole);
+    int passes = Resolver.resolved(Parser.parse(filter), List.of(), CAP - measured + 1).names().size();
+    assertThat(passes).as("functions of %s with %d spent before, %d with %d", filter, CAP - measured + 1, fits, CAP - measured).isGreaterThan(fits);
+  }
+
+  static Stream<Arguments> callsReachingMoreDefinitions() {
+    return Stream.of(
+        Arguments.of("..", 2),
+        Arguments.of("def g(h): def k: h; [[k]]; g(.)", 5),
+        Arguments.of(". as $x | def g(h): .; g($x)", 5),
+        Arguments.of("label $f | def g(h): .; g(break $f)", 3));
   }
 
   /**
    * A leaf that is a Stub when lowered still counts a node: {@code def g(h): .; g(<leaf>)} measures g's body, the
    * closure in the lifted form (D1) and the leaf's one node, five for {@code 1 as $v | $$$$v} (a Bind, its pattern,
-   * {@code 1} and builtin.jq's {@code $$$$v}, which the Resolver stubs) and two for {@code explode} (an unbuilt native
-   * of the NativeTable, spec 4). With the measured nodes left the call is inlined and the unused closure never lowered,
-   * so the filter resolves; with one fewer left the call is a PLAIN Call, whose closure is lowered, and the Stub fires.
-   * A leaf measured at no node would be inlined there too, and resolve. jq-ref 1.8.2 gives null for both (observed
-   * 2026-11-15, {@code def f: <body>; [f]} with -nc -f, .logs/114-jqref-arms3.log).
+   * {@code 1} and builtin.jq's {@code $$$$v}, LastRead, which the Resolver stubs) and two for {@code explode} (an
+   * unbuilt native of the NativeTable, spec 4). With the measured nodes left the call is inlined and the unused closure
+   * never lowered, so the filter resolves; with one fewer left the call is a PLAIN Call, whose closure is lowered, and
+   * the Stub fires. A leaf measured at no node would be inlined there too, and resolve. g is the one definition the
+   * filter reaches (F-106). Reference jq 1.8.2 gives null for both (observed 2026-11-15, {@code def f: <body>; [f]}
+   * with -nc -f, .logs/114-jqref-arms3.log).
    */
   @ParameterizedTest(name = "{0}")
   @MethodSource("stubLeaves")
