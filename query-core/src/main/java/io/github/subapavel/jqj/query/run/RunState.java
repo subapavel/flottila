@@ -147,8 +147,10 @@ public final class RunState {
   }
 
   /**
-   * {@link #begin(long, long, long, long, long, long)} with the declared stack {@code Long.MAX_VALUE}, so main runs on
-   * the Java stack.
+   * {@link #begin(long, long, long, long, long, long)} declaring no stack, {@code Long.MAX_VALUE}: the run's unit limit
+   * is out of any call's reach, so main and every call run in push form, and only the StackOverflowError backstop ends
+   * a run that exhausts its thread (ADR-0046 #111). An in-suite test declares a stack on a thread four times as large
+   * (ADR-0046 "Where the stack is tested").
    *
    * @throws IllegalStateException when a run is running on this state, which then stays as it was
    * @throws Termination over the step budget when the primed ticks already pass it; no run is then running
@@ -161,7 +163,9 @@ public final class RunState {
    * Begins a run with its budgets, each {@code Long.MAX_VALUE} when unlimited: the steps, the deadline in nanoseconds,
    * the bytes built (ADR-0035), the bytes written and the recursion depth, the live call activations (ADR-0045 #107);
    * then the stack bytes the run declares (ADR-0030 #109 amendment), which {@link #stackBytes()} reads and which are no
-   * budget: at 0 main and every body run on the trampoline (ADR-0046). A primed read's ticks count against it, the
+   * budget: the run derives its unit limit from them, and at 0, zero bytes, never unlimited, main and every body run on
+   * the trampoline (ADR-0046 and its #111 amendment); the stack units count from zero. A primed read's ticks count
+   * against it, the
    * writer's outside a run do not; without a primed read it starts from no tick. The bytes built and written and the
    * live activations count from zero, the label tokens from 1, and no break is marked (ADR-0008).
    *
