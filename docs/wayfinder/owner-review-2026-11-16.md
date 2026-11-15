@@ -6,6 +6,10 @@ names its record; the reasons are there. A "no" on an item reopens that record, 
 
 ## Owner-only (not decided under the delegation)
 
+Answered by the owner on 2026-11-15: item 1 yes (ADR-0055), item 2 yes (GATE check 8 amended),
+item 3 in progress by the owner, item 4 no (GATE check 6 amended to spec 7's reading), and F-103
+yes (WORKFLOW §11).
+
 1. **Licence, issue #105.** May code under the SunPro (fdlibm) notice, or CORE-MATH's once its licence
    is read, be translated for 11 math builtins (`erfc`, `gamma`, `lgamma`, `lgamma_r`, `tgamma`,
    `j0`, `j1`, `jn`, `y0`, `y1`, `yn`)? Until then the fallback is published formulas (DLMF), in
