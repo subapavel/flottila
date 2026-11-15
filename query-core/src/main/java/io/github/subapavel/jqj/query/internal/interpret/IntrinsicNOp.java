@@ -20,11 +20,21 @@ public final class IntrinsicNOp extends Op {
 
   @Override
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
+    Object v = fn.apply(state, in, values(slots, in));
+    return v == CallForm.NONE || out.emit(v);
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    IntrinsicOp.result(t, under, fn.apply(t.state, in, values(slots, in)), out);
+  }
+
+  /** The arguments' values for {@code in}, in a new array. */
+  private Object[] values(Object[] slots, Object in) {
     Object[] values = new Object[args.length];
     for (int i = 0; i < values.length; i++) {
       values[i] = args[i].read(slots, in);
     }
-    Object v = fn.apply(state, in, values);
-    return v == CallForm.NONE || out.emit(v);
+    return values;
   }
 }

@@ -23,4 +23,26 @@ public final class LabelOp extends Op {
     slots[slot] = token;
     return body.run(state, slots, in, out) || state.caught(token);
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    long token = t.state.label();
+    slots[slot] = token;
+    t.start(body, new Body(under, token), slots, in, out);
+  }
+
+  /** The heap form while the body runs: a false that is a Break to its token answers as if the body ran out. */
+  private static final class Body extends HeapForm {
+    private final long token;
+
+    Body(HeapForm under, long token) {
+      super(under);
+      this.token = token;
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      t.answer(under, more || t.state.caught(token));
+    }
+  }
 }

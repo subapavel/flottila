@@ -18,4 +18,9 @@ public final class ConstOp extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return out.emit(value);
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.emit(out, under, value);
+  }
 }

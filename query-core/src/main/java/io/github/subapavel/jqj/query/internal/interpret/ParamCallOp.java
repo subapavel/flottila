@@ -6,7 +6,8 @@ import io.github.subapavel.jqj.query.run.Sink;
 /**
  * A call activation of a real closure (ADR-0045 #107): the closure in cell {@code cell} of the frame {@code level}
  * links out from the running one, a closure cell of the function's frame, runs on the input in the scope it was written
- * in. It ticks one step, then adds one to the activation count until it ends, however it ends.
+ * in. It ticks one step, then adds one to the activation count until the closure's run ends, as a {@link CallOp}'s
+ * activation does: on the trampoline a termination ends the run with the activation still counted.
  */
 public final class ParamCallOp extends Op {
   private final int level;
@@ -27,5 +28,13 @@ public final class ParamCallOp extends Op {
     } finally {
       state.leave();
     }
+  }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    Closure closure = (Closure) Frames.out(slots, level)[cell];
+    t.state.tick();
+    t.state.enter();
+    closure.start(t, new CallOp.Active(under), in, out);
   }
 }

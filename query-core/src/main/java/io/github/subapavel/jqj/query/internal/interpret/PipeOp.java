@@ -17,4 +17,10 @@ public final class PipeOp extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return left.run(state, slots, in, v -> right.run(state, slots, v, out));
   }
+
+  /** Each result of the left side starts the right side above the form that produced it. */
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.start(left, under, slots, in, (d, producer, v) -> d.start(right, producer, slots, v, out));
+  }
 }

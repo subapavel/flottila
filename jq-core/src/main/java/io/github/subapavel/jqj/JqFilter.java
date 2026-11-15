@@ -56,7 +56,7 @@ public final class JqFilter {
     RunState state = workspace.state;
     try {
       // Outside the inner try: a refused run never ends the one running, and a run ended here began none.
-      state.begin(limits.steps(), limits.deadline().toNanos(), limits.bytesBuilt(), limits.bytesWritten(), limits.recursionDepth());
+      state.begin(limits.steps(), limits.deadline().toNanos(), limits.bytesBuilt(), limits.bytesWritten(), limits.recursionDepth(), limits.stackBytes());
       try {
         // query-core hands values over as Object; every value this filter pushes or raises is a jq value.
         return executable.run(state, parameters, input, v -> sink.emit((JqValue) v));

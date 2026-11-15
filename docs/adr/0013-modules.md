@@ -1,6 +1,6 @@
 # Modules and their boundaries
 
-Status: accepted (2026-11-10, owner, issue #14 "How is the repo laid out and built?"); amended by ADR-0018 (issue #12) and ADR-0020 (issue #15); amended by ADR-0030 (run state, #59); amended by F-84 (the build-tool module `pit-filter`, #192); `Invocation.origin` by spec 7 round 1 (F-81; grilling-adviser for the owner under the delegation of 2026-11-14)
+Status: accepted (2026-11-10, owner, issue #14 "How is the repo laid out and built?"); amended by ADR-0018 (issue #12) and ADR-0020 (issue #15); amended by ADR-0030 (run state, #59); amended by F-84 (the build-tool module `pit-filter`, #192); `Invocation.origin` by spec 7 round 1 (F-81; grilling-adviser for the owner under the delegation of 2026-11-14); `.query.analysis` exported, ADR-0045 #112 (#112)
 
 The tree is flat: a root `pom.xml` (parent and aggregator, `0.1.0-SNAPSHOT`, not published) and the
 modules `query-core/`, `jq-core/`, `jq-cli/`, `oracle/` (tests only) and `bench/jmh/` (built only
@@ -12,8 +12,9 @@ rename is a breaking release for the Rail8 (R8) adapter.
 - **`query-core`** is module `io.github.subapavel.jqj.query`. It has no `requires`:
   `java.lang.classfile`, `java.lang.foreign` and `java.lang.invoke` are in `java.base`.
   - It exports `.query.ir` (the sealed `Node` family and `Operation`), `.query.run` (`Sink`, the two
-    exception classes, `Fn0`..`FnN`, `Many`) and `.query.compile` (the pass pipeline and the backend
-    choice).
+    exception classes, `Fn0`..`FnN`, `Many`), `.query.compile` (the pass pipeline and the backend
+    choice) and `.query.analysis` (`Numbering`, `CallGraph`, `Cardinality`, `Facts`; jq-core's
+    `explain()` reads them, ADR-0045 #112).
   - Everything else is under `.query.internal`. `tape` is the only internal package that reads tape
     entries, and it may assume only the `long[]` tape, an `int` cursor and the sign-bit sibling
     rule (ADR-0002).

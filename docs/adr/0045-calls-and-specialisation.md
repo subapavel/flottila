@@ -26,7 +26,8 @@ node keys that value-equal records cannot give, and a recursive body needs slots
 - **Specialisation** is a query-core pass over the `Program`, as ADR-0006 defines it. It has its own
   cap, `SPECIALISE_CAP` in query-core: 16 384 nodes, unless a measurement says otherwise (the
   largest specialised node count over the case census and the prelude). A (group, argument tuple)
-  is specialised whole or not at all, in source order of its first outside call; one that does not
+  is specialised whole or not at all, in the order of its first outside call: by its Source (a lifted
+  body's being its placing call's), then the Program's pre-order (#117); one that does not
   fit keeps its real closures. Reason: if specialisation shared one budget with the inline cap, a
   filter over that cap would leave `until`, `while` and `recurse(.+1)` unspecialised, and they
   would hit the depth budget (jq-ref: `last(limit(3000000; 0|recurse(.+1)))` → `2999999`).
@@ -53,7 +54,8 @@ node keys that value-equal records cannot give, and a recursive body needs slots
   them would change every pin and add no behaviour.
 - **One budget for inlining and specialisation**: see the reason above.
 - **Specialising part of a group, or in traversal order**: a group would mix copies with real
-  closures, and which calls keep closures would depend on the walk rather than the source.
+  closures, and which calls keep closures would depend on the walk rather than the source. The
+  Program's pre-order only breaks ties between equal Sources (#117).
 - **A fact map by value**: two equal subtrees at different sites would share their facts.
 - **Fact fields in the nodes**: ADR-0007 rejected them.
 - **One slot array per run, as in 2a**: nested invocations of one closure, as in the required case,
@@ -95,3 +97,50 @@ capture (C4) was proposed by the grilling-adviser for the owner under the delega
 - Freeze (`Numbering`) and the recursive groups (`CallGraph`) live in query-core's
   `query.analysis`. `explain()` prints their ids and groups and keeps none of its own (#108's
   printer copy goes). Facts travel with the `Executable`.
+
+## Amendment (ticket #117)
+
+Accepted by the architect under `/run-spec` #106. It comes from the designer's draft and the
+grilling-adviser's rulings S1–S5, made for the owner under the delegation of 2026-11-14.
+
+**What is copied**
+- Specialisation copies a lifted function's group, PLAIN ones included (S1), once per (group,
+  argument tuple).
+- An invariant parameter is a closure parameter that every call in the group passes on as a bare
+  ParamCall of the matching parameter, one per function.
+- The tuple is the outside call's argument for each invariant parameter. A bare ParamCall argument
+  stays a real closure.
+- Copies are not specialised again, and originals that no call reaches stay in the Program.
+
+**When two tuples are equal (S3)**
+- Two tuples are equal when they have the same shape, with Source ignored. Slots a tuple binds
+  itself are renamed, free references are numbered by first occurrence, and constants and
+  Operations are compared by identity.
+- So arguments with literals get a copy each: `[limit(2;0|recurse(.+1))],[limit(2;0|recurse(.+1))]`
+  makes two copies. Reference jq gives `[0,1]` twice.
+- A hook on jq equality would be wrong, because jq-ref prints `[1.0,1,1.000]` as written. The hook
+  waits for spec 6.
+
+**Free references (S4)**
+- A free slot becomes a trailing value of the copy, and so does a free Break's token. A free
+  ParamCall becomes a trailing closure. This is how captures already work (#107).
+- A copy that holds a free Break may break out.
+
+**Order and cap (S2, S5)**
+- Outside calls are taken by Source, then by the Program's pre-order. Copies are appended in that
+  order.
+- A key is built if `spent + nodes ≤ SPECIALISE_CAP`. Otherwise it is refused at all its calls.
+- The cap is 16 384. If the census shows a refusal, the cap becomes the next power of two at or
+  above the largest demand, up to `INLINE_CAP`. A refusal above that is a finding.
+
+**What explain() shows**
+- The Executable carries a `Frozen` record: the specialised program, its Numbering, CallGraph and
+  origins, and the specialisation counts.
+- `explain()` prints from that record. A copy's line reads `copyOf=fn<o>`, and the closing line reads
+  `specialised=<spent> refused=<keys>`.
+
+**Considered**
+- Closed arguments only: `range/3` would keep real closures, against ADR-0006.
+- Refusing a key with a free Break: an extra rule, where #107 already passes tokens.
+- Pruning unreached originals: deferred.
+- Copying copies.

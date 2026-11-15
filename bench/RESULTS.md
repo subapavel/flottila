@@ -4,6 +4,23 @@ Every measured number with machine label, date, configuration and commit. A numb
 in this file does not exist (`AGENTS.md`, Evidence vocabulary). Written by the architect from
 verifier output; newest section first.
 
+## #109: the compile-mode oracle's trampoline run in ticket-gate step 1 (F-58), 2026-11-15
+
+- Machine: the implementer's container, 4 vCPU (`nproc` 4), the `claude-cloud-4vcpu` class, unverified
+  as the same host. Branch `impl/109` @ `b89af88` (spec/106 tip `d89de59` merged); compile.txt holds
+  conservative lines only, so before the after-merge regen the Survey judges every case under
+  `trampoline` with an optimised run of its own.
+- Gate step 1 (`gate-ticket.sh 109 …`, `.logs/109-gate2.log`): verify rc 0, 247 351 ms. In it, from
+  `.logs/109-verify.log`: `CompileModeOracleTest` 5 307 tests, 5.301 s; `CompileModeSurveyTest` 7 123
+  tests, 5.794 s.
+- A/B, one run each, `./mvnw -o -B -Pcompile-oracle -pl oracle -am test
+  -Dtest=CompileModeOracleTest,CompileModeSurveyTest -Djacoco.skip=true`: modes conservative and
+  trampoline 8.629 + 5.841 = 14.470 s (`.logs/109-timing-both.log`; an earlier run, log not kept,
+  14.120 s); `MODES` cut to conservative by a local edit, reverted, 8.618 + 1.149 = 9.767 s
+  (`.logs/109-timing-conservative.log`). Added time of the trampoline run: 4.4 to 4.7 s, under 2 % of
+  step 1. One or two runs per side, so no spread; after the regen the Oracle test judges both modes
+  from one optimised run, which should cut it (NOT_RUN).
+
 ## Spec 56 gate run at bba3de4 (F-84), 2026-11-13
 
 - Machine: `claude-cloud-4vcpu`. Command: `gate-spec.sh 56` on `spec/56-core-language-2a` @ `bba3de4`:

@@ -8,7 +8,7 @@ import io.github.subapavel.jqj.query.run.Sink;
  * value runs into a {@link Holder}, sets its slot and the loop goes on to the next value; with no result the Binds
  * runs out there. Any other value runs the rest, the later values and the body, inside its emit, as a BindOp does. So
  * the stack grows by one recursion per generator value, not per value. Each value and the body run on the Binds' own
- * input; no step of its own.
+ * input; no step of its own. Its heap form keeps no state: each value's sink starts what comes after it.
  */
 public final class BindsOp extends Op {
   private final Op[] values;
@@ -59,5 +59,32 @@ public final class BindsOp extends Op {
       slots[slot] = holder.take();
     }
     return body.run(state, slots, in, out);
+  }
+
+  /**
+   * Each result of a value sets its slot and starts the next value, or the body after the last, above the form that
+   * produced it. A tail emitter has no role on the driver: a tail value starts no form of its own, so the next value
+   * starts on the form the push form's loop goes on from, and nothing runs in it after its result.
+   */
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    from(0, t, under, slots, in, out);
+  }
+
+  /** Value {@code k} under {@code under}, its slot set by its sink; at {@code k} past the last value, the body. */
+  private void from(int k, Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    if (k == values.length) {
+      t.start(body, under, slots, in, out);
+      return;
+    }
+    t.start(
+        values[k],
+        under,
+        slots,
+        in,
+        (d, producer, v) -> {
+          slots[targets[k]] = v;
+          from(k + 1, d, producer, slots, in, out);
+        });
   }
 }

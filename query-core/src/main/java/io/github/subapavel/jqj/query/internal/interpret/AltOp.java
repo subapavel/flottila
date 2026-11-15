@@ -29,6 +29,52 @@ public final class AltOp extends Op {
     return found.any || right.run(state, slots, in, out);
   }
 
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    Left left = new Left(under, slots, in, out);
+    t.start(this.left, left, slots, in, left);
+  }
+
+  /**
+   * The heap form while the left side runs, and its sink: it passes on the results the truth holds for, above the form
+   * that produced them, and answers the others to go on; when the left side ran out with none passed, the right side
+   * runs in its place.
+   */
+  private final class Left extends HeapForm implements HeapSink {
+    private final Object[] slots;
+    private final Object in;
+    private final HeapSink out;
+
+    /** Whether a result passed. */
+    private boolean any;
+
+    Left(HeapForm under, Object[] slots, Object in, HeapSink out) {
+      super(under);
+      this.slots = slots;
+      this.in = in;
+      this.out = out;
+    }
+
+    @Override
+    public void accept(Trampoline t, HeapForm producer, Object v) {
+      if (!truth.test(v)) {
+        t.answer(producer, true);
+        return;
+      }
+      any = true;
+      t.emit(out, producer, v);
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      if (!more || any) {
+        t.answer(under, more);
+        return;
+      }
+      t.start(right, under, slots, in, out);
+    }
+  }
+
   /** The left side's sink: it passes on the results the truth holds for and drops the others. */
   private static final class Truthy implements Sink {
     private final Truth truth;

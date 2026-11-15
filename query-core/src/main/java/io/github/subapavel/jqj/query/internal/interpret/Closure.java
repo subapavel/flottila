@@ -21,11 +21,21 @@ final class Closure {
 
   /** Pushes the body's results for {@code in} into {@code out}: true when they ran out, false when out stopped. */
   boolean run(RunState state, Object in, Sink out) {
+    return body.run(state, frame(), in, out);
+  }
+
+  /** {@link #run}'s heap form: the body starts on the trampoline under {@code under}, in the same frame. */
+  void start(Trampoline t, HeapForm under, Object in, HeapSink out) {
+    t.start(body, under, frame(), in, out);
+  }
+
+  /** The frame the body runs in: the defining frame itself, or a fresh one whose cell 0 links it. */
+  private Object[] frame() {
     if (cells == 0) {
-      return body.run(state, frame, in, out);
+      return frame;
     }
     Object[] own = new Object[cells];
     own[0] = frame;
-    return body.run(state, own, in, out);
+    return own;
   }
 }

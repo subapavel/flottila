@@ -10,8 +10,10 @@
 //
 // The compile-mode oracle runs only under -Pcompile-oracle: in the ticket gate since #89 (F-46), after a merge and in
 // the spec gate, not in the CI build. check prints it NOT_RUN when it wrote no report, unless --require-compile is
-// given; then each listed id without a report row fails like any other oracle's. regen refuses any report row that is
-// a Disagreement (F-29, ADR-0020 amendment for #60). drop removes only the ids its file lists, each only while its
+// given; then each listed id without a report row fails like any other oracle's. Its modes are conservative (the
+// conservative compile) and trampoline (that compile run with stackBytes 0, F-58, #109): each writes its own report,
+// compile-<mode>.tsv, and its own compile.txt lines. regen refuses any report row that is a Disagreement between the
+// optimised run and the mode's (F-29, ADR-0020 amendment for #60). drop removes only the ids its file lists, each only while its
 // compile report row is FAIL stub:, and writes nothing if any listed id is not.
 //
 // Environment: RATCHET_ROOT (default: the current directory), RATCHET_JMH (JMH json result, default
@@ -524,7 +526,9 @@ public class ratchet {
       for (var e : rep.entrySet()) {
         String[] cells = e.getValue().cells();
         if (cells.length > 2 && cells[2].startsWith(DISAGREE)) {
-          fail(o.name() + ": " + e.getKey().replace('\t', ' ') + " disagrees between the optimised and that compile (" + cells[2] + ")");
+          String mode = e.getKey().substring(e.getKey().lastIndexOf('\t') + 1);
+          String other = mode.equals("conservative") ? "the conservative compile" : "the " + mode + " run";
+          fail(o.name() + ": " + e.getKey().replace('\t', ' ') + " disagrees between the optimised and " + other + " (" + cells[2] + ")");
           continue;
         }
         if (!e.getValue().verdict().equals("PASS")) continue;

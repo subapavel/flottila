@@ -13,6 +13,9 @@ public final class ReduceOp extends Op {
   /** The sink of {@code each}: the Advance has stored each result already, so the Reduce keeps none. */
   private static final Sink DROP = v -> true;
 
+  /** The heap form of {@link #DROP}: each result of {@code each} is answered to go on. */
+  private static final HeapSink HEAP_DROP = (t, producer, v) -> t.answer(producer, true);
+
   private final Op init;
   private final int slot;
   private final Op each;
@@ -38,5 +41,48 @@ public final class ReduceOp extends Op {
           slots[slot] = null;
           return out.emit(last);
         });
+  }
+
+  /**
+   * Each result of the init sets the slot and starts {@code each} under a {@link Step}, above the form that produced
+   * it.
+   */
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.start(
+        init,
+        under,
+        slots,
+        in,
+        (d, producer, r) -> {
+          slots[slot] = r;
+          d.start(each, new Step(producer, slots, out), slots, in, HEAP_DROP);
+        });
+  }
+
+  /**
+   * The heap form while {@code each} runs on one result of the init: when it ran out, the slot's value is emitted, the
+   * slot nulled first, as a result of the form that produced the init's result; a break passes at once.
+   */
+  private final class Step extends HeapForm {
+    private final Object[] slots;
+    private final HeapSink out;
+
+    Step(HeapForm producer, Object[] slots, HeapSink out) {
+      super(producer);
+      this.slots = slots;
+      this.out = out;
+    }
+
+    @Override
+    void resume(Trampoline t, boolean more) {
+      if (!more) {
+        t.answer(under, false);
+        return;
+      }
+      Object last = slots[slot];
+      slots[slot] = null;
+      t.emit(out, under, last);
+    }
   }
 }

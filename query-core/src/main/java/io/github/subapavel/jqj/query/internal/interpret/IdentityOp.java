@@ -9,4 +9,9 @@ public final class IdentityOp extends Op {
   public boolean run(RunState state, Object[] slots, Object in, Sink out) {
     return out.emit(in);
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    t.emit(out, under, in);
+  }
 }

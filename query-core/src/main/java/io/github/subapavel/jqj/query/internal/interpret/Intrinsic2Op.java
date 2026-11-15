@@ -22,4 +22,9 @@ public final class Intrinsic2Op extends Op {
     Object v = fn.apply(state, in, a.read(slots, in), b.read(slots, in));
     return v == CallForm.NONE || out.emit(v);
   }
+
+  @Override
+  void start(Trampoline t, HeapForm under, Object[] slots, Object in, HeapSink out) {
+    IntrinsicOp.result(t, under, fn.apply(t.state, in, a.read(slots, in), b.read(slots, in)), out);
+  }
 }
