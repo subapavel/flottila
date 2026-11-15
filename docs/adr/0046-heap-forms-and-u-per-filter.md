@@ -383,6 +383,9 @@ grilling-adviser's rulings on it (2026-11-15, C1–C8), for the owner under the 
   - b = ceil8(max `b_cell`); reserve = ceil4K(max intercept + max cold) + 32 KiB, never below the
     guard + 32 KiB.
   - Nothing is fitted and no cell is excluded by name. This replaces the 512 KiB → 1 MiB chord.
+  - The lowest pair is the two lowest platform threads a group has. A group with no 256 KiB row (a
+    record older than #199, as in the K1 fixture) takes 512 KiB → 1 MiB, and both of its rows and its
+    virtual row then give intercepts (architect, approving the red).
 - **Proof.** Each platform cell proves against the next thread up; 1 MiB proves against 512 KiB, and a
   virtual cell against 1 MiB.
 - **Order.**
