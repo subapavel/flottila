@@ -2,8 +2,16 @@ package io.github.subapavel.jqj.query.compile;
 
 import static io.github.subapavel.jqj.query.compile.RandomParts.outcome;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.github.subapavel.jqj.query.compile.RandomParts.Form;
+import io.github.subapavel.jqj.query.internal.interpret.AltBindOp;
+import io.github.subapavel.jqj.query.internal.interpret.Argument;
+import io.github.subapavel.jqj.query.internal.interpret.BreakOp;
+import io.github.subapavel.jqj.query.internal.interpret.IdentityOp;
+import io.github.subapavel.jqj.query.internal.interpret.IntrinsicManyOp;
+import io.github.subapavel.jqj.query.internal.interpret.Op;
+import io.github.subapavel.jqj.query.internal.interpret.ParamCallOp;
 import io.github.subapavel.jqj.query.compile.RandomParts.Outcome;
 import io.github.subapavel.jqj.query.compile.RandomParts.Part;
 import io.github.subapavel.jqj.query.ir.Bind;
@@ -24,10 +32,12 @@ import io.github.subapavel.jqj.query.ir.Pipe;
 import io.github.subapavel.jqj.query.ir.Program;
 import io.github.subapavel.jqj.query.ir.Source;
 import io.github.subapavel.jqj.query.ir.Var;
+import io.github.subapavel.jqj.query.run.CallForm;
 import io.github.subapavel.jqj.query.run.Collector;
 import io.github.subapavel.jqj.query.run.FilterException;
 import io.github.subapavel.jqj.query.run.Fn0;
 import io.github.subapavel.jqj.query.run.Fn1;
+import io.github.subapavel.jqj.query.run.Many;
 import io.github.subapavel.jqj.query.run.RunState;
 import io.github.subapavel.jqj.query.run.Truth;
 import java.util.ArrayList;
@@ -506,5 +516,96 @@ class ValueFormTest {
       assertThat(endOfActivations(n, CompileMode.OPTIMISED, n + 1L)).as("n = %d under OPTIMISED at %d activations", n, n + 1).isEqualTo("[0] null");
       assertThat(endOfActivations(n, CompileMode.OPTIMISED, n)).as("n = %d under OPTIMISED at %d activations", n, n).isEqualTo("[] [termination, RECURSION_DEPTH]");
     }
+  }
+
+  /** The unit limit forced on the value-form recursion of {@code n} levels with {@code base}. */
+  private static final long FORCED = 4;
+
+  /** The {@code stackBytes} at which the compile of {@code program} has {@code U_f} {@link #FORCED} (#111). */
+  private static long forced(Program program) {
+    Executable e = Compiler.compile(program, 0, CompileMode.OPTIMISED);
+    long stackBytes = StackUnits.reserve() + StackUnits.bytesPerUnit() * (FORCED + StackUnits.callFreeDepth(e));
+    assertThat(StackUnits.unitLimit(e, stackBytes)).as("U_f of %d stack bytes", stackBytes).isEqualTo(FORCED);
+    return stackBytes;
+  }
+
+  /**
+   * A value-form Call at a small forced unit limit starts the trampoline (ADR-0047 #116, ADR-0046 #111): at {@code U_f}
+   * 4 the 3 000-level value-form recursion of value-form/a-value-form-recursion-3000-deep (jq-ref 1.8.2: 3000) gives
+   * the push form's results and steps in both modes, and so does the same recursion with a base that gives no result,
+   * whose starter's trampoline hands nothing back. Each runs on a thread of four times its declared stack (ADR-0046
+   * "Where the stack is tested"). The base's probe runs as deep at 3 000 levels as at 30, so every call past the limit
+   * ran on the driver, and none by eval on the Java stack.
+   */
+  @Test
+  void valueFormCallAtASmallUnitLimitStartsTheTrampoline() throws InterruptedException {
+    Supplier<Node> nothing = () -> call("nothing", (state, in) -> CallForm.NONE);
+    assertThat(Compiler.compile(valueRecursion(3, nothing), 0, CompileMode.OPTIMISED).form(0, 0)).as("the run form of f's root with no base result").isEqualTo(RunForm.VALUE);
+    List<Supplier<Node>> bases = List.of(() -> c(0), nothing);
+    for (Supplier<Node> base : bases) {
+      String pushed = on(BIG, () -> outcome(valueRecursion(3000, base), CompileMode.CONSERVATIVE, UNLIMITED, NEVER_STOPS, UNLIMITED, UNLIMITED).toString());
+      long stackBytes = forced(valueRecursion(3000, base));
+      for (CompileMode mode : CompileMode.values()) {
+        assertThat(on(4 * stackBytes, () -> outcome(valueRecursion(3000, base), mode, UNLIMITED, NEVER_STOPS, UNLIMITED, stackBytes).toString()))
+            .as("3000 levels under %s at U_f %d, the push form's %s", mode, FORCED, pushed)
+            .isEqualTo(pushed);
+      }
+    }
+
+    long[] depths = new long[2];
+    int[] levels = {30, 3000};
+    for (int k = 0; k < levels.length; k++) {
+      Probe probe = new Probe();
+      int n = levels[k];
+      long stackBytes = forced(valueRecursion(n, probe::node));
+      String ran = on(4 * stackBytes, () -> outcome(valueRecursion(n, probe::node), CompileMode.OPTIMISED, UNLIMITED, NEVER_STOPS, UNLIMITED, stackBytes).toString());
+      assertThat(ran).as("%d levels with a probe at the base under OPTIMISED at U_f %d", n, FORCED).startsWith("Outcome[results=[" + n + "], answer=true, thrown=null, ");
+      assertThat(probe.depths).as("probes of %d levels", n).hasSize(1);
+      depths[k] = probe.max();
+    }
+    assertThat(depths[1]).as("frames below the base's probe at 3000 levels, at 30 levels %d", depths[0]).isEqualTo(depths[0]);
+  }
+
+  /** A Many of no result: the call form of an IntrinsicManyOp. */
+  private static final Many EMPTY =
+      new Many() {
+        @Override
+        public long first(RunState state, Object in, Object[] args) {
+          return Many.END;
+        }
+
+        @Override
+        public long next(RunState state, Object in, Object[] args, long cursor) {
+          return Many.END;
+        }
+
+        @Override
+        public Object value(RunState state, Object in, Object[] args, long cursor) {
+          return in;
+        }
+      };
+
+  static Stream<Arguments> neverEligible() {
+    return Stream.of(
+        Arguments.argumentSet("a Break", new BreakOp(0), "A Break has no value form"),
+        Arguments.argumentSet("a ParamCall", new ParamCallOp(0, 0, 1, 1), "A ParamCall has no value form"),
+        Arguments.argumentSet(
+            "an AltBind",
+            new AltBindOp(new IdentityOp(false), 0, new Op[] {new IdentityOp(false)}, new Argument[][] {{}}, new int[0], new IdentityOp(false)),
+            "An AltBind has no value form"),
+        Arguments.argumentSet("a Many intrinsic", new IntrinsicManyOp(EMPTY, new Argument[0]), "A Many intrinsic has no value form"));
+  }
+
+  /**
+   * The kinds that are never eligible have no value form (ADR-0047 #116, the eval contract): eval on a Break, a
+   * ParamCall, an AltBind or a Many intrinsic throws IllegalStateException, before it reads its slots or ticks.
+   */
+  @ParameterizedTest(name = "{argumentSetName}")
+  @MethodSource("neverEligible")
+  void theKindsThatAreNeverEligibleHaveNoValueForm(Op op, String message) {
+    RunState state = new RunState();
+    state.begin(UNLIMITED, UNLIMITED, UNLIMITED);
+    assertThatThrownBy(() -> op.eval(state, new Object[1], "in")).as("eval of %s", op.getClass().getSimpleName()).isInstanceOf(IllegalStateException.class).hasMessage(message);
+    assertThat(state.steps()).as("steps of the refused eval").isZero();
   }
 }
