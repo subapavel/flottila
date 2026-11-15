@@ -1142,6 +1142,16 @@ calls/value-param-name-is-callable	c21edd8ee5c1	conservative
 calls/value-param-name-is-callable	c21edd8ee5c1	trampoline
 calls/value-params-bind-around-the-call	8f4ff2afe6d4	conservative
 calls/value-params-bind-around-the-call	8f4ff2afe6d4	trampoline
+cardinality/first-stops-before-the-endless-rest	52b5973b96fb	conservative
+cardinality/first-stops-before-the-endless-rest	52b5973b96fb	trampoline
+cardinality/limit-stops-before-the-error	9f45bc8bd6fc	conservative
+cardinality/limit-stops-before-the-error	9f45bc8bd6fc	trampoline
+cardinality/recursion-after-a-comma-keeps-the-pending-errors	39b501e8ef21	conservative
+cardinality/recursion-after-a-comma-keeps-the-pending-errors	39b501e8ef21	trampoline
+cardinality/reduce-of-a-source-with-no-result-never-runs-its-break	1d6502066531	conservative
+cardinality/reduce-of-a-source-with-no-result-never-runs-its-break	1d6502066531	trampoline
+cardinality/reduce-of-an-empty-init-ends-before-its-break	9fcb755aad85	conservative
+cardinality/reduce-of-an-empty-init-ends-before-its-break	9fcb755aad85	trampoline
 chains/and-or-of-generators-in-jq-order	5183a0f807f9	conservative
 chains/and-or-of-generators-in-jq-order	5183a0f807f9	trampoline
 chains/assignment-under-alternative-is-inner-levels	9da2fad7ecaa	conservative
