@@ -21,6 +21,7 @@ import io.github.subapavel.jqj.query.ir.Var;
 import io.github.subapavel.jqj.query.run.RunState;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -28,30 +29,56 @@ import org.junit.jupiter.params.provider.EnumSource;
  * Heap forms that neither {@link TrampolineTest} nor the seeded property of {@code query.compile} reaches (ADR-0046
  * and its #109 amendment): each program runs with {@code stackBytes} 0, on the trampoline, and must end as its push
  * form does, with the same results, answer and steps, in both compile modes; each test also pins the push form's end.
+ * The push run declares {@link #PUSH}, and every run is on a thread of four times that.
  */
 class HeapFormsTest {
   private static final Source AT = new Source(0, 1);
   private static final long UNLIMITED = Long.MAX_VALUE;
 
-  /** The results, the answer and the steps of {@code program} run on a fresh input, declaring {@code stackBytes}. */
+  /** The push run's declared stack: these programs' calls hold far fewer units than its unit limit. */
+  private static final long PUSH = 256 * 1024;
+
+  /** The thread of every run: four times the push run's declared stack (ADR-0046 "Where the stack is tested"). */
+  private static final long THREAD = 4 * PUSH;
+
+  /**
+   * The results, the answer and the steps of {@code program} run on a fresh input, declaring {@code stackBytes}, on a
+   * new thread of {@link #THREAD} bytes.
+   */
   private static String ran(Executable program, long stackBytes) {
-    RunState state = new RunState();
-    state.begin(UNLIMITED, UNLIMITED, UNLIMITED, UNLIMITED, UNLIMITED, stackBytes);
-    List<Object> seen = new ArrayList<>();
-    boolean answer =
-        program.run(
-            state,
-            new Object[0],
-            "in",
-            v -> {
-              seen.add(v);
-              return true;
-            });
-    return "results " + seen + ", answer " + answer + ", " + state.steps() + " steps";
+    AtomicReference<String> outcome = new AtomicReference<>();
+    Thread thread =
+        new Thread(
+            null,
+            () -> {
+              RunState state = new RunState();
+              state.begin(UNLIMITED, UNLIMITED, UNLIMITED, UNLIMITED, UNLIMITED, stackBytes);
+              List<Object> seen = new ArrayList<>();
+              boolean answer =
+                  program.run(
+                      state,
+                      new Object[0],
+                      "in",
+                      v -> {
+                        seen.add(v);
+                        return true;
+                      });
+              outcome.set("results " + seen + ", answer " + answer + ", " + state.steps() + " steps");
+            },
+            "heap-forms",
+            THREAD);
+    thread.start();
+    try {
+      thread.join();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
+    return outcome.get();
   }
 
   private static void assertSameAsPushForm(Executable program, String expected, String what) {
-    String pushed = ran(program, UNLIMITED);
+    String pushed = ran(program, PUSH);
     assertThat(pushed).as("push form of %s", what).startsWith(expected);
     assertThat(ran(program, 0)).as("%s on the trampoline", what).isEqualTo(pushed);
   }

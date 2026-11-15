@@ -403,6 +403,25 @@ class RunStateTest {
     assertThat(t.getMessage()).as("message of %s", what).isEqualTo(MESSAGES.get(budget));
   }
 
+  /**
+   * ADR-0046 #111: the units the push-form calls hold reach the unit limit at equality, and each begin starts from no
+   * unit and a limit no call reaches, whatever the run before left (a run the stack backstop ended may leave units).
+   */
+  @Test
+  void unitsReachTheLimitAtEqualityAndBeginClearsThem() {
+    RunState state = new RunState();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    state.limitUnits(5);
+    assertThat(state.addUnits(4)).as("4 units against a limit of 5").isFalse();
+    assertThat(state.addUnits(1)).as("5 units against a limit of 5").isTrue();
+    state.removeUnits(2);
+    assertThat(state.units()).as("units after giving 2 back").isEqualTo(3);
+    state.end();
+    state.begin(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE);
+    assertThat(state.units()).as("units after the next begin").isZero();
+    assertThat(state.addUnits(Long.MAX_VALUE / 2)).as("half of Long.MAX_VALUE units after a begin, which sets no limit").isFalse();
+  }
+
   /** ADR-0030 and the design approval of #59: the budgets' messages. */
   private static final Map<Budget, String> MESSAGES =
       Map.of(

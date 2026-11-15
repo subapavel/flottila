@@ -27,7 +27,7 @@ class DifferentialSurveyTest {
   @TestFactory
   Stream<DynamicTest> survey(@TempDir Path scratch) {
     Set<String> required = Corpus.required();
-    DiffRunner runner = new DiffRunner(Main::run, scratch, Corpus.deviations());
+    DiffRunner runner = Corpus.runner(scratch, Main::run);
     return Corpus.cases().stream()
         .filter(e -> !required.contains(e.c().id()))
         .map(

@@ -47,6 +47,11 @@ class MayBreakOutFactsTest {
     boolean isFunction() {
       return fields.getFirst().equals("function");
     }
+
+    /** A node line: its first field is its body's column, {@code main} or {@code fn<place>}; the stack units line is not. */
+    boolean isNode() {
+      return fields.getFirst().matches("main|fn[0-9]+");
+    }
   }
 
   private static List<Line> lines(JqEngine engine, String filter) {
@@ -56,7 +61,7 @@ class MayBreakOutFactsTest {
   }
 
   private static List<Line> nodeLines(JqEngine engine, String filter) {
-    return lines(engine, filter).stream().filter(l -> !l.isFunction()).toList();
+    return lines(engine, filter).stream().filter(Line::isNode).toList();
   }
 
   /** The column of the body {@code body}: {@code main}, or the function line's {@code fn<place>} of a jq name/arity. */

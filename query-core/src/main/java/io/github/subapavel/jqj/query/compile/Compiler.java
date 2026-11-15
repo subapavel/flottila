@@ -93,9 +93,13 @@ public final class Compiler {
   /** Where a slot or closure parameter is: {@code level} links out from the running frame, at {@code cell}. */
   private record At(int level, int cell) {}
 
-  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures) {
+  /** The program's frames: each call's units and each closure argument's leaf-emit depth (ADR-0046 #111). */
+  private final Nesting nesting;
+
+  private Compiler(LiftedFunction[] shells, Map<Node, List<Integer>> closures, Nesting nesting) {
     this.shells = shells;
     this.closures = closures;
+    this.nesting = nesting;
   }
 
   /**
@@ -137,13 +141,14 @@ public final class Compiler {
     for (int i = 0; i < shells.length; i++) {
       shells[i] = new LiftedFunction(slots[i + 1], functions.get(i).closures());
     }
-    Compiler compiler = new Compiler(shells, layout.closures());
+    Nesting nesting = Nesting.of(program);
+    Compiler compiler = new Compiler(shells, layout.closures(), nesting);
     for (int i = 0; i < shells.length; i++) {
       compiler.region = new Region(null, null, slots[i + 1]);
       shells[i].define(compiler.interpreter(functions.get(i).body()));
     }
     compiler.region = new Region(null, null, slots[0]);
-    return new Executable(compiler.interpreter(program.main()), slots[0], parameters, facts);
+    return new Executable(compiler.interpreter(program.main()), slots[0], parameters, facts, nesting);
   }
 
   private Op interpreter(Node node) {
@@ -172,7 +177,7 @@ public final class Compiler {
       case Call c -> call(c);
       case ParamCall p -> {
         At at = parameter(p.param());
-        yield new ParamCallOp(at.level(), at.cell());
+        yield new ParamCallOp(at.level(), at.cell(), nesting.units(p), nesting.starterUnits());
       }
     };
   }
@@ -229,7 +234,7 @@ public final class Compiler {
     for (int j = 0; j < closures.length; j++) {
       closures[j] = closure(written.get(j));
     }
-    return new CallOp(shells[c.fn()], closures, values);
+    return new CallOp(shells[c.fn()], closures, values, nesting.units(c), nesting.starterUnits());
   }
 
   /**
@@ -242,8 +247,9 @@ public final class Compiler {
       return ClosureArgument.passed(at.level(), at.cell());
     }
     List<Integer> own = closures.get(body);
+    long emitDepth = nesting.emitDepth(body);
     if (own.isEmpty()) {
-      return ClosureArgument.written(interpreter(body), 0);
+      return ClosureArgument.written(interpreter(body), 0, emitDepth);
     }
     Map<Integer, Integer> cells = new HashMap<>();
     for (int slot : own) {
@@ -253,7 +259,7 @@ public final class Compiler {
     region = new Region(outer, cells, 0);
     Op op = interpreter(body);
     region = outer;
-    return ClosureArgument.written(op, cells.size() + 1);
+    return ClosureArgument.written(op, cells.size() + 1, emitDepth);
   }
 
   /** The Binds {@code b}, its values built in a loop, so the build does not go deeper with their number. */
@@ -274,7 +280,7 @@ public final class Compiler {
    * gives one result at most and holds no Break, so it never breaks out (ADR-0008). Every other kind, a Break and a
    * Call among them, is none.
    */
-  private static boolean tail(Node node) {
+  static boolean tail(Node node) {
     return switch (node) {
       case Identity _ -> true;
       case Const _ -> true;

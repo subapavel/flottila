@@ -15,7 +15,13 @@ import java.util.Objects;
  * @param bytesBuilt the string bytes and container slots an evaluation may build
  * @param bytesWritten the bytes a writer may write
  * @param regexMatchTime the time one regex match may take
- * @param stackBytes the stack the evaluation's depth is derived from (ADR-0011)
+ * @param stackBytes the stack the evaluation declares, from which each run derives how many stack units of its calls
+ *     stay on the Java stack before a call starts the heap-form trampoline (ADR-0011, ADR-0046): {@code U_f =
+ *     floorDiv(stackBytes - reserve, b) - D_f}, with the reserve 128 KiB (96 KiB of guard pages and 32 KiB for
+ *     natives), {@code b} the bytes per unit, provisionally 96 until #113 calibrates it ({@code bench/RESULTS.md},
+ *     #111), and {@code D_f} the filter's call-free depth; {@code explain()} shows all three. It is not a budget: 0 means zero bytes, never unlimited, and at or below {@code reserve + b * D_f}, 0
+ *     included, main and every body run on the trampoline; the engine still needs the reserve's stack for the
+ *     trampoline and natives. The thread must have the declared bytes.
  */
 public record Limits(
     long steps,

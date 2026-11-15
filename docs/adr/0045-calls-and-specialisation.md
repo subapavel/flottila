@@ -25,7 +25,7 @@ node keys that value-equal records cannot give, and a recursive body needs slots
   IrVerifier runs after every pass (ADR-0005). There is no fold pass (F-57).
 - **Specialisation** is a query-core pass over the `Program`, as ADR-0006 defines it. It has its own
   cap, `SPECIALISE_CAP` in query-core: 16 384 nodes, unless a measurement says otherwise (the
-  largest specialised node count over the case census and the prelude). A (group, argument tuple)
+  largest specialised node count over the jqtest and differential filters and the prelude). A (group, argument tuple)
   is specialised whole or not at all, in the order of its first outside call: by its Source (a lifted
   body's being its placing call's), then the Program's pre-order (#117); one that does not
   fit keeps its real closures. Reason: if specialisation shared one budget with the inline cap, a
@@ -131,7 +131,15 @@ grilling-adviser's rulings S1–S5, made for the owner under the delegation of 2
   order.
 - A key is built if `spent + nodes ≤ SPECIALISE_CAP`. Otherwise it is refused at all its calls.
 - The cap is 16 384. If the census shows a refusal, the cap becomes the next power of two at or
-  above the largest demand, up to `INLINE_CAP`. A refusal above that is a finding.
+  above the largest demand, up to `INLINE_CAP`. A refusal above that is a finding; its ruling changes
+  the pass or names the filter here.
+- Refused by design (F-94, F-96): `over-cap/param-600`, `over-cap/param-unused-600`,
+  `over-cap/closure-doubling-20`, `specialise/order-param-chain-then-recurse`. Their demand grows with the chain by construction, and #114
+  requires them with real closures. The census asserts that the filters refused under the cap are
+  exactly these, that each is also refused under `INLINE_CAP`, and it computes S5's number over the
+  other filters only. An entry needs a finding and a line here; a writer never edits the list.
+- A filter whose earlier keys exhaust the cap leaves each later key that does not fit refused, a
+  prelude loop's included. That key runs with real closures, which the depth budget counts (F-96).
 
 **What explain() shows**
 - The Executable carries a `Frozen` record: the specialised program, its Numbering, CallGraph and
