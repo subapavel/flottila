@@ -429,7 +429,7 @@ class CalibrationTest {
       String[] r = line.split("\t");
       if (r[0].equals("heap")) {
         got.add(r[2] + " " + r[1] + " " + r[3] + " n " + r[4] + ": " + r[6]);
-        want.add(r[2] + " " + r[1] + " " + r[3] + " n " + r[4] + ": [" + r[4] + "," + r[4] + "], ran out");
+        want.add(r[2] + " " + r[1] + " " + r[3] + " n " + r[4] + ": [" + r[4] + ", " + r[4] + "], ran out");
         used.put(r[2] + " " + r[1] + " " + r[3] + " " + r[4], Long.parseLong(r[5]));
         max = Long.parseLong(r[7]);
       }
