@@ -10,7 +10,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-import io.github.subapavel.jqj.JqCompileException;
 import io.github.subapavel.jqj.query.compile.CompileMode;
 import io.github.subapavel.jqj.query.compile.Compiler;
 import io.github.subapavel.jqj.query.ir.Call;
@@ -75,20 +74,17 @@ class PreludeLiftTest {
     int resolved = 0;
     int recursive = 0;
     for (Map.Entry<Integer, String> seed : corpus.entrySet()) {
-      Program p;
-      try {
-        p = Resolver.resolve(Parser.parse(seed.getValue()));
-      } catch (JqCompileException e) {
-        continue;
-      }
+      Program p = Resolver.resolve(Parser.parse(seed.getValue()));
       resolved++;
       int expected = seed.getKey() % 7 == 6 ? 1 : 0;
       recursive += expected;
       if (p.functions().size() != expected) wrong.add("seed " + seed.getKey() + " lifts " + p.functions().size() + ": " + seed.getValue());
     }
-    assertThat(corpus).as("core-v1 seeds in the corpus").hasSize(2100);
-    assertThat(resolved).as("core-v1 seeds that resolve").isGreaterThanOrEqualTo(2000);
-    assertThat(recursive).as("form-6 seeds among those that resolve").isGreaterThanOrEqualTo(250);
+    // Every seed must resolve; one that does not fails the test with its exception. The counts are
+    // ratchet/oracle/compile.txt's: it lists all 2100 core-v1 seeds, 0 to 2099, 300 of them of form 6, as cases whose
+    // optimised and conservative compiles agree.
+    assertThat(resolved).as("core-v1 seeds that resolve").isEqualTo(2100);
+    assertThat(recursive).as("form-6 seeds among those that resolve").isEqualTo(300);
     assertThat(wrong).as("core-v1 seeds whose lifted functions are not their own recursive r").isEmpty();
   }
 
@@ -97,7 +93,8 @@ class PreludeLiftTest {
    * function; two uses of {@code ..}, two calls of recurse/1 with different closures and two calls of the top-level
    * combinations/0 each share one function and make two Calls in the main tree; range/3's two calls of while/2 share one
    * {@code _while}. {@code _flatten} and combinations/0 are top-level groups that call themselves: a Resolver that
-   * re-lifts on each self-call never ends, which the timeout turns into a failure.
+   * re-lifts on each self-call never ends but fills the heap, and its OutOfMemoryError fails the test before the 120 s
+   * timeout does; the timeout fails a re-lifting that runs without filling the heap.
    */
   @Test
   @Timeout(value = 120, threadMode = ThreadMode.SEPARATE_THREAD)

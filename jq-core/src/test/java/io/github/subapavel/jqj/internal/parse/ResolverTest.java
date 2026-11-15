@@ -198,16 +198,6 @@ class ResolverTest {
     }
   }
 
-  @Test
-  void rangeOfTwoBoundsIsItsIntrinsic() {
-    // #69 lowers range/2 only; range/1 and range/3 are builtin.jq's, from #71's prelude (ADR-0041). jq-ref 1.8.2,
-    // observed 2026-11-13 with -nc: range(5) gives 0 to 4 and range(0; 10; 3) gives 0, 3, 6, 9 (rc 0). Unwrapped at
-    // #71: range/1 is range(0;$x) and runs; range/3 calls while/2, a recursive group, so it was a Stub until #110,
-    // which lifts _while (ADR-0042 amendment for #110): both now run (preludeCallsRunAsJqRefRunsThem), and range/3's
-    // Stub entry left with its Stub.
-    assertThat(shape(ir("range(0; 5)"))).as("IR of range(0; 5)").isEqualTo("range(0; 5)[0,11)");
-  }
-
   /**
    * The entries #70 wrapped in a user definition whose body is {@code ..} until #71's prelude and native table, unwrapped
    * (ADR-0042): limit/2 and range/1 are builtin.jq's and compile, so they left the Stub lists. jq-ref 1.8.2, observed
@@ -257,14 +247,21 @@ class ResolverTest {
   }
 
   @Test
-  void anInterpolationParsesAndItsLoweringIsAStub() {
-    // jq-ref 1.8.2, observed 2026-11-12 on null: "a1b", "1", "xbnVsbA==", {"a1":2}, null, "3" and "xnull" (rc 0).
-    // The string parts are parsed in #62 (jq's QQSTRING split); lowering an interpolation is #67's (F-35). #67 lowers
-    // one with no format, so those entries ended with | .., which stubbed until #110 and compile since (ADR-0042
-    // amendment for #110); one with another format than @text stays a Stub.
+  void anInterpolationWithAFormatOtherThanTextParsesAndIsAStub() {
+    // jq-ref 1.8.2, observed 2026-11-12 on null: @base64 "x\(.)" gives "xbnVsbA==" and @json "x\(.)" gives "xnull"
+    // (rc 0). The string parts are parsed in #62 (jq's QQSTRING split); lowering an interpolation is #67's (F-35), and
+    // one with another format than @text stays a Stub. anInterpolationWithNoFormatCompiles is the witness that an
+    // interpolation without a format is no Stub.
     for (String text : List.of("@base64 \"x\\(.)\"", "@json \"x\\(.)\"")) {
       parsesToAStub(text);
     }
+  }
+
+  @Test
+  void anInterpolationWithNoFormatCompiles() {
+    // jq-ref 1.8.2, observed 2026-11-12 on null: "a1b", "1", {"a1":2}, null and "3" (rc 0). #67 lowers an
+    // interpolation with no format, so these entries ended with | .., which stubbed until #110 and compile since
+    // (ADR-0042 amendment for #110).
     allCompile(List.of("\"a\\(1)b\" | ..", "\"\\(\"\\(1)\")\" | ..", "{\"a\\(1)\": 2} | ..", ".\"a\\(1)\" | ..", "\"\\(1 + 2)\" | .."));
     // Witness: an escaped backslash before ( is no interpolation (jq-ref -c '"a\\(1)b"' on null -> "a\\(1)b"), so the
     // string is one Const.

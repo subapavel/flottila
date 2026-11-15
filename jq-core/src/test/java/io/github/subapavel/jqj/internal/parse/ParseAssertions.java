@@ -66,15 +66,11 @@ final class ParseAssertions {
   }
 
   /**
-   * {@code text} parses, resolves with no Stub, and the Compiler accepts its program (its verifier checked it): a
-   * construct the resolver lowers whole. The entries that ended with {@code | ..} as their Stub marker assert this since
-   * #110 built {@code ..} (ADR-0042 amendment for #110).
+   * Each of {@code texts} parses, resolves with no Stub, and the Compiler accepts its program (its verifier checked it):
+   * a construct the resolver lowers whole. The entries that ended with {@code | ..} as their Stub marker assert this
+   * since #110 built {@code ..} (ADR-0042 amendment for #110). The failure lists every text that does not, with what it
+   * threw.
    */
-  static void compiles(String text) {
-    allCompile(List.of(text));
-  }
-
-  /** {@link #compiles} for each of {@code texts}; the failure lists every text that does not, with what it threw. */
   static void allCompile(List<String> texts) {
     List<String> failed = new ArrayList<>();
     for (String text : texts) {

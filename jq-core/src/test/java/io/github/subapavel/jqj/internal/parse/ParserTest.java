@@ -96,18 +96,24 @@ class ParserTest {
   }
 
   @Test
-  void unbuiltTokensAreStubs() {
-    // Each is jq syntax the resolver does not lower yet (jq-ref 1.8.2, observed 2026-11-11 on {"a":...}: .. $__loc__
-    // ".a |= .b" run), so each parses and resolves to the Stub. The inputs jq rejects (and, ",", .é, .a.é, #c) moved to
-    // unbuiltTokensThatJqRejectsAreErrors when #62 built the syntax errors; #63 lowers .a?, .[0], .["a"], .[], ".a, .b"
-    // and .a[0], whose IR ResolverTest.navigationAndCommaLowerToTheirIr asserts. None was dropped. #66 lowers and, and
-    // #67 $__loc__, so their entries ended with | .., which stubbed until #110 built it: those three now compile
-    // (ADR-0042 amendment for #110), and the update operator stays a Stub until spec 3.
-    allCompile(List.of("..", "$__loc__ | ..", ".a and .b | .."));
+  void theUpdateOperatorParsesAndIsAStub() {
+    // jq syntax the resolver does not lower until spec 3 (jq-ref 1.8.2, observed 2026-11-11 on {"a":...}: ".a |= .b"
+    // runs), so it parses and resolves to the Stub. It is the one entry left of the unbuilt tokens: the inputs jq
+    // rejects (and, ",", .é, .a.é, #c) moved to unbuiltTokensThatJqRejectsAreErrors when #62 built the syntax errors;
+    // #63 lowers .a?, .[0], .["a"], .[], ".a, .b" and .a[0], whose IR ResolverTest.navigationAndCommaLowerToTheirIr
+    // asserts; .., $__loc__ and and compile (dotDotAndTheTokensItMarkedCompile). None was dropped.
     parsesToAStub(".a |= .b");
     // Witness: the built prefixes resolve to IR.
     assertThat(shape(ir(".a"))).as("witness: IR of .a").isEqualTo(".a[0,2)");
     assertThat(shape(ir(".a | .b"))).as("witness: IR of .a | .b").isEqualTo("(.a[0,2) | .b[5,7))");
+  }
+
+  @Test
+  void dotDotAndTheTokensItMarkedCompile() {
+    // jq-ref 1.8.2, observed 2026-11-11 on {"a":...}: .. and $__loc__ run. #66 lowers and, and #67 $__loc__, so their
+    // entries ended with | .. as the Stub marker, which stubbed until #110 built .. (ADR-0042 amendment for #110):
+    // each now parses, resolves and compiles.
+    allCompile(List.of("..", "$__loc__ | ..", ".a and .b | .."));
   }
 
   @Test

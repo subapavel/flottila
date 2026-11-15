@@ -20,8 +20,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 /**
  * {@code ..} and recurse at the public API (ADR-0042 amendment for #110, ADR-0045, ADR-0046): {@code ..} is recurse/0,
  * which runs recurse/1's lifted r with the closure {@code .[]?}, so its results are those of the same recursion written
- * by the user, which #107 runs (diff/calls.rec); and each level holds two activations, r's Call and the invocation of
- * its closure. Each run is on a thread of {@link CallRuns#STACK}.
+ * by the user, which #107 runs (diff/calls.rec); and each level holds two call activations, r's Call and the call
+ * activation of its closure. Each run is on a thread of {@link CallRuns#STACK}.
  */
 class RecursivePreludeTest {
 
@@ -89,8 +89,8 @@ class RecursivePreludeTest {
 
   /**
    * CONSERVATIVE only (specialisation will change OPTIMISED, design ruling): at its deepest, a level holds r's Call and
-   * the invocation of its closure {@code .[]?}, so h levels hold 2h activations: a depth budget of 2h runs, 2h − 1 ends
-   * the run with RECURSION_DEPTH before anything is emitted.
+   * the call activation of its closure {@code .[]?}, so h levels hold 2h call activations: a depth budget of 2h runs,
+   * 2h − 1 ends the run with RECURSION_DEPTH before anything is emitted.
    */
   @ParameterizedTest(name = "{0} levels: {1}")
   @MethodSource("levels")
