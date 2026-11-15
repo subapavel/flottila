@@ -234,7 +234,8 @@ awaited on the message path. ITs: `PgMessageStoreIT`, `InvoiceSyncRecordingIT`. 
 (MigrationsIT order dependence) pending. Open from the P1-04 review: a failed snapshot write is a
 counter (`failed()`) until P1-09 shows it; `findByKey` order is `min(ctid)` (add an insert
 sequence when paging comes); `InMemoryMessageStore` is unbounded (tests/bench/dry run only);
-consider `Meter` on `Runtime`.
+consider `Meter` on `Runtime`. The snapshot path is to be replaced by the log-record stream
+(ARCHITECTURE §8; OPS-2, CORE-8, pending; D-147).
 
 ## Pipeline (P1-03, D-043)
 
@@ -248,6 +249,8 @@ built-ins to/route/filter/extractKey/validate; `core.pattern` Retry/Route/Filter
 → FakeRuntime). Left for later: producer `close` (P1-06), deploy-time `configSchema` check, the
 xslt cache keys the main file's content only — an `xsl:include` change alone is not recompiled
 in-process (P1-07 / deploy reload), the xslt result is buffered before the body limit is enforced.
+No logging type is to be added to `StepResources`: custom code uses standard Java logging
+(ARCHITECTURE §8 Author voice and mapping trace; OPS-4, pending; D-147).
 
 ## Core, runtime, testkit (Phase 0)
 

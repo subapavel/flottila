@@ -1,0 +1,45 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -48,7 +48,7 @@
+ - Clock, timers and id generation are injected through `Runtime`. No static singletons.
+ - Dependencies: Apache 2.0, MIT, BSD, MPL 2.0, EPL only. AGPL, GPL, BSL, SSPL → `ISSUE`, never
+   linked. SAP JCo is `provided` scope and never redistributed.
+-- Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited.
++- Sizes are `long`. No message is refused for its size (D-110): above the recording threshold a body is carried, not recorded; memory is bounded by streaming, never by a whole-body buffer. Every other limit is finite; never default one to unlimited. A message's log has no per-message cap (D-147); its memory is bounded by the platform's record buffer, which stops intake when full (OPS-2, pending).
+
+ ## Tests (TDD from day 1)
+
+@@ -80,7 +80,7 @@
+   guess an API from memory.
+ - One task = one commit, Conventional Commits, direct to `main`, green before push. Format and
+   trailers in `docs/WORKFLOW.md`.
+-- After every task: PROGRESS.md entry, HANDOFF.md rewritten, BACKLOG.md status updated, review by
++- After every task: docs/PROGRESS.md entry, HANDOFF.md rewritten, BACKLOG.md status updated, review by
+   the reviewer agent. A task is `done` only with `review: PASS`.
+ - Decisions: reversible → `docs/DECISIONS.md`; expensive-to-reverse → design it, mark it
+   `draft — review at hand-over`; money, credentials, licences, a missed gate → `issues/ISSUE-<n>.md`
+diff --git a/.claude/agents/implementer.md b/.claude/agents/implementer.md
+--- a/.claude/agents/implementer.md
++++ b/.claude/agents/implementer.md
+@@ -38,7 +38,7 @@
+   its tail or the failing section, never the whole log. Run `mvn -B -ntp verify` (and the checks
+   the packet names) before handing back. Report observed results only, with the evidence words
+   `VERIFIED_PASS`, `EXECUTED_FAIL`, `NOT_RUN`, `ENVIRONMENT_BLOCKED`.
+-- Do not commit, push, or edit `agent/`, `PROGRESS.md`, `docs/ARCHITECTURE.md`,
++- Do not commit, push, or edit `agent/`, `docs/PROGRESS.md`, `docs/ARCHITECTURE.md`,
+   `docs/DECISIONS.md`, `.claude/`. Do not start other agents. Do not change ArchUnit rules or pom
+   module structure unless the packet says so.
+ - If the task cannot be completed as specified, stop and hand back what you have, marked partial,
+diff --git a/.claude/agents/test-author.md b/.claude/agents/test-author.md
+--- a/.claude/agents/test-author.md
++++ b/.claude/agents/test-author.md
+@@ -29,7 +29,7 @@
+   the failing section. Report the observed red, never an assumed one.
+ - Library and test-framework APIs: Context7 MCP tools first, then `javap -cp <jar>` on the jar
+   under `~/.m2`. Never guess.
+-- Do not commit, push, or edit `agent/`, `PROGRESS.md`, `docs/`, `.claude/`. Do not start other
++- Do not commit, push, or edit `agent/`, `docs/PROGRESS.md`, `docs/`, `.claude/`. Do not start other
+   agents.
+
+ Self-check before every hand-back (what the reviewer will check; a FAIL that repeats one of these

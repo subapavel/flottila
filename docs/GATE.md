@@ -57,7 +57,9 @@ the tests; every deviation from `docs/ARCHITECTURE.md` with its finding id; deci
 ## Stretch — only after checks 1–9 hold, never blocking
 
 - Snapshots also published to the Kafka `monitoring` topic (ARCHITECTURE §8 write path).
+  [2026-11-15: superseded. Kafka is an optional add-on and no core path depends on it (D-134).]
 - A ClickHouse Kafka-engine table consuming that topic.
+  [2026-11-15: superseded. ClickHouse is to be fed by the node's mover (CORE-10, OPS-2, pending; D-147).]
 
 HANDOVER.md states which stretch items were reached.
 

@@ -29,7 +29,7 @@ is binding for every session working on Rail8; `CLAUDE.md` summarises it.
    `touch agent/work/.batch-in-review` (§10). `FAIL` reopens the task at step 4; a second `FAIL`
    reopens it at step 3 with a rewritten spec, drafted by the designer, and raises the row's class
    if it was below C. A gate row is reviewed by the gate-reviewer (Fable 5.2) instead.
-7. Commit and push to `main`: `rm -f agent/work/.batch-in-review && git commit …`. Append the
+7. Commit and push to `main`: `rm -f agent/work/.batch-in-review && git commit …`. Add the
    PROGRESS entry, rewrite HANDOFF, set the row to `done`. These three edits go in the same
    commit as the code.
 8. Continue with the next `ready` row without asking. Stop only on `GATE_MET` (docs/GATE.md
@@ -46,7 +46,7 @@ nothing that matters may exist only in the conversation or in an unpushed workin
 | `agent/HANDOFF.md` | ≤ 20 lines of ≤ 160 characters: state, last commit, next exact action, open issues, pointers; rewritten after every task | coordinator |
 | `agent/NOTES.md` | module notes (shapes, commands, open follow-ups) that HANDOFF used to carry; one section per module, read on demand | coordinator |
 | `.claude/agent-memory/<name>/MEMORY.md` | durable facts an agent learned (build quirks, verified APIs, recurring findings); never task state | that agent |
-| `PROGRESS.md` | append-only journal, one entry per task, ≤ 15 lines (format below) | coordinator |
+| `docs/PROGRESS.md` | the journal, newest first: one entry per task, added at the top and never changed afterwards, ≤ 15 lines (format below); the earlier journal, which ends 2026-11-03, is `docs/archive/PROGRESS-until-2026-11-03.md` (oldest first) | coordinator |
 | `docs/DECISIONS.md` | reversible decisions, one line each | coordinator |
 | `docs/findings/F-<n>.md` | contradictions between practice and ARCHITECTURE.md | coordinator |
 | `issues/ISSUE-<n>.md` | things only the owner can resolve | coordinator |
@@ -90,7 +90,7 @@ Next: P1-05
   `Signed-off-by: <owner name> <owner email>` (DCO; the author identity is the owner's, set through
   the environment's git variables — see `agent/cloud/README.md`).
 - Tags cannot be pushed from the cloud session; gates are recorded as commit hashes in
-  `bench/RESULTS.md` and `PROGRESS.md`.
+  `bench/RESULTS.md` and `docs/PROGRESS.md`.
 
 ## 4. CI gates (GitHub Actions, every push to `main`)
 
@@ -166,7 +166,7 @@ worked around silently:
 ## 9. What the owner sees
 
 Nothing is reported outside the repo. The owner reads `HANDOVER.md` at the gate, and
-`agent/HANDOFF.md` + `PROGRESS.md` at any time. Chat messages per task are fine but carry nothing
+`agent/HANDOFF.md` + `docs/PROGRESS.md` at any time. Chat messages per task are fine but carry nothing
 that is not also in the files.
 
 ## 10. Turn economy (D-053)

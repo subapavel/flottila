@@ -94,7 +94,7 @@ partial work, marked as such. No agent updates BACKLOG / HANDOFF / PROGRESS or c
 
 The architect names the commands; the verifier runs them with output under `agent/work/<task>-*.log`
 and reports exit codes, counts lines and the failing section. The architect reads the tail of the
-log itself for the evidence line it writes into PROGRESS.md — a claim without observed output
+log itself for the evidence line it writes into docs/PROGRESS.md — a claim without observed output
 behind it is not evidence.
 
 ## Review (reviewer, after every task)
@@ -103,7 +103,7 @@ Input from the architect, by path: the diff (`agent/work/<task>.diff`), the test
 PIT mutation report for the classes the task touched. The reviewer answers, per test, "would this
 fail if the code were wrong?" against the checklist in `docs/WORKFLOW.md` and returns `PASS` or
 `FAIL — <reason>`, every blocking reason in one round. The architect records the verdict in
-PROGRESS.md; `FAIL` reopens the task. After a second `FAIL` the architect rewrites the packet (the
+docs/PROGRESS.md; `FAIL` reopens the task. After a second `FAIL` the architect rewrites the packet (the
 spec was wrong, not only the code) rather than running a third round on the same packet. The
 reviewer is never the agent that wrote the test.
 
@@ -114,6 +114,6 @@ Run once per gate row on the gate commit. Returns `gate: MET` or `gate: NOT_MET 
 
 ## Evidence vocabulary
 
-Every check in PROGRESS.md carries one of: `VERIFIED_PASS` (ran, observed green),
+Every check in docs/PROGRESS.md carries one of: `VERIFIED_PASS` (ran, observed green),
 `EXECUTED_FAIL` (ran, observed red), `NOT_RUN`, `ENVIRONMENT_BLOCKED` (could not run here, why).
 A claim without the observed output behind it is not evidence. A skeleton is not the feature.

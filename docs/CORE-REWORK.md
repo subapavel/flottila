@@ -110,6 +110,7 @@ later phases. Exception: "fix main".
   keeps a short copy of the step metadata for the live UI view or the UI reads ClickHouse through
   pg_clickhouse is the designer's call by measurement. Vector is a candidate for the platform's
   logs and metrics only (CONSIDER-11), not for message data.
+  [2026-11-15: Vector is rejected by the owner (`docs/OPERATIONS-BRIEF.md` §1, D-147).]
 - **Q-4 Hot window: until processed and, where the level keeps them, in ClickHouse** (normally minutes to hours); the journal
   disk is sized for the ClickHouse outage it must ride through.
 - **Q-5 HA copy: the ACK waits for the peer's receipt, not its fdatasync** (a message is lost only
@@ -118,6 +119,9 @@ later phases. Exception: "fix main".
   records and bodies go batched to ClickHouse (through the mover's batches, not the durable
   journal path) and the answer never waits for them; a node crash may lose the last few sync
   records. Default for sync: bodies `none` + errors.
+  [2026-11-15: the owner widened the accepted loss beyond sync: "a node crash may lose the last
+  moments of that node's detail records. The message and the proof of its receipt are not lost,
+  and the takeover record says so" (`docs/OPERATIONS-BRIEF.md` §3, D-147).]
 - **Q-7 Failed and in-doubt sends: as SAP PO** — retries at configurable intervals, a
   configurable number of times, until a successful answer, then parked (error status, manual
   restart). An in-doubt send (D-101 (4)) counts as a failed attempt and is resent with the same

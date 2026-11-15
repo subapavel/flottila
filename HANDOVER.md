@@ -2,7 +2,7 @@
 
 Gate: `docs/GATE.md` (agreed 2026-10-17). Gate commit: `fea6c5c` (2026-10-30). Evidence: the GATE section of
 `bench/RESULTS.md`, CI runs 145 (push) and 146 (dispatch: build, stack, bench, mutation, DCO) on that commit, and the
-session's verifier logs (`target/GATE2-*.log`, `target/GATE3-stack.log` for the evidence re-run, named per check below). Verdict: the gate-reviewer's, in `PROGRESS.md`
+session's verifier logs (`target/GATE2-*.log`, `target/GATE3-stack.log` for the evidence re-run, named per check below). Verdict: the gate-reviewer's, in `docs/archive/PROGRESS-until-2026-11-03.md`
 (GATE entry).
 
 **State in one line:** GATE_MET. Checks 1–9 hold. Check 6 reads "wall time per step, `cpuNanos` null where the JVM cannot
@@ -131,3 +131,4 @@ Then FIX-109 (interrupt edges), P2-07c (`payloads`) and the open FIX rows (agent
 
 P2-S1 (snapshots to the Kafka `monitoring` topic) and P2-S2 (a ClickHouse Kafka-engine table) are both pending. The ClickHouse
 container is present under the `history` profile and nothing feeds it.
+[2026-11-15: both stretch items are superseded. Kafka is an optional add-on (D-134); ClickHouse is to be fed by the node's mover with log records (CORE-10, OPS-2, pending; D-147).]

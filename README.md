@@ -2,8 +2,8 @@
 
 Open-source enterprise integration platform where **monitoring is the product**: every message,
 every step and every payload is captured, searchable and replayable — and the runtime also
-delivers messages reliably and fast. Java 25 · Vert.x 5.1 · PostgreSQL · Apache Kafka ·
-ClickHouse · Valkey · S3. Apache 2.0.
+delivers messages reliably and fast. Java 25 · Vert.x 5.1 · PostgreSQL · ClickHouse · Valkey · S3
+(Apache Kafka only as an optional add-on, D-134). Apache 2.0.
 
 **Status: under construction, not usable yet.** Tag `proto-m1` is the milestone-1 state (one
 module, Vert.x 4.5, the flow `HTTP → validate → extractKey → route → XSLT → HTTP` with snapshots,

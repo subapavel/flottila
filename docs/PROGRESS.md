@@ -1,4 +1,19 @@
 
+## 2026-11-15 — OPS-1 ARCHITECTURE and the living documents follow the operations brief — done, review PASS. Deviation: F-38
+
+- Designer, the advisor as opponent (13 changes, all taken), the architect's twelve decisions (`agent/work/OPS-1-decided.md`, D-152).
+- ARCHITECTURE 3.25, thirteen changelog rows: each section states what is built and, in the brief's words, what is to be ("To be (OPS-n,
+  pending)"). §8 "Monitoring: log records, metrics, alerts", nine sub-headings; §9 gains Teams and permissions, Agents, Callers and the
+  developer portal; numbers unchanged; no id cited in the body disappeared (137 before, 146 after).
+- F-38 (major, 14 points), each changed guardrail its own point: the write path's drop-and-count, the Phase 3 gate clause (the owner's
+  loss contract, `draft — review at hand-over`), Prometheus/Alertmanager, the tenant level, masking before a model.
+- ISSUE-8 for the owner: 16 [inferred] / to-verify items, 4 places where the two briefs meet, 7 open questions, each with its default;
+  line D: `git apply agent/patches/OPS-1-steering.patch` (CLAUDE.md, two agent definitions) - no session applies it.
+- Also AGENTS, WORKFLOW, HANDOVER, README, GATE, PROTOTYPE-VS-ARCHITECTURE, CORE-REWORK (two notes), NOTES, the backlog's header, a closing
+  pointer in this file. Rows: OPS-12, FIX-220 new; P2-S1, P2-S2 superseded. Evidence: `agent/work/OPS-1-coverage.md`, `OPS-1.diff`.
+- Review in two parts, each r1 FAIL then r2 PASS - wording only: a built claim, a marker the brief lacks, changelog rows against F-38.
+- Next: the BRAND-3 import merge.
+
 ## 2026-11-15 — BRAND-3 step 1 the DCO job lists first-parent; D-151 — in progress, review PASS (r3)
 
 - Context compacted before this entry; state re-verified with `git status` and `git log -3` (BRAND-4, e1d3dfd, then pushed).
@@ -770,3 +785,7 @@ Checks: `mvn -B -ntp verify -Pit` VERIFIED_PASS (target/P2-05-verify.log); Compo
 Review: PASS r1. Raised FIX-99 (Kafka not-wired assertion, CI up seconds, HANDOVER env note).
 D-054 data: class A (scout ×1, test-author ×1 + 1, implementer ×1 + 1 fix, verifier ×1, reviewer ×1); review rounds 1.
 Next: P2-06 [A].
+
+---
+
+End of this file. The older entries are in `docs/archive/PROGRESS-until-2026-11-03.md`, oldest first. Both files hold entries dated 2026-10-29 to 2026-11-03, because two branches were worked in parallel.
