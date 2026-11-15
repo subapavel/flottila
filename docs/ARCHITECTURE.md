@@ -89,6 +89,7 @@
 | 2026-11-12 | 3.19 | §6 Recording, §7 Persistence tables, §8 Write path: a same-id rerun's attempts keep their own snapshot rows, `messages` keyed (id, step, attempt) (V19); timeline `attempt` field, `?attempt=k` on the step body route, replay from the latest OK attempt (FIX-175, D-140) | — |
 | 2026-11-13 | 3.20 | §4 Body journal: the peer link's version rule and channel in HELLO, a peer subkey for the link's keys, `FLOTTILA_PEER_READS` 1..64, 8 handshakes per source address (CORE-5a2, D-141) | F-35 |
 | 2026-11-13 | 3.21 | §4 Body journal: the holder side of replication — the repl channel, frames OPEN/DATA/SEAL/RECEIPT/REFUSE, replicas as `replicas/<owner>/<journal>/<n>.part` renamed `.seg` when sealed, receipt after pwrite, replicas at most half the intake edge, the owner's epoch bound (CORE-5b1, D-139, D-142) | F-35 |
+| 2026-11-14 | 3.22 | §3 Valkey from two nodes on (D-144) and §14 the owner's brainstorm list of 2026-10-29, recovered from an unmerged branch | — |
 
 ## Amendments (Part A, 2026-10-17)
 
@@ -176,7 +177,7 @@ Runtime nodes talk to all five stores; the control plane talks only to Postgres 
 | Apache Kafka (KRaft) | optional event-broker add-on (CORE-REWORK O-1): `queue: kafka` and a Kafka-backed `/xi` door; no core path uses it (compose profile `kafka`) | 3 brokers; tiered storage to S3 | no (add-on) |
 | ClickHouse | monitoring history, metrics, payload search (XPath/JSONPath via keys-as-columns + JSON projection) | replicated; hot NVMe → S3 by TTL | yes |
 | S3-compatible store | ClickHouse's cold tier (older parts move there by age; CORE-REWORK Q-9, CORE-13, pending) and the deployment archives (D-070); never a message body — the S3 body tier is gone, bodies live in the node's body journal (CORE-REWORK O-4, O-6; D-105, CORE-4b); Kafka's tiered storage only with the add-on | customer backend | yes |
-| Valkey | warm config copy, partner OAuth tokens, global throttles, poller leases, distributed locks, UI sessions; persistence off | Sentinel or cluster | yes |
+| Valkey | warm config copy, partner OAuth tokens, global throttles, poller leases, distributed locks, UI sessions; persistence off | Sentinel or cluster | from two nodes on; a single node runs on in-memory implementations behind the same API (D-144) |
 | Control plane | Quarkus admin API + React UI, MCP server, developer portal | stateless, 1–2 instances | yes, but runtime survives without it |
 | ZITADEL | optional IdP for installs without one | — | optional |
 
@@ -556,3 +557,12 @@ Eleven items remain open; the first four block Phase 0 and are the ones to close
 - [ ] Add-on boundary for later commercial modules: which control-plane plugin points exist from day one.
 - [ ] Envoy `ext_proc` integration: designed-for only, or built in Phase 5 as a reference deployment.
 - [ ] Saxon-EE streaming plugin: SPI shape so a licensed customer can drop it in without a platform change.
+
+**For a deep brainstorm (owner, 2026-10-29; nothing is built on these until decided; recovered 2026-11-14 from an unmerged branch — the core rework has settled some: Kafka optional D-134, bodies in the node journal D-105, not S3; docs/review/owner-notes-2026-10-29.md):**
+
+- [ ] **ClickHouse column codecs**: ZSTD level per column, `LowCardinality` for flow / partner / state, `Delta` / `DoubleDelta` for timestamps, the payload column's codec.
+- [ ] **Compression ratio and sizing**: the expected ratio on real payloads (XML invoices, IDocs, JSON), measured, and the disk / S3 sizing derived from it per million messages and per retention day.
+- [ ] **Storage policy hot → S3**: ClickHouse `s3` disk, TTL moves from hot NVMe to S3, which tables and after how long, cold-query labelling (§8).
+- [ ] **Bytes exist once — runtime bodies vs ClickHouse**: when the runtime's durable body is in S3 (P2-22), does ClickHouse keep a compressed inline copy (≤ ~256 KB, §8) or only a reference? Options: (a) runtime bodies in S3, ClickHouse inline copy for search, two copies with different retention; (b) ClickHouse references S3 only, search reads S3; (c) the owner's proposal — keep the bodies in ClickHouse itself (its S3 tier and compression) instead of runtime S3 objects; (d) runtime S3 for the replay window only (days), ClickHouse the long-term compressed copy, replay after that window reads from ClickHouse. To weigh: the durable save before an irreversible ACK (synchronous, one transaction with the work item, D-082), point reads per step and per replay, bodies up to the flow's max (tens of MB), the delivery path depending on the monitoring store, the compression gain of columnar blocks over per-object zstd.
+- [ ] **Kafka optional**: the monitoring write path Postgres / batcher → ClickHouse without Kafka (owner agrees Kafka may be optional); what then needs Kafka at all (`queue: kafka`, replay from the log, cross-pool fan-out).
+- [ ] **`/xi` door**: "hold the request" (a longer save timeout for the xi endpoint, the Postgres client reconnecting to the new primary, duplicates dropped by `processed_ids` on the XI message id) before a Kafka door; first measure how PO Adapter Engine and ABAP proxy react to 503, a 30–60 s answer and a timeout, for EO and EOIO (§14 ABAP proxy question above).
