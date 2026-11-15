@@ -877,6 +877,13 @@ control/try-postfix-downstream	ce8b6a411560	interpreter
 control/try-postfix-generator	c965621bcdbb	interpreter
 control/try-postfix-per-element	6e73359e24ba	interpreter
 control/try-triple-downstream	05e39b6ee3e8	interpreter
+deep/collect	71e5bf020824	interpreter
+deep/downstream-break-stops-the-forms	f394cccaebf9	interpreter
+deep/downstream-error-reenters-the-alt-bind	022b2a66c58f	interpreter
+deep/first-or	2b4e835596d5	interpreter
+deep/hold	d2a6796d1419	interpreter
+deep/nested-drivers	ae28ab897d1d	interpreter
+deep/reduce	7885be395d4a	interpreter
 defs/arithmetic-update-value-is-in-the-level	75986d8ed223	interpreter
 defs/arity-is-part-of-the-name	d3cc917be3ab	interpreter
 defs/break-in-closure-targets-caller-label	7a3b5a5e6ec1	interpreter
