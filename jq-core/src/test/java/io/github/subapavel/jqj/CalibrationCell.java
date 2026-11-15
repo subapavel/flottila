@@ -343,10 +343,10 @@ final class CalibrationCell {
 
   /** The U* of each pass of a search, in order; -1 for a pass whose shape does not complete at {@code U_f} 0. */
   record Passes(List<Long> edges) {
-    /** Whether the last two passes agree on {@code U*}: the search reached its fixed point (L1). */
+    /** Whether the last two passes agree on {@code U*}: the search reached its fixed point (L1); a fail ends a search. */
     boolean agreed() {
       int n = edges.size();
-      return n >= 2 && edges.get(n - 1) >= 0 && edges.get(n - 1).equals(edges.get(n - 2));
+      return n >= 2 && edges.get(n - 1).equals(edges.get(n - 2));
     }
 
     /** The passes as a search row prints them: each pass's {@code U*}, comma-separated, {@code fails} for -1. */
