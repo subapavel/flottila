@@ -220,8 +220,8 @@ grilling-adviser's rulings K1–K10 and corrections D1–D4, made for the owner 
 **The record**
 - The committed record is a tsv that the matrix run writes, never edited by hand, and that
   `bench/RESULTS.md` cites. The verifier rewrites it at the spec gate.
-- `constantsAreTheMatrixMaxima` checks that the constants equal the maxima over every row of the
-  record, whichever tier holds the maximum. It reads the record in-process.
+- `constantsAreTheMatrixMaxima` checks that the constants equal the maxima over the rows of the
+  record, from the `-Xint` and C1 rows only (K1: warm is proven, not measured). It reads the record in-process.
 - A fresh run asserts in one direction only: each cell completes, and fresh values are at most the
   constants (K7).
 
