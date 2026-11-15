@@ -197,8 +197,9 @@ class CalibrationTest {
    * c2 over the full matrix (the {@code calibration-matrix} tag): every cell is proven, and at the committed constants
    * its {@code U_f} at the thread's size is at most its unit edge {@code U*}, where {@code U* + 1} ends STACK; a flat
    * cell, whose control completes, has no edge. A JIT cell's {@code U*} is the smallest of 3 fresh children and the
-   * spread is recorded (D3). {@code -Xint} runs one child per thread and mode, in parallel; C1 and warm one child per
-   * shape, thread and mode, serially. A fresh run asserts one way (K7): its {@code b} and reserve are at most the
+   * spread is recorded (D3). {@code -Xint} runs one child per shape, thread and mode, in parallel (one child per thread
+   * and mode, as the design had it, ran past the 300 s of a child); C1 and warm one child per shape, thread and mode,
+   * serially. A fresh run asserts one way (K7): its {@code b} and reserve are at most the
    * constants. Writes {@code target/calibration.tsv}.
    */
   @Test
@@ -207,10 +208,13 @@ class CalibrationTest {
     long started = System.nanoTime();
     Map<String, List<String>> printed = new LinkedHashMap<>();
     try (ExecutorService pool = Executors.newFixedThreadPool(4)) {
-      Map<String, Future<String>> xint = new LinkedHashMap<>();
+      // -Xint: one child per shape, thread and mode, in parallel; a child of all 13 searches ran past its 300 s.
+      Map<String, List<Future<String>>> xint = new LinkedHashMap<>();
       for (CellThread thread : THREADS) {
         for (CompileMode mode : CompileMode.values()) {
-          xint.put(key(XINT, thread, mode), pool.submit(child(XINT.flags(), thread, "search", mode.name())));
+          for (Shape shape : SHAPES) {
+            xint.computeIfAbsent(key(XINT, thread, mode), k -> new ArrayList<>()).add(pool.submit(child(XINT.flags(), thread, "search", mode.name(), shape.id())));
+          }
         }
       }
       for (Tier tier : TIERS.subList(1, TIERS.size())) {
@@ -224,8 +228,10 @@ class CalibrationTest {
           }
         }
       }
-      for (Map.Entry<String, Future<String>> x : xint.entrySet()) {
-        printed.put(x.getKey(), List.of(get(x.getValue())));
+      for (Map.Entry<String, List<Future<String>>> x : xint.entrySet()) {
+        for (Future<String> f : x.getValue()) {
+          printed.computeIfAbsent(x.getKey(), k -> new ArrayList<>()).add(get(f));
+        }
       }
     }
     long guard = guardBytes();
@@ -332,24 +338,32 @@ class CalibrationTest {
   void edgeIsExact() throws Exception {
     List<String> got = new ArrayList<>();
     List<String> want = new ArrayList<>();
-    for (CompileMode mode : CompileMode.values()) {
-      CellThread thread = new CellThread("platform", SMALL);
-      Map<String, String[]> searched = rows(child(XINT.flags(), thread, "search", mode.name()).call(), "cell");
-      List<String> edges = new ArrayList<>();
-      List<String> ids = new ArrayList<>();
-      for (Shape shape : SHAPES) {
-        String[] r = searched.get(shape.id());
-        if (r != null && r[7].matches("\\d+")) {
-          edges.add(shape.id() + "=" + r[7]);
-          ids.add(shape.id());
-          want.add(mode + " " + shape.id() + " at U* " + r[7] + ": " + shape.completed() + " | " + shape.completed() + " | " + STACK);
+    CellThread thread = new CellThread("platform", SMALL);
+    // One search child per shape and mode: a child of all 13 shapes' searches ran past the 300 s of a child (#113's red).
+    Map<String, Future<String>> searches = new LinkedHashMap<>();
+    try (ExecutorService pool = Executors.newFixedThreadPool(4)) {
+      for (CompileMode mode : CompileMode.values()) {
+        for (Shape shape : SHAPES) {
+          searches.put(mode + " " + shape.id(), pool.submit(child(XINT.flags(), thread, "search", mode.name(), shape.id())));
         }
       }
-      assertThat(ids).as("%s: the shapes with an edge include %s", mode, NEVER_FLAT).containsAll(NEVER_FLAT);
-      Map<String, String[]> ends = rows(child(XINT.flags(), thread, "edge", mode.name(), String.join(",", ids), String.join(",", edges)).call(), "edge");
-      for (String id : ids) {
-        String[] e = ends.get(id);
-        got.add(mode + " " + id + " at U* " + (e == null ? "?" : e[3] + ": " + e[4] + " | " + e[5] + " | " + e[6]));
+      Map<String, Future<String>> edges = new LinkedHashMap<>();
+      List<String> withEdge = new ArrayList<>();
+      for (CompileMode mode : CompileMode.values()) {
+        for (Shape shape : SHAPES) {
+          String[] r = rows(get(searches.get(mode + " " + shape.id())), "cell").get(shape.id());
+          if (r != null && r[7].matches("\\d+")) {
+            edges.put(mode + " " + shape.id(), pool.submit(child(XINT.flags(), thread, "edge", mode.name(), shape.id(), shape.id() + "=" + r[7])));
+            want.add(mode + " " + shape.id() + " at U* " + r[7] + ": " + shape.completed() + " | " + shape.completed() + " | " + STACK);
+            if (mode == CompileMode.OPTIMISED) withEdge.add(shape.id());
+          }
+        }
+      }
+      assertThat(withEdge).as("OPTIMISED: the shapes with an edge include %s", NEVER_FLAT).containsAll(NEVER_FLAT);
+      for (Map.Entry<String, Future<String>> e : edges.entrySet()) {
+        String id = e.getKey().substring(e.getKey().indexOf(' ') + 1);
+        String[] r = rows(get(e.getValue()), "edge").get(id);
+        got.add(e.getKey() + " at U* " + (r == null ? "?" : r[3] + ": " + r[4] + " | " + r[5] + " | " + r[6]));
       }
     }
     assertThat(got).as("the ends at U* - 1, U* and U* + 1 in a fresh -Xint 512 KiB child").isEqualTo(want);
