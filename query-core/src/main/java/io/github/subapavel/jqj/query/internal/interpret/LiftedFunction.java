@@ -24,14 +24,6 @@ public final class LiftedFunction {
     this.body = body;
   }
 
-  int slots() {
-    return slots;
-  }
-
-  int cells() {
-    return cells;
-  }
-
   Op body() {
     return body;
   }
