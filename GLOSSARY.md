@@ -535,9 +535,9 @@ to. They stay live under the caller's rise, so every call into the body is charg
 _Avoid_: hold (a Hold keeps a value).
 
 **Pending jump**:
-What a tail call leaves in the run state (callee, input, the input's path in a path variant, value
-arguments and closure arguments)
-for its function's entry loop to take and re-enter with (ADR-0047).
+What a tail call leaves in the run state: the jump op itself, the jumping activation's frame, the
+input, and the input's path in a path variant. Only the entry loop running in that same frame takes
+it; it builds the callee's frame from it and re-enters (ADR-0047 #118, "Where a jump is taken").
 
 **Value form**:
 Running a node as `eval`, which returns its one result or none; only the optimised compile uses it,
