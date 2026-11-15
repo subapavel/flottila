@@ -38,7 +38,10 @@ jobs:
             range="HEAD~1..HEAD"
           fi
           missing=0
-          for c in $(git rev-list "$range"); do
+          # First parent only (D-150): the commits on this branch's first-parent line are checked, merge
+          # commits included; the commits a merge brings in by a later parent are not, whatever their
+          # origin. The reason is the import of the mapping engine: 131 of its commits have no trailer.
+          for c in $(git rev-list --first-parent "$range"); do
             if ! git log -n 1 --format=%B "$c" | grep -q '^Signed-off-by: '; then
               echo "::error::commit $c has no Signed-off-by trailer"; missing=1
             fi

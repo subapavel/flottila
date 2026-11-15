@@ -1,0 +1,131 @@
+1818a439 2026-11-14 Merge pull request #227 from subapavel/gate/m1
+53415fbf 2026-11-14 Merge pull request #225 from subapavel/spec/212-observations
+211c3ae7 2026-11-13 Merge pull request #210 from subapavel/spec/205-gate-fixes
+7b4fadd4 2026-11-11 Merge pull request #197 from subapavel/spec/181-speed
+a5ceafd3 2026-11-11 Merge pull request #180 from subapavel/claude/brave-noether-lnfs3a
+2ed698f5 2026-11-10 Merge pull request #179 from subapavel/claude/brave-noether-lnfs3a
+afdaa2d1 2026-11-10 Merge pull request #176 from subapavel/claude/brave-noether-lnfs3a
+7865faa3 2026-11-10 Merge pull request #175 from subapavel/spec/152-mapping-studio
+36af7e16 2026-11-10 agent: Codex prompt runs message mappings only; jsonNull/001 is NOT_RUN
+2b58a230 2026-11-10 agent: Codex prompt for running every open observation on PO 7.5 and CPI
+de8314e3 2026-11-07 Merge pull request #151 from subapavel/spec/145-prototype-detail
+022f5f27 2026-11-06 Merge pull request #144 from subapavel/spec/135-editor-look-pr
+4ad242e1 2026-11-06 Merge pull request #132 from subapavel/fix/131-windows-case
+e706a0c6 2026-11-06 agent: prompt for acting on findings F-23 and F-24 (#31)
+073d0f98 2026-11-06 docs: draft findings F-23 (createIf boolean cast) and F-24 (missing context reuses the last value) (#31)
+a9d91bdd 2026-11-06 corpus: CPI observations for the spec-2 part of obs-target-creation, meta.json notes (#31)
+ad8bdfa4 2026-11-06 corpus: CPI observations for spec2-create-if-row of obs-target-creation (#31)
+86a35152 2026-11-06 Merge pull request #130 from subapavel/spec/104-mapping-editor
+31d5a4ee 2026-11-06 corpus: PO 7.5 observations for the remaining spec-2 mappings of obs-target-creation (#31)
+020419d7 2026-11-06 corpus: PO 7.5 observations for obs-target-creation spec-2 part, mapping spec2-create-if-row (#31)
+54be2439 2026-11-06 Merge pull request #120 from subapavel/docs/spec-5-grilling
+8052dc10 2026-11-06 Merge pull request #119 from subapavel/spec/89-structures
+a1572bbf 2026-11-05 Merge pull request #101 from subapavel/claude/trusting-tesla-8r53px
+34c3cfbb 2026-11-05 Merge pull request #88 from subapavel/spec/70-standard-functions
+15fec613 2026-11-04 Merge pull request #85 from subapavel/spec/70-standard-functions
+7dcc5401 2026-11-04 Merge pull request #84 from subapavel/spec/70-standard-functions
+f791ffff 2026-11-04 chore: merge spec/70-standard-functions 2833b7a (#80) into t/82-decimal-parser (#82)
+3fa7ebd1 2026-11-04 Merge commit '57a7dd1' into t/80-date
+644792ec 2026-11-04 Merge commit '3d4d441' into t/80-date
+bc705faa 2026-11-04 Merge remote-tracking branch 'origin/spec/70-standard-functions' into t/78-if-without-else
+506d5189 2026-11-03 chore: merge spec/70-standard-functions into t/73-arithmetic-rounding (#73)
+a6e121c3 2026-11-03 Merge remote-tracking branch 'origin/spec/70-standard-functions' into t/72-arithmetic-basic
+9fd6fb43 2026-11-03 Merge pull request #81 from subapavel/claude/nifty-bohr-dm6yv7
+24381ec6 2026-11-03 Merge pull request #68 from subapavel/claude/nifty-bohr-dm6yv7
+86bf5ed1 2026-11-03 Merge spec 2: queues, contexts and context functions (#66)
+9253354e 2026-11-03 Merge branch 'spec/48-queues-node-functions' of https://github.com/subapavel/flottila-mapping into t/48-review
+6c1d2c05 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/60-editor-e2e
+9eb5fa19 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/65-unmapped-mandatory-leaf
+03507fd1 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/53-trace
+08020e3f 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/53-trace
+68cadb2a 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/63-unmapped-parents
+0bdb2fbe 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/53-trace
+84636dc7 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/53-trace
+32f44924 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/63-unmapped-parents
+ad478dab 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/63-unmapped-parents
+5465c4e8 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/64-one-empty-context
+482fd727 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/63-unmapped-parents
+951f9a4e 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/63-unmapped-parents
+7a783194 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/61-observation-cases
+743aa741 2026-11-03 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/61-observation-cases
+9628f639 2026-11-02 docs: draft finding F-14, a source queue has at least one context (#31)
+a072b18f 2026-11-02 corpus: complete meta.json for obs-target-creation (#31)
+fa6c4341 2026-11-02 corpus: CPI observations for obs-target-creation create-d (#31)
+11c2335e 2026-11-02 corpus: CPI observations for obs-target-creation create-c (#31)
+7d2fe7a9 2026-11-02 corpus: CPI observations for obs-target-creation create-a and create-b (#31)
+8c29ac71 2026-11-02 corpus: PO 7.5 observations for obs-target-creation create-d (#31)
+0dea55a3 2026-11-02 corpus: PO 7.5 observations for obs-target-creation create-c (#31)
+ce7aa1b5 2026-11-02 corpus: PO 7.5 observations for obs-target-creation create-a and create-b (#31)
+ebdfde6e 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/57-exists-map-with-default
+809bf5db 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into worktree-agent-ad7af61da0edbeee8
+375bfe64 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/51-suppress-lift
+49be5d98 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/56-collapse-contexts
+7e370229 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/55-split-by-value
+371024dd 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/50-remove-contexts
+998de927 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/62-nested-xsd
+4ea90a43 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/50-remove-contexts
+2751210c 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/54-service
+4a575baf 2026-11-02 Merge remote-tracking branch 'origin/spec/48-queues-node-functions' into t/49-housekeeping
+1e659018 2026-11-02 Merge remote-tracking branch 'origin/spec/21-walking-skeleton' into t/43-dev-proxy-port
+fe47d0a0 2026-11-02 Merge remote-tracking branch 'origin/spec/21-walking-skeleton' into t/42-portable-licence-filters
+77df0064 2026-11-02 Merge remote-tracking branch 'origin/spec/21-walking-skeleton' into wt-28-fix
+741a58f6 2026-11-02 merge: #26 compile and run a field link through engine/api
+5d8a45fd 2026-11-02 docs: glossary — slot index (#26 review)
+5eb91b19 2026-11-02 docs: ADR-0011 — the unreachable-box warning arrives in spec 6 (#26 review)
+0ec07a66 2026-11-02 test(#26): review fixes — both structures read and sorted, structure field, DOCTYPE fetch, prefix rebinding, wrong root, interruption on the hot path, kind order
+3535d8db 2026-11-02 Merge remote-tracking branch 'origin/spec/21-walking-skeleton' into t/26-compile-run
+4a3b8388 2026-11-02 docs: #26 review rulings — stage 3 codes (ADR-0011), ns0 without a root namespace (ADR-0022), F-10 catalogue test under PIT
+191858e9 2026-11-02 merge: spec/21-walking-skeleton (4d42c75, #40 ui licence check) into t/26-compile-run
+4d42c753 2026-11-02 docs: handoff — #40 merged
+ff0f7a76 2026-11-02 merge: #40 ui licence check with per-package exceptions (#39)
+bb58ad91 2026-11-02 Merge remote-tracking branch 'origin/spec/21-walking-skeleton' into t/40-ui-licence-check
+5e333692 2026-11-02 test(ui): committed red for the licence check; drop unmatchable EDL 1.0 id (#40)
+3d7ae562 2026-11-02 ci(ui): licence check over package-lock.json with per-package exceptions (#40)
+1e6326d3 2026-11-02 docs: handoff — #39 ruled, #40 implementer running
+c4ae5105 2026-11-02 docs: owner ruling #39 — per-package npm licence exceptions and a ui licence check (ADR-0017, CLAUDE.md)
+624c94a0 2026-11-02 docs: handoff — #26 red approved, implementer running
+518ebf9c 2026-10-31 test(#26): red for compile and run of a field link through engine/api
+1378f34f 2026-10-31 docs: #26 design approved — ADR-0022 output prefixes, F-9 catalogue check split, ADR-0006 refinement, glossary
+c3b5a3b0 2026-10-31 docs: handoff — #24 merged, #26 started
+6980416b 2026-10-31 docs: ADR-0011 — parameter values resolve their oneOf like boxes (#24 review)
+4d85aabd 2026-10-31 test: #24 review fixes, red — later map members, fail closed, deep chain, context on the parent, fixtures out of corpus
+9ec15296 2026-10-31 docs: #24 review — empty table kept as {}, box-cycle once per SCC
+5102cb79 2026-10-31 test: #24 strict JSON reader guards — depth, control character, escapes, literals, trailing commas, leading zero, lone surrogate
+1f8ced69 2026-10-31 docs: F-8 — json-sKema leniencies, strict reader and per-member validation (#24)
+37dbc8dd 2026-10-31 test: #24 red — mapping-model format formatVersion 1 (writer, round trip, stages 1-2, drift, facade) and canonical fixtures
+78117353 2026-10-31 docs: handoff — #25 merged
+d9a1e8c0 2026-10-31 docs: F-7 — XmlSchema keeps no positions, SAX pass first; requires-automatic lint for XmlSchema (#25)
+2cd714a1 2026-10-31 Merge remote-tracking branch 'origin/spec/21-walking-skeleton' into t/25-flat-xsd
+4446a989 2026-10-31 docs: #24 design approved — F-6, ADR-0010/0011 refinements (stage 1–2 codes, table closure, udfs.inputs optional, sorted bundle)
+46668889 2026-10-31 docs: handoff — #23 merged, observation requests #31–#38 open
+f9db4f21 2026-10-31 docs: findings F-4 (CI on t/**) and F-5 (PIT command, step-2 time) from #22; handoff
+16ca7c2d 2026-10-31 docs: handoff — /run-spec #21 running
+40178763 2026-10-31 docs: handoff — spec 1 sliced into tickets #22–#30
+0d0f093f 2026-10-31 docs: handoff — spec 1 published as #21
+9ce88110 2026-10-31 docs: spec 1 grilling — glossary Seam, po-owner-local moves to spec 5 in GATE
+dd8b9ffe 2026-10-31 docs: handoff — cloud setup script v3 is in place (observed 2026-10-31)
+208b9b53 2026-10-31 docs: finalise the milestone-1 gate and split it into specs (#19) — GATE.md final, ADR-0021 refinement, glossary, handoff
+78fbca9b 2026-10-31 docs: decide interpreter first, bytecode after M1 and the speed targets (#17) — ADR-0021, ADR-0016/17/18/19 refinements, workflow §6, gate check 7, glossary, standards, handoff
+85e947f0 2026-10-30 docs: decide UDF authoring, compilation and isolation (#16) — ADR-0020, ADR-0010/15/16/18/19 refinements, glossary, gate, handoff
+9adf1ed1 2026-10-30 docs: decide oracles and the ratchet (#14) — ADR-0018, ADR-0019, workflow §4/§6, corpus and ratchet READMEs, glossary, gate, handoff
+3083dbb7 2026-10-30 docs: handoff — #14 is on the frontier after #13
+e0d4a125 2026-10-30 docs: decide the repo layout and build (#13) — ADR-0016, ADR-0017, F-3, workflow §6, gate, handoff
+c2d29d7c 2026-10-30 docs: decide the backend service (#12) — ADR-0014, ADR-0015, glossary, gate, handoff
+d3750a38 2026-10-30 docs: decide the UI architecture (#11) — ADR-0013, glossary, gate, handoff
+5a05883e 2026-10-30 docs: decide the mapping-model format (#6) — ADR-0010, ADR-0011, F-1, glossary, gate, handoff
+2f992e86 2026-10-30 docs: decide the structure model (#8) — ADR-0007, ADR-0008, ADR-0009, glossary, gate, handoff
+833341a8 2026-10-30 docs: decide IR shape and queue lowering (#5) — ADR-0006, glossary, handoff
+efe66d65 2026-10-30 docs: decide XDM contract and queue block (#4) — ADR-0004, ADR-0005, glossary, handoff
+092c0d3e 2026-10-30 docs: decide milestone-1 functions (#3) — ADR-0002, ADR-0003, glossary, gate, handoff
+284aaeb2 2026-10-30 docs: link founding architecture; glossary terms from grilling #3 (WIP)
+a324751d 2026-10-30 docs: founding architecture from the owner's design conversation
+81eda305 2026-10-30 docs(agent): handoff after closing research #2 and #15
+f557775d 2026-10-30 docs(agent): record Context7 and SAP host check of the Phase 0 continuation
+e2c0a4fa 2026-10-30 docs(agent): record Context7 MCP verified in a repo-rooted cloud session
+90ffa609 2026-10-30 chore: pre-approve the Context7 MCP server in the cloud setup script
+8eff42bb 2026-10-30 docs(agent): handoff after charting the Phase 0 map
+37781521 2026-10-30 docs(agent): record Context7 and SAP host re-check
+fe59d686 2026-10-30 chore: pass CONTEXT7_API_KEY to the Context7 MCP server
+eb50d89a 2026-10-30 docs(agent): record cloud environment check
+002ddc2e 2026-10-30 chore: cloud environment setup and REST forms for gh
+ff7d7ab7 2026-10-30 chore: repository skeleton and AI-first workflow

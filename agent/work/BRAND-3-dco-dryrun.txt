@@ -1,0 +1,26 @@
+BRAND-3 step 1 - dry run of the import merge and of the DCO listing (architect, 2026-11-15)
+
+Where: a scratch clone of this checkout at e1d3dfd (nothing of it is pushed or kept).
+What:  git fetch /home/user/subapavel/flottila-mapping rail8-import   (cf970caf, 1155 commits, every file under mapping/)
+       git merge --allow-unrelated-histories -m ... FETCH_HEAD        (ort; no conflict; parents e1d3dfd cf970caf)
+
+The DCO job's loop, run by hand on <before>=e1d3dfd, counting commits whose message has no line "Signed-off-by: ":
+  git rev-list <before>..HEAD                 1156 commits, 131 without the trailer   (today's listing: the job would fail)
+  git rev-list --first-parent <before>..HEAD     1 commit (the merge), 0 without       (the listing of this change)
+The negative side of the range is not limited by --first-parent (git has --exclude-first-parent-only for that), so
+<before> still excludes everything reachable from it.
+
+The name guard on the merged tree:
+  python3 ci/name_guard.py                                    exit 1, "name guard: 3491 finding(s)"
+  with one more allow-list line  mapping/** | * | <reason>    exit 0, "name guard: clean, 5821 tracked files scanned"
+  git ls-files | wc -l   5821;  git ls-files mapping | wc -l   4276
+python3 ci/ledger_check.py: the same 9 shape problems as before the merge (FIX-197).
+Root after the merge: AGENTS.md CLAUDE.md HANDOVER.md LICENSE NOTICE README.md agent bench bin ci deploy docker-compose.yml docs
+examples issues mapping platform pom.xml
+
+The commits without the trailer, listed (agent/work/BRAND-3-unsigned.txt: hash, commit date, subject), by
+  git -C <clone> rev-list rail8-import | while read c; do git -C <clone> log -n1 --format=%B "$c" | grep -q '^Signed-off-by: ' \
+    || git -C <clone> log -n1 --format='%h %cs %s' "$c"; done
+131 lines of 1155 commits. 101 are dated up to 2026-11-03, the day of the mapping's #67 (its trailer check), 2 of them
+"Merge pull request" commits made by GitHub; 30 are dated after it, 18 of them such merge commits. The move commit cf970caf
+carries the trailer.

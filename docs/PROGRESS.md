@@ -1,4 +1,20 @@
 
+## 2026-11-15 — BRAND-3 step 1 the DCO job lists first-parent; D-151 — in progress, review PASS (r3)
+
+- Context compacted before this entry; state re-verified with `git status` and `git log -3` (BRAND-4, e1d3dfd, then pushed).
+- Step 0, measured earlier in the mapping's clone (`agent/work/BRAND-3-base-counts.txt`): 17 822 tests, none failing or skipped;
+  its scripts and its ui green.
+- Change: `.github/workflows/ci.yml`, job `dco`: `git rev-list --first-parent "$range"`. D-151 (the mapping's names, pins, history,
+  findings numbering, one process). D-150 amended. `agent/packets/BRAND-3.md`, `agent/packets/FIX-217.md`.
+- VERIFIED_PASS, observed by the architect in a scratch clone (`agent/work/BRAND-3-dco-dryrun.txt`): the import merge has no conflict;
+  the old listing gives 1156 commits, 131 without the trailer; first-parent gives one, the merge commit. The name guard on the merged
+  tree: 3491 findings, clean with one `mapping/**` line - the merge commit adds that line.
+- NOT_RUN: the workflow job itself (it runs on the push).
+- Accepted limit: what a merge brings in by a later parent is not checked, whatever its origin (D-150 amended; the packet).
+- Review r1 FAIL (the comment and D-150 claimed less than the loop skips; D-151 settled a namespace D-149 marks draft); r2 FAIL (D-150's
+  licence sentence against the packet's new ruling: the root CLAUDE.md is the owner's to change); both fixed; r3 PASS.
+- Next: the import merge on `main` (packet step 1.2-1.3), then step 2 (implementer).
+
 ## 2026-11-15 — BRAND-4 the old name does not come back: a CI guard — done, review PASS (r2)
 
 - Test first: `ci/test_name_guard.py` (19 methods; red observed with no guard, `agent/work/BRAND-4-red.log`) — tracked files only, any
