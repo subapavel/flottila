@@ -49,8 +49,15 @@ final class CompileCorpus {
    *
    * @param def the differential case's def; for a jqtest case, the 12 hex digits of its id, the hash of its lines
    * @param run the case's run through a hook on the engine's builder
+   * @param limited whether the case is a differential one with {@code limit recursion-depth} (ADR-0047 #118), whose
+   *     runs other than the optimised one pass only as a termination over that budget
    */
-  record Case(String id, String def, Function<UnaryOperator<JqEngine.Builder>, Run> run) {}
+  record Case(String id, String def, Function<UnaryOperator<JqEngine.Builder>, Run> run, boolean limited) {
+    /** A case without {@code limit recursion-depth}. */
+    Case(String id, String def, Function<UnaryOperator<JqEngine.Builder>, Run> run) {
+      this(id, def, run, false);
+    }
+  }
 
   private CompileCorpus() {}
 
@@ -63,7 +70,7 @@ final class CompileCorpus {
     }
     for (DiffCorpus.Entry e : Corpus.cases()) {
       DiffCase c = e.c();
-      all.add(new Case(c.id(), c.def(), hook -> RunnerThread.call(() -> CompileModes.cli(c, scratch, hook))));
+      all.add(new Case(c.id(), c.def(), hook -> RunnerThread.call(() -> CompileModes.cli(c, scratch, hook)), c.recursionDepth() != null));
     }
     all.sort(Comparator.comparing(Case::id));
     return all;
@@ -83,7 +90,8 @@ final class CompileCorpus {
   }
 
   /**
-   * The case's verdict under each of {@code modes}, in their order: its run of that mode against one optimised run.
+   * The case's verdict under each of {@code modes}, in their order: its run of that mode against one optimised run, a
+   * limited case's as {@link CompileModeRunner#judge(String, Run, String, Run, boolean)} judges it.
    *
    * @throws IllegalArgumentException before any run, when a mode is none of {@link #MODES}
    */
@@ -92,7 +100,7 @@ final class CompileCorpus {
     for (String mode : modes) hooks.put(mode, hook(mode));
     Run optimised = c.run().apply(CompileModes.hook(CompileMode.OPTIMISED));
     Map<String, Verdict> verdicts = new LinkedHashMap<>();
-    hooks.forEach((mode, hook) -> verdicts.put(mode, CompileModeRunner.judge(c.id(), optimised, mode, c.run().apply(hook))));
+    hooks.forEach((mode, hook) -> verdicts.put(mode, CompileModeRunner.judge(c.id(), optimised, mode, c.run().apply(hook), c.limited())));
     return verdicts;
   }
 

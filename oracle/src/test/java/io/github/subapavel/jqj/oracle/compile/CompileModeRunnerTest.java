@@ -167,6 +167,31 @@ class CompileModeRunnerTest {
     assertThat(optimised.detail()).as("detail of an optimised termination against a trampoline run").isEqualTo("left out: the optimised run ended with BUDGET STEPS");
   }
 
+  /**
+   * ADR-0047 #118: under {@code limit recursion-depth} the other run, which stores no tail kind, passes only as a
+   * termination over the recursion-depth budget, while the optimised run ended; any other end of either fails.
+   * Witness: without the key the same depth termination is left out.
+   */
+  @Test
+  void aLimitedCasePassesOnlyWhenTheOtherRunEndsAtTheDepthBudget() {
+    Run depth = new Run.Terminated("BUDGET RECURSION_DEPTH");
+    Verdict pass = CompileModeRunner.judge("tail/x", ended(0, "1\n", ""), "conservative", depth, true);
+    Verdict ended = CompileModeRunner.judge("tail/x", ended(0, "1\n", ""), "trampoline", ended(0, "1\n", ""), true);
+    Verdict steps = CompileModeRunner.judge("tail/x", ended(0, "1\n", ""), "conservative", new Run.Terminated("BUDGET STEPS"), true);
+    Verdict optimised = CompileModeRunner.judge("tail/x", depth, "conservative", depth, true);
+    Verdict stub = CompileModeRunner.judge("tail/x", ended(0, "", ""), "conservative", ended(3, "", "jqj stub: f\n"), true);
+
+    assertThat(pass.kind()).as("verdict of a depth end under the key").isEqualTo(Verdict.Kind.PASS);
+    assertThat(pass.detail()).as("detail of that pass").isEmpty();
+    assertThat(ended.detail()).as("detail of a run that ended under the key").isEqualTo("no depth end: under limit recursion-depth the trampoline run must end with BUDGET RECURSION_DEPTH; it ended with rc 0");
+    assertThat(steps.detail()).as("detail of another termination under the key").isEqualTo("no depth end: under limit recursion-depth the conservative run must end with BUDGET RECURSION_DEPTH; it ended with BUDGET STEPS");
+    assertThat(optimised.detail()).as("detail of an optimised termination under the key").isEqualTo("left out: the optimised run ended with BUDGET RECURSION_DEPTH");
+    assertThat(stub.detail()).as("a Stub comes first under the key too").startsWith("stub: ");
+    assertThat(CompileModeRunner.judge("tail/x", ended(0, "1\n", ""), "conservative", depth, false).detail())
+        .as("witness: the same end without the key")
+        .isEqualTo("left out: the conservative run ended with BUDGET RECURSION_DEPTH");
+  }
+
   /** The readable comparison of a trampoline Disagreement names the trampoline run, aligned as the optimised one. */
   @Test
   void aTrampolineDisagreementNamesTheTrampolineRun() {
