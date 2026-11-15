@@ -3,7 +3,9 @@
 # the gate scripts and ratchet.java, a stub mvnw that logs its arguments, stub check scripts, and a stub java for
 # the JMH jar. STUB_FAIL=<word>:<rc> makes the stub mvnw or check script whose arguments contain <word> exit <rc>.
 # STUB_COMPILE_REPORT=<printf rows> makes the stub mvnw, when called with the compile-oracle profile, write them as
-# oracle/target/oracle-reports/compile-conservative.tsv.
+# oracle/target/oracle-reports/compile-conservative.tsv. The stub mvnw of the ticket gate's step 1 writes
+# STUB_COLUMN (default 26) check rows to jq-core/target/calibration-column.tsv, none for STUB_COLUMN=none; with the
+# calibration-matrix profile it writes STUB_MATRIX (default 234) cell rows to jq-core/target/calibration.tsv.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d)
@@ -16,7 +18,7 @@ hasnt() { if grep -q -- "$2" "$3"; then echo "FAIL $1: '$2' found in $3"; fails=
 repo=$tmp/repo
 mkdir -p "$repo/scripts" "$repo/quality" "$repo/ratchet" "$repo/stubbin"
 g() { git -C "$repo" "$@"; }
-cp "$here/../gate-ticket.sh" "$here/../gate-spec.sh" "$here/../ratchet.java" "$here/../census.java" "$repo/scripts/" 2>/dev/null
+cp "$here/../gate-ticket.sh" "$here/../gate-spec.sh" "$here/../calibration-cells.sh" "$here/../ratchet.java" "$here/../census.java" "$repo/scripts/" 2>/dev/null
 printf 'module\tclass\tlines\tbranches\tmutation\nquery-core\tC\t90\t80\t80\njq-core\tC\t90\t80\t80\njq-cli\t-\t80\t-\t-\n' > "$repo/quality/floors.tsv"
 # a recording in the base commit that no later commit changes
 mkdir -p "$repo/oracle/src/test/resources/json"
@@ -31,6 +33,12 @@ esac
 case "$(basename "$0") $*" in
   "mvnw "*compile-oracle*) if [ -n "${STUB_COMPILE_REPORT:-}" ]; then
       mkdir -p oracle/target/oracle-reports; printf "$STUB_COMPILE_REPORT" > oracle/target/oracle-reports/compile-conservative.tsv; fi ;;
+esac
+case "$(basename "$0") $*" in
+  "mvnw -B -Pbench"*" verify") if [ "${STUB_COLUMN:-26}" != none ]; then mkdir -p jq-core/target
+      { echo "# check"; for i in $(seq "${STUB_COLUMN:-26}"); do printf "check\txint\t$i\n"; done; printf "time-ms\t4200\n"; } > jq-core/target/calibration-column.tsv; fi ;;
+  "mvnw "*calibration-matrix*) mkdir -p jq-core/target
+      { echo "# cell"; for i in $(seq "${STUB_MATRIX:-234}"); do printf "cell\txint\t$i\n"; done; printf "time-ms\t9000000\n"; } > jq-core/target/calibration.tsv ;;
 esac
 exit 0'
 printf '%s\n' "$stub" > "$repo/mvnw"
@@ -87,11 +95,30 @@ order=$(grep -o 'mvnw -B -Pbench,compile-oracle verify\|test org.pitest\|check-l
 check "steps in ADR order" "$order" "mvnw -B -Pbench,compile-oracle verify check-lf check-trailers check-core "
 # #84: every step that ran prints its result and has its row, and "passed" is the last line
 steps() { cut -f1,3 "$repo/.logs/25-steps.tsv" | tr '\t\n' ': '; }
-check "green: every step recorded with its exit code (#84)" "$(steps)" "verify:0 lf:0 trailers:0 word:0 ratchet:0 "
+check "green: every step recorded with its exit code (#84)" "$(steps)" "verify:0 column:0 lf:0 trailers:0 word:0 ratchet:0 "
 results=$(grep -o '^-- [a-z]*: rc [0-9]*, [0-9]* ms$' "$tmp/out" | sed 's/, [0-9]* ms$//' | tr '\n' ' ')
-check "green: a result line per step, name and rc (#84)" "$results" "-- verify: rc 0 -- lf: rc 0 -- trailers: rc 0 -- word: rc 0 -- ratchet: rc 0 "
+check "green: a result line per step, name and rc (#84)" "$results" "-- verify: rc 0 -- column: rc 0 -- lf: rc 0 -- trailers: rc 0 -- word: rc 0 -- ratchet: rc 0 "
 check "green: passed is the last line (#84)" "$(tail -n 1 "$tmp/out")" "gate-ticket: 25 passed"
 has "no require file is visible in the log (F-38, #84)" "^== require: none (ORACLE_REQUIRE unset)$" "$tmp/out"
+# ADR-0046 #113, F-91: step 1 runs the -Xint 512 KiB calibration column; the gate counts its cells and shows its time
+has "the column's cells are counted and its time shown (F-91)" "^calibration: 26 of 26 check rows in jq-core/target/calibration-column.tsv, 4200 ms$" "$tmp/out"
+export STUB_COLUMN=none
+check "ticket: step 1 wrote no column, a fork that died (F-91)" "$(ticket 25 query-core base)" 1
+has "no column: the file is named" "^calibration: no jq-core/target/calibration-column.tsv: the cells did not run (F-91)$" "$tmp/out"
+check "no column: the last line names the step" "$(tail -n 1 "$tmp/out")" \
+  "gate-ticket: 25 step column failed with exit code 1 (log .logs/25-column.log)"
+mkdir -p "$repo/jq-core/target"
+printf 'check\txint\n%.0s' $(seq 26) > "$repo/jq-core/target/calibration-column.tsv"
+check "ticket: an earlier run's column does not count (F-91)" "$(ticket 25 query-core base)" 1
+cells() { (cd "$repo" && scripts/calibration-cells.sh "$@" > "$tmp/cells" 2>&1; echo $?); }
+check "calibration-cells: usage" "$(cells a b)" 2
+printf 'check\txint\n' > "$tmp/notime.tsv"
+check "calibration-cells: a tsv without its time-ms row, all cells" "$(cells "$tmp/notime.tsv" check 1)" 0
+check "calibration-cells: no time-ms row is said" "$(cat "$tmp/cells")" "calibration: 1 of 1 check rows in $tmp/notime.tsv, no time-ms row"
+export STUB_COLUMN=25
+check "ticket: a column short of a cell fails (F-91)" "$(ticket 25 query-core base)" 1
+has "a short column: the count is shown" "^calibration: 25 of 26 check rows in jq-core/target/calibration-column.tsv, 4200 ms$" "$tmp/out"
+unset STUB_COLUMN
 
 printf 'jq.test#a\n' > "$tmp/req.txt"
 : > "$STUB_CALLS"; rm -rf "$repo/.logs"
@@ -132,9 +159,9 @@ export STUB_FAIL=check-trailers:4
 check "ticket: step 3 trailer check fails" "$(ticket 25 query-core base)" 4
 hasnt "ratchet not reached" "ratchet.java check" "$tmp/out"
 hasnt "a later step fails: no passed line (#84)" "passed" "$tmp/out"
-check "a later step fails: every step that ran has its row (#84)" "$(steps)" "verify:0 lf:0 trailers:4 "
+check "a later step fails: every step that ran has its row (#84)" "$(steps)" "verify:0 column:0 lf:0 trailers:4 "
 results=$(grep -o '^-- [a-z]*: rc [0-9]*' "$tmp/out" | tr '\n' ' ')
-check "a later step fails: a result line per step that ran (#84)" "$results" "-- verify: rc 0 -- lf: rc 0 -- trailers: rc 4 "
+check "a later step fails: a result line per step that ran (#84)" "$results" "-- verify: rc 0 -- column: rc 0 -- lf: rc 0 -- trailers: rc 4 "
 check "a later step fails: the last line names the step and its exit code (#84)" "$(tail -n 1 "$tmp/out")" \
   "gate-ticket: 25 step trailers failed with exit code 4 (log .logs/25-trailers.log)"
 unset STUB_FAIL
@@ -151,7 +178,7 @@ printf 'jq.test#a\tinterp\n' > "$repo/ratchet/oracle/jqtest.txt"
 check "ticket: step 4 ratchet fails" "$(ticket 25 query-core base)" 1
 has "ratchet failure shown" "jq.test#a" "$tmp/out"
 hasnt "the ratchet fails: no passed line (#84)" "passed" "$tmp/out"
-check "the ratchet fails: its row with rc 1 (#84)" "$(steps)" "verify:0 lf:0 trailers:0 word:0 ratchet:1 "
+check "the ratchet fails: its row with rc 1 (#84)" "$(steps)" "verify:0 column:0 lf:0 trailers:0 word:0 ratchet:1 "
 check "the ratchet fails: the last line names it (#84)" "$(tail -n 1 "$tmp/out")" \
   "gate-ticket: 25 step ratchet failed with exit code 1 (log .logs/25-ratchet.log)"
 rm "$repo/ratchet/oracle/jqtest.txt" "$repo/ratchet/oracle-listed.tmp"
@@ -220,8 +247,11 @@ has "spec step 2 PIT on whole class-C modules and oracle's crossModule run (ADR-
 has "spec step 2 ends with the PIT goal" "mutationCoverage$" "$STUB_CALLS"
 hasnt "no excludedTestClasses property on the PIT call (#47)" "excludedTestClasses" "$STUB_CALLS"
 has "spec verifies every recording (ADR-0020)" "oracle-record.sh --verify oracle/src/test/resources/diff/x.rec oracle/src/test/resources/json/old.rec" "$STUB_CALLS"
-order=$(grep -o 'clean verify\|oracle-record\|mutationCoverage' "$STUB_CALLS" | tr '\n' ' ')
-check "spec record step after clean-verify, before PIT" "$order" "clean verify oracle-record mutationCoverage "
+order=$(grep -o 'clean verify\|oracle-record\|-Pcalibration-matrix\|mutationCoverage' "$STUB_CALLS" | tr '\n' ' ')
+check "spec record step after clean-verify, then the calibration matrix, before PIT" "$order" "clean verify oracle-record -Pcalibration-matrix mutationCoverage "
+# ADR-0046 #113: the calibration-matrix tag and profile, its cells counted and its time shown (F-91)
+has "spec runs the calibration-matrix tag and profile (ADR-0046 #113)" "^mvnw -B -pl jq-core -am test -Pcalibration-matrix -Dgroups=calibration-matrix -Djacoco.skip=true$" "$STUB_CALLS"
+has "spec counts the matrix cells and shows its time (F-91)" "^calibration: 234 of 234 cell rows in jq-core/target/calibration.tsv, 9000000 ms$" "$tmp/out"
 has "spec step 3 JMH" "java -jar bench/jmh/target/benchmarks.jar -prof gc -rf json" "$STUB_CALLS"
 # JMH matches the include regex anywhere in <class>.<method> (observed with -l, #102): only Gates reaches bench.tsv.
 gates='java -jar bench/jmh/target/benchmarks.jar -prof gc -rf json -rff .logs/spec22-jmh.json \.Gates\.'
@@ -229,7 +259,7 @@ check "spec step 3 JMH runs only the Gates class, no diagnostic (ADR-0024, ADR-0
 has "spec step 4 regen --all" "regen: ok" "$tmp/out"
 has "spec step 5 the census gate (#57)" "census gate: spec 1 (#22): 1 cases, 0 missing" "$tmp/out"
 order=$(grep -o '== [a-z-]*' "$tmp/out" | tr '\n' ' ')
-check "spec census step last" "$order" "== clean-verify == record == pit == jmh == regen == census "
+check "spec census step last" "$order" "== clean-verify == record == calibration == calibration-cells == pit == jmh == regen == census "
 has "spec logs" "regen" "$(ls "$repo/.logs" | tr '\n' ' ' > "$tmp/ls"; echo "$tmp/ls")"
 (export JMH_JAR=other/benchmarks.jar; spec 22 > /dev/null)
 check "spec: JMH_JAR names the jar, the Gates include stays" "$(grep '^java -jar' "$STUB_CALLS")" "${gates/bench\/jmh\/target/other}"
@@ -255,7 +285,15 @@ hasnt "spec stops after the record step" "pitest" "$STUB_CALLS"
 export STUB_FAIL=jmh:6
 check "spec: JMH fails, its exit code" "$(spec 22)" 6
 hasnt "regen not reached after JMH" "regen" "$tmp/out"
+export STUB_FAIL=calibration-matrix:8
+check "spec: the calibration matrix fails, its exit code" "$(spec 22)" 8
+hasnt "spec stops after the calibration matrix" "pitest" "$STUB_CALLS"
 unset STUB_FAIL
+export STUB_MATRIX=233
+check "spec: a matrix short of a cell fails (F-91)" "$(spec 22)" 1
+has "a short matrix: the failing step is named" "step calibration-cells failed" "$tmp/out"
+hasnt "a short matrix: PIT not reached" "pitest" "$STUB_CALLS"
+unset STUB_MATRIX
 
 rm -rf "$repo/oracle/target" "$repo/jq-cli/target"
 # regen --all refuses without reports: the gate fails with ratchet's code
