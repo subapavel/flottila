@@ -41,3 +41,10 @@ rc 0
 stdout [1]\n1\n
 stderr
 end
+
+case basics/env-type
+def aca68b728f6b
+rc 0
+stdout "object"\n
+stderr
+end

@@ -65,41 +65,42 @@ class LexicalErrorTest {
 
   @Test
   void noStubHidesALexicalError() {
-    // ADR-0032: the errors are thrown before resolution, so no Stub hides one; .. is a Stub until spec 2b, before the
-    // bad escape and after it. jq-ref 1.8.2, observed 2026-11-14: both texts -> rc 3, this one block, then "jq: 1
-    // compile error".
+    // ADR-0032: the errors are thrown before resolution, so no Stub hides one; $ENV is a Stub until spec 7, before the
+    // bad escape and after it (.. served here until #110 built it, ADR-0042 amendment for #110). jq-ref 1.8.2, observed
+    // 2026-11-15 with -n -f (.logs/110-jqref-observe.log): both texts -> rc 3, this one block, then "jq: 1 compile
+    // error".
     JqCompileException before =
         assertThatExceptionOfType(JqCompileException.class)
-            .as("compile of \"\\v\" | ..")
-            .isThrownBy(() -> ENGINE.compile("\"\\v\" | .."))
+            .as("compile of \"\\v\" | $ENV")
+            .isThrownBy(() -> ENGINE.compile("\"\\v\" | $ENV"))
             .actual();
     assertThat(before.blocks())
-        .as("blocks of \"\\v\" | ..")
+        .as("blocks of \"\\v\" | $ENV")
         .containsExactly(
             "jq: error: Invalid escape at line 1, column 4 (while parsing '\"\\v\"') at <top-level>, line 1, column 2:\n"
-                + "    \"\\v\" | ..\n"
+                + "    \"\\v\" | $ENV\n"
                 + "     ^^");
-    assertThat(before.line()).as("line of \"\\v\" | ..").isEqualTo(1);
-    assertThat(before.column()).as("column of \"\\v\" | ..").isEqualTo(2);
+    assertThat(before.line()).as("line of \"\\v\" | $ENV").isEqualTo(1);
+    assertThat(before.column()).as("column of \"\\v\" | $ENV").isEqualTo(2);
 
     JqCompileException after =
         assertThatExceptionOfType(JqCompileException.class)
-            .as("compile of .. | \"\\v\"")
-            .isThrownBy(() -> ENGINE.compile(".. | \"\\v\""))
+            .as("compile of $ENV | \"\\v\"")
+            .isThrownBy(() -> ENGINE.compile("$ENV | \"\\v\""))
             .actual();
     assertThat(after.blocks())
-        .as("blocks of .. | \"\\v\"")
+        .as("blocks of $ENV | \"\\v\"")
         .containsExactly(
-            "jq: error: Invalid escape at line 1, column 4 (while parsing '\"\\v\"') at <top-level>, line 1, column 7:\n"
-                + "    .. | \"\\v\"\n"
-                + "          ^^");
-    assertThat(after.line()).as("line of .. | \"\\v\"").isEqualTo(1);
-    assertThat(after.column()).as("column of .. | \"\\v\"").isEqualTo(7);
+            "jq: error: Invalid escape at line 1, column 4 (while parsing '\"\\v\"') at <top-level>, line 1, column 9:\n"
+                + "    $ENV | \"\\v\"\n"
+                + "            ^^");
+    assertThat(after.line()).as("line of $ENV | \"\\v\"").isEqualTo(1);
+    assertThat(after.column()).as("column of $ENV | \"\\v\"").isEqualTo(9);
 
-    // Witness: with no lexical error .. ends in its Stub (jq-ref -c '..' on [1] -> [1] 1, CompileTest).
+    // Witness: with no lexical error $ENV ends in its Stub (jq-ref -nc '$ENV|type' -> "object", StubTest).
     assertThatExceptionOfType(JqCompileException.class)
-        .as("compile of ..")
-        .isThrownBy(() -> ENGINE.compile(".."))
+        .as("compile of $ENV")
+        .isThrownBy(() -> ENGINE.compile("$ENV"))
         .withMessageStartingWith(MARK);
   }
 }

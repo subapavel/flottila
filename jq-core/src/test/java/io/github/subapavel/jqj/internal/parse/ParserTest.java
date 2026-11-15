@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.internal.parse;
 
+import static io.github.subapavel.jqj.internal.parse.ParseAssertions.allCompile;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.ir;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.notGiven;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.parsesToAStub;
@@ -100,10 +101,10 @@ class ParserTest {
     // ".a |= .b" run), so each parses and resolves to the Stub. The inputs jq rejects (and, ",", .é, .a.é, #c) moved to
     // unbuiltTokensThatJqRejectsAreErrors when #62 built the syntax errors; #63 lowers .a?, .[0], .["a"], .[], ".a, .b"
     // and .a[0], whose IR ResolverTest.navigationAndCommaLowerToTheirIr asserts. None was dropped. #66 lowers and, and
-    // #67 $__loc__, so their entries end with | .., which still stubs.
-    for (String text : List.of("..", "$__loc__ | ..", ".a and .b | ..", ".a |= .b")) {
-      parsesToAStub(text);
-    }
+    // #67 $__loc__, so their entries ended with | .., which stubbed until #110 built it: those three now compile
+    // (ADR-0042 amendment for #110), and the update operator stays a Stub until spec 3.
+    allCompile(List.of("..", "$__loc__ | ..", ".a and .b | .."));
+    parsesToAStub(".a |= .b");
     // Witness: the built prefixes resolve to IR.
     assertThat(shape(ir(".a"))).as("witness: IR of .a").isEqualTo(".a[0,2)");
     assertThat(shape(ir(".a | .b"))).as("witness: IR of .a | .b").isEqualTo("(.a[0,2) | .b[5,7))");

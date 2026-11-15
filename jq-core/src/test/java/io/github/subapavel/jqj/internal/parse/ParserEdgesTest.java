@@ -1,5 +1,6 @@
 package io.github.subapavel.jqj.internal.parse;
 
+import static io.github.subapavel.jqj.internal.parse.ParseAssertions.allCompile;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.notGiven;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.parsesToAStub;
 import static io.github.subapavel.jqj.internal.parse.ParseAssertions.show;
@@ -76,19 +77,21 @@ class ParserEdgesTest {
         List.of(
             "import \"a\" as $x; .",
             "import \"a\" as x {a: 1}; .",
-            // .a."b"? left with its Stub: #63 lowers it (ResolverTest.navigationAndCommaLowerToTheirIr). #67 lowers
-            // as and its patterns, #68 if and elif, and #69 foreach, so those entries end with | .., which still
-            // stubs.
-            ". as $x | 1 | ..",
-            ". as {\"a\": $b} | 1 | ..",
+            // .a."b"? left with its Stub: #63 lowers it (ResolverTest.navigationAndCommaLowerToTheirIr).
             // Unwrapped at #71. #72 builds tostring/0, so the key is ascii_downcase/0, which reaches spec 4's explode
             // and so still stubs (jq-ref 1.8.2, observed 2026-11-13 with -nc: 1, rc 0).
-            ". as {(\"a\"|ascii_downcase): $e} | 1",
-            ". as {$a: [$b]} | 1 | ..",
-            "foreach . as $x (0; 1; 2) | ..",
-            "if 1 then 2 elif 3 then 4 else 5 end | ..")) {
+            ". as {(\"a\"|ascii_downcase): $e} | 1")) {
       parsesToAStub(text);
     }
+    // #67 lowers as and its patterns, #68 if and elif, and #69 foreach, so those entries ended with | .., which
+    // stubbed until #110 built it (ADR-0042 amendment for #110): each now compiles.
+    allCompile(
+        List.of(
+            ". as $x | 1 | ..",
+            ". as {\"a\": $b} | 1 | ..",
+            ". as {$a: [$b]} | 1 | ..",
+            "foreach . as $x (0; 1; 2) | ..",
+            "if 1 then 2 elif 3 then 4 else 5 end | .."));
     // A module directive or an import before definitions alone: no top-level filter either.
     notGiven("module {a: 1};");
     notGiven("import \"a\" as x; def f: 1;");
@@ -144,8 +147,9 @@ class ParserEdgesTest {
   @Test
   void aLeadingDotIsATermBeforeEachKeywordThatFollowsOne() {
     // One case per word of KEYWORDS_AFTER_A_TERM, each rc 0 on jq-ref; any other keyword is '.' error's (". if" above).
-    // #66 lowers and and or, #67 as, and #68 if, elif, else and try, so their entries end with | .., which still stubs.
-    for (String text :
+    // #66 lowers and and or, #67 as, and #68 if, elif, else and try, so their entries ended with | .., which stubbed
+    // until #110 built it (ADR-0042 amendment for #110): each now compiles.
+    allCompile(
         List.of(
             ". as $x | 1 | ..",
             "if . then 1 else 2 end | ..",
@@ -154,9 +158,7 @@ class ParserEdgesTest {
             "if 1 then 2 else . end | ..",
             ". and true | ..",
             ". or true | ..",
-            "try . catch 1 | ..")) {
-      parsesToAStub(text);
-    }
+            "try . catch 1 | .."));
   }
 
   @Test
