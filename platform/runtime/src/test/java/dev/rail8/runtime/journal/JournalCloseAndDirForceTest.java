@@ -157,24 +157,33 @@ class JournalCloseAndDirForceTest {
         HeldFiles files = new HeldFiles();
         seams.add(files);
         Settings s = in("dir-force").recordMax(4096);
-        Journal j = open(s, files, (node, segment) -> io.vertx.core.Future.succeededFuture());
+        // FIX-227: the open's pre-open of segment 2 (journal-open-2, its own force of segments/) is held until the holds below are armed
+        OwnDirForce.Preopen preopen = new OwnDirForce.Preopen(s, files, clock, timer, (node, segment) -> io.vertx.core.Future.succeededFuture());
+        Journal j = preopen.journal;
+        journals.add(j);
         Path segments = s.dir.resolve("segments");
 
         Journal.Spill witness = j.spill(BlobKey.body("sp-w", 0), KEY, new GeneratedInput(1, 10_000), 1L << 20, Hasher.sha256());
         JournalRef persisted = dev.rail8.runtime.node.OnVirtualThread.call(witness::persist);
         assertEquals(10_000, j.stream(persisted).readAllBytes().length, "witness: a persist with no failure in between is persisted and reads");
-        // the open's forces of segments/ (segment 1's creation, segment 2's pre-open) and the witness's are over: the holds
-        // below can only meet A's and B's
+        // the opener's two forces of segments/ (its creation, segment 1's) and the witness's are over: the holds below
+        // are armed with the thread of their own persist, so they can only meet A's and B's
         until(() -> files.forcesOn(segments).size() >= 3 && files.forcesOn(segments).stream().allMatch(HeldFiles.Op::returnedOk),
                 () -> "the forces of segments/ so far: " + files.forcesOn(segments));
 
         Journal.Spill a = j.spill(BlobKey.body("sp-a", 0), KEY, new GeneratedInput(2, 10_000), 1L << 20, Hasher.sha256());
         Journal.Spill b = j.spill(BlobKey.body("sp-b", 0), KEY, new GeneratedInput(3, 10_000), 1L << 20, Hasher.sha256());
-        HeldFiles.Hold aForce = files.holdForceOn(segments, files.now());
-        Outcome<JournalRef> pa = onVirtual(a::persist);
+        OwnDirForce.Persisting persistA = new OwnDirForce.Persisting(files, a, segments);
+        Outcome<JournalRef> pa = persistA.call;
+        HeldFiles.Hold aForce = persistA.force;
+        // the pre-open's force of segments/ enters after A's hold is armed, is let through (not A's thread) and returns
+        preopen.letGo();
+        persistA.go();
         aForce.awaitReached();
-        HeldFiles.Hold bForce = files.holdForceOn(segments, files.now());
-        Outcome<JournalRef> pb = onVirtual(b::persist);
+        OwnDirForce.Persisting persistB = new OwnDirForce.Persisting(files, b, segments);
+        Outcome<JournalRef> pb = persistB.call;
+        HeldFiles.Hold bForce = persistB.force;
+        persistB.go();
         bForce.awaitReached();
 
         aForce.fail(new IOException("EIO on the directory force (test)"));

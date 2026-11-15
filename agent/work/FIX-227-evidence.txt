@@ -1,0 +1,47 @@
+FIX-227 — evidence (2026-11-15)
+
+The fault (found by the survey of FIX-168; never seen failing): JournalCloseAndDirForceTest.
+aDirForceAfterAFailedOneFailsItsPersistToo waited until three forces of segments/ had returned — the opener's two and the
+witness persist's one, without the open's own pre-open (journal-open-2) — and then armed holds that take the next force of
+segments/ by any thread. A late pre-open's force could be held and failed as the persist's.
+
+The red (test-author; the order forced as FIX-168 forced it — the pre-open held at 2.seg's force and let go only after A's
+hold was armed — with the old any-thread holds; the variant and its println were reverted, they are not in the tree):
+EXECUTED_FAIL  agent/work/FIX-227-red.log    Tests run: 1578, Failures: 1 (:58196) — the case, "the call did not end within
+               PT10S" (:48521-48522): A's persist parked in its own directory force (Hold.stop ← forceSegments ←
+               Spill.durably, Journal.java :1494). The holds as printed (:48430): "held A force: #51 FORCE segments on
+               journal-open-2 | held B force: #60 FORCE segments on journal-test-caller" — A's hold took the pre-open's
+               force and B's hold took A's own. The heap-bounded execution: 3, no failure.
+VERIFIED_PASS  agent/work/FIX-227-run-1.log  the final tree (on e4ee8e81): 1578 and 3, 0 failures, BUILD SUCCESS (:55065);
+               JournalDirForceOrderTest 2, JournalCloseAndDirForceTest 3
+
+The change (tests only): a new package-private fixture OwnDirForce. Preopen opens the journal off the test thread with the
+pre-open held at 2.seg's force (bounded join; a check that the held force is not the opener's own); letGo() releases it and
+waits, bounded, until its force of segments/ has returned. Persisting starts a persist gated on a latch, arms the hold with
+that persist's thread, then go(). JournalDirForceOrderTest's fixture Two uses it (its cases and assertions unchanged; the
+pattern moved out of it). The case of this row opens through Preopen, arms A's hold, lets the pre-open go, starts A, then
+arms B's hold with B's thread: the forced order stays in the case. Every assertion stays; nothing under src/main changes.
+
+The other holds (the author's reading, spot-checked by the reviewer): JournalLifecycleTest :290/:318, LargeBodyEdgeTest :215
+and LargeBodyTest :399 hold by thread; MasterKeySourceTest :243 and JournalIoTest :77-79/:123 open no journal;
+ReplicaHolderTest :109/:249/:460/:467, ReplicaLinkEdgeTest :65/:294 and ReplicaFailedCountTest :68 hold any-thread forces of
+.part files and of the replica directory, which a pre-open never touches; the other cases of JournalCloseAndDirForceTest use
+real files or a hold on the record's own file. NOT_RUN: a forced order on any of these; JournalKeptRowsTest :169 (a write
+hold) was not inspected.
+
+The verifier, on the tree committed (FIX-225 already in it):
+VERIFIED_PASS  agent/work/FIX-227-verify-run.log  on 5d480cf3 plus this change, exit 0, BUILD SUCCESS (:54864): api 107, testkit
+               286, core 763, schemas 304, sftp 69, xslt 56, validate 33, http 52, runtime 1578 (:54715) and 3 (:54734),
+               0 failures, 0 errors, 0 skipped; no "Coverage checks have not been met"; JournalDirForceOrderTest 2 tests,
+               JournalCloseAndDirForceTest 3, and FIX-225's JournalSpillBoundTest 2, LargeBodyCrashTest 2, ReplicaStartTest 2
+VERIFIED_PASS  python3 ci/name_guard.py           exit 0, "name guard: clean, 5938 tracked files scanned"
+
+review: PASS   class A. The red is the row's fault: under the forced order an any-thread hold takes the pre-open's force; a
+               timeout instead of a wrong exception type is what this order gives (A is held by B's hold). Each hold can only
+               meet its own persist's force — each persist thread runs only its own persist(). The wait for three forces is
+               now exactly the opener's two and the witness's one; the witness does not wait for the held pre-open. Every
+               wait is bounded; on an early failure the class's teardown releases every hold and closes the journal. Preopen
+               repeats FIX-168's Two line for line; no check was lost. The case still catches the product fault (without
+               the earlier-failure check, Journal.java :1497, B returns and the case fails). Not blocking: when Preopen's
+               constructor fails at its own checks the opened journal is not closed — as in FIX-168's Two, accepted there.
+Logs are not committed (agent/work is ignored); the diff is agent/work/FIX-227.diff.

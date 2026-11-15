@@ -1,4 +1,16 @@
 
+## 2026-11-15 — FIX-227 the second dir-force case holds its own persist's force — done, review PASS
+
+- Fault (FIX-168's survey; never seen failing): `JournalCloseAndDirForceTest.aDirForceAfterAFailedOneFailsItsPersistToo` armed
+  holds on "the next force of `segments/` by any thread" after a wait the open's pre-open (`journal-open-2`) was not part of.
+- Red first, order forced (test-author, class A): the pre-open let go only after A's hold was armed, old holds - the case fails
+  in a bounded timeout; the log names the held "A" force as `FORCE segments on journal-open-2`, and B's hold took A's own force.
+- Change, tests only: one package-private fixture `OwnDirForce` serves this case and `JournalDirForceOrderTest` - `Preopen` (the
+  open off the test thread, the pre-open held at its file's force, bounded) and `Persisting` (a persist gated on a latch, its hold
+  armed with its thread). The forced order stays in the case. Every assertion of both classes stays.
+- Evidence: VERIFIED_PASS runtime 1578 and 3, by the author and by the verifier on the tree committed. Review PASS (class A):
+  `Preopen` repeats FIX-168's `Two` line for line; no other case of the class holds an any-thread force of `segments/`.
+
 ## 2026-11-15 — FIX-225 two more comparisons with the disk wait for the pre-open — done, review PASS
 
 - Fault (never seen by chance; the race of FIX-213 and FIX-222): the journal counts the 49-byte header of the pre-opened next
