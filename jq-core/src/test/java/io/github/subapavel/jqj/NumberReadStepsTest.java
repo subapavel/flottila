@@ -34,6 +34,8 @@ import org.junit.jupiter.params.provider.MethodSource;
  * no element, a constant array of k elements costs its k - 1 commas (NativeStepsTest), {@code range} one per value
  * (RangeStepsTest), and the slice {@code [5,6,7] | .[1:]} 2 more. Each expected count is today's plus the token's
  * started KiB, 1 at n = 1 024 and 2 at n = 1 025 (1 024 at 1 MiB), and twice that where the rule reads two tokens.
+ * The rows marked "#97 review" pin one read site each (a string repeat's count, the dividend, the remainder's divisor,
+ * the slice end, the range end, Equality's double path): each was seen red with that one site's tick reverted.
  *
  * <p>Each count is an adjacent pair: N steps complete with jq-ref's result and N - 1 end with
  * {@code JqTermination(BUDGET, STEPS)}. Every result is jq-ref 1.8.2's, observed 2026-11-14 with {@code jq-ref -c} on
@@ -65,6 +67,11 @@ class NumberReadStepsTest {
           1 / .[0] => 1024    => 3    => 1
           1 / .[0] => 1025    => 4    => 1
           1 / .[0] => 1048576 => 2049 => 1
+          # the dividend and the remainder's divisor (#97 review: each a site of its own)
+          .[0] / 1 => 1024    => 3    => 1
+          .[0] / 1 => 1025    => 4    => 1
+          2 % .[0] => 1024    => 3    => 0
+          2 % .[0] => 1025    => 4    => 0
           .[0] - 1 => 1024    => 3    => 0
           .[0] - 1 => 1025    => 4    => 0
           .[0] * 1 => 1024    => 3    => 1
@@ -73,6 +80,24 @@ class NumberReadStepsTest {
           .[0] % 2 => 1025    => 4    => 1
           """)
   void anArithmeticOperandTicksOncePerStartedKiBOfItsToken(String filter, int n, long steps, String result) {
+    assertSteps(filter, document(n), steps, result);
+  }
+
+  /**
+   * A string repeat reads its count's double once, on either side (#97 review): the read, the repeat's 1 tick for the
+   * KiB its 2-byte result starts, and the count's token. jq-ref gives "ab" for both orders.
+   */
+  @ParameterizedTest(name = "{0} at n = {1}: {2} steps")
+  @CsvSource(
+      delimiterString = "=>",
+      textBlock =
+          """
+          "ab" * .[0] => 1024 => 4 => "ab"
+          "ab" * .[0] => 1025 => 5 => "ab"
+          .[0] * "ab" => 1024 => 4 => "ab"
+          .[0] * "ab" => 1025 => 5 => "ab"
+          """)
+  void aStringRepeatTicksOncePerStartedKiBOfItsCount(String filter, int n, long steps, String result) {
     assertSteps(filter, document(n), steps, result);
   }
 
@@ -109,6 +134,19 @@ class NumberReadStepsTest {
       delimiterString = "=>",
       textBlock =
           """
+          # 1 + 0 folds to a computed number, so Equality compares as doubles: the read and the view's token (#97 review)
+          .[0] == (1 + 0) => 1024 => 3 => true
+          .[0] == (1 + 0) => 1025 => 4 => true
+          """)
+  void anEqualityOnTheDoublePathTicksOnlyTheViewsToken(String filter, int n, long steps, String result) {
+    assertSteps(filter, document(n), steps, result);
+  }
+
+  @ParameterizedTest(name = "{0} at n = {1}: {2} steps")
+  @CsvSource(
+      delimiterString = "=>",
+      textBlock =
+          """
           # two values, 1.0…0 and 2, one tick each; the start once, though today it is read at the start and again for
           # the next value (today 4, 4, 1 027)
           [range(.[0]; 3)] | .[1] => 1024    => 5    => 2
@@ -124,12 +162,28 @@ class NumberReadStepsTest {
       delimiterString = "=>",
       textBlock =
           """
+          # one value, 0, one tick; the end once (#97 review)
+          [range(0; .[0])] => 1024 => 4 => [0]
+          [range(0; .[0])] => 1025 => 5 => [0]
+          """)
+  void rangeTicksItsEndOnce(String filter, int n, long steps, String result) {
+    assertSteps(filter, document(n), steps, result);
+  }
+
+  @ParameterizedTest(name = "{0} at n = {1}: {2} steps")
+  @CsvSource(
+      delimiterString = "=>",
+      textBlock =
+          """
           # today 3: the read and the comma of [5,6]
           .[0] as $n | [5,6] | .[$n]    => 1024 => 4 => 6
           .[0] as $n | [5,6] | .[$n]    => 1025 => 5 => 6
           # today 6: the read, the two commas of [5,6,7] and the slice's 2
           .[0] as $n | [5,6,7] | .[$n:] => 1024 => 7 => [6,7]
           .[0] as $n | [5,6,7] | .[$n:] => 1025 => 8 => [6,7]
+          # the end bound (#97 review): the read, the two commas, the slice's 1 for its one element and the token
+          .[0] as $n | [5,6,7] | .[:$n] => 1024 => 6 => [5]
+          .[0] as $n | [5,6,7] | .[:$n] => 1025 => 7 => [5]
           # today 3
           .[0] as $n | [5,6] | has($n)  => 1024 => 4 => true
           .[0] as $n | [5,6] | has($n)  => 1025 => 5 => true
