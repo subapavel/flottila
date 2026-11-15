@@ -614,9 +614,11 @@ class ValueFormTest {
   /**
    * The shapes where a node and one of its parts run in different forms, each pinned by freeze id: a value-form node
    * over a push part that gives many results, which the facts let through only where what follows gives none, and a
-   * push node over a value-form part, whose value or no result it takes. The four shapes whose function takes a closure
+   * push node over a value-form part, whose value or no result it takes. The five shapes whose function takes a closure
    * run {@code recursing}, so specialisation makes no copy and main's Call keeps its real closure (#117 re-pin ruling
-   * V1); SpecialiserTest pins what a copy makes of #116's first forms of them.
+   * V1); SpecialiserTest pins what a copy makes of #116's first forms of them. The binding closure's Var reads main's
+   * slot one frame out (ADR-0045 #107), the value form of an outer-variable read; in a copy that read would be a
+   * trailing value of the copy's own frame (ADR-0045 #117 S4), so only a real closure keeps it.
    */
   static Stream<Arguments> shapes() {
     return Stream.of(
@@ -791,6 +793,22 @@ class ValueFormTest {
             1,
             RunForm.VALUE,
             "[]"),
+        // "a" as $0 | "z" as $1 | f(. as $2 | $0): node 4 is main's Call, node 7 the closure's Var of main's slot 0, next
+        // to main's "z" and the closure's own "yes". jq-ref 1.8.2 on "in": "a" as $a | "z" as $z | def f(g): if . ==
+        // "yes" then g else "yes" | f(g | .) end; f(. as $b | $a) gives "a"; with $z in place of $a "z", with $b "yes".
+        shape(
+            "a ParamCall on a binding closure whose value-form Var reads the caller's slot",
+            () ->
+                main(
+                    new Bind(AT, c("a"), 0, new Bind(AT, c("z"), 1, new Call(AT, 0, List.of(new Bind(AT, new Identity(AT), 2, new Var(AT, 0))), List.of()))),
+                    new Function(AT, 1, 0, recursing(new ParamCall(AT, 0), new Pipe(AT, new ParamCall(AT, 0), new Identity(AT))))),
+            -1,
+            4,
+            RunForm.PUSH,
+            -1,
+            7,
+            RunForm.VALUE,
+            "[a]"),
         shape(
             "a push Comma on a value-form Fn2",
             () -> main(new Comma(AT, new Intrinsic(AT, new Operation("first", (Fn2) (state, in, a, b) -> a), List.of(c(1), c(2))), c(3))),
