@@ -11,6 +11,12 @@
   <artifactId>jq-core</artifactId>
   <name>jq-core</name>
 
+  <!-- The calibration's full matrix (JUnit tag calibration-matrix, CalibrationTest) runs only under
+       -Pcalibration-matrix: the spec gate and nightly; the ticket gate runs its -Xint 512 KiB column (ADR-0046 #113). -->
+  <properties>
+    <calibration.excludedGroups>calibration-matrix</calibration.excludedGroups>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>io.github.subapavel.jqj</groupId>
@@ -57,6 +63,23 @@
           </excludedTestClasses>
         </configuration>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <excludedGroups>${calibration.excludedGroups}</excludedGroups>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- ./mvnw -B -Pcalibration-matrix verify: the spec gate and nightly (ADR-0046 #113). -->
+    <profile>
+      <id>calibration-matrix</id>
+      <properties>
+        <calibration.excludedGroups></calibration.excludedGroups>
+      </properties>
+    </profile>
+  </profiles>
 </project>
