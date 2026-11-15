@@ -127,7 +127,9 @@ grilling-adviser's rulings T1–T4, made for the owner under the delegation of 2
   - It builds the callee's frame, which holds the value and closure arguments, and ticks one step.
     It then returns true from `run`, NONE from `eval`, or an answer of true on the driver.
   - It enters no activation and adds no units.
-  - `CallOp.enter` takes a pending jump in both forms. `CallOp.Active.resume` takes it on the driver.
+  - The entry loops of `CallOp.run` and `CallOp.eval` take a pending jump in the stack forms, and
+    `CallOp.Active.resume` takes it on the driver. A single `CallOp.enter` was the design. It was split
+    in 180b412 because a helper frame per call level broke DeepStackFreshJvmTest.
   - **Where a jump is taken** (rulings J1–J5, 2026-11-15; F-104): the jump records only itself,
     its activation's frame and the input. The callee's frame is built at the take, not at the jump.
     Only the entry loop running in that same frame takes the jump and builds the frame; every other
