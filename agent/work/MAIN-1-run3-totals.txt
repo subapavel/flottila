@@ -1,0 +1,80 @@
+Extract of agent/work/MAIN-1-run3.log (83 7xx lines, not committed): each module's totals line, then the reactor summary.
+Made with grep at 20:53Z on 2026-11-15; line numbers are the log's.
+
+55:[INFO] Building Rail8 :: api 0.1.0-SNAPSHOT                              [2/17]
+168:[INFO] Tests run: 107, Failures: 0, Errors: 0, Skipped: 0
+189:[INFO] Building Rail8 :: testkit 0.1.0-SNAPSHOT                          [3/17]
+326:[INFO] Tests run: 300, Failures: 0, Errors: 0, Skipped: 0
+347:[INFO] Building Rail8 :: core 0.1.0-SNAPSHOT                             [4/17]
+41098:[INFO] Tests run: 763, Failures: 0, Errors: 0, Skipped: 0
+41119:[INFO] Building Rail8 :: schemas 0.1.0-SNAPSHOT                          [5/17]
+41190:[INFO] Tests run: 304, Failures: 0, Errors: 0, Skipped: 0
+41211:[INFO] Building Rail8 :: components 0.1.0-SNAPSHOT                       [6/17]
+41235:[INFO] Building Rail8 :: component :: sftp 0.1.0-SNAPSHOT                [7/17]
+41317:[INFO] Tests run: 69, Failures: 0, Errors: 0, Skipped: 0
+41341:[INFO] Building Rail8 :: steps 0.1.0-SNAPSHOT                            [8/17]
+41365:[INFO] Building Rail8 :: step :: xslt 0.1.0-SNAPSHOT                     [9/17]
+41534:[INFO] Tests run: 56, Failures: 0, Errors: 0, Skipped: 0
+41555:[INFO] Building Rail8 :: step :: validate 0.1.0-SNAPSHOT                [10/17]
+41628:[INFO] Tests run: 33, Failures: 0, Errors: 0, Skipped: 0
+41649:[INFO] Building Rail8 :: component :: http 0.1.0-SNAPSHOT               [11/17]
+41863:[INFO] Tests run: 52, Failures: 0, Errors: 0, Skipped: 0
+41884:[INFO] Building Rail8 :: runtime 0.1.0-SNAPSHOT                         [12/17]
+55260:[INFO] Tests run: 1580, Failures: 0, Errors: 0, Skipped: 0
+55279:[INFO] Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+73503:[INFO] Tests run: 711, Failures: 0, Errors: 0, Skipped: 0
+73523:[INFO] Building Rail8 :: component :: mock 0.1.0-SNAPSHOT               [13/17]
+73611:[INFO] Tests run: 67, Failures: 0, Errors: 0, Skipped: 0
+73632:[INFO] Building Rail8 :: cli 0.1.0-SNAPSHOT                             [14/17]
+79157:[INFO] Tests run: 208, Failures: 0, Errors: 0, Skipped: 0
+79318:[INFO] Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+79333:[INFO] Building Rail8 :: sim 0.1.0-SNAPSHOT                             [15/17]
+79450:[INFO] Tests run: 61, Failures: 0, Errors: 0, Skipped: 0
+79471:[INFO] Building Rail8 :: archtest 0.1.0-SNAPSHOT                        [16/17]
+79553:[INFO] Tests run: 48, Failures: 0, Errors: 0, Skipped: 0
+79571:[INFO] Building Rail8 :: bench 0.1.0-SNAPSHOT                           [17/17]
+80056:[INFO] Tests run: 239, Failures: 0, Errors: 0, Skipped: 0
+83681:[INFO] Tests run: 42, Failures: 0, Errors: 0, Skipped: 0
+
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Rail8 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] Rail8 .............................................. SUCCESS [  0.572 s]
+[INFO] Rail8 :: api ....................................... SUCCESS [  4.643 s]
+[INFO] Rail8 :: testkit ................................... SUCCESS [ 58.626 s]
+[INFO] Rail8 :: core ...................................... SUCCESS [ 15.993 s]
+[INFO] Rail8 :: schemas ................................... SUCCESS [  4.632 s]
+[INFO] Rail8 :: components ................................ SUCCESS [  0.017 s]
+[INFO] Rail8 :: component :: sftp ......................... SUCCESS [  9.965 s]
+[INFO] Rail8 :: steps ..................................... SUCCESS [  0.016 s]
+[INFO] Rail8 :: step :: xslt .............................. SUCCESS [  4.249 s]
+[INFO] Rail8 :: step :: validate .......................... SUCCESS [  2.237 s]
+[INFO] Rail8 :: component :: http ......................... SUCCESS [  5.499 s]
+[INFO] Rail8 :: runtime ................................... SUCCESS [16:49 min]
+[INFO] Rail8 :: component :: mock ......................... SUCCESS [  2.265 s]
+[INFO] Rail8 :: cli ....................................... SUCCESS [ 45.335 s]
+[INFO] Rail8 :: sim ....................................... SUCCESS [ 16.408 s]
+[INFO] Rail8 :: archtest .................................. SUCCESS [  7.869 s]
+[INFO] Rail8 :: bench ..................................... SUCCESS [06:48 min]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  26:37 min
+[INFO] Finished at: 2026-11-15T20:45:38Z
+[INFO] ------------------------------------------------------------------------
+
+coverage (agent/work/MAIN-1-run3-coverage.log):
+bench: line 98.1 %, branch 97.8 %
+platform/api: line 99.3 %, branch 100.0 %
+platform/cli: line 99.0 %, branch 99.6 %
+platform/components/http: line 99.5 %, branch 94.8 %
+platform/components/mock: line 100.0 %, branch 99.2 %
+platform/components/sftp: line 100.0 %, branch 99.0 %
+platform/core: line 99.7 %, branch 99.4 %
+platform/runtime: line 99.5 %, branch 99.4 %
+platform/schemas: line 99.0 %, branch 99.5 %
+platform/sim: line 97.2 %, branch 95.9 %
+platform/steps/validate: line 100.0 %, branch 100.0 %
+platform/steps/xslt: line 100.0 %, branch 100.0 %
+platform/testkit: line 97.8 %, branch 95.9 %
+coverage: no decrease

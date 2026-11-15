@@ -373,6 +373,11 @@ any bind(0) or connect before the node binds it (`ci` run 220). `dev.rail8.testk
 `Files.readString` and `readAllBytes` of a /proc sysctl file (`/proc/sys/net/ipv4/ip_local_port_range`) return a truncated
 read - "3" here - because such a file answers only a read at offset 0; `Files.readAllLines` reads it whole.
 
+A run's log names its tree (MAIN-1's review, 2026-11-15): a Maven log records neither the commit nor the tree's state. The
+call to the verifier asks for `git rev-parse HEAD; git status --porcelain` as the log's first lines, before the Maven
+command. And with `-Dmaven.test.failure.ignore=true` BUILD SUCCESS proves nothing: green is every module's totals at
+Failures 0, Errors 0, Skipped 0 and the expected count.
+
 ## Reference package, fixtures, tags
 
 examples/demo (package.yaml, endpoints/*.yaml, flows/invoice-sync.yaml + .test.yaml + .xsl +

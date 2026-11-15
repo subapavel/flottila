@@ -1,0 +1,82 @@
+MAIN-1 - `main` green: the evidence per condition (2026-11-15)
+
+The row: "`main` green: the BASE-1 red set fixed (FIX-212 at least), FIX-195 reviewed, the FIX-201 audit reviewed".
+Its acceptance names four conditions. Each is listed with what was observed and where; nothing here is inferred.
+
+1. "a full `clean verify -Pit` green on `main` three times in a row (the BASE-1 red set differs from run to run)"
+
+   On this machine, by the verifier (`agent/work/MAIN-1-ci.md`, section "Whole-reactor runs on this machine"; the rule the
+   count follows was written there with run 1, before runs 2 and 3 existed - `git show 750ba7b9:agent/work/MAIN-1-ci.md`
+   has it at line 167, with "Count: 1 of 3"):
+
+   | run | when (UTC)    | tree                                   | result                                                          |
+   | 1   | from 18:05Z   | a61b80cd + FIX-149 as first reviewed   | green: 17 modules, every count as expected, coverage no decrease |
+   | 2   | 19:31Z-19:58Z | 8e13e176 + FIX-254 as reviewed         | green, the same; cli 208 unit tests and 7 ITs                    |
+   | 3   | 20:18Z-20:45Z | 7df0fff0, clean: main's head           | green, the same; no blocked-platform-thread line in the log      |
+
+   No whole-reactor run between them was red. Runs 1 and 2 ran on working trees that became commits 750ba7b9 and 7df0fff0
+   after small changes their reviews asked for: a Javadoc line and one test method in the testkit module (testkit ran
+   again, 300 green); two comment sentences in the cli module (cli ran again, 208 and 7 green). Run 3 ran on the committed
+   head. Between run 1's tree and run 3's, the code under `platform/` and `bench/` differs by FIX-254's change in
+   `Quiescence.java`, its three test cases, and those small changes.
+
+   How "green" is read: each run used `-Dmaven.test.failure.ignore=true`, so that a red module does not hide the modules
+   after it. BUILD SUCCESS alone therefore says nothing; green means every module's totals read Failures 0, Errors 0,
+   Skipped 0 with the expected count. Run 1's totals: `agent/work/FIX-149-evidence.txt:11-14` (its log stayed in a scratch
+   worktree). Run 2's log: `agent/work/FIX-254-reactor.log`. Run 3's: `agent/work/MAIN-1-run3.log`. The logs are too long
+   to commit; run 3's totals lines, reactor summary and coverage are extracted in `agent/work/MAIN-1-run3-totals.txt`.
+
+   Which tree run 3 ran on: its log records neither the commit nor `git status`; "7df0fff0, clean" is the verifier's
+   hand-back. Observed besides: the commit was made at 20:18:38Z; the log ends 20:45:38Z after 26:37 min, so the run
+   began at 20:19:01Z; at 20:51Z `git diff --stat 7df0fff0 -- platform bench mapping examples bin ci .github` is empty and
+   `git status --porcelain` lists one file, `agent/work/MAIN-1-ci.md`.
+
+   On GitHub: each `ci` run on `main` has two build jobs that run `mvn -f platform/pom.xml verify -Pit` (ci.yml:74), one on
+   Postgres 17.11 and one on 18.6.
+
+   | run | commit                       | conclusion |
+   | 225 | a61b80cd (FIX-201)           | success    |
+   | 226 | 750ba7b9 (FIX-149)           | success    |
+   | 227 | 8e13e176 (FIX-254, stage 1)  | success    |
+   | 228 | 7df0fff0 (FIX-254)           | success    |
+
+   Before 225: 221-223 green; 224 failed on the fault of FIX-254; 218, 219, 220 failed on FIX-183, FIX-234 and FIX-149.
+   All four rows are done. The lines of each run are in `agent/work/MAIN-1-ci.md`.
+
+   The red set the row's parenthesis speaks of (`agent/work/BASE-1-red-set.txt`, three tests that failed in different
+   runs of BASE-1): `LedgerIT.aKilledNodeLosesNoAckedMessage` - FIX-215; `StepBodiesIT.aRerunOfAStampingStep…` - FIX-212;
+   `ReplicaStartTest.theStartRoomCheckCountsTheReplicas` - FIX-213. The three rows are done, and no test failed in any run
+   of the two tables.
+
+2. "FIX-212..FIX-219 done"
+
+   All eight rows are `done`, each with a review PASS in the row and a PROGRESS entry (FIX-214 in round 2). What three of
+   them left to MAIN-1:
+   - FIX-217, the runner half: `ci` run 201, testkit SUCCESS (`agent/work/MAIN-1-ci.md:34`).
+   - FIX-213, the runner half: `ci` run 203, `ReplicaStartTest` did not fail on either job (`:61-62`; run 202, where it
+     failed: `:48-49`).
+   - FIX-219, "the three whole-reactor runs": condition 1.
+
+3. "the `ci` workflow green on `main` (red since run 155, 2026-11-02)"
+
+   The second table of condition 1: green on `main`'s head 7df0fff0 and four runs in a row (225-228). Run 228 was read
+   job by job: DCO, both build jobs (with the demo's validate and flow-test steps through the launcher and the coverage
+   steps on 18.6) and the stack job green; mutation and bench skipped, as on every push. Runs 226 and 227 were read from
+   the run's conclusion only. The other workflow that runs on a push, `mapping-ci`, last ran on 627afa86 (run 2; no later
+   push touched `mapping/`): success.
+   Run 228 was read twice. The first reading (20:47Z) came soon after the stack job's end, so it was repeated at 20:50Z from
+   the run and its job list: `completed`, `success`, head_sha 7df0fff000fc..., last update 20:46:02Z; build job 18.6
+   20:18:46Z-20:44:30Z, build job 17.11 20:18:46Z-20:43:11Z, stack job 20:44:32Z-20:46:02Z, each `success`; DCO `success`;
+   bench and mutation `skipped`.
+
+4. "the review verdicts recorded"
+
+   - FIX-195: the late review, round 1 FAIL with four findings, fixed, round 2 PASS (row FIX-195; PROGRESS "FIX-195 the
+     late review: FAIL, four findings fixed, PASS").
+   - FIX-201, the side branch's audit: rounds 1 to 3 FAIL, round 4 PASS (row FIX-201; `agent/work/FIX-201-audit-review.md`).
+   - The other tasks closed while getting `main` green (the list in `agent/HANDOFF.md`: FIX-149, 168, 183, 221, 222, 224-227,
+     229, 231, 234, 254): each `done` with a review PASS in its row.
+
+Not conditions of MAIN-1, and open: the rows found on the way (FIX-255, FIX-256 and the list in `agent/HANDOFF.md`); the
+whole-reactor run does not run the mapping engine's suite (its own build, `mapping-ci`); mutation and bench jobs of `ci`
+are skipped on a push, as designed.

@@ -164,6 +164,12 @@ Nothing after the runtime module has been observed on a runner since 2026-11-05.
   were not read one by one. Count of green `ci` runs in a row: 2 (225, 226).
 - `ci` run 227 (id 43751547554, 8e13e176, FIX-254 stage 1, documents only): `success`, read 20:16Z from the run's conclusion
   (19:17Z-19:42Z). Count of green `ci` runs in a row: 3 (225, 226, 227). 227 ran the runner as it was before FIX-254's change.
+- `ci` run 228 (id 43757346086, 7df0fff0, FIX-254): `success`, read 20:47Z from the job list. DCO green; both build jobs
+  green (Verify 20:18Z-20:44Z on 18.6, with the demo's validate and flow-test steps through the launcher and the coverage
+  steps green; 20:18Z-20:43Z on 17.11); the stack job green; mutation and bench skipped, as on every push.
+  Count of green `ci` runs in a row: 4 (225-228). `mapping-ci` last ran on 627afa86 (run 2): success.
+  Read again at 20:50Z (the first reading was one minute after the run's end): `completed`, `success`, last update
+  20:46:02Z; the stack job ran 20:44:32Z-20:46:02Z, `success`.
 
 ## Whole-reactor runs on this machine (MAIN-1's first condition)
 
@@ -177,4 +183,8 @@ the third on the head MAIN-1 closes on. A commit between two runs does not resta
 - Run 2 (19:31Z-19:58Z, the verifier): 8e13e176 plus FIX-254's change as reviewed. Green: 17 modules, every count as
   expected (cli 208 unit tests and 7 ITs), coverage no decrease (`agent/work/FIX-254-evidence.txt` section 5). The committed
   change differs from that tree by two comment sentences; the cli module ran green after them.
-- Count: 2 of 3. Run 3 is owed on FIX-254's commit.
+- Run 3 (20:18Z-20:45Z, the verifier): 7df0fff0, a clean tree - main's head. Green: BUILD SUCCESS, 17 modules, every count
+  as expected (cli 208 unit tests and 7 ITs), 0 failures, 0 errors, 0 skipped, no blocked-platform-thread line, coverage no
+  decrease (`agent/work/MAIN-1-run3.log`, `MAIN-1-run3-coverage.log`, not committed). The log does not record the commit
+  or the tree's state; the commit is the verifier's word, and the run began (20:19:01Z) after the commit was made (20:18:38Z).
+- Count: 3 of 3. The conditions of the row, one by one: `agent/work/MAIN-1-evidence.txt`. The close's review [B]: PASS.

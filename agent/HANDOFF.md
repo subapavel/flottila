@@ -1,11 +1,11 @@
 # Handoff
 
-state: CONSOLIDATION ON MAIN (D-148). Done BRAND-1/3/4/5, OPS-1, FIX-149, 168, 183, 195, 201, 212-219, 221, 222, 224-227, 229, 231, 234, 254. Open: MAIN-1
-last commit: FIX-254 - the flow-test runner's quiet sample also counts running carrier threads (D-155). Before it: its stage 1.
-WIP: none. MAIN-1 has two conditions left, both a matter of running and reading, nothing to write under src/.
-next exact action: MAIN-1's close - (1) whole-reactor run 3 of 3 on FIX-254's commit (the verifier; agent/work/MAIN-1-ci.md has
-  the rule and runs 1, 2); (2) read the `ci` run of that commit - 225, 226, 227 were green; then MAIN-1 to its reviewer [B].
-  After MAIN-1: FIX-235 [C], 236, 237, 228, 230, 232, 233, 223 (list), 205, 196, 255, 256, then the audit's rows FIX-238 to 253.
+state: CONSOLIDATION ON MAIN (D-148) is complete: BRAND-1/3/4/5, OPS-1, MAIN-1 done. `main` is green: 3 whole-reactor runs, `ci` 225-228.
+last commit: MAIN-1 closed (documents only; agent/work/MAIN-1-evidence.txt). Before it: FIX-254, the flow-test clock (D-155).
+WIP: none.
+next exact action: FIX-235 [C] - BatchingWriter still lets two things out that D-146 says it contains; class C: designer, then
+  the architecture-advisor, then the packet. After it: FIX-236, 237, 228, 230, 232, 233, 223 (list), 205, 196, 255, 256, then
+  the audit's rows FIX-238 to 253. Each needs the whole reactor green before its commit (26 min; expected counts: PROGRESS).
 MAPPING: D-153 is the rule until the owner applies the patch - root Design rules do not bind mapping/; Tests, Working rules, Context
   hygiene do; nothing outside mapping/ depends on it; the mapping only closes, fixes, observes until MAP-1; licence list frozen.
 Build: mapping `./mvnw -B -ntp -f mapping/pom.xml -Pbench clean verify` (2.5 min, 17 822 tests); platform `mvn -B -ntp -f

@@ -1,4 +1,20 @@
 
+## 2026-11-15 — MAIN-1 `main` is green — done, review PASS [B]
+
+- Context compacted before this entry. Each of the row's four conditions with what was observed:
+  `agent/work/MAIN-1-evidence.txt`. No code changed in this close.
+- Whole-reactor runs (`clean verify -Pit`, 17 modules, every count as expected, coverage no decrease), three in a row, no red
+  one between: run 1 on a61b80cd + FIX-149, run 2 on 8e13e176 + FIX-254, run 3 on 7df0fff0 clean - VERIFIED_PASS, 20:18Z-20:45Z.
+  Runs 1 and 2 ran on working trees that were committed after small changes their reviews asked for; run 3 on main's head.
+- `ci` on `main`: green four runs in a row (225-228); 228, on 7df0fff0, read job by job - DCO, both build jobs, the stack job.
+  It had been red since run 155 (2026-11-02). `mapping-ci` last ran on 627afa86: green.
+- FIX-212 to FIX-219 done, a review PASS each; the runner halves of FIX-213 and FIX-217 are `ci` runs 203 and 201. The
+  BASE-1 red set's three tests are fixed by FIX-215, FIX-212 and FIX-213 and failed in none of the runs above.
+- The verdicts: FIX-195's late review round 2 PASS; FIX-201's audit round 4 PASS.
+- The faults that surfaced on the way, each fixed with its own review: FIX-149, 168, 183, 221, 222, 224-227, 229, 231, 234,
+  254. Open rows they left: FIX-235 [C] first, then the list in `agent/HANDOFF.md`. D-148's plan is complete with this.
+- The review's remarks, taken: a wrong line citation; run 228 read a second time; a run's log must name its tree (NOTES).
+
 ## 2026-11-15 — FIX-254 a flow time no longer depends on the machine — done, review PASS
 
 - The runner's quiet sample also counts the carrier threads in state RUNNABLE (`Quiescence.runningCarriers()`, D-155): the
